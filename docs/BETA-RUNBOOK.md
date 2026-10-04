@@ -180,7 +180,7 @@ database initialised with the old one. The required values and what is optional:
 | `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | yes | already `routemaker.cieply.com` / `https://routemaker.cieply.com` |
 | `DATA_ROOT`, `TAG`, `COMPOSE_PROJECT_NAME` | yes | `/data/routemaker`, the short sha, `routemaker-beta` |
 | `BETA_API_PORT`, `BETA_WEB_CONCURRENCY` | yes | `8087`, `6` (two route plans at once, one worker always free; the checker refuses more) |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://routemaker.cieply.com/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, then `beta-compose.sh up -d api`. |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://routemaker.cieply.com/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
 | VDOT token | no | this release has no such variable; there is nothing to set |
 
@@ -205,8 +205,12 @@ prints a problem, stop and report it. It checks: no caddy or rebuild; a memory c
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
 7.0 GiB and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
-plus capped direct buffers inside its cap; the weekly rebuild paused; and in `.env`, no
-`COMPOSE_PROFILES` or `COMPOSE_FILE`.
+plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
+restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
+`COMPOSE_FILE`, no `RESTART_POLICY` other than empty or `unless-stopped`, and no `DJANGO_DEBUG`.
+
+Rerun the gate after **every** edit to `.env`: `beta-compose.sh` refuses the worst lines itself,
+but only the gate checks the whole render.
 
 ## 5. Prepare `DATA_ROOT` (adds `$RM_DATA`)
 
@@ -640,11 +644,16 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   them; only `db --replace-db --delete-beta-accounts` or rollback B/C to a dump from before they existed removes them.
 - **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without sessions or
   client-address rows). They are on the same disk; copying them off the server is the owner's decision.
-- **Reboot:** containers restart with Docker (`unless-stopped`; `RESTART_POLICY` stays unset in `.env`, because
-  `no` is the home Docker Desktop machine's setting and `beta-compose.sh` and the checker refuse it here). `/data` must be
-  mounted before Docker starts, as it already is for Docker's own storage there.
-- **Debug stays off.** `make-env.sh` never writes `DJANGO_DEBUG`, so the containers run with it off; the checker and
-  `beta-compose.sh` refuse it being set. Do not add it to `.env`, even to chase a fault: read `beta-compose.sh logs api`.
+- **Reboot:** containers restart with Docker (`unless-stopped`). `RESTART_POLICY` stays unset in `.env`, because
+  `no` is the home Docker Desktop machine's setting: `beta-compose.sh` refuses a value other than empty or
+  `unless-stopped` in `.env` and in the shell, and the checker refuses it in `.env` and in the rendered config.
+  `/data` must be mounted before Docker starts, as it already is for Docker's own storage there.
+- **Debug stays off.** `make-env.sh` never writes `DJANGO_DEBUG`, so the containers run with it off.
+  `beta-compose.sh` refuses a non-empty `DJANGO_DEBUG` in `.env` and in the shell, and the checker refuses it in
+  `.env` and in the rendered config. Do not add it to `.env`, even to chase a fault: read `beta-compose.sh logs api`.
+- **The shell does not reach compose.** `beta-compose.sh` runs compose with only `PATH`, `HOME`, `DOCKER_HOST` and
+  `DOCKER_CONFIG` from your environment (the gate renders with the same four), so every setting comes from `.env`.
+  Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design.
 - **No rebuild runs here.** `WEEKLY_REBUILD_PAUSED=1` and there is no rebuild container. New routing data always comes
   from home as a bundle.

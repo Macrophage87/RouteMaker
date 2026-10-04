@@ -24,7 +24,8 @@
 #   * COMPOSE_PROFILES, COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_PATH_SEPARATOR or
 #     COMPOSE_ENV_FILES in the environment, and COMPOSE_PROFILES or COMPOSE_FILE in .env:
 #     each would change the project, the files or the profiles behind the wrapper's back;
-#   * RESTART_POLICY (other than unless-stopped) or DJANGO_DEBUG in the environment;
+#   * RESTART_POLICY (other than unset, empty or unless-stopped) or a non-empty DJANGO_DEBUG,
+#     in the environment or in .env;
 #   * --scale (a second copy of a service doubles its memory cap), and `run -p/--publish`
 #     (it would publish a port on every interface, not 127.0.0.1);
 #   * `down` or `rm` with -v/--volumes, and `down --rmi` (nothing durable is in a volume
@@ -33,6 +34,18 @@
 #     makes compose use the directory name, which can be another project's).
 # Everything else (ps, logs, exec, run, build, pull, stop, restart, config, down) passes
 # through. As a backstop, compose.beta.yaml also caps caddy and rebuild tiny.
+#
+# Compose itself runs under `env -i` with PATH, HOME, DOCKER_HOST and DOCKER_CONFIG only: the
+# same four variables scripts/check_beta_compose.py --env-file renders with, so what the gate
+# checked is what `up` gets. A shell variable beats .env in compose's substitution, so without
+# this a stray DATA_ROOT, TAG or BETA_WEB_CONCURRENCY in the operator's shell would bind other
+# directories, run another image or undo the memory budget, and the gate could not see it.
+# (Chosen over refusing each shell variable that is also a key in .env: that would still let
+# through the variables compose files default with ${VAR:-...} and .env does not set, such as
+# RESTART_POLICY, BETA_API_PORT or BETA_WEB_CONCURRENCY. The refusals above stay, so a variable
+# somebody set on purpose is reported rather than silently ignored.) A docker context chosen
+# with `docker context use` still applies (it lives in DOCKER_CONFIG / HOME); DOCKER_CONTEXT in
+# the environment does not.
 #
 # BETA_ENV_FILE names the env file [<repo>/.env]; DOCKER is the docker binary [docker]
 # (tests point it at a stub).
@@ -50,9 +63,11 @@ for var in COMPOSE_PROFILES COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PATH_SEPAR
 	fi
 done
 
-# A shell variable beats .env in compose's substitution. RESTART_POLICY=no is the Docker Desktop
-# home machine's setting (compose.yaml, x-restart); on this server it would stop every container
-# coming back after an OOM kill or a reboot. DJANGO_DEBUG must stay off on a public site.
+# RESTART_POLICY=no is the Docker Desktop home machine's setting (compose.yaml, x-restart); on
+# this server it would stop every container coming back after an OOM kill or a reboot. Empty is
+# allowed: compose's ${RESTART_POLICY:-unless-stopped} treats it as unset. DJANGO_DEBUG must stay
+# off on a public site. Compose runs under env -i (the end of this file), so neither could reach
+# it from the shell anyway; they are refused so that whoever set one learns it does nothing.
 if [ -n "${RESTART_POLICY:-}" ] && [ "$RESTART_POLICY" != unless-stopped ]; then
 	die "RESTART_POLICY is set to '$RESTART_POLICY' in the environment; unset it (the beta restarts unless-stopped)"
 fi
@@ -71,6 +86,27 @@ fi
 if LC_ALL=C grep -Eq '^[^A-Za-z#]*(export[[:space:]]+)?COMPOSE_[A-Z_]+[[:space:]]*:' "$env_file"; then
 	die "$env_file has a COMPOSE_... line in the KEY: value form; write it as KEY=value (or remove it)"
 fi
+# The value of every KEY line in .env (either form, any prefix junk), the separator and the
+# blanks around the value removed. Only compared here, never printed.
+env_values() {
+	LC_ALL=C sed -n -E "s/^[^A-Za-z#]*(export[[:space:]]+)?$1[[:space:]]*[=:][[:space:]]*//p" "$env_file" |
+		tr -d '\r' | sed -E 's/[[:space:]]+$//'
+}
+# RESTART_POLICY: empty or unless-stopped (quoted or not), nothing else; a value with a trailing
+# comment is refused too, which errs closed. DJANGO_DEBUG: empty only (even 0 is refused: it has
+# no business in the beta's .env). The checker's --env-file gate refuses the same lines.
+for value in $(env_values RESTART_POLICY | sed 's/^$/(empty)/'); do
+	case "$value" in
+		'(empty)' | unless-stopped | '"unless-stopped"' | "'unless-stopped'" | '""' | "''") ;;
+		*) die "$env_file sets RESTART_POLICY to something other than unless-stopped; remove that line (the beta restarts unless-stopped)" ;;
+	esac
+done
+for value in $(env_values DJANGO_DEBUG | sed 's/^$/(empty)/'); do
+	case "$value" in
+		'(empty)' | '""' | "''") ;;
+		*) die "$env_file sets DJANGO_DEBUG; remove that line (debug stays off on the beta)" ;;
+	esac
+done
 [ -r compose.yaml ] && [ -r compose.beta.yaml ] || die "compose.yaml and compose.beta.yaml must both be in $repo"
 
 parked="caddy rebuild renderer bot not-in-beta"
@@ -175,4 +211,9 @@ case "$sub" in
 		;;
 esac
 
-exec "${DOCKER:-docker}" compose -f compose.yaml -f compose.beta.yaml --env-file "$env_file" "$@"
+# A clean environment for compose (see the header): only these four variables, the ones the
+# checker's gate renders with.
+set -- "${DOCKER:-docker}" compose -f compose.yaml -f compose.beta.yaml --env-file "$env_file" "$@"
+[ -z "${DOCKER_CONFIG+set}" ] || set -- "DOCKER_CONFIG=$DOCKER_CONFIG" "$@"
+[ -z "${DOCKER_HOST+set}" ] || set -- "DOCKER_HOST=$DOCKER_HOST" "$@"
+exec env -i "PATH=$PATH" "HOME=${HOME:-/}" "$@"

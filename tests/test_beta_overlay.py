@@ -331,12 +331,9 @@ def test_the_synthetic_good_stack_passes() -> None:
             lambda s: s["api"]["environment"].update(WEB_CONCURRENCY="3"),
             "WEB_CONCURRENCY 3 leaves no worker free",
         ),
-        (lambda s: s["api"].update(restart="no"), "api: restart is 'no'"),
+        (lambda s: s["api"].update(restart="always"), "api: restart is 'always'"),
+        (lambda s: s["api"].update(restart="on-failure"), "api: restart is 'on-failure'"),
         (lambda s: s["photon"].pop("restart"), "photon: restart is None"),
-        (
-            lambda s: s["api"]["environment"].update(DJANGO_DEBUG="1"),
-            "api: DJANGO_DEBUG is '1'",
-        ),
         (lambda s: s["postgis"].pop("cpu_shares"), "postgis: cpu_shares None is not below"),
         (lambda s: s["api"].update(cpu_shares=1024), "api: cpu_shares 1024 is not below"),
         (lambda s: s["worker"].pop("oom_score_adj"), "worker: oom_score_adj None is under 500"),
@@ -371,6 +368,89 @@ def test_the_synthetic_good_stack_passes() -> None:
 def test_the_checker_refuses(mutate, expect) -> None:
     found = problems_for(mutate)
     assert any(expect in p for p in found), (expect, found)
+
+
+LONG_RUNNING = sorted(beta.EXPECTED_SERVICES - beta.ONE_SHOT)
+
+
+@pytest.mark.parametrize("name", LONG_RUNNING)
+def test_the_checker_refuses_restart_no_on_every_long_running_service(name: str) -> None:
+    found = problems_for(lambda s: s[name].update(restart="no"))
+    assert f"{name}: restart is 'no', not 'unless-stopped'" in " ".join(found), found
+
+
+def test_the_one_shot_migrate_may_have_restart_no() -> None:
+    assert "migrate" in beta.ONE_SHOT and beta.ONE_SHOT == {"migrate"}
+    assert problems_for(lambda s: s["migrate"].update(restart="no")) == []
+
+
+@pytest.mark.parametrize("name", ["api", "worker", "migrate"])
+@pytest.mark.parametrize("value", ["1", "true", "True"])
+def test_the_checker_refuses_django_debug_on_in_every_django_service(name: str, value: str) -> None:
+    """settings.py turns debug on only for "1"; the checker errs closed on other truthy forms."""
+    found = problems_for(lambda s: s[name].setdefault("environment", {}).update(DJANGO_DEBUG=value))
+    assert f"{name}: DJANGO_DEBUG is {value.lower()!r}" in " ".join(found), found
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "no", "off"])
+def test_the_checker_allows_django_debug_off(value: str) -> None:
+    assert problems_for(lambda s: s["api"]["environment"].update(DJANGO_DEBUG=value)) == []
+
+
+def test_the_checker_refuses_renderer_and_bot() -> None:
+    for name in ("renderer", "bot"):
+        found = problems_for(lambda s, n=name: s.update({n: copy.deepcopy(s["worker"])}))
+        assert f"{name}: must not be part of the beta stack" in " ".join(found), found
+    assert beta.OPTIONAL_SERVICES == {"valhalla-offroad"}
+
+
+# --- the memory rules at their boundaries (final review, mutation NIT 1: M6-M18) ---
+
+
+def test_the_memory_constants_are_the_reviewed_figures() -> None:
+    assert beta.HOST_AVAILABLE_GB == 8.6
+    assert beta.MAX_RESIDENT_GB == 7.0
+    assert beta.PEAK_MARGIN_GB == 1.0
+    assert beta.PHOTON_OTHER_NATIVE_MB == 192
+    assert beta.POSTGRES_MAX_SHARED_BUFFERS_FRACTION == 0.30
+    assert beta.BETA_VALHALLA_PER_WORKER_MEMORY_MB == 300
+    assert beta.MAX_GUNICORN_WORKERS == 6
+
+
+def _cap(service: dict, mb: int) -> None:
+    service["deploy"]["resources"]["limits"]["memory"] = f"{mb}M"
+    service["memswap_limit"] = f"{mb}M"
+
+
+@pytest.mark.parametrize(("api_mb", "ok"), [(1516, True), (1517, False)])
+def test_the_resident_ceiling_is_exactly_seven_gib(api_mb: int, ok: bool) -> None:
+    # good() is 7102 MiB resident with a 1450M api; 7168 MiB is 7.0 GiB exactly
+    found = problems_for(lambda s: _cap(s["api"], api_mb))
+    assert (not any("resident total" in p for p in found)) is ok, found
+
+
+@pytest.mark.parametrize(("migrate_mb", "ok"), [(680, True), (681, False)])
+def test_the_startup_peak_leaves_exactly_one_gib(migrate_mb: int, ok: bool) -> None:
+    # 7102 MiB resident + the one-shot must stay within 8.6 - 1.0 GiB = 7782.4 MiB
+    found = problems_for(lambda s: _cap(s["migrate"], migrate_mb))
+    assert (not any("startup peak" in p for p in found)) is ok, found
+
+
+@pytest.mark.parametrize(("photon_mb", "ok"), [(1280, True), (1279, False)])
+def test_photons_heap_buffers_and_native_rest_must_fit_its_cap_exactly(
+    photon_mb: int, ok: bool
+) -> None:
+    # -Xmx896m + 192m direct + 192 MB other native = 1280 MB
+    found = problems_for(lambda s: _cap(s["photon"], photon_mb))
+    assert (not any("other native memory exceeds" in p for p in found)) is ok, found
+
+
+@pytest.mark.parametrize(("buffers", "ok"), [("307MB", True), ("308MB", False)])
+def test_shared_buffers_may_take_at_most_thirty_percent_of_the_cap(buffers: str, ok: bool) -> None:
+    # 30% of the 1024M cap is 307.2 MB
+    command = ["postgres", "-c", f"shared_buffers={buffers}"]
+    found = problems_for(lambda s: s["postgis"].update(command=command))
+    assert (not any("shared_buffers=" in p for p in found)) is ok, found
 
 
 def test_the_checker_reads_compose_rendered_byte_counts() -> None:
@@ -996,6 +1076,17 @@ def wrapper(env: dict, *args: str) -> subprocess.CompletedProcess:
         ["down", "-tv", "5"],
         ["--workdir", "/tmp", "up", "-d"],
         ["--workdir=/tmp", "ps"],
+        # final review, mutation NIT 1: refusals that had no row of their own
+        ["up", "-d", "renderer"],
+        ["run", "--rm", "bot"],
+        ["up", "-d", "not-in-beta"],
+        ["--project-directory", "/tmp", "up", "-d", "api"],
+        ["--project-directory=/tmp", "ps"],
+        ["up", "-d", "--scale=api=2", "api"],
+        ["down", "--rmi=all"],
+        ["rm", "--volumes=true"],
+        ["up", "-d", "--no-attach", "worker"],
+        ["--ansi", "never", "up", "-d"],
     ],
     ids=lambda a: " ".join(a),
 )
@@ -1040,7 +1131,16 @@ def test_the_wrapper_passes_the_runbooks_commands_through_with_both_files(
 
 
 @needs_sh
-@pytest.mark.parametrize("var", ["COMPOSE_PROFILES", "COMPOSE_FILE", "COMPOSE_PROJECT_NAME"])
+@pytest.mark.parametrize(
+    "var",
+    [
+        "COMPOSE_PROFILES",
+        "COMPOSE_FILE",
+        "COMPOSE_PROJECT_NAME",
+        "COMPOSE_PATH_SEPARATOR",
+        "COMPOSE_ENV_FILES",
+    ],
+)
 def test_the_wrapper_refuses_compose_settings_from_the_environment_or_dot_env(
     stub_docker, var: str, tmp_path: Path
 ) -> None:
@@ -1051,7 +1151,7 @@ def test_the_wrapper_refuses_compose_settings_from_the_environment_or_dot_env(
     colon.write_text("COMPOSE_PROJECT_NAME=routemaker-beta\nCOMPOSE_PROJECT_NAME: routemaker\n")
     done = wrapper({**env, var: "", "BETA_ENV_FILE": str(colon)}, "ps")
     assert done.returncode == 2 and "KEY: value" in done.stderr and not calls.exists()
-    if var != "COMPOSE_PROJECT_NAME":
+    if var in ("COMPOSE_PROFILES", "COMPOSE_FILE"):
         dot_env = tmp_path / "with.env"
         dot_env.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\n{var}=not-in-beta\n")
         done = wrapper({**env, "BETA_ENV_FILE": str(dot_env)}, "ps")
@@ -1059,7 +1159,17 @@ def test_the_wrapper_refuses_compose_settings_from_the_environment_or_dot_env(
 
 
 @needs_sh
-@pytest.mark.parametrize(("var", "value"), [("RESTART_POLICY", "no"), ("DJANGO_DEBUG", "1")])
+@pytest.mark.parametrize(
+    ("var", "value"),
+    [
+        ("RESTART_POLICY", "no"),
+        ("RESTART_POLICY", "always"),
+        ("RESTART_POLICY", "on-failure"),
+        ("DJANGO_DEBUG", "1"),
+        ("DJANGO_DEBUG", "0"),  # any non-empty value: it has no business on the beta
+        ("DJANGO_DEBUG", "true"),
+    ],
+)
 def test_the_wrapper_refuses_a_restart_policy_or_debug_from_the_environment(
     stub_docker, var: str, value: str
 ) -> None:
@@ -1068,6 +1178,108 @@ def test_the_wrapper_refuses_a_restart_policy_or_debug_from_the_environment(
     assert done.returncode == 2 and var in done.stderr and not calls.exists()
     ok = wrapper({**env, "RESTART_POLICY": "unless-stopped"}, "ps")
     assert ok.returncode == 0 and calls.exists()
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    "line",
+    [
+        "RESTART_POLICY=no",
+        "RESTART_POLICY=always",
+        "RESTART_POLICY=on-failure",
+        'RESTART_POLICY="no"',
+        "export RESTART_POLICY=no",
+        "RESTART_POLICY: no",
+        "RESTART_POLICY = no",
+        "\ufeffRESTART_POLICY=no",
+        "DJANGO_DEBUG=1",
+        "DJANGO_DEBUG=0",
+        "DJANGO_DEBUG=True",
+        "DJANGO_DEBUG: 1",
+        "export DJANGO_DEBUG=1",
+    ],
+)
+def test_the_wrapper_refuses_a_restart_policy_or_debug_in_dot_env(
+    stub_docker, tmp_path: Path, line: str
+) -> None:
+    """Final review (correctness N1, operations SF5, mutation SF1): the wrapper that runs every
+    day checks .env itself, not only the gate."""
+    env, calls = stub_docker
+    path = tmp_path / "bad.env"
+    path.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\n{line}\n", encoding="utf-8")
+    done = wrapper({**env, "BETA_ENV_FILE": str(path)}, "up", "-d", "api")
+    key = "RESTART_POLICY" if "RESTART_POLICY" in line else "DJANGO_DEBUG"
+    assert done.returncode == 2 and f"sets {key}" in done.stderr, (line, done.stderr)
+    assert not calls.exists()
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    "line",
+    [
+        "RESTART_POLICY=",
+        "RESTART_POLICY=unless-stopped",
+        'RESTART_POLICY="unless-stopped"',
+        "RESTART_POLICY=''",
+        "DJANGO_DEBUG=",
+        "# RESTART_POLICY=no",
+        "# DJANGO_DEBUG=1",
+    ],
+)
+def test_the_wrapper_allows_an_empty_or_unless_stopped_restart_policy_and_empty_debug(
+    stub_docker, tmp_path: Path, line: str
+) -> None:
+    env, calls = stub_docker
+    path = tmp_path / "ok.env"
+    path.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\n{line}\n")
+    done = wrapper({**env, "BETA_ENV_FILE": str(path)}, "ps")
+    assert done.returncode == 0 and calls.exists(), (line, done.stderr)
+
+
+@needs_sh
+def test_the_wrapper_runs_compose_with_a_clean_environment(tmp_path: Path) -> None:
+    """A shell variable beats .env in compose's substitution, so compose gets only PATH, HOME,
+    DOCKER_HOST and DOCKER_CONFIG: the four the --env-file gate renders with (final review,
+    correctness SF2, operations SF5, mutation finding 1)."""
+    seen = tmp_path / "seen"
+    stub = tmp_path / "docker"
+    stub.write_text(f"#!/bin/sh\nenv > {seen}\n")
+    stub.chmod(0o755)
+    env_file = tmp_path / ".env"
+    env_file.write_text("COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT=/data/routemaker\n")
+    stray = {"DATA_ROOT": "/elsewhere", "TAG": "other", "BETA_WEB_CONCURRENCY": "12"}
+    full = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+    full.update(stray, BETA_ENV_FILE=str(env_file), DOCKER=str(stub), DOCKER_HOST="unix:///x.sock")
+    full.pop("DOCKER_CONFIG", None)
+    done = subprocess.run(
+        ["sh", "scripts/beta/beta-compose.sh", "ps"],
+        cwd=REPO,
+        env=full,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    got = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
+    for key in stray:
+        assert key not in got, key
+    assert got["PATH"] == os.environ["PATH"] and got["DOCKER_HOST"] == "unix:///x.sock"
+    assert "DOCKER_CONFIG" not in got  # passed only when set
+    # what the shell running the stub adds itself (PWD, SHLVL, _) is all that may be beside them
+    assert set(got) <= {
+        "PATH",
+        "HOME",
+        "DOCKER_HOST",
+        "DOCKER_CONFIG",
+        "PWD",
+        "OLDPWD",
+        "SHLVL",
+        "_",
+    }
+    wrapper_text = (REPO / "scripts" / "beta" / "beta-compose.sh").read_text()
+    checker_text = (REPO / "scripts" / "check_beta_compose.py").read_text()
+    assert 'exec env -i "PATH=$PATH" "HOME=${HOME:-/}" "$@"' in wrapper_text
+    assert '("PATH", "HOME", "DOCKER_HOST", "DOCKER_CONFIG")' in checker_text
 
 
 # --- the server-side gate: the checker on the server's own .env (S8) ---
@@ -1100,9 +1312,12 @@ def test_the_env_file_mode_checks_the_servers_env_and_never_prints_a_value(tmp_p
     [
         ({"BETA_WEB_CONCURRENCY": "12"}, "WEB_CONCURRENCY 12 exceeds"),
         ({"BETA_API_PORT": "0.0.0.0:8087"}, ""),
-        ({"COMPOSE_PROFILES": "not-in-beta"}, "COMPOSE_PROFILES"),
+        ({"COMPOSE_PROFILES": "not-in-beta"}, ".env: COMPOSE_PROFILES"),
+        ({"COMPOSE_FILE": "compose.yaml"}, ".env: COMPOSE_FILE"),
         ({"WEB_CONCURRENCY": "7"}, "WEB_CONCURRENCY has no effect"),
-        ({"RESTART_POLICY": "no"}, "RESTART_POLICY must be unset or unless-stopped"),
+        ({"RESTART_POLICY": "no"}, ".env: RESTART_POLICY"),
+        ({"RESTART_POLICY": "always"}, ".env: RESTART_POLICY"),
+        ({"DJANGO_DEBUG": "1"}, ".env: DJANGO_DEBUG"),
     ],
 )
 def test_the_env_file_mode_refuses_a_bad_server_env(tmp_path: Path, overrides, expect) -> None:
@@ -1110,6 +1325,28 @@ def test_the_env_file_mode_refuses_a_bad_server_env(tmp_path: Path, overrides, e
     assert done.returncode != 0, (overrides, done.stdout)
     assert expect in done.stdout + done.stderr
     assert "SECRET-MARKER" not in done.stdout + done.stderr
+
+
+@needs_docker
+@pytest.mark.parametrize("value", ["", "unless-stopped"])
+def test_the_env_file_mode_allows_an_empty_or_unless_stopped_restart_policy(
+    tmp_path: Path, value: str
+) -> None:
+    """compose's ${RESTART_POLICY:-unless-stopped} renders empty as unless-stopped, and the
+    wrapper allows it, so the checker does too (final review, correctness N2)."""
+    done = checker("--env-file", str(server_env(tmp_path, RESTART_POLICY=value)))
+    assert done.returncode == 0, done.stderr
+
+
+def test_the_env_file_check_refuses_compose_file_and_debug_and_allows_an_empty_restart_policy() -> (
+    None
+):
+    base = {"COMPOSE_PROJECT_NAME": "routemaker-beta"}
+    assert beta.check_env_file({**base, "RESTART_POLICY": ""}) == []
+    assert beta.check_env_file({**base, "DJANGO_DEBUG": ""}) == []
+    for key, value in (("COMPOSE_FILE", "x.yaml"), ("RESTART_POLICY", "no"), ("DJANGO_DEBUG", "0")):
+        found = beta.check_env_file({**base, key: value})
+        assert any(p.startswith(f".env: {key}") for p in found), (key, found)
 
 
 @needs_docker

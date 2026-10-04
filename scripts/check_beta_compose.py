@@ -88,6 +88,8 @@ ONE_SHOT = {"migrate"}
 # header), and still leaves the host 1.5 GiB of the 8.6 for its own growth.
 HOST_AVAILABLE_GB = 8.6
 MAX_RESIDENT_GB = 7.0
+# The startup peak (resident plus the largest one-shot) must leave the host at least this much.
+PEAK_MARGIN_GB = 1.0
 
 # OWNER-DECISIONS 367.2: two route plans at once. src/config/settings.py derives the
 # pools from WEB_CONCURRENCY; these mirror its arithmetic (tests/test_beta_overlay.py
@@ -286,10 +288,10 @@ def check_budget(services: dict) -> list[str]:
             "available); lower another cap before adding a service"
         )
     peak_gb = peak_bytes(services) / 1024**3
-    if peak_gb > HOST_AVAILABLE_GB - 1.0:
+    if peak_gb > HOST_AVAILABLE_GB - PEAK_MARGIN_GB:
         problems.append(
             f"startup peak (resident plus the largest one-shot) {peak_gb:.2f} GiB leaves under "
-            f"1 GiB of the host's {HOST_AVAILABLE_GB} GiB available"
+            f"{PEAK_MARGIN_GB:.0f} GiB of the host's {HOST_AVAILABLE_GB} GiB available"
         )
     return problems
 
@@ -549,17 +551,25 @@ def check_env_file(values: dict[str, str]) -> list[str]:
     ]
     if values.get("COMPOSE_PROJECT_NAME", "") != "routemaker-beta":
         problems.append(".env: COMPOSE_PROJECT_NAME must be routemaker-beta")
-    if values.get("RESTART_POLICY", "unless-stopped") != "unless-stopped":
+    # Empty counts as unset, as compose's ${RESTART_POLICY:-unless-stopped} and beta-compose.sh
+    # treat it.
+    if (values.get("RESTART_POLICY") or "unless-stopped") != "unless-stopped":
         problems.append(
-            ".env: RESTART_POLICY must be unset or unless-stopped on the beta "
+            ".env: RESTART_POLICY must be unset, empty or unless-stopped on the beta "
             "(`no` is for the Docker Desktop home machine)"
         )
+    if values.get("DJANGO_DEBUG"):
+        problems.append(".env: DJANGO_DEBUG is set; remove it (debug stays off on the beta)")
     if "WEB_CONCURRENCY" in values:
         problems.append(
             ".env: WEB_CONCURRENCY has no effect on the beta (compose.beta.yaml sets it from "
             "BETA_WEB_CONCURRENCY); remove it so nobody is misled"
         )
     return problems
+
+
+class RenderFailed(RuntimeError):
+    """beta-compose.sh refused or compose failed; the message carries no .env value."""
 
 
 def render_env_file(env_file: Path, offroad: bool = False) -> dict:
@@ -578,7 +588,7 @@ def render_env_file(env_file: Path, offroad: bool = False) -> dict:
     if done.returncode != 0:
         own = [line for line in done.stderr.splitlines() if line.startswith("beta-compose:")]
         detail = ("\n" + "\n".join(own)) if own else ""
-        raise SystemExit(
+        raise RenderFailed(
             f"rendering with {env_file} failed (exit {done.returncode}); compose's message is "
             "not shown because it can quote .env values: run "
             f"`scripts/beta/beta-compose.sh config --quiet` to read it yourself{detail}"
@@ -611,7 +621,15 @@ def main(argv: list[str]) -> int:
         values = env_file_keys(env_file)
         problems += check_env_file(values)
         data_root = values.get("DATA_ROOT") or None
-        compose = render_env_file(env_file, offroad=offroad)
+        try:
+            compose = render_env_file(env_file, offroad=offroad)
+        except RenderFailed as failed:
+            # The wrapper refuses some .env lines itself (RESTART_POLICY, DJANGO_DEBUG,
+            # COMPOSE_FILE...); say which line first, then why the render stopped.
+            for problem in problems:
+                print(f"beta compose: {problem}", file=sys.stderr)
+            print(f"beta compose: {failed}", file=sys.stderr)
+            return 1
         # What compose will actually use, whatever form the .env line took (KEY: value, a
         # byte-order mark, a later duplicate): the line parser above can be fooled, this cannot.
         if compose.get("name") != "routemaker-beta":
