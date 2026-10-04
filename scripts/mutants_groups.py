@@ -286,8 +286,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "description: every entry has a group",
         DESCRIBE,
-        '        "group": None,\n        "text": text,',
-        '        "group": {},\n        "text": text,',
+        '        "group": None,\n        "surface": None,',
+        '        "group": {},\n        "surface": None,',
         TESTS,
     ),
     ("api: a row never says its group", ROUTING, '"group": event.group,', '"group": None,', TESTS),
@@ -358,7 +358,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "stops: the plan does not number again",
         ROUTING,
-        "    if events is not None and refine_context.group:\n        events = intersections.number_groups(events, stops_m)\n",
+        "        if events is not None and refine_context.group:\n            events = intersections.number_groups(events, stops_m)\n",
         "",
         VIEWS,
     ),

@@ -1165,3 +1165,29 @@ class TestSurfaceSums:
         entries = d.describe([leg])
         assert [e["street"] for e in entries] == ["B St", "C Trail"]
         assert entries[1]["surface"] == "unpaved"
+
+
+class TestTheMergedGroupsCarryWhatTheirMembersDo:
+    """Mutation review X22 and X30: an overview group's hidden-lanes text keeps its
+    ", then ..." clause, and its surface is its members' together, not its first's."""
+
+    def test_the_hidden_text_keeps_the_then_clause(self):
+        leg = flat(
+            road("A Ave", 4, 200, facility="lane"),
+            road("B Ave", 4, 150, facility="lane"),
+            road("C St", 4, 900, facility="lane"),
+        )
+        _full, short = both(leg)
+        merged = short[0]
+        assert ", then" in merged["text"], merged["text"]
+        assert merged["text_lanes_hidden"] == merged["text"].replace(", painted bike lane", "")
+        assert ", then" in merged["text_lanes_hidden"]
+
+    def test_a_group_whose_first_member_is_paved_says_unpaved(self):
+        leg = flat(
+            surfaced("A Trail", 1, 100, False, "path", "path"),
+            surfaced("B Trail", 1, 300, True, "path", "path"),
+            surfaced("C Trail", 1, 900, True, "path", "path"),
+        )
+        _full, short = both(leg)
+        assert short[0]["surface"] == "unpaved", [(e["text"], e["surface"]) for e in short]

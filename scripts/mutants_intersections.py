@@ -360,22 +360,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "intersections not weighed",
         R,
         # The score is one term a line since the trail credit (trail-seek merge).
-        "            + ctx.weight * penalty\n",
-        "",
+        "extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
+        "extra = ctx.rate * self.exposure_m + ctx.climb_weight * self.climb_m",
         REFINE,
     ),
     (
         "climb not weighed",
         R,
-        "            + ctx.climb_weight * self.climb_m\n",
-        "",
+        "extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
+        "extra = ctx.rate * self.exposure_m + ctx.weight * penalty",
         REFINE,
     ),
     (
         "rate not weighed",
         R,
-        "            ctx.rate * self.exposure_m\n            + ctx.weight * penalty\n",
-        "            ctx.weight * penalty\n",
+        "extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
+        "extra = ctx.weight * penalty + ctx.climb_weight * self.climb_m",
         REFINE,
     ),
     (
@@ -416,15 +416,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
-        "if score < best_score and not busier and not unread:",
+        "return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S",
+        "return read.score(ctx) < best.score(ctx)",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
-        "if score <= best_score + IMPROVEMENT_EPS_S and not busier and not unread:",
+        "return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S",
+        "return read.score(ctx) <= best.score(ctx) + IMPROVEMENT_EPS_S",
         REFINE,
     ),
     (
@@ -479,8 +479,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "busier routes allowed",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
-        "if score < best_score - IMPROVEMENT_EPS_S and not unread:",
+        "if better(current, best, ctx) and not (busier or held) and not unread:",
+        "if better(current, best, ctx) and not held and not unread:",
         REFINE,
     ),
     (
@@ -900,8 +900,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "unread junctions taken",
         R,
-        "        if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
-        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:",
+        "if better(current, best, ctx) and not (busier or held) and not unread:",
+        "if better(current, best, ctx) and not (busier or held):",
         REFINE,
     ),
     (
@@ -929,8 +929,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "wide busier taken",
         R,
-        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:\n            best, best_trip, best_score = read, candidate, score",
-        "        if score < best_score - IMPROVEMENT_EPS_S:\n            best, best_trip, best_score = read, candidate, score",
+        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
+        "        if better(read, best, ctx):\n            best, best_trip = read, candidate",
         REFINE,
     ),
     (
@@ -957,16 +957,16 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "wide margin",
         R,
-        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:\n            best, best_trip, best_score = read, candidate, score",
-        "        if score < best_score and not busier:\n            best, best_trip, best_score = read, candidate, score",
+        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
+        "        if read.score(ctx) < best.score(ctx) and not busier:\n            best, best_trip = read, candidate",
         REFINE,
     ),
     (
         "wide unread taken",
         R,
         # The wide search's own check; the seek's whole-trip check is the same line.
-        "        if read is None or read.events is None:\n            continue\n",
-        "        if read is None:\n            continue\n",
+        "        if read is None or read.events is None:\n            continue\n        busier = read.exposure_m > first_exposure",
+        "        if read is None:\n            continue\n        busier = read.exposure_m > first_exposure",
         REFINE,
     ),
     # --- the answer --------------------------------------------------------
@@ -987,8 +987,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "span edge",
         G,
-        "    if straight > refine.REFINE_MAX_SPAN_M:",
-        "    if straight >= refine.REFINE_MAX_SPAN_M:",
+        "if straight_span_m(points) > refine.REFINE_MAX_SPAN_M and not long_calm:",
+        "if straight_span_m(points) >= refine.REFINE_MAX_SPAN_M and not long_calm:",
         ROUTE,
     ),
     ("always probe the direct route", G, "        and asked_for_calm\n", "", ROUTE),
@@ -1543,6 +1543,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "        oneway=oneway if road.oneway is None else road.oneway,",
         "        oneway=road.oneway,",
         JUNCTIONS,
+    ),
+    (
+        "span edge (long calm)",
+        G,
+        "        and straight_span_m(points) > refine.REFINE_MAX_SPAN_M\n    )",
+        "        and straight_span_m(points) >= refine.REFINE_MAX_SPAN_M\n    )",
+        [
+            "tests/test_route_intersections.py",
+            "tests/test_longcalm.py",
+            "tests/test_longcalm_api.py",
+        ],
     ),
 ]
 

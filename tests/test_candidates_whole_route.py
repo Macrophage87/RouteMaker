@@ -39,7 +39,9 @@ def _line(a, b, n: int = 5) -> list[tuple[float, float]]:
         return list(VERTICES)
     if tuple(a) == VERTICES[-1] and tuple(b) == VERTICES[0]:
         return list(reversed(VERTICES))
-    return [(a[0] + (b[0] - a[0]) * i / (n - 1), a[1] + (b[1] - a[1]) * i / (n - 1)) for i in range(n)]
+    return [
+        (a[0] + (b[0] - a[0]) * i / (n - 1), a[1] + (b[1] - a[1]) * i / (n - 1)) for i in range(n)
+    ]
 
 
 def _leg(vertices, km: float) -> dict:
@@ -68,7 +70,12 @@ def _router(call_log: list):
             if any(loc.get("type") == "through" for loc in payload["locations"]):
                 a, b = locs[0], locs[-1]
                 side = LAT + 0.01 if b[0] > a[0] else LAT - 0.01
-                way = [a, (a[0] + (b[0] - a[0]) * 0.25, side), (a[0] + (b[0] - a[0]) * 0.75, side), b]
+                way = [
+                    a,
+                    (a[0] + (b[0] - a[0]) * 0.25, side),
+                    (a[0] + (b[0] - a[0]) * 0.75, side),
+                    b,
+                ]
                 return _trip(_leg(way, 3.0))
             return _trip(*(_leg(_line(a, b), 2.2) for a, b in zip(locs, locs[1:], strict=False)))
         if endpoint == "trace_attributes":
@@ -123,13 +130,12 @@ def _assert_whole(body: dict) -> None:
     "extra",
     [
         pytest.param({"loop": True}, id="loop"),
-        pytest.param(
-            {"points": [list(VERTICES[0]), list(VERTICES[-1]), list(EAST)]}, id="stops"
-        ),
+        pytest.param({"points": [list(VERTICES[0]), list(VERTICES[-1]), list(EAST)]}, id="stops"),
     ],
 )
+@pytest.mark.usefixtures("segments")
 def test_a_multi_leg_plan_offers_only_whole_routes(
-    client, segments, monkeypatch, seek_everywhere, extra
+    client, monkeypatch, seek_everywhere, extra
 ) -> None:
     calls: list = []
     monkeypatch.setattr(routing, "_transport", _router(calls))

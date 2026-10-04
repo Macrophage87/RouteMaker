@@ -15,6 +15,13 @@ Needs the native test environment (`docs/DEVELOPMENT.md`, "The native loop"): PG
 should name a private database. Each line of MUTANTS is (name, file, old text, new text,
 test files); `old` must occur exactly once. Survivors are printed last and the exit status
 is the number of them.
+
+Release review (2026-10-04): the B1, SF2, S1-S3 and 298(2)/(3) mutants at the end.
+Two seams are equivalent and not entries: X05 (a long plan keeping the break points
+in `stops_m`: `stops_m` is read only by `intersections.number_groups`, which is Mass
+Ride's alone, and a long calm plan is Trailmaxxing's alone) and X26 (`combine`
+flattening the classes: it feeds only `pick_candidates`, and the answer re-reads every
+candidate it offers).
 """
 
 # ruff: noqa: E501
@@ -125,7 +132,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "ceiling: a round past it is called no route",
         RF,
-        '                info["limited"] = "target_distance" if over else "no_route"',
+        '                info["limited"] = "ceiling" if over else "no_route"',
         '                info["limited"] = "no_route"',
         LC,
     ),
@@ -208,10 +215,10 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         AP,
     ),
     (
-        "no fit: none within the ceiling, the longest is answered",
+        "no fit: none within the ceiling, the shortest is answered (298(2))",
         RT,
+        "        within = sorted(past, key=lambda o: _trip_length_m(o[0]))",
         "        return min(past, key=lambda o: _trip_length_m(o[0]))",
-        "        return max(past, key=lambda o: _trip_length_m(o[0]))",
         AP,
     ),
     (
@@ -288,8 +295,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: saving exactly the charge is not enough",
         RF,
-        "    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) >= charge",
-        "    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) > charge",
+        "    return stress_saved_m(shorter, longer, ctx) >= charge",
+        "    return stress_saved_m(shorter, longer, ctx) > charge",
         LC,
     ),
     (
@@ -530,8 +537,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "legs: a long plan is not a long plan if it is a loop",
         RT,
-        "    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride, seeking)",
-        "    long_calm = long_calm_for(preset_name, points, stress_dial, long_ride, seeking)",
+        "    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride)",
+        "    long_calm = long_calm_for(preset_name, points, stress_dial, long_ride)",
         AP,
     ),
     (
@@ -669,6 +676,131 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "    start, end = leg_runs[-1]",
         "    start, end = 0, leg_runs[-1][1]",
         LP,
+    ),
+    # --- the release review ---------------------------------------------------------------
+    # B1: a multi-leg plan's per-leg seek candidates never offered as whole routes.
+    (
+        "B1 the leg's candidates pooled on a plan of several legs",
+        RF,
+        "            pooled=count == 1,",
+        "            pooled=True,",
+        ["tests/test_candidates_whole_route.py"],
+    ),
+    (
+        "B1 the spliced whole trip not pooled",
+        RF,
+        "        if ctx.options is not None:"
+        + NL
+        + "            ctx.options.append((trip, read))"
+        + NL
+        + "        return read, trip",
+        "        return read, trip",
+        ["tests/test_candidates_whole_route.py"] + RFT,
+    ),
+    (
+        "B1 pick_candidates takes another leg count",
+        RF,
+        '            len(trip.get("legs") or []) != legs'
+        + NL
+        + "            or read.events is None",
+        "            read.events is None",
+        ["tests/test_candidates_whole_route.py"],
+    ),
+    # SF2: LTS 4 never loses to extra LTS 3.
+    (
+        "SF2 the second level's loss subtracts again",
+        RF,
+        "        return top + max(second, 0.0)",
+        "        return top + second",
+        LC,
+    ),
+    (
+        "SF2 the second level's gain is dropped",
+        RF,
+        "        return top + max(second, 0.0)",
+        "        return top",
+        LC,
+    ),
+    (
+        "SF2 the top level's tie step ignored",
+        RF,
+        "    if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:",
+        "    if worse.top_m - calmer_one.top_m > 0.0:",
+        LC,
+    ),
+    (
+        "SF2 choose_options nets the levels",
+        RF,
+        "                saved = stress_saved_m(now, chain[k][1], ctx)",
+        "                saved = stress_weight_m(now, ctx) - stress_weight_m(chain[k][1], ctx)",
+        LC,
+    ),
+    # 298(2): the calmest found where none is within the ceiling.
+    (
+        "S3 the past-target reads on the whole deadline",
+        RT,
+        "    late = refine.late_deadline(ctx)",
+        "    late = ctx.deadline",
+        AP,
+    ),
+    # 298(3): seeking hills keeps the stress order and the target.
+    (
+        "298(3) seeking skips the search again",
+        RT,
+        "    refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)",
+        "    refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline, long_calm)",
+        AP,
+    ),
+    (
+        "298(3) the effort tiebreak does not invert",
+        RT,
+        "        hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,",
+        "        hills_seek_weight=0.0,",
+        AP,
+    ),
+    (
+        "298(3) the climb search among alternatives at the top",
+        RT,
+        "    if climb_seek or avoiding:",
+        "    if seeking or avoiding:",
+        AP,
+    ),
+    (
+        "298(3) hills_seek not calm_first",
+        RT,
+        '    seek_limited = "calm_first" if calm_seek else None',
+        "    seek_limited = None",
+        AP,
+    ),
+    # S1: a long plan's candidates in the plan's legs.
+    (
+        "S1 candidates keep the search's legs",
+        RT,
+        "        groups = plan_groups" + NL,
+        '        groups = ((refined or {}).get("long") or {}).get("stops")' + NL,
+        AP,
+    ),
+    (
+        "X06 long plan keeps the break legs' leg_ends",
+        RT,
+        "                leg_ends = [leg_ends[e - 1] for e in ends]" + NL,
+        "",
+        AP,
+    ),
+    # S2: the ceiling stop never says no route fits.
+    (
+        "S2 no_fit set where one fits",
+        RT,
+        '            refined["no_fit"] = bool(refined.get("no_fit"))',
+        '            refined["no_fit"] = not refined["fits"]',
+        AP + ["tests/test_dedodge_plan.py"],
+    ),
+    (
+        "S2 the no-fit answer not flagged",
+        RT,
+        '                "limited": "target_distance",' + NL + '                "no_fit": True,',
+        '                "limited": "target_distance",' + NL + '                "no_fit": False,',
+        AP,
     ),
 ]
 

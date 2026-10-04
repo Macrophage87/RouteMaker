@@ -2369,6 +2369,15 @@ class TestSurfaceOfPieces:
         tier, facility = classes[2]
         assert tier == "4" and classes[2] == (tier, facility)
 
+    def test_the_no_trail_graph_keeps_the_surface(self, segments) -> None:
+        """Mutation review X31: a ride on the no-trail variant (Group Ride, trails off)
+        still says which pieces are unpaved."""
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {segments}.segment SET is_unpaved = true")
+        pieces = [routing.Piece(101, -77.045, LAT, 100.0), routing.Piece(202, -77.0375, LAT, 100.0)]
+        classes = routing.classify(pieces, "weekday_offpeak", roadway_only=True)
+        assert [c.unpaved for c in classes] == [True, True]
+
     def test_a_piece_class_pickles_with_its_surface(self) -> None:
         import pickle
 

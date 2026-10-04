@@ -199,10 +199,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     ("junction: a turn's event also listed", D, MATCHED, "", PURE),
     (
-        "junction: a turn's flagged severity dropped",
+        "junction: a turn's flagged severity dropped (full)",
         D,
-        SEV_FULL,
-        SEV_FULL.replace("if turn is not None and", "if False and"),
+        "        severity = None\n        if turn is not None and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        entries.append(",
+        "        severity = None\n        if False and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        entries.append(",
+        PURE,
+    ),
+    (
+        "junction: a turn's flagged severity dropped (overview)",
+        D,
+        "        severity = None\n        if turn is not None and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        overview.append(",
+        "        severity = None\n        if False and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        overview.append(",
         PURE,
     ),
     (
