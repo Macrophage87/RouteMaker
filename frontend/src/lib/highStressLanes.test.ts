@@ -289,6 +289,8 @@ test("the switch is a labelled role=switch button with its state in words and a 
   assert.match(off, /<p class="hint" id="high-lanes-hint">/);
   assert.match(HIGH_STRESS_LANES_HINT, /LTS 4 and Avoid/);
   assert.match(HIGH_STRESS_LANES_HINT, /Protected lanes and paths always show/);
+  // Read on every focus: kept short.
+  assert.ok(HIGH_STRESS_LANES_HINT.length < 150, `${HIGH_STRESS_LANES_HINT.length} characters`);
   const on = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
   assert.match(on, />On<\/span>/);
@@ -304,10 +306,46 @@ test("pressing the switch asks for the opposite state", () => {
   assert.deepEqual(got, [true, false]);
 });
 
-test("the panel places the switch after the Accessibility switch, and the facility legend says which roads it hides", () => {
+test("the panel places the switch after the Accessibility switch, only with the overlay there, and the facility legend says which roads it hides", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /<AccessibilitySwitch[\s\S]*?\/>\s*<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} \/>/);
+  // Next after the Accessibility switch, and inside the block drawn only when the stress overlay is available.
+  assert.match(
+    app,
+    /<AccessibilitySwitch[\s\S]*?\/>\s*\{stress === "available" && \(\s*<>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} \/>/,
+  );
+  assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.match(app, /Painted lanes on LTS 4 and Avoid roads are/);
   assert.match(app, /Show bike lanes on high-stress roads/);
   assert.ok(FACILITIES.length === 3);
 });
+
+// ---- the API's own wording (review SF3) ------------------------------------
+
+test("the API's text_lanes_hidden is used where the API sends it: its words, and no facility", () => {
+  const hidden = "0.0 to 0.3 mi (0.0 to 0.5 km): Kenilworth Avenue Northeast, heavy traffic (LTS 4).";
+  const got = withoutHighStressLane(entry({ text_lanes_hidden: hidden }));
+  assert.equal(got.text, hidden);
+  assert.equal(got.facility, null);
+  // Whatever the wording: the client does not edit it.
+  const reworded = entry({ text: "x, heavy traffic (LTS 4), bike lane (paint).", text_lanes_hidden: "x, heavy traffic (LTS 4)." });
+  assert.equal(withoutHighStressLane(reworded).text, "x, heavy traffic (LTS 4).");
+});
+
+test("a null text_lanes_hidden keeps the entry: an overview merge of an LTS 3 lane and an LTS 4 one is still a lane", () => {
+  const merged = entry({ tier: 4, text: "x, heavy traffic (LTS 4), painted bike lane.", text_lanes_hidden: null });
+  assert.equal(withoutHighStressLane(merged), merged);
+  const routeWithField = {
+    preset: "default",
+    distance_m: 3000,
+    description: [merged],
+    description_overview: [merged],
+  } as never;
+  assert.match((descriptionEntries(routeWithField, "overview", false) ?? [])[0].text, /painted bike lane/);
+});
+
+test("only an older API, without the field, has the lane words taken out here", () => {
+  const older = entry({});
+  assert.ok(!("text_lanes_hidden" in older));
+  assert.ok(!/bike lane/.test(withoutHighStressLane(older).text));
+});
+

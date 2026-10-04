@@ -33,6 +33,13 @@ The rules:
   OWNER-DECISIONS 248). A group never spans a stop (item 247,
   `intersections.number_groups`).
 - Distances are scaled so the last stretch ends at the route's length.
+- A stretch says its surface where the segments say it is unpaved
+  (OWNER-DECISIONS 280): ", unpaved" where at least half of it is, ", partly
+  unpaved" where at least PARTLY_UNPAVED_M (0.1 mi) is. A change of surface alone
+  does not start a stretch.
+- A painted lane on LTS 4 or Avoid is worded twice (OWNER-DECISIONS 275): `text`
+  calls it a bike lane and `text_lanes_hidden` does not, for the client's "Show
+  bike lanes on high-stress roads" switch.
 - The overview (OWNER-DECISIONS 226) is the same route with stretches under
   OVERVIEW_M (0.25 mi) merged into a neighbour of their own leg, so it never
   spans a stop. It never hides or understates: a stretch of LTS 3 or worse merges
@@ -46,7 +53,7 @@ The rules:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .intersections import Control, CrossingGroup, Movement, crossing_groups, movement_of
 
@@ -78,6 +85,19 @@ UNRATED_WORDS = "stress not rated"
 UNNAMED_PATH = "unnamed path"
 PATH_WORDS = "traffic-free path"
 FACILITY_WORDS = {"protected": "protected bike lane", "lane": "painted bike lane"}
+# The tiers on which a painted lane is not called a bike lane while the client's
+# "Show bike lanes on high-stress roads" switch is off (OWNER-DECISIONS 275):
+# LTS 4 and Avoid, frontend/src/stressStyle.js HIGH_STRESS_LANE_MIN_TIER
+# (tests/test_describe.py, TestFrontEndAgrees, holds the two equal). Each
+# stretch carries its text both ways (`text_lanes_hidden`), so the client never
+# edits the wording.
+HIGH_STRESS_LANE_TIERS = frozenset({"4", "5"})
+# A stretch's surface (OWNER-DECISIONS 280): the dotted mark on the map is not
+# all a screen-reader rider has. "unpaved" where at least half of the stretch is,
+# "partly unpaved" where less is but at least PARTLY_UNPAVED_M.
+SURFACE_UNPAVED = "unpaved"
+SURFACE_PARTLY = "partly unpaved"
+PARTLY_UNPAVED_M = METRES_PER_MILE / 10
 
 # Valhalla's `use` of an edge that is a path rather than a road.
 PATH_USES = frozenset(
@@ -132,6 +152,8 @@ class Atom:
     use: str = ""
     heading_in: float | None = None
     heading_out: float | None = None
+    # The segment's surface: True unpaved, False paved, None not known.
+    unpaved: bool | None = None
 
 
 @dataclass
@@ -148,6 +170,7 @@ class _Run:
     path: bool
     untraced: bool = False
     leg: int = 0
+    unpaved_m: float = 0.0
 
 
 def _run_of(atom: Atom, leg: int) -> _Run:
@@ -161,6 +184,7 @@ def _run_of(atom: Atom, leg: int) -> _Run:
         last=atom,
         path=atom.use in PATH_USES,
         leg=leg,
+        unpaved_m=atom.metres if atom.unpaved else 0.0,
     )
 
 
@@ -180,6 +204,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
         ):
             run = runs[-1]
             run.metres += atom.metres
+            run.unpaved_m += atom.metres if atom.unpaved else 0.0
             run.last = atom
             run.path = run.path or atom.use in PATH_USES
         else:
@@ -209,6 +234,7 @@ def _join(a: _Run, b: _Run) -> None:
         a.path = a.path or b.path
         a.last = b.last
     a.metres += b.metres
+    a.unpaved_m += b.unpaved_m
 
 
 def _coalesce(runs: list[_Run]) -> list[_Run]:
@@ -264,6 +290,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                     # The turn into the stretch is where its own street begins.
                     target.first = run.first
                 target.metres += run.metres
+                target.unpaved_m += run.unpaved_m
             del runs[i]
             changed = True
         coalesced = _coalesce(runs)
@@ -280,6 +307,28 @@ def tier_words(tier: str, facility: str) -> str:
     words = TIER_WORDS.get(tier, UNRATED_WORDS)
     extra = FACILITY_WORDS.get(facility)
     return f"{words}, {extra}" if extra else words
+
+
+def surface_of(run: _Run) -> str | None:
+    """The stretch's surface as said: SURFACE_UNPAVED, SURFACE_PARTLY, or None
+    (paved, not known, or too little of it unpaved to say)."""
+    if run.untraced or run.unpaved_m <= 0 or run.metres <= 0:
+        return None
+    if run.unpaved_m >= run.metres / 2:
+        return SURFACE_UNPAVED
+    return SURFACE_PARTLY if run.unpaved_m >= PARTLY_UNPAVED_M else None
+
+
+def _lanes_hidden(run: _Run, members: list[_Run] | None = None) -> _Run | None:
+    """The stretch as worded with painted lanes on LTS 4 and Avoid not called bike
+    lanes (HIGH_STRESS_LANE_TIERS), or None where that changes nothing: a lane
+    stretch whose every part is on one of those tiers. An overview stretch that
+    merges an LTS 3 lane with an LTS 4 one keeps its lane."""
+    if run.facility != "lane":
+        return None
+    if any(m.tier not in HIGH_STRESS_LANE_TIERS for m in (members or [run])):
+        return None
+    return replace(run, facility="none")
 
 
 def _miles(metres: float) -> str:
@@ -513,6 +562,9 @@ def _stretch_sentence(
     words = tier_words(run.tier, run.facility)
     if words == PATH_WORDS and street == UNNAMED_PATH:
         words = "traffic-free"
+    surface = surface_of(run)
+    if surface:
+        words = f"{words}, {surface}"
     return f"{where}: {lead}{then}, {words}."
 
 
@@ -638,6 +690,7 @@ def _group_run(
         last=members[-1].last,
         path=first.path,
         leg=first.leg,
+        unpaved_m=sum(m.unpaved_m for m in members),
     )
     own = _street_words(first)
     streets: list[tuple[str, str | None]] = []
@@ -687,7 +740,9 @@ def describe_both(
     dict - `number`, `count`, `lts4`, `streets`, `more`, and `crossings`, each
     crossing's `group_crossings` row in the full list and None in the overview -
     on the entry for a Mass Ride's group of signalized crossings, else None),
-    `text`.
+    `surface` (on a stretch, `surface_of`: "unpaved", "partly unpaved" or None),
+    `text`, and `text_lanes_hidden` (the text with painted lanes on LTS 4 and
+    Avoid not called bike lanes, or None where that is `text`).
     The overview has the same entries with the short stretches merged (see the
     module's rules); its stops and junction entries are the full ones.
     """
@@ -765,6 +820,10 @@ def describe_both(
         # at a new tier or facility.
         continues = i > 0 and runs[i - 1].leg == run.leg
         text = _stretch_sentence(run, start, end, turn, continues)
+        hidden = _lanes_hidden(run)
+        text_lanes_hidden = (
+            _stretch_sentence(hidden, start, end, turn, continues) if hidden else None
+        )
         severity = None
         if turn is not None and turn.event is not None and turn.event.flagged:
             severity = turn.event.severity
@@ -779,6 +838,8 @@ def describe_both(
                     street=_street_words(run),
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
+                    surface=surface_of(run),
+                    text_lanes_hidden=text_lanes_hidden,
                     turn=None
                     if turn is None
                     else {
@@ -859,6 +920,7 @@ def describe_both(
     overview: list[tuple[tuple[float, int, int], dict]] = []
     for first, last in _overview_groups(runs, turns):
         run, then = _group_run(runs, [first, last], turns)
+        hidden = _lanes_hidden(run, runs[first : last + 1])
         start = starts[first] * scale
         end = (starts[last] + runs[last].metres) * scale
         turn = turns.get(first)
@@ -877,6 +939,12 @@ def describe_both(
                     street=_street_words(runs[first]),
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
+                    surface=surface_of(run),
+                    text_lanes_hidden=(
+                        _stretch_sentence(hidden, start, end, turn, continues, then)
+                        if hidden
+                        else None
+                    ),
                     turn=None
                     if turn is None
                     else {
@@ -908,7 +976,9 @@ def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
         "severity": None,
         "via": None,
         "group": None,
+        "surface": None,
         "text": text,
+        "text_lanes_hidden": None,
     }
     entry.update(fields)
     return entry
@@ -932,6 +1002,7 @@ __all__ = [
     "OVERVIEW_M",
     "describe",
     "describe_both",
+    "surface_of",
     "group_crossings",
     "group_sentence",
     "group_words",

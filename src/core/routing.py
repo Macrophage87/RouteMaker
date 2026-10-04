@@ -317,11 +317,11 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}
+SELECT {tier}, {facility}, seg.is_unpaved
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
-    SELECT s.stress_tier, {columns}
+    SELECT s.stress_tier, s.is_unpaved, {columns}
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = p.way_id
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)
@@ -365,12 +365,29 @@ def _has_facility_columns(schema: str) -> bool:
 ROADWAY_ONLY_AS_NONE = frozenset({"protected", "lane"})
 
 
+class PieceClass(tuple):
+    """A piece's (stress key, facility key), as `classify` answers it, with the
+    segment's surface beside it: `unpaved` True, False, or None where not known
+    (OWNER-DECISIONS 280, for the route description). Still a pair, so every
+    reader that unpacks (tier, facility) is unchanged."""
+
+    unpaved: bool | None
+
+    def __new__(cls, tier: str, facility: str, unpaved: bool | None = None):
+        pair = super().__new__(cls, (tier, facility))
+        pair.unpaved = unpaved
+        return pair
+
+    def __getnewargs__(self):
+        return (self[0], self[1], self.unpaved)
+
+
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
-    for a ride at `when`. With `roadway_only` (a ride on the no-trail
-    variant), bicycle lanes of either class are "none"; a road closed to cars
-    is still a path."""
+    for a ride at `when`, each a `PieceClass` that also carries the segment's
+    surface. With `roadway_only` (a ride on the no-trail variant), bicycle
+    lanes of either class are "none"; a road closed to cars is still a path."""
     if not pieces:
         return []
     # The schema name comes from settings and is validated the way every DDL
@@ -387,13 +404,16 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     classes = []
     with connection.cursor() as cursor:
         cursor.execute(query, ([when, when] if with_facility else []) + arrays)
-        for tier, kind in cursor.fetchall():
+        for row in cursor.fetchall():
+            tier, kind = row[0], row[1]
+            unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
-                (
+                PieceClass(
                     str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
                     kind if kind in FACILITY_KEYS else "unknown",
+                    unpaved,
                 )
             )
     return classes
@@ -952,6 +972,7 @@ def describe_route(
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,
+                            getattr(classes[i], "unpaved", None),
                         )
                         for i in range(run[0], run[1])
                     ]

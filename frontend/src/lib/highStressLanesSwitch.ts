@@ -12,10 +12,9 @@ import { createElement as h, type ReactElement } from "react";
 
 export const HIGH_STRESS_LANES_LABEL = "Show bike lanes on high-stress roads";
 
+/** Read on every focus, so kept short (under 150 characters; the salience review). */
 export const HIGH_STRESS_LANES_HINT =
-  "Painted bike lanes on LTS 4 and Avoid roads, such as Kenilworth Avenue, are hidden by default: paint is not protection. " +
-  "Turn this on to draw them on the map and count them in the route's bike facilities and description. " +
-  "Protected lanes and paths always show. Kept in this browser.";
+  "Painted lanes on LTS 4 and Avoid roads are hidden on the map and in the route by default. Protected lanes and paths always show.";
 
 export function HighStressLanesSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }): ReactElement {
   return h(

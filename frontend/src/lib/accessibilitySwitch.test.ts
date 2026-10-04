@@ -14,6 +14,7 @@ import { parseSync } from "vite";
 import { paintAt } from "../testSupport/paintAt.ts";
 import {
   ACCESSIBILITY_PALETTE,
+  BUSY_MIN_TIER,
   ACCESSIBILITY_STORAGE_KEY,
   CASING_EXTRA_PX,
   CONTRAST_MEDIA,
@@ -378,7 +379,7 @@ test("the strong widths are the figures the owner's switch promises: half a pixe
   for (const tier of tiersFor("cvd", true)) assert.ok(tier.casingExtra <= tier.width, `LTS ${tier.tier}`);
 });
 
-test("the tiers: strong draws lines half a pixel wider, casings black or white and wider, in the same palette", () => {
+test("the tiers: strong draws lines half a pixel wider, the calm tiers' casings black or white, every casing wider, in the same palette", () => {
   for (const name of ["blended", "twotone", "cvd"]) {
     const plain = tiersFor(name);
     const strong = tiersFor(name, true);
@@ -387,9 +388,13 @@ test("the tiers: strong draws lines half a pixel wider, casings black or white a
       assert.equal(tier.color, plain[i].color, "the colour is the palette's");
       assert.equal(tier.casingExtra, STRONG_CASING_EXTRA_PX);
       assert.equal(plain[i].casingExtra, CASING_EXTRA_PX);
-      if (name === "blended" && tier.tier === 5) {
-        // Avoid's red casing is a colour of its own (OWNER-DECISIONS 274): the switch leaves it.
-        assert.equal(tier.casing, plain[i].casing);
+      assert.equal(tier.strong, true);
+      assert.equal(plain[i].strong, false);
+      assert.deepEqual(tier.dash, plain[i].dash);
+      if (tier.tier >= BUSY_MIN_TIER) {
+        // A busy tier's casing is what its dash gaps show: the switch leaves it, so the gaps are no
+        // harsher (OWNER-DECISIONS 292), and Avoid's red is a colour of its own (274).
+        assert.equal(tier.casing, plain[i].casing, `${name} LTS ${tier.tier}`);
         return;
       }
       assert.match(tier.casing, /^#(000000|ffffff)$/, `${name} LTS ${tier.tier}`);
@@ -454,12 +459,12 @@ test("the legend's widths are the map's: each tier's line and casing, and the fa
   assert.deepEqual(plain.tiers.map((t: { line: number }) => t.line), [2.5, 3.25, 4.25, 5, 6.5]);
   assert.deepEqual(plain.tiers.map((t: { casing: number }) => t.casing), [4.5, 5.25, 6.25, 7, 8.5]);
   assert.equal(plain.facilityCasing, 4.5);
-  assert.deepEqual(plain.rails, { path: 12.5, protected: 12.5, lane: 6.5 });
+  assert.deepEqual(plain.rails, { path: 9.5, protected: 12.5, lane: 6.5 });
   const strong = legendWidths(tiersFor("cvd", true));
   assert.deepEqual(strong.tiers.map((t: { line: number }) => t.line), [3, 3.75, 4.75, 5.5, 7]);
   assert.deepEqual(strong.tiers.map((t: { casing: number }) => t.casing), [6, 6.75, 7.75, 8.5, 10], "the switch's casing is 3 px wider than its line");
   assert.equal(strong.facilityCasing, 6);
-  assert.deepEqual(strong.rails, { path: 14, protected: 14, lane: 8 }, "the rails sit outside the wider casing");
+  assert.deepEqual(strong.rails, { path: 11, protected: 14, lane: 9 }, "the rails sit outside the wider casing, and the painted rail is 1.5 px");
   // Without an argument, the tiers in use.
   assert.deepEqual(legendWidths(), plain);
   withSwitch(true, () => assert.deepEqual(legendWidths(), strong));
@@ -467,9 +472,12 @@ test("the legend's widths are the map's: each tier's line and casing, and the fa
 
 test("a facility's rails for a tier the style has no entry for are LTS 1's, casing included, plain and strong", () => {
   const fallback = (tiers: ReturnType<typeof tiersFor>) => (facilityWidthAt(FACILITIES[0], undefined, tiers) as unknown[]).at(-1);
-  assert.equal(fallback(tiersFor("blended")), 12.5);
-  assert.equal(fallback(tiersFor("cvd", true)), 14);
-  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 14));
+  assert.equal(fallback(tiersFor("blended")), 9.5);
+  assert.equal(fallback(tiersFor("cvd", true)), 11);
+  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 11));
+  // The painted rail's own strong width reaches the fallback too.
+  const lane = FACILITIES.find((f: { facility: string }) => f.facility === "lane");
+  assert.equal((facilityWidthAt(lane, undefined, tiersFor("cvd", true)) as unknown[]).at(-1), 9);
 });
 
 test("the panel legend draws its widths from legendWidths, not its own sums", () => {
@@ -541,7 +549,7 @@ test("the default palette is unchanged by the new one", () => {
   assert.deepEqual(PALETTES.blended, {
     1: { color: "#9ed3ac", casing: "#17301f" },
     2: { color: "#57a06c", casing: "#17301f" },
-    3: { color: "#bf730b", casing: "#2b1a05" },
+    3: { color: "#bf730b", casing: "#45290a" },
     4: { color: "#c80018", casing: "#ffffff" },
     5: { color: "#14040a", casing: "#ee3b2c" },
   });
@@ -626,7 +634,8 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
     data?.features.map((f) => [f.properties.key, f.properties.color, f.properties.halo]),
     [
       ["2", PALETTES.cvd[2].color, "#000000"],
-      ["3", PALETTES.cvd[3].color, "#000000"],
+      // A busy tier's casing is its own with the switch on (OWNER-DECISIONS 292), and its halo with it.
+      ["3", PALETTES.cvd[3].color, PALETTES.cvd[3].casing],
     ],
   );
   assert.deepEqual(

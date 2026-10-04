@@ -12,6 +12,7 @@ import {
   PALETTES,
   contrastRatio,
   facilityLayers,
+  gapHarshness,
   relativeLuminance,
   tiersFor,
 } from "./stressStyle.js";
@@ -94,6 +95,73 @@ test("the tiers' dash patterns still differ pairwise, and their on-lengths in pi
       assert.ok(Math.abs(onA - onB) / Math.max(onA, onB) >= 0.15 || a.width !== b.width, `${a.short} ${onA}px, ${b.short} ${onB}px`);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// 292: no calmer tier's gaps are harsher than a busier one's
+// ---------------------------------------------------------------------------
+
+/** Harshness measured here, from the dash and the colours, not from gapHarshness: gap share times casing-vs-line contrast. */
+function harshness(t: Tier): number {
+  if (!t.dash) return 0;
+  const gaps = t.dash.filter((_: number, i: number) => i % 2 === 1).reduce((a: number, b: number) => a + b, 0);
+  return (gaps / t.dash.reduce((a: number, b: number) => a + b, 0)) * contrastRatio(t.casing, t.color);
+}
+
+test("harshness - gap share times casing-vs-line contrast - does not fall from LTS 3 to LTS 4 to Avoid, in every palette, plain and strong (292)", (t) => {
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const tiers = tiersFor(palette, strong) as Tier[];
+      const h = tiers.map(harshness);
+      t.diagnostic(`${palette}${strong ? " strong" : ""}: ` + tiers.map((x, i) => `${x.short} ${h[i].toFixed(2)}`).join(", ") + " (LTS 1-2 reported, not held)");
+      tiers.forEach((x, i) => assert.ok(Math.abs(gapHarshness(x) - h[i]) < 1e-12, `gapHarshness ${x.short}`));
+      assert.ok(h[2] <= h[3], `${palette}${strong ? " strong" : ""}: LTS 3 ${h[2].toFixed(3)} is harsher than LTS 4 ${h[3].toFixed(3)}`);
+      assert.ok(h[3] <= h[4], `${palette}${strong ? " strong" : ""}: LTS 4 ${h[3].toFixed(3)} is harsher than Avoid ${h[4].toFixed(3)}`);
+    }
+  }
+});
+
+test("LTS 3's gaps are calmer than before: a softer casing and a smaller gap, the halo still 3:1 and the casing still dark", () => {
+  for (const strong of [false, true]) {
+    const lts3 = tiersFor(DEFAULT_PALETTE, strong)[2] as Tier;
+    assert.ok(harshness(lts3) < 0.67, `${harshness(lts3).toFixed(2)}`);
+    assert.ok(contrastRatio(lts3.color, lts3.casing) >= 3, `amber on its casing ${contrastRatio(lts3.color, lts3.casing).toFixed(2)}:1`);
+    assert.ok(contrastRatio(lts3.casing, LIGHT_BASE) >= 3, "the casing holds the halo on the base map");
+    assert.ok(relativeLuminance(lts3.casing) > relativeLuminance("#2b1a05"), "softer than the old near-black");
+  }
+  // "That black in the LTS3": no palette puts pure black in LTS 3's gaps, with the switch off or on.
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const casing = (tiersFor(palette, strong)[2] as Tier).casing.toLowerCase();
+      assert.notEqual(casing, "#000000", `${palette}${strong ? " strong" : ""}: LTS 3 over black`);
+    }
+  }
+  // The old LTS 3, for the record: [2, 1] over #2b1a05.
+  const old = { ...(tiersFor(DEFAULT_PALETTE)[2] as Tier), dash: [2, 1], casing: "#2b1a05" } as Tier;
+  assert.ok(harshness(old) > 1.4);
+});
+
+test("LTS 2 and LTS 3 still read apart without colour: dash length and rhythm differ by 30% or more, and the width", () => {
+  const [, lts2, lts3] = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const on = (x: Tier) => x.dash![0] * x.width;
+  const period = (x: Tier) => (x.dash![0] + x.dash![1]) * x.width;
+  assert.ok(Math.abs(on(lts2) - on(lts3)) / Math.max(on(lts2), on(lts3)) >= 0.3, `${on(lts2)} vs ${on(lts3)} px`);
+  assert.ok(Math.abs(period(lts2) - period(lts3)) / Math.max(period(lts2), period(lts3)) >= 0.3, `${period(lts2)} vs ${period(lts3)} px`);
+  assert.ok(lts3.width >= lts2.width + 0.75);
+});
+
+test("LTS 3 against LTS 2 and LTS 4 under each vision, lines and casings (deuteranopia's luminance held, ΔE reported)", (t) => {
+  const [, lts2, lts3, lts4] = tiersFor(DEFAULT_PALETTE) as Tier[];
+  for (const [name, other] of [["LTS 2", lts2], ["LTS 4", lts4]] as const) {
+    t.diagnostic(
+      `LTS 3 vs ${name}: line ` + VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts3.color, v), simulate(other.color, v)).toFixed(1)}`).join(", ") +
+        `; casing ` + VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts3.casing, v), simulate(other.casing, v)).toFixed(1)}`).join(", ") +
+        `; luminance (deutan) ${contrastRatio(simulate(lts3.color, "deutan"), simulate(other.color, "deutan")).toFixed(2)}:1`,
+    );
+  }
+  // LTS 3 vs LTS 4 keep 1.4:1 in grey under deuteranopia, and their casings are worlds apart.
+  assert.ok(contrastRatio(simulate(lts3.color, "deutan"), simulate(lts4.color, "deutan")) >= 1.4);
+  for (const v of VISIONS) assert.ok(contrastRatio(simulate(lts3.casing, v), simulate(lts4.casing, v)) >= 7, `casings under ${v}`);
 });
 
 // ---------------------------------------------------------------------------

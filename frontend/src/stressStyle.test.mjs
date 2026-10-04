@@ -245,7 +245,13 @@ test("each facility is told apart from the others without colour, and the strong
   const cues = FACILITIES.map((f) => JSON.stringify([f.rail, f.dash]));
   assert.equal(new Set(cues).size, FACILITIES.length);
   const [path, protectedLane, lane] = FACILITIES;
-  assert.ok(path.rail >= protectedLane.rail && protectedLane.rail > lane.rail);
+  // Bolder is more ink - the rail's width times the share of it drawn - not a wider rail: a path's
+  // solid 2.5 px outweighs a protected lane's 4 px blocks (half drawn), and paint is far the least
+  // (OWNER-DECISIONS 290: the path rail is no longer the heaviest line).
+  const duty = (f) => (f.dash ? f.dash[0] / (f.dash[0] + f.dash[1]) : 1);
+  const ink = (f) => f.rail * duty(f);
+  assert.ok(ink(path) >= ink(protectedLane) && ink(protectedLane) > 4 * ink(lane), `${ink(path)} ${ink(protectedLane)} ${ink(lane)}`);
+  assert.ok(protectedLane.rail > lane.rail && path.rail > lane.rail);
   assert.equal(path.dash, null, "an off-road path's rails are unbroken");
 });
 
@@ -449,7 +455,9 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   }
   // Two-tone: the first colour the line, the second its casing.
   assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f2c21b", "#f28c28"]);
-  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#d42020"]);
+  // LTS 4's red casing is a shade deeper than Avoid's red line, so LTS 3's gaps are no harsher than
+  // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
+  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);
   assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
   assert.equal(DEFAULT_PALETTE, "blended");
   assert.equal(paletteFrom("?palette=twotone"), "twotone");

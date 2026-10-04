@@ -98,6 +98,18 @@ export interface DescriptionEntry {
   severity?: "orange" | "red" | null;
   via?: number | null;
   /**
+   * On a stretch: its surface where the route's segments say it is unpaved
+   * (OWNER-DECISIONS 280), as the text also says; null where paved or not known.
+   * Absent from an older API.
+   */
+  surface?: "unpaved" | "partly unpaved" | null;
+  /**
+   * The text with painted lanes on LTS 4 and Avoid not called bike lanes (the
+   * "Show bike lanes on high-stress roads" switch off, OWNER-DECISIONS 275);
+   * null where that is `text` itself. Absent from an older API.
+   */
+  text_lanes_hidden?: string | null;
+  /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
    * null in the overview, which keeps one line per group.

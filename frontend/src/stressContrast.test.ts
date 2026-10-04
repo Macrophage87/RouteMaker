@@ -297,11 +297,17 @@ test("no single casing colour can be 3:1 from every route class, so each class h
 });
 
 test("a halo is dark under the light classes and white under the dark ones (never the blue)", () => {
-  for (const { on } of REACHABLE) {
+  for (const { name, on } of REACHABLE) {
     withSwitch(on, () => {
       for (const c of routeClasses()) {
-        // Avoid's halo is its red casing, a colour of its own (OWNER-DECISIONS 274), still 3:1 from the near-black line.
-        if (c.key === "5") continue;
+        // Only the default palette's Avoid is exempt: its halo is its own red casing, a colour of its own
+        // (OWNER-DECISIONS 274), neither dark nor light, and 3:1 from the near-black line. Every other
+        // palette's Avoid keeps the dark-or-light rule (review SF4).
+        if (c.key === "5" && name === "blended") {
+          assert.equal(c.halo, PALETTES.blended[5].casing, "the exemption is for the palette's own Avoid casing only");
+          assert.ok(contrastRatio(c.color, c.halo) >= 3, `${c.short}: ${c.color} on ${c.halo}`);
+          continue;
+        }
         assert.equal(relativeLuminance(c.halo) < 0.5, relativeLuminance(c.color) > 0.14, `${c.short}: ${c.color} on ${c.halo}`);
         assert.notEqual(c.halo, ROUTE_BLUE);
       }

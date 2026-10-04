@@ -12,6 +12,7 @@ import {
   UNPAVED_DASH,
   facilityLayers,
   facilityWidth,
+  railWidth,
   setAccessibility,
   stressCasingLayers,
   stressLayers,
@@ -89,10 +90,10 @@ test("a facility's rail is the same pattern over every tier: its dash is its own
         const { width, dash } = rail(f.facility, tier);
         // The dash (a fraction of the rail layer's width) is the facility's alone.
         assert.deepEqual(dash, f.dash ?? undefined, `${f.facility} over ${tier.short}`);
-        // The rail shows `rail` px beyond the casing on each side, at every tier.
+        // The rail shows its width (`rail`, or `strongRail` with the switch on) beyond the casing on each side, at every tier.
         const casing = paintAt(casings[tier.tier - 1], "line-width", { tier: tier.tier }, 14) as number;
-        assert.ok(Math.abs((width - casing) / 2 - f.rail) < 1e-9, `${f.facility} over ${tier.short}: ${(width - casing) / 2}px beyond the casing`);
-        assert.equal(width, facilityWidth(f, tier.width, tier.casingExtra));
+        assert.ok(Math.abs((width - casing) / 2 - railWidth(f, strong)) < 1e-9, `${f.facility} over ${tier.short}: ${(width - casing) / 2}px beyond the casing`);
+        assert.equal(width, facilityWidth(f, tier.width, tier.casingExtra, strong));
         if (dash) blocks.push(dash[0] * width);
       }
       // The block length in pixels hardly changes with the tier under it (the layer's width does, a little).
@@ -202,4 +203,78 @@ test("the legend lists Unpaved, drawn with the same dots from the same constants
   assert.match(app, /<span className="stress-name">Unpaved<\/span>/);
   assert.match(app, /UNPAVED_DASH\.map\(\(d: number\) => d \* unpavedWidth\(tiers\[0\]\)\)/);
   assert.match(app, /strokeWidth=\{unpavedWidth\(tiers\[0\]\)\}/);
+});
+
+// ---- unpaved trails have no path rail (OWNER-DECISIONS 290) -----------------
+
+test("an unpaved trail gets no path rail, at every tier and ride time; a paved one, and one of unknown surface, keep it", () => {
+  const path = (when?: string) => (facilityLayers("s", when as never) as Layer[]).find((l) => l.id === "facility-path") as Layer;
+  for (const when of [undefined, "weekend", "weekday_rush"]) {
+    const layer = path(when);
+    for (const tier of [1, 2, 3, 4, 5]) {
+      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
+      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
+      assert.equal(draws(layer, { tier, facility: "path", trail: true }), true, `LTS ${tier} trail of unknown surface`);
+    }
+  }
+  // A road closed to cars this weekend draws as a path: paved, its rails; unpaved, none.
+  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend" }), true);
+  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend", unpaved: true }), false);
+  // A zoomed-out tile's merged feature carries "unpaved" too (core/stress_tiles.py PROPERTIES), whatever else it carries.
+  assert.equal(draws(path(), { tier: 1, facility: "path", trail: true, unpaved: true, car_free_only: ["weekday_offpeak", "weekday_rush", "weekend"] }), false);
+});
+
+test("an unpaved trail still draws its tier's line and the dotted mark, and the other rails ignore the surface", () => {
+  const all = stressOverlayLayers("s") as Layer[];
+  const trail = { tier: 1, facility: "path", trail: true, unpaved: true };
+  const drawn = all.filter((l) => draws(l, trail)).map((l) => l.id);
+  assert.deepEqual(drawn.sort(), ["stress-1", "stress-casing-1", "stress-unpaved-1"].sort());
+  for (const facility of ["protected", "lane"]) {
+    const layer = all.find((l) => l.id === `facility-${facility}`) as Layer;
+    assert.equal(draws(layer, { tier: 2, facility, unpaved: true }), true, `${facility} on an unpaved road keeps its rail`);
+  }
+});
+
+test("a path's rail is 2 to 2.5 px at every zoom, plain and strong: lighter than a protected lane's, still the only solid rail", () => {
+  const [pathF, protectedF, laneF] = FACILITIES as Array<{ facility: string; rail: number; strongRail?: number; dash: number[] | null }>;
+  for (const strong of strengths) {
+    assert.ok(railWidth(pathF, strong) >= 2 && railWidth(pathF, strong) <= 2.5, `${railWidth(pathF, strong)}`);
+    assert.ok(railWidth(pathF, strong) < railWidth(protectedF, strong));
+  }
+  assert.equal(pathF.dash, null);
+  assert.ok(protectedF.dash && laneF.dash);
+  // The width is a number per tier, not a zoom expression: the same at z15-16 as at z12.
+  const layer = (facilityLayers("s") as Layer[]).find((l) => l.id === "facility-path") as Layer;
+  for (const zoom of [12, 15, 16, 18]) {
+    const width = paintAt(layer, "line-width", { tier: 1, facility: "path" }, zoom) as number;
+    assert.equal((width - (tiersFor("blended")[0].width + 2)) / 2, railWidth(pathF));
+  }
+});
+
+test("the painted rail: 1 px by default, 1.5 px with the accessibility switch on, still the thinnest rail either way", () => {
+  const lane = (FACILITIES as Array<{ facility: string; rail: number; strongRail?: number }>).find((f) => f.facility === "lane")!;
+  assert.equal(railWidth(lane, false), 1);
+  assert.equal(railWidth(lane, true), 1.5);
+  assert.ok(railWidth(lane, false) < railWidth(lane, true), "the default is the weakest");
+  for (const strong of strengths) {
+    for (const f of FACILITIES as Array<{ facility: string; rail: number }>) {
+      if (f.facility !== "lane") assert.ok(railWidth(lane, strong) < railWidth(f, strong), `painted under ${f.facility} (${strong})`);
+    }
+  }
+  // On the map: the painted layer's width over each tier shows 1.5 px beyond the strong casing.
+  for (const strong of strengths) withSwitch(strong, () => {
+    const layer = (facilityLayers("s") as Layer[]).find((l) => l.id === "facility-lane") as Layer;
+    for (const tier of currentTiers() as Tier[]) {
+      const width = paintAt(layer, "line-width", { tier: tier.tier, facility: "lane" }, 14) as number;
+      assert.equal((width - tier.width - tier.casingExtra) / 2, strong ? 1.5 : 1, `${tier.short} ${strong}`);
+    }
+  });
+});
+
+test("the legend says an unpaved trail has no path edges", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  // In the Unpaved entry and in the bike-facility hint, both.
+  assert.match(app, /unpaved surface\. An unpaved trail has no path edges\./);
+  assert.match(app, /An unpaved trail has no path edges, only the dotted center line\./);
+  assert.match(app, /a solid dark rail for a paved path/);
 });

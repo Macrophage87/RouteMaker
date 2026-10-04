@@ -635,7 +635,22 @@ class DescriptionEntryOut(Schema):
             "(OWNER-DECISIONS 233, 234): what it says, as fields."
         ),
     )
+    surface: Literal["unpaved", "partly unpaved"] | None = Field(
+        default=None,
+        description=(
+            "On a stretch: unpaved where at least half of it is, partly unpaved where "
+            "at least 0.1 mi is (OWNER-DECISIONS 280); null: paved or not known."
+        ),
+    )
     text: str
+    text_lanes_hidden: str | None = Field(
+        default=None,
+        description=(
+            "On a stretch: `text` with painted lanes on LTS 4 and Avoid not called bike "
+            'lanes, for the client switch "Show bike lanes on high-stress roads" '
+            "(OWNER-DECISIONS 275); null where that is `text`."
+        ),
+    )
 
 
 class RouteOut(Schema):

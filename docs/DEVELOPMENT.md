@@ -2134,9 +2134,25 @@ headings, none of them part of its identity).
   to the metre. Junction events are placed in the same measure.
 - **Entry fields.** `kind` (`stretch`, `junction`, `via`), `from_m`, `to_m`,
   `from_mi`, `to_mi`, `street`, `tier`, `facility`, `turn`
-  (`movement`, `onto`, `control`, `severity`), `severity`, `via`, and `text`,
-  one sentence. `description` is null where it could not be built (an error is
-  logged and the route is answered without it) and absent from an older API.
+  (`movement`, `onto`, `control`, `severity`), `severity`, `via`, `surface`,
+  `text`, one sentence, and `text_lanes_hidden`. `description` is null where it
+  could not be built (an error is logged and the route is answered without it)
+  and absent from an older API.
+- **Surface** (OWNER-DECISIONS 280). `routing.classify` reads the segment's
+  `is_unpaved` beside its tier and facility (a `PieceClass`, still a pair), and a
+  stretch says ", unpaved" where at least half of it is unpaved and ", partly
+  unpaved" where at least 0.1 mi is; `surface` is the same as a field. A change
+  of surface alone does not start a stretch.
+- **Painted lanes on LTS 4 and Avoid** (OWNER-DECISIONS 275). The planner's
+  "Show bike lanes on high-stress roads" switch is off by default, and with it
+  off such a lane is not called a bike lane. The wording stays in Python: a
+  stretch whose lane is all on LTS 4 or Avoid (`HIGH_STRESS_LANE_TIERS`) has
+  `text_lanes_hidden`, its sentence without the lane, and every other entry has
+  null. An overview stretch that merges an LTS 3 lane with an LTS 4 one keeps
+  its lane, as the facility bar counts the LTS 3 part. The planner uses the
+  field, and takes ", painted bike lane" out itself only for an older API
+  (`tests/test_describe.py`, `TestFrontEndAgrees`, holds its words and the
+  tiers equal to `describe.py`'s).
 
 The planner lists the sentences in `frontend/src/RouteDescription.tsx` (a
 component of its own: a heading, a disclosure button and an ordered list,
@@ -3080,7 +3096,8 @@ under 3:1). So each section carries a one-pixel halo, `route-halo` (a layer on t
 sections' source, width `ROUTE_HALO_WIDTH` 7 between the casing's 9 and the line's 5,
 colour in the feature's `halo` property, opacity set with the sections in
 `setRouteSections`): the tier's own casing, which is dark under LTS 1 to 3 and white
-under LTS 4 and Avoid (black and white with the switch on), the first tier's dark
+under LTS 4 and Avoid (with the switch on, black and white under the calm tiers, and
+a busy tier's own casing, which the switch leaves: OWNER-DECISIONS 292), the first tier's dark
 casing under the unrated grey, and white under the violet. The blue stays outside as
 the route's identity and is itself 3:1 from every base-map surface. The panel's route
 legend draws the same halo.
@@ -3090,7 +3107,7 @@ legend draws the same halo.
 | Traffic-free #4c1d95 | #ffffff, 10.95 | #ffffff, 10.95 |
 | LTS 1 | #17301f, 8.36 | #000000, 16.92 |
 | LTS 2 | #17301f, 4.50 | #000000, 6.95 |
-| LTS 3 | #2b1a05, 4.53 | #000000, 4.61 |
+| LTS 3 | #45290a, 3.60 | #0a1a2f, 3.83 |
 | LTS 4 | #ffffff, 7.31 | #ffffff, 12.66 |
 | Avoid | #ffffff, 15.75 | #ffffff, 19.74 |
 | Not rated | #17301f, 5.38 | #000000, 7.65 |

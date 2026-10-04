@@ -770,9 +770,10 @@ export function App() {
               paletteFromAddress={paletteSetByAddress()}
               onChange={(on) => setAccessibility(on)}
             />
-            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} />
             {stress === "available" && (
               <>
+                {/* Only with the overlay there: with no stress map it has no lanes to show (salience review, minor). */}
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} />
                 <label className="toggle">
                   <input
                     type="checkbox"
@@ -958,7 +959,9 @@ function StressLegend({
             />
           </svg>
           <span className="stress-name">Unpaved</span>
-          <span className="stress-label">A dotted center line on any of the lines above: gravel, dirt or other unpaved surface</span>
+          <span className="stress-label">
+            A dotted center line on any of the lines above: gravel, dirt or other unpaved surface. An unpaved trail has no path edges.
+          </span>
         </li>
       </ul>
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
@@ -967,8 +970,8 @@ function StressLegend({
       {facilities.size > 0 && (
         <>
           <p className="hint">
-            Bike facilities are edges on either side of the stress line: a solid dark rail for a path, blocks like posts for a protected lane,
-            and a thin dotted rail for paint. Painted lanes on LTS 4 and Avoid roads are{" "}
+            Bike facilities are edges on either side of the stress line: a solid dark rail for a paved path, blocks like posts for a
+            protected lane, and a thin dotted rail for paint. An unpaved trail has no path edges, only the dotted center line. Painted lanes on LTS 4 and Avoid roads are{" "}
             {showHighLanes ? "shown because the switch above is on" : "hidden unless you turn on \"Show bike lanes on high-stress roads\""}.
           </p>
           <ul className="legend" aria-label="Bike facility legend">
