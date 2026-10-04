@@ -460,6 +460,63 @@ def test_the_checker_reads_compose_rendered_byte_counts() -> None:
     assert beta.parse_bytes("768MiB") == 768 * 1024**2
 
 
+@needs_docker
+@pytest.mark.parametrize("offroad", [False, True], ids=["default", "offroad"])
+def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bool) -> None:
+    """/data is mounted nofail on the server, so Docker can start first: a bind must stop its
+    container rather than get an empty directory on the root disk."""
+    services = beta.render(offroad=offroad)["services"]
+    binds = {
+        name: [v for v in service.get("volumes") or [] if v.get("type") == "bind"]
+        for name, service in services.items()
+    }
+    for name, volumes in binds.items():
+        for volume in volumes:
+            assert volume["bind"]["create_host_path"] is False, (name, volume)
+    counts = {name: len(volumes) for name, volumes in binds.items() if volumes}
+    expected = {"api": 2, "worker": 2, "postgis": 1, "photon": 1}
+    expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
+    if offroad:
+        expected["valhalla-offroad"] = 4
+    assert counts == expected
+    assert not any("would be created empty" in p for p in beta.check({"services": services}))
+
+
+def test_the_checker_refuses_a_bind_that_would_create_its_source() -> None:
+    root = "/data/routemaker"
+    compose = good()
+    compose["services"]["postgis"]["volumes"] = [f"{root}/postgres:/var/lib/postgresql/data"]
+    found = beta.check(compose, root)
+    assert any("postgis: bind /data/routemaker/postgres would be created empty" in p for p in found)
+    rendered_short = {
+        "type": "bind",
+        "source": f"{root}/photon",
+        "target": "/photon/data",
+        "bind": {},
+    }
+    compose["services"]["postgis"]["volumes"] = [rendered_short]
+    assert any("would be created empty" in p for p in beta.check(compose, root))
+    compose["services"]["postgis"]["volumes"] = [
+        {**rendered_short, "bind": {"create_host_path": False}}
+    ]
+    assert beta.check(compose, root) == []
+    repo_bind = {"type": "bind", "source": f"{REPO}/valhalla", "target": "/conf", "bind": {}}
+    compose["services"]["postgis"]["volumes"] = [repo_bind]
+    assert any("would be created empty" in p for p in beta.check(compose, root))
+
+
+def test_the_runbook_says_what_a_late_data_mount_looks_like_and_never_applies_the_host_fix() -> (
+    None
+):
+    reboot = RUNBOOK[RUNBOOK.index("**Reboot and a late `/data`:**") :]
+    reboot = reboot[: reboot.index("\n- **")]
+    assert "bind source path does not exist" in reboot
+    assert "scripts/beta/beta-compose.sh up -d postgis" in reboot
+    assert "After=data.mount" in reboot and "never apply" in reboot
+    for command in runbook_commands():
+        assert "After=data.mount" not in command and "daemon-reload" not in command, command
+
+
 def test_the_checker_flags_a_docker_socket_mount() -> None:
     found = problems_for(
         lambda s: s["worker"].update(volumes=["/var/run/docker.sock:/var/run/docker.sock"])

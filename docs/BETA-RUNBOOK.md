@@ -647,7 +647,18 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
 - **Reboot:** containers restart with Docker (`unless-stopped`). `RESTART_POLICY` stays unset in `.env`, because
   `no` is the home Docker Desktop machine's setting: `beta-compose.sh` refuses a value other than empty or
   `unless-stopped` in `.env` and in the shell, and the checker refuses it in `.env` and in the rendered config.
-  `/data` must be mounted before Docker starts, as it already is for Docker's own storage there.
+- **Reboot and a late `/data`:** `/data` is mounted `nofail` and Docker's own storage is on the root disk
+  (`/var/lib/docker`), so Docker can start, and restart the containers, before `/data` is mounted. Every
+  RouteMaker bind mount has `create_host_path: false` (`compose.beta.yaml`, "Bind mounts never create their
+  source"), so the engine refuses to start a container whose source is missing instead of handing it an empty
+  directory on the root disk (where postgis would initialise an empty database). If `/data` was late, the
+  RouteMaker containers are down and `docker ps -a` and `docker inspect` show
+  `bind source path does not exist`. Once `findmnt /data` shows it mounted, start them in step 8's order:
+  `scripts/beta/beta-compose.sh up -d postgis`, wait for healthy, then
+  `scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
+  and `scripts/beta/beta-compose.sh up -d api worker`. The host-side fix (a systemd drop-in for `docker.service`
+  with `After=data.mount` and `RequiresMountsFor=/data`) is the owner's call: report the event, and never apply
+  that drop-in yourself.
 - **Debug stays off.** `make-env.sh` never writes `DJANGO_DEBUG`, so the containers run with it off.
   `beta-compose.sh` refuses a non-empty `DJANGO_DEBUG` in `.env` and in the shell, and the checker refuses it in
   `.env` and in the rendered config. Do not add it to `.env`, even to chase a fault: read `beta-compose.sh logs api`.

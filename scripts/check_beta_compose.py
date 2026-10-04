@@ -39,7 +39,9 @@ The rules, each of which exists because breaking it hurts a host that is not our
   geocoding and tile pools; the weekly rebuild is paused; Photon's heap plus its
   capped direct buffers, and PostgreSQL's shared_buffers, fit inside their caps;
 * the Valhalla worker count fits each router's cap, using the same function the
-  production check uses with the beta's own per-worker figure (below).
+  production check uses with the beta's own per-worker figure (below);
+* every bind from DATA_ROOT or the checkout has `create_host_path: false`, so a late /data
+  mount stops the container instead of handing it an empty directory.
 """
 
 from __future__ import annotations
@@ -396,14 +398,28 @@ def check_valhalla(services: dict) -> list[str]:
         production.VALHALLA_PER_WORKER_MEMORY_MB = original
 
 
+def _creates_host_path(volume) -> bool:
+    """Whether the engine would create a missing bind source. `docker compose config` renders
+    the short `src:dst` form as `bind: {}` (create_host_path defaults to true) and the long form
+    with `create_host_path: false` explicitly; an unrendered short string creates it too."""
+    if not isinstance(volume, dict):
+        return True
+    return (volume.get("bind") or {}).get("create_host_path", True) is not False
+
+
 def check_mounts(services: dict, data_root: str | None) -> list[str]:
-    """Binds come from DATA_ROOT or the repository, and never the Docker socket."""
+    """Binds come from DATA_ROOT or the repository, never the Docker socket, and never create
+    their source: /data is mounted `nofail` on the server and Docker can start first, and a
+    created source is an empty directory on the root disk (compose.beta.yaml, "Bind mounts
+    never create their source")."""
     problems: list[str] = []
+    roots = [r for r in (data_root, str(REPO)) if r]
     for name, service in services.items():
         for volume in service.get("volumes") or []:
             source = (
                 volume.get("source", "") if isinstance(volume, dict) else str(volume).split(":")[0]
             )
+            kind = volume.get("type", "bind") if isinstance(volume, dict) else "bind"
             if "docker.sock" in source:
                 problems.append(f"{name}: mounts the Docker socket")
             if (
@@ -413,6 +429,15 @@ def check_mounts(services: dict, data_root: str | None) -> list[str]:
             ):
                 problems.append(
                     f"{name}: bind source {source} is outside DATA_ROOT and the checkout"
+                )
+            if (
+                kind == "bind"
+                and any(source.startswith(root) for root in roots)
+                and _creates_host_path(volume)
+            ):
+                problems.append(
+                    f"{name}: bind {source} would be created empty if missing; restate it in "
+                    "compose.beta.yaml in the long form with `bind: { create_host_path: false }`"
                 )
     return problems
 

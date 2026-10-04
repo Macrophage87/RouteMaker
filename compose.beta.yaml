@@ -22,6 +22,8 @@
 #   * Hard memory caps (deploy.resources.limits.memory, with memswap_limit equal to
 #     it so a container cannot borrow swap even if the host grows some), CPU caps, and
 #     cpu_shares/oom_score_adj so the host's other sites win contention (below).
+#   * Every bind mount of the services the beta runs restated in the long form with
+#     `create_host_path: false` (below, "Bind mounts never create their source").
 #   * gunicorn at 6 workers, PostgreSQL's shared_buffers sized to its cap, Photon's
 #     heap sized to its cap, and WEEKLY_REBUILD_PAUSED=1 so nothing queues rebuild jobs
 #     that no worker will ever take.
@@ -73,6 +75,18 @@
 #   oom_score_adj: 500  if the HOST runs out of memory (no swap) because something else
 #                       grew, the kernel's OOM killer prefers a RouteMaker process over
 #                       another site's. Our own caps still kill inside our cgroups first.
+#
+# Bind mounts never create their source. On the server /data is mounted `nofail` and
+# Docker's own storage is on the root disk, so after a reboot Docker can start, and
+# restart these containers, before /data is mounted. With compose's short `src:dst` form
+# the engine then creates each missing source as an empty directory on the root disk:
+# postgis would initdb an empty cluster there and the routers would start with no graph.
+# So every bind of every service the beta runs (DATA_ROOT, and the checkout, which is on
+# /data too) is restated here in the long form with `bind: { create_host_path: false }`.
+# Compose merges volumes by their target, so each entry replaces the base file's. The
+# engine then refuses to start a container whose source is missing ("bind source path
+# does not exist"), and `beta-compose.sh up -d <services>` once /data is up starts them
+# (docs/BETA-RUNBOOK.md, "Reboot"). scripts/check_beta_compose.py refuses a bind without it.
 
 # Every RouteMaker container yields to the host's other sites (header, "Sharing the host").
 x-beta-yield: &beta-yield
@@ -111,6 +125,16 @@ services:
       WEEKLY_REBUILD_PAUSED: "1"
     ports:
       - "127.0.0.1:${BETA_API_PORT:-8087}:8000"
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles
+        target: /data/tiles
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/static
+        target: /data/static
+        bind: { create_host_path: false }
     memswap_limit: 1450M
     deploy:
       resources:
@@ -121,6 +145,16 @@ services:
     environment:
       WEEKLY_REBUILD_PAUSED: "1"
       STRESS_PREDRAW_WORKERS: "1"
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/backups
+        target: /data/backups
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/tiles
+        target: /data/tiles
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 256M
     deploy:
       resources:
@@ -162,6 +196,11 @@ services:
       - random_page_cost=1.1
     # Docker's default /dev/shm is 64 MB; parallel queries want more.
     shm_size: 128m
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/postgres
+        target: /var/lib/postgresql/data
+        bind: { create_host_path: false }
     memswap_limit: 1024M
     deploy:
       resources:
@@ -187,6 +226,11 @@ services:
         exec java -Xms512m -Xmx896m -XX:MaxDirectMemorySize=192m -XX:+ExitOnOutOfMemoryError -jar /photon/photon.jar serve \
           -listen-ip 0.0.0.0 -data-dir /photon/data \
           -max-results 10 -max-reverse-results 1 -query-timeout 3
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/photon
+        target: /photon/data
+        bind: { create_host_path: false }
     memswap_limit: 1300M
     deploy:
       resources:
@@ -197,24 +241,108 @@ services:
   # (which goes to the standard router) must not queue behind each other.
   valhalla-standard:
     <<: *beta-yield
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/standard
+        target: /data/tiles/standard
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-no-trail:
     <<: *beta-yield
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/no-trail
+        target: /data/tiles/no-trail
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-ebike:
     <<: *beta-yield
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/ebike
+        target: /data/tiles/ebike
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-weekend:
     <<: *beta-yield
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/weekend
+        target: /data/tiles/weekend
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 768M
     deploy:
       resources:
@@ -234,10 +362,26 @@ services:
     image: ghcr.io/valhalla/valhalla:3.5.1
     command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
     volumes:
-      - ${DATA_ROOT}/tiles/offroad:/data/tiles/offroad:ro
-      - ${DATA_ROOT}/elevation:/data/elevation:ro
-      - ./valhalla:/conf:ro
-      - ./lua:/conf/lua:ro
+      - type: bind
+        source: ${DATA_ROOT}/tiles/offroad
+        target: /data/tiles/offroad
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 768M
     deploy:
       resources:
