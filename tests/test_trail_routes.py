@@ -62,8 +62,14 @@ def write_extract(path) -> None:
         writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=[1, 2], version=1))
     relations = [
         ({"type": "route", "route": "bicycle", "network": "lcn"}, [("w", 1, ""), ("w", 2, "")]),
-        ({"type": "route", "route": "bicycle", "network": "ncn"}, [("w", 2, ""), ("n", 1, "")]),
-        ({"type": "route", "route": "hiking", "network": "nwn"}, [("w", 3, "")]),
+        (
+            {"type": "route", "route": "bicycle", "network": "ncn", "name": "Alpha Route"},
+            [("w", 2, ""), ("n", 1, "")],
+        ),
+        (
+            {"type": "route", "route": "hiking", "network": "nwn", "name": "Beta Walk"},
+            [("w", 3, "")],
+        ),
         ({"type": "route", "route": "hiking", "network": "lwn"}, [("w", 4, "")]),
         ({"type": "route", "route": "mtb", "network": "rcn"}, [("w", 5, "")]),
         ({"type": "network", "route": "bicycle", "network": "ncn"}, [("w", 6, "")]),
@@ -83,12 +89,16 @@ def test_the_extracts_route_relations_are_read_by_member_way(tmp_path) -> None:
     routes = trail_routes.read_routes(path)
     assert routes.levels == {1: 1, 2: 3, 3: 2}
     assert routes.mountain_bike == {5}, "the way in the mtb route, whatever its network"
+    assert routes.names == {2: "Alpha Route", 3: "Beta Walk"}, "the named routes' ways, by name"
 
 
 def test_a_way_is_named_by_its_osm_name() -> None:
     assert trail_routes.way_name({"name": "Sligo Creek Trail"}) == "Sligo Creek Trail"
     assert trail_routes.way_name({"name": "  "}) is None
     assert trail_routes.way_name({"highway": "path"}) is None
+    # A way with no name of its own takes its route's; its own name wins.
+    assert trail_routes.way_name({"highway": "path"}, "Grist Mill Trail") == "Grist Mill Trail"
+    assert trail_routes.way_name({"name": "Pigs Run"}, "Grist Mill Trail") == "Pigs Run"
 
 
 LAT = 39.0
@@ -209,3 +219,37 @@ class TestColumns:
 )
 def test_a_mountain_bike_way_is_read_from_its_tags(tags, mountain_bike) -> None:
     assert trail_routes.is_mountain_bike_way(tags) is mountain_bike
+
+
+@db
+class TestNameVariants:
+    """One trail is often several OSM names: an extension, a connector, a colour."""
+
+    def test_an_extension_a_connector_and_a_parenthetical_chain_with_the_trail(
+        self, segment_schemas
+    ) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Grist Mill Trail", 0, 1500)
+        piece(staging, 2, "Grist Mill Trail Extension", 1500, 1000)
+        piece(staging, 3, "Grist Mill Trail (Extension)", 2500, 800)
+        piece(staging, 4, "grist mill  trail connector", 3300, 700)
+        trail_routes.derive_trail_runs(staging)
+        got = runs(staging)
+        assert set(got.values()) == {got[1]}
+        assert got[1] == pytest.approx(4000, abs=60)
+
+    def test_different_trails_are_still_different(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Alpha Trail", 0, 1000)
+        piece(staging, 2, "Alpha Trail Loop", 1000, 1000)
+        piece(staging, 3, "Beta Connector", 2000, 1000)
+        trail_routes.derive_trail_runs(staging)
+        got = runs(staging)
+        assert [round(got[i], -2) for i in (1, 2, 3)] == [1000, 1000, 1000]
+
+    def test_a_way_the_route_relation_names_chains_with_its_trail(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Grist Mill Trail", 0, 1500)
+        piece(staging, 2, "Grist Mill Trail", 1500, 1000)  # the name the pipeline fills in
+        trail_routes.derive_trail_runs(staging)
+        assert runs(staging)[1] == pytest.approx(2500, abs=40)

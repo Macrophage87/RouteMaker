@@ -80,6 +80,9 @@ class Routes(NamedTuple):
     levels: dict[int, int]
     # Ways in a route=mtb relation: mountain-bike trails, which never qualify.
     mountain_bike: set[int]
+    # {way id: the name of the route relation it is in}, the highest level's: what
+    # a way with no name of its own is chained by (`way_name`).
+    names: dict[int, str]
 
 
 class RouteMembers(osmium.SimpleHandler):
@@ -90,6 +93,8 @@ class RouteMembers(osmium.SimpleHandler):
         super().__init__()
         self.levels: dict[int, int] = {}
         self.mountain_bike: set[int] = set()
+        self.names: dict[int, str] = {}
+        self._name_levels: dict[int, int] = {}
 
     def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
         if r.tags.get("type") != "route":
@@ -100,22 +105,43 @@ class RouteMembers(osmium.SimpleHandler):
         level = route_level(r.tags.get("route"), r.tags.get("network"))
         if not level:
             return
+        name = r.tags.get("name", "").strip()
         for member in r.members:
-            if member.type == "w" and self.levels.get(member.ref, 0) < level:
+            if member.type != "w":
+                continue
+            if self.levels.get(member.ref, 0) < level:
                 self.levels[member.ref] = level
+            if name and self._name_levels.get(member.ref, 0) < level:
+                self._name_levels[member.ref] = level
+                self.names[member.ref] = name
 
 
 def read_routes(path) -> Routes:
     """The route levels and mountain-bike ways of the extract's route relations."""
     handler = RouteMembers()
     handler.apply_file(str(path))
-    return Routes(handler.levels, handler.mountain_bike)
+    return Routes(handler.levels, handler.mountain_bike, handler.names)
 
 
-def way_name(tags: dict[str, str]) -> str | None:
-    """The way's OSM name, or None when it has none worth chaining by."""
-    name = tags.get("name", "").strip()
+def way_name(tags: dict[str, str], route_name: str | None = None) -> str | None:
+    """The way's OSM name, else the name of the route relation it is in (a way
+    that is part of "Grist Mill Trail" and says nothing itself is still one of its
+    ways), or None when neither has one."""
+    name = tags.get("name", "").strip() or (route_name or "").strip()
     return name or None
+
+
+# What two ways must share to be one trail: the name, lower case, without a
+# trailing parenthetical ("(white)", "(Extension)") and without a trailing
+# Extension or Connector, since OSM names an extension or a connector of a trail
+# after it ("Rock Creek Trail Connector"). Stored names are as OSM has them; this
+# is applied only to chain a run. POSIX classes keep the backslashes out of it.
+NAME_KEY = (
+    "NULLIF(trim(regexp_replace(regexp_replace(regexp_replace(lower({name}), "
+    "'[[:space:]]*[([].*$', ''), "
+    "'[[:space:]]+(extension|extn|connector|connection)$', ''), "
+    "'[[:space:]]+', ' ', 'g')), '')"
+)
 
 
 # The ways a run is made of: those the zoomed-out map would draw, the plain
@@ -127,13 +153,13 @@ FROM (
     SELECT id, round(sum(length_m) OVER (PARTITION BY name_key, chain))::integer AS run_m
     FROM (
         SELECT id,
-               lower({name}) AS name_key,
+               {key} AS name_key,
                ST_Length(geometry::geography) AS length_m,
                ST_ClusterDBSCAN(
                    ST_Transform(geometry, {srid}), eps := {gap}, minpoints := 1
-               ) OVER (PARTITION BY lower({name})) AS chain
+               ) OVER (PARTITION BY {key}) AS chain
         FROM {schema}.segment
-        WHERE {name} IS NOT NULL AND map_class = 'road' AND {trails}
+        WHERE {key} IS NOT NULL AND map_class = 'road' AND {trails}
     ) AS chained
 ) AS runs
 WHERE s.id = runs.id
@@ -152,7 +178,7 @@ def derive_trail_runs(schema: str) -> int:
             _DERIVE_RUNS.format(
                 schema=schema,
                 run=TRAIL_RUN_COLUMN,
-                name=TRAIL_NAME_COLUMN,
+                key=NAME_KEY.format(name=TRAIL_NAME_COLUMN),
                 srid=RUN_PROJECTION_SRID,
                 gap=TRAIL_RUN_GAP_M,
                 trails=trails_predicate(True, True),
