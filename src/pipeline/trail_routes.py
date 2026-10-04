@@ -18,7 +18,8 @@ import osmium
 
 from .schema import (
     ROUTE_ANY_BICYCLE,
-    ROUTE_LONG,
+    ROUTE_LONG_BICYCLE,
+    ROUTE_LONG_WALK,
     TRAIL_NAME_COLUMN,
     TRAIL_RUN_COLUMN,
     TRAIL_RUN_GAP_M,
@@ -43,12 +44,13 @@ RUN_PROJECTION_SRID = 32618
 
 def route_level(route: str | None, network: str | None) -> int:
     """The level a route relation gives its member ways: 0 none, 1 a bicycle
-    route at any network, 2 a bicycle route at a long network or a long walking
-    route. A mountain-bike route is the park's own trail, and gives nothing."""
+    route at a local or no network, 2 a long walking route, 3 a bicycle route at
+    a long network. A mountain-bike route is the park's own trail, and gives
+    nothing."""
     if route == "bicycle":
-        return ROUTE_LONG if network in LONG_BICYCLE_NETWORKS else ROUTE_ANY_BICYCLE
+        return ROUTE_LONG_BICYCLE if network in LONG_BICYCLE_NETWORKS else ROUTE_ANY_BICYCLE
     if route in WALKING_ROUTES and network in LONG_WALKING_NETWORKS:
-        return ROUTE_LONG
+        return ROUTE_LONG_WALK
     return 0
 
 

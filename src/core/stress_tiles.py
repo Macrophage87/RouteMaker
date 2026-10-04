@@ -92,10 +92,9 @@ from pipeline.schema import (
     TRAIL_NETWORK_FACILITY,
     TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
-    Z10_PAVED_RUN_MI,
-    Z10_UNPAVED_RUN_MI,
-    Z11_PAVED_RUN_MI,
-    Z11_UNPAVED_RUN_MI,
+    Z10_LONG_TRAILS,
+    Z11_LONG_TRAILS,
+    LongTrails,
     busy_predicate,
     long_trails_predicate,
     trails_predicate,
@@ -173,11 +172,11 @@ class Level:
     # The predicate drawn from `pipeline.schema`, by (has facility, has car_free),
     # in place of `where`: the trails', or the busy roads'.
     predicate: object = None
-    # (paved run, unpaved run) in miles for the long-trails rule
-    # (`pipeline.schema.long_trails_predicate`), or None to keep every way the
-    # predicate selects. Applied only to a table that has the route and run
-    # columns (LONG_TRAIL_COLUMNS); on one without, today's tiles are drawn.
-    long_trails: tuple[float, float] | None = None
+    # The bars for the long-trails rule (`pipeline.schema.long_trails_predicate`),
+    # or None to keep every way the predicate selects. Applied only to a table
+    # that has the route and run columns (LONG_TRAIL_COLUMNS); on one without,
+    # today's tiles are drawn.
+    long_trails: LongTrails | None = None
 
 
 # The thresholds are the named constants in `pipeline.schema`, from
@@ -190,7 +189,7 @@ TRAILS = Level(
     None,
     merged=True,
     predicate=trails_predicate,
-    long_trails=(Z10_PAVED_RUN_MI, Z10_UNPAVED_RUN_MI),
+    long_trails=Z10_LONG_TRAILS,
 )
 TRAILS_NEAR = Level(
     "trails-near",
@@ -200,7 +199,7 @@ TRAILS_NEAR = Level(
     None,
     merged=True,
     predicate=trails_predicate,
-    long_trails=(Z11_PAVED_RUN_MI, Z11_UNPAVED_RUN_MI),
+    long_trails=Z11_LONG_TRAILS,
 )
 BUSY = Level("busy", BUSY_ROADS_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
 FULL = Level("full", QUIET_STREETS_MIN_ZOOM, 4096, 64, None, merged=False)
@@ -350,7 +349,7 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     if level.predicate is not None:
         where = level.predicate(has_facility, has_car_free)
         if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
-            where = f"({where}) AND {long_trails_predicate(*level.long_trails)}"
+            where = f"({where}) AND {long_trails_predicate(level.long_trails)}"
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them

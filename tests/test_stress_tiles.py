@@ -112,12 +112,12 @@ def segment_schemas(segment_schemas):
 
     The zoomed-out tiles keep only the long trails (OWNER-DECISIONS 375), by
     columns the rows of the tests below do not set; a way on a long route
-    (`trail_route` 2) is kept at every zoom, so these tests are about the
+    (`trail_route` 3) is kept at every zoom, so these tests are about the
     classes and not the rule. TestLongTrails sets the columns itself.
     """
     for name in segment_schemas[:2]:
         with connection.cursor() as cursor:
-            cursor.execute(f"ALTER TABLE {name}.segment ALTER COLUMN trail_route SET DEFAULT 2")
+            cursor.execute(f"ALTER TABLE {name}.segment ALTER COLUMN trail_route SET DEFAULT 3")
     return segment_schemas
 
 
@@ -1323,11 +1323,9 @@ class TestLongTrails:
     def test_the_bars_are_the_owners_decision(self) -> None:
         from pipeline import schema
 
-        assert (schema.Z11_PAVED_RUN_MI, schema.Z11_UNPAVED_RUN_MI) == (3.0, 5.0)
-        assert (schema.Z10_PAVED_RUN_MI, schema.Z10_UNPAVED_RUN_MI) == (5.0, 8.0)
-        assert (schema.PAVED_ROUTE_MIN, schema.UNPAVED_ROUTE_MIN) == (1, 2)
-        assert stress_tiles.TRAILS.long_trails == (5.0, 8.0)
-        assert stress_tiles.TRAILS_NEAR.long_trails == (3.0, 5.0)
+        assert schema.PAVED_ROUTE_MIN == 1
+        assert stress_tiles.TRAILS.long_trails == schema.LongTrails(5.0, 8.0, 3)
+        assert stress_tiles.TRAILS_NEAR.long_trails == schema.LongTrails(3.0, 5.0, 2)
         assert stress_tiles.BUSY.long_trails is stress_tiles.FULL.long_trails is None
 
     @pytest.mark.parametrize(
@@ -1335,7 +1333,8 @@ class TestLongTrails:
         [
             (False, 0, None, False, False),  # no name, no route: a connector
             (False, 1, None, True, True),  # any bicycle route keeps a paved way
-            (False, 2, None, True, True),
+            (False, 2, None, True, True),  # and so does a long walking route
+            (False, 3, None, True, True),
             (False, 0, 2.9, False, False),
             (False, 0, 3.0, False, True),  # z11's bar for a paved run
             (False, 0, 4.9, False, True),
@@ -1344,7 +1343,8 @@ class TestLongTrails:
             (None, 1, None, True, True),
             (True, 0, None, False, False),
             (True, 1, None, False, False),  # a local route is not enough for a dirt trail
-            (True, 2, None, True, True),
+            (True, 2, None, False, True),  # a long walking route: z11 only
+            (True, 3, None, True, True),  # a long bicycle route: both
             (True, 0, 4.9, False, False),
             (True, 0, 5.0, False, True),  # z11's bar for an unpaved run
             (True, 0, 7.9, False, True),
@@ -1396,7 +1396,7 @@ class TestLongTrails:
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
-        insert_trail(live, True, 2, None)
+        insert_trail(live, True, 3, None)
         assert "+cfmstl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
@@ -1415,9 +1415,9 @@ class TestLongTrails:
             assert "segment_overview_geom_idx" in plan
 
     def test_the_rule_is_one_expression_in_the_schema(self) -> None:
-        from pipeline.schema import long_trails_predicate
+        from pipeline.schema import LongTrails, long_trails_predicate
 
-        sql = long_trails_predicate(5.0, 8.0)
-        assert "trail_route >= 2 OR COALESCE(trail_run_m, 0) >= 12875" in sql
+        sql = long_trails_predicate(LongTrails(5.0, 8.0, 3))
+        assert "trail_route >= 3 OR COALESCE(trail_run_m, 0) >= 12875" in sql
         assert "trail_route >= 1 OR COALESCE(trail_run_m, 0) >= 8047" in sql
         assert "is_unpaved IS TRUE" in sql

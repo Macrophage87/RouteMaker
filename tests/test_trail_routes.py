@@ -22,9 +22,9 @@ db = pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
     ("route", "network", "level"),
     [
-        ("bicycle", "icn", 2),
-        ("bicycle", "ncn", 2),
-        ("bicycle", "rcn", 2),
+        ("bicycle", "icn", 3),
+        ("bicycle", "ncn", 3),
+        ("bicycle", "rcn", 3),
         ("bicycle", "lcn", 1),
         ("bicycle", None, 1),
         ("hiking", "US:NST", 2),
@@ -45,7 +45,7 @@ def test_a_route_relation_gives_its_ways_a_level(route, network, level) -> None:
 def test_the_levels_are_the_schemas() -> None:
     from pipeline import schema
 
-    assert (schema.ROUTE_ANY_BICYCLE, schema.ROUTE_LONG) == (1, 2)
+    assert (schema.ROUTE_ANY_BICYCLE, schema.ROUTE_LONG_WALK, schema.ROUTE_LONG_BICYCLE) == (1, 2, 3)
 
 
 def write_extract(path) -> None:
@@ -76,7 +76,7 @@ def test_the_extracts_route_relations_are_read_by_member_way(tmp_path) -> None:
     write_extract(path)
     # The highest level wins on a way in two; a node member, a local walking
     # route, a mountain-bike route and a relation that is not a route give nothing.
-    assert trail_routes.read_routes(path) == {1: 1, 2: 2, 3: 2}
+    assert trail_routes.read_routes(path) == {1: 1, 2: 3, 3: 2}
 
 
 def test_a_way_is_named_by_its_osm_name() -> None:
@@ -162,7 +162,7 @@ class TestColumns:
         stress = StressResult(Stress.LTS1, "trail")
         line = [(-77.0, 38.9), (-77.01, 38.91)]
         rows = [
-            segment_row(1, 0, line, stress, trail_name="Rock Creek Trail", trail_route=2),
+            segment_row(1, 0, line, stress, trail_name="Rock Creek Trail", trail_route=3),
             segment_row(2, 0, line, stress),
         ]
         assert write_segments(staging, rows) == 2
@@ -171,11 +171,11 @@ class TestColumns:
                 f"SELECT osm_way_id, trail_name, trail_route, trail_run_m FROM {staging}.segment "
                 "ORDER BY 1"
             )
-            assert cursor.fetchall() == [(1, "Rock Creek Trail", 2, None), (2, None, 0, None)]
+            assert cursor.fetchall() == [(1, "Rock Creek Trail", 3, None), (2, None, 0, None)]
 
     def test_a_route_level_out_of_range_is_refused(self, segment_schemas) -> None:
         _live, staging = segment_schemas
         stress = StressResult(Stress.LTS1, "trail")
-        row = segment_row(1, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress, trail_route=3)
+        row = segment_row(1, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress, trail_route=4)
         with pytest.raises(utils.IntegrityError):
             write_segments(staging, [row])

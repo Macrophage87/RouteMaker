@@ -14,6 +14,7 @@ make the rename impossible.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from django.db import connection
 
@@ -195,9 +196,9 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 # rebuild (`pipeline.trail_routes`) and read from OSM:
 #
 # - `trail_route`: the way is a member of an OSM route relation. 0 none; 1 a
-#   bicycle route at any network (a local one included); 2 a bicycle route at a
-#   regional, national or international network, or a long-distance walking
-#   route (US:NST, national or regional).
+#   bicycle route at a local network, or none; 2 a long-distance walking route
+#   (US:NST, or a national, regional or international walking network); 3 a
+#   bicycle route at a regional, national or international network.
 # - `trail_run_m`: the length in metres of the way's named run, the ways of that
 #   name (case-insensitive) that chain end to end across the region, within
 #   TRAIL_RUN_GAP_M of one another so a road crossing does not break a trail in
@@ -206,42 +207,58 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 #   Columbia's paths are one network. Null on a way with no name.
 #
 # A way is kept at a level when its route level is at least the bar for its
-# surface, or its run is at least that level's length: an unpaved way must clear
+# surface, or its run is at least that level's length. An unpaved way must clear
 # a higher bar, which is what drops the Patapsco tangles and keeps the Grist
-# Mill and Torrey C. Brown trails. An unknown surface is read as paved, as the
-# map reads it. Measured on the 2026-10-03 build (docs/OPERATIONS.md): of the
-# 5,461 miles of path drawn at z10-11 before, z11 keeps 1,238 and z10 keeps
-# 1,049, and the Columbia and Patapsco box 311 miles, down to 66 and 23.
+# Mill and Torrey C. Brown trails; at z10 an unpaved way needs a long bicycle
+# route, since a walking route is mostly a park's own trail (the Patapsco
+# Traverse and the Howard County Thru Trail are regional walking routes). An
+# unknown surface is read as paved, as the map reads it.
 TRAIL_NAME_COLUMN = "trail_name"
 TRAIL_ROUTE_COLUMN = "trail_route"
 TRAIL_RUN_COLUMN = "trail_run_m"
 ROUTE_ANY_BICYCLE = 1
-ROUTE_LONG = 2
-# The route level a paved way and an unpaved way each need (OWNER-DECISIONS 375).
+ROUTE_LONG_WALK = 2
+ROUTE_LONG_BICYCLE = 3
+# The route level a paved way needs, at every zoom (OWNER-DECISIONS 375).
 PAVED_ROUTE_MIN = ROUTE_ANY_BICYCLE
-UNPAVED_ROUTE_MIN = ROUTE_LONG
 # Same-named ways within this many metres chain into one run.
 TRAIL_RUN_GAP_M = 400
 METRES_PER_MILE = 1609.344
-# A run the length of these, by surface, keeps a way without a route
-# (OWNER-DECISIONS 375). z11 and z10 differ: the further out, the longer.
+# A run the length of these, by surface, keeps a way that is not on a route
+# (OWNER-DECISIONS 375). z11 and z10 differ: the further out, the longer, and
+# an unpaved way needs a long bicycle route at z10 and any long route at z11.
 Z11_PAVED_RUN_MI = 3.0
 Z11_UNPAVED_RUN_MI = 5.0
+Z11_UNPAVED_ROUTE_MIN = ROUTE_LONG_WALK
 Z10_PAVED_RUN_MI = 5.0
 Z10_UNPAVED_RUN_MI = 8.0
+Z10_UNPAVED_ROUTE_MIN = ROUTE_LONG_BICYCLE
 
 
-def long_trails_predicate(paved_run_mi: float, unpaved_run_mi: float) -> str:
+@dataclass(frozen=True)
+class LongTrails:
+    """One zoom's bars for a path to count as a long trail."""
+
+    paved_run_mi: float
+    unpaved_run_mi: float
+    unpaved_route_min: int
+
+
+Z11_LONG_TRAILS = LongTrails(Z11_PAVED_RUN_MI, Z11_UNPAVED_RUN_MI, Z11_UNPAVED_ROUTE_MIN)
+Z10_LONG_TRAILS = LongTrails(Z10_PAVED_RUN_MI, Z10_UNPAVED_RUN_MI, Z10_UNPAVED_ROUTE_MIN)
+
+
+def long_trails_predicate(rule: LongTrails) -> str:
     """The long trails' condition, on a table with the route and run columns:
     a way on a route of a high enough level for its surface, or in a named run
     long enough for it. Written for the tile query alone; the overview index
     is built on the plain trails' predicate, which this implies when ANDed."""
-    paved_m = round(paved_run_mi * METRES_PER_MILE)
-    unpaved_m = round(unpaved_run_mi * METRES_PER_MILE)
+    paved_m = round(rule.paved_run_mi * METRES_PER_MILE)
+    unpaved_m = round(rule.unpaved_run_mi * METRES_PER_MILE)
     run = f"COALESCE({TRAIL_RUN_COLUMN}, 0)"
     return (
         f"(CASE WHEN is_unpaved IS TRUE "
-        f"THEN ({TRAIL_ROUTE_COLUMN} >= {UNPAVED_ROUTE_MIN} OR {run} >= {unpaved_m}) "
+        f"THEN ({TRAIL_ROUTE_COLUMN} >= {rule.unpaved_route_min} OR {run} >= {unpaved_m}) "
         f"ELSE ({TRAIL_ROUTE_COLUMN} >= {PAVED_ROUTE_MIN} OR {run} >= {paved_m}) END)"
     )
 
@@ -409,11 +426,11 @@ CREATE TABLE {schema}.segment (
     attr_sources    jsonb,
     -- The long trails (`trail_route`, `trail_run_m`; OWNER-DECISIONS 375): what
     -- the zoomed-out tiles keep a path for. `trail_name` is the way's OSM name,
-    -- `trail_route` the level of the route relation it is in (0-2) and
+    -- `trail_route` the level of the route relation it is in (0-3) and
     -- `trail_run_m` the length of its named run, set after the rows are
     -- written (`pipeline.trail_routes.derive_trail_runs`).
     trail_name      text,
-    trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 2),
+    trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 3),
     trail_run_m     integer,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
