@@ -114,10 +114,13 @@ const line = (y: number, stroke: string, strokeWidth: number, strokeDasharray?: 
   h("line", { x1: X1, y1: y, x2: X2, y2: y, stroke, strokeWidth, strokeDasharray });
 
 /** A tier's swatch: its casing, its gap colour where it is dashed (OWNER-DECISIONS 356), then its line with its dash, at the map's widths. */
-export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
+export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number; ring?: number } }): ReactElement {
+  // The ring outside the casing (371): the map's near-black one, or the legend's own (Avoid's grey).
+  const ring = tier.ring ?? tier.legendRing;
   return h(
     "svg",
     { width: SVG_WIDTH, height: 12, "aria-hidden": "true" },
+    ring ? line(6, ring, widths.ring ?? widths.casing + 2) : null,
     line(6, tier.casing, widths.casing),
     tier.dash ? line(6, tier.gap ?? tier.casing, widths.line) : null,
     line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),

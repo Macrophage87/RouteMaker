@@ -122,9 +122,11 @@ export const PALETTES = {
   twotone: {
     1: { color: "#9ed3ac", casing: "#2f5d47" },
     2: { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" },
-    3: { color: "#f2c21b", casing: "#f28c28" },
-    4: { color: "#f28c28", casing: "#c81e1e" },
-    5: { color: "#d42020", casing: "#111111" },
+    // 371: the yellow a shade lighter (#f2c21b before), so LTS 3 and LTS 4 are 1.4:1 apart for a deuteranope;
+    // LTS 3 and LTS 4 ringed in near-black, so both are 3:1 on the base map; Avoid ringed in the legend only.
+    3: { color: "#f3c81a", casing: "#f28c28", ring: "#1c1917" },
+    4: { color: "#f28c28", casing: "#c81e1e", ring: "#1c1917" },
+    5: { color: "#d42020", casing: "#111111", legendRing: "#9aa0a6" },
   },
   cvd: {
     1: { color: "#d2eafc", casing: "#0a1a2f" },
@@ -354,7 +356,7 @@ export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = curr
  *   or more from it at every step under normal vision.
  * - twotone (the default): greyer browns (taupe), because that palette's paved
  *   LTS 3 is a yellow (#f2c21b) a warm tan would sit on (6 CIEDE2000 under
- *   deuteranopia). Its LTS 1 is a pale taupe (#e8dad0; 350): #d4bba6 was 9.1
+ *   deuteranopia). Its LTS 1 is a pale taupe (#e6dad4; 350, 371): #d4bba6 was 9.1
  *   from the yellow under tritanopia. Every step is 22 or more from the yellow
  *   under normal vision and 15 or more under every vision.
  * - cvd: an ochre-olive ramp on the yellow side of the blue-yellow axis all
@@ -375,7 +377,7 @@ export const UNPAVED_PALETTES = {
     5: { color: "#2e2118", casing: "#f6ead2" },
   },
   twotone: {
-    1: { color: "#e8dad0", casing: "#33231a" },
+    1: { color: "#e6dad4", casing: "#33231a" },
     2: { color: "#ac8b73", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#7d604b", casing: "#f6ead2" },
     4: { color: "#53392a", casing: "#f6ead2" },
@@ -742,6 +744,7 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
     if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
+    if (hasRingLayer(tier.tier)) filters[`stress-ring-${tier.tier}`] = [...filter, ["!=", ["get", "unpaved"], true]];
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
   }
   for (const facility of FACILITIES) {
@@ -834,6 +837,55 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     filter: filters[`stress-casing-${tier.tier}`],
     paint: casingPaint(tier),
   }));
+}
+
+/**
+ * The two-tone default's outer ring (OWNER-DECISIONS 371, on the final preview: the
+ * "thin near-black outer ring" proposed for 351's 3:1 break). Two-tone LTS 3 (yellow on
+ * orange) and LTS 4 (orange on red) are not 3:1 from the light base map, line or edge;
+ * a near-black ring a pixel wide outside the edge is (13:1 and more from every surface,
+ * and 3:1 or more from the orange and red edges it rings), and keeps both of the owner's
+ * colours. Drawn on the map (`ringLayers`, under everything else of the overlay, so a
+ * facility rail still shows over it), round the route's sections (`route-ring`) and in
+ * the legend's swatches. Paved roads only: an unpaved one is the brown ramp, which is 3:1
+ * on its own casing. Not drawn where the line is faint (z12-13), which keeps its own edge.
+ * A tier with no `ring` has its ring layer drawn transparent, so a palette flip needs no
+ * new layer.
+ *
+ * `legendRing`: the same idea for the legend alone, where Avoid's red on its near-black
+ * edge is 2.76:1 on the dark theme's soft panel (351's last 3:1 break): a mid-grey ring
+ * round the Avoid swatch (5.7:1 from that panel, 7.4:1 from the edge). The map is light,
+ * and Avoid's edge is already 3:1 there, so the map has no such ring.
+ */
+export const RING_COLOUR = "#1c1917";
+export const LEGEND_RING_COLOUR = "#9aa0a6";
+
+/** A ring's width: a pixel each side of the casing. */
+export function ringWidth(tier) {
+  return casingWidth(tier) + 2;
+}
+
+/** Whether a tier has a ring in some palette: only those get a ring layer. */
+export function hasRingLayer(tier) {
+  return Object.values(PALETTES).some((p) => p[tier].ring);
+}
+
+export function ringLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  return tiers
+    .filter((tier) => hasRingLayer(tier.tier))
+    .map((tier) => ({
+      id: `stress-ring-${tier.tier}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: filters[`stress-ring-${tier.tier}`],
+      paint: {
+        "line-color": tier.ring ?? "rgba(0, 0, 0, 0)",
+        "line-width": ringWidth(tier),
+        "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
+      },
+    }));
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
@@ -986,7 +1038,7 @@ export const LEGEND_SWATCH_PX = 64;
 export function legendWidths(tiers = currentTiers()) {
   const base = tiers[0];
   return {
-    tiers: tiers.map((tier) => ({ tier: tier.tier, line: tier.width, casing: casingWidth(tier) })),
+    tiers: tiers.map((tier) => ({ tier: tier.tier, line: tier.width, casing: casingWidth(tier), ring: ringWidth(tier) })),
     facilityCasing: casingWidth(base),
     rails: Object.fromEntries(FACILITIES.map((facility) => [facility.facility, facilityWidth(facility, base.width, base.casingExtra, base.strong)])),
   };
@@ -1021,6 +1073,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
+    ...ringLayers(sourceId, when, tiers),
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
     ...gapLayers(sourceId, when, tiers),
@@ -1031,7 +1084,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
 
 /** Legend entries, which carry the label the colour alone cannot. */
 export function legend(tiers = currentTiers()) {
-  return tiers.map(({ tier, short, label, color, dash, width, casing, gap }) => ({
+  return tiers.map(({ tier, short, label, color, dash, width, casing, gap, ring, legendRing }) => ({
     tier,
     short,
     label,
@@ -1040,5 +1093,7 @@ export function legend(tiers = currentTiers()) {
     width,
     casing,
     gap,
+    ring,
+    legendRing,
   }));
 }

@@ -6,6 +6,7 @@ import {
   stressLayers,
   stressCasingLayers,
   gapLayers,
+  ringLayers,
   stressOverlayLayers,
   unpavedLayers,
   legend,
@@ -228,7 +229,11 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const marks = unpavedLayers("s").map((l) => l.id);
   const gaps = gapLayers("s").map((l) => l.id);
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
-  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings, ...gaps, ...marks].sort(), "each layer once");
+  const rings = ringLayers("s").map((l) => l.id);
+  assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
+  assert.deepEqual([...ids].sort(), [...rings, ...rails, ...tiers, ...casings, ...gaps, ...marks].sort(), "each layer once");
+  // The rings under everything, so a rail still shows over them.
+  assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
   assert.ok(ids.indexOf("stress-casing-2") < ids.indexOf("stress-gap-2") && ids.indexOf("stress-gap-2") < ids.indexOf("stress-2"));
   assert.ok(Math.min(...marks.map((m) => ids.indexOf(m))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the surface mark is drawn over every tier line");
@@ -343,8 +348,8 @@ test("a road closed to cars for good draws as an off-road path in every ride tim
 test("a road closed on weekends is a path on weekends and its own road otherwise", () => {
   const sligo = { tier: 3, facility: "none", car_free: "weekend" };
   assert.deepEqual(drawnBy("weekend", sligo), ASPATH);
-  assert.deepEqual(drawnBy("weekday_offpeak", sligo), ["stress-3", "stress-casing-3"]);
-  assert.deepEqual(drawnBy("weekday_rush", sligo), ["stress-3", "stress-casing-3"]);
+  assert.deepEqual(drawnBy("weekday_offpeak", sligo), ["stress-3", "stress-casing-3", "stress-ring-3"]);
+  assert.deepEqual(drawnBy("weekday_rush", sligo), ["stress-3", "stress-casing-3", "stress-ring-3"]);
   const withLane = { tier: 2, facility: "lane", car_free: "weekend" };
   assert.deepEqual(drawnBy("weekday_offpeak", withLane), ["facility-lane", "stress-2", "stress-casing-2", "stress-gap-2"]);
   assert.deepEqual(drawnBy("weekend", withLane), ASPATH);
@@ -465,7 +470,8 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
     assert.deepEqual(Object.keys(palette).sort(), ["1", "2", "3", "4", "5"]);
   }
   // Two-tone: the first colour the line, the second its casing.
-  assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f2c21b", "#f28c28"]);
+  // 371: the yellow a shade lighter (#f2c21b before).
+  assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f3c81a", "#f28c28"]);
   // LTS 4's red casing is a shade deeper than Avoid's red line, so LTS 3's gaps are no harsher than
   // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
   assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);

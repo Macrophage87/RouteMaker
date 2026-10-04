@@ -10,6 +10,7 @@ import {
   facilityWidthAt,
   stressCasingLayers,
   gapLayers,
+  ringLayers,
   stressFilters,
   stressLayers,
   stressOverlayLayers,
@@ -90,7 +91,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
   for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
@@ -149,6 +150,7 @@ export function setRouteSections(
   map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
   map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
   map.setPaintProperty("route-halo", "line-opacity", paint.haloOpacity);
+  map.setPaintProperty("route-ring", "line-opacity", paint.haloOpacity);
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
 }

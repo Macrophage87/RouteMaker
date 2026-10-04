@@ -753,13 +753,14 @@ LTS 1 and 2 are as they were in colour (their edges changed with items 356 and
 Two readings were built for the owner to choose between, and since item 351
 ("2 tone is better", "Make two-tone the default") the default is `twotone` (the
 first colour as the line, the second as its casing: LTS 3 yellow #f2c21b on
-orange #f28c28, LTS 4 orange on red #c81e1e, Avoid red #d42020 on #111111),
+orange #f28c28, LTS 4 orange on red #c81e1e, both ringed in near-black #1c1917 since item
+371, which also lightened the yellow to #f3c81a; Avoid red #d42020 on #111111),
 which needs no address parameter. `blended`, the default before (LTS 3 amber,
 #bf730b, over a dark amber-brown casing, #45290a; LTS 4 a saturated red,
 #c80018, over white; Avoid a near-black, #14040a, over a coral-red casing,
 #ee3b2c, since item 274), is still there as `?palette=warm`, and the
 Accessibility switch's palette is still `cvd` (`?palette=cool`). The two-tone
-LTS 3 and LTS 4 are not 3:1 on the base map and the greyscale order is lost; the
+LTS 3 and LTS 4 reach 3:1 on the base map by their ring; the greyscale order is lost; the
 owner's colours are kept and the breaks reported (docs/DEVELOPMENT.md, "The
 default palette (351)"). The blended palette keeps every tier 3:1 on the base map
 and the greyscale order; LTS 2 and 3 are only 1.17:1 apart in grey and one olive

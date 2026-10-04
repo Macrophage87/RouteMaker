@@ -34,6 +34,10 @@ export interface RouteClass {
   width: number;
   /** The halo's width: a pixel wider each side than `width`. */
   haloWidth: number;
+  /** The near-black ring outside the halo (OWNER-DECISIONS 371: two-tone LTS 3 and 4), or none. */
+  ring?: string;
+  /** Its width: a pixel wider each side than `haloWidth`. */
+  ringWidth?: number;
 }
 
 /**
@@ -104,7 +108,7 @@ export function routeClasses(): readonly RouteClass[] {
       width: ROUTE_SECTION_WIDTHS.path,
       haloWidth: ROUTE_SECTION_WIDTHS.path + ROUTE_HALO_EXTRA,
     },
-    ...tiers.map((tier: { tier: number; short: string; label: string; color: string; casing: string }) => ({
+    ...tiers.map((tier: { tier: number; short: string; label: string; color: string; casing: string; ring?: string }) => ({
       key: String(tier.tier) as RouteClassKey,
       short: tier.short,
       label: tier.label,
@@ -112,6 +116,7 @@ export function routeClasses(): readonly RouteClass[] {
       halo: tier.casing,
       width: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + ROUTE_HALO_EXTRA,
+      ...(tier.ring ? { ring: tier.ring, ringWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + 2 * ROUTE_HALO_EXTRA } : {}),
     })),
     // Unpaved, in the one brown ramp, light to dark (OWNER-DECISIONS 302): the
     // tier's width, its unpaved casing as the halo, and the dotted mark over it
@@ -172,6 +177,8 @@ export interface RouteSection {
   halo: string;
   width: number;
   haloWidth: number;
+  ring?: string;
+  ringWidth?: number;
   coordinates: LonLat[];
 }
 
@@ -237,7 +244,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -255,6 +262,9 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
         halo: section.halo,
         width: section.width,
         haloWidth: section.haloWidth,
+        // The near-black ring outside the halo (371), transparent where the class has none.
+        ring: section.ring ?? "rgba(0, 0, 0, 0)",
+        ringWidth: section.ringWidth ?? 0,
         // The dotted unpaved mark (MapView's route-unpaved layer draws only these).
         unpaved: isUnpavedClass(section.key),
         markWidth: routeMarkWidth(section.width),

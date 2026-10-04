@@ -31,7 +31,7 @@ import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
 import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 
 /** The default (two-tone, OWNER-DECISIONS 351) is held here to everything but the 3:1 breaks the owner's colours make, which defaultPalette.test.ts holds exactly. */
-const reportedFor = (palette: string): readonly string[] => (palette === DEFAULT_PALETTE ? DEFAULT_CONFLICTS.belowThreeToOne : []);
+const reportedFor = (palette: string): readonly string[] => (palette === DEFAULT_PALETTE ? DEFAULT_CONFLICTS.lineOnEdgeBelowThreeToOne : []);
 const notReported = (palette: string, failures: string[]) => failures.filter((f) => !reportedFor(palette).some((short) => f.startsWith(`${short} `)));
 
 type Tier = ReturnType<typeof tiersFor>[number];
@@ -81,7 +81,9 @@ function panelBackgrounds(): string[] {
 function legible(tier: Tier, under: string): number {
   const direct = contrastRatio(tier.color, under);
   const cased = Math.min(contrastRatio(tier.casing, under), contrastRatio(tier.color, tier.casing));
-  return Math.max(direct, cased);
+  // A ring outside the casing (two-tone LTS 3 and 4, OWNER-DECISIONS 371): 3:1 from the surface and from the casing it rings.
+  const ringed = tier.ring ? Math.min(contrastRatio(tier.ring, under), contrastRatio(tier.ring, tier.casing)) : 0;
+  return Math.max(direct, cased, ringed);
 }
 
 test("the premise: the surfaces were found, parkland among them", () => {

@@ -25,7 +25,15 @@ const STRENGTHS = [false, true];
 const PANELS = ["#ffffff", "#1b1e24", "#f3f4f6", "#262a32"]; // styles.css --bg and --bg-soft, light and dark
 const chroma = (hex: string) => Math.hypot(lab(hex)[1], lab(hex)[2]);
 const worst = (a: string, b: string) => Math.min(...VISIONS.map((v) => deltaE2000(simulate(a, v), simulate(b, v))));
-const legible = (t: Tier, under: string) => Math.max(contrastRatio(t.color, under), Math.min(contrastRatio(t.casing, under), contrastRatio(t.color, t.casing)));
+/** Legible over a colour: the line, or its edge with the line on it, or its ring (371) with the edge inside it. `legend` counts the legend's own ring too. */
+const legible = (t: Tier, under: string, legend = false) => {
+  const ring = t.ring ?? (legend ? t.legendRing : undefined);
+  return Math.max(
+    contrastRatio(t.color, under),
+    Math.min(contrastRatio(t.casing, under), contrastRatio(t.color, t.casing)),
+    ring ? Math.min(contrastRatio(ring, under), contrastRatio(ring, t.casing)) : 0,
+  );
+};
 const coverage = (dash: number[] | null) => (dash ? dash.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / dash.reduce((a, b) => a + b, 0) : 1);
 const SURFACES = Object.entries(LIGHT as unknown as Record<string, unknown>)
   .filter(([k, v]) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) && /^(background|earth|park_|wood_|scrub_|hospital|industrial|school|pedestrian|water|minor|major$|buildings)/.test(k) && !k.includes("casing"))
@@ -40,9 +48,10 @@ test("the default is the two-tone palette, the warm one is still there, and the 
   // The owner's colours, as 351 lists them (LTS 4's edge is #c81e1e, which 292 chose over #d42020; reported).
   assert.deepEqual(PALETTES.twotone[1], { color: "#9ed3ac", casing: "#2f5d47" }, "LTS 1's softer edge (357)");
   assert.deepEqual(PALETTES.twotone[2], { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" }, "LTS 2's blue edge and gaps (356)");
-  assert.deepEqual(PALETTES.twotone[3], { color: "#f2c21b", casing: "#f28c28" });
-  assert.deepEqual(PALETTES.twotone[4], { color: "#f28c28", casing: "#c81e1e" });
-  assert.deepEqual(PALETTES.twotone[5], { color: "#d42020", casing: "#111111" });
+  // 371: the yellow #f3c81a (#f2c21b before), and the rings.
+  assert.deepEqual(PALETTES.twotone[3], { color: "#f3c81a", casing: "#f28c28", ring: "#1c1917" });
+  assert.deepEqual(PALETTES.twotone[4], { color: "#f28c28", casing: "#c81e1e", ring: "#1c1917" });
+  assert.deepEqual(PALETTES.twotone[5], { color: "#d42020", casing: "#111111", legendRing: "#9aa0a6" });
 });
 
 test("held: ink rises strictly from LTS 1 to Avoid (283) and harshness from LTS 1 to Avoid (292, 356), plain and strong", (t) => {
@@ -67,16 +76,19 @@ test("held: paved LTS 3 is 20 CIEDE2000 or more from every unpaved step (normal 
   }
 });
 
-test("held: the calm tiers, Avoid and the unpaved browns are 3:1 on the base map; reported: LTS 3 and LTS 4 are not (351)", (t) => {
+test("held: every tier is 3:1 on the base map and the light panel, LTS 3 and LTS 4 by their ring (371); reported: the line on its own edge", (t) => {
   for (const strong of STRENGTHS) {
     const tiers = tiersFor(DEFAULT_PALETTE, strong) as Tier[];
-    const failing = new Set<string>();
-    for (const tier of tiers) {
-      for (const under of [...SURFACES, "#ffffff"]) if (legible(tier, under) < 3) failing.add(tier.short);
-      if (tier.tier >= 3 && contrastRatio(tier.color, tier.casing) < 3) failing.add(tier.short);
-    }
-    t.diagnostic(`${strong ? "strong" : "plain"}: ` + tiers.map((x) => `${x.short} line on edge ${contrastRatio(x.color, x.casing).toFixed(2)}:1, on the earth ${legible(x, LIGHT.earth as string).toFixed(2)}:1`).join("; "));
-    assert.deepEqual([...failing].sort(), [...DEFAULT_CONFLICTS.belowThreeToOne].sort());
+    const failures: string[] = [];
+    for (const tier of tiers) for (const under of [...SURFACES, "#ffffff"]) if (legible(tier, under) < 3) failures.push(`${tier.short} on ${under}`);
+    assert.deepEqual(failures, [], strong ? "strong" : "plain");
+    const onEdge = tiers.filter((x) => x.tier >= 3 && contrastRatio(x.color, x.casing) < 3).map((x) => x.short);
+    t.diagnostic(`${strong ? "strong" : "plain"}: ` + tiers.map((x) => `${x.short} line on edge ${contrastRatio(x.color, x.casing).toFixed(2)}:1, worst on the map ${Math.min(...SURFACES.map((u) => legible(x, u))).toFixed(2)}:1`).join("; "));
+    assert.deepEqual(onEdge, [...DEFAULT_CONFLICTS.lineOnEdgeBelowThreeToOne]);
+  }
+  // The ring itself: 3:1 or more from every surface and from the edge it rings.
+  for (const tier of (tiersFor(DEFAULT_PALETTE) as Tier[]).filter((x) => x.ring)) {
+    assert.ok(Math.min(...SURFACES.map((u) => contrastRatio(tier.ring!, u))) >= 3 && contrastRatio(tier.ring!, tier.casing) >= 3, tier.short);
   }
 });
 
@@ -89,7 +101,7 @@ test("reported: greyscale order (LTS 3 the lightest, LTS 4 lighter than LTS 2), 
   for (let i = 1; i < tiers.length; i += 1) assert.ok(contrastRatio(tiers[i].color, tiers[i - 1].color) >= 1.4, `${tiers[i - 1].short}-${tiers[i].short}`);
 });
 
-test("reported: for a deuteranope only LTS 3 and LTS 4 are under 1.4:1 apart in grey (351)", (t) => {
+test("held since 371: for a deuteranope no neighbouring tiers are under 1.4:1 apart in grey (LTS 2-3 not held)", (t) => {
   const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
   const close: string[][] = [];
   for (let i = 1; i < tiers.length; i += 1) {
@@ -108,14 +120,15 @@ test("reported: 274's salience - LTS 4 is not more saturated than LTS 3; held: i
   assert.ok(on(lts3.color) < on(lts4.color) && on(lts4.color) < on(avoid.color));
 });
 
-test("Avoid against LTS 4: held - the dash-dot, the width and the edge (3:1 apart); reported - the lines 17.8 apart under deuteranopia, and Avoid on the dark soft panel (351)", (t) => {
+test("Avoid against LTS 4: held - the dash-dot, the width and the edge (3:1 apart); reported - the lines 17.8 apart under deuteranopia; held - Avoid on every panel with the legend's ring (351, 371)", (t) => {
   const [lts4, avoid] = [tiersFor(DEFAULT_PALETTE)[3], tiersFor(DEFAULT_PALETTE)[4]] as Tier[];
   assert.ok(avoid.dash!.length > lts4.dash!.length && avoid.width >= lts4.width * 1.15);
   assert.ok(contrastRatio(avoid.casing, lts4.casing) >= 3);
   t.diagnostic(`lines ${VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts4.color, v), simulate(avoid.color, v)).toFixed(1)}`).join(", ")}`);
   assert.equal(worst(lts4.color, avoid.color) < 20, DEFAULT_CONFLICTS.avoidNearLts4);
-  const dark = PANELS.filter((bg) => legible(avoid, bg) < 3);
-  t.diagnostic(PANELS.map((bg) => `${bg} ${legible(avoid, bg).toFixed(2)}:1`).join(", "));
+  // In the legend, with its own ring (371).
+  const dark = PANELS.filter((bg) => legible(avoid, bg, true) < 3);
+  t.diagnostic(PANELS.map((bg) => `${bg} ${legible(avoid, bg, true).toFixed(2)}:1 (${legible(avoid, bg).toFixed(2)}:1 without the legend ring)`).join(", "));
   assert.deepEqual(dark, [...DEFAULT_CONFLICTS.avoidOnDarkPanel]);
 });
 

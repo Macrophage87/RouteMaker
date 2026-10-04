@@ -39,6 +39,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
               <li key={row.key}>
                 <svg width="36" height="14" aria-hidden="true">
                   <line x1="3" y1="7" x2="33" y2="7" stroke={casing} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
+                  {row.ring && <line x1="3" y1="7" x2="33" y2="7" stroke={row.ring} strokeWidth={row.ringWidth} strokeLinecap="round" />}
                   <line x1="3" y1="7" x2="33" y2="7" stroke={row.halo} strokeWidth={row.haloWidth} strokeLinecap="round" />
                   <line x1="3" y1="7" x2="33" y2="7" stroke={row.color} strokeWidth={row.width} strokeLinecap="round" />
                 </svg>

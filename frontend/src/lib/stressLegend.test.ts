@@ -143,7 +143,14 @@ test("each tier's swatch draws its casing, then its line with its dash, at the m
       const rows = swatches(legendHtml()).slice(0, tiers.length);
       tiers.forEach((tier, i) => {
         // Casing, then (for a tier with a gap colour of its own, LTS 2, OWNER-DECISIONS 356) the gap line, then the dashed line.
-        const [casing, ...rest] = rows[i].lines;
+        // A ring first where the tier has one (371: two-tone LTS 3 and 4, and the legend's own round Avoid).
+        const ringed = tier.ring ?? tier.legendRing;
+        const all = rows[i].lines;
+        if (ringed) {
+          assert.equal(all[0].stroke, ringed, `${tier.short} ring`);
+          assert.equal(Number(all[0]["stroke-width"]), widths.tiers[i].ring);
+        }
+        const [casing, ...rest] = ringed ? all.slice(1) : all;
         const line = rest.at(-1)!;
         if (tier.dash && tier.gap !== tier.casing) {
           assert.equal(rest.length, 2, `${tier.short}: a gap line`);

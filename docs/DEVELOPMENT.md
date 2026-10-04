@@ -654,11 +654,22 @@ exactly these breaks (one more fails, and so does one fewer):
 | --- | --- | --- | --- | --- | --- |
 | LTS 1 | #9ed3ac | #2f5d47 | (solid) | 0 | 4.42:1 |
 | LTS 2 | #57a06c | #1a2638 | #7a8fa3 | 0.21 | 4.82:1 |
-| LTS 3 | #f2c21b | #f28c28 | the edge | 0.24 | 1.44:1 |
-| LTS 4 | #f28c28 | #c81e1e | the edge | 0.26 | 2.34:1 |
+| LTS 3 | #f3c81a | #f28c28, ringed #1c1917 | the edge | 0.25 | 7.13:1 |
+| LTS 4 | #f28c28 | #c81e1e, ringed #1c1917 | the edge | 0.26 | 3.05:1 |
 | Avoid | #d42020 | #111111 | the edge | 0.97 | 3.20:1 |
 
-What two-tone breaks, with the smallest tweak that would mend each (none applied):
+**371** (the owner, on the final preview: "Apply both"): the near-black ring and the
+yellow #f3c81a are applied. The ring (#1c1917, a pixel outside the edge) is drawn on the
+map (`ringLayers`, under the rest of the overlay, paved roads only, not at the faint
+zooms), round the route's sections (`route-ring`) and in both legends; Avoid gets a
+legend-only grey ring (#9aa0a6, `legendRing`), 3:1 on the dark soft panel. Two-tone's
+unpaved LTS 1 moved to #e6dad4 to stay 15 from the lighter yellow. What the ring mends and
+what it does not, item by item below: 3:1 on the base map (mended), LTS 3-4 for a
+deuteranope (mended by the yellow, 1.44:1), Avoid on the dark panel (mended by the legend
+ring); greyscale order, 274's salience and Avoid against LTS 4 under deuteranopia are left,
+with the line on its own edge inside the ring (1.53:1, 2.34:1).
+
+What two-tone breaks, as first reported for 351, with the smallest tweak proposed:
 
 - **3:1 (WCAG 1.4.11), LTS 3 and LTS 4.** The yellow on its orange edge is 1.46:1
   and the orange on its red edge 2.34:1, and neither the line nor the edge is 3:1
