@@ -317,6 +317,11 @@ PHOTON_LANGUAGES = ("en",)
 DISK_GATE_FRACTION = 0.8
 REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024**3))
 
+# OWNER-DECISIONS 355: "Pause until our rebuild". With this set to 1 or true the
+# scheduled Tuesday rebuild logs that it is paused and does nothing; a rebuild fired
+# by hand (`run_rebuild_now`) still runs, and the cron schedule is unchanged.
+WEEKLY_REBUILD_PAUSED = os.environ.get("WEEKLY_REBUILD_PAUSED", "").strip().lower() in {"1", "true"}
+
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached
 # the graph, because a street tagged with a plain painted lane in OSM only

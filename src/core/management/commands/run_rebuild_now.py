@@ -93,7 +93,9 @@ class Command(BaseCommand):
             # unix time to a scheduled run; a hand-fired one passes now, so the
             # argument means the same thing in both cases and the job row reads
             # as what it is rather than as `timestamp=0`.
-            job_id = rebuild.defer(timestamp=int(time.time()))
+            # `manual`: a hand-fired rebuild runs while the weekly one is paused
+            # (WEEKLY_REBUILD_PAUSED, OWNER-DECISIONS 355).
+            job_id = rebuild.defer(timestamp=int(time.time()), manual=True)
         except AlreadyEnqueued as already:
             # The race the pre-flight above cannot close: another operator, or
             # the Tuesday tick, deferring between the read and the insert. The

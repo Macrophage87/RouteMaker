@@ -66,9 +66,12 @@ def test_the_command_queues_one_job_on_the_rebuild_queue() -> None:
     assert job.queue_name == "rebuild"
     assert job.status == "todo"
     assert job.queueing_lock == "weekly_rebuild"
-    assert set(job.args) == {"timestamp"}, (
-        f"the periodic task takes a timestamp and the job carries {job.args}; a job "
-        "deferred with the wrong arguments fails on the worker, not here"
+    assert set(job.args) == {"timestamp", "manual"}, (
+        f"the periodic task takes a timestamp (and `manual`, OWNER-DECISIONS 355) and the job "
+        f"carries {job.args}; a job deferred with the wrong arguments fails on the worker, not here"
+    )
+    assert job.args["manual"] is True, (
+        "a hand-fired rebuild runs while the weekly one is paused (355)"
     )
     assert job.args["timestamp"] > 0, (
         "a hand-fired run passes the time it was fired, so the row reads as what it is"
