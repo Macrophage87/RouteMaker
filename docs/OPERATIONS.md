@@ -642,7 +642,7 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
 | --- | --- | --- |
-| 10-11 | only the long traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`, then `long_trails_predicate`: below); one feature per class, simplified | miles of path drawn, region-wide (Columbia and Patapsco box): z10-11 before 5,461 (311), z11 now 1,238 (66), z10 now 1,049 (23); from the 2026-10-03 build, ZOOMED-TRAILS-dev.md |
+| 10-11 | only the long traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`, then `long_trails_predicate`: below); one feature per class, simplified | miles of path drawn, region-wide (Columbia and Patapsco box): z10-11 before 5,461 (311), z11 now 997 (16), z10 now 882 (15); from the 2026-10-03 build, ZOOMED-TRAILS-dev.md |
 | 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
 | 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
@@ -657,18 +657,26 @@ rebuild the api image and the front end, and run the pre-draw. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
 and the Metro and MARC stations; the app has station points, not rail lines.
 **The long trails (z10-11).** The owner, 2026-10-04: "Also zoomed out, can we
-stick to mostly the longer trails, it's getting messy." (OWNER-DECISIONS 375).
-A path or trail is drawn at z10-11 only when it is part of something long:
-`segment.trail_route` (the OSM route relation it is in: 1 a local bicycle
-route, 2 a long walking route, 3 a bicycle route at an icn, ncn or rcn network)
-is at least 1 for a paved way, and at least 2 (z11) or 3 (z10) for an unpaved
-one; or `segment.trail_run_m`, the length of its named run (same-named ways
-chained within 400 m of one another), is at least 3 miles paved and 5 unpaved
-at z11, 5 and 8 at z10. The bars are the named constants in
-`pipeline.schema` (`Z11_PAVED_RUN_MI` and its siblings). An unknown surface is
-paved. The z10 and z11 tiles are two levels (`core.stress_tiles.TRAILS` and
-`TRAILS_NEAR`); the lines are drawn thinner there too (`ZOOMED_OUT_SCALE` in
-`frontend/src/stressStyle.js`).
+stick to mostly the longer trails, it's getting messy." (OWNER-DECISIONS 375),
+then "Car free roads stay. The point at this zoom is to see what would be a
+great long distance trip." and "Local trails only at higher zooms. Basically,
+at birds eye view I want to see a bicycle version of the interstate routes."
+(377), and "Patapsco Traverse appears to be a mountain bike trail. Make sure to
+not include those." (378). A path or trail is drawn at z10-11 only when it is
+part of something long: `segment.trail_route` (the OSM route relation it is
+in: 1 a local bicycle route, which qualifies nothing; 2 a long walking route,
+US:NST or an iwn, nwn or rwn network; 3 a bicycle route at an icn, ncn or rcn
+network) is at least 2 for a paved way, and 3 for an unpaved one; or
+`segment.trail_run_m`, the length of its named run (same-named ways chained
+within 400 m of one another), is at least 3 miles paved and 5 unpaved at z11,
+5 and 8 at z10. A road closed to cars at set times (`car_free_when` set) is
+kept whatever its length. A mountain-bike way (in a route=mtb relation, or
+tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`, unless paved) is
+written with route 0 and no name, so it never qualifies and adds nothing to a
+run. The bars are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI`
+and its siblings). An unknown surface is paved. The z10 and z11 tiles are two
+levels (`core.stress_tiles.TRAILS` and `TRAILS_NEAR`); the lines are drawn
+thinner there too (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`).
 
 These are **segment columns the rebuild writes** (`trail_name`, `trail_route`,
 `trail_run_m`; `pipeline.trail_routes` reads the route relations from the

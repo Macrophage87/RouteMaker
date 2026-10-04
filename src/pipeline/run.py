@@ -515,6 +515,8 @@ class RebuildContext:
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     # The route level of each way in an OSM route relation (`pipeline.trail_routes`).
     trail_routes: dict[int, int] = field(default_factory=dict)
+    # Ways in a route=mtb relation (OWNER-DECISIONS 378).
+    mountain_bike_ways: set[int] = field(default_factory=set)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -923,7 +925,9 @@ def build_handlers(
         context.ways = extract.read_ways(context.source_pbf)
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
-        context.trail_routes = trail_routes.read_routes(context.source_pbf)
+        routes = trail_routes.read_routes(context.source_pbf)
+        context.trail_routes = routes.levels
+        context.mountain_bike_ways = routes.mountain_bike
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -1656,6 +1660,12 @@ def build_handlers(
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
+            # A mountain-bike trail never qualifies as a long trail (OWNER-DECISIONS
+            # 378): it has no route level and no name to chain a run by.
+            mountain_bike = (
+                way.osm_id in context.mountain_bike_ways
+                or trail_routes.is_mountain_bike_way(way.tags)
+            )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
                     writers.segment_row(
@@ -1677,8 +1687,8 @@ def build_handlers(
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
-                        trail_name=trail_routes.way_name(way.tags),
-                        trail_route=context.trail_routes.get(way.osm_id, 0),
+                        trail_name=None if mountain_bike else trail_routes.way_name(way.tags),
+                        trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
                     )
                 )
         context.rows = rows

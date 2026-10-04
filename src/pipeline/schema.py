@@ -188,7 +188,7 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return trails
 
 
-# THE LONG TRAILS (OWNER-DECISIONS 375, 2026-10-04): "Also zoomed out, can we
+# THE LONG TRAILS (OWNER-DECISIONS 375, 377 and 378, 2026-10-04): "Also zoomed out, can we
 # stick to mostly the longer trails, it's getting messy." At z10-11 Columbia's
 # pathways and Patapsco Valley State Park's singletrack tangles merged into
 # solid blobs, so the zoomed-out tiles keep a path or trail only when it is
@@ -196,9 +196,13 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 # rebuild (`pipeline.trail_routes`) and read from OSM:
 #
 # - `trail_route`: the way is a member of an OSM route relation. 0 none; 1 a
-#   bicycle route at a local network, or none; 2 a long-distance walking route
-#   (US:NST, or a national, regional or international walking network); 3 a
-#   bicycle route at a regional, national or international network.
+#   bicycle route at a local network, or none (recorded, but it qualifies
+#   nothing: 377); 2 a long-distance walking route
+#   (US:NST, or a national, regional or international walking network), which
+#   keeps a paved way only (378); 3 a bicycle route at a regional, national or
+#   international network. A mountain-bike trail (a way in a route=mtb relation
+#   or tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`, unless
+#   paved) has route 0 and no `trail_name`: it never qualifies (378).
 # - `trail_run_m`: the length in metres of the way's named run, the ways of that
 #   name (case-insensitive) that chain end to end across the region, within
 #   TRAIL_RUN_GAP_M of one another so a road crossing does not break a trail in
@@ -206,30 +210,39 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 #   the name's whole length; and a connected network is not a run either, since
 #   Columbia's paths are one network. Null on a way with no name.
 #
+# OWNER-DECISIONS 377: "Local trails only at higher zooms. Basically, at birds
+# eye view I want to see a bicycle version of the interstate routes." So a local
+# bicycle route (lcn) does not keep a way at z10 or z11 by itself; a regional,
+# national or international one does. And "Car free roads stay. The point at
+# this zoom is to see what would be a great long distance trip.": a road closed
+# to cars at set times is kept whatever its length (long_trails_predicate).
+#
 # A way is kept at a level when its route level is at least the bar for its
 # surface, or its run is at least that level's length. An unpaved way must clear
 # a higher bar, which is what drops the Patapsco tangles and keeps the Grist
-# Mill and Torrey C. Brown trails; at z10 an unpaved way needs a long bicycle
-# route, since a walking route is mostly a park's own trail (the Patapsco
-# Traverse and the Howard County Thru Trail are regional walking routes). An
-# unknown surface is read as paved, as the map reads it.
+# Mill and Torrey C. Brown trails. An unpaved way needs a long bicycle route at
+# either zoom: a walking route is mostly a park's own trail, and the Patapsco
+# Traverse, a regional walking route, "appears to be a mountain bike trail"
+# (OWNER-DECISIONS 378). An unknown surface is read as paved, as the map reads it.
 TRAIL_NAME_COLUMN = "trail_name"
 TRAIL_ROUTE_COLUMN = "trail_route"
 TRAIL_RUN_COLUMN = "trail_run_m"
 ROUTE_ANY_BICYCLE = 1
 ROUTE_LONG_WALK = 2
 ROUTE_LONG_BICYCLE = 3
-# The route level a paved way needs, at every zoom (OWNER-DECISIONS 375).
-PAVED_ROUTE_MIN = ROUTE_ANY_BICYCLE
+# The route level a paved way needs, at every zoom (OWNER-DECISIONS 375, 377:
+# a long walking route or a regional-or-larger bicycle route, not a local one).
+PAVED_ROUTE_MIN = ROUTE_LONG_WALK
 # Same-named ways within this many metres chain into one run.
 TRAIL_RUN_GAP_M = 400
 METRES_PER_MILE = 1609.344
 # A run the length of these, by surface, keeps a way that is not on a route
-# (OWNER-DECISIONS 375). z11 and z10 differ: the further out, the longer, and
-# an unpaved way needs a long bicycle route at z10 and any long route at z11.
+# (OWNER-DECISIONS 375; 377 left them as they were). z11 and z10 differ: the
+# further out, the longer. An unpaved way needs a long bicycle route at both
+# (378: a walking route no longer counts for it).
 Z11_PAVED_RUN_MI = 3.0
 Z11_UNPAVED_RUN_MI = 5.0
-Z11_UNPAVED_ROUTE_MIN = ROUTE_LONG_WALK
+Z11_UNPAVED_ROUTE_MIN = ROUTE_LONG_BICYCLE
 Z10_PAVED_RUN_MI = 5.0
 Z10_UNPAVED_RUN_MI = 8.0
 Z10_UNPAVED_ROUTE_MIN = ROUTE_LONG_BICYCLE
@@ -248,19 +261,24 @@ Z11_LONG_TRAILS = LongTrails(Z11_PAVED_RUN_MI, Z11_UNPAVED_RUN_MI, Z11_UNPAVED_R
 Z10_LONG_TRAILS = LongTrails(Z10_PAVED_RUN_MI, Z10_UNPAVED_RUN_MI, Z10_UNPAVED_ROUTE_MIN)
 
 
-def long_trails_predicate(rule: LongTrails) -> str:
+def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
     """The long trails' condition, on a table with the route and run columns:
     a way on a route of a high enough level for its surface, or in a named run
-    long enough for it. Written for the tile query alone; the overview index
-    is built on the plain trails' predicate, which this implies when ANDed."""
+    long enough for it; with `car_free`, also any road closed to cars at set
+    times (OWNER-DECISIONS 377). Written for the tile query alone; the overview
+    index is built on the plain trails' predicate, which this implies when
+    ANDed."""
     paved_m = round(rule.paved_run_mi * METRES_PER_MILE)
     unpaved_m = round(rule.unpaved_run_mi * METRES_PER_MILE)
     run = f"COALESCE({TRAIL_RUN_COLUMN}, 0)"
-    return (
+    long = (
         f"(CASE WHEN is_unpaved IS TRUE "
         f"THEN ({TRAIL_ROUTE_COLUMN} >= {rule.unpaved_route_min} OR {run} >= {unpaved_m}) "
         f"ELSE ({TRAIL_ROUTE_COLUMN} >= {PAVED_ROUTE_MIN} OR {run} >= {paved_m}) END)"
     )
+    if car_free:
+        return f"({long} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return long
 
 
 # What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
@@ -424,11 +442,12 @@ CREATE TABLE {schema}.segment (
     -- nothing said and the classifier assumed. Null on a way no layer reached,
     -- which reads as `stress_assumed` already does.
     attr_sources    jsonb,
-    -- The long trails (`trail_route`, `trail_run_m`; OWNER-DECISIONS 375): what
-    -- the zoomed-out tiles keep a path for. `trail_name` is the way's OSM name,
-    -- `trail_route` the level of the route relation it is in (0-3) and
+    -- The long trails (`trail_route`, `trail_run_m`; OWNER-DECISIONS 375, 377,
+    -- 378): what the zoomed-out tiles keep a path for. `trail_name` is the way's
+    -- OSM name, `trail_route` the level of the route relation it is in (0-3) and
     -- `trail_run_m` the length of its named run, set after the rows are
-    -- written (`pipeline.trail_routes.derive_trail_runs`).
+    -- written (`pipeline.trail_routes.derive_trail_runs`). A mountain-bike way
+    -- is written with no name and route 0, so it can never qualify.
     trail_name      text,
     trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 3),
     trail_run_m     integer,

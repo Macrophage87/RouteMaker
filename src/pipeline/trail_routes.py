@@ -14,7 +14,11 @@ The relations are OSM's, cited as the rest of the map's data is.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import osmium
+
+from routemaker.singletrack import SCALE_KEYS, grade, is_paved
 
 from .schema import (
     ROUTE_ANY_BICYCLE,
@@ -44,9 +48,9 @@ RUN_PROJECTION_SRID = 32618
 
 def route_level(route: str | None, network: str | None) -> int:
     """The level a route relation gives its member ways: 0 none, 1 a bicycle
-    route at a local or no network, 2 a long walking route, 3 a bicycle route at
-    a long network. A mountain-bike route is the park's own trail, and gives
-    nothing."""
+    route at a local or no network (which qualifies nothing, OWNER-DECISIONS 377),
+    2 a long walking route (a paved way only, 378), 3 a bicycle route at a long
+    network. A mountain-bike route gives nothing, and its ways never qualify (378)."""
     if route == "bicycle":
         return ROUTE_LONG_BICYCLE if network in LONG_BICYCLE_NETWORKS else ROUTE_ANY_BICYCLE
     if route in WALKING_ROUTES and network in LONG_WALKING_NETWORKS:
@@ -54,15 +58,44 @@ def route_level(route: str | None, network: str | None) -> int:
     return 0
 
 
+def is_mountain_bike_way(tags: dict[str, str]) -> bool:
+    """Whether the way's own tags mark it a mountain-bike trail (OWNER-DECISIONS
+    378: "Patapsco Traverse appears to be a mountain bike trail. Make sure to not
+    include those."): rated one or more on either MTB difficulty scale, or
+    `mtb=designated`, or any `mtb:type`. A paved way is not one whatever it
+    carries, as `routemaker.singletrack` reads it (Upper Rock Creek, Northwest
+    Branch and the Cross County Trail carry an mtb:scale on asphalt), and a
+    zero on a scale is a trail anyone rides (the C&O towpath)."""
+    if is_paved(tags):
+        return False
+    if any((g := grade(tags.get(key))) is not None and g >= 1 for key in SCALE_KEYS):
+        return True
+    return tags.get("mtb") == "designated" or bool(tags.get("mtb:type"))
+
+
+class Routes(NamedTuple):
+    """What the extract's route relations say of its ways."""
+
+    # {way id: route level} (route_level), the highest of the relations it is in.
+    levels: dict[int, int]
+    # Ways in a route=mtb relation: mountain-bike trails, which never qualify.
+    mountain_bike: set[int]
+
+
 class RouteMembers(osmium.SimpleHandler):
-    """The highest route level of each way that is a member of a route relation."""
+    """The highest route level of each way that is a member of a route relation,
+    and the ways in a mountain-bike route relation."""
 
     def __init__(self) -> None:
         super().__init__()
         self.levels: dict[int, int] = {}
+        self.mountain_bike: set[int] = set()
 
     def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
         if r.tags.get("type") != "route":
+            return
+        if r.tags.get("route") == "mtb":
+            self.mountain_bike.update(m.ref for m in r.members if m.type == "w")
             return
         level = route_level(r.tags.get("route"), r.tags.get("network"))
         if not level:
@@ -72,11 +105,11 @@ class RouteMembers(osmium.SimpleHandler):
                 self.levels[member.ref] = level
 
 
-def read_routes(path) -> dict[int, int]:
-    """{way id: route level} for every way in a route relation of the extract."""
+def read_routes(path) -> Routes:
+    """The route levels and mountain-bike ways of the extract's route relations."""
     handler = RouteMembers()
     handler.apply_file(str(path))
-    return handler.levels
+    return Routes(handler.levels, handler.mountain_bike)
 
 
 def way_name(tags: dict[str, str]) -> str | None:

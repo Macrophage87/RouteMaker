@@ -1325,16 +1325,16 @@ class TestLongTrails:
     def test_the_bars_are_the_owners_decision(self) -> None:
         from pipeline import schema
 
-        assert schema.PAVED_ROUTE_MIN == 1
+        assert schema.PAVED_ROUTE_MIN == 2  # OWNER-DECISIONS 377: not a local route
         assert stress_tiles.TRAILS.long_trails == schema.LongTrails(5.0, 8.0, 3)
-        assert stress_tiles.TRAILS_NEAR.long_trails == schema.LongTrails(3.0, 5.0, 2)
+        assert stress_tiles.TRAILS_NEAR.long_trails == schema.LongTrails(3.0, 5.0, 3)
         assert stress_tiles.BUSY.long_trails is stress_tiles.FULL.long_trails is None
 
     @pytest.mark.parametrize(
         ("unpaved", "route", "run_mi", "at_z10", "at_z11"),
         [
             (False, 0, None, False, False),  # no name, no route: a connector
-            (False, 1, None, True, True),  # any bicycle route keeps a paved way
+            (False, 1, None, False, False),  # a local route alone no longer does (377)
             (False, 2, None, True, True),  # and so does a long walking route
             (False, 3, None, True, True),
             (False, 0, 2.9, False, False),
@@ -1342,10 +1342,10 @@ class TestLongTrails:
             (False, 0, 4.9, False, True),
             (False, 0, 5.0, True, True),  # z10's
             (None, 0, 3.0, False, True),  # an unknown surface is read as paved
-            (None, 1, None, True, True),
+            (None, 1, None, False, False),
             (True, 0, None, False, False),
             (True, 1, None, False, False),  # a local route is not enough for a dirt trail
-            (True, 2, None, False, True),  # a long walking route: z11 only
+            (True, 2, None, False, False),  # a walking route: paved ways only (378)
             (True, 3, None, True, True),  # a long bicycle route: both
             (True, 0, 4.9, False, False),
             (True, 0, 5.0, False, True),  # z11's bar for an unpaved run
@@ -1367,17 +1367,33 @@ class TestLongTrails:
         insert_trail(live, True, 0, None)
         assert lines_in(client.get(url(*tile_of(*CENTRE, z))).content) == 1
 
-    @pytest.mark.parametrize(("run_mi", "kept"), [(3.5, True), (0.1, False)])
-    def test_a_road_closed_at_set_times_is_judged_by_the_same_bar(
-        self, client, segment_schemas, run_mi, kept
+    @pytest.mark.parametrize("z", [10, 11])
+    @pytest.mark.parametrize("on_path", [True, False])
+    def test_a_road_closed_at_set_times_stays_whatever_its_length(
+        self, client, segment_schemas, z, on_path
+    ) -> None:
+        """OWNER-DECISIONS 377: "Car free roads stay." A timed closure with
+        no name, no route and a run of nothing is kept, styled as before:
+        `car_free` where the road is a path, `car_free_only` where it is not."""
+        live, _ = segment_schemas
+        insert_trail(live, False, 0, None, car_free=["weekend"])
+        if not on_path:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {live}.segment SET facility = 'none', is_trail_class = false"
+                )
+        body = client.get(url(*tile_of(*CENTRE, z))).content
+        assert lines_in(body) == 1
+        (feature,) = decode(body)["stress"].features
+        key = "car_free" if on_path else "car_free_only"
+        assert feature.properties.get(key) == "weekend"
+
+    def test_a_way_with_no_closure_is_still_judged_by_the_bar(
+        self, client, segment_schemas
     ) -> None:
         live, _ = segment_schemas
-        insert_trail(live, False, 0, run_mi, car_free=["weekend"])
-        body = client.get(url(*tile_of(*CENTRE, 11))).content
-        assert lines_in(body) == int(kept)
-        if kept:
-            tile = decode(body)["stress"]
-            assert [f.properties.get("car_free") for f in tile.features] == ["weekend"]
+        insert_trail(live, False, 0, 0.1)
+        assert lines_in(client.get(url(*tile_of(*CENTRE, 11))).content) == 0
 
     @pytest.mark.parametrize("drop", [["trail_route", "trail_run_m"], ["trail_run_m"]])
     def test_a_table_without_the_columns_draws_every_trail_as_before(
@@ -1421,5 +1437,9 @@ class TestLongTrails:
 
         sql = long_trails_predicate(LongTrails(5.0, 8.0, 3))
         assert "trail_route >= 3 OR COALESCE(trail_run_m, 0) >= 12875" in sql
-        assert "trail_route >= 1 OR COALESCE(trail_run_m, 0) >= 8047" in sql
+        assert "trail_route >= 2 OR COALESCE(trail_run_m, 0) >= 8047" in sql
+        assert "cardinality(car_free_when) > 0" not in sql
+        assert "cardinality(car_free_when) > 0" in long_trails_predicate(
+            LongTrails(5.0, 8.0, 3), True
+        )
         assert "is_unpaved IS TRUE" in sql

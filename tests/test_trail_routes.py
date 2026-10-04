@@ -80,7 +80,9 @@ def test_the_extracts_route_relations_are_read_by_member_way(tmp_path) -> None:
     write_extract(path)
     # The highest level wins on a way in two; a node member, a local walking
     # route, a mountain-bike route and a relation that is not a route give nothing.
-    assert trail_routes.read_routes(path) == {1: 1, 2: 3, 3: 2}
+    routes = trail_routes.read_routes(path)
+    assert routes.levels == {1: 1, 2: 3, 3: 2}
+    assert routes.mountain_bike == {5}, "the way in the mtb route, whatever its network"
 
 
 def test_a_way_is_named_by_its_osm_name() -> None:
@@ -185,3 +187,25 @@ class TestColumns:
         row = segment_row(1, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress, trail_route=4)
         with pytest.raises(utils.IntegrityError):
             write_segments(staging, [row])
+
+
+@pytest.mark.parametrize(
+    ("tags", "mountain_bike"),
+    [
+        ({"highway": "path", "mtb:scale": "2"}, True),
+        ({"highway": "path", "mtb:scale": "1-"}, True),
+        ({"highway": "path", "mtb:scale:imba": "3"}, True),
+        ({"highway": "path", "mtb": "designated"}, True),
+        ({"highway": "path", "mtb:type": "xc"}, True),
+        ({"highway": "path", "surface": "dirt", "mtb:scale": "2"}, True),
+        # A zero is a trail anyone rides (the C&O towpath).
+        ({"highway": "path", "surface": "dirt", "mtb:scale:imba": "0"}, False),
+        # A paved way is not a mountain-bike trail (Upper Rock Creek, Cross County).
+        ({"highway": "path", "surface": "asphalt", "mtb:scale": "1"}, False),
+        ({"highway": "cycleway", "surface": "paved", "mtb": "designated"}, False),
+        ({"highway": "path", "mtb": "yes"}, False),
+        ({"highway": "path", "name": "Mount Vernon Trail"}, False),
+    ],
+)
+def test_a_mountain_bike_way_is_read_from_its_tags(tags, mountain_bike) -> None:
+    assert trail_routes.is_mountain_bike_way(tags) is mountain_bike
