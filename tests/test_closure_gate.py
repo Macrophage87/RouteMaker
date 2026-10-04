@@ -170,7 +170,7 @@ def test_the_probes_are_left_for_the_post_swap_check(tmp_path: Path) -> None:
     probes = [tiles.ClosureProbe(900, -77.1175, 38.93), tiles.ClosureProbe(17, -77.0, 38.9)]
     write_closure_reports(tmp_path / "reports", probes, {900, 5})
     assert (tmp_path / "reports" / CLOSURE_PROBES_REPORT).read_text() == (
-        "way_id,lon,lat\n900,-77.1175000,38.9300000\n17,-77.0000000,38.9000000\n"
+        "way_id,lon,lat,reason\n900,-77.1175000,38.9300000,\n17,-77.0000000,38.9000000,\n"
     )
     assert (tmp_path / "reports" / SINGLETRACK_REPORT).read_text() == "5\n900\n"
 
@@ -424,3 +424,43 @@ def test_a_bridge_the_crossings_fixture_rules_on_is_not_held_to_osm() -> None:
     rated_no = {"highway": "secondary", "bicycle": "no", "mtb:scale": "0"}
     context = _context([_way(300, rated_no), _way(301, rated_no)], set(), legal={300: True})
     assert [probe.way_id for probe in closure_probes(context)] == [301]
+
+
+def test_the_gate_also_samples_each_no_bike_paths_reason() -> None:
+    """Every NO-BIKE-PATHS rule must reach the tiles, so the sample takes up to
+    CLOSURE_GATE_PER_REASON ways of each reason; the Zoo spur is open on
+    purpose and not sampled."""
+    from pipeline.run import CLOSURE_GATE_PER_REASON
+
+    ways = [_way(i, {"highway": "path", "surface": "dirt"}) for i in range(1, 31)]
+    ways += [_way(i, {"highway": "path", "access": "private"}) for i in range(31, 61)]
+    ways += [_way(i, {"highway": "footway", "bicycle": "no", "foot": "no"}) for i in range(61, 66)]
+    spur = _way(70, {"highway": "footway"})
+    context = _context(ways + [spur], set())
+    context.no_bicycle = {
+        **dict.fromkeys(range(1, 31), "natural_surface"),
+        **dict.fromkeys(range(31, 61), "private"),
+        **dict.fromkeys(range(61, 66), "zoo"),
+    }
+    context.destination_only = {70}
+    probes = closure_probes(context)
+    by_reason = {}
+    for probe in probes:
+        by_reason.setdefault(probe.reason, []).append(probe.way_id)
+    assert len(by_reason["natural_surface"]) == CLOSURE_GATE_PER_REASON
+    assert len(by_reason["private"]) == CLOSURE_GATE_PER_REASON
+    assert "zoo" not in by_reason, "a foot=no way has no edge to read"
+    assert 70 not in [p.way_id for p in probes]
+
+
+def test_the_offroad_graph_is_not_held_to_the_mtb_class(tmp_path: Path) -> None:
+    from pipeline.run import write_closure_reports
+
+    probes = [
+        tiles.ClosureProbe(1, -77.0, 38.9, "mtb"),
+        tiles.ClosureProbe(2, -77.0, 38.91, "private"),
+    ]
+    write_closure_reports(tmp_path, probes, set())
+    text = (tmp_path / "bicycle-closure-probes.csv").read_text().splitlines()
+    assert text[0] == "way_id,lon,lat,reason"
+    assert text[1].endswith(",mtb") and text[2].endswith(",private")

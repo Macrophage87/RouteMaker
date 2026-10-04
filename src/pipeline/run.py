@@ -185,6 +185,11 @@ MIN_JURISDICTION_FRACTION = 0.10
 # timeout as well as the rebuild's deadline. That is a few seconds per rebuild.
 CLOSURE_GATE_SINGLETRACKS = 40
 CLOSURE_GATE_OSM_CLOSURES = 20
+# And, for the NO-BIKE-PATHS rules (OWNER-DECISIONS 291), this many ways of each
+# reason: every rule must reach the tiles, not only the singletrack one. A way
+# whose reason the graph reopens on purpose (`trail_closures.OFFROAD_KEEPS`) is
+# probed on the other graphs only.
+CLOSURE_GATE_PER_REASON = 8
 CLOSURE_GATE_READ_TIMEOUT_S = 120
 # Written under the rebuild's reports directory for the post-swap probe
 # (scripts/probe_bicycle_closures.py; docs/OPERATIONS.md, "Bicycle closures in
@@ -911,11 +916,28 @@ def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
         and is_rated_osm_closure(way.tags)
     ]
     probes = []
-    chosen = _spread(singles, CLOSURE_GATE_SINGLETRACKS) + _spread(osm, CLOSURE_GATE_OSM_CLOSURES)
+    single_ids = _spread(singles, CLOSURE_GATE_SINGLETRACKS)
+    chosen = single_ids + _spread(osm, CLOSURE_GATE_OSM_CLOSURES)
+    reasons = {osm_id: singletrack.NO_BICYCLE for osm_id in single_ids}
+    # The new rules' ways, by reason: walkable, and not a bridge a fixture opens.
+    by_reason: dict[str, list[int]] = {}
+    no_bicycle = getattr(context, "no_bicycle", None) or {}
+    destination_only = getattr(context, "destination_only", None) or set()
+    for osm_id, reason in no_bicycle.items():
+        if reason in (singletrack.NO_BICYCLE, cbd.NO_BICYCLE) or osm_id in chosen:
+            continue
+        if osm_id in reference.bridge_bicycle_legal or osm_id in destination_only:
+            continue
+        if walkable(osm_id):
+            by_reason.setdefault(reason, []).append(osm_id)
+    for reason, ids in sorted(by_reason.items()):
+        for osm_id in _spread(ids, CLOSURE_GATE_PER_REASON):
+            chosen.append(osm_id)
+            reasons[osm_id] = reason
     for osm_id in chosen:
         point = probe_point(by_id[osm_id].coordinates)
         if point is not None:
-            probes.append(tiles.ClosureProbe(osm_id, point[0], point[1]))
+            probes.append(tiles.ClosureProbe(osm_id, point[0], point[1], reasons.get(osm_id, "")))
     return probes
 
 
@@ -923,7 +945,8 @@ def write_closure_reports(out_dir: Path, probes, singletracks) -> None:
     """What the post-swap probe reads (scripts/probe_bicycle_closures.py)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / CLOSURE_PROBES_REPORT).write_text(
-        "way_id,lon,lat\n" + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f}\n" for p in probes)
+        "way_id,lon,lat,reason\n"
+        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason}\n" for p in probes)
     )
     (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
 
@@ -2136,8 +2159,15 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
         config_path = context.build_configs.get(variant)
         if config_path is None:
             continue
+        held = [
+            probe
+            for probe in probes
+            if not (
+                variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+            )
+        ]
         readbacks[variant] = _read_back(
-            functools.partial(tiles.read_closures, run, config_path, probes)
+            functools.partial(tiles.read_closures, run, config_path, held)
         )
     return readbacks
 
