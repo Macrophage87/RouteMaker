@@ -8,6 +8,7 @@ import {
   addedSaid,
   emptyPlanHint,
   insertedSaid,
+  loopChangeSaid,
   loneStartHint,
   loopToggledSaid,
   pointLabel,
@@ -103,6 +104,31 @@ test("turning the loop on or off says how the points are now named", () => {
   assert.equal(loopToggledSaid(true, 3), "Loop on: the start is also the finish; other points are stops.");
   assert.equal(loopToggledSaid(false, 3), "Loop off: the last point is now the end.");
   assert.equal(loopToggledSaid(false, 1), "Loop off: the next point you add is the end.");
+});
+
+test("a change of the ride says how the points are renamed, and only when they are", () => {
+  const off = { preset: "default" as const, dials: { loop: false } };
+  const on = { preset: "default" as const, dials: { loop: true } };
+  const unset = { preset: "default" as const, dials: {} };
+  const massOn = { preset: "mass-ride" as const, dials: { loop: true } };
+  const massOff = { preset: "mass-ride" as const, dials: { loop: false } };
+  // The toggle: off to on, on to off.
+  assert.equal(loopChangeSaid(off, on, 2), loopToggledSaid(true, 2));
+  assert.equal(loopChangeSaid(unset, on, 1), loopToggledSaid(true, 1));
+  assert.equal(loopChangeSaid(on, off, 3), "Loop off: the last point is now the end.");
+  assert.equal(loopChangeSaid(on, off, 1), "Loop off: the next point you add is the end.");
+  // Unchanged: a slider moved, or the toggle as it was.
+  assert.equal(loopChangeSaid(on, on, 3), null);
+  assert.equal(loopChangeSaid(off, off, 3), null);
+  assert.equal(loopChangeSaid(unset, off, 3), null, "unset is off");
+  // Mass Ride has no loop: into it from a loop renames the points, and out of it back into a loop.
+  assert.equal(loopChangeSaid(on, massOn, 3), loopToggledSaid(false, 3));
+  assert.equal(loopChangeSaid(massOn, on, 3), loopToggledSaid(true, 3));
+  assert.equal(loopChangeSaid(massOff, massOn, 3), null, "the toggle does nothing on a Mass Ride");
+  assert.equal(loopChangeSaid(off, massOn, 3), null);
+  // No points: nothing is renamed.
+  assert.equal(loopChangeSaid(off, on, 0), null);
+  assert.equal(loopChangeSaid(on, massOn, 0), null);
 });
 
 test("the empty-plan hint: start then stops in a loop; the toggle offered only where the ride type has one", () => {

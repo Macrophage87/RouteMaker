@@ -31,7 +31,7 @@ import {
   reverseUnavailableHint,
   insertedSaid,
   loneStartHint,
-  loopToggledSaid,
+  loopChangeSaid,
   removedSaid,
   reversedSaid,
   stationSaid,
@@ -336,10 +336,14 @@ export function App() {
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
     (direction: "undo" | "redo") => {
+      const before = rideRef.current;
       const next = edits.travel(direction);
       if (next === undefined) return;
       setNotice(null);
-      announce(travelSaid(direction, next.length));
+      // A step that brings another loop state back renames the points too (OWNER-DECISIONS 374).
+      const renamed = loopChangeSaid(before, rideRef.current, next.length);
+      const said = travelSaid(direction, next.length);
+      announce(renamed ? `${said} ${renamed}` : said);
     },
     [announce, edits],
   );
@@ -516,12 +520,15 @@ export function App() {
   // The Adjust panel's sliders and toggles. Turning the loop on or off renames
   // the points (OWNER-DECISIONS 374), which a screen reader would not hear.
   const commitDials = (next: Dials) => {
-    const loopNext = loopStops(preset, next.loop);
-    if (loopNext !== loopVias && points.length > 0) announce(loopToggledSaid(loopNext, points.length));
+    const said = loopChangeSaid({ preset, dials }, { preset, dials: next }, points.length);
+    if (said) announce(said);
     setDials(next);
   };
   // A new ride type moves the sliders to where it starts them (RideTypePicker).
+  // Into or out of Mass Ride, which has no loop, it can rename the points too.
   const choosePreset = (id: PresetId, next: Dials) => {
+    const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
+    if (said) announce(said);
     setPreset(id);
     setDials(next);
   };

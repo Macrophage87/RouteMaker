@@ -6,7 +6,7 @@
  * every later one a stop, and there is no end. Mass Ride has no loop, so its
  * hints never mention the toggle.
  */
-import { LOOP_LABEL, canReverse } from "./loop.ts";
+import { LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
@@ -82,6 +82,25 @@ export function reverseUnavailableHint(points: readonly LonLat[], loop: boolean)
 export function loopToggledSaid(on: boolean, count: number): string {
   if (on) return "Loop on: the start is also the finish; other points are stops.";
   return count >= 2 ? "Loop off: the last point is now the end." : "Loop off: the next point you add is the end.";
+}
+
+/** The ride type and dials that decide whether the points carry a loop's names. */
+export interface LoopRide {
+  preset: PresetId;
+  dials: { loop?: boolean };
+}
+
+/**
+ * What to say when a change of the ride renames the points, or null when it
+ * does not: the loop toggle, a ride type into or out of Mass Ride (which has
+ * no loop), or an undo or redo that brings another loop state back. Nothing
+ * to say with no points, or when the names stay as they were.
+ */
+export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number): string | null {
+  const was = loopStops(before.preset, before.dials.loop);
+  const now = loopStops(after.preset, after.dials.loop);
+  if (was === now || count < 1) return null;
+  return loopToggledSaid(now, count);
 }
 
 /** Where to find the toggle, said only where the ride type has one. */

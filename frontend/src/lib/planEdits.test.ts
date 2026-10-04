@@ -85,7 +85,7 @@ test("App edits through planEdits, with its own history, points and ride", () =>
   assert.match(app, /planEdits<LonLat\[\], Ride>\(\{\s*history: history\.current,\s*current: \(\) => pointsRef\.current,\s*ride: \(\) => rideRef\.current,/);
   assert.match(app, /const commit = edits\.commit;/);
   assert.match(app, /const next = edits\.travel\(direction\);/);
-  assert.match(app, /announce\(travelSaid\(direction, next\.length\)\)/);
+  assert.match(app, /const said = travelSaid\(direction, next\.length\);/);
   // No second way in: nothing else in App records to the history.
   assert.doesNotMatch(app, /history\.current\.record\(/);
 });

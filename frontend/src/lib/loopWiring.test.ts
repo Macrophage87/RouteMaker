@@ -85,9 +85,26 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
   assert.match(app, /\{emptyPlanHint\(preset, loopVias\)\}/);
   assert.match(app, /\{loneStartHint\(preset, loopVias\)\}/);
+});
+
+test("App: the toggle, the ride type and undo or redo say when they rename the points", () => {
+  const app = source("../App.tsx");
   assert.match(app, /onCommit=\{commitDials\}/);
-  assert.match(app, /const loopNext = loopStops\(preset, next\.loop\);/);
-  assert.match(app, /announce\(loopToggledSaid\(loopNext, points\.length\)\)/);
+  assert.match(app, /onChoose=\{choosePreset\}/);
+  assert.match(
+    app,
+    /const commitDials = \(next: Dials\) => \{\s+const said = loopChangeSaid\(\{ preset, dials \}, \{ preset, dials: next \}, points\.length\);\s+if \(said\) announce\(said\);\s+setDials\(next\);/,
+  );
+  assert.match(
+    app,
+    /const choosePreset = \(id: PresetId, next: Dials\) => \{\s+const said = loopChangeSaid\(\{ preset, dials \}, \{ preset: id, dials: next \}, points\.length\);\s+if \(said\) announce\(said\);/,
+  );
+  assert.match(
+    app,
+    /const before = rideRef\.current;\s+const next = edits\.travel\(direction\);[\s\S]*?const renamed = loopChangeSaid\(before, rideRef\.current, next\.length\);[\s\S]*?announce\(renamed \? `\$\{said\} \$\{renamed\}` : said\);/,
+  );
+  assert.equal(count(app, /loopChangeSaid\(/g), 3, "the decision is the lib's, at these three calls");
+  assert.doesNotMatch(app, /loopToggledSaid/);
 });
 
 test("App: Reverse in a loop of a start and one stop is aria-disabled with its reason, and a press says it", () => {
