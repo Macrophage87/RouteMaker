@@ -136,7 +136,7 @@ class RebuildAbandoned(RuntimeError):
 ROUTER_RESTART_NOTICE = (
     "The routers serve the previous build until they are restarted: "
     "`docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
-    "valhalla-weekend`."
+    "valhalla-weekend valhalla-offroad`."
 )
 
 

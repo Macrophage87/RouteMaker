@@ -732,26 +732,50 @@ WEEKEND_FAILURE_TTL_S = 60
 MIDDLE_TRACE_RESERVE_S = 8
 MIDDLE_MIN_S = 4
 _weekend_failed_at: float | None = None
+# The off-road router (`Variant.OFFROAD`, Gravel and Mountain Goat) is a fifth
+# service and falls back to the standard graph exactly as the weekend one does,
+# on the same timeout and failure memory: a deployment that has not built it
+# yet, or whose router is down, still answers, without the mountain-bike class.
+_offroad_failed_at: float | None = None
+TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value)
 
 
 def _weekend_down() -> bool:
     return _weekend_failed_at is not None and clock() - _weekend_failed_at < WEEKEND_FAILURE_TTL_S
 
 
-def _weekend_is_promoted() -> bool:
-    """Whether a weekend build has been promoted: its settings row exists. A
-    deployment before its first four-graph rebuild, or after a rollback that
-    withdrew the weekend graph, has none."""
+def _offroad_down() -> bool:
+    return _offroad_failed_at is not None and clock() - _offroad_failed_at < WEEKEND_FAILURE_TTL_S
+
+
+def _twin_down(variant: str) -> bool:
+    return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
+
+
+def _is_promoted(variant: str) -> bool:
+    """Whether a build of this variant has been promoted: its settings row
+    exists. A deployment before its first rebuild with the graph, or after a
+    rollback that withdrew it, has none."""
     from core.models import ValhallaUpstream
 
-    return (
-        ValhallaUpstream.objects.filter(variant=Variant.WEEKEND.value).exclude(build_id="").exists()
-    )
+    return ValhallaUpstream.objects.filter(variant=variant).exclude(build_id="").exists()
+
+
+def _weekend_is_promoted() -> bool:
+    return _is_promoted(Variant.WEEKEND.value)
 
 
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
+
+
+def _mark_twin(variant: str, ok: bool) -> None:
+    global _offroad_failed_at
+    if variant == Variant.OFFROAD.value:
+        _offroad_failed_at = None if ok else clock()
+    else:
+        _mark_weekend(ok)
 
 
 def _climb_of(trip: dict) -> float:
@@ -921,7 +945,7 @@ def no_busier_than_middle(
     """
     step = Deadline(deadline.at - MIDDLE_TRACE_RESERVE_S, deadline.per_call_s)
     limit = min(deadline.per_call_s, ALTERNATES_TIMEOUT_S, step.at - clock())
-    if variant == Variant.WEEKEND.value:
+    if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if limit < MIDDLE_MIN_S:
         return trip, False
@@ -973,7 +997,7 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
     standard graph (correctness review, round 2: the retry made it 30 s).
     """
     limit = deadline.per_call_s
-    if variant == Variant.WEEKEND.value:
+    if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if "alternates" not in request:
         return _call(variant, "route", request, Deadline(deadline.at, limit)), False
@@ -981,7 +1005,7 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
     try:
         return _call(variant, "route", request, Deadline(deadline.at, alternates_limit)), False
     except RouterUnavailable:
-        if variant == Variant.WEEKEND.value:
+        if variant in TWIN_VARIANTS:
             raise
         logger.warning(
             "the %s router did not answer a request for alternatives in %s s; asking without",
@@ -1503,24 +1527,24 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
-    if variant == Variant.WEEKEND.value and (_weekend_down() or not _weekend_is_promoted()):
-        logger.info("the weekend graph is not being served; planning on the standard graph")
+    if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
     try:
         try:
             answer, timed_out = _route(variant, request, deadline)
-            if variant == Variant.WEEKEND.value:
-                _mark_weekend(True)
+            if variant in TWIN_VARIANTS:
+                _mark_twin(variant, True)
         except RouterUnavailable:
             # The weekend graph is a fourth router, and a deployment that has
             # not built it yet - or one whose weekend router is down or hung -
             # still answers a weekend ride, on the standard graph it is the
             # twin of. The answer names the graph it came from, and the failure
             # is remembered for WEEKEND_FAILURE_TTL_S.
-            if variant != Variant.WEEKEND.value:
+            if variant not in TWIN_VARIANTS:
                 raise
-            _mark_weekend(False)
-            logger.warning("the weekend router did not answer; planning on the standard graph")
+            _mark_twin(variant, False)
+            logger.warning("the %s router did not answer; planning on the standard graph", variant)
             variant = Variant.STANDARD.value
             answer, timed_out = _route(variant, request, deadline)
         except RouterRefused as refusal:
@@ -1532,16 +1556,17 @@ def plan(
             # one taken to be missing its tiles and remembered as down; a
             # point the standard graph cannot place either is a real refusal
             # and is reported as one.
-            if variant != Variant.WEEKEND.value or refusal.code not in NO_EDGE_CODES:
+            if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
                 raise
             answer, timed_out = _route(Variant.STANDARD.value, request, deadline)
-            variant = Variant.STANDARD.value
-            _mark_weekend(False)
+            _mark_twin(variant, False)
             logger.warning(
-                "the weekend router placed no edge the standard graph could (code %s); "
+                "the %s router placed no edge the standard graph could (code %s); "
                 "planning on the standard graph",
+                variant,
                 refusal.code,
             )
+            variant = Variant.STANDARD.value
         if timed_out and not calm_seek:
             seek_limited = "timed_out"
     except RouterRefused as refusal:

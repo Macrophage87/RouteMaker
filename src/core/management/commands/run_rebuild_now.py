@@ -47,7 +47,7 @@ RESTART_HINT = (
     "When it finishes, restart the routers so they load the promoted build - "
     "`valhalla_service` reads its tiles once at start and does not reload them: "
     "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
-    "valhalla-weekend"
+    "valhalla-weekend valhalla-offroad"
 )
 
 IN_FLIGHT_REFUSAL = (

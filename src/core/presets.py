@@ -645,10 +645,18 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
     return carrying or next(iter(preset.carrying))
 
 
+# The presets that ride the off-road graph, where the mountain-bike class is
+# open (OWNER-DECISIONS 291(2): "Closed for Default, open for Gravel/Goat").
+# The off-road graph has no weekend twin, so these rides stay on it at the
+# weekend.
+OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
+
+
 def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     """The graph a ride routes on.
 
-    Electric assist (Cargo Bike) takes the e-bike graph. A weekend ride on the
+    Electric assist (Cargo Bike) takes the e-bike graph. Gravel and Mountain
+    Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
     standard graph takes its weekend twin, where roads closed to cars at the
     weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
     graphs have no weekend twin, so their weekend rides stay on them.
@@ -656,6 +664,8 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     preset = PRESETS[name]
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
+    if name in OFFROAD_PRESETS and preset.variant == Variant.STANDARD.value:
+        return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
         return Variant.WEEKEND.value
     return preset.variant

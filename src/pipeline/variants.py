@@ -58,6 +58,17 @@ class Variant(Enum):
     # has a weekend twin; an e-bike or trails-off ride at the weekend routes on
     # its own graph and reports the closures in its breakdown only.
     WEEKEND = "weekend"
+    # The standard graph with the mountain-bike class open
+    # (`rm:no_bicycle=mtb`; `routemaker.trailaccess`): the natural-surface trails
+    # mappers tag bikeable but nobody rates for a mountain bike - Northwest
+    # Branch, Cabin John, the Leakin Park loops. The owner, 2026-10-03 (291(2)):
+    # "Closed for Default, open for Gravel/Goat". Every other graph closes them,
+    # Weekend and E-bike included (291(3)); rated singletrack stays closed here
+    # too (OWNER-DECISIONS 90, 91, 111). Only Gravel and Mountain Goat ride it, by
+    # `core.presets.variant_for_ride`. It has no weekend twin: a weekend Gravel
+    # or Goat ride stays on it and reports its car-free closures in its
+    # breakdown only, as an e-bike ride does.
+    OFFROAD = "offroad"
 
 
 def is_trail_class(
@@ -907,10 +918,12 @@ def inject(
     """
     is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
 
-    if variant in (Variant.STANDARD, Variant.WEEKEND):
+    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD):
         # The weekend graph's tags are the standard graph's: what differs is
         # the facility class and tier handed to the transform
-        # (`run.inject_tags`), not the OSM tags.
+        # (`run.inject_tags`), not the OSM tags. The off-road graph's one
+        # difference is the same kind: `run.inject_tags` leaves off the
+        # mountain-bike class's closure.
         out = dict(tags)
         if is_mass_ride_only:
             bar_mass_ride_only_roadway(out)
