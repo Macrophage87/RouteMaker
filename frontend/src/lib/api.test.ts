@@ -387,3 +387,17 @@ test("a long ride that ran out of time is marked not to be resent; other 503s ar
     assert.equal(result.error.title, timedOut.title);
   }
 });
+
+test("a Mass Ride's kept loop is not sent; another ride type's is (OWNER-DECISIONS 374)", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const impl = async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response("{}", { status: 500 });
+  };
+  const points: Array<[number, number]> = [[-77.04, 38.91], [-77.01, 38.89]];
+  const dials = { stress: 0, hills: 0, when: null, carrying: null, assist: false, loop: true };
+  await requestRoute(points, "mass-ride", { fetchImpl: impl, dials });
+  await requestRoute(points, "default", { fetchImpl: impl, dials: { ...dials, stress: 50 } });
+  assert.deepEqual(bodies[0], { points, preset: "mass-ride", stress: 0, hills: 0 });
+  assert.equal(bodies[1].loop, true);
+});

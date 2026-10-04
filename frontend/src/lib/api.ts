@@ -552,7 +552,12 @@ export async function requestRoute(
       body: JSON.stringify({
         points,
         preset,
-        ...(options.dials ? dialFields(options.dials) : {}),
+        // A Mass Ride keeps Make it a loop for the next ride type but has no
+        // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
+        // routing.loop_wanted ignores it there too.
+        ...(options.dials
+          ? dialFields(preset === "mass-ride" ? { ...options.dials, loop: false } : options.dials)
+          : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),
     });

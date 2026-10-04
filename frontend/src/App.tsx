@@ -28,12 +28,12 @@ import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
 import {
   addedSaid,
   emptyPlanHint,
-  reverseUnavailableHint,
   insertedSaid,
   loneStartHint,
   loopChangeSaid,
   removedSaid,
   reversedSaid,
+  reverseUnavailableHint,
   stationSaid,
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
@@ -524,8 +524,9 @@ export function App() {
     if (said) announce(said);
     setDials(next);
   };
-  // A new ride type moves the sliders to where it starts them (RideTypePicker).
-  // Into or out of Mass Ride, which has no loop, it can rename the points too.
+  // A new ride type moves the sliders to where it starts them (RideTypePicker)
+  // and keeps Make it a loop (rideTypeDialog.choose). Mass Ride has no loop, so
+  // into or out of it renames the points; between two others nothing is said.
   const choosePreset = (id: PresetId, next: Dials) => {
     const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     if (said) announce(said);

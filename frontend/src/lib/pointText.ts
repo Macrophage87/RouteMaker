@@ -113,7 +113,7 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
     : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
   // After Clear the toggle stays on but is hidden until there is a start, so say how to get a one-way ride.
   const toggle = loop
-    ? ` ${LOOP_LABEL} is on; once the start is placed, you can turn it off ${TOGGLE_PLACE}.`
+    ? ` The "${LOOP_LABEL}" toggle is on; once the start is placed, you can turn it off ${TOGGLE_PLACE}.`
     : preset === "mass-ride"
       ? ""
       : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE};` +

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
 import { startDials } from "./dials.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./rideTypeDialog.ts";
+import { loopStops } from "./loop.ts";
+import { loopChangeSaid, loopToggledSaid } from "./pointText.ts";
 
 test("Tab and Shift+Tab wrap inside the dialog", () => {
   assert.equal(nextFocus(0, 4, false), 1);
@@ -64,4 +66,36 @@ test("choosing another ride type keeps avoid gravel", () => {
   const current = { ...startDials("default"), avoidGravel: true };
   assert.equal(choose("cargo", "cargo", current).avoidGravel, true);
   assert.equal(choose("cargo", "cargo", startDials("default")).avoidGravel, undefined);
+});
+
+test("choosing another ride type keeps Make it a loop, through a Mass Ride and back (OWNER-DECISIONS 374)", () => {
+  const looped = { ...startDials("default"), loop: true };
+  for (const preset of PRESETS) assert.equal(choose(preset.id, null, looped).loop, true, preset.id);
+  assert.equal("loop" in choose("cargo", "cargo", startDials("default")), false, "off stays absent");
+  assert.equal("loop" in choose("cargo", "cargo", { ...startDials("default"), loop: false }), false);
+  // Between two ride types with a loop nothing is renamed, so nothing is said.
+  const fast = choose("fast", null, looped);
+  assert.equal(loopStops("fast", fast.loop), true);
+  assert.equal(loopChangeSaid({ preset: "default", dials: looped }, { preset: "fast", dials: fast }, 3), null);
+  // Into Mass Ride, which has no loop, the points are renamed: loop off.
+  const mass = choose("mass-ride", null, fast);
+  assert.equal(mass.loop, true, "kept, unused");
+  assert.equal(loopStops("mass-ride", mass.loop), false);
+  assert.equal(
+    loopChangeSaid({ preset: "fast", dials: fast }, { preset: "mass-ride", dials: mass }, 3),
+    loopToggledSaid(false, 3),
+  );
+  // Out of it again the loop comes back: loop on.
+  const back = choose("default", null, mass);
+  assert.equal(loopStops("default", back.loop), true);
+  assert.equal(
+    loopChangeSaid({ preset: "mass-ride", dials: mass }, { preset: "default", dials: back }, 3),
+    loopToggledSaid(true, 3),
+  );
+  // Without the loop, no ride type change says anything.
+  const plain = startDials("default");
+  assert.equal(
+    loopChangeSaid({ preset: "default", dials: plain }, { preset: "mass-ride", dials: choose("mass-ride", null, plain) }, 3),
+    null,
+  );
 });

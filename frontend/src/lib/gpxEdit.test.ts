@@ -18,6 +18,13 @@ test("a ride type the file names is chosen as the dialog chooses it: its sliders
   assert.equal(rideAfterImport({ preset: "cargo" }, NOW).dials.carrying, "cargo");
 });
 
+test("a file that names a ride type but no sliders opens one-way, even with the loop on before (OWNER-DECISIONS 374)", () => {
+  const looped = { preset: "default" as const, dials: { ...startDials("default"), loop: true } };
+  const ride = rideAfterImport({ preset: "group-ride" }, looped);
+  assert.equal(ride.preset, "group-ride");
+  assert.equal("loop" in ride.dials, false);
+});
+
 test("the file's own sliders are taken, fitted to the ride type as a link's are", () => {
   const ride = rideAfterImport({ preset: "group-ride", dials: { stress: 40, hills: -20 } }, NOW);
   assert.deepEqual(ride.dials, { ...startDials("group-ride", null, "weekend"), stress: 40, hills: -20 });

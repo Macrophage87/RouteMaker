@@ -29,9 +29,11 @@ export function rideAfterImport(
   now: { preset: PresetId; dials: Dials },
 ): { preset: PresetId; dials: Dials } {
   if (!plan.preset) return { preset: now.preset, dials: now.dials };
+  // Whether the ride is a loop is the file's (loop=1 in its sliders), so a
+  // loop the page had on before is not carried as the dialog carries it.
   const dials = plan.dials
     ? fitDials(plan.preset, { when: now.dials.when, ...plan.dials })
-    : choose(plan.preset, null, now.dials);
+    : choose(plan.preset, null, { ...now.dials, loop: false });
   return { preset: plan.preset, dials };
 }
 

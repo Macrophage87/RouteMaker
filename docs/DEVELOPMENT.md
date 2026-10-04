@@ -3731,7 +3731,10 @@ here", "Add as stop"), announcements and the GPX (`summary.pointName`, `pointTex
 `gpx.planPointName`, `loop.loopStops`). Inside a sentence the start is "the start" ("Stop 2 added,
 between Stop 1 and the start"), and a change that renames the points is announced: the toggle, a
 ride type into or out of Mass Ride (which has no loop), and an undo or redo that brings another loop
-state back (`pointText.loopChangeSaid`). Dragging the route line works on the closing leg too: the
+state back (`pointText.loopChangeSaid`). A new ride type keeps the toggle, as it keeps Avoid gravel
+(`rideTypeDialog.choose`), so only Mass Ride turns the loop off; it keeps the flag unused (it is no
+moved setting there, and Reset keeps it), and the next ride type brings the loop back.
+Dragging the route line works on the closing leg too: the
 legs run over the points and the start again (`lineEdit.legPoints`), so the API's `leg_ends` fit
 them, and a drag on the way back appends the stop as a click there does (`lineEdit.insertIntoRide`);
 the preview runs to the start. Reverse keeps the start and finish and reverses the stops
@@ -3743,7 +3746,9 @@ planned (recorded with the route, as its points are, so a replan in progress doe
 not the API's echoed `dials.loop` (which is also true for a ride ending on its start), and writes
 `loop=1` in its dials comment, which the import reads back, so a loop reopens as one. The request is
 unchanged (`loop_points` already passes through every point after the start and returns to it), and
-so are links (`loop=1`). A loop implied by an end on the start, with the toggle off, keeps "Start"
+so are links (`loop=1`). A Mass Ride's link keeps `loop=1`, but its request leaves the flag out
+(`api.requestRoute`; `routing.loop_wanted` ignores it there anyway).
+A loop implied by an end on the start, with the toggle off, keeps "Start"
 and "End". Mass Ride has no loop, and its hints do not mention the toggle.
 
 ### The tables

@@ -10,6 +10,7 @@ import { decodePlan, encodePlan } from "./planHash.ts";
 import { placeAtStation, stationEdit, stationRoles } from "./railStations.ts";
 import { pointName } from "./summary.ts";
 import { startDials } from "./dials.ts";
+import { panelView } from "./dialsPanel.ts";
 import { namesToKeep, rideAfterImport } from "./gpxEdit.ts";
 import { planFromGpx } from "./gpxPlan.ts";
 
@@ -229,4 +230,24 @@ test("share links: loop with a start and a stop round-trips, and an old hash dec
   const old = decodePlan(encodePlan([A, B, A], "default", startDials("default")));
   assert.ok(!old.dials.loop);
   assert.equal(old.points.length, 3);
+});
+
+test("a Mass Ride's link keeps loop=1, so the loop comes back on the next ride type (OWNER-DECISIONS 374)", () => {
+  const dials = { ...startDials("mass-ride"), loop: true };
+  const hash = encodePlan([A, B], "mass-ride", dials);
+  assert.match(hash, /loop=1/);
+  const back = decodePlan(hash);
+  assert.equal(back.preset, "mass-ride");
+  assert.equal(back.dials.loop, true);
+  assert.equal(loopStops(back.preset, back.dials.loop), false, "no loop on the Mass Ride itself");
+  assert.equal(loopView("mass-ride", back.dials.loop, [A, B]), null, "and no toggle");
+});
+
+test("on a Mass Ride the kept loop is no moved setting, and Reset keeps it", () => {
+  const kept = { ...startDials("mass-ride"), loop: true };
+  assert.equal(panelView("mass-ride", kept).reset, null);
+  const moved = { ...kept, hills: -40 };
+  assert.deepEqual(panelView("mass-ride", moved).reset, { ...startDials("mass-ride"), loop: true });
+  // Elsewhere the loop is a moved setting, and Reset turns it off, as before.
+  assert.deepEqual(panelView("default", { ...startDials("default"), loop: true }).reset, startDials("default"));
 });

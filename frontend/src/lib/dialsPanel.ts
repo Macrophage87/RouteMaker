@@ -187,12 +187,19 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   // The ride type's start for what the bike carries, at the ride time and
   // with the assist the rider chose: going back resets the sliders only.
   const plain = startDials(preset, dials.carrying, dials.when, dials.assist);
-  const start = dials.avoidGravel ? { ...plain, avoidGravel: true } : plain;
+  // A Mass Ride hides Make it a loop and keeps it for the next ride type
+  // (OWNER-DECISIONS 374): there it is no moved setting, and Reset keeps it.
+  const hiddenLoop = preset === "mass-ride" && dials.loop === true;
+  const start = {
+    ...plain,
+    ...(dials.avoidGravel ? { avoidGravel: true } : {}),
+    ...(hiddenLoop ? { loop: true } : {}),
+  };
   const moved =
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
     dials.targetDistanceM !== undefined ||
-    dials.loop === true;
+    (dials.loop === true && !hiddenLoop);
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
   else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
