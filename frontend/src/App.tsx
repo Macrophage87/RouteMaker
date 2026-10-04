@@ -850,6 +850,7 @@ export function App() {
           <GpxPanel
             route={shown}
             routedPoints={routedPoints}
+            loop={loopVias}
             points={points}
             planStatus={status.kind}
             imported={imported}

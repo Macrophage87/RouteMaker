@@ -121,6 +121,8 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   if (isWhen(fields.when)) dials.when = fields.when;
   if (isCarrying(fields.carrying)) dials.carrying = fields.carrying;
   if (fields.assist === "1") dials.assist = true;
+  // A loop the rider chose (OWNER-DECISIONS 374): without it the last stop would open as the end.
+  if (fields.loop === "1") dials.loop = true;
   return { preset: id, dials };
 }
 

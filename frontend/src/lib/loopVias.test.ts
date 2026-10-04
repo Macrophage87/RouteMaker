@@ -3,14 +3,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MAX_POINTS, addPoint, type LonLat } from "./geo.ts";
 import { applyPlace, choiceInForce, choicesFor, defaultChoice, placeEffect, pointRows, searchView } from "./geocode.ts";
-import { planPointName, writeGpx } from "./gpx.ts";
+import { parseGpx, planPointName, writeGpx } from "./gpx.ts";
 import { exportOf } from "./gpxText.ts";
 import { loopStops, loopView } from "./loop.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { placeAtStation, stationEdit, stationRoles } from "./railStations.ts";
 import { pointName } from "./summary.ts";
 import { startDials } from "./dials.ts";
-import { namesToKeep } from "./gpxEdit.ts";
+import { namesToKeep, rideAfterImport } from "./gpxEdit.ts";
+import { planFromGpx } from "./gpxPlan.ts";
 
 // A west-east line of places, 0.02 degrees (about 1.7 km) apart.
 const A: LonLat = [-77.0, 38.9];
@@ -139,13 +140,59 @@ test("the GPX of a chosen loop names its points as a loop, and reads back withou
     attribution: [],
     dials: { stress: 1, hills: 0, when: null, carrying: null, loop: true },
   } as unknown as Parameters<typeof exportOf>[0];
-  const xml = writeGpx(exportOf(route, [A, B, C]));
+  const xml = writeGpx(exportOf(route, [A, B, C], true));
   assert.match(xml, /<name>Start and finish<\/name>/);
   assert.match(xml, /<name>Stop 2<\/name>/);
   assert.doesNotMatch(xml, /<name>End<\/name>/);
   const plain = writeGpx(exportOf({ ...route, dials: { ...route.dials!, loop: false } }, [A, B, C]));
   assert.match(plain, /<name>End<\/name>/);
   assert.deepEqual(namesToKeep({ points: [A, B], pointNames: ["Start and finish", "Stop 1"] }), []);
+});
+
+const names = (xml: string) => [...xml.matchAll(/<rtept [^>]*>\s*<name>([^<]*)<\/name>/g)].map((m) => m[1]);
+const loopRoute = {
+  preset: "default",
+  distance_m: 10000,
+  climb_m: 10,
+  descent_m: 10,
+  geometry: { type: "LineString" as const, coordinates: [A, B, C, A] },
+  attribution: [],
+  dials: { stress: 40, hills: 50, when: null, carrying: null, loop: true },
+} as unknown as Parameters<typeof exportOf>[0];
+
+test("the GPX names its points from the rider's toggle, not the API's echo", () => {
+  // A ride that ends on its start with the toggle off: the API echoes loop
+  // true, the page says Start, Stop 1, End, and so does the file.
+  const back: LonLat = [-77.0001, 38.9001];
+  const implied = writeGpx(exportOf(loopRoute, [A, B, back], false));
+  assert.deepEqual(names(implied), ["Start", "Stop 1", "End"]);
+  assert.deepEqual(names(implied), pointRows([A, B, back], { name: () => undefined }, false).map((r) => r.role));
+  assert.doesNotMatch(implied, /loop=1/);
+  const chosen = writeGpx(exportOf(loopRoute, [A, B, C], true));
+  assert.deepEqual(names(chosen), pointRows([A, B, C], { name: () => undefined }, true).map((r) => r.role));
+});
+
+test("Mass Ride has no loop in the GPX, whatever the toggle says", () => {
+  const mass = writeGpx(exportOf({ ...loopRoute, preset: "mass-ride" }, [A, B, C], true));
+  assert.deepEqual(names(mass), ["Start", "Stop 1", "End"]);
+  assert.doesNotMatch(mass, /loop=1/);
+});
+
+test("a loop survives a GPX export and re-import", () => {
+  const xml = writeGpx(exportOf(loopRoute, [A, B, C], true));
+  assert.match(xml, /<cmt>routemaker:[^<]*;loop=1<\/cmt>/);
+  const plan = planFromGpx(parseGpx(xml));
+  assert.equal(plan.dials?.loop, true);
+  assert.deepEqual(namesToKeep(plan), [], "the role names are not taken for place names");
+  const now = { preset: "default" as const, dials: startDials("default") };
+  const ride = rideAfterImport(plan, now);
+  assert.equal(ride.dials.loop, true);
+  assert.equal(loopStops(ride.preset, ride.dials.loop), true);
+  assert.deepEqual(pointRows(plan.points, { name: () => undefined }, true).map((r) => r.role), ["Start and finish", "Stop 1", "Stop 2"]);
+  // A one-way export opens one-way, even with the loop on before the import.
+  const oneWay = planFromGpx(parseGpx(writeGpx(exportOf(loopRoute, [A, B, C], false))));
+  const looped = { preset: "default" as const, dials: { ...startDials("default"), loop: true } };
+  assert.notEqual(rideAfterImport(oneWay, looped).dials.loop, true);
 });
 
 test("share links: loop with a start and a stop round-trips, and an old hash decodes as before", () => {

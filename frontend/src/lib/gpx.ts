@@ -363,6 +363,8 @@ export interface ExportDials {
   when?: string | null;
   carrying?: string | null;
   assist?: boolean;
+  /** A loop the rider chose (OWNER-DECISIONS 374), so the file opens as one again. */
+  loop?: boolean;
 }
 
 export function dialsComment(dials: ExportDials): string {
@@ -370,6 +372,7 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.when) parts.push(`when=${dials.when}`);
   if (dials.carrying) parts.push(`carrying=${dials.carrying}`);
   if (dials.assist) parts.push("assist=1");
+  if (dials.loop) parts.push("loop=1");
   return PLAN_DIALS_PREFIX + parts.join(";");
 }
 
@@ -454,7 +457,10 @@ export function writeGpx(input: GpxExport): string {
   if (input.planPoints.length >= 2) {
     lines.push("  <rte>");
     lines.push(`    <name>${escapeXml(input.name)}</name>`);
-    if (input.dials) lines.push(`    <cmt>${escapeXml(dialsComment(input.dials))}</cmt>`);
+    if (input.dials) {
+      const dials = input.loop === true ? { ...input.dials, loop: true } : input.dials;
+      lines.push(`    <cmt>${escapeXml(dialsComment(dials))}</cmt>`);
+    }
     const routeDesc = [input.rideText, input.routeText].filter((part) => part).join("\n\n");
     if (routeDesc) lines.push(`    <desc>${escapeXml(routeDesc)}</desc>`);
     lines.push(`    <type>${escapeXml(PLAN_TYPE_PREFIX + input.preset)}</type>`);

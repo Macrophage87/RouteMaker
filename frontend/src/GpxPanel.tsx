@@ -14,6 +14,8 @@ interface Props {
   route: RouteResponse | null;
   /** The points that route was planned through. */
   routedPoints: LonLat[];
+  /** "Make it a loop" is on, as the page names the points (OWNER-DECISIONS 374). */
+  loop?: boolean;
   /** The plan's points now. */
   points: LonLat[];
   /** Where the planner is with them (App's status). */
@@ -54,7 +56,8 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * file is read here (gpxImport.ts) and the download is built here from the
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
-export function GpxPanel({ route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap }: Props) {
+export function GpxPanel(props: Props) {
+  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, loop = false } = props;
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
@@ -132,7 +135,7 @@ export function GpxPanel({ route, routedPoints, points, planStatus, imported, on
 
   const download = () => {
     if (!route) return;
-    const blob = new Blob([writeGpx(exportOf(route, routedPoints))], { type: "application/gpx+xml" });
+    const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop))], { type: "application/gpx+xml" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
