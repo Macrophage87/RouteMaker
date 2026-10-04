@@ -125,8 +125,13 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
   });
 }
 
-/** Answer /api, /tiles, /basemap and /auth here; `route` may be a function of the request count. */
-export async function mock(page, route) {
+/**
+ * Answer /api, /tiles, /basemap and /auth here; `route` may be a function of the request count.
+ * `delayMs` holds every route answer from the `delayFrom`th on (a slow plan: the a11y review of
+ * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
+ * stress tiles with an error (the stress map unavailable).
+ */
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   page.routeRequests = 0;
   await page.s("Fetch.enable", {
     patterns: [{ urlPattern: "*/api/*" }, { urlPattern: "*/tiles/*" }, { urlPattern: "*/basemap/*" }, { urlPattern: "*/auth/*" }],
@@ -139,12 +144,14 @@ export async function mock(page, route) {
     let body = "";
     let type = "text/plain";
     if (url.pathname.startsWith("/tiles/stress/")) {
-      status = 200;
+      status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
+      const n = page.routeRequests;
+      if (delayMs && n >= delayFrom) await sleep(delayMs);
       status = 200;
-      body = JSON.stringify(typeof route === "function" ? route(page.routeRequests) : route);
+      body = JSON.stringify(typeof route === "function" ? route(n) : route);
       type = "application/json";
     } else if (url.pathname.startsWith("/api/")) {
       body = JSON.stringify({ detail: "not found" });

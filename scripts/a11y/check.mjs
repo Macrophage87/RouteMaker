@@ -24,10 +24,10 @@ function check(name, ok, detail = "") {
 
 const b = await connect();
 
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, stressTiles = true } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route);
+  await mock(p, route, { delayMs, stressTiles });
   await media(p, { scheme, forced });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
@@ -387,7 +387,9 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
   const target = await axNode(p, "input[placeholder=Default]");
   check("target distance: the field's name is its label, in miles", target?.role === "textbox" && target?.name === "Target distance (miles)", JSON.stringify(target?.name));
-  check("target distance: its description says what it does, miles first", /Optional\. The route aims at or under this/.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? ""), (target?.description ?? "").slice(0, 80));
+  check("target distance: its description says what it does, miles first, in under 150 characters", /^Optional: the calmest route at or under this\./.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? "") && (target?.description ?? "").length < 150, (target?.description ?? "").slice(0, 80));
+  const how = await p.eval("(() => { const d = document.querySelector('.dial details.how'); return d ? { summary: d.querySelector('summary').textContent, open: d.open } : null; })()");
+  check("target distance: the detail is under a closed \"How this works\", not in the description", how?.summary === "How this works" && how.open === false, JSON.stringify(how));
   const weight = await p.eval(`(() => { const e = [...document.querySelectorAll('input[placeholder=Default]')][1]; return e ? { label: document.querySelector('label[for="' + e.id + '"]').textContent.trim(), described: document.getElementById(e.getAttribute('aria-describedby').split(' ')[0]).textContent } : null; })()`);
   check("system weight: named in pounds, described with the default in pounds first", weight?.label === "System weight (pounds)" && /Left empty, it is 198 lb \(90 kg\)/.test(weight?.described ?? ""), JSON.stringify(weight));
   const field = "document.querySelector('input[placeholder=Default]')";
@@ -402,15 +404,29 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   check("target distance: Enter plans once", p.routeRequests - before === 1, `${p.routeRequests - before} plans`);
   check("target distance: the plan is in the address in miles", /targetmi=60\.0/.test(await p.eval("location.hash")), await p.eval("location.hash"));
   const set = await axNode(p, "input[placeholder=Default]");
-  check("target distance: once set, its description gives the ceiling in miles first", /never past 75\.0 mi \(120\.7 km\), and says how far over it is/.test(set?.description ?? ""), (set?.description ?? "").slice(0, 200));
+  check("target distance: once set, its description gives the ceiling in miles first", /never past 75\.0 mi \(120\.7 km\)\./.test(set?.description ?? ""), (set?.description ?? "").slice(0, 200));
   // A bad entry is said in words and marked invalid, and plans nothing.
   const again = p.routeRequests;
+  // The rule's live region is in the page before any bad entry, and empty (the a11y review's SF3).
+  const rule = `document.getElementById(${field}.id + '-rule')`;
+  const before9 = await p.eval(`(() => { const r = ${rule}; return r ? { text: r.textContent, live: r.closest('[aria-live=assertive], [role=alert]') !== null } : null; })()`);
+  check("target distance: the rule's assertive live region is in the page, empty, before a bad entry", before9?.live === true && before9.text === "", JSON.stringify(before9));
+  await p.eval(`window.__rule = []; new MutationObserver(() => { const t = ${rule}.textContent.trim(); if (t) window.__rule.push(t); }).observe(${rule}, { childList: true, subtree: true, characterData: true }); true`);
   await p.eval(`${field}.focus(); ${field}.select(); true`);
   await p.type("abc");
   await p.enter();
   await sleep(500);
-  const bad = await p.eval(`(() => { const e = ${field}; return { invalid: e.getAttribute('aria-invalid'), said: document.getElementById(e.getAttribute('aria-describedby').split(' ')[1])?.textContent }; })()`);
-  check("target distance: a bad entry is marked invalid and said in words, and plans nothing", bad.invalid === "true" && /^Enter 0\.7 to 621 miles, or leave it empty\.$/.test(bad.said ?? "") && p.routeRequests === again, JSON.stringify(bad));
+  const bad = await p.eval(`(() => { const e = ${field}; return { invalid: e.getAttribute('aria-invalid'), said: document.getElementById(e.getAttribute('aria-describedby').split(' ')[1])?.textContent, focus: document.activeElement === e }; })()`);
+  check("target distance: a bad entry is marked invalid and said in words, metric in brackets, the focus stays, and it plans nothing", bad.invalid === "true" && /^Enter 0\.7 to 621 miles \(1 to 1,000 km\), or leave it empty\.$/.test(bad.said ?? "") && bad.focus && p.routeRequests === again, JSON.stringify(bad));
+  const live = await p.eval(`(() => { const r = ${rule}; const region = r.closest('[aria-live]'); return { inLive: !!region, politeness: region?.getAttribute('aria-live'), text: r.textContent.trim() }; })()`);
+  check("target distance: the rule is said, in an assertive live region, once filled", live.inLive && live.politeness === "assertive" && /^Enter 0\.7 to 621 miles/.test(live.text) && (await p.eval("window.__rule")).length >= 1, JSON.stringify({ live, said: await p.eval("window.__rule") }));
+  // Tab away from a second bad entry: the rule is said again, though the focus has moved on.
+  await p.eval(`window.__rule = []; ${field}.focus(); ${field}.select(); true`);
+  await p.type("xyz");
+  await p.tab();
+  await sleep(500);
+  const tabbed = await p.eval(`({ said: window.__rule, focusMoved: document.activeElement !== ${field} })`);
+  check("target distance: a bad entry left with Tab is said too", tabbed.focusMoved && tabbed.said.length >= 1 && /^Enter 0\.7 to 621 miles/.test(tabbed.said.at(-1)), JSON.stringify(tabbed));
   await p.close();
 }
 {
@@ -432,6 +448,16 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const p = await open({ route: S_DEFAULT, hash: "#p=-77.04000,38.91000;-77.01000,38.89000;-77.04000,38.91000&preset=default&v=2&stress=70&hills=0" });
   const state = await axNode(p, ".dials .toggle input[aria-describedby]");
   check("loop: a ride ending where it starts shows the toggle on and not changeable, and says why", state?.checked === true && state?.disabled === true && /ends where it starts/.test(state?.description ?? ""), JSON.stringify(state));
+  // aria-disabled, not disabled: it stays in the Tab order, and Space changes nothing (the a11y review's N6).
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').focus(); true");
+  const focusable = await p.eval("document.activeElement === document.querySelector('.dials .toggle input[aria-describedby]')");
+  await p.key(" ", "Space", 32);
+  await sleep(1200);
+  const after = await p.eval("({ checked: document.querySelector('.dials .toggle input[aria-describedby]').checked, attr: document.querySelector('.dials .toggle input[aria-describedby]').getAttribute('aria-disabled'), disabled: document.querySelector('.dials .toggle input[aria-describedby]').disabled })");
+  check("loop: when implied it keeps the focus, and Space neither unticks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
+  const size = await p.eval("(() => { const r = document.querySelector('.dials .toggle').getBoundingClientRect(); return Math.round(r.height); })()");
+  check("loop: its row is a 24 px target (2.5.8)", size >= 24, `${size} px`);
   await p.close();
 }
 
@@ -453,7 +479,22 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const group = await p.eval(`(() => { const f = document.querySelector('fieldset.candidates'); return f ? { legend: f.querySelector('legend').textContent, radios: [...f.querySelectorAll('input[type=radio]')].map((r) => r.checked) } : null; })()`);
   check("routes: a group of three radio buttons under a legend, the first chosen", group?.legend === "Routes to choose from" && JSON.stringify(group.radios) === "[true,false,false]", JSON.stringify(group));
   const first = await p.eval("(() => { const l = document.querySelector('fieldset.candidates label'); return { name: l.querySelector('.candidate-name').textContent, line: l.querySelector('.candidate-line').textContent }; })()");
-  check("routes: each says its rank and its figures in words, with no colour to read", first.name === "Route 1, the calmest" && /heavy-traffic roads \(LTS 4\), .* of busy roads \(LTS 3\), .*junction/.test(first.line), JSON.stringify(first));
+  check("routes: each says its rank and its figures in words, with no colour to read", /^Route 1, the calmest: 7\.0 mi/.test(first.name) && /heavy-traffic or best-avoided roads, .* of busy roads, .*junction/.test(first.line), JSON.stringify(first));
+  // What the screen reader hears for each radio (the a11y review's SF2): a short name, its own figures as the description.
+  const fieldset = await axNode(p, "fieldset.candidates");
+  const hint = await p.eval("document.querySelector('fieldset.candidates .hint').textContent");
+  const radios = [];
+  for (let i = 0; i < 3; i++) {
+    await p.eval(`document.querySelectorAll('fieldset.candidates input')[${i}].setAttribute('data-check', 'r${i}'); true`);
+    radios.push(await axNode(p, `[data-check=r${i}]`));
+  }
+  check("routes: each radio's name is short, its rank then a separator: Route 2: 7.2 mi ..., 0.2 mi ... more than Route 1",
+    radios.every((r) => /^Route \d+[:,]/.test(r?.name ?? "") && (r?.name ?? "").length < 90) && /^Route 2: 7\.2 mi \(11\.6 km\), 0\.2 mi \(0\.4 km\) more than Route 1$/.test(radios[1]?.name ?? ""), JSON.stringify(radios.map((r) => r?.name)));
+  check("routes: each radio's description is its own figures, not the shared hint", radios.every((r) => r?.description && r.description !== hint && /heavy-traffic or best-avoided roads/.test(r.description)), JSON.stringify(radios.map((r) => r?.description?.slice(0, 50))));
+  check("routes: the shared hint is the group's description, read once on entering it", fieldset?.description === hint && /The map shows the one chosen, and the route description below follows it\./.test(hint) && !/scenery/.test(hint), JSON.stringify({ role: fieldset?.role, description: fieldset?.description }));
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 5000);
+  const arrival = await p.eval("document.querySelector('.status-line').textContent");
+  check("routes: on arrival the announcement says how many others there are to choose from", /^Route planned: .*2 other routes to choose from, under Routes to choose from\.$/.test(arrival), arrival);
   await p.eval("document.querySelectorAll('fieldset.candidates input')[0].focus(); true");
   await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
     .observe(document.querySelector('.status-line'), { childList: true, subtree: true, characterData: true }); true`);
@@ -464,7 +505,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const distance = await p.eval("document.querySelector('.stats dd').textContent");
   const said = await p.eval("window.__said");
   check("routes: the arrow key chooses the next, and the summary shows its figures", JSON.stringify(chosen) === "[false,true,false]" && /7\.2 mi/.test(distance), `${JSON.stringify(chosen)} ${distance}`);
-  check("routes: choosing plans nothing and is announced once, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3\. Route planned: 7\.2 mi/.test(said[0]), JSON.stringify(said));
+  check("routes: choosing plans nothing and is announced once, as chosen, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3 chosen: 7\.2 mi/.test(said[0]) && !/Route planned/.test(said[0]), JSON.stringify(said));
   await p.shot(`${SHOTS}/candidates.png`, await p.eval("(() => { const e = document.querySelector('fieldset.candidates'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.round(r.width), height: Math.min(Math.round(r.height), innerHeight - Math.max(0, r.top)) }; })()"));
   await p.close();
 }
@@ -533,7 +574,7 @@ const federalFetched = (p) =>
   const id = "#high-lanes-switch";
   const before = await axNode(p, id);
   check("lanes switch: a switch named for what it does, off by default", before?.role === "switch" && before?.name === "Show bike lanes on high-stress roads" && String(before?.checked) === "false", JSON.stringify(before));
-  check("lanes switch: described, in words, by which roads are affected", /LTS 4 and Avoid/.test(before?.description ?? "") && /Protected lanes and paths always show/.test(before?.description ?? ""), (before?.description ?? "").slice(0, 80));
+  check("lanes switch: described, in plain words, by which roads are affected", /heavy-traffic \(LTS 4\) and best-avoided roads/.test(before?.description ?? "") && /Protected lanes and paths always show/.test(before?.description ?? ""), (before?.description ?? "").slice(0, 80));
   const box = await p.eval(`(() => { const r = document.querySelector('${id}').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()`);
   check("lanes switch: its target is at least 24 px tall (2.5.8)", box.h >= 24 && box.w >= 24, JSON.stringify(box));
   check("lanes switch: its state is also in visible words, not colour", await p.eval(`document.querySelector('${id} .switch-state').textContent === 'Off'`));
@@ -553,7 +594,42 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 13. The stress map unavailable: the lane switch is still there (the a11y review's SF4) ----
+{
+  const p = await open({ stressTiles: false });
+  await p.waitFor("/Stress map unavailable/.test(document.querySelector('#layers-heading')?.parentElement?.textContent ?? '')", 15000);
+  const ax = await axNode(p, "#high-lanes-switch");
+  check("lanes switch without the stress map: still a switch, described by what it changes then", ax?.role === "switch" && /hidden in the route's facility totals and description\./.test(ax?.description ?? "") && !/on the map/.test(ax?.description ?? ""), JSON.stringify(ax));
+  await p.close();
+}
+
+// ---- 14. A slow plan (LONG-CALM, up to half a minute): said once while it runs, then the route (the a11y review's SF1) ----
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000 });
+  await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
+    .observe(document.querySelector('.status-line'), { childList: true, subtree: true, characterData: true }); true`);
+  const field = "document.querySelector('input[placeholder=Default]')";
+  await p.eval(`${field}.focus(); true`);
+  await p.type("60");
+  await p.enter();
+  await sleep(1000);
+  const during = await p.eval(`(() => { const g = document.querySelector('progress.planning'); return g ? { label: g.getAttribute('aria-label'), indeterminate: !g.hasAttribute('value'), shown: g.getBoundingClientRect().height > 0, live: !!g.closest('[aria-live]'), loading: document.querySelector('.loading')?.textContent } : null; })()`);
+  check("slow plan: a labelled, indeterminate progress bar shows while it plans, outside the live region", during?.label === "Planning the route" && during.indeterminate && during.shown && !during.live, JSON.stringify(during));
+  const early = await p.eval("window.__said.length");
+  await sleep(11000);
+  const said = await p.eval("window.__said");
+  const still = said.filter((t) => /^Still planning\./.test(t));
+  check("slow plan: nothing is said in the first seconds", early === 0, String(early));
+  check("slow plan: \"Still planning\" is said once, with why, then the route once", said.length === 2 && still.length === 1 && /^Still planning\. Calm routes at this setting can take up to half a minute\.$/.test(said[0]) && /^Route planned: /.test(said[1]), JSON.stringify(said));
+  check("slow plan: the progress bar is gone with the route", await p.eval("!document.querySelector('progress.planning')"));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length ? 1 : 0);
+// Every check counted, so a section that stops running (a merge that drops it, a block that
+// returns early) fails here rather than passing green (the mutation review of the release).
+const EXPECTED = 129;
+const counted = results.length === EXPECTED;
+console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
+process.exit(failed.length || !counted ? 1 : 0);
