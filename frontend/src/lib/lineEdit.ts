@@ -9,8 +9,14 @@
  * index of each leg's last vertex in the line). An API that predates the
  * field, or an answer that does not fit the points, falls back to matching
  * each via to its nearest vertex, in order along the line.
+ *
+ * In a loop the rider chose (OWNER-DECISIONS 374) the route has one more leg
+ * than the rider's points make, from the last point back to the start: its
+ * legs run between `legPoints`, and a drag on the closing leg appends the
+ * stop, as a click on it does (geo.addPoint).
  */
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
+import { isRoundTrip } from "./loop.ts";
 
 /** Where on a path a point is nearest: segment i runs from vertex i to i + 1. */
 export interface OnPath {
@@ -121,6 +127,27 @@ export function guessLegEnds(path: readonly LonLat[], points: readonly LonLat[])
 /** The API's leg ends when they fit this line and these points; otherwise the geometry's guess. */
 export function legEnds(path: readonly LonLat[], points: readonly LonLat[], fromApi: unknown): number[] {
   return validLegEnds(fromApi, path.length, points.length) ? [...fromApi] : guessLegEnds(path, points);
+}
+
+/**
+ * The points the route's legs run between: the rider's points, and in a loop
+ * the start again at the end, where the planner closes the ride (routing's
+ * `loop_points`). A ride that already ends on its start has no closing leg.
+ */
+export function legPoints(points: readonly LonLat[], loop: boolean): LonLat[] {
+  return loop && points.length >= 2 && !isRoundTrip(points) ? [...points, points[0]] : [...points];
+}
+
+/**
+ * The rider's points with `via` put into leg `leg` of `legPoints(points,
+ * loop)`. The closing leg of a loop (leg `points.length - 1`) appends it.
+ * Null at the cap, or for no such leg.
+ */
+export function insertIntoRide(points: readonly LonLat[], leg: number, via: LonLat, loop: boolean): LonLat[] | null {
+  const legs = legPoints(points, loop).length - 1;
+  if (points.length >= MAX_POINTS) return null;
+  if (!Number.isInteger(leg) || leg < 0 || leg >= legs) return null;
+  return [...points.slice(0, leg + 1), via, ...points.slice(leg + 1)];
 }
 
 /**

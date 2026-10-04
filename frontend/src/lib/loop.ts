@@ -17,6 +17,28 @@ export function isRoundTrip(points: readonly LonLat[]): boolean {
   return points.length >= 3 && haversineM(points[0], points[points.length - 1]) <= LOOP_SAME_M;
 }
 
+/**
+ * Whether Reverse keeps the start (OWNER-DECISIONS 374): in a loop the rider
+ * chose, the start is also the finish, so Reverse rides the stops the other
+ * way around from the same start. A ride that already ends on its start
+ * (isRoundTrip) is reversed whole: its two ends are one place.
+ */
+export function reverseKeepsStart(points: readonly LonLat[], loop: boolean): boolean {
+  return loop && !isRoundTrip(points);
+}
+
+/** The points after Reverse: the stops the other way around in a loop, otherwise the whole list. */
+export function reversedPoints(points: readonly LonLat[], loop: boolean): LonLat[] {
+  if (points.length < 2) return [...points];
+  if (reverseKeepsStart(points, loop)) return [points[0], ...points.slice(1).reverse()];
+  return [...points].reverse();
+}
+
+/** Whether Reverse changes anything: a loop of a start and one stop is the same either way around. */
+export function canReverse(points: readonly LonLat[], loop: boolean): boolean {
+  return points.length >= (reverseKeepsStart(points, loop) ? 3 : 2);
+}
+
 export interface LoopView {
   label: string;
   /** On, whether chosen or because the ride ends where it starts. */

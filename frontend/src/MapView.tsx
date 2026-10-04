@@ -83,6 +83,8 @@ export interface LineEdit {
   path: LonLat[];
   ends: number[];
   points: LonLat[];
+  /** The points the legs run between: `points`, and in a loop the start again (lineEdit.ts, legPoints). */
+  legPoints: LonLat[];
 }
 
 /** Pixels on each side of the map that the panel covers. */
@@ -371,9 +373,10 @@ export function MapView(props: Props) {
         const marker = map.project(p);
         if (Math.hypot(marker.x - at.x, marker.y - at.y) < MARKER_CLEAR_PX) return null;
       }
-      return { leg: legOfSegment(edit.ends, near.segment), at: near.point, points: edit.points };
+      const leg = legOfSegment(edit.ends, near.segment);
+      return { leg, at: near.point, points: edit.points, legPoints: edit.legPoints };
     };
-    let grabbed: { leg: number; at: LonLat; points: LonLat[] } | null = null;
+    let grabbed: { leg: number; at: LonLat; points: LonLat[]; legPoints: LonLat[] } | null = null;
     let panStopped = false;
     let clickSuppressedUntil = 0;
     const gesture = new LineGesture({
@@ -389,7 +392,7 @@ export function MapView(props: Props) {
         panStopped = true;
         map.dragPan.disable();
         map.touchZoomRotate.disable();
-        if (grabbed) showEdit(grabbed.at, dragPreview(grabbed.points, grabbed.leg, grabbed.at));
+        if (grabbed) showEdit(grabbed.at, dragPreview(grabbed.legPoints, grabbed.leg, grabbed.at));
       },
     });
     const endDrag = () => {
@@ -412,7 +415,7 @@ export function MapView(props: Props) {
     const follow = (point: { x: number; y: number }): boolean => {
       if (!grabbed || gesture.move(point.x, point.y) !== "drag") return false;
       const cursor = lonLatAt(point);
-      showEdit(cursor, dragPreview(grabbed.points, grabbed.leg, cursor));
+      showEdit(cursor, dragPreview(grabbed.legPoints, grabbed.leg, cursor));
       canvas.style.cursor = "grabbing";
       return true;
     };

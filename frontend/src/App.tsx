@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
-import { canDragLine, dropStillValid, insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
+import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
@@ -24,7 +24,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
-import { loopNote, loopStops } from "./lib/loop.ts";
+import { canReverse, loopNote, loopStops, reverseKeepsStart, reversedPoints } from "./lib/loop.ts";
 import {
   addedSaid,
   emptyPlanHint,
@@ -32,6 +32,7 @@ import {
   loneStartHint,
   loopToggledSaid,
   removedSaid,
+  reversedSaid,
   stationSaid,
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
@@ -383,7 +384,8 @@ export function App() {
 
   // The route line dragged (or clicked) at `point` from leg `leg`: a via in
   // that leg (lineEdit.ts). `routed` is the list the line was planned for;
-  // if the points have changed since, the leg means nothing any more.
+  // if the points have changed since, the leg means nothing any more. In a
+  // loop the closing leg, back to the start, appends the stop (374).
   const insertOnLine = useCallback(
     (leg: number, point: LonLat, routed: LonLat[]) => {
       if (!dropStillValid(routed, pointsRef.current)) return;
@@ -391,7 +393,7 @@ export function App() {
         setNotice("That point is outside the area this map covers; it was put back.");
         return;
       }
-      const next = insertIntoLeg(routed, leg, point);
+      const next = insertIntoRide(routed, leg, point, loopVias);
       if (next === null) {
         setNotice(`A route can have at most ${MAX_POINTS} points.`);
         return;
@@ -457,6 +459,14 @@ export function App() {
     },
     [commit, announce, loopVias],
   );
+  // Reverse: in a loop the start stays and the stops go the other way around
+  // (OWNER-DECISIONS 374); with a start and one stop that is no change.
+  const reverse = () => {
+    const current = pointsRef.current;
+    if (!canReverse(current, loopVias)) return;
+    commit(reversedPoints(current, loopVias));
+    announce(reversedSaid(reverseKeepsStart(current, loopVias)));
+  };
   const clearAll = () => {
     setConfirmedKm(null);
     // Clearing an opened file's plan puts the file away too; undo brings both back.
@@ -539,8 +549,10 @@ export function App() {
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
     const path = shown.geometry.coordinates;
-    return { path, ends: legEnds(path, routedPoints, shown.leg_ends), points: routedPoints };
-  }, [shown, stale, routedPoints, points]);
+    // A loop's legs close on the start (374), so the API's leg ends fit them.
+    const legs = legPoints(routedPoints, loopVias);
+    return { path, ends: legEnds(path, legs, shown.leg_ends), points: routedPoints, legPoints: legs };
+  }, [shown, stale, routedPoints, points, loopVias]);
   // On a phone the sheet is half the screen; a route that is showing (a
   // shared link, usually), a question or an error comes first in it, before
   // the ride types (sheet.ts).
@@ -631,7 +643,7 @@ export function App() {
         >
           Add point at map center
         </button>
-        <button type="button" onClick={() => commit([...pointsRef.current].reverse())} disabled={points.length < 2}>
+        <button type="button" onClick={reverse} disabled={!canReverse(points, loopVias)}>
           Reverse
         </button>
         <button type="button" onClick={clearAll} disabled={points.length === 0}>
