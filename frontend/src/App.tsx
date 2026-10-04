@@ -385,7 +385,8 @@ export function App() {
   // The route line dragged (or clicked) at `point` from leg `leg`: a via in
   // that leg (lineEdit.ts). `routed` is the list the line was planned for;
   // if the points have changed since, the leg means nothing any more. In a
-  // loop the closing leg, back to the start, appends the stop (374).
+  // loop the closing leg, back to the start, appends the stop
+  // (OWNER-DECISIONS 374).
   const insertOnLine = useCallback(
     (leg: number, point: LonLat, routed: LonLat[]) => {
       if (!dropStillValid(routed, pointsRef.current)) return;
@@ -549,7 +550,8 @@ export function App() {
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
     const path = shown.geometry.coordinates;
-    // A loop's legs close on the start (374), so the API's leg ends fit them.
+    // A loop's legs close on the start (OWNER-DECISIONS 374), so the API's
+    // leg ends fit them.
     const legs = legPoints(routedPoints, loopVias);
     return { path, ends: legEnds(path, legs, shown.leg_ends), points: routedPoints, legPoints: legs };
   }, [shown, stale, routedPoints, points, loopVias]);

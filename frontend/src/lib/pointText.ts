@@ -78,7 +78,8 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
   const toggle =
     loop || preset === "mass-ride"
       ? ""
-      : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE}; then each click after the start is a stop.`;
+      : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE};` +
+        " then each click after the start is a stop.";
   return (
     first +
     toggle +
@@ -93,5 +94,8 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
 export function loneStartHint(preset: PresetId, loop: boolean): string {
   if (loop) return "Now click the map to add a stop. The ride comes back to the start.";
   if (preset === "mass-ride") return "Now click the map where you want to finish.";
-  return `Now click the map where you want to finish, or turn on ${LOOP_LABEL} ${TOGGLE_PLACE} to finish back at the start.`;
+  return (
+    `Now click the map where you want to finish, or turn on ${LOOP_LABEL} ${TOGGLE_PLACE}` +
+    " to finish back at the start."
+  );
 }

@@ -58,9 +58,10 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
 
 /**
  * The export of the route shown, planned through `points`. `loop` is the
- * rider's toggle as the page names the points (loop.loopStops, OWNER-DECISIONS
- * 374), not the API's echoed `dials.loop`, which is also true for a ride that
- * ends on its start with the toggle off; such a ride keeps Start and End.
+ * rider's toggle as the page names the points (loop.loopStops,
+ * OWNER-DECISIONS 374), not the API's echoed `dials.loop`, which is also
+ * true for a ride that ends on its start with the toggle off; such a ride
+ * keeps Start and End.
  * Mass Ride has no loop.
  */
 export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false): GpxExport {

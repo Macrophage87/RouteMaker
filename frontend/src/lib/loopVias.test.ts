@@ -190,7 +190,8 @@ test("a loop survives a GPX export and re-import", () => {
   const ride = rideAfterImport(plan, now);
   assert.equal(ride.dials.loop, true);
   assert.equal(loopStops(ride.preset, ride.dials.loop), true);
-  assert.deepEqual(pointRows(plan.points, { name: () => undefined }, true).map((r) => r.role), ["Start and finish", "Stop 1", "Stop 2"]);
+  const roles = pointRows(plan.points, { name: () => undefined }, true).map((r) => r.role);
+  assert.deepEqual(roles, ["Start and finish", "Stop 1", "Stop 2"]);
   // A one-way export opens one-way, even with the loop on before the import.
   const oneWay = planFromGpx(parseGpx(writeGpx(exportOf(loopRoute, [A, B, C], false))));
   const looped = { preset: "default" as const, dials: { ...startDials("default"), loop: true } };
