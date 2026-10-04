@@ -9,6 +9,14 @@
 # never a password, so none lands in a terminal transcript or a log. The htpasswd file holds
 # only hashes. Nothing is stored in the repository.
 #
+# The passwords are written to be read out, typed and pasted (final review, accessibility S3):
+# four dash-separated groups of five characters from 31 lowercase letters and digits with
+# no look-alikes (no i, l, o, 0 or 1), about 99 bits, such as `abcde-fghjk-mnpqr-stuvw` (not a
+# real one). Screen readers say lowercase letters plainly, and nothing in it can be misread.
+# User names must be lowercase too: nginx compares them case-sensitively, and a tester who
+# types "Alice" for "alice" just gets the sign-in box again with no reason given.
+# docs/BETA-TESTER-HANDOUT.md is what goes to each tester with theirs.
+#
 # The hash is SHA-512 crypt (`openssl passwd -6`, `$6$...`), stronger than apr1. nginx checks
 # any hash it does not know itself (apr1, {SHA}, {SSHA}, {PLAIN}) with the system's crypt(),
 # and glibc/libxcrypt on Ubuntu verifies `$6$` (checked on Ubuntu's libxcrypt, 2026-10-04).
@@ -61,9 +69,20 @@ fi
 
 for user in "$@"; do
 	case "$user" in
-		'' | *[!A-Za-z0-9._-]*) die "user names are letters, digits, dot, dash, underscore: '$user'" ;;
+		'' | *[!a-z0-9._-]*) die "user names are lowercase letters, digits, dot, dash or underscore (nginx compares them case-sensitively): '$user'" ;;
 	esac
 done
+
+# 31 symbols: a-z without i, l and o, and 2-9. tr -dc keeps only those bytes of uniformly random
+# input, so each kept character is uniform over the 31 (no modulo bias); 1024 bytes keep about
+# 124, far more than the 20 needed.
+ALPHABET=abcdefghjkmnpqrstuvwxyz23456789
+new_password() {
+	raw=$(openssl rand 1024 | LC_ALL=C tr -dc "$ALPHABET" | cut -c1-20)
+	[ "${#raw}" -eq 20 ] || die "could not draw a password from openssl rand"
+	printf '%s-%s-%s-%s' "$(printf %s "$raw" | cut -c1-5)" "$(printf %s "$raw" | cut -c6-10)" \
+		"$(printf %s "$raw" | cut -c11-15)" "$(printf %s "$raw" | cut -c16-20)"
+}
 
 if [ -z "$group" ]; then
 	group=$(sed -n 's/^[[:space:]]*user[[:space:]]\{1,\}\([A-Za-z0-9_-]\{1,\}\).*/\1/p' /etc/nginx/nginx.conf 2>/dev/null | head -n 1)
@@ -79,11 +98,13 @@ chmod 600 "$passwords"
 printf '# RouteMaker beta testers: user password. Hand each person theirs, then delete this file.\n' >>"$passwords"
 
 : >"$file"
-chown "root:$group" "$file"
+# root:GROUP when run as root (the normal case, under sudo); otherwise only the group can be set,
+# which is what lets the tests run this without root.
+if [ "$(id -u)" = 0 ]; then chown "root:$group" "$file"; else chgrp "$group" "$file"; fi
 chmod 640 "$file"
 
 for user in "$@"; do
-	password=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)
+	password=$(new_password)
 	hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
 	case "$hash" in '$6$'*) ;; *) die "openssl passwd -6 did not give a SHA-512 crypt hash" ;; esac
 	printf '%s:%s\n' "$user" "$hash" >>"$file"

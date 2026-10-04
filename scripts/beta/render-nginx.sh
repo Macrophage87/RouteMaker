@@ -77,6 +77,10 @@ safe api-port "$api_port"
 safe data-root "$data_root"
 safe htpasswd "$htpasswd"
 safe acme-root "$acme_root"
+# The sign-in page (deploy/beta/401.html) is served from this checkout; nginx must be able to read it.
+pages_dir="$repo/deploy/beta"
+safe pages-dir "$pages_dir"
+[ -r "$pages_dir/401.html" ] || die "cannot read $pages_dir/401.html"
 case "$api_port" in *[!0-9]*) die "--api-port must be a number" ;; esac
 case "$data_root" in /?*) ;; *) die "--data-root must be an absolute path" ;; esac
 case "$data_root" in / | /etc | /usr | /var | /home | /root | /data) die "--data-root '$data_root' is not a RouteMaker directory" ;; esac
@@ -111,6 +115,7 @@ rendered=$(keep_stage | grep -v '^# TEMPLATE: ' | sed \
 	-e "s|@DATA_ROOT@|$data_root|g" \
 	-e "s|@HTPASSWD_FILE@|$htpasswd|g" \
 	-e "s|@ACME_ROOT@|$acme_root|g" \
+	-e "s|@PAGES_DIR@|$pages_dir|g" \
 	-e "s|@CERT_FULLCHAIN@|$cert_fullchain|g" \
 	-e "s|@CERT_KEY@|$cert_key|g")
 

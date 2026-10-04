@@ -91,6 +91,9 @@ if [ "$mode" = public ]; then
 	check_status "the front end is behind basic auth (no credentials)" 401 "$base/"
 	check_status "the api is behind basic auth (no credentials)" 401 "$base/healthz"
 	check_status "a wrong password is refused" 401 -u "nobody:wrong" "$base/"
+	unauthorized=$(curl_run -D - -o /dev/null "$base/" | tr -d '\r')
+	if grep -qi '^www-authenticate: basic' <<<"$unauthorized"; then ok "the 401 asks for a password (WWW-Authenticate: Basic)"; else bad "the 401 has no WWW-Authenticate: Basic, so browsers will not show their sign-in box"; fi
+	check_body "the 401 page says how to get in" 'person who gave you access' "$base/"
 	headers=$(curl_run -I "$base/robots.txt" | tr -d '\r')
 	if grep -qi '^x-robots-tag: noindex, nofollow' <<<"$headers"; then ok "X-Robots-Tag: noindex, nofollow on robots.txt"; else bad "no X-Robots-Tag on robots.txt"; fi
 	check_status "plain http redirects to https" 301 "http://${base#https://}/"

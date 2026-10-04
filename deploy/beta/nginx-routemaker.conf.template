@@ -112,6 +112,11 @@ server {
     add_header Strict-Transport-Security "max-age=86400" always;
     auth_basic           "RouteMaker beta";
     auth_basic_user_file @HTPASSWD_FILE@;
+    # What Cancel shows, instead of nginx's bare "401 Authorization Required" (final review,
+    # accessibility N1): a short page saying how to get in and who to ask. The status stays 401
+    # and the WWW-Authenticate header stays, so the browser's own sign-in box still comes first
+    # (scripts/beta/smoke-test.sh --public checks both).
+    error_page 401 /rmbeta-401.html;
 
     client_max_body_size 1m;
 
@@ -130,6 +135,20 @@ server {
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
         return 200 "User-agent: *\nDisallow: /\n";
+    }
+
+    # --- the sign-in page (error_page 401 above): internal only, so never served directly, and
+    # outside the password because it is what someone without one sees. deploy/beta/401.html in
+    # the checkout. ------------------------------------------------------------------------------
+    location = /rmbeta-401.html {
+        internal;
+        auth_basic off;
+        alias @PAGES_DIR@/401.html;
+        default_type text/html;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "no-store" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" always;
     }
 
     # --- the front end (Caddyfile @frontend) --------------------------------------

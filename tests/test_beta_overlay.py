@@ -571,7 +571,23 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert re.search(r'^\s*auth_basic\s+"RouteMaker beta";', https, re.M)
     assert "auth_basic_user_file @HTPASSWD_FILE@;" in https
     exempt = [path for path, body in locations(full) if "auth_basic off" in body]
-    assert sorted(exempt) == sorted(["^~ /.well-known/acme-challenge/", "= /robots.txt"]), exempt
+    assert sorted(exempt) == sorted(
+        ["^~ /.well-known/acme-challenge/", "= /robots.txt", "= /rmbeta-401.html"]
+    ), exempt
+    # the sign-in page is reachable only as the 401's error page, never directly
+    page = dict(locations(full))["= /rmbeta-401.html"]
+    assert re.search(r"^\s*internal;", page, re.M), page
+    assert "error_page 401 /rmbeta-401.html;" in https
+    assert "alias @PAGES_DIR@/401.html;" in page
+
+
+def test_the_sign_in_page_is_small_plain_and_names_no_channel() -> None:
+    page = (REPO / "deploy" / "beta" / "401.html").read_text()
+    assert page.startswith("<!doctype html>") and '<html lang="en">' in page
+    assert "<title>" in page and "<h1>" in page and "<main>" in page
+    assert "person who gave you access" in page and "lowercase" in page
+    assert "<script" not in page and "http" not in page.replace("http-equiv", "")
+    assert len(page) < 2000
 
 
 def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() -> None:
@@ -682,6 +698,7 @@ def test_rendering_the_full_stage_fills_every_placeholder(tmp_path: Path) -> Non
     assert "server_name routemaker.cieply.com;" in text
     assert "server 127.0.0.1:8087;" in text
     assert "root /data/routemaker/frontend;" in text
+    assert f"alias {REPO}/deploy/beta/401.html;" in text
     assert "ssl_certificate     /etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem;" in text
     assert "include /etc/letsencrypt/options-ssl-nginx.conf;" in text
     assert '"~^https://routemaker\\.cieply\\.com\\|" 0;' in text
@@ -1831,6 +1848,77 @@ def test_the_renderer_drops_template_lines_and_can_drop_ipv6() -> None:
     assert "Rendered by scripts/beta/render-nginx.sh" in with_v6.stdout
     assert with_v6.stdout.count("listen [::]") == 3
     assert "listen [::]" not in without.stdout and without.stdout.count("listen ") == 3
+
+
+@needs_sh
+def test_make_htpasswd_writes_readable_passwords_and_matching_hashes(tmp_path: Path) -> None:
+    """Final review, accessibility S3: lowercase letters and digits without look-alikes, in
+    four dash-separated groups of five (about 99 bits), and lowercase user names."""
+    group = subprocess.run(["id", "-gn"], capture_output=True, text=True, check=True).stdout.strip()
+    ht, pw = tmp_path / "beta.htpasswd", tmp_path / "pw.txt"
+    args = ["--file", str(ht), "--passwords-file", str(pw), "--group", group]
+    done = run("sh", "scripts/beta/make-htpasswd.sh", *args, "alice", "bob.smith")
+    assert done.returncode == 0, done.stderr
+    assert (ht.stat().st_mode & 0o777) == 0o640 and (pw.stat().st_mode & 0o777) == 0o600
+    lines = [x.split() for x in pw.read_text().splitlines() if not x.startswith("#")]
+    assert [u for u, _ in lines] == ["alice", "bob.smith"]
+    passwords = [p for _, p in lines]
+    group5 = "[a-hjkmnp-z2-9]{5}"
+    for password in passwords:
+        assert re.fullmatch(rf"{group5}(-{group5}){{3}}", password), "the format changed"
+        assert not set(password) & set("ilo01ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        assert password not in done.stdout + done.stderr
+    assert passwords[0] != passwords[1]
+    assert len("abcdefghjkmnpqrstuvwxyz23456789") == 31  # 20 of them: 20 * log2(31) = 99 bits
+    hashes = dict(line.split(":", 1) for line in ht.read_text().splitlines())
+    for user, password in lines:
+        salt = hashes[user].split("$")[2]
+        again = subprocess.run(
+            ["openssl", "passwd", "-6", "-salt", salt, "-stdin"],
+            input=password,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert again == hashes[user], user
+    for name in ("Alice", "BOB", "eve smith"):
+        refused = run(
+            "sh",
+            "scripts/beta/make-htpasswd.sh",
+            "--file",
+            str(tmp_path / f"{name}.ht"),
+            "--passwords-file",
+            str(tmp_path / f"{name}.pw"),
+            "--group",
+            group,
+            name,
+        )
+        assert refused.returncode == 2 and "lowercase" in refused.stderr, name
+        assert not (tmp_path / f"{name}.pw").exists()
+
+
+def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:
+    """Final review, accessibility S4, and OWNER-DECISIONS 382 for where to report."""
+    handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
+    for needed in (
+        "real browser",
+        "not from RouteMaker",
+        "case-sensitive",
+        "paste",
+        "say yes",
+        "box comes back",
+        "Skip to the route planner",
+        "Beta notice",
+        "Route planner",
+        "Tell the person who gave you access",
+        "Report a problem",
+    ):
+        assert needed in handout, needed
+    assert "discord.gg" not in handout.lower() and "@gmail" not in handout
+    assert "docs/BETA-TESTER-HANDOUT.md" in RUNBOOK
+    nine_a = RUNBOOK[RUNBOOK.index("### 9a.") : RUNBOOK.index("### 9b.")]
+    eleven = RUNBOOK[RUNBOOK.index("## 11.") : RUNBOOK.index("## Rollback")]
+    assert "BETA-TESTER-HANDOUT.md" in nine_a and "BETA-TESTER-HANDOUT.md" in eleven
 
 
 @needs_sh

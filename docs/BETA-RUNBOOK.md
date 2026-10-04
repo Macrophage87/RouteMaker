@@ -386,10 +386,19 @@ with SHA-512 crypt hashes (`openssl passwd -6`; nginx checks them with the syste
 on Ubuntu verifies `$6$`), and the generated passwords to `~/routemaker-beta-passwords.txt`
 (mode 600, yours). It prints only that path, never a password. **Do not `cat` the file and do not
 put a password in your report**: tell the owner where the file is; he reads it in his own
-terminal, hands each tester theirs, and deletes it (`shred -u`). To choose a password yourself
-skip the script and use `openssl passwd -6` (it prompts). To add a tester later:
-`sudo htpasswd -B /etc/nginx/routemaker-beta.htpasswd <name>` (bcrypt, also fine for nginx on
-Ubuntu). Undo: `sudo rm /etc/nginx/routemaker-beta.htpasswd` (only after the site file is removed).
+terminal, sends each tester theirs with `docs/BETA-TESTER-HANDOUT.md` (plain text: open the link
+in a real browser, the browser's own sign-in box, the case-sensitive user name, pasting and
+saving the password, what a wrong password looks like, the screen-reader layout, and where to
+report), and deletes the file (`shred -u`).
+
+User names must be lowercase (letters, digits, dot, dash, underscore; nginx compares them
+case-sensitively). Each password is four dash-separated groups of five lowercase letters and
+digits with no look-alikes (no i, l, o, 0 or 1), about 99 bits, so it can be read out by a
+screen reader and pasted without confusion. To choose a password yourself skip the script and
+use `openssl passwd -6` (it prompts). To add a tester later:
+`sudo htpasswd -B /etc/nginx/routemaker-beta.htpasswd <lowercase name>` (bcrypt, also fine for nginx
+on Ubuntu), with a password in the same format. Undo: `sudo rm /etc/nginx/routemaker-beta.htpasswd`
+(only after the site file is removed).
 
 ### 9b. TLS: the option step 1's discovery chose
 
@@ -476,7 +485,8 @@ scripts/beta/smoke-test.sh --public https://routemaker.cieply.com --passwords-fi
 (It signs in as the first tester in the file, reading the password itself and passing it to curl on
 standard input; no password is in the command line, the output or your transcript.) Every line must
 say `PASS`. It checks: robots.txt is public and disallows everything; `/` and `/healthz` return 401
-without credentials and a wrong password is refused; noindex and the content security policy are
+without credentials and a wrong password is refused; the 401 still asks for a password
+(`WWW-Authenticate: Basic`) and its page says how to get in; noindex and the content security policy are
 present; http redirects to https; the front end loads; a preset link redirects; the base map answers
 this site's byte-range request with 206 and is refused to a foreign origin; an unlisted base-map path
 is a 404; Django's static files are served; a route, a place search, a reverse lookup and a stress
@@ -494,7 +504,9 @@ heading; Dismiss puts focus on "Route planner".
 Say: the sha running, that all checks passed (or exactly which did not), `docker stats` numbers against the
 caps (including the two-plans-at-once measurement), the other-sites comparison, which TLS option step 1's
 rule chose and why, **where** the testers' passwords are (`~/routemaker-beta-passwords.txt`; never the
-passwords themselves), and the `df -h /data` figure.
+passwords themselves), and the `df -h /data` figure. Remind the owner to send each tester
+`docs/BETA-TESTER-HANDOUT.md` with their user name and password, as text they can copy, and only
+once the stress-tile pre-draw (step 8) has finished.
 
 ---
 
