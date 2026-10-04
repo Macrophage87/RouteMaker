@@ -497,7 +497,8 @@ class TestTheCeilingInTheSearch:
         )
         kept, info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
         assert kept["legs"][0]["shape"] == "o"
-        assert info["limited"] == "target_distance" and info["rounds"] == 0
+        # `ceiling`, not the no-fit answer's `target_distance` (correctness review S2).
+        assert info["limited"] == "ceiling" and info["rounds"] == 0
         # Every target, then each half of it: three different sets.
         sets = [frozenset(world.excluded(i)) for i in range(3)]
         assert len(world.requests) == 3 and len(set(sets)) == 3
@@ -523,7 +524,7 @@ class TestTheCeilingInTheSearch:
         assert kept["legs"][0]["shape"] == "c"
         World(monkeypatch, {"o": analysis("o", ORIG), "c": calm}, [trip_of("c", 4.6)] * 5)
         kept, info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
-        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "target_distance"
+        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "ceiling"
 
     def test_no_cap_below_the_top(self, monkeypatch) -> None:
         calm = analysis("c", "1" * 40, cost_s=3000.0)

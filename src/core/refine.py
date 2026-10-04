@@ -233,9 +233,8 @@ class Context:
     climb_weight: float
     quiet_cost: float
     # The hills slider's avoid half as a weight, 0 at the detent and 1 at full
-    # avoid (`level3`), and the hook of its seek half: how much of the effort a
-    # rider prefers more of (0 today, where the search does not run while the
-    # slider seeks; FOLLOWUP-HILLS-TOLERATE, 242, will set it).
+    # avoid (`level3`), and its seek half: how much of the effort a rider prefers
+    # more of, the slider over 100 at the top of the stress slider (298(3)), else 0.
     hills_weight: float = 0.0
     hills_seek_weight: float = 0.0
     # The rider's total system weight in kilograms (item 264), which the effort
@@ -363,10 +362,12 @@ def level3(read: Analysis, ctx: Context) -> float:
     the effort-equivalent distance (`Analysis.effort_m`) blended by the Hills
     slider, (1 - w) x actual + w x effort, with w (`Context.hills_weight`) 0 at the
     detent, where it is the actual distance, and 1 at full avoid. Right of the
-    detent more effort is better, which the search does not run for
-    (`routing._refine_limit`, "seeking"); `Context.hills_seek_weight` is the hook
-    FOLLOWUP-HILLS-TOLERATE (242) will use. The target distance is in actual metres,
-    not these."""
+    detent more effort is better: `Context.hills_seek_weight` (the slider's position
+    over 100 at the top of the stress slider, `routing.plan`) takes that share of the
+    effort off, so between equally calm routes the one that climbs more ranks first;
+    the stress levels above it and the target are unchanged (OWNER-DECISIONS 298(3),
+    "Keep stress order + target (Recommended)"). The target distance is in actual
+    metres, not these."""
     w = ctx.hills_weight
     effort = read.effort_m or read.length_m
     return (1 - w) * read.length_m + w * effort - ctx.hills_seek_weight * effort
@@ -1427,7 +1428,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                     break
                 candidate = None
             if candidate is None:
-                info["limited"] = "target_distance" if over else "no_route"
+                # `ceiling`: the routes found were past the ceiling, which says
+                # nothing of whether one is within the target (combined correctness
+                # review, S2: it is not the no-fit answer's `target_distance`).
+                info["limited"] = "ceiling" if over else "no_route"
                 break
             current = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
         except (routing.DeadlineExceeded, routing.RouterUnavailable):

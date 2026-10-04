@@ -157,6 +157,8 @@ class TestNoRouteWithinTheTarget:
         body = post(client, top_body(target_distance_m=1_200)).json()
         search = body["calm_search"]
         assert search["fits"] is False and search["limited"] == "target_distance"
+        # The front end's no-fit sentence keys on this alone (correctness review, S2).
+        assert search["no_fit"] is True
         assert body["distance_m"] == pytest.approx(1500.0)
         assert search["target_distance_set"] is True and search["target_distance_m"] == 1200.0
         assert search["over_target_m"] == pytest.approx(300.0)
@@ -185,13 +187,14 @@ class TestNoRouteWithinTheTarget:
         # Every rung fits here, so the bisection runs to its end toward the calmest. The
         # router's own (2.2 km, within the 2.5 km ceiling) reads the same: not worth it.
         assert search["fits"] is True and search["fitted_at"] == 78
-        assert search["over_target_m"] == 0.0
+        assert search["over_target_m"] == 0.0 and search["no_fit"] is False
         assert body["distance_m"] == pytest.approx(1900.0)
 
     def test_a_route_within_the_limit_asks_no_second_route(self, client, segments, router) -> None:
         fake = router(standard_router())
         body = post(client, top_body(target_distance_m=10_000)).json()
         assert body["calm_search"].get("fitted_at") is None
+        assert body["calm_search"]["no_fit"] is False
         assert fake.endpoints().count("route") >= 1
         assert all(
             p["costing_options"]["bicycle"]["use_roads"] == 0.0
@@ -204,17 +207,12 @@ class TestTheLongCalmPlan:
     def test_the_rule(self) -> None:
         from core.routing import long_calm_for
 
-        assert long_calm_for("trailmaxxing", [US, PENN], 100, False, False)
-        assert not long_calm_for("trailmaxxing", [US, PENN], 99, False, False)
-        assert not long_calm_for("default", [US, PENN], 100, False, False), "Trailmaxxing's alone"
-        assert not long_calm_for("trailmaxxing", [US, [-77.0, 38.95]], 100, False, False)
-        assert not long_calm_for("trailmaxxing", [US, PENN], 100, True, False), (
-            "a long ride has its own"
-        )
-        assert not long_calm_for("trailmaxxing", [US, PENN], 100, False, True), (
-            "no search while seeking"
-        )
-        assert not long_calm_for("trailmaxxing", [US], 100, False, False)
+        assert long_calm_for("trailmaxxing", [US, PENN], 100, False)
+        assert not long_calm_for("trailmaxxing", [US, PENN], 99, False)
+        assert not long_calm_for("default", [US, PENN], 100, False), "Trailmaxxing's alone"
+        assert not long_calm_for("trailmaxxing", [US, [-77.0, 38.95]], 100, False)
+        assert not long_calm_for("trailmaxxing", [US, PENN], 100, True), "a long ride has its own"
+        assert not long_calm_for("trailmaxxing", [US], 100, False)
 
     def test_the_span_that_makes_it_long_is_the_searchs_working_span(self) -> None:
         assert refine_span() == 30_000
@@ -500,9 +498,7 @@ class TestMakeItALoop:
 
     def test_a_loop_is_not_a_long_calm_plan(self) -> None:
         loop = routing.loop_points([US, PENN], True)
-        assert routing.long_calm_for("trailmaxxing", loop, 100, False, False), (
-            "by span alone it would be"
-        )
+        assert routing.long_calm_for("trailmaxxing", loop, 100, False), "by span alone it would be"
         assert routing.loop_wanted([US, PENN], True, "trailmaxxing")
 
 
@@ -718,10 +714,43 @@ class TestPastTheTarget:
         got, _read = self.run(monkeypatch, None, [own, r40], readings)
         assert got is r40
 
-    def test_where_none_is_within_the_ceiling_the_shortest(self, monkeypatch) -> None:
+    def test_where_none_is_within_the_ceiling_the_calmest_found(self, monkeypatch) -> None:
+        """OWNER-DECISIONS 298(2), "Calmest found, flagged (Recommended)": it amends the
+        shortest, as first built."""
         own, r0 = option("own", 70.0, None), option("r0", 64.0, 0)
-        got, read = self.run(monkeypatch, None, [own, r0], {})
-        assert got is r0 and read == []
+        readings = {"own": self.reading(70.0), "r0": self.reading(64.0, lts4=3000.0)}
+        got, read = self.run(monkeypatch, None, [own, r0], readings)
+        assert got is own and {name for name, _c in read} == {"own", "r0"}
+
+    def test_where_none_is_within_the_ceiling_a_tie_is_the_shorter(self, monkeypatch) -> None:
+        own, r0 = option("own", 70.0, None), option("r0", 64.0, 0)
+        readings = {"own": self.reading(70.0), "r0": self.reading(64.0)}
+        got, _read = self.run(monkeypatch, None, [own, r0], readings)
+        assert got is r0
+
+    def test_where_none_past_the_ceiling_can_be_read_the_shortest(self, monkeypatch) -> None:
+        own, r0 = option("own", 70.0, None), option("r0", 64.0, 0)
+        got, _read = self.run(monkeypatch, None, [own, r0], {})
+        assert got is r0
+
+    def test_the_options_are_read_inside_the_late_deadline(self, monkeypatch) -> None:
+        """Keeping the answer's reserve (combined correctness review, S3)."""
+        seen = []
+
+        def analyse(trip, ctx, deadline, with_events=True):
+            seen.append(deadline)
+            return self.reading(56.0)
+
+        monkeypatch.setattr(refine, "analyse", analyse)
+        own, r40 = option("own", 62.0, None), option("r40", 56.0, 40)
+        ctx = refine.Context(
+            variant="standard", request={}, costing={}, when="weekday_offpeak",
+            deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
+            roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
+            climb_weight=0.0, quiet_cost=1.0, maxcalm=True, target_m=50_000.0,
+        )  # fmt: skip
+        routing._past_target(None, [own, r40], presets.target_ceiling_m(50_000.0), ctx)
+        assert seen and all(d.at == ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S for d in seen)
 
     def test_one_that_cannot_be_read_is_not_chosen(self, monkeypatch) -> None:
         own, r40 = option("own", 62.0, None), option("r40", 56.0, 40)
@@ -752,3 +781,132 @@ class TestTheTargetFields:
         got = routing.target_fields(90_000.0, None, 148_000.0)
         assert got["fits"] is None and got["over_target_m"] is None
         assert got["target_distance_set"] is False and got["ceiling_m"] == 148_000.0
+
+
+class TestTheSearchStoppedAtTheCeiling:
+    """Combined correctness review, S2: a round whose routes were all past the ceiling
+    stops the search with `ceiling`, its own code, never the no-fit answer's
+    `target_distance`, so "no route within your target" is never said of a route that
+    fits (and `no_fit` is false)."""
+
+    def test_a_route_that_fits_is_not_called_no_fit(self, client, segments, router) -> None:
+        fake = FakeRouter(
+            {
+                # The router's own (2.2 km) fits a 2.4 km target; the search's next
+                # round only finds a 3.5 km route, past the 3 km ceiling.
+                "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
+                + [route_answer([(VERTICES, 3.5, [10.0, 20.0, 15.0, 30.0])])] * 20,
+                "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+            }
+        )
+        router(fake)
+        body = post(client, top_body(target_distance_m=2_400)).json()
+        search = body["calm_search"]
+        assert search["fits"] is True and search["no_fit"] is False
+        assert search["limited"] != "target_distance"
+        # The search's own stop at the ceiling is `ceiling` (tests/test_longcalm.py,
+        # TestTheCeilingInTheSearch).
+
+
+class TestSeekingHillsAtTheTop:
+    """OWNER-DECISIONS 298(3), "Keep stress order + target (Recommended)": with the Hills
+    slider seeking climbs at the top of the stress slider the stress-order search and the
+    target still apply; only the effort tiebreak inverts (`refine.level3`)."""
+
+    def test_the_search_runs_and_the_target_counts(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append(ctx.hills_seek_weight)
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        router(standard_router())
+        body = post(client, top_body(hills=50, target_distance_m=10_000)).json()
+        assert seen == [0.5], "the search ran, preferring climbs at half the slider"
+        search = body["calm_search"]
+        assert search["limited"] != "seeking"
+        assert search["target_distance_m"] == 10_000.0 and search["fits"] is True
+        assert body["hills_seek"]["limited"] == "calm_first"
+        assert body["hills_seek"]["chosen"] == 0
+
+    def test_no_climb_search_among_alternatives_is_asked(self, client, segments, router) -> None:
+        fake = router(standard_router())
+        post(client, top_body(hills=50))
+        assert all("alternates" not in p for _u, p in fake.calls)
+
+    def test_below_the_top_it_is_the_climb_search_as_before(self, client, segments, router) -> None:
+        router(standard_router())
+        body = post(client, {**good_body("trailmaxxing"), "stress": 60, "hills": 50}).json()
+        assert body["hills_seek"]["limited"] != "calm_first"
+        assert (body["calm_search"] or {}).get("limited") in (None, "seeking")
+
+    def test_a_long_calm_plan_is_long_calm_while_seeking(self) -> None:
+        assert routing.long_calm_for("trailmaxxing", [US, PENN], 100, False)
+
+
+class TestTheSpanEdge:
+    """The long calm plan starts strictly past the working span (mutation review: the
+    span-edge mutant on `long_calm_for` survived)."""
+
+    def test_at_the_span_itself_it_is_not_long_calm(self, monkeypatch) -> None:
+        points = [US, [-76.9, 38.95]]
+        span = routing.straight_span_m(points)
+        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span)
+        assert not routing.long_calm_for("trailmaxxing", points, 100, False)
+        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span - 1.0)
+        assert routing.long_calm_for("trailmaxxing", points, 100, False)
+
+    def test_at_the_span_itself_the_search_runs(self, monkeypatch) -> None:
+        points = [US, [-76.9, 38.95]]
+        span = routing.straight_span_m(points)
+        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span)
+        deadline = routing.Deadline(routing.clock() + 40, 35)
+        assert routing._refine_limit("default", points, False, False, deadline) is None
+        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span - 1.0)
+        assert routing._refine_limit("default", points, False, False, deadline) == "span"
+
+
+class TestALongPlansCandidatesAreInThePlansLegs:
+    """Combined correctness review, S1, and mutation review X06: a long calm plan searched
+    in legs of its own answers in the plan's legs, its candidates too: no `leg_ends` of the
+    search's legs, and no "Stop 1" the rider never placed in a candidate's description."""
+
+    def test_the_answer_and_its_candidate(self, client, segments, router, monkeypatch) -> None:
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])]),
+                    "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+                }
+            )
+        )
+        joined = route_answer(
+            [(VERTICES[:3], 1.2, [10.0, 20.0]), (VERTICES[2:], 1.0, [15.0, 30.0])]
+        )["trip"]
+        other = route_answer(
+            [(VERTICES[:3], 1.3, [10.0, 20.0]), (VERTICES[2:], 1.1, [15.0, 30.0])]
+        )["trip"]
+
+        def fake_refine(trip, ctx):
+            ctx.candidates = [(joined, None), (other, None)]
+            return joined, {
+                "rate": ctx.rate,
+                "rounds": 1,
+                "excluded": 0,
+                "limited": None,
+                "long": {"legs": 2, "searched": 1, "skipped": 0, "stops": [2], "answered": "legs"},
+            }
+
+        monkeypatch.setattr(refine, "refine", fake_refine)
+        monkeypatch.setattr(refine, "refine_long", fake_refine)
+        body = post(client, top_body()).json()
+        last = len(body["geometry"]["coordinates"]) - 1
+        assert body["leg_ends"] == [last]
+        (candidate,) = body["candidates"]
+        assert candidate["leg_ends"] == [len(candidate["geometry"]["coordinates"]) - 1]
+        assert not [e for e in candidate["description"] if e["kind"] == "via"]
+        assert not [e for e in body["description"] if e["kind"] == "via"]

@@ -392,8 +392,12 @@ class HillsSeekOut(Schema):
     chosen: int = Field(description="Which was kept; 0 is the direct route.")
     extra_climb_m: float
     extra_distance_m: float
-    limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
-        description="Why no alternatives were compared, if none were."
+    limited: Literal["two_points", "long_ride", "timed_out", "calm_first"] | None = Field(
+        description=(
+            "Why no alternatives were compared, if none were. `calm_first`: at the top of"
+            " the stress slider, where seeking hills keeps the stress order and the target"
+            " and only prefers climbing between equally calm routes (OWNER-DECISIONS 298(3))."
+        )
     )
 
 
@@ -573,8 +577,10 @@ class CalmSearchOut(Schema):
     crossings. `limited` says why it stopped short, or why it did not run:
     `time`, `no_route` (every way out was excluded), `untraceable`,
     `excludes` (the router's limit on exclusions was reached),
-    `target_distance` (the ceiling was reached, or no route within the target distance
-    was found: the least stressful one found is answered, `fits` false),
+    `ceiling` (the routes the next round found were all past `ceiling_m`: a calmer,
+    longer route may exist, and the route answered may well be within the target),
+    `target_distance` (no route within the target distance was found: the least
+    stressful one found is answered, `no_fit` true),
     `not_worth` (a spliced route's extra miles did not buy enough stress),
     `split` (a long trip could not be cut into legs), `span`,
     `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its
@@ -613,7 +619,17 @@ class CalmSearchOut(Schema):
         description=(
             "Whether the route is within `target_distance_m` (null with no target). False"
             " where the extra miles bought enough stress, or where no route that short was"
-            " found (`limited` is then `target_distance`: the least stressful found)."
+            " found (`no_fit` is then true)."
+        ),
+    )
+    no_fit: bool | None = Field(
+        default=None,
+        description=(
+            "True only where no route within `target_distance_m` was found: the least"
+            " stressful route found is answered, flagged by `over_target_m`, and `limited` is"
+            " `target_distance` (OWNER-DECISIONS 267, 298(2); within the ceiling where one"
+            " was, else the least stressful of all found). False where one was found; null"
+            " with no target."
         ),
     )
     over_target_m: float | None = Field(
@@ -1069,7 +1085,6 @@ def route(request, body: RouteIn, response: HttpResponse):
             body.points,
             _stress_of(body),
             long_ride=False,
-            seeking=_seeking(body),
         ):
             # A long calm plan (OWNER-DECISIONS 256) has the long ride's time
             # limit, so it takes the long ride's in-flight slot as well: one at a
@@ -1111,13 +1126,6 @@ def _stress_of(body: RouteIn) -> int:
     if body.stress is not None:
         return body.stress
     return presets.stress_start(body.preset, body.carrying)
-
-
-def _seeking(body: RouteIn) -> bool:
-    """Whether the hills slider is past its detent, on a ride type that seeks."""
-    preset = presets.PRESETS[body.preset]
-    hills = preset.hills if body.hills is None else body.hills
-    return hills > 0 and preset.hills_seek
 
 
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):

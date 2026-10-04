@@ -201,7 +201,23 @@ class TestThePlan:
         assert search["over_target_m"] == 0.0 and search["fits"] is True
         #         assert body["dodges"]["saved_m"] == pytest.approx(dodge - direct, abs=3.0)
         # No route fitted the target until the dodge was gone: the flag goes with it.
-        assert search["limited"] is None
+        assert search["limited"] is None and search["no_fit"] is False
+
+    def test_the_no_fit_flag_stays_where_the_route_is_still_over_the_target(self, world) -> None:
+        """Mutation review X16: the flag is cleared only where the route now fits. A
+        dodge taken out of a route still past the target leaves `limited` and `no_fit`."""
+        unit, router = world(side="3", main="3")
+        direct = metres_of(unit.direct)
+        target = int(direct - 100)
+        body = routing.plan(
+            [list(unit.a), list(unit.e)],
+            "trailmaxxing",
+            dials=routing.Dials(stress=100, when="weekday_offpeak", target_distance_m=target),
+        )
+        assert body["dodges"]["removed"] == 1
+        search = body["calm_search"]
+        assert search["fits"] is False and search["over_target_m"] > 0
+        assert search["limited"] == "target_distance" and search["no_fit"] is True
 
     def test_the_searchs_extra_distance_is_brought_down_by_what_was_taken_off(self, world) -> None:
         unit, router = world(side="3", main="3")

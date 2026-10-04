@@ -479,7 +479,7 @@ def stress_spans(stretches: list[tuple]) -> list[dict]:
             folded[-1][0] += span[0]
         elif folded and folded[-1][0] < MIN_SPAN_M:
             # The first section was the short one: it takes this one's class.
-            folded[-1] = [folded[-1][0] + span[0], span[1], span[2]]
+            folded[-1] = [folded[-1][0] + span[0], *span[1:]]
         else:
             folded.append(list(span))
     out = []
@@ -997,14 +997,14 @@ def straight_span_m(points: list) -> float:
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
 
 
-def long_calm_for(
-    preset_name: str, points: list, stress: int, long_ride: bool, seeking: bool
-) -> bool:
+def long_calm_for(preset_name: str, points: list, stress: int, long_ride: bool) -> bool:
     """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
     stress slider on a ride type that plans past the calm search's working span
     leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
     stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
-    ride (past the confirm span, which has its own rules)."""
+    ride (past the confirm span, which has its own rules). The Hills slider seeking
+    climbs does not change it: at the top of the stress slider seeking hills keeps
+    the stress order and the target (OWNER-DECISIONS 298(3))."""
     from . import refine
 
     return (
@@ -1012,7 +1012,6 @@ def long_calm_for(
         and presets.maxcalm_for(stress)
         and len(points) >= 2
         and not long_ride
-        and not seeking
         and straight_span_m(points) > refine.REFINE_MAX_SPAN_M
     )
 
@@ -1366,19 +1365,22 @@ def _past_target(fit: tuple | None, past: list[tuple], ceiling_m: float, ctx) ->
       the stricter one past the target), else the one that fits;
     - where none fits (267, "Least-stress route, flagged"), the least stressful within
       the ceiling, in the order of 258-262 (`refine.calmer`, then the shorter), else,
-      none being within the ceiling, the shortest found.
-    A route that cannot be read in time is not chosen."""
+      none being within the ceiling, the least stressful of all those found, in the
+      same order (OWNER-DECISIONS 298(2), "Calmest found, flagged (Recommended)": it
+      amends the shortest, as first built), flagged with how far over the target it is.
+    A route that cannot be read in time is not chosen; where none can be, the shortest.
+    Each is read inside the late deadline (`refine.late_deadline`, combined correctness
+    review S3), keeping the answer's reserve."""
     from . import refine
 
     within = sorted(
         (o for o in past if _trip_length_m(o[0]) <= ceiling_m), key=lambda o: _trip_length_m(o[0])
     )
+    late = refine.late_deadline(ctx)
 
     def read(option: tuple):
         try:
-            got = refine.analyse(
-                option[0], dataclasses.replace(ctx, costing=option[3]), ctx.deadline
-            )
+            got = refine.analyse(option[0], dataclasses.replace(ctx, costing=option[3]), late)
         except (DeadlineExceeded, RouterUnavailable):
             return None
         return got if got is not None and got.events is not None else None
@@ -1394,7 +1396,7 @@ def _past_target(fit: tuple | None, past: list[tuple], ceiling_m: float, ctx) ->
                 best, current = option, got
         return best
     if not within:
-        return min(past, key=lambda o: _trip_length_m(o[0]))
+        within = sorted(past, key=lambda o: _trip_length_m(o[0]))
     best, current = within[0], None
     for option in within:
         got = read(option)
@@ -1443,6 +1445,13 @@ def plan(
     )
     hills_dial = preset.hills if dials.hills is None else dials.hills
     seeking = hills_dial > 0 and preset.hills_seek
+    maxcalm = presets.maxcalm_for(stress_dial)
+    # Seeking hills at the top of the stress slider keeps the stress order and the
+    # target; only the effort tiebreak (`refine.level3`) inverts, to prefer climbing
+    # (OWNER-DECISIONS 298(3), "Keep stress order + target (Recommended)"). Below the
+    # top the slider is the climb search among the router's alternatives, as before.
+    calm_seek = seeking and maxcalm
+    climb_seek = seeking and not maxcalm
     # A loop is planned through its start again (OWNER-DECISIONS 266).
     loop = loop_wanted(points, dials.loop, preset_name)
     points = loop_points(points, loop)
@@ -1452,14 +1461,13 @@ def plan(
     # for a long ride (2026-09-26). It is the same plan the ordinary budget
     # would cut short after its first legs, and no more than the router calls
     # a long ride makes (docs/OPERATIONS.md, "Long calm plans").
-    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride, seeking)
+    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride)
     if long_ride or long_calm:
         budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     exposure = presets.exposure_for(preset_name, dials.carrying)
-    maxcalm = presets.maxcalm_for(stress_dial)
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -1486,9 +1494,9 @@ def plan(
     # descents (routemaker.climbs; the owner, 2026-09-28) among the same
     # alternatives, by `-hills/100`.
     avoiding = hills_dial < 0
-    seek_limited = None
-    if seeking or avoiding:
-        span_limit = SEEK_MAX_SPAN_M if seeking else AVOID_MAX_SPAN_M
+    seek_limited = "calm_first" if calm_seek else None
+    if climb_seek or avoiding:
+        span_limit = SEEK_MAX_SPAN_M if climb_seek else AVOID_MAX_SPAN_M
         if len(points) != 2:
             seek_limited = "two_points"
         elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > span_limit:
@@ -1534,7 +1542,7 @@ def plan(
                 "planning on the standard graph",
                 refusal.code,
             )
-        if timed_out:
+        if timed_out and not calm_seek:
             seek_limited = "timed_out"
     except RouterRefused as refusal:
         if refusal.code in REQUEST_LIMIT_CODES:
@@ -1556,7 +1564,7 @@ def plan(
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # This plan's traces, so a route the guards traced is not traced again.
     traces: dict = {}
-    if seeking:
+    if climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
     elif avoiding:
         chosen = calmer_or_own(
@@ -1590,7 +1598,7 @@ def plan(
     # budget; `refined` says what it did, or why it did not.
     from . import dedodge, refine, trailseek
 
-    refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline, long_calm)
+    refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
     ceiling = None
     fitted_at = None
     fit, past = None, []
@@ -1621,6 +1629,7 @@ def plan(
         weight=refine.intersection_weight(stress_dial),
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
         hills_weight=avoid_weight,
+        hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
@@ -1661,6 +1670,7 @@ def plan(
                 "rounds": 0,
                 "excluded": 0,
                 "limited": "target_distance",
+                "no_fit": True,
             }
         elif long_calm:
             trip, refined = refine.refine_long(trip, refine_context)
@@ -1688,14 +1698,25 @@ def plan(
         refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
             refined["fitted_at"] = fitted_at
-        # No route fitted the target until a dodge was taken out of the least stressful.
-        if (
-            dodges
-            and dodges["removed"]
-            and refined.get("limited") == "target_distance"
-            and refined.get("fits")
-        ):
+        # `no_fit`: no route within the target was found (OWNER-DECISIONS 267, 298(2));
+        # the front end says so on it alone (combined correctness review, S2). Null
+        # without a target.
+        if target_m is None:
+            refined["no_fit"] = None
+        elif refined.get("no_fit") and dodges and dodges["removed"] and refined["fits"]:
+            # No route fitted the target until a dodge was taken out of the least
+            # stressful: only then is the flag cleared (mutation review, X16).
+            refined["no_fit"] = False
             refined["limited"] = None
+        else:
+            refined["no_fit"] = bool(refined.get("no_fit"))
+
+    # A long calm plan searched in legs of its own answers in the plan's legs: the
+    # grouping of its search legs into the plan's, the answer's and its candidates'
+    # alike (combined correctness review, S1: a candidate kept the search's legs, and
+    # its description a "Stop 1" the rider never placed).
+    long_info = (refined or {}).get("long") or {}
+    plan_groups = long_info.get("stops") if long_info.get("answered") == "legs" else None
 
     def _answer(
         trip: dict, refined: dict | None, alternate: bool = False, dodges_of: dict | None = None
@@ -1754,8 +1775,8 @@ def plan(
         # A long calm plan was searched in legs of its own: the answer has the plan's
         # legs, as the front end reads which leg a point on the line belongs to, and
         # a Mass Ride's stops and the description's are the plan's stops.
-        groups = ((refined or {}).get("long") or {}).get("stops")
-        if (refined or {}).get("long", {}).get("answered") == "legs" and groups:
+        groups = plan_groups
+        if groups:
             if sum(groups) == len(legs):
                 ends = list(itertools.accumulate(groups))
                 first = [e - g for e, g in zip(ends, groups, strict=True)]
@@ -1827,7 +1848,17 @@ def plan(
         summary = trip.get("summary") or {}
         climb, descent = climb_and_descent(elevations)
         hills_seek = None
-        if seeking and not alternate:
+        if calm_seek and not alternate:
+            # No climb search among alternatives: the stress order chose, and the
+            # climbing only broke its ties (298(3)).
+            hills_seek = {
+                "candidates": 1,
+                "chosen": 0,
+                "extra_climb_m": 0.0,
+                "extra_distance_m": 0.0,
+                "limited": seek_limited,
+            }
+        elif seeking and not alternate:
             direct = trips[0].get("summary") or {}
             hills_seek = {
                 "candidates": len(trips),
