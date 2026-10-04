@@ -2456,7 +2456,7 @@ postgis first:
 
 ```sh
 docker compose up -d --no-deps --no-build --force-recreate postgis
-# check again: django_migrations 68, and the live segment count as last seen
+# check again: django_migrations 69 (68 before the NO-BIKE-PATHS migration), and the live segment count as last seen
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from django_migrations" </dev/null
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \

@@ -72,7 +72,11 @@ def test_a_zoo_way_is_closed_whatever_it_would_otherwise_be():
 def test_parks_close_plain_paths_only_inside():
     inside = way(40, {"highway": "path"}, (-77.5, 39.5))
     outside = way(41, {"highway": "path"}, (-77.1, 39.1))
-    park = ((-77.6, 39.4, -77.4, 39.6), [[(-77.6, 39.4), (-77.4, 39.4), (-77.4, 39.6), (-77.6, 39.6)]], [])
+    park = (
+        (-77.6, 39.4, -77.4, 39.6),
+        [[(-77.6, 39.4), (-77.4, 39.4), (-77.4, 39.6), (-77.6, 39.6)]],
+        [],
+    )
     result = run([inside, outside], parks=[park])
     assert result.reasons == {40: "park_path"}
 

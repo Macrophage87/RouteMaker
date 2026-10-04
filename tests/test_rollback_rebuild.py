@@ -218,7 +218,10 @@ def test_a_withdrawn_variant_is_stopped_not_restarted() -> None:
     every = {variant: "20260910T080000Z" for variant in Variant}
     assert restart_hint(every) == RESTART_HINT
     hint = restart_hint({**every, Variant.WEEKEND: None})
-    assert "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-offroad &&" in hint
+    assert (
+        "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
+        "valhalla-offroad &&" in hint
+    )
     assert "docker compose stop valhalla-weekend" in hint
     assert "restart valhalla-weekend" not in hint and "ebike valhalla-weekend" not in hint
 
@@ -245,5 +248,7 @@ def test_the_command_prints_the_withdraw_hint_when_weekend_is_withdrawn(
     printed = out.getvalue()
     assert RESTART_HINT not in printed
     assert "docker compose stop valhalla-weekend" in printed
-    assert "restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-offroad &&" in printed
+    assert (
+        "restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-offroad &&" in printed
+    )
     assert len(stubbed_rollback) == (1 if confirm else 0)

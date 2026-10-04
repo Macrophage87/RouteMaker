@@ -72,9 +72,8 @@ from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, intersections, ridetime, trace_junctions
+from routemaker import climbs, describe, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
-from routemaker import zoo
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
 from routemaker.measure import elevation_gain

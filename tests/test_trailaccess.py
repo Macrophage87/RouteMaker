@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from routemaker import trailaccess as ta
 from routemaker.trailaccess import WayRoutes
 
