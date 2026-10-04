@@ -606,6 +606,9 @@ const federalFetched = (p) =>
 // ---- 14. A slow plan (LONG-CALM, up to half a minute): said once while it runs, then the route (the a11y review's SF1) ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000 });
+  // The first route's own announcement lands once it settles: listen only after it.
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 10000);
+  await sleep(500);
   await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
     .observe(document.querySelector('.status-line'), { childList: true, subtree: true, characterData: true }); true`);
   const field = "document.querySelector('input[placeholder=Default]')";
