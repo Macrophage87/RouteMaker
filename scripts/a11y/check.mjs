@@ -24,10 +24,10 @@ function check(name, ok, detail = "") {
 
 const b = await connect();
 
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, stressTiles = true } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, stressTiles });
+  await mock(p, route, { delayMs, delayFrom, stressTiles });
   await media(p, { scheme, forced });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
@@ -605,7 +605,7 @@ const federalFetched = (p) =>
 
 // ---- 14. A slow plan (LONG-CALM, up to half a minute): said once while it runs, then the route (the a11y review's SF1) ----
 {
-  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000 });
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000, delayFrom: Infinity });
   // The first route's own announcement lands once it settles: listen only after it.
   await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 10000);
   await sleep(500);
@@ -614,6 +614,8 @@ const federalFetched = (p) =>
   const field = "document.querySelector('input[placeholder=Default]')";
   await p.eval(`${field}.focus(); true`);
   await p.type("60");
+  // Only this plan is slow: the page's own first requests were answered at once.
+  p.delayFrom = p.routeRequests + 1;
   await p.enter();
   await sleep(1000);
   const during = await p.eval(`(() => { const g = document.querySelector('progress.planning'); return g ? { label: g.getAttribute('aria-label'), indeterminate: !g.hasAttribute('value'), shown: g.getBoundingClientRect().height > 0, live: !!g.closest('[aria-live]'), loading: document.querySelector('.loading')?.textContent } : null; })()`);

@@ -149,7 +149,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
       const n = page.routeRequests;
-      if (delayMs && n >= delayFrom) await sleep(delayMs);
+      // page.delayFrom, where a check sets it, is the request the delay starts at.
+      if (delayMs && n >= (page.delayFrom ?? delayFrom)) await sleep(delayMs);
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
       type = "application/json";
