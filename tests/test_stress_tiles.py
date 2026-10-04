@@ -1307,10 +1307,37 @@ class TestMapClass:
             cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN separate_bikeway")
         assert self.drawn(client, 14) == [(3, False), (4, False), (4, False), (5, False)]
 
+    def test_a_mountain_bike_trail_carries_mtb_and_rough_and_a_plain_one_neither(
+        self, client, ways
+    ) -> None:
+        """NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): the map draws `mtb` and
+        `rough` ways faint; each property is true or left out."""
+        with connection.cursor() as cursor:
+            for way, lat_shift, mtb, rough in (
+                (5101, 0.0021, True, True),
+                (5102, 0.0024, False, False),
+            ):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] + lat_shift
+                cursor.execute(
+                    f"INSERT INTO {ways}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class, mtb_only, is_rough) VALUES (%s, 0, "
+                    "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, "
+                    "%s, %s)",
+                    [way, lon, lat, lon + 0.002, lat, mtb, rough],
+                )
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        trails = [f for f in layer.features if f.properties.get("trail") is True]
+        flagged = [f for f in trails if f.properties.get("mtb")]
+        assert len(flagged) == 1 and flagged[0].properties.get("rough") is True
+        plain = [f for f in trails if not f.properties.get("mtb")]
+        assert plain and all("rough" not in f.properties for f in plain)
+
     def test_the_columns_are_the_schemas(self) -> None:
         from pipeline import schema
 
         ddl = schema.SEGMENT_DDL
+        assert "mtb_only        boolean     NOT NULL DEFAULT false" in ddl
+        assert "walk_bike       boolean     NOT NULL DEFAULT false" in ddl
         assert "map_class       text        NOT NULL DEFAULT 'road'" in ddl
         assert "CHECK (map_class IN ('road', 'barred', 'hidden', 'alley'))" in ddl
         assert "separate_bikeway boolean    NOT NULL DEFAULT false" in ddl
