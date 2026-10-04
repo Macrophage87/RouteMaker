@@ -1562,7 +1562,7 @@ def plan(
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
-    from . import refine, trailseek
+    from . import dedodge, refine, trailseek
 
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline, long_calm)
     ceiling = None
@@ -1648,12 +1648,31 @@ def plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    # No weaving through side streets beside a busier road unless it buys a
+    # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
+    # replaces such a dodge. A loop's way back is kept as it was made, not to share
+    # more of the way out (266).
+    dodges = None
+    if not loop:
+        trip, dodges = dedodge.apply(trip, refine_context)
+        if dodges["removed"] and (refined or {}).get("extra_distance_m") is not None:
+            refined["extra_distance_m"] = round(refined["extra_distance_m"] - dodges["saved_m"], 1)
     if refined is not None and maxcalm:
         refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
             refined["fitted_at"] = fitted_at
+        # No route fitted the target until a dodge was taken out of the least stressful.
+        if (
+            dodges
+            and dodges["removed"]
+            and refined.get("limited") == "target_distance"
+            and refined.get("fits")
+        ):
+            refined["limited"] = None
 
-    def _answer(trip: dict, refined: dict | None, alternate: bool = False) -> dict:
+    def _answer(
+        trip: dict, refined: dict | None, alternate: bool = False, dodges_of: dict | None = None
+    ) -> dict:
         """The contract's body for one route (the plan's own, or one of its
         candidates, OWNER-DECISIONS 265)."""
         legs = trip.get("legs") or []
@@ -1859,6 +1878,7 @@ def plan(
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "calm_search": refined,
+            "dodges": dodges_of,
             "effort_m": effort_m,
             "loop": (
                 {**({} if alternate else loop_info or {}), **(loop_stats(pieces, leg_runs) or {})}
@@ -1870,7 +1890,7 @@ def plan(
             "description_overview": described_overview,
         }
 
-    body = _answer(trip, refined)
+    body = _answer(trip, refined, dodges_of=dodges)
     candidates = []
     for found, _reading in refine_context.candidates[1:]:
         # Each is read in full (its traces are remembered, its junctions read once
@@ -1878,8 +1898,11 @@ def plan(
         if deadline.at - clock() < ALTERNATE_MIN_S:
             break
         try:
+            found_dodges = None
+            if not loop:
+                found, found_dodges = dedodge.apply(found, refine_context)
             refine.analyse(found, refine_context, deadline)
-            candidate = _answer(found, None, True)
+            candidate = _answer(found, None, True, found_dodges)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling

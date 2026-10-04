@@ -772,6 +772,9 @@ class RouteBody(Schema):
     intersection_groups: list[IntersectionGroupOut] | None = None
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
+    # Side-street dodges found and what was done with them (OWNER-DECISIONS 272): null
+    # on a loop, which keeps its way back as made.
+    dodges: DodgesOut | None = None
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
     description: list[DescriptionEntryOut] | None = None
@@ -791,6 +794,49 @@ class RouteBody(Schema):
             " route was read for it (the top of the stress slider)."
         ),
     )
+
+
+class DodgeOut(Schema):
+    """One leave-and-rejoin of a road through side streets (OWNER-DECISIONS 272)."""
+
+    street: str = Field(description="The road the route left and rejoined (lower case).")
+    via: list[str] = Field(description="The streets it went through, by name.")
+    lon: float
+    lat: float
+    length_m: float = Field(description="How far the dodge went, metres.")
+    action: str | None = Field(
+        description="`removed` (the main road's stretch replaced it), `kept`, or `unchecked`."
+    )
+    reason: str | None = Field(
+        description=(
+            "Why: `no_stress_gain` (removed), `stress` (it avoids enough), `top` (it avoids"
+            " LTS 4, Avoid or a red junction), `longer`, `hills`, `events`, `no_route`,"
+            " `no_splice`, `no_exclusion` or `untraceable` (kept)."
+        )
+    )
+    avoided_m: float | None = Field(
+        description="The higher-stress metres the dodge avoids against the main road."
+    )
+    needed_m: float | None = Field(
+        description="What it had to avoid to be kept: 0.25 mi plus the turns it adds."
+    )
+    turns_saved: int | None = Field(description="Turns the main road saves over the dodge.")
+    extra_m: float | None = Field(
+        description="Metres the dodge adds over the main road (negative: it is shorter)."
+    )
+
+
+class DodgesOut(Schema):
+    """What the pass that takes out pointless side-street dodges did (`core.dedodge`,
+    OWNER-DECISIONS 272). `limited` says why it stopped short: `time` or `checks`."""
+
+    found: int
+    removed: int
+    kept: int
+    checked: int
+    saved_m: float = Field(description="The metres the replacements took off the route.")
+    limited: str | None
+    items: list[DodgeOut]
 
 
 class LoopOut(Schema):

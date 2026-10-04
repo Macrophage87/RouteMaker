@@ -72,6 +72,8 @@ CONTRACT_KEYS = {
     "candidates",
     # Additive, OWNER-DECISIONS 266: a loop's way back against its way out.
     "loop",
+    # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
+    "dodges",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

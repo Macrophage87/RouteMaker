@@ -2575,3 +2575,14 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   `system_weight_kg`, `loop`) would be refused as unknown by the older API (the schema forbids extra
   fields), so an older API behind a newer front end would answer 400 to a request that carries one;
   deploy the pair together.
+
+## The dodge pass's load (FOLLOWUP-DEDODGE)
+
+After the search and before the answer a plan may make up to 8 more `/route` calls (and as many
+`trace_attributes` and `/locate` reads) to take pointless side-street dodges out of its route
+(`core.dedodge`). They are single-leg requests between two points a mile or less apart, 0.3 to 1 s
+each on the live routers, and are bounded by a 5 s budget that ends 6 s before the plan's own
+deadline, so a plan that has spent its time makes none (`dodges.limited` is `time`). On the twelve
+trips the pass made 0 to 8 calls a trip; on Union Station to Penn it made 8 (`limited: checks`, 8
+of 9 dodges looked at). No knob needs setting: `dedodge.BUDGET_S`, `MAX_CHECKS` and `MAX_EXCLUDES`
+are code constants.
