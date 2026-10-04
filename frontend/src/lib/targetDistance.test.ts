@@ -20,13 +20,9 @@ import {
   DESCRIPTION_MAX_CHARS,
   TARGET_HOW,
   TARGET_LABEL,
-  WEIGHT_LABEL,
-  formatWeight,
   targetText,
   panelView,
   parseTarget,
-  parseWeight,
-  weightText,
 } from "./dialsPanel.ts";
 import { METRES_PER_MILE } from "./format.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
@@ -85,18 +81,19 @@ test("the request carries them when set and not otherwise", () => {
 test("fitDials keeps a good one and drops a bad one", () => {
   assert.equal(fitDials("trailmaxxing", { targetDistanceM: SIXTY }).targetDistanceM, SIXTY);
   assert.equal("targetDistanceM" in fitDials("trailmaxxing", { targetDistanceM: 3 }), false);
-  assert.equal(fitDials("trailmaxxing", { systemWeightKg: 120 }).systemWeightKg, 120);
-  assert.equal("systemWeightKg" in fitDials("trailmaxxing", { systemWeightKg: 10 }), false);
+  // The weight is never taken from a link (OWNER-DECISIONS 313).
+  assert.equal("systemWeightKg" in fitDials("trailmaxxing", { systemWeightKg: 120 }), false);
 });
 
-test("the link carries the target distance in miles and the weight in kilograms, and old links have neither", () => {
+test("the link carries the target distance in miles and never the weight; an old link's weight is ignored (OWNER-DECISIONS 313)", () => {
   const dials = { ...startDials("trailmaxxing"), targetDistanceM: SIXTY, systemWeightKg: 110 };
   const hash = encodePlan(POINTS, "trailmaxxing", dials);
   assert.match(hash, /targetmi=60\.0/);
-  assert.match(hash, /sysweight=110/);
+  assert.doesNotMatch(hash, /sysweight|weight|110/);
   const plan = decodePlan(hash);
   assert.equal(plan.dials.targetDistanceM, SIXTY);
-  assert.equal(plan.dials.systemWeightKg, 110);
+  assert.equal(plan.dials.systemWeightKg, undefined);
+  assert.equal(decodePlan(`${hash}&sysweight=110`).dials.systemWeightKg, undefined, "an old link carrying it");
   // An older link has neither: the defaults, and the traffic position it had.
   const old = decodePlan(encodePlan(POINTS, "trailmaxxing", startDials("trailmaxxing")));
   assert.equal(old.dials.targetDistanceM, undefined);
@@ -106,7 +103,7 @@ test("the link carries the target distance in miles and the weight in kilograms,
   assert.doesNotMatch(encodePlan(POINTS, "trailmaxxing", startDials("trailmaxxing")), /targetmi|sysweight/);
   assert.equal(decodePlan("#preset=trailmaxxing&targetmi=0").dials.targetDistanceM, undefined);
   assert.equal(decodePlan("#preset=trailmaxxing&targetmi=abc").dials.targetDistanceM, undefined);
-  assert.equal(decodePlan("#preset=trailmaxxing&sysweight=900").dials.systemWeightKg, undefined);
+
 });
 
 test("the link's version is unchanged, and a version 2 link keeps its stress", () => {
@@ -119,12 +116,11 @@ test("the panel shows the two inputs at the top of the slider and not below it",
   const view = panelView("trailmaxxing", top);
   assert.ok(view.target && view.weight);
   assert.equal(view.target.label, TARGET_LABEL);
-  assert.equal(view.weight.label, WEIGHT_LABEL);
+
   assert.match(TARGET_LABEL, /miles/);
-  assert.match(WEIGHT_LABEL, /pounds/);
   const below = panelView("trailmaxxing", { ...top, stress: 90 });
   assert.equal(below.target, null);
-  assert.equal(below.weight, null);
+  assert.equal(below.weight, false);
   assert.equal(panelView("default", startDials("default")).target, null);
 });
 
@@ -157,18 +153,6 @@ test("the label is the target distance, not a maximum", () => {
   assert.equal(TARGET_LABEL, "Target distance (miles)");
 });
 
-test("the weight's words give pounds first and say the default", () => {
-  const empty = panelView("trailmaxxing", startDials("trailmaxxing")).weight!;
-  assert.match(empty.hint, /Left empty, it is 198 lb \(90 kg\)/);
-  const passengers = panelView("cargo", { ...startDials("cargo", "people"), stress: 100 }).weight!;
-  assert.match(passengers.hint, /265 lb \(120 kg\)/);
-  const set = panelView("trailmaxxing", { ...startDials("trailmaxxing"), systemWeightKg: 140 }).weight!;
-  assert.equal(set.value, "309");
-  assert.match(set.hint, /Set to 309 lb \(140 kg\)/);
-  assert.equal(formatWeight(68), "150 lb (68 kg)");
-  assert.match(empty.rule, /^Enter 150 to 309 pounds \(68 to 140 kg\), or leave it empty\.$/);
-});
-
 test("what is typed is read in miles and pounds, and a bad entry is refused", () => {
   assert.equal(parseTarget(""), undefined);
   assert.equal(parseTarget("  "), undefined);
@@ -180,38 +164,14 @@ test("what is typed is read in miles and pounds, and a bad entry is refused", ()
   assert.equal(parseTarget("-5"), null);
   assert.equal(parseTarget("sixty"), null);
   assert.equal(parseTarget("1e2"), null);
-  assert.equal(parseWeight(""), undefined);
-  assert.equal(parseWeight("198"), 89.8);
-  assert.equal(parseWeight("198 lb"), 89.8);
-  assert.equal(parseWeight("309"), 140.2, "the top of the rule is taken: 140 kg is sent");
-  assert.equal(parseWeight("150"), 68);
-  assert.equal(parseWeight("100"), null);
-  assert.equal(parseWeight("400"), null);
-  assert.equal(parseWeight("heavy"), null);
   assert.equal(targetText(undefined), "");
   assert.equal(targetText(SIXTY), "60");
   assert.equal(targetText(Math.round(12.34 * METRES_PER_MILE)), "12.3");
-  assert.equal(weightText(undefined), "");
-  assert.equal(weightText(90), "198");
-});
-
-test("pounds typed come back as typed: 200 lb is 200 lb after the round trip, every whole pound in the range (the spec review's NIT4)", () => {
-  assert.equal(weightText(parseWeight("200") ?? undefined), "200");
-  for (let lb = 150; lb <= 309; lb++) {
-    const kg = parseWeight(String(lb));
-    assert.ok(typeof kg === "number", `${lb} lb is taken`);
-    assert.equal(weightText(kg), String(lb), `${lb} lb`);
-    // And through the link, which carries the kilograms.
-    const hash = encodePlan(POINTS, "trailmaxxing", { ...startDials("trailmaxxing"), systemWeightKg: kg });
-    assert.equal(weightText(decodePlan(hash).dials.systemWeightKg), String(lb), `${lb} lb through the link`);
-  }
 });
 
 test("back to the ride type's settings clears both", () => {
   const dials = { ...startDials("trailmaxxing"), targetDistanceM: SIXTY };
   assert.deepEqual(panelView("trailmaxxing", dials).reset, startDials("trailmaxxing"));
-  const heavy = { ...startDials("trailmaxxing"), systemWeightKg: 120 };
-  assert.deepEqual(panelView("trailmaxxing", heavy).reset, startDials("trailmaxxing"));
   assert.equal(panelView("trailmaxxing", startDials("trailmaxxing")).reset, null);
 });
 

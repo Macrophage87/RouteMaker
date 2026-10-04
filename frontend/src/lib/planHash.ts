@@ -51,8 +51,7 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.avoidGravel) params.set("avoidgravel", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
-    // The system weight in kilograms (OWNER-DECISIONS 264); absent is the default.
-    if (dials.systemWeightKg) params.set("sysweight", String(dials.systemWeightKg));
+    // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
     // "Make it a loop" (OWNER-DECISIONS 266); absent is off.
     if (dials.loop) params.set("loop", "1");
   }
@@ -85,7 +84,7 @@ export function decodePlan(hash: string): Plan {
   const dials = fitDials(preset, {
     stress,
     targetDistanceM: targetMiles === undefined ? undefined : Math.round(targetMiles * METRES_PER_MILE),
-    systemWeightKg: numberOrUndefined(params.get("sysweight")),
+    // An older link's "sysweight" is ignored (OWNER-DECISIONS 313).
     loop: params.get("loop") === "1",
     hills: numberOrUndefined(params.get("hills")),
     when: isWhen(when) ? when : null,

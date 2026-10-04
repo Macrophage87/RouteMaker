@@ -494,8 +494,8 @@ was not looked at.
   Route 1" (miles first, km in brackets, as in "Route 2: 7.2 mi (11.6 km), 0.2 mi
   (0.4 km) more than Route 1"), each described by its own figures. The shared
   hint describes the group and no longer asks the rider to look at the map.
-- Target distance and System weight say a bad entry in a persistent assertive
-  live region.
+- Target distance says a bad entry in a persistent assertive live region, and the
+  weight dialog does the same.
 - The "Show bike lanes on high-stress roads" switch is always shown with a route,
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
@@ -3429,7 +3429,8 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
 - **`calm_search.limited`**: `"target_distance"` is the no-fit answer's alone. `"ceiling"` is its own
   code: the exclusion search's next round found only routes past `ceiling_m`, so it stopped there.
   A calmer, longer route may exist, and the answer may well fit the target.
-- The plan hash carries it (`targetmi`, and `sysweight`, `loop`); all three are additive and the link
+- The plan hash carries it (`targetmi`, and `loop`; the weight's `sysweight` was taken out by
+  OWNER-DECISIONS 313, and an older link's is ignored); they are additive and the link
   version stays 2, because no field a link already carried changes its meaning, and a bump to 3
   would make an older page's `stressFromV1` remap a v3 link's stress.
 
@@ -3483,7 +3484,8 @@ metre F = Crr m g cos t + 1/2 rho CdA v^2 + m g sin t at a steady 12.4 mph (20 k
 effort is its length times F / F0, F0 the force on the flat; floored at 1, so a descent costs the flat
 and never offsets a climb (263). The grade is read over 300 m windows of the 30 m elevation samples
 (a 2 m error between neighbours is 7%). Constants: Crr 0.006, CdA 0.40 m^2, air 1.225 kg/m^3,
-mass 90 kg by default; 8% costs 6.5 times the flat. The system weight is optional (item 264): 68 kg
+mass 90 kg by default; 8% costs 6.5 times the flat. The system weight is optional (item 264, and
+private since 313-318: see "The rider and bike weight" below): 68 kg
 (150 lb) to 140 kg (309 lb), default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers; only
 the climbing and rolling terms scale with it, so a flat route's effort-distance is its length at any
 weight. Elevation is the router's own profile (the data `climb_m` uses). Sensitivity: every percent of
@@ -3990,3 +3992,31 @@ opacity and wiring, the faint edge's colour, opacity, width, gap and alley rule,
 swatch tokens and the bar's border, the legend and the map layer): 17 killed at once;
 the 3 survivors (the edge's width, the legend's halo stroke, the map layer's halo
 colour) each got a test (`stressContrast.test.ts`) and are now killed.
+
+## The rider and bike weight (OWNER-DECISIONS 313-318)
+
+The weight is private. It is kept apart from the plan's dials, so it is in no link (an
+older link's `sysweight` is ignored), no GPX download, and nothing the panel, the route
+summary or the announcements say; only the request carries it, as the total in whole
+kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dialFields`).
+
+- **The panel** (`lib/weightDialog.ts` `WeightSetting`, at the top of the Traffic slider):
+  the line "Rider and bike weight: not set, defaults used", or "... set today", "set 1 day
+  ago", "set N days ago" (`weightLine`, by calendar day), and a Change button described by it.
+- **The dialog**: a native `<dialog>` opened modal, named by its heading and described by its
+  two lines (318); Escape closes it and the focus goes back to Change. Rider, Bike and Cargo
+  (pounds) and an editable Total, said politely as it changes. A Total typed replaces the
+  parts; a part typed recomputes the Total. Blank parts are the ride type's defaults
+  (`defaultSplit`): rider 75 kg, bike 15 kg, no cargo (90 kg); Cargo with passengers rider
+  75 kg, bike 30 kg and passengers 15 kg (120 kg). Every open starts blank (`openedState`);
+  a saved weight is said to exist, with its date, never its numbers. Save replaces, Clear
+  uses the defaults, Cancel keeps it.
+- **Where it is kept** (`WeightStore`): signed out, in this browser (localStorage,
+  `routemaker.weight`) only when "Remember on this device" is ticked, else for the visit.
+  The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315); `migrate`
+  reads earlier shapes. Signed in, saving it to the rider's profile is the accounts work's:
+  `WeightStore` is where it goes in.
+- **Tests**: `lib/weight.test.ts` (the line, the worksheet, storage, migration, never in a
+  link or a GPX file, the saved number in no markup), the a11y harness's section 15 (focus
+  in and back, the name and description, Escape, the saved number absent from the page and
+  its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.

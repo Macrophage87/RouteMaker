@@ -10,7 +10,6 @@ import {
   AVOID_MAX_SPAN_M,
   METRES_PER_MILE,
   milesRange,
-  poundsRange,
   SEEK_MAX_SPAN_M,
   formatDistance,
   formatPerMile,
@@ -23,10 +22,6 @@ import {
   TARGET_CEILING_RATIO,
   TARGET_MAX_M,
   TARGET_MIN_M,
-  PASSENGERS_WEIGHT_KG,
-  SYSTEM_WEIGHT_KG,
-  SYSTEM_WEIGHT_MAX_KG,
-  SYSTEM_WEIGHT_MIN_KG,
   STRESS_MAX,
   STRESS_MIN,
   TRAFFIC_TOLERANT_WARNING,
@@ -65,8 +60,11 @@ export interface PanelView {
   hills: SliderView;
   /** The "Target distance" number input, or null where the traffic slider is not at the top. */
   target: TargetView | null;
-  /** The "System weight" number input, with it. */
-  weight: WeightView | null;
+  /**
+   * Whether the rider and bike weight is offered, with the target distance: its line
+   * and Change button, never the number (OWNER-DECISIONS 313; lib/weightDialog.ts).
+   */
+  weight: boolean;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
 }
@@ -136,69 +134,6 @@ export const TARGET_HOW =
   `and never past ${TARGET_CEILING_RATIO} times it. If the calmest route is longer than your target, it is still the one ` +
   "chosen, and the route summary says how far over your target it is.";
 
-/** The "System weight" dial (OWNER-DECISIONS 264), in pounds first, kilograms in brackets. */
-export interface WeightView {
-  label: string;
-  /** Pounds, whole; empty is the default. */
-  value: string;
-  min: number;
-  max: number;
-  rule: string;
-  hint: string;
-}
-
-export const WEIGHT_LABEL = "System weight (pounds)";
-export const LB_PER_KG = 2.20462;
-
-export function lbOf(kg: number): number {
-  return Math.round(kg * LB_PER_KG);
-}
-
-/** "198 lb (90 kg)": pounds first. */
-export function formatWeight(kg: number): string {
-  return `${lbOf(kg)} lb (${Math.round(kg)} kg)`;
-}
-
-export function weightText(kg: number | undefined): string {
-  return kg === undefined ? "" : String(lbOf(kg));
-}
-
-/**
- * Kilograms, to a tenth, for what was typed in pounds; undefined for empty (the
- * default), null for an unusable entry. A tenth of a kilogram is under a quarter
- * of a pound, so what was typed comes back as typed (200 lb is 90.7 kg, shown as
- * 200 lb; whole kilograms showed it as 201: the spec review's NIT4). The API takes
- * whole kilograms (dials.ts dialFields rounds); the range is the API's, on that.
- */
-export function parseWeight(text: string): number | undefined | null {
-  const trimmed = text.trim().replace(/\s*(lb|lbs|pounds)$/i, "");
-  if (trimmed === "") return undefined;
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
-  const kg = Math.round((Number(trimmed) / LB_PER_KG) * 10) / 10;
-  const sent = Math.round(kg);
-  return sent >= SYSTEM_WEIGHT_MIN_KG && sent <= SYSTEM_WEIGHT_MAX_KG ? kg : null;
-}
-
-export function weightView(dials: Dials): WeightView {
-  const set = dials.systemWeightKg;
-  const usual = dials.carrying === "people" ? PASSENGERS_WEIGHT_KG : SYSTEM_WEIGHT_KG;
-  const lo = lbOf(SYSTEM_WEIGHT_MIN_KG);
-  const hi = lbOf(SYSTEM_WEIGHT_MAX_KG);
-  const base =
-    "Optional. You, the bike and what it carries, together. A heavier load makes hills count for more when the Hills slider avoids them.";
-  return {
-    label: WEIGHT_LABEL,
-    value: weightText(set),
-    min: lo,
-    max: hi,
-    rule: `Enter ${poundsRange(lo, hi, SYSTEM_WEIGHT_MIN_KG, SYSTEM_WEIGHT_MAX_KG)}, or leave it empty.`,
-    hint:
-      set === undefined
-        ? `${base} Left empty, it is ${formatWeight(usual)}.`
-        : `${base} Set to ${formatWeight(set)}.`,
-  };
-}
-
 export const MASS_RIDE_TRAFFIC_NOTE =
   "A mass ride takes the most direct roadway; it is not steered onto side streets.";
 /**
@@ -257,7 +192,6 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
     dials.targetDistanceM !== undefined ||
-    dials.systemWeightKg !== undefined ||
     dials.loop === true;
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
@@ -287,7 +221,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       note: hillsNote,
     },
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
-    weight: offersTargetDistance(preset, dials.stress) ? weightView(dials) : null,
+    weight: offersTargetDistance(preset, dials.stress),
     reset: moved ? start : null,
   };
 }

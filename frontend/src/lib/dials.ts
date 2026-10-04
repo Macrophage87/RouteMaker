@@ -213,7 +213,6 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     assist: start.assist,
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
-    ...(fitWeight(dials.systemWeightKg) !== undefined ? { systemWeightKg: fitWeight(dials.systemWeightKg) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
   };
 }

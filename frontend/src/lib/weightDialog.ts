@@ -1,0 +1,205 @@
+/**
+ * The rider and bike weight's dialog and the ride panel's line (OWNER-DECISIONS
+ * 313-318; lib/weight.ts has the rules). A native <dialog> opened with showModal: it
+ * is modal (the page behind is inert), Escape closes it, and the focus moves into it;
+ * on close the focus goes back to the Change button (DialsPanel). Labelled by its
+ * heading and described by the two lines it leads with (318).
+ *
+ * Every open starts blank (317(b)): a saved weight is said to exist, with its date,
+ * and its numbers are never put in a field or anywhere else. Written with
+ * createElement so a test renders it.
+ */
+import { createElement as h, useEffect, useId, useRef, useState, type ReactElement, type RefObject } from "react";
+import {
+  BLANK,
+  WEIGHT_DIALOG_TITLE,
+  WEIGHT_PURPOSE,
+  WEIGHT_ROUGH,
+  editPart,
+  editTotal,
+  formatLbKg,
+  poundsToKg,
+  savedNotice,
+  toStored,
+  weightLine,
+  worksheetKg,
+  type Split,
+  type StoredWeight,
+  type Worksheet,
+} from "./weight.ts";
+
+/** The polite total under the worksheet, from what is entered; the defaults with nothing entered. */
+export function totalSaid(sheet: Worksheet, split: Split): string {
+  const kg = worksheetKg(sheet, split);
+  if (kg === undefined) return `Total: nothing entered; the defaults, ${formatLbKg(split.riderKg + split.bikeKg + split.cargoKg)}, are used.`;
+  if (kg === null) return "Total: not a number yet.";
+  return `Total: ${formatLbKg(kg)}.`;
+}
+
+const PARTS = [
+  { key: "rider", label: "Rider (pounds)", kg: "riderKg" },
+  { key: "bike", label: "Bike (pounds)", kg: "bikeKg" },
+  { key: "cargo", label: "Cargo (pounds)", kg: "cargoKg" },
+] as const;
+
+interface DialogProps {
+  open: boolean;
+  /** What is kept, or null: only its date is ever shown. */
+  saved: StoredWeight | null;
+  /** Whether this browser keeps it (the checkbox starts so). */
+  remembered: boolean;
+  split: Split;
+  onSave: (weight: StoredWeight, remember: boolean) => void;
+  onClear: () => void;
+  onClose: () => void;
+  /** For a test: the clock. */
+  now?: () => number;
+}
+
+/** The dialog's markup for the ids under `id`, with this worksheet (WeightDialog keeps the state). */
+export function weightDialogBody(
+  id: string,
+  props: DialogProps,
+  state: { sheet: Worksheet; remember: boolean; refused: string },
+  set: { sheet: (s: Worksheet) => void; remember: (on: boolean) => void; refused: (text: string) => void },
+): Array<ReactElement | null> {
+  const { sheet, remember, refused } = state;
+  const now = props.now ?? Date.now;
+  const save = () => {
+    const stored = toStored(sheet, props.split, now());
+    if ("refused" in stored) {
+      set.refused(stored.refused);
+      return;
+    }
+    set.refused("");
+    props.onSave(stored, remember);
+  };
+  const field = (key: string, label: string, value: string, hint: string, onChange: (text: string) => void) => {
+    const kg = poundsToKg(value);
+    return h(
+      "div",
+      { key, className: "weight-field" },
+      h("label", { htmlFor: `${id}-${key}` }, label),
+      h("input", {
+        id: `${id}-${key}`,
+        type: "text",
+        inputMode: "decimal",
+        autoComplete: "off",
+        value,
+        "aria-describedby": `${id}-${key}-hint`,
+        onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      }),
+      h("span", { className: "weight-kg", "aria-hidden": "true" }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
+      h("p", { className: "hint", id: `${id}-${key}-hint` }, hint),
+    );
+  };
+  return [
+    h("h2", { key: "t", id: `${id}-title` }, WEIGHT_DIALOG_TITLE),
+    h("p", { key: "d1", id: `${id}-purpose` }, WEIGHT_PURPOSE),
+    h("p", { key: "d2", id: `${id}-rough` }, WEIGHT_ROUGH),
+    props.saved ? h("p", { key: "s", className: "notice", id: `${id}-saved` }, savedNotice(props.saved, now())) : null,
+    ...PARTS.map((part) =>
+      field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
+    ),
+    field("total", "Total (pounds)", sheet.total, "Or type the total alone: it replaces the parts.", (text) => set.sheet(editTotal(text))),
+    h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, totalSaid(sheet, props.split)),
+    h(
+      "label",
+      { key: "r", className: "toggle" },
+      h("input", { type: "checkbox", checked: remember, onChange: (event: { target: { checked: boolean } }) => set.remember(event.target.checked) }),
+      "Remember on this device",
+    ),
+    h("p", { key: "rule", className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
+    h(
+      "div",
+      { key: "b", className: "actions" },
+      h("button", { type: "button", onClick: save }, "Save"),
+      props.saved ? h("button", { type: "button", className: "secondary", onClick: () => props.onClear() }, "Clear") : null,
+      h("button", { type: "button", className: "secondary", onClick: () => props.onClose() }, "Cancel"),
+    ),
+  ];
+}
+
+/** What every open starts from: blank fields (317(b)), no refusal, and the checkbox as this browser has it. */
+export function openedState(props: Pick<DialogProps, "remembered" | "saved">): { sheet: Worksheet; remember: boolean; refused: string } {
+  return { sheet: BLANK, remember: props.remembered, refused: "" };
+}
+
+export function WeightDialog(props: DialogProps): ReactElement {
+  const id = useId();
+  const ref = useRef<HTMLDialogElement>(null);
+  const [sheet, setSheet] = useState<Worksheet>(BLANK);
+  const [remember, setRemember] = useState(props.remembered);
+  const [refused, setRefused] = useState("");
+  // Every open starts blank (317(b)), and the checkbox as this browser has it.
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (props.open) {
+      const start = openedState(props);
+      setSheet(start.sheet);
+      setRefused(start.refused);
+      setRemember(start.remember);
+      if (!dialog.open) dialog.showModal?.();
+    } else if (dialog.open) dialog.close();
+  }, [props.open]);
+  return h(
+    "dialog",
+    {
+      ref,
+      className: "weight-dialog",
+      "aria-modal": "true",
+      "aria-labelledby": `${id}-title`,
+      "aria-describedby": `${id}-purpose ${id}-rough`,
+      // Escape, or the dialog closed any other way: the panel's state follows.
+      onClose: () => props.onClose(),
+      onCancel: () => props.onClose(),
+    },
+    ...weightDialogBody(id, props, { sheet, remember, refused }, { sheet: setSheet, remember: setRemember, refused: setRefused }),
+  );
+}
+
+/** The ride panel's part: the line, never the number, and Change, which opens the dialog. */
+export function WeightSetting(props: {
+  saved: StoredWeight | null;
+  remembered: boolean;
+  split: Split;
+  onSave: (weight: StoredWeight, remember: boolean) => void;
+  onClear: () => void;
+  now?: () => number;
+}): ReactElement {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const change = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    // Back to where the rider was (the dialog's own return of focus is not in every browser).
+    (change as RefObject<HTMLButtonElement>).current?.focus();
+  };
+  return h(
+    "div",
+    { className: "dial weight-setting" },
+    h("p", { className: "weight-line", id: `${id}-line` }, weightLine(props.saved, (props.now ?? Date.now)())),
+    h(
+      "button",
+      { type: "button", ref: change, className: "secondary", "aria-label": "Change rider and bike weight", "aria-describedby": `${id}-line`, onClick: () => setOpen(true) },
+      "Change",
+    ),
+    h(WeightDialog, {
+      open,
+      saved: props.saved,
+      remembered: props.remembered,
+      split: props.split,
+      now: props.now,
+      onSave: (weight, remember) => {
+        props.onSave(weight, remember);
+        close();
+      },
+      onClear: () => {
+        props.onClear();
+        close();
+      },
+      onClose: close,
+    }),
+  );
+}

@@ -390,8 +390,8 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   check("target distance: its description says what it does, miles first, in under 150 characters", /^Optional: the calmest route at or under this\./.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? "") && (target?.description ?? "").length < 150, (target?.description ?? "").slice(0, 80));
   const how = await p.eval("(() => { const d = document.querySelector('.dial details.how'); return d ? { summary: d.querySelector('summary').textContent, open: d.open } : null; })()");
   check("target distance: the detail is under a closed \"How this works\", not in the description", how?.summary === "How this works" && how.open === false, JSON.stringify(how));
-  const weight = await p.eval(`(() => { const e = [...document.querySelectorAll('input[placeholder=Default]')][1]; return e ? { label: document.querySelector('label[for="' + e.id + '"]').textContent.trim(), described: document.getElementById(e.getAttribute('aria-describedby').split(' ')[0]).textContent } : null; })()`);
-  check("system weight: named in pounds, described with the default in pounds first", weight?.label === "System weight (pounds)" && /Left empty, it is 198 lb \(90 kg\)/.test(weight?.described ?? ""), JSON.stringify(weight));
+  const line = await p.eval("document.querySelector('.weight-line')?.textContent ?? null");
+  check("rider and bike weight: the panel shows only whether one is set, no number field (313, 314)", line === "Rider and bike weight: not set, defaults used" && (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1, JSON.stringify(line));
   const field = "document.querySelector('input[placeholder=Default]')";
   // Typing plans nothing; Enter plans once.
   const before = p.routeRequests;
@@ -594,6 +594,50 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318) ----
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  const change = await axNode(p, ".weight-setting > button");
+  check("weight: Change is a button named for what it changes, described by the line", change?.role === "button" && change?.name === "Change rider and bike weight" && change?.description === "Rider and bike weight: not set, defaults used", JSON.stringify(change));
+  await p.eval("document.querySelector('.weight-setting > button').focus(); true");
+  await p.enter();
+  await sleep(300);
+  const dialog = await axNode(p, "dialog.weight-dialog");
+  const inside = await p.eval("(() => { const d = document.querySelector('dialog.weight-dialog'); return { open: d.open, modal: d.matches(':modal'), focusIn: d.contains(document.activeElement), focus: document.activeElement?.id ?? '' }; })()");
+  check("weight: Change opens a modal dialog and the focus moves into it", inside.open && inside.modal && inside.focusIn, JSON.stringify(inside));
+  check("weight: the dialog is named by its heading and described by its two lines (318)",
+    dialog?.role === "dialog" && dialog?.name === "Rider and bike weight" &&
+      /^Optional\. Used only to work out your route, for how hard hills feel\. It is never displayed, and never put in shared links or downloads\. A rough estimate is fine\. Within 20 lb \(10 kg\) or so makes no real difference\.$/.test(dialog?.description ?? ""),
+    JSON.stringify(dialog));
+  const fields = await p.eval("[...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => ({ label: e.labels?.[0]?.textContent, value: e.value }))");
+  check("weight: Rider, Bike, Cargo and Total are labelled in pounds, and start blank", JSON.stringify(fields.map((f) => f.label)) === JSON.stringify(["Rider (pounds)", "Bike (pounds)", "Cargo (pounds)", "Total (pounds)"]) && fields.every((f) => f.value === ""), JSON.stringify(fields));
+  // Type a total of 207 lb and save it, remembered.
+  await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
+  await p.type("207");
+  await sleep(200);
+  const total = await p.eval("document.querySelector('dialog.weight-dialog .weight-total').textContent");
+  check("weight: the total is said politely as it changes, pounds first", /^Total: 207 lb \(94 kg\)\.$/.test(total) && (await p.eval("document.querySelector('dialog.weight-dialog .weight-total').getAttribute('aria-live')")) === "polite", total);
+  await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]').click(); true");
+  const before = p.routeRequests;
+  await p.eval("[...document.querySelectorAll('dialog.weight-dialog button')].find((b) => b.textContent === 'Save').click(); true");
+  await sleep(1500);
+  const after = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button'), line: document.querySelector('.weight-line').textContent, hash: location.hash, stored: localStorage.getItem('routemaker.weight') !== null })");
+  check("weight: Save closes it, the focus is back on Change, the line says set today, it plans once, and the link has no weight", !after.open && after.focus && after.line === "Rider and bike weight: set today" && p.routeRequests - before === 1 && !/weight|207|94/.test(after.hash) && after.stored, JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  // Reopen: blank, saying one is saved; the number is in neither the page nor the accessibility tree.
+  await p.eval("document.querySelector('.weight-setting > button').click(); true");
+  await sleep(300);
+  const again = await p.eval("({ values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.innerText, saved: document.querySelector('dialog.weight-dialog .notice')?.textContent })");
+  const { nodes } = await p.s("Accessibility.getFullAXTree", {});
+  const axText = JSON.stringify(nodes.map((n) => [n.name?.value, n.description?.value, n.value?.value]));
+  check("weight: reopened, every field is blank and it says a weight is saved, without the numbers (317(b))", again.values.every((v) => v === "") && /^A weight is saved \(set today\)\. Enter new values to replace it, or Clear to use the defaults\.$/.test(again.saved ?? ""), JSON.stringify({ values: again.values, saved: again.saved }));
+  check("weight: the saved number is nowhere in the page's text or its accessibility tree", !/\b207\b|\b93\.9\b|\b94 kg/.test(again.text) && !/\b207\b|93\.9|94 kg/.test(axText), "");
+  await p.escape();
+  await sleep(300);
+  const closed = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button') })");
+  check("weight: Escape closes it and the focus goes back to Change", !closed.open && closed.focus, JSON.stringify(closed));
+  await p.close();
+}
+
 // ---- 13. The stress map unavailable: the lane switch is still there (the a11y review's SF4) ----
 {
   const p = await open({ stressTiles: false });
@@ -634,7 +678,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 129;
+const EXPECTED = 138;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

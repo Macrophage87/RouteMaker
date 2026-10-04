@@ -844,7 +844,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - default ~90 kg (263) when unset; Cargo with passengers defaults heavier.
   Weight genuinely changes the result: climbing power scales with mass but aero (CdA) does not, so a heavier/loaded rider's hills cost relatively more effort-distance. Input is in lb first (kg in brackets); it is a candidate for a saved rider profile later.
 
-  Implemented as (FOLLOWUP-LONG-CALM): an optional input, `system_weight_kg` in the API (68 to 140), `sysweight` in the link (kilograms), "System weight (pounds)" in the Adjust panel at the top of the slider (150 to 309 lb, kilograms in brackets); default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers. Only the climbing and rolling terms scale with it, so a flat route's effort is its length at any weight and the same hilly-against-flat tie resolves more strongly toward flat at 140 kg than at 68 kg (tests/test_effort.py).
+  Implemented as (FOLLOWUP-LONG-CALM): an optional input, `system_weight_kg` in the API (68 to 140), in the link until 313 took it out, "System weight (pounds)" in the Adjust panel at the top of the slider (150 to 309 lb, kilograms in brackets), now the private rider and bike weight of 313-318; default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers. Only the climbing and rolling terms scale with it, so a flat route's effort is its length at any weight and the same hilly-against-flat tie resolves more strongly toward flat at 140 kg than at 68 kg (tests/test_effort.py).
 
 - 265, Owner 2026-10-03: "Also maybe allow several routes to be shown in this case. The rider would probably pick the most scenic." For FOLLOWUP-LONG-CALM, at the calm top end, return up to 3-4 candidate routes instead of one.
   - Each is within the stress order (258-262) and the rider's maximum distance.
@@ -991,3 +991,45 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 - 311, Owner 2026-10-04, on the junction markers: "Maybe a red triangle, for the very high stress. It looks too much like an ordinary stop sign" then "Or something else, a diamond perhaps?" The very-high-stress (red) junction marker changes from an octagon to a red diamond (road-warning shape), keeping the white exclamation mark and dark outline. The orange triangle (higher stress) is unchanged, and the planned Avoid marker is the skull (309-310). Shapes stay distinct (triangle / diamond / skull), so colour is never the only cue.
 
   Implemented as: `frontend/src/lib/intersectionMarkers.ts` `SEVERITY_SHAPES.red` is the diamond `M12 1.5 22.5 12 12 22.5 1.5 12Z` (corners at the middle of each side of the 24 px icon), still `#dc2626` with a `#7f1d1d` 1.6 px outline, and the white exclamation mark is re-centred in it (bar y 7 to 14, dot at y 16.6). The one icon builder (`warningIconSvg`) draws the map's markers, their groups and the route list's row icons, so all of them change together; `intersectionMarkers.test.ts` holds the four-cornered shape and the mark.
+
+- 313, Owner 2026-10-04: "Have the rider and bike weight hidden behind a popup. Not everyone wants to share their weight. But if you're signed in, it will save it."
+  - Weight is private. The ride panel shows only "Effort: typical rider" (or "your weight") with a Change button, which opens a dialog holding the lb (kg) input. The number itself never shows in the panel summary.
+  - Never put the weight in shared links (remove the sysweight link parameter), in exported GPX files, or in logs.
+  - Signed out: keep it in this browser only, if the rider chooses.
+  - Signed in: save it to the rider's profile, with a clear way to delete it.
+  - Defaults by ride type (90 kg typical, Cargo/Tandem heavier) apply when nothing is set.
+  - Apply the link/privacy part in the current release; the dialog layout follows the sidebar redesign (312).
+
+  Implemented as (front end; the API's side, that nothing logs it and no router is sent it, is the lead's d80d059): the weight is kept apart from the plan's dials (`frontend/src/lib/weight.ts`, `WeightStore`) and added only to the request (`withWeight`), where only the total goes, in whole kilograms (`system_weight_kg`). The link no longer has `sysweight`, and an older link's is ignored (`planHash.ts`); the GPX export never had it and is tested not to. The ride panel, at the top of the Traffic slider where the weight is used, shows only its line and a Change button (`lib/weightDialog.ts`, `WeightSetting`); the number is in no panel, summary, announcement or accessibility node outside the dialog (weight.test.ts, and the a11y harness's section 15). Signed out, it is kept in this browser only when the rider ticks "Remember on this device" (localStorage, key `routemaker.weight`), else for the visit; Clear forgets it. Signed in, saving it to the profile is left to the accounts work: `WeightStore` is the hook (a TODO in it). With none set the ride type's default applies: 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers.
+
+- 314, Owner 2026-10-04, refining 313: "But basically do a rider and bike weight not set, defaults used. Or bike and weight last set X days ago (or today)." The ride panel's weight line shows the state, never the value: "Rider and bike weight: not set, defaults used" or "Rider and bike weight: set today" / "set 3 days ago", with a Change button. The set date is stored alongside the value (local storage, or the profile when signed in). Screen readers hear the same text.
+
+  Implemented as: `weightLine` gives "Rider and bike weight: not set, defaults used", or "... set today", "set 1 day ago", "set N days ago" by calendar day; it is the line's text and Change's accessible description, so a screen reader hears the same. The set date (`setAt`) is kept with the value.
+
+- 315, Owner 2026-10-04, on 313-314: "With the option for several loadouts if logged in." Signed-in riders can save several named weight loadouts, e.g. "Road bike", "Touring, loaded", "Tandem with Sam". Each holds rider + bike + cargo weight and its set date.
+  - The weight dialog lets the rider pick, add, rename and delete loadouts.
+  - The ride panel line shows the loadout name and age (e.g. "Rider and bike: Touring, loaded, set 3 days ago"), never the number.
+  - A ride type can remember its last-used loadout.
+  - Signed out: one weight at most, kept on this device only.
+  - Part of the accounts work (Discord sign-in); not in the current release.
+
+  Implemented as (the shape only; loadouts are the accounts work): what is kept is `{name, totalKg, parts?, setAt}`, `name` "My weight" for the one a signed-out rider has, whose line keeps "Rider and bike weight: set N days ago"; any other name reads "Rider and bike: <name>, set N days ago". No picker yet.
+
+- 316, Owner 2026-10-04: "On the screen you can let the people have a worksheet for 'bike', 'rider', 'cargo', that makes the total." The weight dialog is a small worksheet with three optional lb (kg) fields, Rider, Bike and Cargo, and a live Total. A blank field uses its default for the ride type (e.g. typical rider 75 kg, bike 15 kg, cargo 0; Tandem two riders + 20 kg; Cargo with passengers its passengers).
+  - Only the total feeds the effort model.
+  - Each loadout (315) stores its three parts plus setAt.
+  - The total is announced politely as it changes; the inputs are labelled, with lb first and kg in brackets.
+  - Never shown outside the dialog (313-314).
+
+  Implemented as: the dialog has Rider, Bike and Cargo (pounds, the kilograms beside what is typed) and an editable Total, said in a polite live region ("Total: 207 lb (94 kg)."). A blank part takes the ride type's default (`defaultSplit`): rider 75 kg (165 lb), bike 15 kg (33 lb), cargo 0, which sum to 90 kg; Cargo with passengers rider 75 kg, bike 30 kg (66 lb) and passengers 15 kg (33 lb), which sum to 120 kg. Only the total reaches the effort model; the parts are kept with it when they made it.
+
+- 317, Owner 2026-10-04, on 316: "Or they could just make the total. It's not filled in if they try resetting it, just for privacy. They'd have to reset it." Amends 316:
+  (a) The rider can type the Total directly instead of the parts. Entering a total replaces the parts, and editing a part recomputes the total.
+  (b) The dialog never pre-fills saved values. On reopening, every field is blank and the dialog says e.g. "A weight is saved (set 3 days ago). Enter new values to replace it, or Clear to use the defaults." Saved numbers are never shown again; to change the weight, the rider re-enters it.
+  - Loadouts (315) follow the same rule: named and dated, values never displayed.
+
+  Implemented as: typing the Total clears the parts and keeps the total alone; editing a part makes the parts count again and recomputes the Total. Every open of the dialog starts blank (`openedState`); with one saved it says "A weight is saved (set N days ago). Enter new values to replace it, or Clear to use the defaults.", and Save replaces, Clear uses the defaults, Cancel keeps it. A stored value of an earlier shape (a bare kilogram figure, `{kg}`, `{systemWeightKg}`, an ISO date) is read into today's (`migrate`).
+
+- 318, Owner 2026-10-04: "Make it clear on the worksheet that weight will be used just for route calculations never displayed and that a rough estimate will be fine." The weight dialog leads with two lines, which are also its accessible description: "Optional. Used only to work out your route, for how hard hills feel. It is never displayed, and never put in shared links or downloads." and "A rough estimate is fine. Within 20 lb (10 kg) or so makes no real difference." The tolerance figure is to be checked against the effort model before release.
+
+  Implemented as: the dialog's first two lines are those, word for word, and its `aria-describedby`; its name is its heading, "Rider and bike weight". The tolerance was checked against routemaker.effort before release (the lead): plus or minus 10 kg around 90 kg moves the effort-distance about 2.5 to 4.3% on 4 to 8% grades, so "Within 20 lb (10 kg) or so makes no real difference" stands.

@@ -30,6 +30,7 @@ import { IntersectionList } from "./IntersectionList.tsx";
 import { RouteDescription } from "./RouteDescription.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
+import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
@@ -102,6 +103,13 @@ export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(initialPlan.preset);
   const [dials, setDials] = useState<Dials>(initialPlan.dials);
+  // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
+  // the link carries, and added only to the request (planDials).
+  const weightStore = useRef<WeightStore | null>(null);
+  if (weightStore.current === null) weightStore.current = new WeightStore();
+  const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
+  const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
+  const planDials = useMemo(() => withWeight(dials, weight), [dials, weight]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -232,8 +240,8 @@ export function App() {
       setStatus({ kind: "idle" });
       return;
     }
-    scheduler.current?.request({ points, preset, dials, confirmLong: sendsConfirmation(points, confirmedKm) });
-  }, [points, preset, dials, confirmedKm]);
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  }, [points, preset, planDials, confirmedKm]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
   // sheet is hidden they would otherwise be invisible, so the sheet opens
@@ -461,7 +469,7 @@ export function App() {
     place([lng, lat]);
   };
   const retry = () =>
-    scheduler.current?.request({ points, preset, dials, confirmLong: sendsConfirmation(points, confirmedKm) });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
   // A new ride type moves the sliders to where it starts them (RideTypePicker).
   const choosePreset = (id: PresetId, next: Dials) => {
     setPreset(id);
@@ -475,7 +483,7 @@ export function App() {
     setNotice(null);
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
-    scheduler.current?.request({ points, preset, dials, confirmLong: true });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: true });
     // The question goes away; the focus goes to where the answer will be.
     routeHeadingRef.current?.focus();
   };
@@ -698,6 +706,20 @@ export function App() {
           preset={preset}
           dials={dials}
           onCommit={setDials}
+          weight={{
+            saved: weight,
+            remembered: weightRemembered,
+            onSave: (next, remember) => {
+              weightStore.current?.save(next, remember);
+              setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
+              setWeight(next);
+            },
+            onClear: () => {
+              weightStore.current?.clear();
+              setWeightRemembered(false);
+              setWeight(null);
+            },
+          }}
           points={points}
           resolvedWhen={route?.dials?.when ?? null}
         />

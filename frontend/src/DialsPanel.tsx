@@ -19,7 +19,9 @@ import type { PresetId } from "./lib/presets.ts";
 import { WHENS, type Dials, type When } from "./lib/dials.ts";
 import { loopView } from "./lib/loop.ts";
 import type { LonLat } from "./lib/geo.ts";
-import { panelView, parseTarget, parseWeight, type SliderView } from "./lib/dialsPanel.ts";
+import { panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
+import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
+import { WeightSetting } from "./lib/weightDialog.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 
 interface Props {
@@ -30,6 +32,13 @@ interface Props {
   points?: readonly LonLat[];
   /** What "Now" came to on the last route: one of the three settings. */
   resolvedWhen?: When | null;
+  /** The rider and bike weight, kept by App (lib/weight.ts WeightStore): never in `dials` or the link. */
+  weight?: {
+    saved: StoredWeight | null;
+    remembered: boolean;
+    onSave: (weight: StoredWeight, remember: boolean) => void;
+    onClear: () => void;
+  };
 }
 
 function Slider(props: {
@@ -171,7 +180,7 @@ function whenLabel(when: When): string {
 }
 
 /** The dials with one optional number set, or taken off the object where it is empty. */
-function withField(dials: Dials, key: "targetDistanceM" | "systemWeightKg", value: number | undefined): Dials {
+function withField(dials: Dials, key: "targetDistanceM", value: number | undefined): Dials {
   const next: Dials = { ...dials };
   if (value === undefined) delete next[key];
   else next[key] = value;
@@ -186,7 +195,7 @@ function withLoop(dials: Dials, on: boolean): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [], weight }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -285,14 +294,14 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] 
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
-      {view.weight && (
-        <NumberDial
-          label={view.weight.label}
-          value={view.weight.value}
-          rule={view.weight.rule}
-          hint={view.weight.hint}
-          parse={parseWeight}
-          onCommit={(systemWeightKg) => onCommit(withField(dials, "systemWeightKg", systemWeightKg))}
+      {/* The rider and bike weight: the line and Change, never the number (OWNER-DECISIONS 313-318). */}
+      {view.weight && weight && (
+        <WeightSetting
+          saved={weight.saved}
+          remembered={weight.remembered}
+          split={defaultSplit(dials.carrying)}
+          onSave={weight.onSave}
+          onClear={weight.onClear}
         />
       )}
       <fieldset className="when">
