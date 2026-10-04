@@ -242,9 +242,9 @@ def is_mtb_class(tags: dict[str, str], routes: WayRoutes = NO_ROUTES) -> bool:
     width = width_m(tags)
     if width is not None and width >= 2.0:
         return False
+    # mtb:scale of 1 or more is not asked here: such a way that is not paved or
+    # gravel is rated singletrack, which returned above and is closed everywhere.
     scale = _scale(tags)
-    if scale is not None and scale >= 1:
-        return True
     if tags.get("smoothness") in BAD_SMOOTHNESS or tags.get("sac_scale") in DEMANDING_SAC_SCALE:
         return True
     if tags.get("smoothness") in SMOOTH_ENOUGH or scale == 0:

@@ -148,3 +148,18 @@ def test_dismount_connectors_keep_when_short_by_chain_length():
     kept, closed = ta.dismount_reasons(chains)
     assert kept == {1}
     assert closed == {2, 3, 4}
+
+
+def test_more_exemptions_and_rules_pinned():
+    assert v({"bicycle": "residents"}) == "private"
+    ncn = WayRoutes(bicycle_networks=frozenset({"ncn"}))
+    assert v({"sac_scale": "hiking"}, ncn) is None
+    assert v({"informal": "yes"}, ncn) is None
+    assert v({"surface": "dirt", "tracktype": "grade3"}) is None
+    assert v({"surface": "dirt", "tracktype": "grade4"}) == "natural_surface"
+    assert v({"surface": "dirt", "smoothness": "intermediate"}) == "natural_surface"
+    assert v({"surface": "wood"}, in_park=True) is None
+    assert v({"bicycle": "yes", "smoothness": "bad"}) == "mtb"
+    assert v({"sac_scale": "hiking", "surface": "concrete:plates"}) is None
+    assert v({"bicycle": "yes", "surface": "asphalt", "smoothness": "bad"}) is None
+    assert v({"bicycle": "yes", "surface": "gravel", "smoothness": "very_bad"}) is None
