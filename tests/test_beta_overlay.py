@@ -594,11 +594,17 @@ def test_the_runbook_proves_the_binds_on_the_host_and_checks_the_compose_version
     assert "LEGACY-BIND=" in step8 and ".BindOptions.CreateMountpoint" in step8
     # re-check 2: both legs pass only on the engine's own error text (ops SF-1), and the start
     # leg covers the late-/data case, a restart with the source gone (correctness SF1)
-    assert '--mount "type=bind,source=${RM_STATE:?}/no-such-dir,target=/x"' in step8
+    assert '[ ! -e "${RM_STATE:?}/no-such-dir" ] && out=$(docker create --mount' in step8  # NIT A
     assert 'case $out in (*"bind source path does not exist"*) echo "PROOF OK (create)' in step8
-    assert 'rm_absent "${RM_STATE:?}/probe-src" && mkdir "$RM_STATE/probe-src"' in step8
+    assert '&& rm_absent "$RM_STATE/probe-src" && mkdir "$RM_STATE/probe-src"' in step8
     assert 'rmdir "$RM_STATE/probe-src" && out=$(docker start "$id" 2>&1)' in step8
-    assert 'echo "PROOF OK (start)' in step8 and 'docker rm "$id"' in step8
+    assert 'echo "PROOF OK (start)' in step8 and '[ -z "$id" ] || docker rm "$id"' in step8
+    # re-check 3 SF-A: both legs in one block (a fresh shell per block), so $img is set in both
+    proof = [b for b in runbook_blocks() if any("PROOF OK (create)" in x for x in b)]
+    assert len(proof) == 1 and any("PROOF OK (start)" in x for x in proof[0])
+    assert proof[0][1] == 'cd "$RM_SRC"' and proof[0][2].startswith("img=$(docker inspect")
+    assert "the probe did not run before the engine was asked; cleaned up" in step8
+    assert "the start failed, but the source came back" in step8
     assert "docker ps -aq --filter label=com.docker.compose.project=routemaker-beta" in step8
     assert 'echo "not created"' not in step8  # the old affirmative line that could pass unrun
     assert "Docker 23 or newer (API 1.42+" in step1  # re-check 2 ops NIT-1
@@ -2098,14 +2104,20 @@ def test_the_checker_pauses_the_parked_rebuild_too() -> None:
 
 @needs_sh
 @pytest.mark.parametrize("var", ["DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"])
+@pytest.mark.parametrize(
+    "form",
+    [["--render"], ["--env-file", "/dev/null"], ["--env-file=/dev/null"]],
+    ids=["render", "env-file", "env-file="],
+)
 def test_the_wrapper_and_the_checker_refuse_docker_settings_env_i_would_drop(
-    stub_docker, var: str
+    stub_docker, var: str, form: list[str]
 ) -> None:
-    """Re-check correctness N2: refused loudly, not dropped silently."""
+    """Re-check correctness N2: refused loudly, not dropped silently; in every checker form,
+    the gate's `--env-file .env` included (re-check 2 mutation NIT 1)."""
     env, calls = stub_docker
     done = wrapper({**env, var: "x"}, "ps")
     assert done.returncode == 2 and var in done.stderr and not calls.exists()
-    checked = run(sys.executable, "scripts/check_beta_compose.py", "--render", env={var: "x"})
+    checked = run(sys.executable, "scripts/check_beta_compose.py", *form, env={var: "x"})
     assert checked.returncode == 2 and var in checked.stderr
 
 
@@ -2160,16 +2172,33 @@ def test_every_server_block_sources_the_vars_file_which_holds_no_secret() -> Non
     assert "Every tool call is a fresh shell" in zero and "never a password, key or token" in zero
     assert 'rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"' in zero
     assert "( umask 077; set -C; cat > \"${RM_STATE:?}/vars.sh\" ) <<'VARS'" in zero
-    assert 'declare -f rm_absent >> "$RM_STATE/vars.sh"' in zero
+    # re-check 3 ops NIT-A and NIT-B: the function only after a fresh write; no unfilled <...>
+    assert "<<'VARS' && declare -f rm_absent >> \"$RM_STATE/vars.sh\"" in zero
+    assert zero.count("declare -f rm_absent") == 1
+    assert 'grep -n \'<[^>]*>\' "$RM_STATE/vars.sh" && echo "STOP: fill in' in zero
     heredoc = zero[zero.index("<<'VARS'") : zero.index("\nVARS\n")]
     assert not re.search(r"(?i)(password|secret|token|_key\b|PGPASS|htpasswd)", heredoc), heredoc
     for line in heredoc.splitlines()[1:]:
         assert line.startswith("export RM_") or line.startswith("export BETA_API_PORT="), line
     for appended in re.findall(r"echo '(export [A-Z_]+=[^']*)' >> \"\$RM_STATE/vars.sh\"", RUNBOOK):
-        assert not re.search(r"(?i)(password|secret|token|key)", appended), appended
+        # RM_CERT_KEY is the private key's PATH (re-check 3 ops NIT-E), never its content
+        named = appended.replace("RM_CERT_KEY=<private key path>", "")
+        assert not re.search(r"(?i)(password|secret|token|key)", named), appended
     assert "7. Start every command block with" in RUNBOOK
     one = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert '"$HOME/routemaker-beta-state" "$HOME' not in one  # created in section 0 now
+
+
+def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> None:
+    """Re-check 3 ops NIT-D and NIT-E."""
+    assert "--cert-fullchain <path>" not in RUNBOOK
+    assert RUNBOOK.count('--cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY"') == 2
+    after = RUNBOOK[RUNBOOK.index("## 3. Make") :]
+    for _indent, body in re.findall(r"^( *)```sh\n(.*?)^\1```", after, re.M | re.S):
+        lines = [x.strip() for x in body.splitlines()]
+        if lines[0] != VARS_SOURCE or "scripts/" not in body:
+            continue
+        assert 'cd "$RM_SRC"' in lines[:3], body[:150]
 
 
 def test_the_runbook_states_the_budget_in_both_units() -> None:
@@ -2200,6 +2229,216 @@ def test_the_ci_tool_versions_step_cannot_fail_the_required_check() -> None:
     step = [lines[0]] + [x for x in lines[1:3] if x.startswith("        ")]
     assert any(x.strip() == "continue-on-error: true" for x in step), step
     assert step[-1].rstrip().endswith("|| true"), step
+
+
+# --- main() runs the bind probe and the source check, and passes the scheme on (re-check 2
+# mutation SHOULD-FIX 1: B11-B16, S1) ---
+
+
+def _crafted(name: str | None = None) -> dict:
+    """good(), plus one DATA_ROOT bind rendered as `bind: {}`: it creates its source under the
+    "explicit" scheme and does not under "omit-false", so the result shows which one main() used."""
+    compose = good()
+    compose["services"]["postgis"]["volumes"] = [
+        {
+            "type": "bind",
+            "source": "/data/routemaker/postgres",
+            "target": "/var/lib/postgresql/data",
+            "bind": {},
+        }
+    ]
+    if name:
+        compose["name"] = name
+    return compose
+
+
+@pytest.fixture
+def gate(monkeypatch, tmp_path: Path):
+    """main() with the render, the probe and the source check replaced by recorders; returns a
+    runner taking the mode ("render" or "env-file") and giving (exit code, stderr, calls)."""
+    for var in beta.REFUSED_DOCKER_ENV:
+        monkeypatch.delenv(var, raising=False)
+    calls: list[str] = []
+    state = {"scheme": "explicit", "source": [], "probe_fails": False}
+
+    def probe(*_a, **_k):
+        calls.append("bind_semantics")
+        if state["probe_fails"]:
+            raise beta.RenderFailed("PROBE-FAILED-MARKER")
+        return state["scheme"]
+
+    def source(*_a, **_k):
+        calls.append("check_source_binds")
+        return list(state["source"])
+
+    def render(*_a, **_k):
+        calls.append("render")
+        return _crafted()
+
+    def render_env(*_a, **_k):
+        calls.append("render_env_file")
+        return _crafted("routemaker-beta")
+
+    monkeypatch.setattr(beta, "bind_semantics", probe)
+    monkeypatch.setattr(beta, "check_source_binds", source)
+    monkeypatch.setattr(beta, "render", render)
+    monkeypatch.setattr(beta, "render_env_file", render_env)
+    env_file = tmp_path / "server.env"
+    env_file.write_text("COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT=/data/routemaker\n")
+
+    def run_main(mode: str, capsys) -> tuple[int, str, list[str]]:
+        calls.clear()
+        if mode == "render":
+            argv = ["--render"]
+        elif mode == "env-file":
+            argv = ["--env-file", str(env_file)]
+        else:
+            argv = [f"--env-file={env_file}"]
+        code = beta.main(argv)
+        return code, capsys.readouterr().err, list(calls)
+
+    run_main.state = state
+    return run_main
+
+
+MODES = ["render", "env-file", "env-file="]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_main_runs_the_source_check_and_fails_on_its_problems(gate, capsys, mode: str) -> None:
+    gate.state.update(scheme="omit-false", source=["compose.beta.yaml api: SOURCE-MARKER"])
+    code, err, calls = gate(mode, capsys)
+    assert "bind_semantics" in calls and "check_source_binds" in calls
+    assert code == 1 and "SOURCE-MARKER" in err, err
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_main_stops_after_a_failed_probe_before_rendering(gate, capsys, mode: str) -> None:
+    gate.state.update(probe_fails=True)
+    code, err, calls = gate(mode, capsys)
+    assert code == 1 and "PROBE-FAILED-MARKER" in err, err
+    assert calls == ["bind_semantics"], calls  # no source check, no render after the failure
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(("scheme", "flagged"), [("explicit", True), ("omit-false", False)])
+def test_main_passes_the_probed_scheme_to_the_render_check(
+    gate, capsys, mode: str, scheme: str, flagged: bool
+) -> None:
+    """A hard-coded scheme fails one of the two rows: `omit-false` hard-coded passes the
+    explicit row's creating bind (errs open), `explicit` hard-coded flags the omit-false row."""
+    gate.state.update(scheme=scheme)
+    code, err, calls = gate(mode, capsys)
+    assert ("render" in calls) or ("render_env_file" in calls)
+    found = "postgis: bind /data/routemaker/postgres would be created empty" in err
+    assert found is flagged, (scheme, err)
+    assert code == (1 if flagged else 0), (scheme, err)
+
+
+PROOF_STUB_DOCKER = """#!/bin/sh
+# docker for the step-8 proof: inspect gives an image; create on no-such-dir fails as a refusing
+# engine does; create on probe-src gives an id; start fails, or (MODE=creates) succeeds and the
+# engine recreates the source.
+refuse() { echo "Error response from daemon: bind source path does not exist: x" >&2; exit 1; }
+case "$1" in
+  inspect) [ "${MODE:-}" = noimage ] || echo img:tag ;;
+  create) case "$*" in *no-such-dir*) refuse ;; *) echo cid123 ;; esac ;;
+  start)
+    [ "${MODE:-}" = creates ] || refuse
+    mkdir -p "$RM_STATE/probe-src"; echo cid123 ;;
+  rm) echo "rm $2" >> "$RM_STATE/rm.log" ;;
+esac
+"""
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    ("mode", "create_line", "start_line"),
+    [
+        ("", "PROOF OK (create)", "PROOF OK (start)"),
+        ("noimage", "STOP (create): the probe did not run", "STOP (start): the probe did not run"),
+        ("creates", "PROOF OK (create)", "STOP (start): the start did not fail as expected"),
+    ],
+    ids=["refuses", "no image", "engine creates"],
+)
+def test_the_step_8_proof_block_runs_as_one_shell(
+    tmp_path: Path, mode: str, create_line: str, start_line: str
+) -> None:
+    """Re-check 3 SF-A: the block runs end to end in a single fresh shell, against stubs."""
+    (block,) = [b for b in runbook_blocks() if any("PROOF OK (create)" in x for x in b)]
+    body = "\n".join(x for x in block if not x.startswith(". "))
+    state = tmp_path / "state"
+    state.mkdir()
+    bin_dir = tmp_path / "bin"
+    (bin_dir).mkdir()
+    (bin_dir / "docker").write_text(PROOF_STUB_DOCKER)
+    (bin_dir / "docker").chmod(0o755)
+    beta_dir = tmp_path / "scripts" / "beta"
+    beta_dir.mkdir(parents=True)
+    (beta_dir / "beta-compose.sh").write_text("#!/bin/sh\necho pgid\n")
+    (beta_dir / "beta-compose.sh").chmod(0o755)
+    script = f"{guard_function()}\n{body}\n"
+    done = run(
+        "bash",
+        "-c",
+        script,
+        cwd=tmp_path,
+        env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "RM_STATE": str(state), "MODE": mode},
+    )
+    lines = done.stdout.splitlines()
+    assert any(x.startswith(create_line) for x in lines), done.stdout + done.stderr
+    assert any(x.startswith(start_line) for x in lines), done.stdout + done.stderr
+    if mode == "noimage":
+        assert not (state / "probe-src").exists()  # cleaned up, so a retry is not blocked
+    if mode == "":
+        assert (state / "rm.log").read_text().strip() == "rm cid123"
+        assert not (state / "probe-src").exists()
+
+
+def test_the_parked_services_are_exactly_caddy_and_rebuild() -> None:
+    """Re-check 2 mutation NIT 2: parking another service would exempt its binds."""
+    assert beta.PARKED == {"caddy", "rebuild"}
+
+
+def test_the_source_check_catches_a_partly_restated_service(tmp_path: Path) -> None:
+    """Re-check 2 mutation NIT 2: api has two binds; restating only one must be reported."""
+    (tmp_path / "compose.yaml").write_text((REPO / "compose.yaml").read_text())
+    overlay = (REPO / "compose.beta.yaml").read_text()
+    static = (
+        "      - type: bind\n"
+        "        source: ${DATA_ROOT}/static\n"
+        "        target: /data/static\n"
+        "        bind: { create_host_path: false }\n"
+    )
+    assert overlay.count(static) == 1
+    (tmp_path / "compose.beta.yaml").write_text(overlay.replace(static, ""))
+    found = beta.check_source_binds(tmp_path)
+    assert found == [
+        "compose.beta.yaml api: the base file's bind on /data/static is not restated "
+        "(it would keep the short form, which creates a missing source)"
+    ], found
+
+
+@needs_sh
+def test_the_renderer_needs_the_sign_in_page_only_without_the_flag(tmp_path: Path) -> None:
+    """Re-check 2 mutation NIT 3: from a copy whose deploy/beta has no 401.html."""
+    (tmp_path / "scripts" / "beta").mkdir(parents=True)
+    (tmp_path / "deploy" / "beta").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "beta" / "render-nginx.sh", tmp_path / "scripts" / "beta")
+    shutil.copy(
+        REPO / "deploy" / "beta" / "nginx-routemaker.conf.template", tmp_path / "deploy" / "beta"
+    )
+    script = str(tmp_path / "scripts" / "beta" / "render-nginx.sh")
+    args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--cert-key", "/c/k.pem"]
+    refused = run("sh", script, *args, cwd=tmp_path)
+    assert (
+        refused.returncode == 2 and "cannot read" in refused.stderr and "401.html" in refused.stderr
+    )
+    accepted = run("sh", script, *args, "--no-401-page", cwd=tmp_path)
+    assert accepted.returncode == 0, accepted.stderr
+    assert not re.search(r"^\s*error_page 401", accepted.stdout, re.M)
+    assert "location = /rmbeta-401.html" not in accepted.stdout
 
 
 def test_the_source_check_covers_every_beta_service_not_only_the_overlays(tmp_path: Path) -> None:

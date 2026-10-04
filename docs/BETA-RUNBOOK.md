@@ -71,7 +71,7 @@ export RM_STATE="$HOME/routemaker-beta-state"
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
 rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"
-( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS'   # set -C: never overwrites an existing file
+( umask 077; set -C; cat > "${RM_STATE:?}/vars.sh" ) <<'VARS' && declare -f rm_absent >> "$RM_STATE/vars.sh"   # set -C: never overwrites; the function is added only after a fresh write
 export RM_STATE="$HOME/routemaker-beta-state"
 export RM_SHA=<the 40-character git sha the owner gave you (the bundle's MANIFEST.txt git_sha= matches it)>
 export RM_REPO_URL=<the repository URL the owner gave you>
@@ -81,8 +81,7 @@ export RM_INCOMING=/data/routemaker-incoming
 export RM_SSH_HOST=<the ssh host the owner ships from, as the owner names this server in ~/.ssh/config>
 export BETA_API_PORT=8087
 VARS
-declare -f rm_absent >> "$RM_STATE/vars.sh"
-. "$RM_STATE/vars.sh"; ls -l "$RM_STATE/vars.sh"   # -rw------- ; then check its exports: grep '^export' "$RM_STATE/vars.sh"
+grep -n '<[^>]*>' "$RM_STATE/vars.sh" && echo "STOP: fill in the <...> on those lines first" || { . "$RM_STATE/vars.sh"; ls -l "$RM_STATE/vars.sh"; }   # -rw------- ; then check its exports: grep '^export' "$RM_STATE/vars.sh"
 ```
 
 ## 1. Prerequisites and checks (changes nothing)
@@ -377,6 +376,7 @@ Then the database, which needs postgis running first:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 scripts/beta/beta-compose.sh up -d postgis
 scripts/beta/beta-compose.sh ps postgis           # wait for "healthy" (up to a minute on first start)
 sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db
@@ -413,6 +413,7 @@ run inside the running api container, under its cap (rule 2), not as a second ap
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 scripts/beta/beta-compose.sh exec -T api ./manage.py migrate --check && echo "migrations current"
 scripts/beta/beta-compose.sh exec -T api ./manage.py collectstatic --noinput
 ```
@@ -440,36 +441,34 @@ for c in $(docker ps -aq --filter label=com.docker.compose.project=routemaker-be
 done   # every RouteMaker source must show as mount=...; any LEGACY-BIND= or (CREATES) is a STOP
 ```
 
-Then the engine itself, once, in two legs. Each passes only on the engine's own error text; any
-other output (an empty image name, a missing helper) is a STOP, never a pass. First at create, on a
-path that does not exist:
+Then the engine itself, once, in two legs, in one block (each tool call is a fresh shell, so
+both legs need the image found in its first line). Each leg passes only on the engine's own error
+text: an empty image name or a leftover path prints "probe did not run", never a pass. The first
+leg is at create, on a path that does not exist; the second is at start, the late-/data case (an
+existing container restarted while its source is missing): create on a directory that exists,
+remove the directory, start.
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-img=$(docker inspect -f '{{.Config.Image}}' "$(scripts/beta/beta-compose.sh ps -aq postgis)") && [ -n "$img" ] && [ ! -e "${RM_STATE:?}/no-such-dir" ] || echo "STOP: probe not ready"
-out=$(docker create --mount "type=bind,source=${RM_STATE:?}/no-such-dir,target=/x" --entrypoint true "$img" 2>&1)
-case $out in (*"bind source path does not exist"*) echo "PROOF OK (create): the engine refuses a missing source" ;; (*) echo "STOP: $out (if it is a container id: docker rm it, rmdir the dir if present, report)" ;; esac
+cd "$RM_SRC"
+img=$(docker inspect -f '{{.Config.Image}}' "$(scripts/beta/beta-compose.sh ps -aq postgis)" 2>/dev/null); out=""; id=""
+[ -n "$img" ] && [ ! -e "${RM_STATE:?}/no-such-dir" ] && out=$(docker create --mount "type=bind,source=$RM_STATE/no-such-dir,target=/x" --entrypoint true "$img" 2>&1) || out=${out:-PROBE-NOT-RUN}
+case $out in (*"bind source path does not exist"*) echo "PROOF OK (create): the engine refuses a missing source" ;; (PROBE-NOT-RUN) echo "STOP (create): the probe did not run (no postgis image, or $RM_STATE/no-such-dir exists)" ;; (*) echo "STOP (create): the engine made a container, $out: docker rm it, rmdir $RM_STATE/no-such-dir if present, report" ;; esac
+out=""; [ -n "$img" ] && rm_absent "$RM_STATE/probe-src" && mkdir "$RM_STATE/probe-src" && id=$(docker create --mount "type=bind,source=$RM_STATE/probe-src,target=/x" --entrypoint true "$img") && rmdir "$RM_STATE/probe-src" && out=$(docker start "$id" 2>&1) || out=${out:-PROBE-NOT-RUN}
+case $out in (*"bind source path does not exist"*) if [ -e "$RM_STATE/probe-src" ]; then echo "STOP (start): the start failed, but the source came back"; else echo "PROOF OK (start): a restart with a missing source fails, and nothing was recreated"; fi ;; (PROBE-NOT-RUN) rmdir "$RM_STATE/probe-src" 2>/dev/null; echo "STOP (start): the probe did not run before the engine was asked; cleaned up, safe to retry" ;; (*) echo "STOP (start): the start did not fail as expected: $out" ;; esac
+[ -z "$id" ] || docker rm "$id" >/dev/null
 ```
 
-Then at start, which is the late-/data case (an existing container restarted while its source is
-missing): create on a directory that exists, remove the directory, start:
-
-```sh
-. "$HOME/routemaker-beta-state/vars.sh"
-rm_absent "${RM_STATE:?}/probe-src" && mkdir "$RM_STATE/probe-src" && id=$(docker create --mount "type=bind,source=$RM_STATE/probe-src,target=/x" --entrypoint true "$img") && rmdir "$RM_STATE/probe-src" && out=$(docker start "$id" 2>&1)
-case $out in (*"bind source path does not exist"* | *"no such file or directory"*) echo "PROOF OK (start): a restart with a missing source fails" ;; (*) echo "STOP: start did not fail as expected: $out" ;; esac
-ls -d "$RM_STATE/probe-src" 2>/dev/null && echo "STOP: the source came back" || echo "not recreated"
-docker rm "$id"
-```
-
-Both must print PROOF OK, and the second "not recreated". Otherwise the engine creates missing
-sources, the /data safeguard does not hold on this host: remove what the probe made (`docker rm`,
-`rmdir`), and stop and report it to the owner.
+Both legs must print PROOF OK. "The probe did not run" is a STOP to look into and retry (nothing
+was proved either way). Any other STOP means the engine creates missing sources and the /data
+safeguard does not hold on this host: remove what the probe made (`docker rm`, `rmdir`), and stop
+and report it to the owner.
 
 Health and memory:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 curl -s -H 'Host: routemaker.cieply.com' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
 scripts/beta/smoke-test.sh --local                                              # route, search, reverse, stress tile; all PASS
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep routemaker-beta
@@ -500,6 +499,7 @@ longer than a tool call may wait, so start it detached, with its output in a pri
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 ( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles ; echo "predraw exit $?"' < /dev/null > "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )
 tail -n 3 "$RM_STATE/predraw.log"   # repeat, a minute or so apart, until a "predraw exit N" line
 docker top "$(scripts/beta/beta-compose.sh ps -q worker)" -eo pid,etime,args | grep '[p]redraw_stress_tiles' || echo "no predraw running"   # is it still drawing?
@@ -509,6 +509,7 @@ When the log ends in `predraw exit N`:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 tail -n 5 "$RM_STATE/predraw.log"   # exit 0, after a "stress tiles: N drawn, ..., in S s" line: done
 docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' $(scripts/beta/beta-compose.sh ps -q worker)   # false 0
 ```
@@ -599,11 +600,15 @@ Whichever option, if the host's other sites include certbot's `options-ssl-nginx
 
 ### 9c. The full site
 
+First record the two certificate paths the chosen option gave, so 9c and the step 10 recovery use
+exactly the same ones (paths only: the files are never read, printed or copied):
+`echo 'export RM_CERT_FULLCHAIN=<fullchain path> RM_CERT_KEY=<private key path>' >> "$RM_STATE/vars.sh"`.
+
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" \
-    --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
+    --cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY" [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full.conf"
 # exactly one of the next two lines acts, the one for the TLS_OPTION step 1 chose:
 # option A: replace the stage-1 file, only if it is the one this runbook installed in 9b (its link already points at it)
@@ -664,8 +669,9 @@ owner (do not edit the installed file by hand):
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" --no-401-page \
-    --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
+    --cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY" [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full-no401.conf"
 grep -q 'Rendered by scripts/beta/render-nginx.sh (stage full)' "$NGINX_SITE" && sudo install -m 644 "$RM_STATE/routemaker-beta.full-no401.conf" "$NGINX_SITE"
 sudo nginx -t && sudo nginx -s reload
@@ -725,6 +731,7 @@ free space on `/data` for a second copy of the database (about 1.5 GB):
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 scripts/beta/beta-compose.sh stop api worker
 ls -l "$RM_DATA"/backups/pre-*.dump
 sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups/pre-update-<time>.dump"
@@ -804,6 +811,7 @@ The tooling is the same each time. Ask the owner which kind it is.
 
    ```sh
    . "$HOME/routemaker-beta-state/vars.sh"
+   cd "$RM_SRC"
    scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db --update-data
    scripts/beta/beta-compose.sh up -d api worker
