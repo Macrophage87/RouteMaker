@@ -135,10 +135,19 @@ export interface CalmSearch {
   extra_distance_m?: number | null;
   exposure_before_m?: number | null;
   exposure_after_m?: number | null;
-  /** Trailmaxxing only (core.presets.trail_credit_for): metres of quiet riding a metre of trail was worth. */
-  trail_credit?: number | null;
-  trail_before_m?: number | null;
-  trail_after_m?: number | null;
+  /** The top of the traffic slider (OWNER-DECISIONS 271): the rider's target distance (null: none), and whether they set it. */
+  target_distance_m?: number | null;
+  target_distance_set?: boolean | null;
+  /** The longest the search would go: 1.25 times the target, or 1.6 times the router's own route with none. */
+  ceiling_m?: number | null;
+  /** Whether the route is within the target (null with none). */
+  fits?: boolean | null;
+  /** How far past the target the route is, metres (0 within it, null with none): always said. */
+  over_target_m?: number | null;
+  /** Where the router's own route was past the target: the traffic position the first route that fits was found at. */
+  fitted_at?: number | null;
+  /** A trip past the working span, planned leg by leg. */
+  long?: { legs: number; searched: number; skipped: number; stops: number[]; answered?: string | null } | null;
 }
 
 /** How much longer the route is than the most direct legal one (core.api.DetourOut). */
@@ -152,7 +161,60 @@ export interface Detour {
   avoided_m?: number | null;
 }
 
+/** What a loop's way back shares with its way out (core.api.LoopOut). */
+export interface LoopInfo {
+  overlap_pct: number | null;
+  shared_m: number | null;
+  return_m: number | null;
+  excluded?: number;
+  tried?: number;
+  /** `out_and_back` where the way back is the way out whatever is avoided. */
+  fallback?: string | null;
+}
+
+/** One side-street dodge the planner found (core.api.DodgeOut, OWNER-DECISIONS 272). */
+export interface Dodge {
+  street: string;
+  via: string[];
+  lon: number;
+  lat: number;
+  length_m: number;
+  action: "removed" | "kept" | "skipped" | "unchecked" | null;
+  reason: string | null;
+  avoided_m: number | null;
+  needed_m: number | null;
+  turns_saved: number | null;
+  extra_m: number | null;
+}
+
+/** What the planner's dodge pass did (core.api.DodgesOut); nothing displays it yet. */
+export interface Dodges {
+  found: number;
+  removed: number;
+  kept: number;
+  skipped?: number;
+  checked: number;
+  saved_m: number;
+  limited: string | null;
+  items: Dodge[];
+}
+
 export interface RouteResponse {
+  /** Present on a loop (OWNER-DECISIONS 266). */
+  loop?: LoopInfo | null;
+  /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
+  dodges?: Dodges | null;
+  /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
+  effort_m?: number | null;
+  /** 1 on an answer that has `candidates`. */
+  rank?: number | null;
+  /**
+   * Up to three other routes to choose from (OWNER-DECISIONS 265), each a whole route
+   * body with its `rank`; null or absent where there is one route.
+   */
+  candidates?: RouteResponse[] | null;
+  /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
+  over_target_m?: number | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend";
   geometry: { type: "LineString"; coordinates: LonLat[] };
@@ -187,6 +249,9 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
+    target_distance_m?: number | null;
+    system_weight_kg?: number | null;
+    loop?: boolean;
   };
   /** Present when the hills slider was past its detent. */
   hills_seek?: {

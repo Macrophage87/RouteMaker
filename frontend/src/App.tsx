@@ -19,7 +19,10 @@ import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
 import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
+import { CandidatePicker } from "./CandidatePicker.tsx";
 import { DialsPanel } from "./DialsPanel.tsx";
+import { candidateRoute, choiceSaid } from "./lib/candidates.ts";
+import { loopNote } from "./lib/loop.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -95,7 +98,12 @@ export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(initialPlan.preset);
   const [dials, setDials] = useState<Dials>(initialPlan.dials);
-  const [route, setRoute] = useState<RouteResponse | null>(null);
+  // What the planner answered, and which of its routes to choose from is shown
+  // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
+  const [answer, setRoute] = useState<RouteResponse | null>(null);
+  const [choice, setChoice] = useState(0);
+  useEffect(() => setChoice(0), [answer]);
+  const route = candidateRoute(answer, choice);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [notice, setNotice] = useState<string | null>(null);
@@ -519,7 +527,7 @@ export function App() {
       : status.kind === "waiting"
         ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
-          ? announceRoute(route, routedPoints)
+          ? [choiceSaid(answer, choice), announceRoute(route, routedPoints)].filter(Boolean).join(" ")
           : "";
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
@@ -645,6 +653,7 @@ export function App() {
           )}
         </div>
       )}
+      {shown && <CandidatePicker answer={answer} choice={choice} onChoose={setChoice} />}
       {shown && (
         <RouteSummary
           route={shown}
@@ -660,7 +669,13 @@ export function App() {
     presets: (
       <Fragment key="presets">
         {presetsSection}
-        <DialsPanel preset={preset} dials={dials} onCommit={setDials} resolvedWhen={route?.dials?.when ?? null} />
+        <DialsPanel
+          preset={preset}
+          dials={dials}
+          onCommit={setDials}
+          points={points}
+          resolvedWhen={route?.dials?.when ?? null}
+        />
       </Fragment>
     ),
     points: pointsSection,
@@ -831,6 +846,7 @@ function RouteSummary({
   const segments = stressSegments(route.stress_m);
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
+  const loopSaid = loopNote(route);
   const pace = paceText(route);
   return (
     <div className="summary">
@@ -842,6 +858,11 @@ function RouteSummary({
       {calmNote && (
         <p className="hint calm-search" role="note">
           {calmNote}
+        </p>
+      )}
+      {loopSaid && (
+        <p className="hint loop-note" role="note">
+          {loopSaid}
         </p>
       )}
       <dl className="stats">

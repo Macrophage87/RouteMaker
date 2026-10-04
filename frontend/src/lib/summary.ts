@@ -2,6 +2,7 @@
 import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
+import { loopNote } from "./loop.ts";
 import {
   formatClimb,
   formatDistance,
@@ -86,11 +87,52 @@ function ratioText(ratio: number, level: DetourView["level"]): string {
  * (the API's `calm_search.limited`, core.refine), or null where there is
  * nothing to say: it ran to its end, or was not asked for.
  */
-export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials" | "preset">): string | null {
+export function calmSearchNote(
+  route: Pick<RouteResponse, "calm_search" | "dials" | "preset"> & Partial<Pick<RouteResponse, "distance_m">>,
+): string | null {
   if (route.preset === "mass-ride" || (route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) return null;
-  const limited = route.calm_search?.limited;
-  const why = limited ? CALM_SEARCH_LIMITS[limited] : undefined;
-  return why ?? null;
+  const search = route.calm_search;
+  const target = search?.target_distance_m;
+  const over = overTarget(route);
+  const notes: string[] = [];
+  if (search?.limited === "target_distance" && search.fits === false && target) {
+    // No route within the target was found: the least stressful one found is
+    // answered, flagged (OWNER-DECISIONS 267).
+    notes.push(`No route within your target distance (${formatDistance(target)}) was found. This is the least stressful one found.`);
+    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target.`);
+  } else {
+    const why = search?.limited ? CALM_SEARCH_LIMITS[search.limited] : undefined;
+    if (why) notes.push(why);
+    // Past the target where the extra miles avoid enough busy road (OWNER-DECISIONS 271).
+    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target, to avoid busier roads.`);
+  }
+  if (search?.fitted_at != null && search.fits !== false && target) {
+    notes.push(
+      `Your target distance (${formatDistance(target)}) is shorter than the calmest route, so this one uses some busier roads to fit.`,
+    );
+  }
+  return notes.length ? notes.join(" ") : null;
+}
+
+/**
+ * How far past the rider's target distance a route is (metres), or null where it is
+ * within it or there is none (OWNER-DECISIONS 271): the answer's in `calm_search`, a
+ * candidate's on the route itself.
+ */
+export function overTarget(route: Pick<RouteResponse, "calm_search" | "over_target_m">): number | null {
+  const over = route.calm_search?.over_target_m ?? route.over_target_m ?? null;
+  return over !== null && over > 0 ? over : null;
+}
+
+/**
+ * What a screen reader hears when the route is past the rider's target distance, or
+ * null: a sentence of its own, not a colour (OWNER-DECISIONS 271: always flagged).
+ */
+export function targetSaid(route: Pick<RouteResponse, "calm_search" | "distance_m">): string | null {
+  const target = route.calm_search?.target_distance_m;
+  const over = overTarget(route);
+  if (!target || over === null) return null;
+  return `${formatDistance(over)} over your target of ${formatDistance(target)}.`;
 }
 
 /**
@@ -99,6 +141,7 @@ export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials
  * this to. Said as a round figure, as PLAN.md has it: "19 mi (30 km)".
  */
 export const CALM_SEARCH_MAX_SPAN_M = 30_000;
+// (Trailmaxxing at the top of the slider is not held to it: it plans a longer trip leg by leg, OWNER-DECISIONS 256.)
 
 const CALM_SEARCH_LIMITS: Record<string, string> = {
   time: "The calmer-route search ran out of time, so there may be a calmer route than this one.",
@@ -106,6 +149,7 @@ const CALM_SEARCH_LIMITS: Record<string, string> = {
   span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the router's own route.`,
   long_ride: "The calmer-route search does not run on long rides, so this is the router's own route.",
   seeking: "The calmer-route search does not run while the Hills slider looks for climbs.",
+  split: "The calmer-route search could not cut this long trip into legs, so this is the router's own route.",
 };
 
 function straightLineNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
@@ -168,7 +212,9 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   const figures =
     `Route planned: ${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");
+  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route)]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** A point's name in the list: Start, Stop 1, Stop 2, ..., End. */

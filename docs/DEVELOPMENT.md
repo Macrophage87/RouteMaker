@@ -1868,6 +1868,8 @@ has 56 mutants run against whole test files.
 
 ### The trail credit and the seek leg by leg (FOLLOWUP-TRAIL-SEEK part 2, items 202, 203)
 
+*Superseded in part, 2026-10-03: the trail credit described here (item 202) was dropped by item 257 and removed from the code (FOLLOWUP-LONG-CALM, below). The seek leg by leg (203) stands.*
+
 The owner, 2026-10-02: 202, "Trail bonus for Trailmaxxing only (Recommended)" (only
 Trailmaxxing rewards each mile of trail), and 203, "Now, before rebuild" (the seek
 runs leg by leg on plans with stops).
@@ -3064,3 +3066,558 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 0.09: its exclusion rounds stopped after three (two rounds in a row did not improve
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
+
+## Long calm trips, the target distance and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 271)
+
+The owner's words are in PLAN.md, Owner amendments, "FOLLOWUP-LONG-CALM"; this is how it is built
+and what it measured. Planner-only: no rebuild, no new graph.
+
+### The motivating case
+
+Union Station to Baltimore Penn Station at Trailmaxxing 100. Before this round the calm search
+was skipped on it (`limited: "span"`, `REFINE_MAX_SPAN_M` 19 mi (30 km) of straight line), so the
+router alone answered: 57.7 mi, 0.3 mi of LTS 4 and 7.2 mi of LTS 3. Cut into four legs by hand
+it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with no search.
+
+### What changed, in the order the owner asked
+
+**1. No span cap for Trailmaxxing (`refine.refine_long`, `core.legsplit`).**
+- A Trailmaxxing plan at the top of the slider (`Preset.long_calm`, `routing.long_calm_for`) past
+  19 mi (30 km) of straight line, and under the confirm span (93 mi, 150 km), is a *long calm plan*.
+  The router's own route for the whole trip is asked for first, as before, and traced for its
+  stress alone (no junctions).
+- It is cut into legs of about 7.5 mi (12 km) of straight line (`legsplit.LEG_TARGET_SPAN_M`), at
+  points on that route: the middle of a traced edge, at least 400 yd (500 m) from any LTS 3, 4 or
+  Avoid stretch where there is such a place within a quarter leg of the even split, otherwise the
+  place with the most room (the search keeps its exclusions 500 m from a leg's ends, so a cut in the
+  middle of a busy stretch would put that stretch out of its reach). Each plan leg (the stretch
+  between the rider's own points) is cut on its own.
+- Each leg's own route is asked for (a short /route, 0.5 s warm) and traced. The legs with LTS 3, 4
+  or Avoid are searched one at a time, the worst first (LTS 4 and Avoid, then LTS 3), each with its
+  share of the time that is left by its weight (8 x LTS 4 and Avoid metres + LTS 3 metres), 70% of
+  it to the exclusion rounds and 30% to the trail seek. A leg whose share is under 6 s is not
+  searched and keeps the router's route. Legs with no busy road are not searched at all.
+- The legs go back together as one trip (`refine._joined`; the plan's own legs are put back in the
+  answer: `leg_ends`, `stops_m` and the description's runs are the plan's, not the internal legs').
+  The whole route's junctions are read once at the end. If what is put together is not as calm as
+  the router's own route (LTS 4 and Avoid, then LTS 3, by the tolerances below) or nothing
+  changed, the router's own route is answered (`calm_search.long.answered`: `legs` or `router`).
+- **Time.** The plan has the long ride's budget, 50 s in all (`LONG_PLAN_BUDGET_S`, 47 s for the
+  router and its traces once the 3 s answer reserve is taken), under gunicorn's 60 s timeout: the
+  owner's own figure for a long ride (2026-09-26), kept rather than a new one. An ordinary plan
+  keeps 40 s. Inside it, the legs' time is scaled to the trip: the legs are read first (about 1 to 2
+  s a leg), the last 6 s are kept for the answer's own traces and the whole route's junctions, and
+  the rest is shared by weight. A leg stops at its share; a trip with more legs gives each less.
+  Measured on an idle host (before 267-271), Union Station to Penn plans in 16.8 s at its default (1.6 times) and
+  11.8 s at 60 mi, and in 19.3 and 29.2 s when the target is 50 and 47 mi, which asks for more
+  routes (186 and 343 router calls); the twelve trail-seek trips take 0.7 to 11.8 s. The
+  hard bounds and the `statement_timeout` patterns of the trail seek (TRAILSEEK r1) are unchanged:
+  every table read and corridor search is bounded by its leg's own stop time.
+- **A long calm plan takes the long ride's in-flight slot** as well as an ordinary one
+  (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment), and needs no
+  confirmation (it is under the confirm span). Its timed-out 503 carries `long_ride_timed_out`.
+- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`).
+  Cargo with passengers, the only other stress-averse ride, tops out at 80, where there is no calm
+  search at all.
+
+**2. A rider-set target distance (`Dials.target_distance_m`, API `target_distance_m`; items 256, 271).**
+- "Target distance" (named "Longest ride" and `max_distance_m` / `maxmi` until item 271, with no
+  alias since they were never released), optional, at the top of the slider (100) only: below it the
+  field is ignored (and `dials.target_distance_m` says null). In miles first, kilometres in brackets,
+  in the UI and the link (`targetmi`, miles to a tenth). The API takes whole metres from 1,000
+  (0.6 mi) to 1,000,000 (620 mi).
+- **It is a target, not a maximum** (271): the planner aims at or under it, and up to it the extra
+  distance is free (the rider asked for it). Past it a longer route is taken only where the stress it
+  saves pays for the miles past the target at the stricter bar (`refine.WORTH_OVER_TARGET`, below),
+  and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
+  `presets.target_ceiling_m`). The answer always says how far over it is
+  (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
+  target", miles first with km in brackets, in the summary and in the announcement.
+- **With no target: the ceiling is 1.6 times the router's own route** (the use_roads 0 route
+  Trailmaxxing plans without a search), and at least a mile more (`presets.default_ceiling_m`,
+  `DEFAULT_CEILING_RATIO`, `DEFAULT_CEILING_EXTRA_M`), and inside it every extra mile must buy
+  stress at the default bar (268, `refine.WORTH_DEFAULT`). The router's own route is the reference
+  rather than the straight line because that is what the rider sees as "the direct route".
+- The search minimises stress inside the ceiling (see "The order"). A candidate past the ceiling is
+  never taken: it is not even read (its router answer's length is checked first), a round whose
+  every exclusion set sends the route past it is asked again with each half of the targets, and a
+  long plan's legs share the detour (below).
+- **If the router's own route is past the target**, the router is asked at lower traffic positions,
+  calmest first, until a route fits (`routing.FIT_STRESS_LADDER`: 70, 40, 0), and then the stretch
+  between the last two is bisected three times (`FIT_BISECT_STEPS`) for a calmer route that still
+  fits (`routing._fit_target`). Then (`routing._past_target`) every route found past the target but
+  within the ceiling, the router's own first, is read and weighed against the one that fits by
+  `refine.better` (so it must be calmer and worth its miles past the target); the one kept is the
+  search's first route, and its costing the search's costing (`calm_search.fitted_at` says the
+  position where it is a rung). Union Station to Penn at 50 mi: the calm route is 57.7 mi; routes of
+  54.5, 48.1 and 40.4 mi exist at use_roads 0.5, 0.7 and 1.0.
+- **If no route fits the target** (267, "Least-stress route, flagged (Recommended)"): the least
+  stressful route found within the ceiling, in the 258-262 order (`refine.calmer`, the shorter on a
+  tie), is answered with `calm_search.fits: false`, `limited: "target_distance"` and
+  `over_target_m` ("No route within your target distance ... This is the least stressful one found.
+  It is X mi over your target."), and nothing is searched. Not the shortest, as before 267. Where
+  not even one is within the ceiling, the shortest found is answered (the ceiling is hard; see the
+  owner questions).
+- The plan hash carries it (`targetmi`, and `sysweight`, `loop`); all three are additive and the link
+  version stays 2, because no field a link already carried changes its meaning, and a bump to 3
+  would make an older page's `stressFromV1` remap a v3 link's stress.
+
+**3. No trail credit (257 supersedes 202).** `Preset.trail_credit`, `presets.trail_credit_for`,
+`refine.trail_flags`, `Analysis.trail_m` and the corridor search's trail term (`RouteLine.trail_to`,
+`MIN_TRAIL_GAIN_M`, `best_in`'s credit) are gone. The corridor search stays: a corridor is worth
+the busy road it replaces (rate x exposure) less its detour, and it finds routes the exclusion
+rounds cannot reach (it was taken on the long trips below), so it is kept as the second candidate
+generator; with no credit a route with nothing busy on it has no corridor. A quiet street counts the
+same as a trail. The card and the calm note no longer say "favors trails".
+
+**4. The hills choice and the patience (GATE-corr SF1, SF2).**
+- `routing.calmer_or_own` and `no_busier_than_middle` weigh the plan's own `presets.Exposure`
+  (Trailmaxxing 1/8/16, not the fixed 1/2/3) and, on a ride with the LTS 4 hold, never choose an
+  alternate or the middle route with more LTS 4 and Avoid metres than the router's own route (1 m of
+  slack), so `refine`'s hold measures against the router's own route.
+- A round the LTS 4 hold refuses no longer counts as a non-improving round (`REFINE_PATIENCE` is
+  about rounds that did not improve, not rounds that were refused). Silver Spring to College Park
+  is re-measured in the table.
+
+### The order (items 258 to 263)
+
+At the top of the slider (`presets.maxcalm_for`: calm rate at its maximum, position 100, on any ride
+type) a candidate is ranked by `refine.better`, not by the score, in strict order with a tolerance at
+each level (`MAXCALM_STEPS`: 15 m, 50 m, 50 m):
+
+1. **LTS 4 and Avoid metres plus the cost of each very high stress (red) junction**, in the junction
+   model's own unit (feet-equivalent, 2,000 to 4,500 ft each, converted to metres): the owner's "weight
+   Very Stressful and LTS4 equally" (259). Tolerance 15 m, about 50 ft: ties within it go to level 2.
+2. **LTS 3 metres plus the cost of each higher stress (orange) junction** (260), tolerance 50 m.
+3. **Effort-equivalent distance blended with the actual distance by the Hills slider**
+   (`(1 - w) x actual + w x effort`, w = 0 at the detent and 1 at full avoid) (262), tolerance 50 m. At
+   the detent it is the actual distance. The seek half has a hook (`Context.hills_seek_weight`, 0)
+   for FOLLOWUP-HILLS-TOLERATE (242); the search does not run while the slider seeks.
+
+The router's own price for a route is not in it, nor is any credit for trail. The target distance and
+the ceiling are in *actual* metres. The 250 hold now compares the same top figure (LTS 4 and Avoid plus red junction
+cost): a candidate is refused only if it is more than the router's own route's by 1 m, so LTS 4 may
+be traded for a red junction's worth, never for nothing (`refine.top_by_leg`, `more_lts4`).
+
+**Effort (`routemaker.effort`).** The standard cycling-power model (Martin et al. 1998): force per
+metre F = Crr m g cos t + 1/2 rho CdA v^2 + m g sin t at a steady 12.4 mph (20 km/h); a stretch's
+effort is its length times F / F0, F0 the force on the flat; floored at 1, so a descent costs the flat
+and never offsets a climb (263). The grade is read over 300 m windows of the 30 m elevation samples
+(a 2 m error between neighbours is 7%). Constants: Crr 0.006, CdA 0.40 m^2, air 1.225 kg/m^3,
+mass 90 kg by default; 8% costs 6.5 times the flat. The system weight is optional (item 264): 68 kg
+(150 lb) to 140 kg (309 lb), default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers; only
+the climbing and rolling terms scale with it, so a flat route's effort-distance is its length at any
+weight. Elevation is the router's own profile (the data `climb_m` uses). Sensitivity: every percent of
+grade adds about 9 N to a 12.7 N flat force, so noise of 2 m over 300 m inflates a flat stretch by
+half; both candidates carry the same noise, but the effort level should be read as a tiebreaker.
+
+### Diminishing returns on extra distance (items 268, 271)
+
+The owner, 268: "Diminishing returns (Recommended)": 1.6 times the router's own route stays the
+ceiling, but "extra distance is taken only when it buys a meaningful stress cut. Roughly: at least
+1 mi of LTS 3 saved per 5 mi added, LTS 4/Avoid and red junctions weighted higher." So at the top of
+the slider `refine.better` takes a longer candidate only if it is calmer (the order above) **and**
+worth its miles (`refine.worth_it`), and a shorter one replaces a calmer longer one whose extra miles
+were not worth it:
+
+- **The stress figure** (`refine.stress_weight_m`, metres of LTS 3): LTS 3 x1, LTS 4 x2 and Avoid
+  x3 (`refine.WORTH_WEIGHTS`, the standard level weights, `presets.EXPOSURE_STANDARD`, on every ride),
+  plus each red junction's cost at the LTS 4 weight and each orange junction's at the LTS 3 weight
+  (the junction model's own cost, 259 and 260). 1 mi of LTS 4 saved buys up to 10 mi by default; a
+  3,000 ft red junction about 5.7 mi. **Not** the stress-averse rides' 1/8/16 (item 250): measured
+  first with them, one red junction (8 x 3,000 ft, about 4.5 mi of LTS 3) bought 23 mi, so Union
+  Station to Penn kept its 73.2 mi default (leg 3 went from 11.5 to 26.0 mi to clear 0.9 mi of LTS
+  3 and a red junction while taking on 0.07 mi more LTS 4) and went 12.2 mi past a 60 mi target to
+  72.2 mi with 0.33 mi of LTS 4. The ranking still puts LTS 4 first whatever the weight; the weights
+  only say how many miles a cut is worth. An owner question.
+- **The charge** (`refine.distance_charge_m`), the stress the extra distance must save:
+  - no target: the metres added over `WORTH_DEFAULT` = **5** (1 mi of LTS 3 per 5 mi), measured as
+    the Hills slider weighs distance (`level3`), so a longer route that is less effort with Hills set
+    to avoid is not charged for it;
+  - with a target (271): nothing up to it, and the actual metres past it over `WORTH_OVER_TARGET` =
+    **2.5** (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
+  - a leg of a plan with stops is charged at the whole trip's length (`rest_m`), and a spliced trip
+    is checked again as a whole (`seek.whole_trip: "not_worth"`).
+- **A long plan**: each leg's search keeps every option with no price on distance of its own
+  (`Context.worth_rule` off), and `choose_options` takes an upgrade only where its stress saved pays
+  the charge at the whole trip's length (so the target and its bar are the whole trip's).
+- **A loop**: the way back is chosen by `better` among those sharing at most 30%, so the whole loop's
+  extra distance has the same diminishing returns.
+
+Both bars are documented assumptions and tunable (`refine.WORTH_DEFAULT`, `WORTH_OVER_TARGET`); the
+measurements are in the tables below.
+
+### Sharing the detour among the legs (`choose_options`)
+
+A first version gave each leg a share of the detour by its weight. Measured, it wasted the detour:
+Union Station to Penn at 60 mi had 2.3 mi to spare, and the leg searched first took a corridor 1 mi
+longer that cleared 0.3 mi of LTS 3 while a later leg had no use for its share. Now every leg's
+search may use all of the detour the ceiling leaves the whole and keeps every candidate it reads
+(`Context.options`); each leg's candidates are reduced to a chain, each calmer and longer than the one
+before (`frontier`), and the detour is then spent where it buys the most, by the benefit of each
+upgrade per metre it adds, weighted 1000 : 1 : 0.01 down the order (`choose_options`, greedy), each
+upgrade only where it is worth its miles (above). The legs that were not searched count against the
+ceiling. The whole is never past it (tested).
+
+### Routes to choose from (item 265)
+
+At the top of the slider the answer carries up to three more routes (`candidates`, each a whole route
+body with its `rank`; the answer is rank 1 and unchanged). Nothing scores scenery. A candidate is picked
+(`refine.pick_candidates`) if it: is within the ceiling, and no further past the rider's target than
+the answer (`refine.over_answer`, 271: past the target only where it buys stress, which a near-tie
+does not); passes the hold; is a near-tie with the answer on stress (top figure no more than 150 m
+[490 ft], level 2 no more than 800 m [0.5 mi] worse; 45 m and 300 m until item 287(4), "Loosen a bit
+(Recommended)"); and is meaningfully different from every route already chosen,
+which is **under 70% shared road by matched way length (`ALT_OVERLAP`; 60% until item 269, "Loosen a
+little (Recommended)"), or at least 5 mi (8 km) of different road** (the second test is the
+"different corridor" the owner asked for, since 70% of a 58 mi route is never different). For a plan searched in one piece the pool is the
+candidates the search read, and where that gives nothing different enough the router is asked for a
+route that avoids the roads of those already chosen (`refine.more_routes`: points every 500 ft (150 m)
+along them, none within 500 m of an end or a stop; at most 3 asks and 9 s; a route that is not a near-tie
+ends the asking, since avoiding more only makes it busier). For a long plan it is the answer with one
+leg's route swapped for another the search read. They are read in full (junctions across the joints)
+inside the budget, with at least 6 s left for each (`ALTERNATE_MIN_S`); fewer are returned if time is
+short. They are answered as the search found them: the dodge pass (below, "No dodging through side
+streets") is the answer's alone, and where it changed the answer they are picked again against it. On the measured trips almost every plan has one obvious corridor and returns one route (see the
+tables): the route that avoids the first is usually far busier, as it should be for a trail corridor.
+
+### Make it a loop (item 266)
+
+A ride whose last point is its first (50 m) is a loop, and the request's `loop: true` closes a
+point-to-point ride on its start (`routing.loop_wanted`, `loop_points`); not on a Mass Ride. The plan
+is asked for through the start again; then the way back (the last leg) is asked for alone
+(`refine.make_loop`) with points along the way out excluded (every 120 m, none within 500 m of an end
+or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
+it is past the ceiling (the whole loop, not each half): every one is asked (four routes at
+most), and the least stressful of the ways back that share at most 30% of their road with the way out
+(matched by way) is kept (at the top of the slider by `better`, with the diminishing returns on the
+whole loop's distance); if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
+the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
+`loop.fallback` says `out_and_back`. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
+excluded and the routes asked. The search that follows keeps the way back different: a candidate that
+shares more than the loop does (or 30%, if the loop shares less) is refused. A loop past 19 mi in all is
+not searched (`limited: "span"`; `refine_long` would ask each leg of the way back without its
+exclusions); the way back is still made different.
+
+### The tables
+
+**The motivating trips and the target distance** (before items 267-271) (Trailmaxxing 100; LTS 1 / 2 / 3 / 4 / Avoid miles; red and orange junctions; plan time; router calls). The new code through the harness; "live" is the deployed API (47c2f52), which skips the calm search past 19 mi.
+
+| Trip | Target | Miles | LTS 1 / 2 / 3 / 4 / Avoid | Red, orange | Plan time | Router calls | Live, before |
+|---|---|---|---|---|---|---|---|
+| Union Station to Baltimore Penn | default (1.6x) | 73.2 | 35.39 / 28.69 / 6.01 / 0.33 / 0.00 | 0, 37 | 16.8 s | 184 | 57.7 mi; 28.92 / 21.23 / 7.24 / 0.26 / 0.00; 1r 23o; 4.8 s |
+| Union Station to Baltimore Penn | 60 mi | 58.6 | 26.51 / 21.67 / 6.94 / 0.26 / 0.00 | 1, 30 | 11.8 s | 138 | 57.7 mi; 28.92 / 21.23 / 7.24 / 0.26 / 0.00; 1r 23o; 4.8 s |
+| Union Station to Baltimore Penn | 50 mi | 47.7 | 24.04 / 8.39 / 12.19 / 2.94 / 0.00 | 3, 16 | 19.3 s | 186 | - |
+| Union Station to Baltimore Penn | 47 mi | 46.9 | 9.01 / 8.01 / 24.47 / 4.70 / 0.00 | 1, 14 | 29.2 s | 343 | - |
+| The owner's ride, its own start and end | 60 mi | 59.0 | 27.37 / 20.44 / 7.14 / 0.26 / 0.00 | 2, 27 | 13.9 s | 152 | - |
+| The owner's ride, its own start and end | 47 mi | 46.4 | 23.85 / 8.77 / 10.74 / 2.87 / 0.00 | 4, 19 | 13.8 s | 111 | - |
+| Bethesda to Frederick | default (1.6x) | 53.7 | 28.14 / 15.21 / 5.31 / 1.81 / 0.00 | 4, 27 | 9.7 s | 97 | 53.7 mi; 31.33 / 15.26 / 5.31 / 1.81 / 0.00; 4r 25o; 4.8 s |
+| Alexandria to Annapolis | default (1.6x) | 72.0 | 51.36 / 9.58 / 8.48 / 1.49 / 0.00 | 2, 33 | 20.3 s | 187 | 65.1 mi; 47.13 / 8.20 / 8.15 / 1.64 / 0.00; 2r 30o; 6.5 s |
+
+The owner's ride of 2026-10-03 itself, map-matched against today's graph: 46.7 mi; 25.2 / 5.1 / 11.3 / 5.2 / 0.06 mi.
+
+**The twelve trail-seek trips** at Trailmaxxing 100 with no target (the default ceiling). Miles; LTS 1 / 2 / 3 / 4 / Avoid miles; red (r) and orange (o) junctions; plan time. Live is the deployed API, "old code" is 47c2f52 in the same harness as the new code.
+
+| Trip | Live (47c2f52) | Old code, harness | New code, harness |
+|---|---|---|---|
+| rockville-silver-spring | 14.0 mi; 7.78 / 5.89 / 0.26 / 0.11 / 0.00; 1r 9o; 3.6 s | 14.7 mi; 8.45 / 5.75 / 0.26 / 0.11 / 0.00; 1r 10o; 2.0 s | 13.8 mi; 7.34 / 5.75 / 0.32 / 0.11 / 0.00; 1r 10o; 5.1 s |
+| bethesda-capitol | 14.0 mi; 12.36 / 1.38 / 0.29 / 0.00 / 0.00; 0r 1o; 2.7 s | 14.4 mi; 13.03 / 0.58 / 0.30 / 0.00 / 0.00; 0r 3o; 1.4 s | 14.0 mi; 11.76 / 1.38 / 0.29 / 0.00 / 0.00; 0r 3o; 3.6 s |
+| falls-church-union-station | 11.7 mi; 10.46 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 2.4 s | 11.7 mi; 10.24 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 0.7 s | 11.7 mi; 10.24 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 2.6 s |
+| silver-spring-college-park | 9.9 mi; 7.18 / 2.36 / 0.25 / 0.07 / 0.00; 0r 3o; 1.0 s | 9.9 mi; 7.33 / 2.19 / 0.20 / 0.07 / 0.00; 0r 5o; 0.7 s | 9.9 mi; 7.33 / 2.19 / 0.20 / 0.07 / 0.00; 0r 5o; 1.1 s |
+| bethesda-silver-spring | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 0.9 s | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 0.5 s | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 1.1 s |
+| laurel-college-park | 15.0 mi; 8.98 / 3.11 / 2.78 / 0.16 / 0.00; 1r 9o; 1.4 s | 15.1 mi; 8.24 / 3.11 / 2.78 / 0.16 / 0.00; 0r 10o; 1.2 s | 15.1 mi; 8.24 / 3.11 / 2.78 / 0.16 / 0.00; 0r 10o; 4.1 s |
+| poolesville-darnestown | 21.0 mi; 12.06 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 1.4 s | 21.0 mi; 4.81 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 0.9 s | 21.0 mi; 4.81 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 3.2 s |
+| bowie-annapolis | 43.7 mi; 25.43 / 7.17 / 9.00 / 2.09 / 0.00; 3r 17o; 4.2 s | 43.7 mi; 25.28 / 5.77 / 9.00 / 2.09 / 0.00; 3r 20o; 2.0 s | 43.7 mi; 25.28 / 5.77 / 9.00 / 2.09 / 0.00; 3r 20o; 11.8 s |
+| tysons-ballston-wod | 10.9 mi; 9.48 / 1.05 / 0.35 / 0.00 / 0.00; 1r 5o; 2.4 s | 10.9 mi; 9.14 / 1.05 / 0.36 / 0.00 / 0.00; 1r 7o; 2.4 s | 10.9 mi; 9.14 / 1.05 / 0.36 / 0.00 / 0.00; 1r 7o; 4.1 s |
+| eastern-market-pg-plaza-anacostia | 9.7 mi; 7.85 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 0.7 s | 9.7 mi; 7.79 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 0.7 s | 9.7 mi; 7.79 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 1.4 s |
+| friendship-heights-rosslyn-cct | 7.7 mi; 7.13 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 0.7 s | 7.7 mi; 7.04 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 0.7 s | 7.7 mi; 7.04 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 1.1 s |
+| takoma-hyattsville-sligo | 4.9 mi; 3.00 / 1.86 / 0.04 / 0.00 / 0.00; 0r 2o; 0.4 s | 4.9 mi; 2.88 / 1.86 / 0.04 / 0.00 / 0.00; 0r 3o; 0.5 s | 4.9 mi; 2.88 / 1.86 / 0.04 / 0.00 / 0.00; 0r 3o; 0.7 s |
+| Total | 167.9 mi; LTS 4+ 4.21; LTS 3 16.19; 12r 61o | 169.0 mi; LTS 4+ 4.21; LTS 3 16.15; 11r 73o | 167.7 mi; LTS 4+ 4.21; LTS 3 16.20; 11r 73o |
+
+- rockville-silver-spring calm: {'limited': None, 'rounds': 3, 'ceiling_m': 35451.2, 'fits': True, 'fitted_at': None} calls {'route': 6, 'trace_attributes': 6, 'locate': 19} candidates 0
+- bethesda-capitol calm: {'limited': None, 'rounds': 1, 'ceiling_m': 31793.6, 'fits': True, 'fitted_at': None} calls {'route': 6, 'trace_attributes': 6, 'locate': 16} candidates 1
+- falls-church-union-station calm: {'limited': None, 'rounds': 0, 'ceiling_m': 30156.8, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 2, 'locate': 10} candidates 0
+- silver-spring-college-park calm: {'limited': None, 'rounds': 0, 'ceiling_m': 25411.2, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 3, 'locate': 4} candidates 0
+- bethesda-silver-spring calm: {'limited': None, 'rounds': 0, 'ceiling_m': 13632.0, 'fits': True, 'fitted_at': None} calls {'route': 4, 'trace_attributes': 3, 'locate': 9} candidates 0
+- laurel-college-park calm: {'limited': None, 'rounds': 5, 'ceiling_m': 38742.4, 'fits': True, 'fitted_at': None} calls {'route': 8, 'trace_attributes': 8, 'locate': 33} candidates 0
+- poolesville-darnestown calm: {'limited': None, 'rounds': 2, 'ceiling_m': 54180.8, 'fits': True, 'fitted_at': None} calls {'route': 7, 'trace_attributes': 4, 'locate': 6} candidates 0
+- bowie-annapolis calm: {'limited': None, 'rounds': 5, 'ceiling_m': 112529.6, 'fits': True, 'fitted_at': None} calls {'route': 23, 'trace_attributes': 8, 'locate': 59} candidates 0
+- tysons-ballston-wod calm: {'limited': None, 'rounds': 5, 'ceiling_m': 26022.4, 'fits': True, 'fitted_at': None} calls {'route': 8, 'trace_attributes': 7, 'locate': 21} candidates 0
+- eastern-market-pg-plaza-anacostia calm: {'limited': None, 'rounds': 0, 'ceiling_m': 25019.2, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 4, 'locate': 4} candidates 0
+- friendship-heights-rosslyn-cct calm: {'limited': None, 'rounds': 1, 'ceiling_m': 19832.0, 'fits': True, 'fitted_at': None} calls {'route': 5, 'trace_attributes': 5, 'locate': 8} candidates 0
+- takoma-hyattsville-sligo calm: {'limited': None, 'rounds': 2, 'ceiling_m': 12622.4, 'fits': True, 'fitted_at': None} calls {'route': 5, 'trace_attributes': 5, 'locate': 8} candidates 0
+
+**Loops** (item 266), Trailmaxxing 100 unless named:
+
+| Ride | Loop | Overlap | Way back shared | Asked / excluded | Plan |
+|---|---|---|---|---|---|
+| loop-takoma-hyattsville | 8.8 mi; 3.50 / 4.36 / 0.71 / 0.00 / 0.00; 0r 5o; 2.8 s | 17.4% | 1094.0 of 6296.0 m | 4 / 37 | fallback None; calls {'route': 10, 'trace_attributes': 11, 'locate': 21} |
+| loop-bethesda-silver-spring | 11.4 mi; 4.64 / 5.62 / 0.88 / 0.19 / 0.00; 0r 9o; 7.8 s | 21.6% | 2115.0 of 9771.0 m | 4 / 5 | fallback None; calls {'route': 14, 'trace_attributes': 28, 'locate': 67} |
+| round-trip-tysons-ballston | 21.3 mi; 14.85 / 4.03 / 2.03 / 0.06 / 0.00; 3r 13o; 8.9 s | 7.9% | 1429.0 of 18007.0 m | 4 / 41 | fallback None; calls {'route': 11, 'trace_attributes': 15, 'locate': 69} |
+| loop-rockville-silver-spring-60mi-cap-12 | 21.1 mi; 1.81 / 4.59 / 12.19 / 2.26 / 0.00; 1r 10o; 3.9 s | 88.1% | 14887.0 of 16905.0 m | 4 / 0 | fallback out_and_back; calls {'route': 8, 'trace_attributes': 4, 'locate': 37} |
+| loop-default-preset-bethesda-capitol | 25.4 mi; 20.21 / 4.11 / 0.82 / 0.00 / 0.00; 1r 6o; 4.7 s | 1.5% | 313.0 of 20948.0 m | 4 / 44 | fallback None; calls {'route': 6, 'trace_attributes': 7, 'locate': 25} |
+
+
+### Measured after items 267 to 271
+
+The same harness and graph as the tables above, re-run on 2026-10-03 for this round: "before" is
+2b92cc6 (the round above), "after" this code. Trailmaxxing 100; LTS 1 / 2 / 3 / 4 / Avoid miles.
+
+| Trip | Target | Before | After | Plan time, router calls (after) |
+|---|---|---|---|---|
+| Union Station to Baltimore Penn | none (1.6x ceiling, 92.8 mi) | 73.2 mi; 35.39 / 28.69 / 6.01 / 0.33 / 0.00; 0r 37o | **58.6 mi**; 26.51 / 21.67 / 6.94 / 0.26 / 0.00; 1r 30o | 19.1 s, 182 |
+| Union Station to Baltimore Penn | 60 mi (ceiling 75.0 mi) | 58.6 mi; 26.51 / 21.67 / 6.94 / 0.26 / 0.00; 1r 30o | 58.6 mi, within it; the same | 18.1 s, 182 |
+| The owner's ride, its own start and end | 60 mi | 59.0 mi; 27.37 / 20.44 / 7.14 / 0.26 / 0.00; 2r 27o | 57.2 mi, within it; 25.79 / 20.23 / 7.14 / **0.26** / 0.00; 2r 28o | 16.0 s, 170 |
+| Union Station to Baltimore Penn | 50 mi (ceiling 62.5 mi) | 47.7 mi; 2.94 mi LTS 4, 12.19 LTS 3; 3r 16o | 57.5 mi, **7.5 mi (12.1 km) over**; 25.94 / 21.06 / 7.23 / 0.26 / 0.00; 1r 29o | 34.3 s, 216, `limited: time` |
+| Union Station to Baltimore Penn | 47 mi (ceiling 58.8 mi) | 46.9 mi; 4.70 mi LTS 4, 24.47 LTS 3; 1r 14o | 57.5 mi, **10.5 mi (16.9 km) over**; the same | 35.7 s, 191, `limited: time` |
+| The owner's ride, its own start and end | 47 mi | 46.4 mi; 2.87 mi LTS 4, 10.74 LTS 3 | 56.6 mi, 9.6 mi over, no route within the target found (267); 26.30 / 19.67 / 7.40 / 0.26 / 0.00; 2r 30o | 24.2 s, 204 |
+| Bethesda to Frederick | none | 53.7 mi; 1.81 LTS 4, 5.31 LTS 3 | 53.7 mi; the same | 11.8 s, 97 |
+| Alexandria to Annapolis | none | 72.0 mi; 51.36 / 9.58 / 8.48 / 1.49 / 0.00; 2r 33o | **65.2 mi**; 46.59 / 8.20 / 8.11 / 1.54 / 0.00; 2r 32o | 24.9 s, 187 |
+
+- **268 at the default:** Union Station to Penn no longer takes the 73.2 mi route (+15.5 mi for
+  1.2 mi less LTS 3, 0.07 mi more LTS 4 and 14 more orange junctions): the answer is the 58.6 mi
+  route of the 60 mi run. Alexandria to Annapolis drops from 72.0 to 65.2 mi for 0.37 mi more LTS 3
+  and 0.05 mi more LTS 4.
+- **271 at 50 and 47 mi:** the target is soft, so the calm 57.5 mi route is answered past it: 7.5 and
+  10.5 mi over, inside the 1.25x ceiling, because it avoids 2.7 and 4.4 mi of LTS 4 against the
+  routes that fit. Both plans take 34 to 36 s (the readings of the routes past the target) and stop
+  the search at `limited: "time"`, inside the 47 s deadline.
+- **267:** the owner's ride at 47 mi found no route within 47 mi and answers the least stressful
+  within the ceiling (56.6 mi, 0.26 mi of LTS 4), flagged, not the shortest.
+- **The twelve trail-seek trips** at the default are unchanged from the round above (167.7 mi in all,
+  4.21 mi of LTS 4 and Avoid, 16.20 mi of LTS 3, 11 red and 73 orange; 0.9 to 9.7 s each).
+- **269, alternates:** with the overlap loosened to 70%, still **1 of the 12** offers a second route
+  (bethesda-capitol, 13.2 mi beside the 14.0 mi answer). The other eleven have one corridor that is a
+  near-tie on stress: the routes the search reads are mostly the same corridor (over 70% shared) or
+  not a near-tie (past the 45 m / 300 m bands), so the overlap threshold is not what limits them.
+- **Loops:** the four Trailmaxxing loops are as in the round above (8.8, 11.4, 21.3 mi; the 12 mi
+  loop near Rockville finds nothing within its 15 mi ceiling and answers its 21.1 mi out-and-back,
+  9.2 mi over, flagged); the Default-preset loop 25.4 mi.
+
+### Tests and mutants
+
+- `tests/test_longcalm.py` (order and tolerances, diminishing returns, the target distance, effort
+  blending, the hold on the top figure, the ceiling in the search, leg cuts, the long search, sharing
+  the detour, candidates), `tests/test_effort.py`, `tests/test_loop.py`, `tests/test_refine.py`
+  (`TestTheWorthLegByLeg`), `tests/test_longcalm_api.py` (the request, the fit and the choice past the
+  target, the no-fit choice, the answer's target fields, the budget and slot, the candidates, the
+  loop), `tests/test_route_dials.py` (the hills choice's exposure and hold),
+  `tests/test_plan_constants.py`, and the front end's `targetDistance.test.ts`, `candidates.test.ts`,
+  `loop.test.ts`.
+- `scripts/mutants_longcalm.py` (90 mutants since 267-271, all killed: 35 new on the no-fit choice,
+  the diminishing returns, the 1.25x ceiling, the target fields and the overlap threshold; 55 before; the trail-seek script's 138 all killed too) and `scripts/mutants_trailseek.py` (updated: the 27
+  mutants of the trail credit are removed, 16 rewritten against the new code).
+
+### Harness
+
+The runs through the read-only forwarder (`docker exec routemaker-api-1 python -c <forwarder>`: only
+POSTs to the routers' `route`, `trace_attributes` and `locate`), with the stress of every edge from the
+live stress tiles into a scratch segment table, as in the final-fix round; the plan's own clock does not
+count the harness's tile matching. Rides are weekday off-peak (the standard graph) for both the live
+and the harness runs. "Live" is the deployed API (47c2f52, graph 20261003T142804Z); "old code" is
+47c2f52 in the same harness.
+
+## No dodging through side streets (FOLLOWUP-DEDODGE, items 272, 273)
+
+The owner's words are in PLAN.md, Owner amendments, items 272 and 273. A route should not "dodge
+back and forth into side streets along a busier road" unless that "bought a meaningful distance of
+calm". The code is `core/dedodge.py`; it is the planner only (no graph change), and it applies to
+every ride type.
+
+### The rule as built
+
+After the search has chosen the route, and before it is answered (`routing.plan`, on the answer's
+route only; not on a loop, whose way back is kept as it was made, item 266; not on the routes to choose
+from, below):
+
+1. **Detect** (`find_dodges`). The route's traced edges are grouped into roads (consecutive edges that
+   share a street name; an unnamed edge is a road of its own). A dodge is a run of streets only
+   (`STREET_USES`; a trail, a pedestrian crossing, steps or a ramp is not one) between two stretches of
+   one named road (`MAIN_USES`, 30 m [100 ft] or more each) that is rejoined within 1 mi [1.6 km]
+   (`DODGE_MAX_M`). The road is rejoined by name (going on within 90 degrees of the way it was left, and
+   ahead of where it was left), or on a different name on its line (within 35 degrees and 150 m [490 ft],
+   `PARALLEL_*`): a road that changes name at a junction is one road. The same road wins over a road on its
+   line, which is what makes the Konterra Drive case one dodge (Konterra Drive, Virginia Manor Road,
+   Konterra Drive) and not a turn onto a road that happens to run on beside it.
+2. **Skip what is no weave** (`skip_reason`, review r0 item 4). A dodge under 50 m [160 ft]
+   (`MIN_DODGE_M`), one of unnamed edges alone under 60 m [200 ft] (`MIN_UNNAMED_DODGE_M`), or one that
+   turns fewer than two times from the road's last edge before it to its first after it (`BASE_TURNS`: a
+   straight run through an unnamed edge, or a way inside one road) is listed as `skipped` and not
+   checked, so it spends neither the router nor the cap. On the measured trips these were stubs such as
+   Konterra Drive via an unnamed 27 m edge on Union Station to Penn, whose "main road" without them was a
+   detour 250 to 1,600 m longer.
+3. **Compare.** The plan's own request (same graph, costing, ride time, elevation) for the route between
+   the dodge's two ends, each facing the way the route goes, with the middle of each of the dodge's edges
+   excluded (at most 40; none within 6 m [20 ft] of a node, which would take out the cross street). Where
+   the router finds no path facing a heading it is asked again without. The stretch is spliced into the
+   leg (shape, length, time, cost and elevation; where the router gives the stretch no elevation the leg
+   keeps its own, the stretch drawn in a straight line between the heights where the dodge left and came
+   back) and the leg is read whole with its junctions (`refine.analyse`), as the route as it was. A reading
+   the pass's clock ran out in is neither judged nor kept (`_cut_short`): `junctions.nodes_at` leaves out a
+   `/locate` batch the clock cut off, so such a reading can be missing junctions, and `refine.analyse`
+   would have handed it to the answer. (Found in this round: on Bowie to Annapolis at Default a removal
+   judged on such a reading answered 1 red and 12 orange junctions fewer, along the whole route.)
+4. **Judge** (`judge`). The stress the dodge avoids is what the main road carries more of at the top figure
+   (LTS 4 and Avoid metres plus the cost of red junctions) plus the second (LTS 3 plus the cost of orange
+   junctions): `Analysis.top_m` and `second_m`, the two figures of items 258 to 260.
+   - **Below the top of the slider** the dodge is kept if
+
+     avoided >= 0.25 mi [402 m] + 260 ft [80 m] x (the turns it adds - 2)
+
+     (never less than 0.25 mi; `MIN_AVOIDED_M`, `TURN_CHARGE_M`, `BASE_TURNS`). Two turns are what going
+     off a road and back on cost anyway; each past them is a turn the rider would not make on the main road
+     (item 254's turn load; 80 m is about 18 s at 10 mph [16 km/h], in the 15 to 20 s that item proposes
+     per turn). A turn is a change of street and of heading by 40 degrees or more.
+   - **At the top of the slider** (Trailmaxxing, and Cargo with passengers: any plan whose stress dial is
+     at the top, `Context.maxcalm`) the dodge is kept if it avoids more than the second level's tie step,
+     `refine.MAXCALM_STEPS[1]` (50 m [160 ft]), and no turns are charged (`TOP_TIE_RULE`, `TOP_TIE_M`;
+     review r0 item 1). There distance ranks below LTS 3 (258 to 262) and the search itself takes 5 m of
+     extra distance for each metre of LTS 3 it saves (268), so the quarter-mile rule gave back up to 0.34 mi
+     of LTS 3 a dodge to save 130 to 650 m. **This splits item 272's "Applies to all presets" and is
+     pending the owner's confirmation**: `TOP_TIE_RULE = False` puts every plan back on the 0.25 mi rule.
+
+   Otherwise the main road replaces the dodge.
+5. **Guards**, which override the rule: the dodge is kept where taking it out would put the top figure more
+   than a metre above the leg as the pass found it or as it now is, whichever is lower (so the slack is the
+   leg's, not each dodge's, and the order of items 258 to 262 and the hold of item 250 are never broken:
+   any LTS 4, Avoid or red junction a dodge avoids keeps it, however little), where the main road is longer
+   than the route was (the target and ceiling of 267 to 271 only get easier), where it is worse on the
+   Hills slider's blended distance (`refine.level3`), and where the junctions were read for one route and
+   not the other. The Mass Ride and Group Ride keep their graph (the no-trail variant, which has no
+   contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
+
+   The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
+   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   replacement is never the main road a few metres on and the case does not arise; and turns are not in
+   the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
+   own, outside 258 to 262.
+6. **Bounds**, all hard and per plan, since the pass runs once a plan: 8 checks (`MAX_CHECKS`), 40
+   exclusions to a request, 5 s (`BUDGET_S`) ending 6 s before the plan's deadline
+   (`refine.REFINE_TRACE_RESERVE_S`), 8 s to a call, a pass that is given less than 3 s does not start, and a
+   router that fails leaves the route as it was. The pass never raises. The last dodge of a leg is looked at
+   first, and each pass reads the leg as it now is, so a dodge is judged against the route after the ones
+   after it were taken out.
+
+**After the pass** (`settle`, review r0 items 3 and 5). Where a dodge was taken out, `calm_search` gives the
+route as answered (`extra_distance_m` less the metres taken off; `exposure_after_m`, `lts3_m_after`,
+`lts4_m_after`, `top_m_after`, `lts4_after_m` read again), and the routes to choose from are picked again
+(`refine.pick_candidates`, with the hold's reference the search used, `Context.candidate_reference`)
+against the answer as it now is: none goes further past the target than the answer, each is still a
+near-tie with it on stress, and each is still meaningfully different from it and from the others (where
+removing a dodge made two routes converge, the near-duplicate is dropped). The candidates themselves are
+answered as the search found them (their `dodges` is null). Of the two fixes the review offered, one shared
+budget across the answer and its candidates or no pass on candidates, this is the second: it keeps the
+pass at one bounded run a plan (the review measured up to 32 checks and about 20 s of dodge work a plan when
+each candidate had its own), the candidates are never changed after they were picked (so nothing about
+them needs checking again but their place beside the changed answer), and they are near-ties offered for
+the rider to choose by the map, where a side-street weave is on view; at the top of the slider, the only
+place candidates are offered, the pass now takes out only dodges that avoid 50 m or less anyway. Reading
+the answer again is no extra router work: `refine.analyse` remembers it and the answer uses that reading.
+
+The answer's `dodges` (`DodgesOut`) lists every dodge found, once, in the route's order: the road, the
+streets it went through, where, its length, what was done (`removed`, `kept`, `skipped`, `unchecked`),
+why, the metres it avoided against what it had to, the turns the main road saves and its extra distance;
+`found` is the sum of removed, kept, skipped and unchecked (`skipped` is counted too), including dodges a
+removal uncovered on a later pass over the leg. `limited: target_distance` is cleared where taking a dodge
+out made the route fit the target. The front end's type is `Dodges` in `frontend/src/lib/api.ts`
+(optional; nothing displays it).
+
+### Reproduction (item 273)
+
+Live routers (47c2f52, graph 20261003T142804Z), read-only through the harness; Konterra Drive end to end,
+from -76.88905, 39.06785 to -76.89068, 39.08179:
+
+| Ride type | North | South |
+|---|---|---|
+| Default, Trailmaxxing, Cargo | 1.84 mi [2.97 km]: leaves Konterra Dr (way 256386638) at -76.885651, 39.074958 for Virginia Manor Rd (ways 235061913, 1473496057, 240334415), 0.25 mi [408 m], rejoins way 256386638 | 1.08 mi [1.74 km], straight |
+| Fast, Group Ride, Mass Ride, E-bike | 1.75 mi [2.82 km] (Mass Ride 2.12 mi [3.41 km]: its own graph), straight | 1.08 mi |
+
+Both streets are LTS 3 (1.82 mi [2.93 km] of LTS 3 in all), so the dodge avoids nothing and adds 3 turns
+and 0.09 mi [147 m]. With the pass: 1.75 mi [2.82 km], LTS 3 1.74 mi [2.80 km], and the route is the Fast
+plan's, on every one of the three, Trailmaxxing included (it avoids 0 m, within the tie step). The
+recorded routers' answers (route, traces and the stretch between the dodge's ends) are
+`tests/data/dedodge_konterra.json`. The saved Union Station to Penn plan's 0.14 mi on Konterra Drive is a
+turn from Virginia Manor Road onto Konterra Drive and on to Contee Road, not a dodge.
+
+### Measured
+
+Same harness as the long-calm rounds (a scratch segment table filled from the live stress tiles; weekday
+off-peak, the live routers read-only), three runs back to back on the same routers: the pass off, the
+pass as first built (r0, ccd75a3) and as revised (r1). LTS 3 and LTS 4 in miles, junctions red plus
+orange.
+
+| Trips | Miles off, r0, r1 | LTS 3 off, r0, r1 | LTS 4 (all) | Junctions off, r0, r1 | r1 dodges: found, skipped, checked, removed, kept, unchecked |
+|---|---|---|---|---|---|
+| Twelve standard trips, Trailmaxxing | 167.7, 166.9, 167.4 | 16.20, 16.99, 16.24 | 4.21 | 11+73, 11+71, 11+69 | 26, 8, 18, 2, 16, 0 |
+| Twelve standard trips, Default | 163.3, 162.6, 162.1 | 16.80, 17.67, 18.04 | 4.32 | 12+79, 12+79, 12+77 | 28, 9, 19, 6, 13, 0 |
+| Union Station to Penn, Trailmaxxing, no target | 58.70, 58.61, 58.61 | 6.94, 7.17, 7.17 | 0.26 | 1+30, 1+28, 1+28 | 11, 2, 8, 1, 7, 1 |
+| Union Station to Penn, Trailmaxxing, 60 mi target | 58.70, 58.61, 58.61 | 6.94, 7.17, 7.17 | 0.26 | 1+30, 1+28, 1+28 | 11, 2, 8, 1, 7, 1 |
+| The FIT ride, 60 mi target | 57.28, 57.19, 57.19 | 7.14, 7.37, 7.37 | 0.26 | 2+28, 2+26, 2+26 | 11, 2, 8, 1, 7, 1 |
+| Union Station to Penn, Default | 56.05, 56.05, 56.03 | 7.27, 7.27, 7.44 | 0.26 | 1+30, 1+30, 1+28 | 19, 4, 3, 1, 1, 13 (`limited: time`) |
+
+- **Trailmaxxing** (r1): 2 removed, both avoiding 0 m: Konterra Drive via Virginia Manor Road (Laurel to
+  College Park, 15.05 to 14.93 mi, LTS 3 2.78 to 2.69) and Lottsford Vista Road via Caribon Street
+  (Bowie to Annapolis, 43.70 to 43.53 mi, LTS 3 9.00 to 9.13). Kept at the top that r0 removed: Van Dusen
+  Road twice (they avoid 289 and 366 m), Governor Ritchie Highway (214 m) and Dicus Mill Road (541 m), and
+  Lottsford Vista Road via Parrish Lane (390 m). LTS 3 over the twelve: 16.20 off, 16.99 r0, 16.24 r1.
+- **Default** (r1, the 0.25 mi rule): 6 removed, avoiding 0 to 541 m (0 to 0.34 mi): Van Dusen Road twice
+  (289, 366 m), Lottsford Vista Road twice (390, 0 m), Governor Ritchie Highway (214 m) and Dicus Mill Road
+  (541 m: over the quarter mile, removed only because its 4 turns raised the bar to 562 m, the turn
+  charge deciding it). LTS 3 over the twelve rises 1.24 mi (16.80 to 18.04) for 1.2 mi less riding: worth
+  the owner's eye, since the default is meant to be stress-averse. More are removed than in r0 because the
+  skip frees checks for real dodges (Bowie to Annapolis: 6 of 6 checked, against 4 of 5 with 2 stubs).
+- **Record correction (review r0 item 2).** r0's note said the removed dodges each avoided "0.13 to 0.23
+  mi ... under the quarter mile, as the rule says". They avoided 0 to 0.34 mi (0 to 541 m): Konterra Drive
+  and Lottsford Vista Road 0 m, Dicus Mill Road 541 m, removed by the turn charge (4 turns: 562 m needed).
+- **Checks within the cap** (review r0 item 4): skipped stubs on the twelve trips are 8 at Trailmaxxing
+  and 9 at Default (Leland Street via Meadow Lane 18 m, Montrose Avenue 21 m, Elm Avenue 20 m, and straight
+  runs of 150 to 1,150 m: Maple Avenue via Clagett Drive and the like). The cap or the clock left 1 real
+  dodge unchecked on the twelve trips at r0, none at r1; Union Station to Penn checks 8 of 9 real dodges at
+  r1 (Tamar Drive is the one left; r0 spent 1 of its 8 checks on a stub). Union Station to Penn at Default,
+  a long plan with little of its time left after the search, checks 3 (the third cut short by the clock)
+  and leaves 13 of its 15 real dodges unchecked (`limited: time`). Some "longer" keeps are still named one-block jogs (Old Scaggsville
+  Road via Clarke Springs Ridge, 65 m) that turn twice and so are checked.
+- **Routes to choose from** (item 287(4), below): with the bands at 150 m and 800 m, 2 of the twelve
+  Trailmaxxing trips offer a second route (Bethesda to the Capitol, 13.21 mi against 14.03, LTS 3 0.47 mi
+  against 0.29, 6.12 mi of path, 0 red and 2 orange, 180 m of climb; Friendship Heights to Rosslyn, 8.82
+  mi against 7.70, LTS 3 0.43 against 0.42, 3.42 mi of path, 1 red and 3 orange, 106 m of climb); 1 did
+  at 45 m and 300 m (Bethesda to the Capitol).
+- LTS 4 and Avoid are unchanged on every trip and the LTS 4 hold holds.
+
+**Latency** (review r0 item 3; Trailmaxxing, the harness, three rounds with the pass off, r0 and r1 in
+turn on the same routers, the median): Laurel to College Park 3.63 s off, 4.57 s r0, 4.50 s r1 (+0.9 s);
+Bowie to Annapolis 5.96 s, 10.35 s and 9.72 s (+3.8 s: 6 checks of a 43 mi leg, inside the 5 s budget,
+then the answer's reading of the changed route). The review's 3.94 to 11.61 s on Laurel to College Park
+(cold routers, a candidate's pass of its own as well) is not reproduced warm; with no pass on the
+candidates the dodge work is the answer's 5 s at most.
+
+### Load
+
+One pass a plan, on the answer alone. Each check is 1 or 2 `/route` calls (the second without headings),
+one `trace_attributes` of the **whole spliced leg** (a plan of one leg is the whole route: 58.6 mi on Union
+Station to Penn, 43.5 mi on Bowie to Annapolis), and the junction reading of that leg: `/locate` in batches
+of 50 nodes (`junctions.LOCATE_BATCH`), twice (the nodes, then the approaches of those without a signal).
+Measured over the pass off: Union Station to Penn, 8 checks, 11 more `/route`, 8 more `trace_attributes`
+and 35 more `/locate`; Bowie to Annapolis at Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one
+check, 1 to 2, 1 and 2 to 4. The worst case a plan is 8 checks of 2 `/route`, 1 `trace_attributes` and
+2 x (the leg's junction nodes / 50) `/locate` each (on a 58 mi leg, about 10 a check), inside 5 s, plus
+the answer's own reading of the changed route afterwards, which the plan does anyway, within its
+deadline.
+
+### Tests and mutants
+
+`tests/test_dedodge.py` (the rule at and below the top of the slider, the turn weighting, the corridor
+match, the skip, the counting, the edges, the splice and its elevation, the pass and its bounds with each
+bound pinned by value, a reading cut short, `settle`, and the Konterra Drive regression on the recorded
+routers), `tests/test_dedodge_plan.py` (the plan's wiring through the real planner on a synthetic graph
+and the real segment table: every ride type, Trailmaxxing's tie step, a loop, the target's fields, the
+search's figures after a removal, the answer's `dodges`, one pass a plan and none on a candidate),
+`tests/test_longcalm.py` (the near-tie bands at their boundaries, the reference kept for `settle`) and
+`tests/test_route_api.py` (the contract key). `scripts/mutants_dedodge.py` has 212 mutants: the
+first round's 131 (three of them, on the candidates' pass that is gone, turned round or replaced, and the
+stale-elevation one dropped with its branch), review r0's 32 on the r1 text (its "candidates not dedodged"
+turned round, since r1 does not pass them), and r1's own (the top of the slider's rule, the skip, the
+counting, the leg as found, the reading cut short, `settle`, the elevation kept, the near-tie bands). All
+212 are killed (one, the clock not read between checks, survived the first run and was killed by a test
+added for it). `scripts/mutants_longcalm.py`: 90 of 90 killed.

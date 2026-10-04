@@ -6,18 +6,35 @@
  * went unnoticed while the decisions lived in DialsPanel.tsx and
  * FacilityBreakdown.tsx).
  */
-import { AVOID_MAX_SPAN_M, SEEK_MAX_SPAN_M, formatPerMile, formatRoughDistance } from "./format.ts";
+import {
+  AVOID_MAX_SPAN_M,
+  METRES_PER_MILE,
+  MILES_WORD,
+  POUNDS_WORD,
+  SEEK_MAX_SPAN_M,
+  formatDistance,
+  formatPerMile,
+  formatRoughDistance,
+} from "./format.ts";
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
+  DEFAULT_CEILING_RATIO,
+  TARGET_CEILING_RATIO,
+  TARGET_MAX_M,
+  TARGET_MIN_M,
+  PASSENGERS_WEIGHT_KG,
+  SYSTEM_WEIGHT_KG,
+  SYSTEM_WEIGHT_MAX_KG,
+  SYSTEM_WEIGHT_MIN_KG,
   STRESS_MAX,
   STRESS_MIN,
   TRAFFIC_TOLERANT_WARNING,
   calmRate,
-  favorsTrails,
   hillsMax,
   hillsWords,
   offersAssist,
+  offersTargetDistance,
   startDials,
   stressMax,
   stressWords,
@@ -43,8 +60,123 @@ export interface PanelView {
   /** The traffic-tolerant warning under the traffic slider, or null. */
   warning: string | null;
   hills: SliderView;
+  /** The "Target distance" number input, or null where the traffic slider is not at the top. */
+  target: TargetView | null;
+  /** The "System weight" number input, with it. */
+  weight: WeightView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
+}
+
+/** The "Target distance" dial (OWNER-DECISIONS 256, 271), in miles first, kilometres in brackets. */
+export interface TargetView {
+  label: string;
+  /** What the input holds, in miles to a tenth; empty is the default. */
+  value: string;
+  min: number;
+  max: number;
+  /** The rule for an entry the planner will not take, as words (not a colour). */
+  rule: string;
+  /** Under the input: what it does, and what is set. */
+  hint: string;
+}
+
+export const TARGET_LABEL = "Target distance (miles)";
+
+/** The input's text for a length in metres: miles to a tenth, no trailing ".0"; empty for none. */
+export function targetText(metres: number | undefined): string {
+  if (metres === undefined) return "";
+  const miles = Math.round((metres / METRES_PER_MILE) * 10) / 10;
+  return String(miles);
+}
+
+/** Metres for what was typed in miles, or undefined for empty (the default); null where it is not a usable entry. */
+export function parseTarget(text: string): number | undefined | null {
+  const trimmed = text.trim().replace(/\s*(mi|miles)$/i, "");
+  if (trimmed === "") return undefined;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const metres = Math.round(Number(trimmed) * METRES_PER_MILE);
+  return metres >= TARGET_MIN_M && metres <= TARGET_MAX_M ? metres : null;
+}
+
+const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
+const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
+
+export function targetView(dials: Dials): TargetView {
+  const set = dials.targetDistanceM;
+  const base =
+    "Optional. The route aims at or under this, as calm as it can be: " +
+    "the fewest heavy-traffic roads and very high stress junctions first, then busy roads and higher stress junctions, then distance.";
+  const hint =
+    set === undefined
+      ? `${base} Left empty, it may be up to ${DEFAULT_CEILING_RATIO} times the router's own route, where the extra miles avoid enough busy road.`
+      : `${base} Set to ${formatDistance(set)}. It goes past it only where the extra miles avoid enough busy road, ` +
+        `never past ${formatDistance(set * TARGET_CEILING_RATIO)}, and says how far over it is. ` +
+        "A target shorter than the calmest route makes it use busier roads.";
+  return {
+    label: TARGET_LABEL,
+    value: targetText(set),
+    min: TARGET_MIN_MILES,
+    max: TARGET_MAX_MILES,
+    rule: `Enter ${TARGET_MIN_MILES} to ${TARGET_MAX_MILES} ${MILES_WORD}, or leave it empty.`,
+    hint,
+  };
+}
+
+/** The "System weight" dial (OWNER-DECISIONS 264), in pounds first, kilograms in brackets. */
+export interface WeightView {
+  label: string;
+  /** Pounds, whole; empty is the default. */
+  value: string;
+  min: number;
+  max: number;
+  rule: string;
+  hint: string;
+}
+
+export const WEIGHT_LABEL = "System weight (pounds)";
+export const LB_PER_KG = 2.20462;
+
+export function lbOf(kg: number): number {
+  return Math.round(kg * LB_PER_KG);
+}
+
+/** "198 lb (90 kg)": pounds first. */
+export function formatWeight(kg: number): string {
+  return `${lbOf(kg)} lb (${Math.round(kg)} kg)`;
+}
+
+export function weightText(kg: number | undefined): string {
+  return kg === undefined ? "" : String(lbOf(kg));
+}
+
+/** Kilograms for what was typed in pounds, undefined for empty (the default), null for an unusable entry. */
+export function parseWeight(text: string): number | undefined | null {
+  const trimmed = text.trim().replace(/\s*(lb|lbs|pounds)$/i, "");
+  if (trimmed === "") return undefined;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const kg = Math.round(Number(trimmed) / LB_PER_KG);
+  return kg >= SYSTEM_WEIGHT_MIN_KG && kg <= SYSTEM_WEIGHT_MAX_KG ? kg : null;
+}
+
+export function weightView(dials: Dials): WeightView {
+  const set = dials.systemWeightKg;
+  const usual = dials.carrying === "people" ? PASSENGERS_WEIGHT_KG : SYSTEM_WEIGHT_KG;
+  const lo = lbOf(SYSTEM_WEIGHT_MIN_KG);
+  const hi = lbOf(SYSTEM_WEIGHT_MAX_KG);
+  const base =
+    "Optional. You, the bike and what it carries, together. A heavier load makes hills count for more when the Hills slider avoids them.";
+  return {
+    label: WEIGHT_LABEL,
+    value: weightText(set),
+    min: lo,
+    max: hi,
+    rule: `Enter ${lo} to ${hi} ${POUNDS_WORD}, or leave it empty.`,
+    hint:
+      set === undefined
+        ? `${base} Left empty, it is ${formatWeight(usual)}.`
+        : `${base} Set to ${formatWeight(set)}.`,
+  };
 }
 
 export const MASS_RIDE_TRAFFIC_NOTE =
@@ -54,20 +186,25 @@ export const MASS_RIDE_TRAFFIC_NOTE =
  * old top it stops pricing the router's own roads harder and starts searching
  * for calmer, longer routes, and says so before it plans one.
  */
-export function calmNote(stress: number, preset?: PresetId): string | undefined {
+export function calmNote(stress: number, _preset?: PresetId): string | undefined {
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
-  const trails =
-    preset !== undefined && favorsTrails(preset)
-      ? " Trailmaxxing also favors trails, so it may add miles to ride one. That pull fades as the slider comes down."
-      : "";
+  // The top (OWNER-DECISIONS 256, 257, 271): no rate; the least stressful route towards the target distance.
+  if (stress >= STRESS_MAX) {
+    return (
+      "Calmest: finds the least stressful route towards your target distance, however far round it goes. " +
+      "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. " +
+      "Then it avoids busy roads (LTS 3) and higher stress junctions. " +
+      "Then it follows the Hills slider. Then it takes the shorter way. " +
+      "A quiet street counts the same as a trail. The route summary says how much longer it is."
+    );
+  }
   // Short sentences (a11y review of integrate-2: one 49-word sentence, which
   // changes at every step and is the slider's description).
   return (
     `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) avoided. ` +
     "Twice that for a heavy-traffic road (LTS 4). Three times that for a road best avoided. " +
-    "The route can be many times the straight-line distance. The route summary says how much longer it is." +
-    trails
+    "The route can be many times the straight-line distance. The route summary says how much longer it is."
   );
 }
 
@@ -90,7 +227,12 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   // with the assist the rider chose: going back resets the sliders only.
   const plain = startDials(preset, dials.carrying, dials.when, dials.assist);
   const start = dials.avoidGravel ? { ...plain, avoidGravel: true } : plain;
-  const moved = dials.stress !== start.stress || dials.hills !== start.hills;
+  const moved =
+    dials.stress !== start.stress ||
+    dials.hills !== start.hills ||
+    dials.targetDistanceM !== undefined ||
+    dials.systemWeightKg !== undefined ||
+    dials.loop === true;
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
   else if (draft.hills > 0) hillsNote = SEEK_NOTE;
@@ -117,6 +259,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       disabled: false,
       note: hillsNote,
     },
+    target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
+    weight: offersTargetDistance(preset, dials.stress) ? weightView(dials) : null,
     reset: moved ? start : null,
   };
 }

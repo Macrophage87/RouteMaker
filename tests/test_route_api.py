@@ -65,6 +65,15 @@ CONTRACT_KEYS = {
     "description",
     # Additive, OWNER-DECISIONS item 226: the same with short stretches merged.
     "description_overview",
+    # Additive, FOLLOWUP-LONG-CALM (OWNER-DECISIONS 262-265): the route's effort-equivalent
+    # distance, and at the top of the stress slider the others to choose from.
+    "effort_m",
+    "rank",
+    "candidates",
+    # Additive, OWNER-DECISIONS 266: a loop's way back against its way out.
+    "loop",
+    # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
+    "dodges",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -433,6 +442,11 @@ class TestWhatIsSentToTheRouter:
             assert fake.endpoints()[:2] == ["route", "route"]
             assert set(fake.endpoints()[2:]) == {"trace_attributes"}
             assert fake.calls[1][1]["costing_options"] == middle
+        elif name == "trailmaxxing":
+            # The top of the slider offers other routes (OWNER-DECISIONS 265): once the route is
+            # traced the router is asked for one more that avoids its roads, and the fake gives
+            # the same route, which is no different, so the asking ends.
+            assert fake.endpoints() == ["route", "trace_attributes", "route"]
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)

@@ -9,6 +9,9 @@
 
 const DASH = "–";
 export const METRES_PER_MILE = 1609.344;
+/** The words for the units a rider types in (the target distance, the system weight). */
+export const MILES_WORD = "miles";
+export const POUNDS_WORD = "pounds";
 export const FEET_PER_METRE = 3.28084;
 export const KMH_PER_MPH = 1.609344;
 

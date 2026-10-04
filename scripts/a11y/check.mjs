@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_DEFAULT, S_MASS, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_CHOICES, S_DEFAULT, S_MASS, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -75,7 +75,7 @@ const focused = (p) =>
   // The slider: named once, described by the calm note.
   const slider = await axNode(p, ".dial input[type=range]");
   check("slider: its name is its label alone", slider?.name === "Traffic", JSON.stringify(slider?.name));
-  check("slider: the calm note is its description", /^Calm detour: /.test(slider?.description ?? ""), (slider?.description ?? "").slice(0, 60));
+  check("slider: the calm note is its description", /^Calmest: finds the least stressful route towards your target distance/.test(slider?.description ?? ""), (slider?.description ?? "").slice(0, 60));
 
   // One plan and one announcement for a burst of keys.
   await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
@@ -379,6 +379,105 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const all = await p.eval("document.querySelector('.description-list').textContent");
   check("description: every street of the group is named in full detail", ["17th", "15th", "14th", "13th"].every((s) => all.includes(`${s} Street Northwest (LTS`)), "");
   await p.shot(`${SHOTS}/description_mass_full.png`, await p.eval("(() => { const e = document.querySelector('.route-description'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(Math.min(r.height, innerHeight - Math.max(0, r.top)))) }; })()"));
+  await p.close();
+}
+
+// ---- 9. The target distance, the system weight and the loop toggle (OWNER-DECISIONS 256, 264, 266, 271) ----
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  const target = await axNode(p, "input[placeholder=Default]");
+  check("target distance: the field's name is its label, in miles", target?.role === "textbox" && target?.name === "Target distance (miles)", JSON.stringify(target?.name));
+  check("target distance: its description says what it does, miles first", /Optional\. The route aims at or under this/.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? ""), (target?.description ?? "").slice(0, 80));
+  const weight = await p.eval(`(() => { const e = [...document.querySelectorAll('input[placeholder=Default]')][1]; return e ? { label: document.querySelector('label[for="' + e.id + '"]').textContent.trim(), described: document.getElementById(e.getAttribute('aria-describedby').split(' ')[0]).textContent } : null; })()`);
+  check("system weight: named in pounds, described with the default in pounds first", weight?.label === "System weight (pounds)" && /Left empty, it is 198 lb \(90 kg\)/.test(weight?.described ?? ""), JSON.stringify(weight));
+  const field = "document.querySelector('input[placeholder=Default]')";
+  // Typing plans nothing; Enter plans once.
+  const before = p.routeRequests;
+  await p.eval(`${field}.focus(); true`);
+  await p.type("60");
+  await sleep(1500);
+  check("target distance: typing plans nothing until the field is left or Enter is pressed", p.routeRequests === before, `${p.routeRequests - before} plans`);
+  await p.enter();
+  await sleep(1500);
+  check("target distance: Enter plans once", p.routeRequests - before === 1, `${p.routeRequests - before} plans`);
+  check("target distance: the plan is in the address in miles", /targetmi=60\.0/.test(await p.eval("location.hash")), await p.eval("location.hash"));
+  const set = await axNode(p, "input[placeholder=Default]");
+  check("target distance: once set, its description gives the ceiling in miles first", /never past 75\.0 mi \(120\.7 km\), and says how far over it is/.test(set?.description ?? ""), (set?.description ?? "").slice(0, 200));
+  // A bad entry is said in words and marked invalid, and plans nothing.
+  const again = p.routeRequests;
+  await p.eval(`${field}.focus(); ${field}.select(); true`);
+  await p.type("abc");
+  await p.enter();
+  await sleep(500);
+  const bad = await p.eval(`(() => { const e = ${field}; return { invalid: e.getAttribute('aria-invalid'), said: document.getElementById(e.getAttribute('aria-describedby').split(' ')[1])?.textContent }; })()`);
+  check("target distance: a bad entry is marked invalid and said in words, and plans nothing", bad.invalid === "true" && /^Enter 0\.7 to 621 miles, or leave it empty\.$/.test(bad.said ?? "") && p.routeRequests === again, JSON.stringify(bad));
+  await p.close();
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const none = await p.eval("document.querySelectorAll('input[placeholder=Default]').length");
+  check("target distance: not offered below the top of the traffic slider", none === 0, String(none));
+  const toggle = await axNode(p, ".dials .toggle input[aria-describedby]");
+  check("loop: the toggle is named for what it does and described, off by default", toggle?.role === "checkbox" && toggle?.name === "Make it a loop" && toggle?.checked === false && /different way back/.test(toggle?.description ?? ""), JSON.stringify(toggle));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const checked = await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').checked");
+  check("loop: Space turns it on and plans once", checked === true && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${p.routeRequests - before} plans`);
+  await p.close();
+}
+{
+  // A ride that ends where it starts is a loop, shown on and fixed.
+  const p = await open({ route: S_DEFAULT, hash: "#p=-77.04000,38.91000;-77.01000,38.89000;-77.04000,38.91000&preset=default&v=2&stress=70&hills=0" });
+  const state = await axNode(p, ".dials .toggle input[aria-describedby]");
+  check("loop: a ride ending where it starts shows the toggle on and not changeable, and says why", state?.checked === true && state?.disabled === true && /ends where it starts/.test(state?.description ?? ""), JSON.stringify(state));
+  await p.close();
+}
+
+{
+  // Past the target (OWNER-DECISIONS 271): said in words, miles first, in the summary
+  // and in the announcement, not as a colour.
+  const p = await open({ route: S_OVER, hash: `${hashFor("trailmaxxing", 100)}&targetmi=6.2` });
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 5000);
+  const said = await p.eval("document.querySelector('.status-line').textContent");
+  check("target distance: the announcement says how far over the target the route is", /0\.7 mi \(1\.2 km\) over your target of 6\.2 mi \(10\.0 km\)\./.test(said), said);
+  const note = await p.eval("(() => { const e = document.querySelector('.summary .calm-search'); return e ? { role: e.getAttribute('role'), text: e.textContent } : null; })()");
+  check("target distance: the summary says it in a note of its own", note?.role === "note" && /It is 0\.7 mi \(1\.2 km\) over your target, to avoid busier roads\./.test(note?.text ?? ""), JSON.stringify(note));
+  await p.close();
+}
+
+// ---- 10. Routes to choose from (OWNER-DECISIONS 265) ----
+{
+  const p = await open({ route: S_CHOICES, hash: hashFor("trailmaxxing", 100) });
+  const group = await p.eval(`(() => { const f = document.querySelector('fieldset.candidates'); return f ? { legend: f.querySelector('legend').textContent, radios: [...f.querySelectorAll('input[type=radio]')].map((r) => r.checked) } : null; })()`);
+  check("routes: a group of three radio buttons under a legend, the first chosen", group?.legend === "Routes to choose from" && JSON.stringify(group.radios) === "[true,false,false]", JSON.stringify(group));
+  const first = await p.eval("(() => { const l = document.querySelector('fieldset.candidates label'); return { name: l.querySelector('.candidate-name').textContent, line: l.querySelector('.candidate-line').textContent }; })()");
+  check("routes: each says its rank and its figures in words, with no colour to read", first.name === "Route 1, the calmest" && /heavy-traffic roads \(LTS 4\), .* of busy roads \(LTS 3\), .*junction/.test(first.line), JSON.stringify(first));
+  await p.eval("document.querySelectorAll('fieldset.candidates input')[0].focus(); true");
+  await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
+    .observe(document.querySelector('.status-line'), { childList: true, subtree: true, characterData: true }); true`);
+  const requests = p.routeRequests;
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await sleep(3500);
+  const chosen = await p.eval("[...document.querySelectorAll('fieldset.candidates input')].map((r) => r.checked)");
+  const distance = await p.eval("document.querySelector('.stats dd').textContent");
+  const said = await p.eval("window.__said");
+  check("routes: the arrow key chooses the next, and the summary shows its figures", JSON.stringify(chosen) === "[false,true,false]" && /7\.2 mi/.test(distance), `${JSON.stringify(chosen)} ${distance}`);
+  check("routes: choosing plans nothing and is announced once, with its place", p.routeRequests === requests && said.length === 1 && /^Route 2 of 3\. Route planned: 7\.2 mi/.test(said[0]), JSON.stringify(said));
+  await p.shot(`${SHOTS}/candidates.png`, await p.eval("(() => { const e = document.querySelector('fieldset.candidates'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.round(r.width), height: Math.min(Math.round(r.height), innerHeight - Math.max(0, r.top)) }; })()"));
+  await p.close();
+}
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  const none = await p.eval("document.querySelectorAll('fieldset.candidates').length");
+  check("routes: with one route there is no picker", none === 0, String(none));
+  await p.close();
+}
+{
+  const p = await open({ route: S_CHOICES, hash: hashFor("trailmaxxing", 100), width: 320, height: 800, mobile: true });
+  const fit = await p.eval(`(() => { const f = document.querySelector('fieldset.candidates'); const r = f.getBoundingClientRect(); return { over: f.scrollWidth > f.clientWidth + 1, right: r.right <= innerWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("routes: at 320 px the group wraps inside the screen", !fit.over && fit.right && !fit.page, JSON.stringify(fit));
   await p.close();
 }
 

@@ -258,30 +258,63 @@ def calm_rate_for(stress: int) -> float:
     return round(CALM_RATE_MAX * math.expm1(CALM_CURVE * t) / math.expm1(CALM_CURVE), 3)
 
 
-# The trail credit (OWNER-DECISIONS 202, "Trail bonus for Trailmaxxing only"):
-# how many metres of quiet riding a metre of trail is worth in the search's
-# score, as the calm rate is how many metres of detour a metre of LTS 3 is. It
-# is a PRESET dial (`Preset.trail_credit`), not a slider value: only
-# Trailmaxxing has one, so its routes go out of their way to ride trails, and
-# every other ride type plans as it did. Below 1, so that a trail is never free
-# (the search's own corridors are bounded by it: `core.trailseek`).
-TRAIL_CREDIT = 0.5
-# At most this much is ever credited by the seek's corridor search (the credit
-# is an edge weight there and must stay under the detour's own weight of 1).
-TRAIL_CREDIT_MAX = 0.95
+# The target distance (OWNER-DECISIONS 256, 257, 268 and 271, FOLLOWUP-LONG-CALM). At
+# the top of the traffic slider the search does not price a metre of busy road at a
+# rate of detour any more: it minimises stress, in this order (`core.refine.MAXCALM_STEPS`):
+# LTS 4 and Avoid metres plus the red junctions' cost, then LTS 3 metres plus the orange
+# junctions' cost, then the distance the Hills slider weighs. There is no trail credit
+# (257 supersedes 202: "a quiet street counts the same as a trail").
+#
+# How far it may go (271: "Change the name from max distance to target distance,
+# because it can get longer"):
+# - The rider's "Target distance" (the request's `target_distance_m`) is a soft goal:
+#   the planner aims at or under it, and goes past it only where the extra miles buy
+#   enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar than the default's),
+#   and never past TARGET_CEILING_RATIO times it (the hard ceiling). The answer says
+#   how far over it is.
+# - With no target, the ceiling is DEFAULT_CEILING_RATIO times the router's own route
+#   (the use_roads 0 route this ride type plans without a search), and never less than
+#   DEFAULT_CEILING_EXTRA_M more than it; inside it each extra mile must buy enough
+#   stress (268, `core.refine.WORTH_DEFAULT`).
+# These are documented assumptions, tunable (docs/DEVELOPMENT.md, "Long calm trips").
+DEFAULT_CEILING_RATIO = 1.6
+DEFAULT_CEILING_EXTRA_M = 1609.344
+TARGET_CEILING_RATIO = 1.25
+# What the API takes for a rider's target distance (metres): 0.6 mi to 620 mi.
+TARGET_DISTANCE_MIN_M = 1_000
+TARGET_DISTANCE_MAX_M = 1_000_000
 
 
-def trail_credit_for(preset_name: str, stress: int) -> float:
-    """The trail credit a plan has: the preset's, tapering with the traffic
-    slider so that moving it away from the Trailmaxxing top has a defined
-    effect. At the top (calm rate CALM_RATE_MAX) it is the preset's in full;
-    below, in proportion to the calm rate (a fifth at 90 and nothing at 80 or
-    below, where there is no calm search); the preset's own start is the full
-    credit. Other ride types have none at any position."""
-    credit = min(PRESETS[preset_name].trail_credit, TRAIL_CREDIT_MAX)
-    if credit <= 0:
-        return 0.0
-    return round(credit * min(1.0, calm_rate_for(stress) / CALM_RATE_MAX), 4)
+def system_weight_for(
+    preset_name: str, carrying: str | None = None, chosen: int | None = None
+) -> float:
+    """The total system weight (kg) the effort model reads (OWNER-DECISIONS 264):
+    the rider's, else Cargo with passengers' own default, else the model's 90."""
+    from routemaker import effort
+
+    if chosen is not None:
+        return float(chosen)
+    if carrying_of(preset_name, carrying) == CARRYING_PEOPLE:
+        return effort.PASSENGERS_MASS_KG
+    return effort.MASS_KG
+
+
+def maxcalm_for(stress: int) -> bool:
+    """Whether a slider position is the top, where the search minimises stress
+    towards a target distance instead of pricing busy road at a rate."""
+    return calm_rate_for(stress) >= CALM_RATE_MAX
+
+
+def default_ceiling_m(first_m: float) -> float:
+    """The longest a plan may go where the rider set no target, from the length of
+    the router's own route (OWNER-DECISIONS 268: the 1.6x stays the ceiling)."""
+    return max(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)
+
+
+def target_ceiling_m(target_m: float) -> float:
+    """The longest a plan may go past a rider's target distance (OWNER-DECISIONS 271):
+    TARGET_CEILING_RATIO times it, whatever stress the extra would save."""
+    return target_m * TARGET_CEILING_RATIO
 
 
 # What a metre of each busy tier counts in the calm search's exposure (`core.refine`:
@@ -356,9 +389,9 @@ class Preset:
     assist_speed_kmh: float | None = None
     # The grade past which a sustained descent costs (`BRAKE_GRADES`).
     brake_grade: float | None = None
-    # Metres of quiet riding a metre of trail is worth in the search's score
-    # (TRAIL_CREDIT): Trailmaxxing's alone (OWNER-DECISIONS 202).
-    trail_credit: float = 0.0
+    # Whether a plan far past the calm search's working span is planned leg by leg
+    # (`core.refine.refine_long`, OWNER-DECISIONS 256): Trailmaxxing's alone.
+    long_calm: bool = False
     # The calm search's exposure weights (`Exposure`, OWNER-DECISIONS 250), and,
     # where a carrying choice has its own, that choice's.
     exposure: Exposure = EXPOSURE_STANDARD
@@ -405,7 +438,7 @@ def _preset(
     carrying: dict[str, int] | None = None,
     stress_max: int = 100,
     assist_speed_kmh: float | None = None,
-    trail_credit: float = 0.0,
+    long_calm: bool = False,
     exposure: Exposure = EXPOSURE_STANDARD,
     carrying_exposure: dict[str, Exposure] | None = None,
     **options: Any,
@@ -429,7 +462,7 @@ def _preset(
         stress_max=stress_max,
         assist_speed_kmh=assist_speed_kmh,
         brake_grade=BRAKE_GRADES[name],
-        trail_credit=trail_credit,
+        long_calm=long_calm,
         exposure=exposure,
         carrying_exposure=MappingProxyType(carrying_exposure) if carrying_exposure else None,
     )
@@ -463,10 +496,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # detour search runs at CALM_RATE_MAX. Hills stay the rider's.
                 stress=STRESS_MAX,
                 hills=0,
-                # And item 202: "only the Trailmaxxing preset rewards each
-                # mile of trail, so its routes go out of their way to ride
-                # trails."
-                trail_credit=TRAIL_CREDIT,
+                # Items 256, 257 and 271: the least stressful route towards the
+                # rider's target distance, however long the trip; no bonus for trail.
+                long_calm=True,
                 # Item 250: LTS 4 eight times LTS 3, Avoid sixteen, and never more
                 # LTS 4 than the router's own route for a little more trail.
                 exposure=EXPOSURE_STRESS_AVERSE,

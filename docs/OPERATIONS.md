@@ -511,7 +511,7 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   not read the segment table" at warning level). A run of `no_route` outcomes
   means the router refuses the through points (an entry on a way a bicycle
   cannot use); the plan is unaffected.
-- **The trail credit and the seek on plans with stops** (OWNER-DECISIONS 202, 203;
+- **The trail credit and the seek on plans with stops** (superseded in part: item 257 dropped the credit, 2026-10-03; OWNER-DECISIONS 202, 203;
   docs/DEVELOPMENT.md, "The trail credit and the seek leg by leg"). Trailmaxxing has
   a trail credit (0.5); no other ride type does, and the router is not told. Load
   for a plan with a start and an end: every Trailmaxxing candidate's reading has one
@@ -2486,3 +2486,117 @@ tiles):
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
    for the weekly one.
+
+### Long calm plans, the target distance, candidates and loops (FOLLOWUP-LONG-CALM, items 256 to 271)
+
+Planner-only: nothing to rebuild or migrate. The trail credit is gone, so the OPERATIONS notes above on
+the credit's extra reads (a join over the traced pieces) no longer apply.
+
+- **What a long calm plan is.** Trailmaxxing at 100 past 19 mi (30 km) of straight line and under the
+  confirm span (93 mi, 150 km), not a loop. It has the long ride's budget (`routing.LONG_PLAN_BUDGET_S`,
+  50 s in all, 47 s of router and traces, gunicorn's `--timeout` is 60 s) and takes the long ride's
+  in-flight slot (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment) on top of
+  its ordinary routing slot, so **only one runs at a time in the deployment**; a second from the same address is refused 429
+  and one from another address 503 (both with Retry-After), with the long ride's words ("A long ride is
+  already being planned"), as a long ride is. Its timed-out
+  503 carries `code: long_ride_timed_out`, which a client must not resend unasked. To allow two at
+  once, raise `LONG_ROUTING_IN_FLIGHT.total` (it is also the long ride's pool).
+- **Router calls and time, measured** (the read-only forwarder against the live routers, idle host, one
+  plan at a time, weekday off-peak; every plan is bounded by its deadline whatever its work):
+
+  | Plan | Time | /route | /trace_attributes | /locate |
+  |---|---|---|---|---|
+  | Union Station to Baltimore Penn, default (1.6x) | 16.8 s | 28 | 31 | 125 |
+  | Union Station to Baltimore Penn, 60 mi | 11.8 s | 36 | 23 | 79 |
+  | Union Station to Baltimore Penn, 50 mi | 19.3 s | 52 | 19 | 115 |
+  | Union Station to Baltimore Penn, 47 mi | 29.2 s | 62 | 30 | 251 |
+  | The owner's ride, its own start and end, 60 mi | 13.9 s | 45 | 27 | 80 |
+  | The owner's ride, its own start and end, 47 mi | 13.8 s | 37 | 12 | 62 |
+  | Bethesda to Frederick, default (1.6x) | 9.7 s | 21 | 17 | 59 |
+  | Alexandria to Annapolis, default (1.6x) | 20.3 s | 27 | 28 | 132 |
+
+  After items 267-271 (the same harness): Union Station to Penn with no target 19.1 s (28 / 31 / 123),
+  at 60 mi 18.1 s, the owner's ride at 60 mi 16.0 s, Alexandria to Annapolis 24.9 s; with a target
+  below the router's own route the readings of the routes past it add time: Union Station to Penn at
+  50 and 47 mi 34.3 and 35.7 s (`limited: "time"`, inside the deadline), the owner's ride at 47 mi
+  24.2 s.
+
+  A long plan's calls are: one /route for the whole trip and one /trace_attributes for its stress; for
+  each leg a /route and a /trace_attributes; for each exclusion round of each searched leg a /route, a
+  /trace_attributes and the /locate calls of its junctions (about 2 to 4 each); each seek proposal a
+  /route and its reading; at the end one reading of the whole route's junctions. With a target distance
+  below the router's own route there are up to 6 more whole-trip /route calls (the fit: 3 rungs and 3
+  bisections, 0.5 s each warm, 3 to 4 s on a cold router for a 40 mi route and 33 s past 19 mi cold in
+  the earlier probe: each is bounded by what is left of the budget, and none is started with under
+  12 s left, `routing.FIT_MIN_S`), and then a reading (trace and junctions, 1 to 3 s each) of the
+  route that fits and of each route found past the target within its 1.25x ceiling, up to 8 in all, for the
+  choice past the target (`routing._past_target`, item 271); a reading that does not finish in what
+  is left of the budget is not chosen.
+- **Worst-case plan time.** The plan's deadline is 47 s from the request's arrival; no router call
+  starts after it and every call's own timeout is what is left of it; the last 6 s are kept for the
+  answer's traces and the whole route's junctions (`refine.LONG_FINAL_RESERVE_S`), and 3 s for the
+  stress join and the answer (`ANSWER_RESERVE_S`), so a plan that runs its whole budget is answered at
+  about 50 s, 10 s inside gunicorn's kill. The slowest measured is Union Station to Baltimore Penn, target 47 mi: 29.2 s (before items 267-271). A leg whose time share is
+  under 6 s is not searched and keeps the router's route; the plan says so (`calm_search.long.skipped`,
+  `limited: "time"`). Cold routers (graph tiles not in cache) are the risk: the 5 to 6 whole-trip and
+  leg /route calls are first, and a cold 40 km route took 33 s on the earlier probe, which would leave
+  the plan the router's own route and `limited: "time"`.
+- **The table reads** are the trail seek's: one per leg, bounded by `TABLE_TIMEOUT_S`, 0.2 to 0.3 s
+  warm, with `statement_timeout` set and reset as TRAILSEEK r1 left them; nothing new in the database.
+- **Candidates (item 265)** add no router calls except one reading of the whole route (junctions across
+  the joints) for each alternate of a long plan, 1 to 3 s each, and only with at least 6 s left
+  (`routing.ALTERNATE_MIN_S`). A plan searched in one piece reads them as part of the search. At most 3
+  more routes, each a whole body: the answer's JSON is up to four times larger (a long route's body is
+  150 to 320 KiB measured, so four are up to about 1.3 MB); Caddy and gunicorn buffer it as
+  before.
+- **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
+  each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
+  search then runs as for any plan up to 19 mi in all, and not at all past it.
+- **Reading an answer.** `calm_search.long`: `legs`, `searched`, `skipped`, `stops` (legs per plan leg),
+  `answered` (`legs` or `router`) and `per_leg` (each leg's length, LTS 4 and LTS 3 metres before and
+  after, the cap it was searched under, the options it offered and why it stopped).
+  `calm_search.target_distance_m` / `target_distance_set` / `ceiling_m` / `fits` / `over_target_m` /
+  `fitted_at` say the rider's target (null: none), whether they set it, the ceiling the search kept to
+  (1.25 times the target, or 1.6 times the router's own route with none), whether the route is within
+  the target, how far past it it is, and the traffic position the first route was found at where the
+  router's own route was past it. `limited: "target_distance"` with `fits: false` means no route
+  within the target was found and the least stressful found is answered (item 267);
+  `seek.whole_trip: "not_worth"` means a spliced trip's extra miles did not buy enough stress (268). `loop.fallback: "out_and_back"`
+  means there was no other way back. `candidates` is null where there is one route.
+- **Knobs** (all in code, none needs a restart beyond a deploy): `legsplit.LEG_TARGET_SPAN_M` (12 km),
+  `legsplit.CLEAR_M`, `refine.LONG_MIN_START_S` (12 s), `LONG_LEG_MIN_S` (6 s), `LONG_SEARCH_SHARE` (0.7),
+  `MAXCALM_STEPS` (15, 50, 50 m), `refine.ALT_MAX`, `ALT_OVERLAP`, `ALT_DIFFERENT_M`, `ALT_TOP_BAND_M`,
+  `ALT_SECOND_BAND_M`, `LOOP_OVERLAP_OK`, `LOOP_OUT_AND_BACK`, `LOOP_THINNING`, `LOOP_BUDGET_S`,
+  `routing.FIT_STRESS_LADDER`, `FIT_BISECT_STEPS`, `presets.DEFAULT_CEILING_RATIO` (1.6),
+  `DEFAULT_CEILING_EXTRA_M` (a mile), `TARGET_CEILING_RATIO` (1.25), `refine.WORTH_DEFAULT` (5 m added
+  per metre of LTS 3 saved) and `WORTH_OVER_TARGET` (2.5, past the target), and the effort model's
+  constants (`routemaker.effort`).
+- **Rollback.** Redeploying the previous image removes it all: the new request fields (`target_distance_m`,
+  `system_weight_kg`, `loop`) would be refused as unknown by the older API (the schema forbids extra
+  fields), so an older API behind a newer front end would answer 400 to a request that carries one;
+  deploy the pair together.
+
+## The dodge pass's load (FOLLOWUP-DEDODGE)
+
+After the search and before the answer, a plan runs one pass that takes pointless side-street dodges
+out of its route (`core.dedodge`). It runs on the answer's route alone (never on a loop, never on the
+routes to choose from), so its bounds are per plan: at most 8 checks (`dedodge.MAX_CHECKS`), 5 s
+(`BUDGET_S`) ending 6 s before the plan's own deadline, 8 s to a call, and none at all where less than
+3 s is left (`dodges.limited` is `time`, or `checks` at the cap). Dodges under 50 m, unnamed ones under
+60 m and straight runs are skipped without a call.
+
+Each check is:
+- 1 or 2 `/route` calls between the dodge's two ends (the second without headings, where the router finds
+  no path facing the way the route goes);
+- one `trace_attributes` of the **whole spliced leg**, not of the stretch: a plan of one leg is the whole
+  route, 43 mi on Bowie to Annapolis and 58.6 mi on Union Station to Penn;
+- that leg's junctions read again: `/locate` in batches of 50 nodes (`junctions.LOCATE_BATCH`), twice
+  (the nodes, then the approaches of those without a signal), about 10 calls a check on a 58 mi leg.
+
+So the worst case a plan is 8 x (2 `/route` + 1 long `trace_attributes` + about 10 `/locate`) inside 5 s;
+then the answer reads its changed route once, as it reads any route, within the plan's deadline (outside
+the 5 s). Measured against the pass off (the harness, live routers read-only): Union Station to Penn, 8
+checks, 11 more `/route`, 8 more `trace_attributes`, 35 more `/locate`; Bowie to Annapolis at
+Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one check, 1 or 2, 1 and 2 to 4. No knob needs
+setting: `dedodge.BUDGET_S`, `MAX_CHECKS`, `MAX_EXCLUDES`, `MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M` and
+`TOP_TIE_RULE` (the top of the slider's tie step, pending the owner) are code constants.

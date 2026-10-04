@@ -17,13 +17,17 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { WHENS, type Dials, type When } from "./lib/dials.ts";
-import { panelView, type SliderView } from "./lib/dialsPanel.ts";
+import { loopView } from "./lib/loop.ts";
+import type { LonLat } from "./lib/geo.ts";
+import { panelView, parseTarget, parseWeight, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 
 interface Props {
   preset: PresetId;
   dials: Dials;
   onCommit: (dials: Dials) => void;
+  /** The ride's points: a ride that ends where it starts is a loop (OWNER-DECISIONS 266). */
+  points?: readonly LonLat[];
   /** What "Now" came to on the last route: one of the three settings. */
   resolvedWhen?: When | null;
 }
@@ -79,11 +83,93 @@ function Slider(props: {
   );
 }
 
+/**
+ * An optional number the rider types, in US units (OWNER-DECISIONS 256, 264): it plans
+ * when they leave the field or press Enter, never on each key, so a screen reader
+ * hears one route. Empty is the default. An entry the planner will not take is said
+ * in words under the field, and the field is marked invalid, not only coloured.
+ */
+function NumberDial(props: {
+  label: string;
+  value: string;
+  rule: string;
+  hint: string;
+  parse: (text: string) => number | undefined | null;
+  onCommit: (value: number | undefined) => void;
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const ruleId = `${id}-rule`;
+  const [text, setText] = useState(props.value);
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    setText(props.value);
+    setBad(false);
+  }, [props.value]);
+  const commit = () => {
+    const parsed = props.parse(text);
+    if (parsed === null) {
+      setBad(true);
+      return;
+    }
+    setBad(false);
+    if (props.parse(props.value) !== parsed) props.onCommit(parsed);
+  };
+  return (
+    <div className="dial">
+      <label htmlFor={id} className="dial-label">
+        <span>{props.label}</span>
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        value={text}
+        placeholder="Default"
+        aria-describedby={bad ? `${hintId} ${ruleId}` : hintId}
+        aria-invalid={bad || undefined}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          }
+        }}
+      />
+      <p className="hint" id={hintId}>
+        {props.hint}
+      </p>
+      {bad && (
+        <p className="notice" id={ruleId}>
+          {props.rule}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function whenLabel(when: When): string {
   return WHENS.find((option) => option.id === when)?.label ?? when;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
+/** The dials with one optional number set, or taken off the object where it is empty. */
+function withField(dials: Dials, key: "targetDistanceM" | "systemWeightKg", value: number | undefined): Dials {
+  const next: Dials = { ...dials };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  return next;
+}
+
+/** The dials with the loop on, or off (taken off the object). */
+function withLoop(dials: Dials, on: boolean): Dials {
+  const next: Dials = { ...dials };
+  if (on) next.loop = true;
+  else delete next.loop;
+  return next;
+}
+
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -100,6 +186,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
     else keys.current.now(commitDraft);
   };
   const view = panelView(preset, dials, draft);
+  const loop = loopView(preset, dials.loop, points);
+  const loopHintId = useId();
   return (
     <section className="dials" aria-labelledby="dials-heading">
       <h2 id="dials-heading">Adjust this ride</h2>
@@ -118,6 +206,23 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike&apos;s motor
           rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.
         </p>
+      )}
+      {loop && (
+        <div className="dial">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={loop.checked}
+              disabled={loop.implied}
+              aria-describedby={loopHintId}
+              onChange={(event) => onCommit(withLoop(dials, event.target.checked))}
+            />
+            {loop.label}
+          </label>
+          <p className="hint" id={loopHintId}>
+            {loop.hint}
+          </p>
+        </div>
       )}
       <label className="toggle">
         <input
@@ -139,6 +244,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           {view.warning}
         </p>
       )}
+      {view.target && (
+        <NumberDial
+          label={view.target.label}
+          value={view.target.value}
+          rule={view.target.rule}
+          hint={view.target.hint}
+          parse={parseTarget}
+          onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
+        />
+      )}
       <Slider
         label="Hills"
         view={view.hills}
@@ -146,6 +261,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
+      {view.weight && (
+        <NumberDial
+          label={view.weight.label}
+          value={view.weight.value}
+          rule={view.weight.rule}
+          hint={view.weight.hint}
+          parse={parseWeight}
+          onCommit={(systemWeightKg) => onCommit(withField(dials, "systemWeightKg", systemWeightKg))}
+        />
+      )}
       <fieldset className="when">
         <legend>When</legend>
         <label className="toggle">
