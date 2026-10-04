@@ -195,3 +195,15 @@ test("the route's unpaved sections carry the dotted mark: a layer over them in t
   setRouteSections(map as never, null, false);
   assert.equal(paints[`${ROUTE_UNPAVED_LAYER_ID}.line-opacity`], 0);
 });
+
+test("with the accessibility switch on, the calm unpaved casings are pushed to black as the paved ones are, and the busy ones kept (292)", () => {
+  for (const palette of PALETTE_NAMES) {
+    const plain = tiersFor(palette) as Tier[];
+    const strong = tiersFor(palette, true) as Tier[];
+    strong.forEach((tier, i) => {
+      if (tier.tier < 3) assert.equal(tier.unpavedCasing, "#000000", `${palette} ${tier.short}: the dark brown casing goes black`);
+      else assert.equal(tier.unpavedCasing, plain[i].unpavedCasing, `${palette} ${tier.short}: a busy casing is kept, its gaps no harsher`);
+      assert.equal(tier.unpavedColor, plain[i].unpavedColor, "the brown itself is the same");
+    });
+  }
+});

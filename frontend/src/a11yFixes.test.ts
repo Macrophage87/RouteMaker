@@ -230,3 +230,8 @@ test("a closed group's list is really hidden: [hidden] wins over the grid", () =
   assert.match(declared(".junction-members[hidden]"), /display:\s*none/);
   assert.match(declared(".junction-members"), /display:\s*grid/);
 });
+
+test("the toggle rows (loop, avoid gravel, the ride times) are 24 px targets, not 21 (the release a11y review's N7)", () => {
+  const rule = css.match(/\n\.toggle \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(rule, /min-height: 24px;/);
+});
