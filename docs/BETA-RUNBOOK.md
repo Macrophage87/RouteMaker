@@ -58,6 +58,10 @@ export RM_REPO_URL=<the repository URL the owner gave you>
 export RM_DATA=/data/routemaker
 export RM_SRC=/data/routemaker-src
 export RM_INCOMING=/data/routemaker-incoming
+# The guard every creating step uses: true only if NONE of the paths exists yet, naming each that
+# does. Every command that creates a RouteMaker path is written `rm_absent <paths> && <command>`
+# on one line, so an existing path stops that command (a `for` loop's status alone would not).
+rm_absent() { ok=1; for p in "$@"; do [ ! -e "$p" ] && [ ! -L "$p" ] || { echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; }; done; [ "$ok" = 1 ]; }
 ```
 
 ## 1. Prerequisites and checks (changes nothing)
@@ -70,13 +74,19 @@ docker version --format '{{.Server.Version}}'; docker compose version   # Docker
 ss -ltn | awk '{print $4}' | grep -E ':(8087)$' || echo "port 8087 is free"
 nginx -v; sudo nginx -T 2>/dev/null | grep -E '^\s*(include|user) ' | head   # which directory does nginx include? which user?
 command -v git rsync openssl curl python3 sha256sum
-python3 -c 'import yaml' && echo "pyyaml ok"      # only for the pre-flight checker; apt install python3-yaml if you want it
+sudo docker compose version                      # the compose plugin must also work under sudo (receive-data.sh files/db run with sudo)
+python3 -c 'import yaml' && echo "pyyaml ok"      # the pre-flight checker needs it; if missing, see below (no system package is installed)
 getent hosts routemaker.cieply.com               # must resolve to THIS server's public address
 sudo nginx -T 2>/dev/null | grep -c 'listen \[::\]'   # 0: the other sites do not listen on IPv6; render with --no-ipv6 in 9c
-for p in "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-state" "$HOME/routemaker-beta-passwords.txt" \
-         /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd; do
-  [ ! -e "$p" ] || echo "EXISTS: $p"          # any EXISTS line is a stop: ask the owner before going on
-done
+rm_absent "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-state" "$HOME/routemaker-beta-passwords.txt" "$HOME/routemaker-beta-venv" /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd && echo "all absent"   # any EXISTS line is a stop
+```
+
+If `import yaml` failed, give the checker a private virtualenv rather than a system package (the
+runbook does not change the host's packages; if `python3 -m venv` itself is missing, ask the owner):
+
+```sh
+rm_absent "$HOME/routemaker-beta-venv" && python3 -m venv "$HOME/routemaker-beta-venv" && "$HOME/routemaker-beta-venv/bin/pip" install --quiet pyyaml
+export RM_PY="$HOME/routemaker-beta-venv/bin/python"      # step 4 runs the checker with "${RM_PY:-python3}"
 ```
 
 **TLS discovery (read-only, OWNER-DECISIONS 367.1).** Find out which certificates exist and which
@@ -109,7 +119,10 @@ Decide and note down:
 - **Where nginx reads site files from.** On Ubuntu this is normally `/etc/nginx/sites-enabled/*`
   (files live in `sites-available/`, linked) or `/etc/nginx/conf.d/*.conf`. Use whichever the
   `include` lines above show and whichever the other sites already use. `$NGINX_SITE` below is the
-  full path of the one file you will add.
+  full path of the one file you will add, and `$NGINX_LINK` the `sites-enabled` link to it if that
+  is the host's pattern (otherwise set `NGINX_LINK="$NGINX_SITE"`, and no link is made), for example
+  `export NGINX_SITE=/etc/nginx/sites-available/routemaker-beta.conf NGINX_LINK=/etc/nginx/sites-enabled/routemaker-beta.conf`.
+  Then `rm_absent "$NGINX_SITE" "$NGINX_LINK" && echo "site file absent"`; an EXISTS line is a stop.
 - **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
@@ -118,21 +131,24 @@ configuration, so the copies go in a private directory (mode 700, files 600), no
 
 ```sh
 export RM_STATE="$HOME/routemaker-beta-state"
-[ ! -e "$RM_STATE" ] && mkdir -m 700 "$RM_STATE"
-umask 077                                       # for this shell: every file below is 600
-sudo nginx -T > "$RM_STATE/nginx-before.txt" 2>&1
-docker ps --format '{{.Names}} {{.Status}}' > "$RM_STATE/docker-before.txt"
-# a status line for each of the host's other sites (the server_name values in nginx-before.txt):
-grep -hE '^\s*server_name ' "$RM_STATE/nginx-before.txt" | tr -d ';' | awk '{for(i=2;i<=NF;i++)print $i}' | sort -u > "$RM_STATE/sites-before.txt"
-while read -r s; do printf '%s %s\n' "$s" "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$s/" || echo fail)"; done < "$RM_STATE/sites-before.txt" > "$RM_STATE/sites-before-status.txt"
+rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"
+( umask 077                                     # inside this subshell only: these files are 600
+  sudo nginx -T > "$RM_STATE/nginx-before.txt" 2>&1
+  docker ps --format '{{.Names}} {{.Status}}' > "$RM_STATE/docker-before.txt"
+  # a status line for each of the host's other sites (the server_name values in nginx-before.txt):
+  grep -hE '^\s*server_name ' "$RM_STATE/nginx-before.txt" | tr -d ';' | awk '{for(i=2;i<=NF;i++)print $i}' | sort -u > "$RM_STATE/sites-before.txt"
+  while read -r s; do printf '%s %s\n' "$s" "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$s/" || echo fail)"; done < "$RM_STATE/sites-before.txt" > "$RM_STATE/sites-before-status.txt"
+)
 cat "$RM_STATE/sites-before-status.txt"
 ```
+
+The `umask 077` stays inside the parentheses on purpose: left on for the shell, it would make the
+checkout in step 2 and `$RM_DATA` in step 5 unreadable to the containers and to nginx.
 
 ## 2. Get the code at the exact sha (adds `$RM_SRC`)
 
 ```sh
-for p in "$RM_SRC" "$RM_INCOMING"; do [ ! -e "$p" ] || { echo "$p exists: stop and ask the owner"; false; }; done &&
-sudo install -d -o "$(id -un)" -g "$(id -gn)" "$RM_SRC" "$RM_INCOMING"     # only ever creates: the check above saw neither
+rm_absent "$RM_SRC" "$RM_INCOMING" && sudo install -d -o "$(id -un)" -g "$(id -gn)" "$RM_SRC" "$RM_INCOMING"   # only ever creates
 git clone "$RM_REPO_URL" "$RM_SRC" && cd "$RM_SRC" && git checkout --detach "$RM_SHA"
 git rev-parse HEAD            # must print exactly $RM_SHA
 git status --short            # must print nothing
@@ -174,8 +190,8 @@ Undo: `rm .env` (only before the database exists; after, keep it).
 
 ```sh
 cd "$RM_SRC"
-python3 scripts/check_beta_compose.py --render            # the overlay itself, with dummy values
-python3 scripts/check_beta_compose.py --env-file .env      # THE GATE: the overlay with this server's .env
+"${RM_PY:-python3}" scripts/check_beta_compose.py --render            # the overlay itself, with dummy values
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # THE GATE: the overlay with this server's .env
 scripts/beta/beta-compose.sh config --services            # exactly: api migrate photon postgis valhalla-ebike valhalla-no-trail valhalla-standard valhalla-weekend worker
 ```
 
@@ -194,8 +210,7 @@ plus capped direct buffers inside its cap; the weekly rebuild paused; and in `.e
 
 ```sh
 cd "$RM_SRC"
-[ ! -e "$RM_DATA" ] || { echo "$RM_DATA exists: stop and ask the owner"; false; }
-sudo sh scripts/prepare_data_root.sh --env-file ./.env
+rm_absent "$RM_DATA" && sudo sh scripts/prepare_data_root.sh --env-file ./.env
 ```
 
 `/data` itself already exists (step 1) and is not touched: no `install -d`, `chown` or `chmod` on
@@ -211,6 +226,12 @@ scripts/beta/beta-compose.sh build api                 # the worker and migrate 
 scripts/beta/beta-compose.sh pull postgis photon valhalla-standard
 docker image ls | grep -E 'routemaker-api|postgis|photon-docker|valhalla'
 ```
+
+The postgis image is pinned by digest in `compose.beta.yaml` (the build home runs, PostgreSQL 16.4, PostGIS 3.4.3):
+a pull by digest fetches exactly that image and does **not** move the shared `postgis/postgis:16-3.4` tag that
+another stack on the host may use. Check first which images other stacks run:
+`docker ps --format '{{.Image}}' | grep -E 'postgis|photon|valhalla'`. The photon and valhalla tags are fixed
+release versions (`2.4.0`, `3.5.1`); if another stack uses the same tag, the pull fetches the same release.
 
 The build needs network access (pip) and a few minutes. Images land in Docker's storage on `/data`.
 **The build is not capped:** BuildKit runs inside the Docker daemon, outside every container
@@ -357,10 +378,9 @@ config at issue and at every renewal), and not the installer form (it would rewr
 
 ```sh
 cd "$RM_SRC"
-[ ! -e /var/www/routemaker-acme ] && [ ! -e "$NGINX_SITE" ] || { echo "the ACME root or the site file exists: stop"; false; }
-sudo install -d /var/www/routemaker-acme                                       # new: the check above saw nothing there
+rm_absent /var/www/routemaker-acme "$NGINX_SITE" "$NGINX_LINK" && sudo install -d /var/www/routemaker-acme
 scripts/beta/render-nginx.sh --stage acme [--no-ipv6] --out "$RM_STATE/routemaker-beta.acme.conf"
-sudo install -m 644 "$RM_STATE/routemaker-beta.acme.conf" "$NGINX_SITE"         # sites-available: also link into sites-enabled if that is the host's pattern
+rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.acme.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload
 sudo certbot certonly --webroot -w /var/www/routemaker-acme -d routemaker.cieply.com
 sudo ls /etc/letsencrypt/live/routemaker.cieply.com/        # fullchain.pem and privkey.pem
@@ -386,10 +406,12 @@ cd "$RM_SRC"
 scripts/beta/render-nginx.sh --stage full --api-port 8087 \
     --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full.conf"
-[ -e "$NGINX_SITE" ] && echo "replacing the stage-1 file" || echo "new file"     # option B: it must say "new file"; anything else, stop
-sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"   # replaces the stage-1 file, or adds the file if you skipped stage 1
-sudo nginx -t                                                           # must say "syntax is ok" and "test is successful"
-sudo nginx -s reload
+# exactly one of the next two lines acts:
+# option A: replace the stage-1 file, only if it is the one this runbook installed in 9b (its link already points at it)
+grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)' "$NGINX_SITE" 2>/dev/null && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"
+# option B: stage 1 was skipped, so this is a new file and must not exist yet
+rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
+sudo nginx -t && sudo nginx -s reload                                   # -t must say "syntax is ok" and "test is successful"
 ```
 
 `--no-ipv6` drops the `listen [::]:80` and `listen [::]:443` lines: give it when step 1 found no
@@ -461,8 +483,12 @@ scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhall
 
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
-`restore-dump` takes a `pre-rollback` snapshot of what is there first, and restores with the same
-table-of-contents handling as `db`:
+`restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
+**fresh** database in one transaction (a failure discards it and leaves the current database
+untouched), and swaps it in by rename. The database as it was stays beside it as
+`routemaker_before_<time>`; once the beta works, drop it
+(`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
+free space on `/data` for a second copy of the database (about 1.5 GB):
 
 ```sh
 scripts/beta/beta-compose.sh stop api worker
@@ -485,7 +511,8 @@ sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
 ```
 
-Anything the beta's users saved after the update is lost by this (the `pre-rollback` snapshot `restore-dump`
+Because the dump goes into a fresh database, tables the newer release added do not survive into
+the restored one (a restore over the current database could not drop them). Anything the beta's users saved after the update is lost by this (the `pre-rollback` snapshot `restore-dump`
 takes first still has it). (If the old image was removed, `scripts/beta/beta-compose.sh build api` rebuilds it
 from that checkout.)
 
@@ -522,7 +549,9 @@ The tooling is the same each time. Ask the owner which kind it is.
 3. If the bundle has a db part, use the **update path**, never `--replace-db`: it restores only the `live` schema
    and the `override` and `stress_tile_cache` data, in one transaction, after a `pre-update` safety dump, and leaves
    the beta's own accounts, sessions and audit log alone (`--replace-db` would delete them; it refuses while any
-   exist). Stop the api and worker first so nothing writes during it:
+   exist). **It resets `override` to home's**: an override added or edited on the beta is lost (it is in the
+   `pre-update` safety dump). Make override changes at home, or ask the owner before updating if any were made on
+   the beta. Stop the api and worker first so nothing writes during it:
 
    ```sh
    scripts/beta/beta-compose.sh stop api worker
@@ -533,25 +562,31 @@ The tooling is the same each time. Ask the owner which kind it is.
    (a router keeps the old archive mapped until restarted).
 5. `scripts/beta/smoke-test.sh --local`, then `--public`.
 
-**A new release sha** (code changes):
+**A new release sha** (code changes). The order matters: the database is snapshotted **before**
+anything can run `migrate` (rollback C restores that snapshot), and the app starts once, at the end.
 
 1. Owner gives the new sha and a new bundle if the data changed.
-2. `cd "$RM_SRC" && git fetch && git checkout --detach <new sha>`.
-3. `scripts/beta/make-env.sh` will not overwrite `.env`; set the image tag by hand:
-   `sed -i "s/^TAG=.*/TAG=$(git rev-parse --short=12 HEAD)/" .env`.
-4. `python3 scripts/check_beta_compose.py --render` (a release may change the compose file; the checker is the gate).
-5. `scripts/beta/beta-compose.sh build api` (or load the image built at home, step 6), then, if the data changed, the
-   data steps above. Then, **before anything migrates**, stop the app and snapshot the database, which is what
-   rollback C restores if the release has to be undone:
+2. Stop the app and snapshot the database, still on the old release:
 
    ```sh
+   cd "$RM_SRC"
    scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --env-file .env snapshot-db --label release   # prints $RM_DATA/backups/pre-release-<time>.dump
    ```
-6. `scripts/beta/beta-compose.sh up -d api worker` (recreates them; `migrate` runs first), then the migrations check and
-   `collectstatic` from step 8 (`exec -T api ...`), and the smoke tests. Routers and Photon restart only if their image or command changed
-   in the release (`beta-compose.sh up -d <name>` recreates exactly the ones that did).
-7. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
+3. `git fetch && git checkout --detach <new sha>`. `scripts/beta/make-env.sh` will not overwrite `.env`; set the
+   image tag by hand: `sed -i "s/^TAG=.*/TAG=$(git rev-parse --short=12 HEAD)/" .env`.
+4. `"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env` (a release may change the compose file; the
+   checker is the gate).
+5. `scripts/beta/beta-compose.sh build api` (or load the image built at home, step 6).
+6. Migrate, in the small migrate container (the api stays stopped):
+   `scripts/beta/beta-compose.sh run --rm --no-deps migrate ./manage.py migrate --noinput`.
+7. If the data changed: the "New data only" steps 2 and 3 (`verify`, `files`, `db --update-data`) **without** their
+   final `up -d api worker` line; the app is started once, in the next step.
+8. `scripts/beta/beta-compose.sh up -d api worker` (recreates them on the new image; `migrate` finds nothing to do),
+   then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), and the smoke tests. Routers and
+   Photon restart only if their image or command changed in the release (`beta-compose.sh up -d <name>` recreates
+   exactly the ones that did).
+9. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
 
 **Front end only:** ship with `--without tiles --without elevation --without basemap --without photon --without db`,
 then `sudo ... files`. Nothing restarts; `index.html` is read per request.
@@ -564,6 +599,18 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   beside two place searches and one stress-tile draw, with one worker always free for `/healthz`. A third person's plan waits
   for a slot, up to about 50 seconds. That is a consequence of the memory budget, not a fault. `compose.beta.yaml` explains
   the arithmetic.
+- **Overrides:** the beta's `override` table comes from home. `db --update-data` replaces it with home's, so an
+  override made on the beta does not survive a data update (the `pre-update` dump keeps it). Curate overrides at home.
+- **Photon's memory margin (review r1, N8):** heap 896M + direct buffers 192M + about 192M of other native memory is
+  1280M of the 1300M cap; the 192M is an estimate. On the first smoke run, report photon's anonymous memory
+  (`docker exec <photon container> sh -c 'cat /sys/fs/cgroup/memory.current; grep -E "^(anon|file) " /sys/fs/cgroup/memory.stat'`;
+  `anon` is what counts, `file` is the reclaimable index cache), and watch `logs photon` for
+  `OutOfMemoryError: Direct buffer memory`, which may be thrown inside Java code without the JVM exiting.
+- **CPU shares are per container (review r1, N9):** each RouteMaker container weighs about 20 against 100 for a
+  container or service that sets nothing, but there are nine of them, so when several are busy at once (two plans
+  hitting the api, the routers and postgis) RouteMaker's total weight can reach about 180. Other sites still get a
+  guaranteed share; "they win" holds per container, not in aggregate. If the owner wants a firmer yield, lower
+  `cpu_shares` to 256 (weight about 10) in `compose.beta.yaml`.
 - **Accounts:** the beta has its own, none from home (OWNER-DECISIONS 367.3). Data updates (`db --update-data`) never touch
   them; only `db --replace-db --delete-beta-accounts` or rollback B/C to a dump from before they existed removes them.
 - **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without sessions or

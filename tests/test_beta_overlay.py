@@ -983,6 +983,12 @@ def wrapper(env: dict, *args: str) -> subprocess.CompletedProcess:
         ["up", "-d", "--attach=caddy", "api"],
         ["run", "-p", "80:8000", "api"],
         ["rm", "-v"],
+        # review r1, N5: short-option clusters and the hidden --workdir alias
+        ["up", "-dt", "5"],
+        ["rm", "-fsv"],
+        ["down", "-tv", "5"],
+        ["--workdir", "/tmp", "up", "-d"],
+        ["--workdir=/tmp", "ps"],
     ],
     ids=lambda a: " ".join(a),
 )
@@ -1004,6 +1010,7 @@ def test_the_wrapper_refuses_each_bypass_and_never_calls_docker(stub_docker, arg
         ["--profile", "offroad", "up", "-d", "valhalla-offroad"],
         ["run", "--rm", "--no-deps", "migrate", "./manage.py", "migrate", "--check"],
         ["exec", "-T", "api", "./manage.py", "collectstatic", "--noinput"],
+        ["exec", "-T", "api", "ls", "-la", "/data"],
         ["logs", "--tail", "30", "migrate"],
         ["ps", "postgis", "--format", "{{.Health}}"],
         ["stop", "api", "worker"],
@@ -1033,6 +1040,10 @@ def test_the_wrapper_refuses_compose_settings_from_the_environment_or_dot_env(
     env, calls = stub_docker
     done = wrapper({**env, var: "x"}, "ps")
     assert done.returncode == 2 and var in done.stderr and not calls.exists()
+    colon = tmp_path / "colon.env"
+    colon.write_text("COMPOSE_PROJECT_NAME=routemaker-beta\nCOMPOSE_PROJECT_NAME: routemaker\n")
+    done = wrapper({**env, var: "", "BETA_ENV_FILE": str(colon)}, "ps")
+    assert done.returncode == 2 and "KEY: value" in done.stderr and not calls.exists()
     if var != "COMPOSE_PROJECT_NAME":
         dot_env = tmp_path / "with.env"
         dot_env.write_text(f"COMPOSE_PROJECT_NAME=routemaker-beta\n{var}=not-in-beta\n")
@@ -1079,6 +1090,15 @@ def test_the_env_file_mode_refuses_a_bad_server_env(tmp_path: Path, overrides, e
     assert done.returncode != 0, (overrides, done.stdout)
     assert expect in done.stdout + done.stderr
     assert "SECRET-MARKER" not in done.stdout + done.stderr
+
+
+@needs_docker
+def test_the_env_file_mode_checks_the_rendered_project_name(tmp_path: Path) -> None:
+    """The last assignment wins in compose's reader; the gate checks what compose renders."""
+    path = server_env(tmp_path)
+    path.write_text(path.read_text() + "COMPOSE_PROJECT_NAME=routemaker\n")
+    done = checker("--env-file", str(path))
+    assert done.returncode == 1 and "rendered project name is 'routemaker'" in done.stderr
 
 
 def test_the_checkers_pool_arithmetic_mirrors_settings() -> None:
@@ -1220,15 +1240,147 @@ def runbook_commands() -> list[str]:
     return [line.strip() for block in blocks for line in block.splitlines()]
 
 
+def runbook_blocks() -> list[list[str]]:
+    return [
+        [line.strip() for line in block.splitlines()]
+        for block in re.findall(r"```sh\n(.*?)```", RUNBOOK, re.S)
+    ]
+
+
+def guard_function() -> str:
+    return re.search(r"^rm_absent\(\) \{.*\}$", RUNBOOK, re.M).group(0)
+
+
+# Commands that create a RouteMaker path; each must be gated on the same line (review r1, N1).
+CREATING = ("install -d", "prepare_data_root.sh", "mkdir -m 700", "python3 -m venv", 'ln -s "')
+
+
+def gated_lines() -> list[str]:
+    out = []
+    for line in runbook_commands():
+        if line.startswith("#"):
+            continue
+        if any(c in line for c in CREATING) or (
+            "install -m 644" in line and '"$NGINX_SITE"' in line
+        ):
+            out.append(line)
+    return out
+
+
 def test_the_runbook_never_reowns_or_remodes_an_existing_directory() -> None:
     for line in runbook_commands():
         if "install -d" in line:
             assert "dirname" not in line and not re.search(r"/data(\s|$)", line), line
         assert "chmod" not in line and "chown" not in line, line
-    guards = ['[ ! -e "$p" ]', '[ ! -e "$RM_DATA" ]', "[ ! -e /var/www/routemaker-acme ]"]
-    for guard in guards:
-        assert guard in RUNBOOK, guard
-    assert 'for p in "$RM_SRC" "$RM_INCOMING"; do [ ! -e "$p" ]' in RUNBOOK
+
+
+def test_every_creating_command_is_chained_behind_its_guard() -> None:
+    lines = gated_lines()
+    assert len(lines) >= 8, lines
+    for line in lines:
+        guarded = line.startswith("rm_absent ") or line.startswith(
+            "grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)'"
+        )
+        assert guarded and " && " in line, line
+    for path in ('"$RM_SRC"', '"$RM_INCOMING"', '"$RM_DATA"', '"$RM_STATE"', '"$NGINX_LINK"'):
+        assert any(line.startswith("rm_absent ") and path in line for line in lines), path
+
+
+@needs_sh
+@pytest.mark.parametrize("present", [True, False], ids=["a path exists", "all absent"])
+def test_a_failed_guard_stops_the_command_it_gates(tmp_path: Path, present: bool) -> None:
+    """Each gated runbook line, run for real in bash with stub sudo/mkdir/python3/ln: when a
+    guarded path exists, the command after the guard must not run."""
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    log = tmp_path / "ran"
+    for name in ("sudo", "mkdir", "python3", "ln", "install"):
+        stub = stubs / name
+        stub.write_text(f'#!/bin/sh\necho "{name} $*" >> {log}\n')
+        stub.chmod(0o755)
+    where = tmp_path / ("there" if present else "nowhere")
+    if present:
+        where.mkdir()
+    home = tmp_path / "home"
+    (home / "routemaker-beta-venv").mkdir(parents=True) if present else home.mkdir()
+    paths = {
+        k: str(where / k.lower())
+        for k in ("RM_SRC", "RM_INCOMING", "RM_DATA", "RM_STATE", "NGINX_SITE", "NGINX_LINK")
+    }
+    if present:
+        for p in paths.values():
+            Path(p).mkdir()
+    env = {"PATH": f"{stubs}:{os.environ['PATH']}", "HOME": str(home), **paths}
+    for line in gated_lines():
+        if (
+            "/var/www/routemaker-acme" in line
+            and not present
+            and Path("/var/www/routemaker-acme").exists()
+        ):
+            continue
+        log.unlink(missing_ok=True)
+        done = subprocess.run(
+            ["bash", "-c", f"{guard_function()}\n{line}"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if present:
+            assert not log.exists(), (line, log.read_text())
+            assert done.returncode != 0, line
+        elif line.startswith("rm_absent "):
+            assert log.exists(), (line, done.stderr)
+
+
+def test_no_runbook_umask_outlives_its_subshell() -> None:
+    """A bare `umask 077` stays set for the rest of the install (review r1, N2)."""
+    seen = 0
+    for block in runbook_blocks():
+        depth = 0
+        for line in block:
+            code = line.split("  #")[0]
+            if re.search(r"\bumask\b", code) and not code.startswith("#"):
+                seen += 1
+                assert depth > 0 or code.startswith("("), line
+            depth += code.count("(") - code.count(")")
+        assert depth == 0, block
+    assert seen >= 2
+
+
+def test_the_runbook_snapshots_before_a_release_can_migrate_and_starts_the_app_once() -> None:
+    sect = RUNBOOK[RUNBOOK.index("**A new release sha**") : RUNBOOK.index("**Front end only:**")]
+    stop = sect.index("beta-compose.sh stop api worker")
+    snap = sect.index("snapshot-db --label release")
+    migrate = sect.index("run --rm --no-deps migrate ./manage.py migrate")
+    start = sect.index("`scripts/beta/beta-compose.sh up -d api worker`")
+    assert stop < snap < migrate < start
+    assert sect.index("git checkout --detach <new sha>") > snap
+    assert "**without** their" in sect
+    rollback_c = RUNBOOK[RUNBOOK.index("**C. Go back to the previous release:**") :]
+    assert "restore-dump" in rollback_c.split("**D.")[0]
+
+
+def test_restore_dump_restores_into_a_fresh_database_and_swaps_it_in() -> None:
+    text = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
+    block = text[text.index('if [ "$command_name" = restore-dump ]; then') :]
+    block = block[: block.index("\nfi\n")]
+    assert "--single-transaction --exit-on-error" in block and '-d "$fresh"' in block
+    assert "--clean --if-exists" not in block and "restore_whole" not in block
+    assert block.index("create database") < block.index("pg_restore -U") < block.index("rename to")
+    assert "psql_on postgres -1 -c" in block  # both renames in one transaction
+
+
+def test_the_runbook_documents_the_override_reset_and_installs_no_system_package() -> None:
+    assert "resets `override` to home's" in RUNBOOK
+    assert "apt install" not in RUNBOOK
+    assert "**CPU shares are per container" in RUNBOOK and "Photon's memory margin" in RUNBOOK
+
+
+def test_postgis_is_pinned_by_digest_so_a_pull_cannot_move_the_shared_tag() -> None:
+    image = OVERLAY["services"]["postgis"]["image"]
+    assert image.startswith(BASE["services"]["postgis"]["image"] + "@sha256:"), image
 
 
 def test_the_runbook_runs_no_second_api_container_and_no_bare_compose() -> None:
@@ -1252,13 +1404,6 @@ def test_the_runbook_keeps_nginx_copies_private_and_passwords_out_of_the_transcr
     assert "/tmp/nginx" not in RUNBOOK
     assert 'mkdir -m 700 "$RM_STATE"' in RUNBOOK and "umask 077" in RUNBOOK
     assert "BETA_PASSWORD=<" not in RUNBOOK and "--passwords-file" in RUNBOOK
-
-
-def test_the_runbook_snapshots_before_a_release_and_rollback_c_restores_it() -> None:
-    release = RUNBOOK.index("snapshot-db --label release")
-    assert release < RUNBOOK.index("6. `scripts/beta/beta-compose.sh up -d api worker`")
-    rollback_c = RUNBOOK[RUNBOOK.index("**C. Go back to the previous release:**") :]
-    assert "restore-dump" in rollback_c.split("**D.")[0]
 
 
 # --- small items (S12) ---

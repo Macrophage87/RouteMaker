@@ -32,7 +32,9 @@
 #            The runbook takes one before every release update (which may migrate forward).
 #   restore-dump FILE
 #            put back a dump made by snapshot-db or by a safety dump (rollback). A pre-rollback
-#            snapshot is taken first. Stop the api and worker before it.
+#            snapshot is taken first; the dump is restored into a fresh database in one
+#            transaction and swapped in by rename, and the current database is kept beside it
+#            as <db>_before_<utc> until the owner drops it. Stop the api and worker before it.
 #
 # Options:
 #   --bundle DIR             the directory ship-data.sh sent to (verify, files, db)
@@ -333,9 +335,52 @@ if [ "$command_name" = restore-dump ]; then
 	[ -n "$dump_file" ] && [ -r "$dump_file" ] || die "restore-dump needs a readable dump file"
 	app_is_down
 	snapshot rollback >/dev/null
-	note "restoring $dump_file over the current database (--clean)"
-	restore_whole "$dump_file" 1
-	note "restored. Start the stack on the release this dump belongs to: scripts/beta/beta-compose.sh up -d api worker"
+	# Into a FRESH database, then swapped in by rename (review r1, N4). A --clean restore over the
+	# live database cannot undo schema growth: a table a newer release added (often with a foreign
+	# key to a restored table) blocks the DROP and survives the restore, and the next forward
+	# migrate then fails on it. The fresh database has exactly the dump's schema; the current one
+	# is kept, renamed, until the owner drops it.
+	stamp=$(date -u +%Y%m%d%H%M%S)
+	fresh="${pgdatabase}_restore"
+	kept="${pgdatabase}_before_${stamp}"
+	psql_on() { bc exec -T postgis psql -U "$pguser" -d "$1" -v ON_ERROR_STOP=1 -At "${@:2}" </dev/null; }
+	psql_on postgres -c "drop database if exists \"$fresh\"" >/dev/null
+	template=template0
+	[ "$(psql_on postgres -c "select count(*) from pg_database where datname = 'template_postgis'")" = 1 ] && template=template_postgis
+	psql_on postgres -c "create database \"$fresh\" template $template" >/dev/null
+	# The same extensions as the current database (pg_dump -n leaves extensions out of the dump).
+	for ext in $(psql_q "select extname from pg_extension where extname <> 'plpgsql' order by oid"); do
+		case "$ext" in *[!a-z0-9_]*) die "odd extension name '$ext'" ;; esac
+		psql_on "$fresh" -c "create extension if not exists \"$ext\" cascade" >/dev/null
+	done
+	note "restoring $dump_file into a fresh database ($fresh), in one transaction"
+	toc=$(mktemp)
+	bc exec -T postgis pg_restore --list <"$dump_file" >"$toc" || die "could not read the table of contents of $dump_file"
+	sed -i '/ SCHEMA - public /d' "$toc"
+	bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$toc"
+	rm -f "$toc"
+	if ! bc exec -T postgis pg_restore -U "$pguser" -d "$fresh" --no-owner --no-privileges --single-transaction --exit-on-error -L /tmp/beta.use <"$dump_file"; then
+		bc exec -T postgis rm -f /tmp/beta.use </dev/null
+		psql_on postgres -c "drop database if exists \"$fresh\"" >/dev/null
+		die "the restore failed (above) and was discarded; the current database is untouched"
+	fi
+	bc exec -T postgis rm -f /tmp/beta.use </dev/null
+	[ "$(psql_on "$fresh" -c "select to_regclass('public.django_migrations') is not null")" = t ] ||
+		die "the restored database ($fresh) has no django_migrations; it was left beside the current one, unused"
+	psql_on "$fresh" -c "analyze" >/dev/null
+	note "swapping it in: $pgdatabase becomes $kept, $fresh becomes $pgdatabase"
+	# No session may be connected to either database while it is renamed: end them, wait until
+	# they are gone, then both renames in one transaction (both happen, or neither).
+	busy="select count(*) from pg_stat_activity where datname in ('$pgdatabase', '$fresh') and pid <> pg_backend_pid()"
+	for _ in $(seq 1 10); do
+		psql_on postgres -c "select count(pg_terminate_backend(pid)) from pg_stat_activity where datname in ('$pgdatabase', '$fresh') and pid <> pg_backend_pid()" >/dev/null
+		[ "$(psql_on postgres -c "$busy")" = 0 ] && break
+		sleep 1
+	done
+	psql_on postgres -1 -c "alter database \"$pgdatabase\" rename to \"$kept\"" -c "alter database \"$fresh\" rename to \"$pgdatabase\"" >/dev/null ||
+		die "the swap failed (above) and was rolled back: $pgdatabase is unchanged, and the restored copy is $fresh"
+	note "restored. The database as it was is kept as $kept; once the beta works, drop it: scripts/beta/beta-compose.sh exec -T postgis dropdb -U $pguser $kept"
+	note "Start the stack on the release this dump belongs to: scripts/beta/beta-compose.sh up -d api worker"
 	exit 0
 fi
 

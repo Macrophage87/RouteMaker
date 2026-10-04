@@ -589,6 +589,13 @@ def main(argv: list[str]) -> int:
         problems += check_env_file(values)
         data_root = values.get("DATA_ROOT") or None
         compose = render_env_file(env_file, offroad=offroad)
+        # What compose will actually use, whatever form the .env line took (KEY: value, a
+        # byte-order mark, a later duplicate): the line parser above can be fooled, this cannot.
+        if compose.get("name") != "routemaker-beta":
+            problems.append(
+                f"the rendered project name is {compose.get('name')!r}, not 'routemaker-beta' "
+                "(COMPOSE_PROJECT_NAME in .env); another project's containers could be touched"
+            )
     elif "--render" in argv:
         compose = render(offroad=offroad)
         data_root = DUMMY_ENV["DATA_ROOT"]

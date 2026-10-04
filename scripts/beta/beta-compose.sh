@@ -18,7 +18,8 @@
 #     Option values are skipped properly, so `up -d --pull never` is a bare up, not an up
 #     of a service called "never".
 #   * -p/--project-name (the project is COMPOSE_PROJECT_NAME in .env), -f/--file,
-#     --env-file and --project-directory (the wrapper decides those);
+#     --env-file, --project-directory and its hidden alias --workdir (the wrapper decides those);
+#   * clustered short options after the subcommand (-dt 5, -fsv, -tv): write them separately;
 #   * any --profile but `offroad` (so not `--profile '*'` and not not-in-beta);
 #   * COMPOSE_PROFILES, COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_PATH_SEPARATOR or
 #     COMPOSE_ENV_FILES in the environment, and COMPOSE_PROFILES or COMPOSE_FILE in .env:
@@ -51,8 +52,13 @@ done
 env_file=${BETA_ENV_FILE:-$repo/.env}
 [ -r "$env_file" ] || die "no readable $env_file (scripts/beta/make-env.sh creates it)"
 grep -q '^COMPOSE_PROJECT_NAME=.' "$env_file" || die "COMPOSE_PROJECT_NAME is not set in $env_file"
-if grep -Eq '^[[:space:]]*(export[[:space:]]+)?COMPOSE_(PROFILES|FILE)[[:space:]]*=' "$env_file"; then
+# [^A-Za-z#]* also catches a byte-order mark or other junk before the name, and [=:] compose's
+# `KEY: value` form, both of which compose's dotenv reader accepts.
+if LC_ALL=C grep -Eq '^[^A-Za-z#]*(export[[:space:]]+)?COMPOSE_(PROFILES|FILE)[[:space:]]*[=:]' "$env_file"; then
 	die "$env_file sets COMPOSE_PROFILES or COMPOSE_FILE; remove that line"
+fi
+if LC_ALL=C grep -Eq '^[^A-Za-z#]*(export[[:space:]]+)?COMPOSE_[A-Z_]+[[:space:]]*:' "$env_file"; then
+	die "$env_file has a COMPOSE_... line in the KEY: value form; write it as KEY=value (or remove it)"
 fi
 [ -r compose.yaml ] && [ -r compose.beta.yaml ] || die "compose.yaml and compose.beta.yaml must both be in $repo"
 
@@ -84,7 +90,7 @@ for arg in "$@"; do
 			-p | -p?* | --project-name | --project-name=*) die "$arg is refused: the project name is COMPOSE_PROJECT_NAME in .env" ;;
 			-f | -f?* | --file | --file=*) die "$arg is refused: the wrapper always uses compose.yaml and compose.beta.yaml" ;;
 			--env-file | --env-file=*) die "$arg is refused: name the file with BETA_ENV_FILE" ;;
-			--project-directory | --project-directory=*) die "$arg is refused: the wrapper runs in its own checkout" ;;
+			--project-directory | --project-directory=* | --workdir | --workdir=*) die "$arg is refused: the wrapper runs in its own checkout" ;;
 			--profile) expect=--profile ;;
 			--profile=*) check_profile "${arg#--profile=}" ;;
 			--ansi | --parallel | --progress) expect=$arg ;;
@@ -107,6 +113,22 @@ for arg in "$@"; do
 		names="$names $arg"
 		continue
 	fi
+	# For run and exec, everything after the service is the container's command, not compose's
+	# options (`exec api ls -la` is fine); the parked-name check above still applies to it.
+	case "$sub" in
+		run | exec)
+			if [ -n "$names" ]; then
+				names="$names $arg"
+				continue
+			fi
+			;;
+	esac
+	# A cluster of short options (-dt 5, -fsv, -tv) would hide a value-taking or refused flag from
+	# the parsing below, so it is refused: write the options separately.
+	case "$arg" in
+		--*) ;;
+		-??*) die "combined short options ('$arg') are refused; write them separately, such as -d -t 5" ;;
+	esac
 	case "$arg" in
 		--) dashdash=1 ;;
 		--scale | --scale=*) die "--scale is refused: a second copy of a service doubles its memory cap" ;;
