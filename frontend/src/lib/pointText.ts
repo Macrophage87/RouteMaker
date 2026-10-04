@@ -6,7 +6,8 @@
  * every later one a stop, and there is no end. Mass Ride has no loop, so its
  * hints never mention the toggle.
  */
-import { LOOP_LABEL } from "./loop.ts";
+import { LOOP_LABEL, canReverse } from "./loop.ts";
+import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
 
@@ -54,11 +55,27 @@ export function insertedSaid(leg: number, count: number, loop: boolean): string 
   return `Stop ${leg + 1} added, between ${at(leg)} and ${at(leg + 2)}.`;
 }
 
-/** Reverse pressed: `keptStart` when a loop kept its start and rides the stops the other way around. */
-export function reversedSaid(keptStart: boolean): string {
-  return keptStart
+/**
+ * Reverse pressed. A loop the rider chose has no end to speak of, even one
+ * that already ends on its start (reversed whole, its two ends one place).
+ */
+export function reversedSaid(loop: boolean): string {
+  return loop
     ? "Reversed: the loop now goes the other way around, from the same start."
     : "Reversed: the old end is now the start.";
+}
+
+/** Why Reverse does nothing in a loop of a start and one stop. */
+export const REVERSE_ONE_STOP_HINT =
+  "A loop with one stop is the same either way around. Add another stop to reverse it.";
+
+/**
+ * Why Reverse is unavailable when there is a ride to reverse but reversing it
+ * changes nothing (a loop of a start and one stop), or null. With fewer than
+ * two points it is plainly disabled.
+ */
+export function reverseUnavailableHint(points: readonly LonLat[], loop: boolean): string | null {
+  return points.length >= 2 && !canReverse(points, loop) ? REVERSE_ONE_STOP_HINT : null;
 }
 
 /** The loop toggle turned on or off with `count` points placed: their names change, so say how. */

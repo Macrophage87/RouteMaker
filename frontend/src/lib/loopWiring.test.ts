@@ -81,14 +81,27 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   assert.match(app, /const legs = legPoints\(routedPoints, loopVias\);/);
   assert.match(app, /ends: legEnds\(path, legs, shown\.leg_ends\), points: routedPoints, legPoints: legs/);
   assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias\]\);/);
-  assert.match(app, /onClick=\{reverse\} disabled=\{!canReverse\(points, loopVias\)\}/);
-  assert.match(app, /commit\(reversedPoints\(current, loopVias\)\);/);
-  assert.match(app, /announce\(reversedSaid\(reverseKeepsStart\(current, loopVias\)\)\);/);
+  assert.match(app, /if \(!canReverse\(current, loopVias\)\) return;\s+commit\(reversedPoints\(current, loopVias\)\);/);
+  assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
   assert.match(app, /\{emptyPlanHint\(preset, loopVias\)\}/);
   assert.match(app, /\{loneStartHint\(preset, loopVias\)\}/);
   assert.match(app, /onCommit=\{commitDials\}/);
   assert.match(app, /const loopNext = loopStops\(preset, next\.loop\);/);
   assert.match(app, /announce\(loopToggledSaid\(loopNext, points\.length\)\)/);
+});
+
+test("App: Reverse in a loop of a start and one stop is aria-disabled with its reason, and a press says it", () => {
+  const app = source("../App.tsx");
+  assert.match(app, /const reverseHint = reverseUnavailableHint\(points, loopVias\);/);
+  assert.match(
+    app,
+    /const unavailable = reverseUnavailableHint\(current, loopVias\);\s+if \(unavailable\) \{\s+announce\(unavailable\);\s+return;\s+\}/,
+  );
+  assert.match(
+    app,
+    /onClick=\{reverse\}\s+disabled=\{points\.length < 2\}\s+aria-disabled=\{reverseHint \? true : undefined\}\s+aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/,
+  );
+  assert.match(app, /\{reverseHint && <p className="hint" id="reverse-hint">\{reverseHint\}<\/p>\}/);
 });
 
 test("App hands the toggle to the search, the map, the points list and the GPX", () => {

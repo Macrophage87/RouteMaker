@@ -12,6 +12,8 @@ import {
   loopToggledSaid,
   pointLabel,
   removedSaid,
+  REVERSE_ONE_STOP_HINT,
+  reverseUnavailableHint,
   reversedSaid,
   stationSaid,
 } from "./pointText.ts";
@@ -74,9 +76,26 @@ test("a dragged stop is said between two places, and the loop's start is 'the st
   for (const leg of [0, 1, 2]) assert.doesNotMatch(insertedSaid(leg, 4, true), /Start and finish|End/);
 });
 
-test("Reverse says what it did", () => {
+test("Reverse says what it did, and a loop has no end to mention", () => {
   assert.match(reversedSaid(true), /other way around, from the same start/);
+  assert.doesNotMatch(reversedSaid(true), /end/);
   assert.match(reversedSaid(false), /old end is now the start/);
+});
+
+test("Reverse in a loop of a start and one stop says why it does nothing", () => {
+  const A: LonLat = [-77.0, 38.9];
+  const B: LonLat = [-76.98, 38.9];
+  const C: LonLat = [-76.96, 38.9];
+  assert.equal(
+    REVERSE_ONE_STOP_HINT,
+    "A loop with one stop is the same either way around. Add another stop to reverse it.",
+  );
+  assert.equal(reverseUnavailableHint([A, B], true), REVERSE_ONE_STOP_HINT);
+  assert.equal(reverseUnavailableHint([A, B, C], true), null, "two stops can be reversed");
+  assert.equal(reverseUnavailableHint([A, B], false), null, "a one-way ride can be reversed");
+  // Nothing to reverse at all: plainly disabled, no reason needed.
+  assert.equal(reverseUnavailableHint([A], true), null);
+  assert.equal(reverseUnavailableHint([], true), null);
 });
 
 test("turning the loop on or off says how the points are now named", () => {

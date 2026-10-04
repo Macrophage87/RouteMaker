@@ -24,10 +24,11 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
-import { canReverse, loopNote, loopStops, reverseKeepsStart, reversedPoints } from "./lib/loop.ts";
+import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
 import {
   addedSaid,
   emptyPlanHint,
+  reverseUnavailableHint,
   insertedSaid,
   loneStartHint,
   loopToggledSaid,
@@ -466,12 +467,19 @@ export function App() {
     [commit, announce, loopVias],
   );
   // Reverse: in a loop the start stays and the stops go the other way around
-  // (OWNER-DECISIONS 374); with a start and one stop that is no change.
+  // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a
+  // press says why and changes nothing.
+  const reverseHint = reverseUnavailableHint(points, loopVias);
   const reverse = () => {
     const current = pointsRef.current;
+    const unavailable = reverseUnavailableHint(current, loopVias);
+    if (unavailable) {
+      announce(unavailable);
+      return;
+    }
     if (!canReverse(current, loopVias)) return;
     commit(reversedPoints(current, loopVias));
-    announce(reversedSaid(reverseKeepsStart(current, loopVias)));
+    announce(reversedSaid(loopVias));
   };
   const clearAll = () => {
     setConfirmedKm(null);
@@ -650,7 +658,16 @@ export function App() {
         >
           Add point at map center
         </button>
-        <button type="button" onClick={reverse} disabled={!canReverse(points, loopVias)}>
+        {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
+            the Tab order with its reason as its description, as the loop toggle does
+            (DialsPanel), and a press says the reason. */}
+        <button
+          type="button"
+          onClick={reverse}
+          disabled={points.length < 2}
+          aria-disabled={reverseHint ? true : undefined}
+          aria-describedby={reverseHint ? "reverse-hint" : undefined}
+        >
           Reverse
         </button>
         <button type="button" onClick={clearAll} disabled={points.length === 0}>
@@ -667,6 +684,7 @@ export function App() {
           </button>
         )}
       </div>
+      {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
       {notice && (
         <p className="notice" role="status">
           {notice}
