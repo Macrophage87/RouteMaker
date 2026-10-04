@@ -36,6 +36,7 @@ after).
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -45,6 +46,8 @@ from .classes import TRAIL_CLASS_HIGHWAY
 from .facility import Facility, facility, has_separate_bikeway
 from .geo import EARTH_RADIUS_M
 from .streets import street_key
+
+logger = logging.getLogger(__name__)
 
 CORRIDORS_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "corridors"
 ROLES = ("through", "side")
@@ -194,9 +197,24 @@ def parse(document: object, name: str = "<corridors>") -> list[Corridor]:
 
 
 def load(directory: Path | str | None = None) -> list[Corridor]:
-    """Every corridor in every file of `directory` (CORRIDORS_DIR)."""
+    """Every corridor in every file of `directory` (CORRIDORS_DIR).
+
+    A missing directory is refused rather than read as "no corridors": the
+    pipeline image copies `fixtures/`, so its absence means the image or the
+    checkout is wrong, and the owner's ratings would otherwise go missing
+    without a word (ARTERIAL review r0, SF4). A directory with no file is
+    allowed, and warned about."""
+    folder = Path(directory or CORRIDORS_DIR)
+    if not folder.is_dir():
+        raise CorridorRefused(
+            f"the named-corridor folder {folder} does not exist; the owner's corridor ratings "
+            "(OWNER-DECISIONS 286, 294-296) would be lost"
+        )
     corridors: list[Corridor] = []
-    for path in sorted(Path(directory or CORRIDORS_DIR).glob("*.json")):
+    paths = sorted(folder.glob("*.json"))
+    if not paths:
+        logger.warning("the named-corridor folder %s has no corridor file", folder)
+    for path in paths:
         corridors.extend(parse(json.loads(path.read_text()), path.name))
     ids = [c.id for c in corridors]
     if len(set(ids)) != len(ids):
@@ -334,6 +352,46 @@ class CorridorReport:
             text += f"; entries that matched no way: {', '.join(self.unmatched_entries)}"
         return text
 
+    def to_markdown(self) -> str:
+        """`<DATA_ROOT>/rebuild/reports/named-corridors.md`: every way an entry
+        took, its tier before and after, and the entries that matched nothing."""
+        lines = [
+            "# Named corridors",
+            "",
+            "Written by the rebuild (`routemaker.corridors`, OWNER-DECISIONS 284-286, "
+            "294-296, 303): the owner's named stretches in `fixtures/corridors/`, matched by "
+            "street name and position on the axis, after the classifier and under the "
+            "approved override rows.",
+            "",
+            f"- {self.summary()}",
+            "",
+        ]
+        if self.unmatched_entries:
+            lines += [
+                "Entries that matched no way (the extract's geometry moved, or the file is "
+                "wrong): " + ", ".join(self.unmatched_entries),
+                "",
+            ]
+        if self.skipped_unclassified:
+            lines += [
+                "Ways the classifier never rated, left unrated: "
+                + ", ".join(str(i) for i in self.skipped_unclassified),
+                "",
+            ]
+        if self.applied:
+            lines += [
+                "| Way | Corridor | Entry | Role | Before | After | Exempt |",
+                "|---|---|---|---|---|---|---|",
+            ]
+            for a in sorted(self.applied, key=lambda a: (a.corridor, a.entry, a.way_id)):
+                lines.append(
+                    f"| {a.way_id} | {a.corridor} | {a.entry} | {a.role} | {a.before} "
+                    f"| {a.after} | {a.exempt} |"
+                )
+        else:
+            lines.append("No way was matched.")
+        return "\n".join(lines) + "\n"
+
 
 def exemption(
     tags: Mapping[str, str], way_id: int, separate_roads: Iterable[int] = frozenset()
@@ -394,6 +452,9 @@ def apply(
                     current,
                     tier=type(current.tier)(after),
                     rule=f"named corridor: {corridor.id}, {entry.id}",
+                    # The owner's tier is the junction's too: a pre-smoothing
+                    # tier no longer describes the way.
+                    unsmoothed_tier=None,
                 )
             break
     for corridor in corridors:

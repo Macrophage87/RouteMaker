@@ -452,6 +452,15 @@ class StressResult:
     # of 2b0cf00, blocker 1).
     oneway: bool | None = None
     graph_oneway: bool | None = None
+    # The tier the classifier gave on the agency's own count, where the street's
+    # median (`pipeline.aadt_smoothing`) lowered it; None everywhere else, and
+    # dropped by anything that sets the tier afresh (an override row, a named
+    # corridor, a closure to motor traffic). The link reads `tier`; the junction
+    # model reads this, because the owner accepted lower-only smoothing on the
+    # ground that a count bunched at an intersection is charged there
+    # (OWNER-DECISIONS 303: "we don't want to double count"), so it must still
+    # be charged there (ARTERIAL review r0, SF1).
+    unsmoothed_tier: Stress | None = None
 
     @property
     def is_top_tier(self) -> bool:

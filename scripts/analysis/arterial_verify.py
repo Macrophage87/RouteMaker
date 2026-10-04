@@ -17,8 +17,9 @@ It reads the ways as the rebuild does, loads the reference data, conflates the c
 classifies three times: as the code did before (no smoothing, no corridors), with smoothing,
 and with smoothing and the corridors. It writes `smoothing.md` (km changed by region and
 tier, the top streets), `north-capitol.md` (every way of the corridor against the owner's
-targets), and `rematch.md` / `rematch.csv`: every override row the live database holds
-(the fixtures as of `--live-rows-ref`, with the fingerprints of the working tree) run
+targets), and `rematch.md` / `rematch.csv`: every override row of the fixtures as of
+`--live-rows-ref` (what the live database was loaded from, not a read of it; rows typed
+into the admin are not covered), with the fingerprints of the working tree, run
 through `pipeline.rematch.resolve` against this extract, then the working tree's rows
 through the real APPLY_OVERRIDES stage.
 """
@@ -117,7 +118,8 @@ def tier_rows(by_tier) -> list:
 
 
 def live_rows(ref: str, fingerprints):
-    """The override rows the live database holds: the fixtures as of `ref`."""
+    """The override rows of the fixtures as of `ref`, standing for what the live
+    database was loaded from (not a read of it)."""
     from pipeline.overrides import Override
 
     names = subprocess.run(
@@ -215,7 +217,7 @@ def read_override_neighbourhood(pbf: str, rows, fingerprints) -> list:
 
 
 def run_overrides(context, handlers, rows_now, fingerprints, args, out) -> dict:
-    """The override re-match: the live database's rows against this extract, then the
+    """The override re-match: the fixture rows at the live ref against this extract, then the
     working tree's rows through the real APPLY_OVERRIDES stage."""
     from collections import Counter
 

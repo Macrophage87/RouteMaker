@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -284,6 +285,64 @@ def test_a_way_across_the_road_or_far_from_the_axis_is_not_matched() -> None:
     assert not apply([across])[1].applied
 
 
+# Metres to degrees on North Capitol Street (38.907 N).
+LAT_M = 111_195.0
+LON_M = LAT_M * 0.7783
+
+
+def first_underpass_way(osm_id, degrees_off, length_m=20.0, north_m=0.0):
+    """A way of the street centred on the first underpass's through lanes (about
+    773 m along the axis, 4 m off it), `degrees_off` from the axis's direction."""
+    lon, lat = -77.009096, 38.906953 + north_m / LAT_M
+    dx = length_m / 2 * math.sin(math.radians(degrees_off)) / LON_M
+    dy = length_m / 2 * math.cos(math.radians(degrees_off)) / LAT_M
+    return W(
+        osm_id,
+        {"highway": "primary", "name": "North Capitol Street Northwest"},
+        [[lon - dx, lat - dy], [lon + dx, lat + dy]],
+    )
+
+
+def test_a_way_60_degrees_off_the_axis_is_not_a_lane_of_it() -> None:
+    """The bearing must be within 40 degrees (`DEFAULT_MAX_BEARING_DEG`; the fixture
+    does not set it). A way at 60 degrees across the through lanes lies within their
+    offset but is a crossing, not a lane; one at 20 degrees is a lane."""
+    corridor = corridors.load()[0]
+    assert corridor.max_bearing_deg == 40.0
+    crossing = first_underpass_way(1, 60)
+    placement = corridors.place(corridor, crossing.coordinates)
+    assert placement.mean_offset <= corridor.through_max_offset_m, "only the bearing refuses it"
+    assert corridors.role_of(corridor, placement) is None
+    stress, report = apply([crossing])
+    assert int(stress[1].tier) == 3 and not report.applied
+    stress, _ = apply([first_underpass_way(1, 20)])
+    assert int(stress[1].tier) == 5
+
+
+def test_a_way_with_less_than_half_its_length_in_the_range_is_not_taken() -> None:
+    """At least half (`MIN_SHARE_IN_RANGE`): a through way from 830 m to about 1,197 m
+    along the axis has 147 m, 40%, in the first underpass's range (569-977 m) and is
+    not Avoid; from 830 m to 1,100 m (54%) it is."""
+    corridor = corridors.load()[0]
+
+    def through_way(osm_id, north_end_m):
+        south, lat0 = 830.0, 38.907466
+        return W(
+            osm_id,
+            {"highway": "primary", "name": "North Capitol Street Northwest"},
+            [[-77.009096, lat0 + (north_end_m - south) / LAT_M], [-77.009096, lat0]],
+        )
+
+    long = through_way(1, 1197)
+    samples = corridors.place(corridor, long.coordinates).samples
+    share = sum(1 for along, _ in samples if 569 <= along <= 977) / len(samples)
+    assert 0.35 < share < 0.45
+    stress, _ = apply([long])
+    assert int(stress[1].tier) == 3
+    stress, _ = apply([through_way(2, 1100)])
+    assert int(stress[2].tier) == 5
+
+
 # --- Exemptions ---------------------------------------------------------------
 
 
@@ -295,6 +354,8 @@ def test_a_way_across_the_road_or_far_from_the_axis_is_not_matched() -> None:
         {"cycleway:both": "lane", "cycleway:both:separation": "flex_post"},
         {"cycleway:both": "separate"},
         {"cycleway": "separate"},
+        # Closed to motor traffic: a path-class facility (`facility.Facility.PATH`).
+        {"motor_vehicle": "no"},
     ],
 )
 def test_a_way_with_a_protected_lane_or_a_separate_bikeway_is_exempt(tags) -> None:
@@ -376,3 +437,21 @@ def test_a_way_the_classifier_never_rated_is_counted_not_invented() -> None:
     report = corridors.apply(corridors.load(), ways, stress)
     assert report.skipped_unclassified == [130772891]
     assert 130772891 not in stress
+
+
+def test_a_missing_corridor_folder_is_refused_not_read_as_none(tmp_path, caplog) -> None:
+    """ARTERIAL review r0, SF4: the image copies fixtures/, so a missing folder is a
+    broken image, and the owner's ratings must not vanish without a word."""
+    with pytest.raises(corridors.CorridorRefused, match="does not exist"):
+        corridors.load(tmp_path / "nowhere")
+    with caplog.at_level("WARNING", logger="routemaker.corridors"):
+        assert corridors.load(tmp_path) == []
+    assert any("no corridor file" in r.getMessage() for r in caplog.records)
+
+
+def test_the_report_lists_every_way_and_the_unmatched_entries() -> None:
+    ways = [w for w in north_capitol() if w.osm_id not in SECOND_SIDES_LTS3]
+    _, report = apply(ways)
+    text = report.to_markdown()
+    assert "| 130772891 | north-capitol-st | first-underpass-through | through | 3 | 5 |  |" in text
+    assert "north-capitol-st/second-underpass-sides" in text

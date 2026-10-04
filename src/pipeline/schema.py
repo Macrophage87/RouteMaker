@@ -349,6 +349,9 @@ MTB_ONLY_COLUMN = "mtb_only"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
+# The tier the junction model reads where AADT smoothing lowered the link's
+# (SEGMENT_DDL); absent on a table built before it.
+UNSMOOTHED_TIER_COLUMN = "stress_unsmoothed_tier"
 
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
@@ -466,6 +469,15 @@ CREATE TABLE {schema}.segment (
     -- and nowhere else (the owner: "Only provide the warnings if the route
     -- goes over the road"); `map`: also on a click on the map.
     stress_adjustment_display   text CHECK (stress_adjustment_display IN ('route_only', 'map')),
+    -- The tier on the agency's own count where same-street AADT smoothing
+    -- lowered `stress_tier` (`pipeline.aadt_smoothing`, OWNER-DECISIONS 285,
+    -- 303); null everywhere else. The junction model reads the greater of the
+    -- two, so a count bunched at an intersection is still charged at the
+    -- intersection after the link stops paying it ("we don't want to double
+    -- count"). `volume_aadt` stays the agency's count, never the median. No
+    -- migration: this table is created whole on every rebuild; `core.junctions`
+    -- checks for the column on a table built before it.
+    stress_unsmoothed_tier      smallint CHECK (stress_unsmoothed_tier BETWEEN 1 AND 5),
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL

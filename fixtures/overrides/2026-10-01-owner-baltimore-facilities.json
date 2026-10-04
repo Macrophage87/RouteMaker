@@ -1657,7 +1657,7 @@
     "display": "route_only"
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097553 (highway=primary, cycleway none; lies 9.3 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract split way 424993005 (0.01 mi) into ways 1562097553, 1562097555 and 1562097556 at the junction near 39.3468 N, 76.5662 W, all three along record 634; tier now 3.",
+   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097553 (highway=primary, cycleway none; lies 9.3 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract redrew way 424993005 (43 ft, 13.2 m) as 213 ft (64.8 m) of new ways near 39.3468 N, 76.5662 W: 1562097553 and 1562097555, the two carriageways of a short divided section, and 1562097556 continuing north, all three along record 634; tier now 3.",
    "fingerprint": {
     "name": "Harford Road",
     "highway": "primary",
@@ -1677,7 +1677,7 @@
     "display": "route_only"
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097555 (highway=primary, cycleway none; lies 6.3 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract split way 424993005 (0.01 mi) into ways 1562097553, 1562097555 and 1562097556 at the junction near 39.3468 N, 76.5662 W, all three along record 634; tier now 3.",
+   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097555 (highway=primary, cycleway none; lies 6.3 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract redrew way 424993005 (43 ft, 13.2 m) as 213 ft (64.8 m) of new ways near 39.3468 N, 76.5662 W: 1562097553 and 1562097555, the two carriageways of a short divided section, and 1562097556 continuing north, all three along record 634; tier now 3.",
    "fingerprint": {
     "name": "Harford Road",
     "highway": "primary",
@@ -1697,7 +1697,7 @@
     "display": "route_only"
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097556 (highway=primary, cycleway none; lies 5.7 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract split way 424993005 (0.01 mi) into ways 1562097553, 1562097555 and 1562097556 at the junction near 39.3468 N, 76.5662 W, all three along record 634; tier now 3.",
+   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634, Montebello Ter to Echodale Ave). OSM way 1562097556 (highway=primary, cycleway none; lies 5.7 m at most from record 634's line). Re-pointed on 2026-10-04 (OWNER-DECISIONS 282a): the 2026-10-03 extract redrew way 424993005 (43 ft, 13.2 m) as 213 ft (64.8 m) of new ways near 39.3468 N, 76.5662 W: 1562097553 and 1562097555, the two carriageways of a short divided section, and 1562097556 continuing north, all three along record 634; tier now 3.",
    "fingerprint": {
     "name": "Harford Road",
     "highway": "primary",
@@ -7875,7 +7875,7 @@
     1562097555,
     1562097556
    ],
-   "note": "OWNER-DECISIONS 282a: OSM split this way; its row is re-pointed at the replacement ways above. A row for it already loaded in the database still names it: delete that row in the admin when the owner approves loading this file, and until then the rebuild's re-match reports it. The fingerprint is the way as the earlier extract (the one the 2026-10-01 data comparison read) drew it.",
+   "note": "OWNER-DECISIONS 282a, the owner on 2026-10-03: \"Yes, queue both for the next rebuild.\" OSM redrew this way (43 ft, 13.2 m, as 213 ft, 64.8 m, of new ways); its row is re-pointed at the replacement ways above. A row for it already loaded in the database still names it: delete that row in the admin when the owner approves loading this file, and until then the rebuild's re-match reports it. The fingerprint is the way as the earlier extract (the one the 2026-10-01 data comparison read) drew it.",
    "fingerprint": {
     "name": "Harford Road",
     "highway": "primary",

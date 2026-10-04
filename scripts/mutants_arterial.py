@@ -17,7 +17,13 @@ Survivors are printed last and the exit status is the number of them.
 
 Not in the list, because equivalent: the `way_id in separate_roads` exemption in
 `corridors.exemption`. `facility.separate_pairs` only finds a road that itself
-declares `cycleway*=separate`, which `has_separate_bikeway` already exempts.
+declares `cycleway*=separate`, which `has_separate_bikeway` already exempts. And
+`DEFAULT_THROUGH_MAX_OFFSET_M` (7 to 12 m), which the fixture overrides with its own
+`through_max_offset_m` of 7.0; the fixture's value is mutated instead.
+
+The `r0:` mutants are the reviewer's of ARTERIAL review r0 (its `my_mutants.py`), each
+threshold moved past its tested edge; the `SF1:`, `SF2:` and `SF4:` ones are the r1
+revision's own.
 """
 
 # ruff: noqa: E501
@@ -36,6 +42,8 @@ CORR = ["tests/test_corridors.py"]
 SMOOTH = ["tests/test_aadt_smoothing.py"]
 REMATCH = ["tests/test_override_rematch.py"]
 STAGE = ["tests/test_arterial_stage.py"]
+JUNC = ["tests/test_junctions.py"]
+WRITE = ["tests/test_writers.py"]
 
 CO = "src/routemaker/corridors.py"
 FX = "fixtures/corridors/2026-10-04-owner-north-capitol-underpasses.json"
@@ -44,6 +52,8 @@ ST = "src/routemaker/streets.py"
 RM = "src/pipeline/rematch.py"
 OV = "src/pipeline/overrides.py"
 RUN = "src/pipeline/run.py"
+JN = "src/core/junctions.py"
+WR = "src/pipeline/writers.py"
 
 TEST_TIMEOUT_S = 300
 
@@ -92,8 +102,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("smooth: lowers refused", SM, "if median >= match.aadt:", "if median <= match.aadt:", SMOOTH + STAGE),
     ("smooth: raw count lost", SM, "replace(match, aadt=median, raw_aadt=match.aadt)", "replace(match, aadt=median)", SMOOTH + STAGE),
     ("smooth: midpoint not half way", SM, "half, run = total / 2, 0.0", "half, run = total / 3, 0.0", SMOOTH),
-    ("smooth: quiet gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY)", "(VOLUME_QUIET, VOLUME_BUSY)", SMOOTH),
-    ("smooth: busy gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY)", "(VOLUME_QUIET + 1, VOLUME_BUSY + 1)", SMOOTH),
+    ("smooth: quiet gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY,", "(VOLUME_QUIET, VOLUME_BUSY,", SMOOTH),
+    ("smooth: busy gate off by one", SM, "(VOLUME_QUIET + 1, VOLUME_BUSY,", "(VOLUME_QUIET + 1, VOLUME_BUSY + 1,", SMOOTH),
+    ("smooth: urban two-way gate off by one", SM, "URBAN_TWO_WAY_BUSY_AADT + 1)", "URBAN_TWO_WAY_BUSY_AADT)", SMOOTH),
     ("smooth: stage ignores the veto", RUN, "        if context.smooth_volume:\n", "        if True:\n", STAGE),
     ("smooth: stage marks every replaced way", RUN, "if aadt_smoothing.crosses_volume_gate(item.raw, item.smoothed)", "if True", STAGE),
     ("smooth: stage smooths before the states", RUN, "context.ways, context.aadt_by_way, state_of.get", "context.ways, context.aadt_by_way, lambda _: None", STAGE),
@@ -105,7 +116,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("rematch: street name ignored", RM, "if street_key(way.tags.get(\"name\")) != want_name:", "if False:", REMATCH),
     ("rematch: highway class ignored", RM, 'if (way.tags.get("highway") or None) != want_highway:', "if False:", REMATCH),
     ("rematch: merged longer way accepted", RM, "elif near * SAMPLE_M > NEIGHBOUR_TOLERANCES * tolerance_m:", "elif False:", REMATCH),
-    ("rematch: parallel ways accepted", RM, "if overlap * SAMPLE_M > PARALLEL_TOLERANCES * tolerance_m:", "if False:", REMATCH),
+    ("rematch: parallel ways accepted", RM, "if overlap > min(PARALLEL_TOLERANCES * tolerance_m, PARALLEL_SHARE * shorter):", "if False:", REMATCH),
     ("rematch: neighbours need no tolerance", RM, "NEIGHBOUR_TOLERANCES = 1.25", "NEIGHBOUR_TOLERANCES = 0.0", REMATCH),
     ("rematch: collision with a different row ignored", RM, "if other is not None and other.value != row.value:", "if False:", REMATCH),
     ("rematch: rival missing rows ignored", RM, "if any(missing[i].value != row.value for i in rivals):", "if False:", REMATCH),
@@ -119,6 +130,49 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("rematch: stage does not re-match", RUN, "rows, rematch_report = rematch.resolve(rows, context.ways_by_id)", "rows, rematch_report = rows, rematch.RematchReport()", REMATCH),
     ("rematch: stage writes no report", RUN, "        write_rematch_report(rematch_report)\n", "", REMATCH),
     ("rematch: failures not counted", RUN, "rematch_failed=len(rematch_report.failed),", "rematch_failed=0,", REMATCH),
+    # --- r0: the reviewer's boundary mutants ---------------------------------------
+    ("r0: fixture through offset 7 -> 12 m", FX, '"through_max_offset_m": 7.0', '"through_max_offset_m": 12.0', CORR),
+    ("r0: fixture through offset 7 -> 4 m", FX, '"through_max_offset_m": 7.0', '"through_max_offset_m": 4.0', CORR),
+    ("r0: fixture side offset 20 -> 30 m", FX, '"side_max_offset_m": 20.0', '"side_max_offset_m": 30.0', CORR),
+    ("r0: corridor bearing 40 -> 80 degrees", CO, "DEFAULT_MAX_BEARING_DEG = 40.0", "DEFAULT_MAX_BEARING_DEG = 80.0", CORR),
+    ("r0: share in range 0.5 -> 0.3", CO, "MIN_SHARE_IN_RANGE = 0.5", "MIN_SHARE_IN_RANGE = 0.3", CORR),
+    ("r0: path facility not exempt", CO, "if kind in (Facility.PROTECTED, Facility.PATH):", "if kind in (Facility.PROTECTED,):", CORR),
+    ("r0: protected facility not exempt", CO, "if kind in (Facility.PROTECTED, Facility.PATH):", "if kind in (Facility.PATH,):", CORR),
+    ("r0: smoothing replaces a higher median", SM, "if median >= match.aadt:", "if False:", SMOOTH),
+    ("r0: smoothing least length 250 -> 100 m", SM, "MIN_LENGTH_M = 250.0", "MIN_LENGTH_M = 100.0", SMOOTH),
+    ("r0: smoothing least ways 3 -> 4", SM, "MIN_WAYS = 3", "MIN_WAYS = 4", SMOOTH),
+    ("r0: smoothing window 400 -> 300 m", SM, "WINDOW_M = 400.0", "WINDOW_M = 300.0", SMOOTH),
+    ("r0: smoothing window 400 -> 500 m", SM, "WINDOW_M = 400.0", "WINDOW_M = 500.0", SMOOTH),
+    ("r0: re-match tolerance 6 -> 9 m", RM, "TOLERANCE_M = 6.0", "TOLERANCE_M = 9.0", REMATCH),
+    ("r0: re-match tolerance 6 -> 4 m", RM, "TOLERANCE_M = 6.0", "TOLERANCE_M = 4.0", REMATCH),
+    ("r0: re-match contained 0.9 -> 0.6", RM, "MIN_CONTAINED = 0.9", "MIN_CONTAINED = 0.6", REMATCH),
+    ("r0: re-match coverage 0.9 -> 0.6", RM, "MIN_COVERAGE = 0.9", "MIN_COVERAGE = 0.6", REMATCH),
+    ("r0: re-match parallel 2.5 -> 10 tolerances", RM, "PARALLEL_TOLERANCES = 2.5", "PARALLEL_TOLERANCES = 10.0", REMATCH),
+    ("r0: re-match neighbour 1.25 -> 3 tolerances", RM, "NEIGHBOUR_TOLERANCES = 1.25", "NEIGHBOUR_TOLERANCES = 3.0", REMATCH),
+    ("r0: no-fingerprint row left out of the report", RM, '"no fingerprint is stored for this row; it cannot be re-matched",', '"",', REMATCH),
+    ("r0: drifted reported as failed", RM, 'OUTCOME_DRIFTED = "drifted"', 'OUTCOME_DRIFTED = "failed"', REMATCH),
+    # --- SF1: the junction keeps the raw count and the pre-smoothing tier ----------
+    ("SF1: segment publishes the median", RUN, "volume_aadt=match.raw_aadt,", "volume_aadt=match.aadt,", STAGE),
+    ("SF1: no pre-smoothing tier kept", RUN, "unsmoothed_tier=unsmoothed.tier if unsmoothed.tier > current.tier else None,", "unsmoothed_tier=None,", STAGE),
+    ("SF1: pre-smoothing tier kept where it is no higher", RUN, "if unsmoothed.tier > current.tier else None,", "if unsmoothed.tier >= current.tier else None,", STAGE),
+    ("SF1: writer drops the pre-smoothing tier", WR, '_tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),', "None,", WRITE),
+    ("SF1: junction reads the link's tier only", JN, 'f"GREATEST(s.stress_tier, s.{UNSMOOTHED_TIER_COLUMN})"', '"s.stress_tier"', JUNC),
+    ("SF1: corridor keeps a stale pre-smoothing tier", CO, "unsmoothed_tier=None,", "", STAGE),
+    # --- SF2: re-match direction, length and short parallels -----------------------
+    ("SF2: bearing not checked", RM, "if off > MAX_BEARING_DEG:", "if False:", REMATCH),
+    ("SF2: bearing 30 -> 60 degrees", RM, "MAX_BEARING_DEG = 30.0", "MAX_BEARING_DEG = 60.0", REMATCH),
+    ("SF2: bearing 30 -> 10 degrees", RM, "MAX_BEARING_DEG = 30.0", "MAX_BEARING_DEG = 10.0", REMATCH),
+    ("SF2: length not checked", RM, "if not stored / MAX_LENGTH_RATIO <= total <= stored * MAX_LENGTH_RATIO:", "if False:", REMATCH),
+    ("SF2: length ratio 1.25 -> 2", RM, "MAX_LENGTH_RATIO = 1.25", "MAX_LENGTH_RATIO = 2.0", REMATCH),
+    ("SF2: no lower length bound", RM, "if not stored / MAX_LENGTH_RATIO <= total", "if not 0 <= total", REMATCH),
+    ("SF2: parallel share 0.5 -> 1", RM, "PARALLEL_SHARE = 0.5", "PARALLEL_SHARE = 1.0", REMATCH),
+    ("SF2: parallel threshold absolute only", RM, "min(PARALLEL_TOLERANCES * tolerance_m, PARALLEL_SHARE * shorter)", "PARALLEL_TOLERANCES * tolerance_m", REMATCH),
+    ("SF2: longitude padded as latitude", RM, "return tolerance_m / (111_000.0 * math.cos(math.radians(lat)))", "return tolerance_m / 111_000.0", REMATCH),
+    # --- SF4: reports and the corridor folder ----------------------------------------
+    ("SF4: missing corridor folder read as none", CO, "if not folder.is_dir():", "if False:", CORR),
+    ("SF4: smoothing report not where documented", RUN, 'SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"', 'SMOOTHING_REPORT_NAME = "aadt-smoothing.txt"', STAGE),
+    ("SF4: corridor report not where documented", RUN, 'CORRIDOR_REPORT_NAME = "named-corridors.md"', 'CORRIDOR_REPORT_NAME = "corridors.md"', STAGE),
+    ("SF4: vetoed smoothing leaves last week's report", RUN, "context.smoothing_report or aadt_smoothing.SmoothingReport()", "context.smoothing_report", STAGE),
 ]  # fmt: skip
 
 

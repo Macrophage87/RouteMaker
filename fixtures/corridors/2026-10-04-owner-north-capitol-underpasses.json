@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "decided": "2026-10-03",
+  "decided": "2026-10-04",
   "decided_by": "the deployment owner",
-  "status": "OWNER-DECISIONS 286, 294, 295, 296. Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database.",
+  "status": "OWNER-DECISIONS 286, 294, 295, 296 (2026-10-03) and 303 (2026-10-04). Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database.",
   "corridors": [
     {
       "id": "north-capitol-st",

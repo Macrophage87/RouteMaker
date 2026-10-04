@@ -1021,6 +1021,41 @@ class TestRoadsByWay:
         assert not junctions.has_trait_columns(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)] == Road(4)
 
+    def test_a_smoothed_link_is_crossed_at_its_raw_count_and_tier(self, segment_schemas) -> None:
+        """1st St NW at Q St (OWNER-DECISIONS 285, 303; ARTERIAL review r0, SF1): the
+        link is LTS 2 on the street's median, the crossing is LTS 3 on DDOT's 10,665,
+        so the count bunched at the intersection is charged there."""
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, volume_aadt, stress_unsmoothed_tier) "
+                "VALUES (483241819, 0, ST_GeomFromText(%s, 4326), 2, 'test', 10665, 3)",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_trait_columns_seen = False
+        asked = [(0, 483241819, LON, LAT)]
+        road = junctions.roads_by_way(asked, "weekend", False)[(0, 483241819)]
+        assert (road.tier, road.aadt) == (3, 10665) and road.busy
+        # With the ride-time closure read too: not closed, so still the raw tier.
+        assert (
+            junctions.roads_by_way(asked, "weekend", with_facility=True)[(0, 483241819)].tier == 3
+        )
+
+    def test_a_table_before_the_unsmoothed_tier_reads_the_tier(self, segment_schemas) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN stress_unsmoothed_tier")
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 2, 'test')",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_unsmoothed_tier_seen = False
+        assert not junctions.has_unsmoothed_tier(live)
+        assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)].tier == 2
+        junctions._has_unsmoothed_tier_seen = False
+
     def test_a_road_closed_to_cars_at_the_ride_time_is_tier_one(self, segment_schemas) -> None:
         live, _staging = segment_schemas
         with connection.cursor() as cursor:

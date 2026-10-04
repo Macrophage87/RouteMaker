@@ -83,6 +83,24 @@ MAX_RECORDED_BLOCKS = 12
 # 191), under its work directory: `<DATA_ROOT>/rebuild/reports/` on the host.
 DISCREPANCY_REPORT_DIR = "reports"
 REMATCH_REPORT_NAME = "override-rematch"
+# Beside it: each count the street's median replaced, and what the owner's named
+# corridors did (ARTERIAL review r0, SF4).
+SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
+CORRIDOR_REPORT_NAME = "named-corridors.md"
+
+
+def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
+    """Write report files under `<work_dir>/reports/` (`<DATA_ROOT>/rebuild/
+    reports/` on the host), replacing last week's. A report, not a stage's
+    output: a failure is logged and never fails the rebuild."""
+    try:
+        out_dir = work_dir / DISCREPANCY_REPORT_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            (out_dir / name).write_text(text)
+    except OSError:
+        logger.exception("%s report could not be written", what)
+
 
 # What one of the two validation reads answers with; see `_read_back`.
 _Read = TypeVar("_Read")
@@ -564,7 +582,10 @@ class RebuildContext:
     stress_by_way: dict[int, object] = field(default_factory=dict)
     # Whether a count is replaced by its street's median before classification
     # (`pipeline.aadt_smoothing`; OWNER-DECISIONS 285, 296: a data-quality fix
-    # the owner can veto, which this is).
+    # the owner can veto, which this is). To veto: set this default to False,
+    # commit, and rebuild the pipeline image; the next rebuild classifies every
+    # link on the agency's count (docs/OPERATIONS.md, "AADT smoothing, named
+    # corridors and the override re-match").
     smooth_volume: bool = True
     # The counts as the agencies gave them, kept when smoothing replaced any, and
     # what smoothing and the named corridors did (for the rebuild report).
@@ -1362,26 +1383,38 @@ def build_handlers(
             tags, applied = speed_corrections.corrected(tags, speeds.get(way.osm_id))
             if applied:
                 used.add(way.osm_id)
-            context.stress_by_way[way.osm_id] = classify(
-                tags,
-                aadt=match.aadt if match else None,
-                # The agency, not the precedence tier: the tier is what
-                # `conflate` ranked two counts with and says nothing about who
-                # published the winner.
-                aadt_source=match.agency if match else None,
-                aadt_year=match.year if match else None,
-                urban=way.osm_id in reference.urban_way_ids,
-                jurisdiction=state_of.get(way.osm_id),
-                divided=way.osm_id in divided_ways,
-                separate_facility=way.osm_id in separate_roads,
-                parking_width_m=facts.parking_reach_m if facts is not None else None,
-            )
-            if way.osm_id in smoothed_rule:
-                # Only where the median is on the other side of a volume gate
-                # from the count: the one case it can have moved the tier.
+
+            def classified(aadt, tags=tags, way=way, match=match, facts=facts):
+                return classify(
+                    tags,
+                    aadt=aadt,
+                    # The agency, not the precedence tier: the tier is what
+                    # `conflate` ranked two counts with and says nothing about
+                    # who published the winner.
+                    aadt_source=match.agency if match else None,
+                    aadt_year=match.year if match else None,
+                    urban=way.osm_id in reference.urban_way_ids,
+                    jurisdiction=state_of.get(way.osm_id),
+                    divided=way.osm_id in divided_ways,
+                    separate_facility=way.osm_id in separate_roads,
+                    parking_width_m=facts.parking_reach_m if facts is not None else None,
+                )
+
+            context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
+            if match is not None and match.raw_aadt is not None:
+                # Smoothed (OWNER-DECISIONS 285, 303): the link is classified on
+                # the street's median, but the segment publishes what the agency
+                # counted, and the tier on that count is kept for the junction
+                # model, which charges the volume bunched at the intersection
+                # (ARTERIAL review r0, SF1).
+                unsmoothed = classified(match.raw_aadt)
+                current = context.stress_by_way[way.osm_id]
                 context.stress_by_way[way.osm_id] = replace(
-                    context.stress_by_way[way.osm_id],
-                    rule=context.stress_by_way[way.osm_id].rule + ", street volume (median)",
+                    current,
+                    volume_aadt=match.raw_aadt,
+                    unsmoothed_tier=unsmoothed.tier if unsmoothed.tier > current.tier else None,
+                    rule=current.rule
+                    + (", street volume (median)" if way.osm_id in smoothed_rule else ""),
                 )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
@@ -1419,6 +1452,18 @@ def build_handlers(
             separate_roads=separate_roads,
         )
         logger.info("%s", context.corridor_report.summary())
+        # Per way, beside the re-match report; with the veto the smoothing file
+        # is header-only, so last week's list does not stand in for this one.
+        write_reports(
+            context.work_dir,
+            {
+                SMOOTHING_REPORT_NAME: (
+                    context.smoothing_report or aadt_smoothing.SmoothingReport()
+                ).to_csv(context.stress_by_way),
+                CORRIDOR_REPORT_NAME: context.corridor_report.to_markdown(),
+            },
+            "AADT smoothing and named-corridor",
+        )
         if context.corridor_report.unmatched_entries:
             logger.warning(
                 "owner's named-corridor entries matched no way (fixtures/corridors): %s; the "
@@ -1540,13 +1585,14 @@ def build_handlers(
         """`<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`: every
         override row whose way was missing, and what became of it. A report, not
         a stage's output: it never fails the rebuild."""
-        try:
-            out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / f"{REMATCH_REPORT_NAME}.md").write_text(report.to_markdown())
-            (out_dir / f"{REMATCH_REPORT_NAME}.csv").write_text(report.to_csv())
-        except OSError:
-            logger.exception("override re-match report could not be written")
+        write_reports(
+            context.work_dir,
+            {
+                f"{REMATCH_REPORT_NAME}.md": report.to_markdown(),
+                f"{REMATCH_REPORT_NAME}.csv": report.to_csv(),
+            },
+            "override re-match",
+        )
 
     def apply_overrides() -> None:
         """The audited corrections, applied where each kind belongs.

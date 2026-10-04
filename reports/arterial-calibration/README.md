@@ -8,6 +8,8 @@ Read-only runs of `scripts/analysis/arterial_verify.py` over the 2026-10-03 extr
 - `north-capitol.md`: every way of the named corridor against the owner's targets
   (0 mismatches).
 - `rematch-live.md`, `.csv`, `override-rematch-summary.json`: all 232 access and 1,551
-  stress rows the live database holds (the fixtures at origin/main), run through the
+  stress rows of the fixtures at origin/main (what the live database was loaded from;
+  this is not a read of the database, and a row typed into the admin, which has no
+  fingerprint, is not covered), run through the
   re-match against that extract: one is missing today, Harford Road way 424993005, and the
   re-match declines it with its reason; the working tree's 1,785 rows all apply.

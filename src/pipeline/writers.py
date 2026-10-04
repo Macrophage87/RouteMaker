@@ -77,6 +77,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("trail_name"),
             row.get("trail_route", 0),
             row.get("trail_bridge", 0),
+            _tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),
         )
         for row in rows
     ]
@@ -87,7 +88,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -117,6 +118,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         trail_name,
                         trail_route,
                         trail_bridge,
+                        unsmoothed_tier,
                     ),
                 )
                 for (
@@ -148,6 +150,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     trail_name,
                     trail_route,
                     trail_bridge,
+                    unsmoothed_tier,
                 ) in batch
             )
             cursor.execute(
@@ -160,11 +163,16 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
-                     trail_name, trail_route, trail_bridge)
+                     trail_name, trail_route, trail_bridge,
+                     stress_unsmoothed_tier)
                     VALUES {args}"""
             )
             written += len(batch)
     return written
+
+
+def _tier_or_none(tier) -> int | None:
+    return int(tier) if tier is not None else None
 
 
 def _adjustment_columns(stress: StressResult) -> tuple:

@@ -4289,3 +4289,62 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   link or a GPX file, the saved number in no markup), the a11y harness's section 15 (focus
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
+
+## Arterial calibration and the override re-match (2026-10-04)
+
+OWNER-DECISIONS 282, 284-286, 294-296 and 303. Three pieces, each in its own
+module, all applied by the rebuild (`pipeline.run`); docs/OPERATIONS.md, "AADT
+smoothing, named corridors and the override re-match", has the reports and the
+switches.
+
+### Same-street AADT smoothing (`pipeline.aadt_smoothing`)
+
+After the states are known and before CLASSIFY_STRESS reads a count, each count
+is compared with the length-weighted median of the counts of the same street
+(the name without its quadrant, `routemaker.streets.street_key`, in the same
+state) whose way midpoints lie within 1,312 ft (400 m), where that window holds
+at least 3 ways and 820 ft (250 m) of road. Service and trail ways neither vote
+nor are smoothed. Lower only (303): a count is replaced only where the median is
+lower, so a tier can fall and never rise. The link is classified on the median;
+the segment row publishes the agency's count (`volume_aadt`) and, where the tier
+fell, the tier on that count (`stress_unsmoothed_tier`, from
+`StressResult.unsmoothed_tier`), which `core.junctions.roads_by_way` reads as
+`GREATEST(stress_tier, stress_unsmoothed_tier)`. Anything that sets the tier
+afresh (an override row, a named corridor, a closure to motor traffic) drops it.
+The case it was built for: 1st St NW way 483241819, DDOT 10,665 between blocks at
+7,520, LTS 3 to LTS 2 as a link (285), while the Q St junction is still rated
+LTS 3 on 10,665. Tests: `tests/test_aadt_smoothing.py`,
+`tests/test_arterial_stage.py`, and the segment-table reads in
+`tests/test_junctions.py` and `tests/test_writers.py`.
+
+### Named corridors (`routemaker.corridors`, `fixtures/corridors/`)
+
+The owner's named stretches, matched by street name and position on an axis
+(through within 23 ft (7 m) of it, side within 66 ft (20 m), within 40 degrees
+of its direction, at least half the way's length in the entry's range), never by
+way id. Applied at the end of CLASSIFY_STRESS, under the approved override rows.
+Protected lanes, separate bikeways, path-class facilities and trail-class ways
+are exempt (294). `load` refuses a missing folder. Tests:
+`tests/test_corridors.py`, on the real North Capitol Street ways.
+
+### The override re-match (`pipeline.rematch`)
+
+Each override row in `fixtures/overrides/` carries a fingerprint (name, highway
+class, length, a simplified line). At APPLY_OVERRIDES a row whose way is missing
+is re-pointed only when every test holds: same name and class; each candidate at
+least 90% within 20 ft (6 m) of the stored line and running within 30 degrees
+of its direction; together covering 90% of it and adding up to its length
+within a factor of 1.25; no two candidates side by side (their stretches of the
+line overlap by no more than 49 ft (15 m), nor by half the shorter one, so this
+holds on a line under 49 ft (15 m) too); no same-name way overlapping it by more
+than an end-on neighbour; no collision with another row. Anything else fails,
+with its reason, and the row stays as it was. Tests:
+`tests/test_override_rematch.py`.
+
+### Mutants
+
+`scripts/mutants_arterial.py` runs a mutation pass over the three modules, the
+corridor fixture and the stage wiring, against whole test files, one process at
+a time (`--check` only checks that every mutant applies). It includes the
+boundary mutants of ARTERIAL review r0 (each re-match, corridor and smoothing
+threshold moved past its tested edge); every one is killed.

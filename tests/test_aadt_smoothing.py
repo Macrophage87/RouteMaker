@@ -121,6 +121,24 @@ def test_the_window_is_400_m_from_the_ways_midpoint() -> None:
     assert smooth(ways, by_way, window_m=400)[0][1].aadt == 1000
 
 
+def test_the_default_window_is_400_m_between_midpoints() -> None:
+    """With the module's own window (no `window_m`): neighbours 350 m off are in it,
+    450 m off are not."""
+    ways = [block(1, 0, 100), block(2, 350, 100), block(3, 700, 100)]
+    by_way = counts((1, 5000), (2, 12000), (3, 5000))
+    assert smooth(ways, by_way)[0][2].aadt == 5000, "350 m is inside 400 m"
+    ways = [block(1, 0, 100), block(2, 450, 100), block(3, 900, 100)]
+    assert smooth(ways, by_way)[0] == by_way, "450 m is outside it"
+
+
+def test_the_default_least_length_is_250_m() -> None:
+    """Three ways of 70 m (210 m of road) are too little street to outvote a count."""
+    ways, by_way = street(7520, 10665, 7520, length=70)
+    assert smooth(ways, by_way)[0] == by_way
+    ways, by_way = street(7520, 10665, 7520, length=85)
+    assert smooth(ways, by_way)[0][2].aadt == 7520, "255 m is enough"
+
+
 def test_a_street_of_another_name_or_state_is_not_the_street() -> None:
     ways = [
         block(i + 1, i * 110, 110, name="A Street" if i % 2 == 0 else "B Street") for i in range(5)
@@ -155,12 +173,20 @@ def test_only_ways_with_a_count_are_candidates_and_none_is_invented() -> None:
 
 @pytest.mark.parametrize("highway", ["service", "footway", "cycleway", "path", "pedestrian"])
 def test_driveways_and_trails_neither_vote_nor_are_smoothed(highway) -> None:
-    ways, by_way = street(7520, 10665, 7520, 7520)
-    extra = block(50, 100, 300, highway=highway)
+    """A 600 m driveway or trail of the street's name at 100 a day outweighs the
+    street's 330 m at 9,000, so if it voted, lower-only smoothing would bring every
+    block down to 100. It does not vote, so the street stands as counted."""
+    ways, by_way = street(9000, 9000, 9000, length=110)
+    extra = block(50, -150, 600, highway=highway)
     by_way[50] = match(50, 100)
-    out, _ = smooth([*ways, extra], by_way)
+    out, report = smooth([*ways, extra], by_way)
     assert out[50].aadt == 100, "its own count stands"
-    assert out[2].aadt == 7520, "and it did not vote the street down"
+    assert [out[i].aadt for i in (1, 2, 3)] == [9000, 9000, 9000], "it did not vote"
+    assert not report.replaced
+    # The same way as a street block does vote: the case is a real test of the vote.
+    road = block(50, -150, 600)
+    out, _ = smooth([*ways, road], by_way)
+    assert out[2].aadt == 100
 
 
 def test_unnamed_ways_are_left_alone() -> None:
@@ -186,7 +212,10 @@ def test_a_median_off_the_gate_is_what_the_rule_text_marks() -> None:
     # 1,500 is still quiet and 1,501 is not; 8,000 is busy and 7,999 is not.
     assert aadt_smoothing.crosses_volume_gate(1500, 1501)
     assert not aadt_smoothing.crosses_volume_gate(1501, 1502)
-    assert not aadt_smoothing.crosses_volume_gate(8000, 8001)
+    # And the urban two-way floor is "more than 8,000" (`stress.urban_two_way_floor`),
+    # so 8,000 and 8,001 are either side of it (ARTERIAL review r0, nit).
+    assert aadt_smoothing.crosses_volume_gate(8000, 8001)
+    assert not aadt_smoothing.crosses_volume_gate(8001, 8002)
 
 
 def test_the_midpoint_is_half_way_along_the_line() -> None:

@@ -4,6 +4,8 @@ Street ways of the 2026-10-03 extract (tests/data)."""
 
 from __future__ import annotations
 
+import csv
+import dataclasses
 import json
 import logging
 from pathlib import Path
@@ -12,11 +14,14 @@ from types import SimpleNamespace
 import pytest
 
 from pipeline import run as run_module
+from pipeline import writers
 from pipeline.conflation import Match
 from pipeline.extract import Way
 from pipeline.overrides import Override
 from pipeline.rebuild import Stage
 from pipeline.run import RebuildContext, build_handlers
+from routemaker import intersections
+from routemaker.intersections import Road
 from routemaker.stress import Stress
 
 DATA = Path(__file__).parent / "data"
@@ -70,10 +75,53 @@ def test_1st_street_nw_drops_from_lts_3_to_lts_2(tmp_path, monkeypatch) -> None:
     classify(context)
     result = context.stress_by_way[FIRST_ST_WAY]
     assert result.tier is Stress.LTS2
-    assert result.volume_aadt == 7520, "the count the classifier read"
     assert "high volume" not in result.rule
     assert context.aadt_raw_by_way[FIRST_ST_WAY].aadt == 10665, "the agency's count is kept"
     assert FIRST_ST_WAY in {s.way_id for s in context.smoothing_report.replaced}
+
+
+def test_the_published_count_is_the_agencys_not_the_median(tmp_path, monkeypatch) -> None:
+    """`segment.volume_aadt` says what DDOT counted (10,665), not the 7,520 the link was
+    classified on (ARTERIAL review r0, SF1: the schema documents it as the agency's
+    count, beside `volume_source` and `volume_year`)."""
+    context = make_context(tmp_path, monkeypatch)
+    classify(context)
+    result = context.stress_by_way[FIRST_ST_WAY]
+    assert result.volume_aadt == 10665
+    assert (result.volume_source, result.volume_year) == ("ddot", 2024)
+    row = writers.segment_row(FIRST_ST_WAY, 0, [(-77.0, 38.9), (-77.0, 38.901)], result)
+    assert row["stress"].volume_aadt == 10665
+    # A way whose count was not replaced keeps it, and has no pre-smoothing tier.
+    unchanged = next(i for i, m in context.aadt_by_way.items() if m.raw_aadt is None)
+    kept = context.stress_by_way[unchanged]
+    assert kept.volume_aadt == context.aadt_by_way[unchanged].aadt
+    assert kept.unsmoothed_tier is None
+
+
+def test_the_q_street_junction_is_still_rated_on_the_raw_count(tmp_path, monkeypatch) -> None:
+    """The owner's reason for lower-only smoothing (303): "In most cases, the smoothing
+    is probably bunching by the intersection. Given that our routing is a sum of
+    intersection stress and route stress, we don't want to double count." So the link
+    stops paying for the bunched count, and the junction keeps paying for it: 1st St
+    NW's block at Q St is LTS 2 as a link, and the crossing is rated on DDOT's 10,665
+    and the LTS 3 that count gives."""
+    context = make_context(tmp_path, monkeypatch)
+    classify(context)
+    result = context.stress_by_way[FIRST_ST_WAY]
+    assert result.tier is Stress.LTS2
+    assert result.unsmoothed_tier is Stress.LTS3
+    # What the junction model reads off the segment table (`core.junctions`: the
+    # greater of the two tiers, and `volume_aadt`).
+    road = Road(tier=max(int(result.tier), int(result.unsmoothed_tier)), aadt=result.volume_aadt)
+    assert road.busy, "a busy crossing (BUSY_TIER 3), as before smoothing"
+    smoothed = Road(tier=int(result.tier), aadt=7520)
+    assert not smoothed.busy
+    assert intersections.scale(road, stopped_side=True) > intersections.scale(
+        smoothed, stopped_side=True
+    ), "the raw count's volume factor"
+    assert intersections.scale(road, stopped_side=True) == intersections.scale(
+        Road(tier=3, aadt=10665), stopped_side=True
+    )
 
 
 def test_the_owner_can_veto_smoothing(tmp_path, monkeypatch) -> None:
@@ -103,6 +151,9 @@ def test_a_count_lowered_within_a_band_is_not_marked(tmp_path, monkeypatch) -> N
     assert context.aadt_by_way[345074765].aadt == 4253
     assert context.aadt_raw_by_way[345074765].aadt == 6000
     assert "median" not in context.stress_by_way[345074765].rule
+    # The tier did not move, so the junction has no other tier to read.
+    assert context.stress_by_way[345074765].unsmoothed_tier is None
+    assert context.stress_by_way[345074765].volume_aadt == 6000
 
 
 def test_a_state_boundary_keeps_a_count_out_of_another_states_street(tmp_path, monkeypatch) -> None:
@@ -113,7 +164,8 @@ def test_a_state_boundary_keeps_a_count_out_of_another_states_street(tmp_path, m
         lambda ways, polygons: {w.osm_id: "VA" if w.osm_id == FIRST_ST_WAY else "DC" for w in ways},
     )
     classify(context)
-    assert context.stress_by_way[FIRST_ST_WAY].volume_aadt == 10665
+    assert context.stress_by_way[FIRST_ST_WAY].tier is Stress.LTS3
+    assert context.stress_by_way[FIRST_ST_WAY].unsmoothed_tier is None
 
 
 def test_north_capitol_underpasses_are_set_through_the_stage(tmp_path, monkeypatch, caplog) -> None:
@@ -181,3 +233,52 @@ def test_a_lane_the_agency_recorded_exempts_a_way_through_the_stage(tmp_path, mo
     classify(context)
     assert context.stress_by_way[130772891].tier is Stress.LTS3
     assert context.stress_by_way[920784194].tier is Stress.AVOID
+
+
+def test_the_stage_writes_the_smoothing_and_corridor_reports(tmp_path, monkeypatch) -> None:
+    """Beside the re-match report, under `<DATA_ROOT>/rebuild/reports/` (ARTERIAL review
+    r0, SF4): each replaced count with both tiers, and every corridor way."""
+    context = make_context(tmp_path, monkeypatch)
+    classify(context)
+    reports = context.work_dir / "reports"
+    rows = list(csv.DictReader((reports / "aadt-smoothing.csv").open()))
+    first = next(r for r in rows if r["way_id"] == str(FIRST_ST_WAY))
+    assert (first["raw_aadt"], first["smoothed_aadt"]) == ("10665", "7520")
+    assert (first["link_tier"], first["tier_on_raw_count"]) == ("2", "3")
+    assert first["crosses_volume_gate"] == "yes"
+    assert len(rows) == len(context.smoothing_report.replaced)
+    corridor = (reports / "named-corridors.md").read_text()
+    row = "| 130772891 | north-capitol-st | first-underpass-through | through | 3 | 5 |"
+    assert row in corridor
+    assert "named corridors:" in corridor
+
+
+def test_with_the_veto_the_smoothing_report_is_empty_not_stale(tmp_path, monkeypatch) -> None:
+    context = make_context(tmp_path, monkeypatch, smooth=False)
+    stale = context.work_dir / "reports" / "aadt-smoothing.csv"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("way_id\n1\n")
+    classify(context)
+    assert stale.read_text().splitlines() == [
+        "way_id,street,raw_aadt,smoothed_aadt,ways_in_window,window_length_m,"
+        "crosses_volume_gate,link_tier,tier_on_raw_count"
+    ]
+
+
+def test_a_named_corridor_sets_the_junctions_tier_too(tmp_path, monkeypatch) -> None:
+    """A corridor tier is the owner's judgement of the way; a pre-smoothing tier no
+    longer describes it."""
+    context = make_context(tmp_path, monkeypatch)
+    handlers = build_handlers(context, load_overrides=lambda: [])
+    original = run_module.corridors.apply
+
+    def with_a_stale_tier(corridor_list, ways, stress_by_way, **kwargs):
+        stress_by_way[130772891] = dataclasses.replace(
+            stress_by_way[130772891], unsmoothed_tier=Stress.LTS4
+        )
+        return original(corridor_list, ways, stress_by_way, **kwargs)
+
+    monkeypatch.setattr(run_module.corridors, "apply", with_a_stale_tier)
+    handlers[Stage.CLASSIFY_STRESS]()
+    assert context.stress_by_way[130772891].tier is Stress.AVOID
+    assert context.stress_by_way[130772891].unsmoothed_tier is None

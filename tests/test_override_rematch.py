@@ -185,6 +185,112 @@ def test_an_end_on_neighbour_does_not_spoil_a_clean_split() -> None:
     assert rematch.find(fingerprint(), [*pieces, neighbour, before]).way_ids == (11, 12)
 
 
+# --- find: the review's probes and each threshold's edge (ARTERIAL review r0, SF2-3)
+
+
+def at(east_m, north_m):
+    return [LON0 + east_m / 86_000.0, LAT0 + north_m / M_PER_DEG]
+
+
+def footway(osm_id, *points):
+    return way(osm_id, [at(*p) for p in points], name=None, highway="footway")
+
+
+def footway_print(length_m=10.0):
+    old = footway(1, (0, 0), (0, length_m))
+    return rematch.fingerprint_of(old.tags, old.coordinates)
+
+
+def test_a_footway_crossing_a_short_footway_is_not_taken_for_it() -> None:
+    """The reviewer's probe: a short unnamed footway (here 33 ft, 10 m), and a
+    perpendicular one as long across its middle. Every sample of each lies within the
+    6 m tolerance of the other; only the direction tells them apart, and an unnamed
+    row has only its geometry (decision 282: "geometry plus street name")."""
+    match = rematch.find(footway_print(), [footway(11, (-5, 5), (5, 5))])
+    assert not match.ok and "crosses" in match.reason
+    # The same footway redrawn along the line is still found.
+    assert rematch.find(footway_print(), [footway(11, (1, 0), (1, 10))]).ok
+
+
+def test_a_way_45_degrees_off_is_refused_and_one_20_degrees_off_is_not() -> None:
+    """Within 30 degrees of the stored line's direction."""
+    match = rematch.find(footway_print(), [footway(11, (-2.5, 2.5), (2.5, 7.5))])
+    assert not match.ok and "45 degrees" in match.reason
+    assert rematch.find(footway_print(), [footway(11, (-1.71, 0.3), (1.71, 9.7))]).ok
+
+
+def test_two_short_carriageways_side_by_side_are_not_one_answer() -> None:
+    """The reviewer's probe: two 39 ft (12 m) same-named carriageways 13 ft (4 m) either
+    side of the old line. 2.5 tolerances is 15 m, longer than the line, so the
+    overlap is also held to half the shorter way."""
+    old = way(1, line(0, 0, 12))
+    fp = rematch.fingerprint_of(old.tags, old.coordinates)
+    match = rematch.find(fp, [way(11, line(-4, 0, 12)), way(12, line(4, 0, 12))])
+    assert not match.ok and "side by side" in match.reason
+    # Split end to end instead, the two halves are one answer.
+    assert rematch.find(fp, [way(11, line(0, 0, 6)), way(12, line(0, 6, 6))]).way_ids == (11, 12)
+
+
+def test_carriageways_that_overlap_for_20_m_are_side_by_side() -> None:
+    """Over 2.5 tolerances (15 m) and under half the shorter way (25 m): two ways of a
+    short divided stretch, like Harford Road's 1562097553 and 1562097555."""
+    pair = [way(11, line(-2, 0, 60)), way(12, line(2, 40, 50))]
+    match = rematch.find(fingerprint(), pair)
+    assert not match.ok and "side by side" in match.reason
+
+
+def test_the_ways_must_add_up_to_the_stored_length() -> None:
+    """Within a factor of 1.25 of `length_m`. A 22 m way centred on a 12 m line lies
+    within 6 m of it everywhere and covers it, but is nearly twice what the row was
+    written for; an 8 m way in its middle covers it too, within the tolerance at each
+    end, and is two thirds of it."""
+    old = way(1, line(0, 0, 12))
+    fp = rematch.fingerprint_of(old.tags, old.coordinates)
+    match = rematch.find(fp, [way(11, line(0, -5, 22))])
+    assert not match.ok and "add up to 22 m" in match.reason
+    match = rematch.find(fp, [way(11, line(0, 2, 8))])
+    assert not match.ok and "add up to 8 m" in match.reason
+    assert rematch.find(fp, [way(11, line(0, -1, 14))]).ok, "1.17 times"
+
+
+def test_a_way_as_long_as_the_line_but_along_only_part_of_it_does_not_cover_it() -> None:
+    """At least 90% of the stored line covered, on its own: a way that wanders 13 ft
+    (4 m) either side over the first 180 ft (55 m) of the 295 ft (90 m) line is as long
+    as the line and lies within the tolerance, but covers only about two thirds."""
+    zigzag = way(11, [at(-4 if i % 2 else 4, i * 55 / 9) for i in range(10)])
+    match = rematch.find(fingerprint(), [zigzag])
+    assert not match.ok and "cover only" in match.reason
+
+
+def test_ways_7_m_off_the_line_are_not_re_matched() -> None:
+    """The tolerance is 6 m. Wider would start to take the next lane over; Harford
+    Road's replacements sit 9.3 m from the City's line at their worst, which is why
+    that row was re-pointed by hand, verified against record 634 (decision 282a),
+    and not by widening the tolerance."""
+    assert rematch.find(fingerprint(), [way(11, line(5, 0, 90))]).ok
+    assert not rematch.find(fingerprint(), [way(11, line(7, 0, 90))]).ok
+
+
+def test_a_piece_with_a_fifth_of_it_off_the_line_is_not_along_it() -> None:
+    """At least 90% of a candidate within the tolerance: a piece that turns off for
+    its last 12 m (83% along) means the way now goes somewhere the row did not."""
+    turns_off = way(
+        12,
+        [[LON0, LAT0 + 60 / M_PER_DEG], [LON0, LAT0 + 84 / M_PER_DEG],
+         [LON0 + 12 / 86_000.0, LAT0 + 84 / M_PER_DEG]],
+    )  # fmt: skip
+    match = rematch.find(fingerprint(), [way(11, line(0, 0, 60)), turns_off])
+    assert not match.ok and "12" in match.reason
+
+
+def test_a_same_name_way_overlapping_the_end_by_12_m_is_more_than_a_neighbour() -> None:
+    """An end-on neighbour overlaps the line by about one tolerance (6 m); 12 m is past
+    1.25 tolerances (7.5 m), so the junction was redrawn and the row is not applied."""
+    over = way(12, line(0, 84, 50))
+    match = rematch.find(fingerprint(), [way(11, line(0, 0, 90)), over])
+    assert not match.ok and "12" in match.reason
+
+
 def test_nothing_nearby_is_a_failure_with_a_reason() -> None:
     match = rematch.find(fingerprint(), [way(11, line(0, 5000, 90))])
     assert not match.ok and match.reason

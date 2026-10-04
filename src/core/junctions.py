@@ -59,7 +59,7 @@ from dataclasses import dataclass, field, replace
 from django.conf import settings
 from django.db import connection
 
-from pipeline.schema import ROAD_TRAIT_COLUMNS, validate_schema_name
+from pipeline.schema import ROAD_TRAIT_COLUMNS, UNSMOOTHED_TIER_COLUMN, validate_schema_name
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Control,
@@ -124,6 +124,7 @@ CROSS JOIN LATERAL (
 """
 
 _has_trait_columns_seen = False
+_has_unsmoothed_tier_seen = False
 
 
 def has_trait_columns(schema: str) -> bool:
@@ -142,6 +143,22 @@ def has_trait_columns(schema: str) -> bool:
         )
         _has_trait_columns_seen = cursor.fetchone()[0] == len(ROAD_TRAIT_COLUMNS)
     return _has_trait_columns_seen
+
+
+def has_unsmoothed_tier(schema: str) -> bool:
+    """Whether the live segment table has `stress_unsmoothed_tier` yet (the
+    first rebuild after AADT smoothing). Remembered once seen."""
+    global _has_unsmoothed_tier_seen
+    if _has_unsmoothed_tier_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, UNSMOOTHED_TIER_COLUMN],
+        )
+        _has_unsmoothed_tier_seen = cursor.fetchone()[0] == 1
+    return _has_unsmoothed_tier_seen
 
 
 def wanted(raw: RawJunction) -> bool:
@@ -742,12 +759,21 @@ def roads_by_way(
         return {}
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     traits = has_trait_columns(schema)
+    # The crossed road's tier before same-street AADT smoothing lowered its
+    # link, where it did: the count bunched at the intersection is charged
+    # here, and only here (OWNER-DECISIONS 303: "we don't want to double
+    # count"). `volume_aadt` is the agency's count already. GREATEST skips null.
+    link_tier = (
+        f"GREATEST(s.stress_tier, s.{UNSMOOTHED_TIER_COLUMN})"
+        if has_unsmoothed_tier(schema)
+        else "s.stress_tier"
+    )
     query = _ROADS_BY_WAY.format(
         schema=schema,
         tier=(
-            "CASE WHEN %s = ANY(s.car_free_when) THEN 1 ELSE s.stress_tier END"
+            f"CASE WHEN %s = ANY(s.car_free_when) THEN 1 ELSE {link_tier} END"
             if with_facility
-            else "s.stress_tier"
+            else link_tier
         ),
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",

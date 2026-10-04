@@ -31,7 +31,11 @@ jurisdiction, so a Virginia count never smooths a District street that shares a
 name. Only a way whose count is higher than the median is replaced, and only ways
 that carry a count are candidates; a way with no count stays without one.
 
-`Match.raw_aadt` keeps what the agency counted, and `Match.agency` and `year`
+`Match.raw_aadt` keeps what the agency counted. Only the link's volume gate reads
+the median: the rebuild publishes the agency's count in `segment.volume_aadt`, and
+keeps the tier on it (`StressResult.unsmoothed_tier`) for the junction model, so the
+volume bunched at the intersection is charged at the intersection and only there
+(ARTERIAL review r0, SF1; the owner's own reason in 303). `Match.agency` and `year`
 stay those of the replaced count: the median can come from any neighbour, and
 which segments a source touched is a statement about the count that was
 replaced, which is the more conservative reading of the credit.
@@ -39,6 +43,8 @@ replaced, which is the more conservative reading of the credit.
 
 from __future__ import annotations
 
+import csv
+import io
 import math
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
@@ -75,6 +81,37 @@ class SmoothingReport:
     candidate_ways: int = 0
     replaced: tuple[Smoothed, ...] = ()
 
+    def to_csv(self, stress_by_way: Mapping[int, object] | None = None) -> str:
+        """One line per replaced count, for `<DATA_ROOT>/rebuild/reports/
+        aadt-smoothing.csv`: the agency's count, the street's median the link was
+        classified on, the window, whether a volume gate lay between them, and,
+        given the classified tiers, the link's tier and the tier on the agency's
+        count (what the junction model reads)."""
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(
+            ["way_id", "street", "raw_aadt", "smoothed_aadt", "ways_in_window",
+             "window_length_m", "crosses_volume_gate", "link_tier", "tier_on_raw_count"]
+        )  # fmt: skip
+        for item in self.replaced:
+            stress = (stress_by_way or {}).get(item.way_id)
+            tier = int(stress.tier) if stress is not None else ""
+            raw_tier = getattr(stress, "unsmoothed_tier", None) if stress is not None else None
+            writer.writerow(
+                [
+                    item.way_id,
+                    item.street,
+                    item.raw,
+                    item.smoothed,
+                    item.ways,
+                    round(item.length_m),
+                    "yes" if crosses_volume_gate(item.raw, item.smoothed) else "no",
+                    tier,
+                    int(raw_tier) if raw_tier is not None else tier,
+                ]
+            )
+        return out.getvalue()
+
     def summary(self) -> str:
         return (
             f"AADT smoothing (400 m, same street, at least 3 ways and 250 m): "
@@ -85,10 +122,15 @@ class SmoothingReport:
 
 def crosses_volume_gate(raw: int, smoothed: int) -> bool:
     """Whether the two counts fall either side of a volume threshold of the
-    classifier, so the replacement can have moved the tier."""
-    from routemaker.stress import VOLUME_BUSY, VOLUME_QUIET
+    classifier, so the replacement can have moved the tier. The gates as
+    `routemaker.stress` writes them: quiet is `<= VOLUME_QUIET` (so 1,501 is
+    the first count that is not), busy is `>= VOLUME_BUSY`, and the urban
+    two-way floor is `> URBAN_TWO_WAY_BUSY_AADT` (so 8,001 is the first count
+    over it)."""
+    from routemaker.stress import URBAN_TWO_WAY_BUSY_AADT, VOLUME_BUSY, VOLUME_QUIET
 
-    return any((raw >= gate) != (smoothed >= gate) for gate in (VOLUME_QUIET + 1, VOLUME_BUSY))
+    gates = (VOLUME_QUIET + 1, VOLUME_BUSY, URBAN_TWO_WAY_BUSY_AADT + 1)
+    return any((raw >= gate) != (smoothed >= gate) for gate in gates)
 
 
 def _project(lon: float, lat: float, lat0: float) -> tuple[float, float]:

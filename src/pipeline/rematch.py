@@ -5,7 +5,8 @@ splits a way, merges two, or redraws a junction, and the way a row was written
 for is gone from the next extract. `apply_stress` and `apply_access` then listed
 the id as "matched no way" in a log line, and the owner's correction was not in
 force. The Harford Road row (way 424993005, Baltimore) was the first to go this
-way: the fresh extract split it into ways 1562097553, 1562097555 and
+way: the fresh extract redrew its 43 ft (13.2 m) as 213 ft (64.8 m) of new ways,
+1562097553 and 1562097555 (the two carriageways of a short divided section) and
 1562097556.
 
 Each override therefore carries a fingerprint of the way it was written for -
@@ -23,8 +24,14 @@ at. Every one of these must hold:
   its length within `tolerance_m` of it, so the way does not run on past it;
 - together they cover at least 90% of the stored line, so a split is a match and
   half a street is not;
+- each candidate runs the stored line's way (within 30 degrees, over the
+  stretch it lies along), so a way across it is not taken for it;
 - no two candidates run parallel to each other along the line (two
-  carriageways within tolerance of one centreline are two answers, not one);
+  carriageways within tolerance of one centreline are two answers, not one):
+  their stretches of the line overlap by no more than 2.5 tolerances, nor half
+  the shorter stretch, so this holds on a line shorter than 15 m too;
+- the candidates add up to the stored length within a factor of 1.25, so a
+  short line is not matched by whatever lies around it;
 - no other way of that name and class overlaps the line by more than an end-on
   neighbour would (more than 1.25 tolerances: the old way was merged into a
   longer one, or the junction was redrawn, and applying the row to the rest
@@ -58,10 +65,24 @@ TOLERANCE_M = 6.0
 MIN_CONTAINED = 0.9
 MIN_COVERAGE = 0.9
 SAMPLE_M = 2.0
-# Two ways overlapping for longer than this many tolerances are side by side,
-# not end to end: pieces of one split meet at a node and overlap by about one
-# tolerance at each end.
+# Two candidates whose stretches of the stored line (each projected onto it)
+# overlap for longer than this many tolerances, or than PARALLEL_SHARE of the
+# shorter stretch, are side by side, not end to end: pieces of one split meet at
+# a node and their stretches only touch. The share is what makes it work on a
+# line shorter than the tolerances alone (2.5 x 6 m = 15 m; ARTERIAL review r0,
+# SF2: two 12 m carriageways passed).
 PARALLEL_TOLERANCES = 2.5
+PARALLEL_SHARE = 0.5
+# Each candidate runs within this many degrees of the stored line's direction
+# over the stretch it lies along, so a way crossing the line is not taken for it
+# (a 12 m footway across a 12 m footway lies within 6 m of it everywhere).
+MAX_BEARING_DEG = 30.0
+# The candidates' total length is within this factor of the fingerprint's
+# `length_m`, either way: a split adds up to the way it was, and a way that only
+# shares a short line's surroundings does not.
+MAX_LENGTH_RATIO = 1.25
+# A candidate shorter than this has no direction worth comparing.
+MIN_BEARING_CHORD_M = 2.0
 # A way that is not along the line but overlaps it by more than this many
 # tolerances is more than an end-on neighbour (which overlaps by about one).
 NEIGHBOUR_TOLERANCES = 1.25
@@ -209,7 +230,15 @@ class _Line:
         self.segs = [(a, b) for a, b in zip(self.pts, self.pts[1:], strict=False)]
 
     def distance(self, p: tuple[float, float]) -> float:
-        best = math.inf
+        return self.locate(p)[1]
+
+    @property
+    def length(self) -> float:
+        return sum(math.dist(a, b) for a, b in self.segs)
+
+    def locate(self, p: tuple[float, float]) -> tuple[float, float]:
+        """(how far along the line, how far from it) of the nearest point to `p`."""
+        best, best_along, run = math.inf, 0.0, 0.0
         for (ax, ay), (bx, by) in self.segs:
             dx, dy = bx - ax, by - ay
             seg2 = dx * dx + dy * dy
@@ -218,8 +247,21 @@ class _Line:
                 if seg2 == 0
                 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / seg2))
             )
-            best = min(best, math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy)))
-        return best
+            d = math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy))
+            if d < best:
+                best, best_along = d, run + t * math.sqrt(seg2)
+            run += math.sqrt(seg2)
+        return best_along, best
+
+    def point_at(self, along: float) -> tuple[float, float]:
+        run = 0.0
+        for (ax, ay), (bx, by) in self.segs:
+            seg = math.dist((ax, ay), (bx, by))
+            if seg > 0 and run + seg >= along:
+                t = (along - run) / seg
+                return (ax + (bx - ax) * t, ay + (by - ay) * t)
+            run += seg
+        return self.pts[-1]
 
     def samples(self, step: float = SAMPLE_M) -> list[tuple[float, float]]:
         out: list[tuple[float, float]] = []
@@ -241,6 +283,13 @@ def _bbox(coords: Sequence[Sequence[float]]) -> tuple[float, float, float, float
     lons = [c[0] for c in coords]
     lats = [c[1] for c in coords]
     return min(lons), min(lats), max(lons), max(lats)
+
+
+def _pad_deg(tolerance_m: float, lat: float) -> float:
+    """The tolerance in degrees, as a bounding-box pad: a degree of longitude is
+    shorter than one of latitude by cos(lat), so it is the longitude's, used for
+    both (a prefilter may take too much, never too little)."""
+    return tolerance_m / (111_000.0 * math.cos(math.radians(lat)))
 
 
 def _cells(box: tuple[float, float, float, float], pad: float):
@@ -274,7 +323,7 @@ def find(
     lat0 = points[0][1]
     target = _Line(points, lat0)
     target_samples = target.samples()
-    pad = tolerance_m / 111_000.0
+    pad = _pad_deg(tolerance_m, lat0)
     box = _bbox(points)
     want_name = street_key(fingerprint["name"])
     want_highway = fingerprint["highway"]
@@ -322,15 +371,47 @@ def find(
             (),
             f"the ways along it cover only {covered / len(target_samples):.0%} of the stored line",
         )
-    for i, (a, _, a_samples) in enumerate(candidates):
-        for b, b_line, _ in candidates[i + 1 :]:
-            overlap = sum(1 for s in a_samples if b_line.distance(s) <= tolerance_m)
-            if overlap * SAMPLE_M > PARALLEL_TOLERANCES * tolerance_m:
+    # Where along the stored line each candidate lies, and whether it runs the
+    # line's way there rather than across it.
+    spans: list[tuple[object, float, float]] = []
+    for way, line, _ in candidates:
+        lo, hi = sorted((target.locate(line.pts[0])[0], target.locate(line.pts[-1])[0]))
+        chord = (line.pts[-1][0] - line.pts[0][0], line.pts[-1][1] - line.pts[0][1])
+        if math.hypot(*chord) >= MIN_BEARING_CHORD_M:
+            a, b = target.point_at(lo), target.point_at(hi)
+            along = (b[0] - a[0], b[1] - a[1])
+            span = math.hypot(*along)
+            cosine = (
+                abs(chord[0] * along[0] + chord[1] * along[1]) / (math.hypot(*chord) * span)
+                if span > 0
+                else 0.0
+            )
+            off = math.degrees(math.acos(min(1.0, cosine)))
+            if off > MAX_BEARING_DEG:
+                return Match(
+                    (),
+                    f"way {way.osm_id} crosses the stored line ({off:.0f} degrees off its "
+                    "direction) rather than running along it",
+                )
+        spans.append((way, lo, hi))
+    for i, (a, a_lo, a_hi) in enumerate(spans):
+        for b, b_lo, b_hi in spans[i + 1 :]:
+            overlap = min(a_hi, b_hi) - max(a_lo, b_lo)
+            shorter = min(a_hi - a_lo, b_hi - b_lo)
+            if overlap > min(PARALLEL_TOLERANCES * tolerance_m, PARALLEL_SHARE * shorter):
                 return Match(
                     (),
                     f"ways {a.osm_id} and {b.osm_id} both lie along it, side by side, so it is "
                     "not one answer",
                 )
+    total = sum(line.length for _, line, _ in candidates)
+    stored = float(fingerprint["length_m"])
+    if not stored / MAX_LENGTH_RATIO <= total <= stored * MAX_LENGTH_RATIO:
+        return Match(
+            (),
+            f"the ways along it add up to {total:.0f} m against the {stored:.0f} m the row was "
+            "written for",
+        )
     return Match(tuple(sorted(way.osm_id for way, _, _ in candidates)))
 
 
@@ -496,7 +577,8 @@ def resolve(
         if fp is None:
             continue
         prints[index] = fp
-        for cell in _cells(_bbox(parse_line(fp["line"])), tolerance_m / 111_000.0):
+        points = parse_line(fp["line"])
+        for cell in _cells(_bbox(points), _pad_deg(tolerance_m, points[0][1])):
             wanted[cell].append(index)
     nearby: dict[int, list] = defaultdict(list)
     if wanted:

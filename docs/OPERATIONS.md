@@ -2392,6 +2392,70 @@ replaces last week's. A failure to write it is a warning in the log and never
 fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
 ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
 
+### AADT smoothing, named corridors and the override re-match
+
+Three more reports land beside the discrepancy report, in
+`${DATA_ROOT}/rebuild/reports/`, each replaced by every rebuild. Like it, a
+failure to write one is a warning in the log and never fails the rebuild.
+
+- `override-rematch.md` and `.csv` (OWNER-DECISIONS 282): every approved override
+  row whose OSM way is missing from the extract, and what became of it:
+  `rematched` (re-pointed at the ways that now stand for it, by stored geometry
+  and street name, only when unambiguous), `covered` (those ways already carry
+  the same row), `failed` (left unapplied, with the reason; the appliers still
+  count it unmatched), plus `drifted` rows whose way is present but no longer
+  looks like the one the row was written for. The log line is "override
+  re-match: N rows, ...". A row typed into the admin has no fingerprint and can
+  only fail.
+- `aadt-smoothing.csv` (285, 296, 303): one line per traffic count the street's
+  median replaced: the agency's count, the median the link was classified on,
+  the window (ways and length), whether a volume gate lay between them, and the
+  link's tier against the tier on the agency's count. The log line is "AADT
+  smoothing (400 m, ...): N of M counts replaced".
+- `named-corridors.md` (284-286, 294-296): every way an entry of
+  `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
+  and any entry that matched no way (also a warning in the log: the extract's
+  geometry moved, or the file is wrong).
+
+**What smoothing changes, and what it does not.** Only the link's volume gate
+reads the median, and it only ever lowers a count (303: "Keep it LTS 4, and only
+lower ratings. In most cases, the smoothing is probably bunching by the
+intersection. Given that our routing is a sum of intersection stress and route
+stress, we don't want to double count."). `segment.volume_aadt` stays the
+agency's count, and `segment.stress_unsmoothed_tier` keeps the tier on that
+count where smoothing lowered the link; the junction model reads the greater of
+the two tiers and the agency's count, so the volume bunched at an intersection
+is charged there and only there. On a table from before the column the junction
+reads `stress_tier` alone, until the next rebuild.
+
+**Vetoing the smoothing.** The owner can veto it (296, as recorded: "a
+data-quality fix, not a rule change; the owner can veto it"). The switch is `RebuildContext.smooth_volume` in
+`src/pipeline/run.py`, `True` by default. It is deliberately not an environment
+variable: it is the owner's decision, so it changes in a reviewed commit. To flip
+it, set the default to `False`, commit, rebuild the pipeline image
+(`docker compose build rebuild`, or the release that carries the commit), and the
+next rebuild classifies every link on the agency's count; `aadt-smoothing.csv`
+is then header-only. Undo it the same way.
+
+**A missing corridor folder fails the rebuild.** `routemaker.corridors.load`
+refuses a missing `fixtures/corridors/` (CLASSIFY_STRESS fails with
+`CorridorRefused`), because the image copies `fixtures/` and its absence means a
+broken image; the owner's corridor ratings would otherwise vanish without a
+word. A folder with no file is a warning.
+
+**Rebuild checklist: Harford Road (decision 282a).**
+
+- [ ] Until the owner approves loading
+  `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` and deletes the
+  database's stress row for way 424993005 in the admin, the rebuild reports
+  stress 424993005 as `failed` in `override-rematch.md` and leaves the Harford
+  Road row unapplied. That is expected, not a fault: the generic re-match
+  declines it because the junction was redrawn, and the re-point to ways
+  1562097553, 1562097555 and 1562097556 is in the file, waiting for that
+  approval. After it: load the file (`load_access_overrides`, dry first, then
+  `--confirm`, as in `fixtures/overrides/README.md`), delete row 424993005 in the
+  admin, and the next rebuild applies the three new rows.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.

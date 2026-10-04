@@ -326,9 +326,11 @@ read-only from an extract; new files should carry them from the start.
 
 When an approved row's way is missing from the extract, APPLY_OVERRIDES
 (`rematch.resolve`) looks for the ways of the same street name and highway class that
-now lie along the stored line (within 6 m, 90% of each way's length, 90% of the line
-covered) and applies the row to all of them, but only when that is unambiguous: not when
-two ways run side by side along it, nor when another way of that name overlaps it
+now lie along the stored line (within 20 ft (6 m), 90% of each way's length, 90% of the
+line covered, each within 30 degrees of the line's direction, and together within a
+factor of 1.25 of its length) and applies the row to all of them, but only when that is
+unambiguous: not when two ways run side by side along it (also on a line shorter than
+49 ft (15 m)), nor when another way of that name overlaps it
 beyond an end-on neighbour, nor when a target already carries a different row. Every
 row that was missing is listed with its outcome (`rematched`, `covered`, `failed` and
 why) in `<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`, and summarised in
@@ -343,8 +345,10 @@ in the database still names it: delete that row in the admin when loading the fi
 `failed`, never twice applied).
 
 - `2026-10-01-owner-baltimore-facilities.json`, Harford Road (decision 282a): way
-  424993005 (16 m) was split in the 2026-10-03 extract; its row is re-pointed at ways
-  1562097553, 1562097555 and 1562097556 at 39.3468 N, 76.5662 W, each checked against
+  424993005 (43 ft, 13.2 m) was redrawn in the 2026-10-03 extract as 213 ft (64.8 m) of
+  new ways: 1562097553 and 1562097555, the two carriageways of a short divided section,
+  and 1562097556 continuing north. Its row is re-pointed at all three, at 39.3468 N,
+  76.5662 W, each checked against
   Open Baltimore record 634 (Harford Rd, Montebello Ter to Echodale Ave): the three lie
   within 9.3, 6.3 and 5.7 m of its line (`tests/data/open_baltimore_record_634.json`).
   The generic re-match declines this one, as it should: the junction was redrawn, so
