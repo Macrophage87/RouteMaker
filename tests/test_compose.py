@@ -119,6 +119,7 @@ def test_one_valhalla_process_per_tile_variant() -> None:
     assert variants == [
         "valhalla-ebike",
         "valhalla-no-trail",
+        "valhalla-offroad",
         "valhalla-standard",
         "valhalla-weekend",
     ]

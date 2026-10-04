@@ -275,6 +275,9 @@ PLAN_MEMORY_LIMITS = {
     "valhalla-ebike": "2G",
     # "each Valhalla 2 GB": the weekend graph's router too (owner, 2026-09-27).
     "valhalla-weekend": "2G",
+    # The off-road graph for Gravel and Mountain Goat (OWNER-DECISIONS 291(2)):
+    # two workers inside 1536M, which keeps the swap-time peak at 32.0G.
+    "valhalla-offroad": "1536M",
     "photon": "3G",
     "postgis": "4G",
     "rebuild": "8G",

@@ -380,15 +380,22 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
         ({"highway": "corridor"}, "hidden"),
         ({"highway": "footway", "indoor": "yes"}, "hidden"),
-        ({"highway": "footway", "indoor": "no"}, "road"),
+        # A footway no bicycle tag opens is barred, not drawn as a bike path
+        # (OWNER-DECISIONS 278, 290(b)).
+        ({"highway": "footway", "indoor": "no"}, "barred"),
         ({"highway": "elevator"}, "hidden"),
         ({"highway": "construction"}, "hidden"),
         (
             {"highway": "footway", "bicycle": "no"},
-            "road",
-        ),  # a public path; its facility says the rest
+            "barred",
+        ),  # a public path a bicycle may not ride: left to the base map
+        ({"highway": "path", "bicycle": "no"}, "barred"),
+        ({"highway": "steps"}, "barred"),
+        ({"highway": "footway", "bicycle": "dismount"}, "road"),  # kept, flagged: walk it
+        ({"highway": "path"}, "road"),
         ({"highway": "path", "access": "private"}, "hidden"),  # inside the fence
-        ({"highway": "footway", "access": "private", "foot": "yes"}, "road"),
+        ({"highway": "footway", "access": "private", "foot": "yes"}, "barred"),
+        ({"highway": "path", "access": "private", "foot": "yes"}, "barred"),
         ({"highway": "cycleway", "access": "no", "bicycle": "designated"}, "road"),
         ({"highway": "footway", "access": "private", "bicycle": "private"}, "hidden"),
     ],
@@ -485,7 +492,8 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
         ({"highway": "service", "service": "drive-through"}, "hidden"),
         ({"highway": "service", "service": "alley"}, "alley"),  # item 100: close in, faint
         ({"highway": "service"}, "road"),
-        ({"highway": "footway"}, "road"),  # its length and ends decide (short_paths_to_hide)
+        ({"highway": "path"}, "road"),  # its length and ends decide (short_paths_to_hide)
+        ({"highway": "footway"}, "barred"),  # no bicycle tag: a bicycle may not ride it
     ],
 )
 def test_sidewalks_crossings_and_parking_lots_are_left_off_the_map(tags, drawn_as) -> None:
@@ -501,7 +509,7 @@ def _west_east(lon0, lat, metres):
 
 def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> None:
     trail = {"highway": "cycleway", "name": "Rock Creek Trail"}
-    link = {"highway": "footway"}
+    link = {"highway": "path"}
     ways = [
         (1, trail, [10, 11, 12], _west_east(-77.05, 38.95, 900)),
         (2, trail, [20, 21], _west_east(-77.04, 38.95, 900)),

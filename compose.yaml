@@ -646,10 +646,11 @@ services:
 
   # The standard graph with the mountain-bike class open
   # (pipeline.variants.Variant.OFFROAD; OWNER-DECISIONS 291(2)): the router
-  # Gravel and Mountain Goat ride. One worker and 1G, not
-  # its siblings' two and 2G: it serves two presets of ten, a sibling idles at
-  # 40 to 500 MB resident, and 2G would take the swap-time peak to 33.0G over the
-  # 32G check (scripts/check_compose_limits.py). 1.1 GB of tiles on disk.
+  # Gravel and Mountain Goat ride. Two workers, as its siblings, but 1536M, not
+  # their 2G: it serves two presets of ten, and a sibling idles at 40 to 500 MB
+  # resident. 2G would take the swap-time peak to 33.0G, over the 32G check
+  # (scripts/check_compose_limits.py); 1536M keeps it at 31.5G. 1.1 GB of tiles
+  # on disk.
   valhalla-offroad:
     <<: [*restart, *logging]
     image: ghcr.io/valhalla/valhalla:3.5.1
@@ -664,7 +665,7 @@ services:
     # would start one worker per core of the whole machine inside a two-core
     # limit. It is not a configuration key; the loki_workers, thor_workers and
     # odin_workers keys the configs used to carry are read by nothing.
-    command: ["valhalla_service", "/conf/valhalla-offroad.json", "1"]
+    command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
     # The served build, at the path the config names. `current` is a symlink
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
@@ -680,7 +681,7 @@ services:
       - ./lua:/conf/lua:ro
     deploy:
       resources:
-        limits: { memory: 1G, cpus: "1" }
+        limits: { memory: 1536M, cpus: "2" }
 
   # The only component that holds the bot token, and the source of authorization
   # truth. Exposes its membership interface on the internal network behind a
