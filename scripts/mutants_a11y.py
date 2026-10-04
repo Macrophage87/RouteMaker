@@ -404,6 +404,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("the range back to 68-140 kg", DI, "export const SYSTEM_WEIGHT_MIN_KG = 25;\nexport const SYSTEM_WEIGHT_MAX_KG = 450;", "export const SYSTEM_WEIGHT_MIN_KG = 68;\nexport const SYSTEM_WEIGHT_MAX_KG = 140;", WEIGHT + TARGET),
     ("the note gives the wrong limit", WT, "so we'll plan with ${LIMIT_WORDS[limit]}.", "so we'll plan with ${LIMIT_WORDS.min}.", WEIGHT),
     ("the typed total left in the fields", WD, "      set.sheet(BLANK);\n      set.refused(limitNote(stored.limit));", "      set.refused(limitNote(stored.limit));", WEIGHT),
+    # --- 340: no per-field limits, only non-negative numbers ----------------
+    ("a negative part taken", WT, r"  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;" "\n  return Math.round(", r"  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;" "\n  return Math.round(", WEIGHT),
     ("the link's weight not clamped", DI, "  return Math.min(SYSTEM_WEIGHT_MAX_KG, Math.max(SYSTEM_WEIGHT_MIN_KG, Math.round(kg * 10) / 10));", "  return Math.round(kg * 10) / 10;", TARGET),
     (
         "weight to whole kilograms again",

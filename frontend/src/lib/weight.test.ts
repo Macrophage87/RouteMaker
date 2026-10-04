@@ -321,3 +321,25 @@ test("the Cargo field takes a large load: a trailer of 400 lb is fine, and only 
   assert.deepEqual(over, { name: DEFAULT_NAME, totalKg: 450, limit: "max", setAt: NOW });
   assert.match(savedNotice(over, NOW), /so we'll plan with 992 lb \(450 kg\)\./);
 });
+
+test("no part has a limit of its own, only that it is a non-negative number; only the total is clamped (OWNER-DECISIONS 340)", () => {
+  // A 400 lb rider, a 120 lb bike, 0 cargo: taken as entered (236.8 kg), parts and all.
+  let sheet = editPart(BLANK, "rider", "400", SPLIT);
+  sheet = editPart(sheet, "bike", "120", SPLIT);
+  sheet = editPart(sheet, "cargo", "0", SPLIT);
+  const kept = toStored(sheet, SPLIT, NOW) as StoredWeight;
+  assert.equal(kept.limit, undefined);
+  assert.deepEqual(kept.parts, { riderKg: 181.4, bikeKg: 54.4, cargoKg: 0 });
+  // Any one part as large as it is: the total alone decides the clamp.
+  assert.equal((toStored(editPart(BLANK, "rider", "5000", SPLIT), SPLIT, NOW) as StoredWeight).limit, "max");
+  assert.equal((toStored(editPart(BLANK, "bike", "1", SPLIT), SPLIT, NOW) as StoredWeight).limit, undefined, "a 1 lb bike with the default rider is fine");
+  // Negative or not a number: not saved, in the same neutral words.
+  for (const text of ["-5", "-0.5", "abc", "1e3", "12,5"]) {
+    assert.deepEqual(toStored(editPart(BLANK, "cargo", text, SPLIT), SPLIT, NOW), { refused: WEIGHT_NOT_A_NUMBER }, text);
+    assert.deepEqual(toStored(editTotal(text), SPLIT, NOW), { refused: WEIGHT_NOT_A_NUMBER }, `total ${text}`);
+  }
+  // Nothing anywhere judges a weight.
+  const words = [WEIGHT_NOTHING, WEIGHT_NOT_A_NUMBER, limitNote("min"), limitNote("max"), savedNotice({ ...SAVED, limit: "max" }, NOW), dialogHtml(null)].join(" ");
+  assert.doesNotMatch(words, /unusual|sensible|unrealistic|too (heavy|light|high|low)|heavy|light|invalid|extreme|normal/i);
+  assert.doesNotMatch(dialogHtml(null), /\b(min|max)="/, "no bounds on any field");
+});

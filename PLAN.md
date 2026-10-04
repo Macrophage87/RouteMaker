@@ -1056,3 +1056,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - The effort model needs no extra resolution above the cap.
 
   Implemented as: the Cargo field, like Rider and Bike, has no cap of its own; a 180 lb rider, 30 lb bike and 400 lb of cargo make 610 lb (276.6 kg), kept as entered with its parts, and a load that takes the total past 450 kg is planned at the limit with 338's note (weight.test.ts).
+
+- 340, Owner 2026-10-04: "Don't bother with 'sensible limits' for that. [personal example removed at the owner's request, 353] Sensible limits are one thing but we need to be inclusive. The total weight matters." No per-field limits on Rider, Bike or Cargo, beyond being a non-negative number. Only the total matters, and it is clamped for planning at 55-990 lb (25-450 kg) with the neutral 338 note. There is no wording anywhere that judges a weight as unusual. Supersedes the "part fields need sensible bounds" line in 337.
+
+  Implemented as: the worksheet's Rider, Bike and Cargo fields have no bounds (no min or max, no per-field check): each need only be a non-negative number, and a negative or non-numeric entry is not saved, with the same neutral words as any entry that is not a number ("Enter numbers only, in pounds, or Cancel."). Only the total is clamped for planning (338). weight.test.ts holds this, and that no wording judges a weight.
