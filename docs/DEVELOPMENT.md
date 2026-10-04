@@ -319,9 +319,9 @@ Where it starts: the stored "on" or "off" first, then the browser's
 palette: `?palette=` in the link, then the switch, then `blended`. The
 colours of the switch's state are one place, `tiersFor(palette, strong)`.
 
-The `cvd` palette, with casings (the casing is the dark or white line drawn
-under a tier so it holds against the base map; the switch makes each black or
-white):
+The `cvd` palette, with casings (the casing is the dark or light line drawn
+under a tier so it holds against the base map; the switch makes the calm tiers'
+black or white and leaves the busy tiers' as they are):
 
 | Tier | Line | Casing |
 | --- | --- | --- |
@@ -329,7 +329,7 @@ white):
 | LTS 2 | #5d99d2 | #0a1a2f |
 | LTS 3 | #cd4b0a | #0a1a2f |
 | LTS 4 | #6a0a06 | #ffffff |
-| Avoid | #08081e | #ffffff |
+| Avoid | #08081e | #f0e442 |
 
 It was chosen by search, not by eye: random and grid search over sRGB with the
 hue of each tier held to a family (light and mid blue, orange, dark red,
@@ -340,7 +340,11 @@ was the search's target; the test's floor is 1.4:1, which leaves a later retune
 a margin. The smallest step chosen is 1.51:1.) Avoid is blue-black on purpose:
 a protanope sees LTS 4's dark red as near-black, and a neutral black Avoid
 beside it measures about 17 apart (#000000 is 16.9 under protanopia, and
-#242424 14.1), under the floor of 20.
+#242424 14.1), under the floor of 20. Its casing is a light yellow (Okabe-Ito
+#f0e442; white until the release review's accessibility SF5), a cue of its own
+beside LTS 4's white: the Avoid line is 14.9:1 on it, the two casings are 28.9
+CIEDE2000 apart under normal vision (29.9 protan, 28.3 deutan, 16.8 tritan), and
+the LTS 4 and Avoid lines are at least 27.2 apart under every vision.
 Blue against orange is the pair all three deficiencies keep.
 
 CIEDE2000 between neighbouring tiers, LTS 1-2, 2-3, 3-4, 4-Avoid, and the
@@ -352,10 +356,10 @@ diagnostics:
 
 | Palette | Vision | LTS 1-2 | LTS 2-3 | LTS 3-4 | LTS 4-Avoid | Closest pair |
 | --- | --- | --- | --- | --- | --- | --- |
-| blended | normal | 16.1 | 40.2 | 26.7 | 20.9 | LTS 1-2, 16.1 |
-| blended | protan | 15.4 | 14.9 | 21.0 | 19.3 | LTS 2-3, 14.9 |
-| blended | deutan | 16.2 | 15.5 | 18.0 | 21.8 | LTS 2-3, 15.5 |
-| blended | tritan | 16.0 | 51.7 | 18.1 | 19.3 | LTS 1-2, 16.0 |
+| blended | normal | 16.1 | 40.2 | 28.5 | 38.9 | LTS 1-2, 16.1 |
+| blended | protan | 15.4 | 14.9 | 19.9 | 27.9 | LTS 2-3, 14.9 |
+| blended | deutan | 16.2 | 15.5 | 11.0 | 40.2 | LTS 3-4, 11.0 |
+| blended | tritan | 16.0 | 51.7 | 15.5 | 42.0 | LTS 3-4, 15.5 |
 | twotone | normal | 16.1 | 35.4 | 21.0 | 29.4 | LTS 1-2, 16.1 |
 | twotone | protan | 15.4 | 20.5 | 12.4 | 28.3 | LTS 3-4, 12.4 |
 | twotone | deutan | 16.2 | 26.0 | 8.3 | 17.8 | LTS 3-4, 8.3 |
@@ -370,11 +374,15 @@ changed its LTS 4 (#c80018) and Avoid (#14040a over a #ee3b2c casing), and
 LTS 1 to 3 are as they were ("Stress salience", below). It does not meet 20 for
 every pair under protanopia and deuteranopia (LTS 2 and 3 are 15 apart; the
 dashes and widths tell them apart, as the comment in `stressStyle.js` says).
-That is the reason for the option, not something it changes.
+Item 274's red lowered LTS 3 against LTS 4 under deuteranopia from 18.0 to 11.0,
+by choice: it holds that pair's luminance at 1.47:1, over the 1.4:1 floor, and
+the pair also differs by dash, width and casing. LTS 4 against Avoid rose from
+about 20 to 28 or more under every vision. That is the reason for the option,
+not something it changes.
 
 WCAG relative luminance between neighbours (greyscale order): `cvd` Y 0.796,
 0.298, 0.180, 0.033, 0.003, steps of 2.43, 1.51, 2.78 and 1.56 to 1; `blended`
-1.86, 1.17, 1.98, 2.15 to 1; `twotone` does not fall (LTS 3 is lighter than
+Y 0.568, 0.283, 0.234, 0.123, 0.003, steps of 1.86, 1.17, 1.64 and 3.30 to 1; `twotone` does not fall (LTS 3 is lighter than
 LTS 2).
 
 Contrast of a tier against the base map (every surface of `@protomaps/basemaps`'
@@ -384,11 +392,11 @@ and the line against its casing; 3:1 needed):
 
 | Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid |
 | --- | --- | --- | --- | --- | --- |
-| blended | 8.31 | 4.50 | 4.51 | 4.28 | 9.22 |
-| blended, switch on | 9.83 | 5.29 | 4.51 | 4.28 | 9.22 |
+| blended | 8.31 | 4.50 | 3.60 | 3.54 | 4.21 |
+| blended, switch on | 9.83 | 5.29 | 3.60 | 3.54 | 4.21 |
 | cvd | 10.23 | 5.53 | 3.66 | 7.41 | 11.55 |
 | cvd, switch on | 12.29 | 5.53 | 3.66 | 7.41 | 11.55 |
-| twotone (reported only) | 8.31 | 4.50 | 1.44 | 2.13 | 3.20 |
+| twotone (reported only) | 8.31 | 4.50 | 1.44 | 2.34 | 3.20 |
 
 The route line in the `cvd` palette. The route's sections were drawn in a 5 px
 line on a 9 px casing (4 to 6 px on 11 px since item 274). The casing was the route's blue (#1d4ed8), which the
@@ -478,7 +486,22 @@ emulated media were `forced-colors: active`, `prefers-contrast: more` and both
 colour schemes, for the switch off and on. The map itself needs the stack and
 was not looked at.
 
-### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292)
+**The release review's accessibility fixes** (front end, f0f2ed9):
+- A plan still running after 3 s says "Still planning." once in the status line,
+  and a labelled indeterminate progress bar shows while it plans.
+- The routes to choose from are short-named radios, "Route N: X mi, Y more than
+  Route 1" (miles first, km in brackets, as in "Route 2: 7.2 mi (11.6 km), 0.2 mi
+  (0.4 km) more than Route 1"), each described by its own figures. The shared
+  hint describes the group and no longer asks the rider to look at the map.
+- Target distance and System weight say a bad entry in a persistent assertive
+  live region.
+- The "Show bike lanes on high-stress roads" switch is always shown with a route,
+  with or without the stress map, in its own words.
+- The plan's points on federal land are listed in words ("Your points on federal
+  land"), so a rider who cannot point at the map gets the names.
+- The a11y harness counts every check: `EXPECTED = 129` in `scripts/a11y/check.mjs`.
+
+### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
 PLAN.md, Owner amendments, "FOLLOWUP-STRESS-SALIENCE", has the owner's words.
 The rule behind every number here: **visual weight rises with stress**, and
@@ -513,7 +536,10 @@ off):
   dash-dot, and a **cross-hatch** in the casing colour on its legend swatch and
   stress-bar segment (`.stress-seg-5` in `styles.css`, `--seg-accent`), a
   pattern no other tier has. The two-tone and colour-blind-friendly palettes
-  take the same dashes and widths with their own colours.
+  take the same dashes and widths with their own colours; `cvd`'s Avoid sits on
+  a light yellow casing (#f0e442), its own cue beside LTS 4's white. The legend
+  swatches are 64 px (`LEGEND_SWATCH_PX`, 40 before), so each shows a whole dash
+  cycle of every tier (the longest, Avoid with the switch on, is 52.5 px).
 - **No odd dash lists (279).** LTS 1 is `dash: null`, not `[1]`. A one-entry
   list is odd, MapLibre and SVG repeat it, and the legend's swatch drew `[1]`
   dashed. A test forbids any odd list. Each facility's pattern is its own over
@@ -536,6 +562,9 @@ off):
   casings (LTS 1 and 2) to black or white. A busy tier's casing, which is what
   its gaps show, is left as it is: black under LTS 3 would score 0.97 against
   LTS 4's 0.67. Avoid's coral is its cue. The owner accepted this too (297).
+  With the switch on, the busy tiers' lines on their casings are LTS 3 3.60:1,
+  LTS 4 6.05:1 and Avoid 5.04:1 (`cvd` 3.83, 12.66 and 14.93; two-tone, reported
+  only, 1.46, 2.34 and 3.62), all over the 3:1 floor where it is held.
 
 **The facility rails (276, 277, 290).** Each facility is a pair of rails, one
 either side of the tier's casing, so the tier's own colour and dash are left
@@ -560,10 +589,37 @@ alone. Shape comes first and colour second:
   `unpaved == true`, so an unpaved trail is never drawn like a protected path.
   A missing `unpaved` means an unknown surface, and that keeps its rails.
   Unpaved roads and trails get a dotted centre mark (`UNPAVED_DASH` `[1, 1.2]`,
-  `unpavedWidth`: 0.4 of the line, at least 1.5 px) in the tier's casing
-  colour, drawn over the line. The mark is not drawn where the line is faint
+  `unpavedWidth`: 0.4 of the line, at least 1.5 px) in the tier's unpaved
+  casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
+- **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
+  ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
+  tier's own dash and width, so the stress still reads without colour
+  (`UNPAVED_PALETTES`; on the overlay and the route's sections). The dotted mark
+  stays as the cue that is not colour at all, and the legend row reads "Brown,
+  darker = busier".
+
+  | Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid | Casings |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | blended | #d9b98c | #b58a55 | #8c5e2e | #5e3a17 | #33200d | LTS 1-2 #3b2410, LTS 3 up #f6ead2 |
+  | twotone | #d4bba6 | #ac8b73 | #7d604b | #53392a | #2b1c14 | LTS 1-2 #33231a, LTS 3 up #f6ead2 |
+  | cvd | #e0c68a | #bc9a52 | #7e6028 | #544018 | #2a200c | LTS 1-2 #2a200c, LTS 3 up #f6ead2 |
+
+  The blended ramp's L* is 76.9, 60.5, 43.9, 28.0 and 14.2. Every step is
+  1.5:1 or more in lightness and 10 or more CIEDE2000 from the last under
+  every vision, and every tier is 3:1 or more on every base-map surface (the
+  worst is LTS 3, about 3.3:1). Gap harshness is 0, 0.93, 0.78, 0.94 and 3.47,
+  so 292's rule from LTS 3 up still holds. Unpaved LTS 1 is 19.2, 22.9 and
+  20.3 CIEDE2000 from the paved LTS 3 amber (#bf730b) and 55 to 61 from its
+  casing (#45290a). Two-tone uses a greyer taupe, because its paved LTS 3 is a
+  yellow a warm tan would sit on; `cvd` uses an ochre-olive on the yellow side
+  of the blue-yellow axis. **Weak spot:** under deuteranopia unpaved LTS 1 and
+  2 are only about 5 to 6 CIEDE2000 from the paved green LTS 1 and 2; the
+  dotted mark tells them apart there. Each `stress_spans` entry of a route
+  says `unpaved` (true, false or null), and a section ends where the surface
+  changes. The preview is /home/steph/rmdata/demo/stress-salience-preview.html
+  (r1's is kept as stress-salience-preview-r1.html).
 - The facility bar takes its colours and patterns from the rails
   (`.facility-seg-*`). Its old green, blue and amber collided with the stress
   colours.
@@ -816,9 +872,12 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   Empty until the live table has the columns. The tiles do not read them.
 - `stress_spans` (OWNER-DECISIONS item 81: "Could we also get a color on the
   route for what LTS it is?"): the route's sections, in route order,
-  `[{from_m, to_m, tier, facility}]` in whole metres along the traced length
-  from 0, each starting where the one before ends. `tier` is 1-5 or null
-  (unknown), `facility` the class or null. They come from the same per-piece
+  `[{from_m, to_m, tier, facility, unpaved}]` in whole metres along the traced
+  length from 0, each starting where the one before ends. `tier` is 1-5 or null
+  (unknown), `facility` the class or null, `unpaved` true, false or null where
+  the segments do not say (OWNER-DECISIONS 302; additive, and a section also
+  ends where the surface changes, so the route can draw unpaved sections in
+  brown). They come from the same per-piece
   join as `stress_m` and `facility_m` (`routing.classify`; a road closed to cars
   at the ride's time is tier 1 and a path, and on the no-trail variant a lane is
   "none"), with adjacent equal sections merged and a section under 10 m
@@ -3351,16 +3410,21 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   54.5, 48.1 and 40.4 mi exist at use_roads 0.5, 0.7 and 1.0.
 - **If no route fits the target** (267, "Least-stress route, flagged (Recommended)"): the least
   stressful route found within the ceiling, in the 258-262 order (`refine.calmer`, the shorter on a
-  tie), is answered with `calm_search.fits: false`, `limited: "target_distance"` and
-  `over_target_m` ("No route within your target distance ... This is the least stressful one found.
+  tie), is answered with `calm_search.fits: false`, `calm_search.no_fit: true`,
+  `limited: "target_distance"` and `over_target_m` ("No route within your target distance ... This is the least stressful one found.
   It is X mi over your target."), and nothing is searched. Not the shortest, as before 267.
 - **If not even one is within the ceiling** (298(2), "Calmest found, flagged (Recommended)"): the
-  calmest route found, in the same order, is answered, flagged with `over_target_m` and
-  `calm_search.no_fit: true`, so "the least stressful one found" is true here too. The first build
-  answered the shortest in this case. The ceiling stays hard for the search, which never takes
-  a route past it.
-- **`calm_search.limited`** tells these apart: `"target_distance"` means no route within the target
-  was found (`fits: false`), and `"ceiling"` means the search stopped at the 1.25x ceiling.
+  least stressful of all the routes found (the same order, then the shorter) is answered, flagged
+  the same way (`no_fit: true`, `over_target_m`), so "the least stressful one found" is true here
+  too. The first build answered the shortest in this case; the shortest is now answered only where
+  none of them can be read. These readings, like `settle`'s and a long plan's final reading, stop
+  at `refine.late_deadline(ctx)` (the deadline less `REFINE_TRACE_RESERVE_S`).
+- **`calm_search.no_fit`**: true only where no route within the target was found, false where one
+  was, null with no target. The front end keys its "No route within your target distance"
+  sentence on it. After the dodge pass it is cleared only where the route now fits.
+- **`calm_search.limited`**: `"target_distance"` is the no-fit answer's alone. `"ceiling"` is its own
+  code: the exclusion search's next round found only routes past `ceiling_m`, so it stopped there.
+  A calmer, longer route may exist, and the answer may well fit the target.
 - The plan hash carries it (`targetmi`, and `sysweight`, `loop`); all three are additive and the link
   version stays 2, because no field a link already carried changes its meaning, and a bump to 3
   would make an older page's `stressFromV1` remap a v3 link's stress.
@@ -3396,10 +3460,12 @@ each level (`MAXCALM_STEPS`: 15 m, 50 m, 50 m):
    (`(1 - w) x actual + w x effort`, w = 0 at the detent and 1 at full avoid) (262), tolerance 50 m. At
    the detent it is the actual distance. **Right of the detent** (Hills set to seek hills; 298(3),
    "Keep stress order + target (Recommended)") the search runs as at the detent, in this order and
-   to the same target. Only the effort term inverts (`refine.level3` with
-   `Context.hills_seek_weight`), so of two routes level on stress the one with more climbing is
-   preferred. At the top of the Traffic slider the answer's `hills_seek.limited` is `"calm_first"`:
-   stress decides there before hills. Before 298(3) the stress-order search and the target fit were
+   to the same target, and a long calm plan runs too (`long_calm_for` no longer takes a `seeking`
+   argument). Only the effort term inverts: `Context.hills_seek_weight` (the Hills position / 100)
+   subtracts that share of the effort in `refine.level3`, so of two equally calm routes the one with
+   more climbing is preferred. On Trailmaxxing and Cargo with passengers at the top of the stress
+   slider no climb search among the router's alternatives is asked, and the answer's
+   `hills_seek.limited` is `"calm_first"`; below the top the climb search is as before. Before 298(3) the stress-order search and the target fit were
    skipped while the slider sought, though the target dial was still offered. What seeking should
    mean in the end is FOLLOWUP-HILLS-TOLERATE (242).
 
@@ -3440,8 +3506,8 @@ were not worth it:
   72.2 mi with 0.33 mi of LTS 4. The ranking still puts LTS 4 first whatever the weight; the weights
   only say how many miles a cut is worth. The owner confirmed the standard weights, 287(1), "Normal
   weights (Recommended)".
-- **Which level pays** (release review, spec SF2). The distance is charged against the highest
-  level that improves: a saving at the top figure (LTS 4, Avoid and red junctions) pays for its
+- **Which level pays** (release review, spec SF2; `refine.stress_saved_m`). The distance is charged
+  against the highest level that improves: a saving at the top figure (LTS 4, Avoid and red junctions) pays for its
   miles on its own, and extra LTS 3 never subtracts from it. Within a level the 1/2/3 weights still
   set the trade. The first build netted every level into one `stress_weight_m`, so a 10 km route
   with 200 m of LTS 4 beat a 12 km route with none and 600 m more LTS 3: the LTS 3 cancelled the
@@ -3496,7 +3562,11 @@ leg's route swapped for another the search read. They are read in full (junction
 inside the budget, with at least 6 s left for each (`ALTERNATE_MIN_S`); fewer are returned if time is
 short. On a plan of more than one leg (a loop, or a ride with stops) the seek's per-leg candidates
 are never offered as routes of their own: a trip for one leg is not a route from start to end
-(release review, correctness B1), and every route offered has the answer's legs, start and end.
+(release review, correctness B1), and every route offered has the answer's legs, start and end
+(`_seek_leg` pools its candidates only on a one-leg plan, and `pick_candidates` skips a trip with a
+different number of legs). A long calm plan's candidates take the answer's grouping of search
+legs into the plan's legs, so none shows the search's internal `leg_ends` or a stop the rider never
+placed (release review S1).
 They are answered as the search found them: the dodge pass (below, "No dodging through side
 streets") is the answer's alone, and where it changed the answer they are picked again against it. On the measured trips almost every plan has one obvious corridor and returns one route (see the
 tables): the route that avoids the first is usually far busier, as it should be for a trail corridor.
@@ -3680,7 +3750,8 @@ from, below):
    back) and the leg is read whole with its junctions (`refine.analyse`), as the route as it was. A reading
    the pass's clock ran out in is neither judged nor kept (`_cut_short`): `junctions.nodes_at` leaves out a
    `/locate` batch the clock cut off, so such a reading can be missing junctions, and `refine.analyse`
-   would have handed it to the answer. (Found in this round: on Bowie to Annapolis at Default a removal
+   would have handed it to the answer. Since the release review such a batch raises
+   `junctions.ReadingCutShort`, and the reading is discarded and never cached, wherever it is taken. (Found in this round: on Bowie to Annapolis at Default a removal
    judged on such a reading answered 1 red and 12 orange junctions fewer, along the whole route.)
 4. **Judge** (`judge`). The stress the dodge avoids is what the main road carries more of at the top figure
    (LTS 4 and Avoid metres plus the cost of red junctions) plus the second (LTS 3 plus the cost of orange
@@ -3699,6 +3770,8 @@ from, below):
      Measured at Default, that gave back up to 0.34 mi of LTS 3 a dodge to save 130 to 650 m (the
      table below: LTS 3 16.80 to 18.04 mi over the twelve trips for 1.2 mi less riding), against the
      stress-averse default. 298(1) amends 272's quarter mile, and the turn charge went with it.
+     `TIE_RULE_ALL_PRESETS = False` (read by `dedodge.tie_rule()`) restores 272's rule, which is kept
+     as the documented fallback and still tested with the switch off.
 
    Otherwise the main road replaces the dodge.
 5. **Guards**, which override the rule: the dodge is kept where taking it out would put the top figure more
@@ -3864,10 +3937,14 @@ sections' source, a pixel wider each side than its section, `haloWidth`, inside
 the 11 px casing; it was 7 px between a 9 px casing and a 5 px line until item 274
 widened the sections by class, "Stress salience" above; colour in the feature's
 `halo` property, opacity set with the sections in
-`setRouteSections`): the tier's own casing, which is dark under LTS 1 to 3 and white
-under LTS 4 and Avoid (with the switch on, black and white under the calm tiers, and
-a busy tier's own casing, which the switch leaves: OWNER-DECISIONS 292), the first tier's dark
-casing under the unrated grey, and white under the violet. The blue stays outside as
+`setRouteSections`): the tier's own casing, which is dark under LTS 1 to 3, white
+under LTS 4 and Avoid's own colour under Avoid (coral in the default palette, yellow
+in `cvd`; with the switch on, black or white under the calm tiers, and a busy tier's
+own casing, which the switch leaves: OWNER-DECISIONS 292), the unpaved casing under
+an unpaved section (item 302: the route has twelve classes, the five unpaved ones
+drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`), the
+first tier's dark casing under the unrated grey, and white under the violet. The
+figures below were computed from the colours by the test's rule. The blue stays outside as
 the route's identity and is itself 3:1 from every base-map surface. The panel's route
 legend draws the same halo.
 
@@ -3877,9 +3954,14 @@ legend draws the same halo.
 | LTS 1 | #17301f, 8.36 | #000000, 16.92 |
 | LTS 2 | #17301f, 4.50 | #000000, 6.95 |
 | LTS 3 | #45290a, 3.60 | #0a1a2f, 3.83 |
-| LTS 4 | #ffffff, 7.31 | #ffffff, 12.66 |
-| Avoid | #ffffff, 15.75 | #ffffff, 19.74 |
+| LTS 4 | #ffffff, 6.05 | #ffffff, 12.66 |
+| Avoid | #ee3b2c, 5.04 | #f0e442, 14.93 |
 | Not rated | #17301f, 5.38 | #000000, 7.65 |
+| Unpaved LTS 1 | #3b2410, 7.79 | #000000, 12.61 |
+| Unpaved LTS 2 | #3b2410, 4.66 | #000000, 7.88 |
+| Unpaved LTS 3 | #f6ead2, 4.69 | #f6ead2, 4.91 |
+| Unpaved LTS 4 | #f6ead2, 8.42 | #f6ead2, 8.30 |
+| Unpaved Avoid | #f6ead2, 13.02 | #f6ead2, 13.45 |
 
 Against the blue alone the default palette was 1.09:1 (LTS 4) to 3.95:1 (LTS 1).
 
