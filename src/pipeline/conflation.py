@@ -112,6 +112,9 @@ class Match:
     year: int | None
     score: float
     agency: str | None = None
+    # What the agency counted, where `aadt_smoothing` replaced `aadt` with the
+    # street's median (OWNER-DECISIONS 285, 296); None where the count stands.
+    raw_aadt: int | None = None
 
 
 @dataclass(frozen=True)

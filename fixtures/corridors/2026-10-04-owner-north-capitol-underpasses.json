@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "decided": "2026-10-03",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 286, 294, 295, 296. Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database.",
+  "corridors": [
+    {
+      "id": "north-capitol-st",
+      "streets": ["North Capitol Street"],
+      "axis": [[-77.00905, 38.9], [-77.00905, 38.92]],
+      "through_max_offset_m": 7.0,
+      "side_max_offset_m": 20.0,
+      "reason": "The owner, 2026-10-03 (OWNER-DECISIONS 284, 286): \"North Capitol street is underrated. There's definitely parts that I'd put at Avoid, but it's listed as LTS3.\" and \"It may say 25, but it's treated like a highway.\" Confined to this named corridor by 294 (\"It's mostly a specific road\"); the at-grade parts keep the rating speed and lanes give them (296: \"Let's keep the current rules as is\").",
+      "entries": [
+        {
+          "id": "first-underpass-through",
+          "role": "through",
+          "along_m": [569, 977],
+          "tier": 5,
+          "reason": "The owner (286, 295): \"At around M street heading north it changes into an undertunnel, those parts are avoid.\" 295: \"I'm not crazy enough to ride my bike there\"; the first underpass, M St to about P St, is Avoid for its through lanes. Trimmed about 100 m at the north end (295), so it ends where the carriageways come up, near 38.9088 N.",
+          "evidence": "North Capitol Street NW and NE, the two carriageways within 7 m of the axis, from 569 m to 977 m north of 38.9000 N (38.9051 to 38.9088 N). ARTERIAL-CAL-r0 section 5.4; the study's way list less the seven ways of its 95 m northern tail."
+        },
+        {
+          "id": "first-underpass-sides",
+          "role": "side",
+          "along_m": [580, 1030],
+          "tier": 4,
+          "reason": "The owner (286): \"The side streets would be LTS4, and on the pickup.\" The surface side lanes beside the first underpass, and the pickup where the underpass lanes come back up, are LTS 4 (295: the targets stand).",
+          "evidence": "The one-lane surface ways 8 to 14 m either side of the axis, 580 m to 1030 m north of 38.9000 N, by position and not by their lanes tag (way 468472149 is tagged lanes=2 and is the western outer side lane; decision 295 asked for LTS 4, not Avoid)."
+        },
+        {
+          "id": "second-underpass-through",
+          "role": "through",
+          "along_m": [1484, 2109],
+          "tier": 4,
+          "reason": "The owner (286): \"When it does it again, the underparts are still 4 with the sides being LTS3.\" The second underpass, at Rhode Island Avenue (T St to V St, 295), is LTS 4 for its underpass lanes.",
+          "evidence": "North Capitol Street NW and NE through lanes from 1484 m to 2109 m north of 38.9000 N (38.9133 to 38.9190 N); tunnels tagged at 38.9156 and 38.9168 N. ARTERIAL-CAL-r0 section 5.4: it is not the Irving St, Michigan Ave and McMillan interchange, which is already LTS 4."
+        },
+        {
+          "id": "second-underpass-sides",
+          "role": "side",
+          "along_m": [1515, 2320],
+          "tier": 3,
+          "reason": "The owner (286): \"Narrower, so less stress.\" The narrower side lanes at the second underpass are LTS 3.",
+          "evidence": "The one-lane surface side ways 11 to 13 m either side of the axis, 1515 m to 2320 m north of 38.9000 N (1-lane side ways from 38.9146 to 38.9188 N)."
+        }
+      ]
+    }
+  ]
+}

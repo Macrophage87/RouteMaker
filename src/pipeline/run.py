@@ -37,6 +37,7 @@ from typing import TypeVar
 from routemaker import (
     agency_roads,
     cbd,
+    corridors,
     divided,
     facility,
     ridetime,
@@ -50,6 +51,7 @@ from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
 
 from . import (
+    aadt_smoothing,
     borders,
     conflation,
     discrepancies,
@@ -58,6 +60,7 @@ from . import (
     overrides,
     promotion,
     reconcile,
+    rematch,
     restricted_areas,
     retention,
     route_relations,
@@ -79,6 +82,7 @@ MAX_RECORDED_BLOCKS = 12
 # Where each rebuild writes the DC-against-OSM discrepancy report (OWNER-DECISIONS
 # 191), under its work directory: `<DATA_ROOT>/rebuild/reports/` on the host.
 DISCREPANCY_REPORT_DIR = "reports"
+REMATCH_REPORT_NAME = "override-rematch"
 
 # What one of the two validation reads answers with; see `_read_back`.
 _Read = TypeVar("_Read")
@@ -558,6 +562,15 @@ class RebuildContext:
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # Whether a count is replaced by its street's median before classification
+    # (`pipeline.aadt_smoothing`; OWNER-DECISIONS 285, 296: a data-quality fix
+    # the owner can veto, which this is).
+    smooth_volume: bool = True
+    # The counts as the agencies gave them, kept when smoothing replaced any, and
+    # what smoothing and the named corridors did (for the rebuild report).
+    aadt_raw_by_way: dict[int, conflation.Match] = field(default_factory=dict)
+    smoothing_report: aadt_smoothing.SmoothingReport | None = None
+    corridor_report: corridors.CorridorReport | None = None
     # The owner's facility class per way (`routemaker.facility`), and the ride
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
@@ -1276,6 +1289,21 @@ def build_handlers(
             # Terminal, like a refused override: a fifth attempt reads the
             # same extract and finds the same boundaries.
             raise ValidationFailed(str(missing)) from missing
+        # Each count the volume gates read is its street's median where the street
+        # disagrees (OWNER-DECISIONS 285, 296), after the states are known
+        # because a street is smoothed within its own jurisdiction.
+        smoothed_rule: set[int] = set()
+        if context.smooth_volume:
+            context.aadt_raw_by_way = dict(context.aadt_by_way)
+            context.aadt_by_way, context.smoothing_report = aadt_smoothing.smooth(
+                context.ways, context.aadt_by_way, state_of.get
+            )
+            logger.info("%s", context.smoothing_report.summary())
+            smoothed_rule = {
+                item.way_id
+                for item in context.smoothing_report.replaced
+                if aadt_smoothing.crosses_volume_gate(item.raw, item.smoothed)
+            }
         # One-way ways that are a carriageway of a divided road, which item
         # 109's one-way relief does not apply to.
         started = time.monotonic()
@@ -1348,6 +1376,13 @@ def build_handlers(
                 separate_facility=way.osm_id in separate_roads,
                 parking_width_m=facts.parking_reach_m if facts is not None else None,
             )
+            if way.osm_id in smoothed_rule:
+                # Only where the median is on the other side of a volume gate
+                # from the count: the one case it can have moved the tier.
+                context.stress_by_way[way.osm_id] = replace(
+                    context.stress_by_way[way.osm_id],
+                    rule=context.stress_by_way[way.osm_id].rule + ", street volume (median)",
+                )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
                     context.stress_by_way[way.osm_id],
@@ -1373,6 +1408,23 @@ def build_handlers(
             )
         if reported:
             write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
+        # The owner's named corridors (OWNER-DECISIONS 286, 294-296), over the
+        # classified tiers and under the override rows. A way's recorded bike
+        # lane (the agency overlay) exempts it, as an OSM one does.
+        context.corridor_report = corridors.apply(
+            corridors.load(),
+            context.ways,
+            context.stress_by_way,
+            tags_of=context.class_tags_by_way,
+            separate_roads=separate_roads,
+        )
+        logger.info("%s", context.corridor_report.summary())
+        if context.corridor_report.unmatched_entries:
+            logger.warning(
+                "owner's named-corridor entries matched no way (fixtures/corridors): %s; the "
+                "extract's geometry has moved, or the file is wrong",
+                ", ".join(context.corridor_report.unmatched_entries),
+            )
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)
         if unused:
@@ -1484,6 +1536,18 @@ def build_handlers(
                 sorted(authorities_for(assignments, MIN_JURISDICTION_FRACTION))
             )
 
+    def write_rematch_report(report) -> None:
+        """`<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`: every
+        override row whose way was missing, and what became of it. A report, not
+        a stage's output: it never fails the rebuild."""
+        try:
+            out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"{REMATCH_REPORT_NAME}.md").write_text(report.to_markdown())
+            (out_dir / f"{REMATCH_REPORT_NAME}.csv").write_text(report.to_csv())
+        except OSError:
+            logger.exception("override re-match report could not be written")
+
     def apply_overrides() -> None:
         """The audited corrections, applied where each kind belongs.
 
@@ -1510,6 +1574,25 @@ def build_handlers(
                 f"approved override rows carry kinds no applier handles: {unhandled}; "
                 f"the handled kinds are {sorted(overrides.HANDLED_KINDS)} ({rows_named})"
             )
+        # A row whose way left the extract is re-pointed at the ways that now
+        # stand for it, where that is unambiguous (OWNER-DECISIONS 282); every
+        # row that was missing is in the report, and a failed one stays as it
+        # was, so the appliers below still list its way as unmatched.
+        started = time.monotonic()
+        rows, rematch_report = rematch.resolve(rows, context.ways_by_id)
+        logger.info("%s (%.1f s)", rematch_report.summary(), time.monotonic() - started)
+        for entry in rematch_report.entries:
+            level = logging.WARNING if entry.outcome in ("failed", "drifted") else logging.INFO
+            logger.log(
+                level,
+                "override %s on way %s: %s %s %s",
+                entry.kind,
+                entry.old_way_id,
+                entry.outcome,
+                list(entry.new_way_ids) or "",
+                entry.reason,
+            )
+        write_rematch_report(rematch_report)
         try:
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
@@ -1568,6 +1651,9 @@ def build_handlers(
             jurisdiction=jurisdiction,
             unmatched_way_ids=missing,
             fixture_rows_superseded=len(superseded),
+            rematched=len(rematch_report.rematched),
+            rematch_failed=len(rematch_report.failed),
+            rematch_report=rematch_report,
         )
         logger.info("%s", context.override_report.summary())
 

@@ -259,7 +259,10 @@ def test_the_run_row_says_which_approved_overrides_were_in_force(
     with caplog.at_level(logging.INFO, logger="pipeline.run"):
         app.tasks["weekly_rebuild"].func(timestamp=0)
 
-    expected = OverrideReport(stress=1, unmatched_way_ids=(424242,)).summary()
+    # The row has no fingerprint, so the re-match could not re-point it (decision 282).
+    expected = OverrideReport(
+        stress=1, unmatched_way_ids=(424242,), rematch_failed=1, rematch_report=object()
+    ).summary()
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert run.succeeded
     assert expected in run.detail, run.detail

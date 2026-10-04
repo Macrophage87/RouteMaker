@@ -12,7 +12,13 @@
         "bicycle": "designated"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 468762518, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 485 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 468762518, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 485 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 484.8,
+        "line": "-77.104560,39.069612 -77.104755,39.069413 -77.104808,39.069381 -77.104898,39.069383 -77.108958,39.071824"
+      }
     },
     {
       "kind": "access",
@@ -21,7 +27,13 @@
         "bicycle": "designated"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 791422825, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 30 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 791422825, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 30 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 30.1,
+        "line": "-77.108958,39.071824 -77.109232,39.071991"
+      }
     }
   ]
 }

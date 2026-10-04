@@ -239,6 +239,10 @@ class Override:
     # The approved row's own reason, for provenance (a stress row's tier is
     # recorded with it); not part of what the row changes.
     reason: str = ""
+    # What the way looked like when the row was written (`pipeline.rematch`),
+    # for finding it again where OSM split or merged it: from the reviewed file
+    # that loaded the row. None for a row typed into the admin.
+    fingerprint: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +268,11 @@ class OverrideReport:
     # taking effect over a checked-in file, which is the thing an operator
     # reading this report wants named.
     fixture_rows_superseded: int = 0
+    # Rows whose way was missing and were re-pointed (`pipeline.rematch`), and
+    # the full report, written to the rebuild's report directory.
+    rematched: int = 0
+    rematch_failed: int = 0
+    rematch_report: object | None = None
 
     @property
     def total(self) -> int:
@@ -289,12 +298,19 @@ class OverrideReport:
         return (
             f"overrides applied: {self.access} access, {self.stress} stress, "
             f"{self.jurisdiction} jurisdiction; {self.fixture_rows_superseded} checked-in "
-            f"crossing rows superseded; {len(unmatched)} approved rows matched no way"
+            f"crossing rows superseded; "
+            + (
+                f"{self.rematched} rows re-matched to new ways by geometry and name, "
+                f"{self.rematch_failed} could not be; "
+                if self.rematch_report is not None
+                else ""
+            )
+            + f"{len(unmatched)} approved rows matched no way"
             + (f" ({named})" if unmatched else "")
         )
 
 
-def load_approved(model=None) -> list[Override]:
+def load_approved(model=None, fingerprints=None) -> list[Override]:
     """Approved rows from the database, as plain values.
 
     Filtered in the query rather than in Python: an unapproved row must not
@@ -303,9 +319,19 @@ def load_approved(model=None) -> list[Override]:
     """
     if model is None:
         from core.models import Override as model
+    if fingerprints is None:
+        from . import rematch
+
+        fingerprints = rematch.load_fingerprints()
 
     return [
-        Override(kind=row.kind, osm_way_id=row.osm_way_id, value=row.value, reason=row.reason or "")
+        Override(
+            kind=row.kind,
+            osm_way_id=row.osm_way_id,
+            value=row.value,
+            reason=row.reason or "",
+            fingerprint=fingerprints.get((row.kind, row.osm_way_id)),
+        )
         for row in model.objects.filter(approved=True).order_by("osm_way_id", "id")
     ]
 

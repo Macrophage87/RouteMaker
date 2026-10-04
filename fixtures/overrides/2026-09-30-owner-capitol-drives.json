@@ -12,7 +12,13 @@
         "bicycle": "yes"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive mapped highway=pedestrian with no bicycle tag, which upstream closes to bicycles.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 903994651, Capitol Driveway Northeast, highway=pedestrian, 48 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 903994651, Capitol Driveway Northeast, highway=pedestrian, 48 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Northeast",
+        "highway": "pedestrian",
+        "length_m": 48.5,
+        "line": "-77.007961,38.891018 -77.008047,38.890813 -77.008173,38.890616"
+      }
     },
     {
       "kind": "access",
@@ -21,7 +27,13 @@
         "bicycle": "yes"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive mapped highway=pedestrian with no bicycle tag, which upstream closes to bicycles.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 903994652, Capitol Driveway Southeast, highway=pedestrian, 48 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 903994652, Capitol Driveway Southeast, highway=pedestrian, 48 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Southeast",
+        "highway": "pedestrian",
+        "length_m": 48.0,
+        "line": "-77.008174,38.889014 -77.007974,38.888611"
+      }
     },
     {
       "kind": "access",
@@ -30,7 +42,13 @@
         "bicycle": "yes"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive mapped highway=pedestrian with no bicycle tag, which upstream closes to bicycles.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 904481923, unnamed, highway=pedestrian, 83 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 904481923, unnamed, highway=pedestrian, 83 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "pedestrian",
+        "length_m": 83.2,
+        "line": "-77.008610,38.889677 -77.008613,38.889298 -77.008601,38.889280 -77.008518,38.889232 -77.008174,38.889232"
+      }
     },
     {
       "kind": "access",
@@ -39,7 +57,13 @@
         "bicycle": "yes"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive mapped highway=pedestrian with no bicycle tag, which upstream closes to bicycles.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 904481924, unnamed, highway=pedestrian, 84 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 904481924, unnamed, highway=pedestrian, 84 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "pedestrian",
+        "length_m": 83.9,
+        "line": "-77.008610,38.889954 -77.008620,38.890318 -77.008606,38.890352 -77.008502,38.890405 -77.008172,38.890405"
+      }
     },
     {
       "kind": "access",
@@ -50,7 +74,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6054780, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 44 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6054780, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 44 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 44.2,
+        "line": "-77.008297,38.888203 -77.008298,38.888600"
+      }
     },
     {
       "kind": "access",
@@ -61,7 +91,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6054909, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 364 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6054909, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 364 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 363.9,
+        "line": "-77.008395,38.891429 -77.008494,38.891451 -77.008943,38.891653 -77.009431,38.891793 -77.009857,38.891854 -77.010407,38.891826 -77.010665,38.891793 -77.010986,38.891722 -77.011189,38.891668 -77.011395,38.891591 -77.011605,38.891485 -77.011754,38.891386 -77.011797,38.891351 -77.011847,38.891260 -77.012013,38.891117 -77.012059,38.891098 -77.012161,38.891091"
+      }
     },
     {
       "kind": "access",
@@ -72,7 +108,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6060998, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 187 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6060998, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 187 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Southeast",
+        "highway": "service",
+        "length_m": 186.8,
+        "line": "-77.008297,38.888203 -77.007847,38.888230 -77.007526,38.888214 -77.007175,38.888176 -77.006880,38.888118 -77.006685,38.888054 -77.006480,38.887968 -77.006247,38.887846"
+      }
     },
     {
       "kind": "access",
@@ -83,7 +125,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061306, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 21 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061306, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 21 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "service",
+        "length_m": 21.0,
+        "line": "-77.009900,38.887778 -77.009930,38.887591"
+      }
     },
     {
       "kind": "access",
@@ -94,7 +142,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061323, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 171 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061323, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 171 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Northeast",
+        "highway": "service",
+        "length_m": 170.5,
+        "line": "-77.008111,38.891425 -77.007822,38.891414 -77.007513,38.891424 -77.007116,38.891467 -77.006692,38.891574 -77.006489,38.891658 -77.006246,38.891787"
+      }
     },
     {
       "kind": "access",
@@ -105,7 +159,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061713, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 47 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 6061713, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 47 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 47.1,
+        "line": "-77.011852,38.888367 -77.012027,38.888567 -77.012116,38.888733"
+      }
     },
     {
       "kind": "access",
@@ -116,7 +176,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 156702725, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 156702725, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "service",
+        "length_m": 27.6,
+        "line": "-77.008943,38.891653 -77.009043,38.891889"
+      }
     },
     {
       "kind": "access",
@@ -127,7 +193,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 295837350, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 37 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 295837350, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 37 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "service",
+        "length_m": 37.2,
+        "line": "-77.010460,38.892087 -77.010665,38.891793"
+      }
     },
     {
       "kind": "access",
@@ -138,7 +210,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297214549, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 88 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297214549, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 88 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 88.3,
+        "line": "-77.008924,38.887984 -77.009335,38.887848 -77.009714,38.887788 -77.009900,38.887778"
+      }
     },
     {
       "kind": "access",
@@ -149,7 +227,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297217095, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 40 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297217095, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 40 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "New Jersey Avenue Southeast",
+        "highway": "service",
+        "length_m": 39.6,
+        "line": "-77.008351,38.887941 -77.008222,38.887599"
+      }
     },
     {
       "kind": "access",
@@ -160,7 +244,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297226537, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 32 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297226537, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 32 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "service",
+        "length_m": 31.5,
+        "line": "-77.010037,38.892087 -77.009889,38.891971 -77.009857,38.891854"
+      }
     },
     {
       "kind": "access",
@@ -171,7 +261,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297226541, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 60 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 297226541, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 60 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Southeast",
+        "highway": "service",
+        "length_m": 59.5,
+        "line": "-77.007974,38.888611 -77.007866,38.888460 -77.007655,38.888294 -77.007526,38.888214"
+      }
     },
     {
       "kind": "access",
@@ -182,7 +278,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 455024691, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 35 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 455024691, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 35 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 35.1,
+        "line": "-77.009900,38.887778 -77.010304,38.887792"
+      }
     },
     {
       "kind": "access",
@@ -193,7 +295,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 455024692, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 35 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 455024692, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 35 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 35.0,
+        "line": "-77.010304,38.887792 -77.010704,38.887840"
+      }
     },
     {
       "kind": "access",
@@ -204,7 +312,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 509727733, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 50 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 509727733, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 50 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 49.8,
+        "line": "-77.008298,38.888600 -77.008368,38.888452 -77.008458,38.888347 -77.008466,38.888263 -77.008433,38.888188"
+      }
     },
     {
       "kind": "access",
@@ -215,7 +329,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 583678856, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 41 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 583678856, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 41 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "New Jersey Avenue Southeast",
+        "highway": "service",
+        "length_m": 40.9,
+        "line": "-77.008119,38.887606 -77.008254,38.887958"
+      }
     },
     {
       "kind": "access",
@@ -226,7 +346,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327038, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327038, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "New Jersey Avenue Southeast",
+        "highway": "service",
+        "length_m": 27.5,
+        "line": "-77.008254,38.887958 -77.008297,38.888203"
+      }
     },
     {
       "kind": "access",
@@ -237,7 +363,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327039, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 12 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327039, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 12 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 11.9,
+        "line": "-77.008433,38.888188 -77.008297,38.888203"
+      }
     },
     {
       "kind": "access",
@@ -248,7 +380,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327040, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893327040, New Jersey Avenue Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 28 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "New Jersey Avenue Southeast",
+        "highway": "service",
+        "length_m": 28.5,
+        "line": "-77.008433,38.888188 -77.008351,38.887941"
+      }
     },
     {
       "kind": "access",
@@ -259,7 +397,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893670034, Capitol Circle Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 13 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 893670034, Capitol Circle Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 13 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Northeast",
+        "highway": "service",
+        "length_m": 12.9,
+        "line": "-77.008395,38.891429 -77.008246,38.891424"
+      }
     },
     {
       "kind": "access",
@@ -270,7 +414,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905148138, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 23 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905148138, unnamed, highway=service, access=private, bicycle=yes, motor_vehicle=no, 23 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": null,
+        "highway": "service",
+        "length_m": 22.9,
+        "line": "-77.009043,38.891889 -77.009121,38.892086"
+      }
     },
     {
       "kind": "access",
@@ -281,7 +431,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905189928, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 39 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905189928, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 39 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Northeast",
+        "highway": "service",
+        "length_m": 39.4,
+        "line": "-77.006246,38.891787 -77.005905,38.892022"
+      }
     },
     {
       "kind": "access",
@@ -292,7 +448,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905189929, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, 12 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905189929, Capitol Driveway Northeast, highway=service, access=private, bicycle=yes, 12 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Northeast",
+        "highway": "service",
+        "length_m": 11.7,
+        "line": "-77.008246,38.891424 -77.008111,38.891425"
+      }
     },
     {
       "kind": "access",
@@ -303,7 +465,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905219435, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 39 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 905219435, Capitol Driveway Southeast, highway=service, access=private, bicycle=yes, motor_vehicle=no, 39 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Driveway Southeast",
+        "highway": "service",
+        "length_m": 38.6,
+        "line": "-77.006247,38.887846 -77.005923,38.887608"
+      }
     },
     {
       "kind": "access",
@@ -314,7 +482,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 130): \"Yes, open them\"; and of the grounds (OWNER-DECISIONS 113): \"The capitol grounds are a very good place to ride and avoid some major roads, so definitely include.\" A Capitol grounds drive: mapped bicycle=yes, but access=private makes upstream mark it destination-only for every mode, so no route passes through. access=permissive clears that; motor_vehicle=no keeps it closed to cars.",
-      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 1013992304, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 118 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson)."
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-25: way 1013992304, Capitol Circle Drive, highway=service, access=private, bicycle=yes, motor_vehicle=no, 118 m, inside the Architect of the Capitol's jurisdiction polygon (fixtures/cbd/architect-of-the-capitol.geojson).",
+      "fingerprint": {
+        "name": "Capitol Circle Drive",
+        "highway": "service",
+        "length_m": 117.8,
+        "line": "-77.010704,38.887840 -77.011130,38.887952 -77.011453,38.888082 -77.011717,38.888233 -77.011852,38.888367"
+      }
     }
   ]
 }

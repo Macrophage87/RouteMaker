@@ -17,7 +17,13 @@
         "public_note": "Freeway-grade highway with fast through traffic."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, asked about US 340 in West Virginia (the William L. Wilson Freeway), chose \"Legal but avoid\" (\"Leave access as OSM has it; the stress penalty (LTS 4) already pushes Default and calmer rides off it when there's an alternative.\") and then: \"Maybe make a 5th category for legal but to be avoided\". The first entry of the category.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 15561007, William L. Wilson Freeway, highway=trunk, ref US 340, maxspeed 45 mph, no bicycle tag, so bicycle-legal by default and LTS 4 by the classifier. Only this 1.05 km of the freeway is in the extract, which is built from the DC, Maryland and Virginia state files; the rest lies in West Virginia."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 15561007, William L. Wilson Freeway, highway=trunk, ref US 340, maxspeed 45 mph, no bicycle tag, so bicycle-legal by default and LTS 4 by the classifier. Only this 1.05 km of the freeway is in the extract, which is built from the DC, Maryland and Virginia state files; the rest lies in West Virginia.",
+      "fingerprint": {
+        "name": "William L. Wilson Freeway",
+        "highway": "trunk",
+        "length_m": 1044.5,
+        "line": "-77.719103,39.321025 -77.719639,39.321064 -77.720630,39.321093 -77.720949,39.321090 -77.723587,39.320861 -77.723968,39.320841 -77.724379,39.320844 -77.724765,39.320867 -77.726587,39.321095 -77.726988,39.321117 -77.727380,39.321112 -77.728026,39.321036 -77.728587,39.320898 -77.730917,39.320049"
+      }
     },
     {
       "kind": "stress",
@@ -32,7 +38,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 280.9,
+        "line": "-76.990992,38.872628 -76.990768,38.872279 -76.990545,38.871981 -76.989337,38.870457"
+      }
     },
     {
       "kind": "stress",
@@ -47,7 +59,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 37.1,
+        "line": "-76.989337,38.870457 -76.989111,38.870173"
+      }
     },
     {
       "kind": "stress",
@@ -62,7 +80,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 48.7,
+        "line": "-76.989111,38.870173 -76.988835,38.869792"
+      }
     },
     {
       "kind": "stress",
@@ -77,7 +101,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 21.9,
+        "line": "-76.988835,38.869792 -76.988718,38.869617"
+      }
     },
     {
       "kind": "stress",
@@ -92,7 +122,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 27.8,
+        "line": "-76.988718,38.869617 -76.988568,38.869396"
+      }
     },
     {
       "kind": "stress",
@@ -107,7 +143,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 28.2,
+        "line": "-76.988568,38.869396 -76.988417,38.869171"
+      }
     },
     {
       "kind": "stress",
@@ -122,7 +164,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 24.4,
+        "line": "-76.988417,38.869171 -76.988285,38.868977"
+      }
     },
     {
       "kind": "stress",
@@ -137,7 +185,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "11th Street Southeast",
+        "highway": "secondary",
+        "length_m": 22.3,
+        "line": "-76.988285,38.868977 -76.988203,38.868787"
+      }
     },
     {
       "kind": "stress",
@@ -152,7 +206,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "Martin Luther King Junior Avenue Southeast",
+        "highway": "secondary",
+        "length_m": 19.1,
+        "line": "-76.988203,38.868787 -76.988176,38.868617"
+      }
     },
     {
       "kind": "stress",
@@ -167,7 +227,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "Martin Luther King Junior Avenue Southeast",
+        "highway": "secondary",
+        "length_m": 22.8,
+        "line": "-76.988176,38.868617 -76.988186,38.868412"
+      }
     },
     {
       "kind": "stress",
@@ -182,7 +248,13 @@
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named).",
+      "fingerprint": {
+        "name": "Martin Luther King Junior Avenue Southeast",
+        "highway": "secondary",
+        "length_m": 33.4,
+        "line": "-76.988186,38.868412 -76.988288,38.868123"
+      }
     },
     {
       "kind": "stress",
@@ -197,7 +269,13 @@
         "public_note": "Multi-lane bridge roadway with traffic posted at 35 mph."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (westbound); its sidewalks are separate ways and are not touched.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 6061612, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 6061612, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag.",
+      "fingerprint": {
+        "name": "Benning Road Northeast",
+        "highway": "primary",
+        "length_m": 191.5,
+        "line": "-76.960751,38.897052 -76.962952,38.897230"
+      }
     },
     {
       "kind": "stress",
@@ -212,7 +290,13 @@
         "public_note": "Multi-lane bridge roadway with traffic posted at 35 mph."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (eastbound); its sidewalks are separate ways and are not touched.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 135146249, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 135146249, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag.",
+      "fingerprint": {
+        "name": "Benning Road Northeast",
+        "highway": "primary",
+        "length_m": 192.3,
+        "line": "-76.962969,38.897087 -76.960758,38.896911"
+      }
     },
     {
       "kind": "stress",
@@ -227,7 +311,13 @@
         "public_note": "Fast multi-lane bridge roadway; the Anacostia Riverwalk Trail on the bridge is the way across."
       },
       "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656490, South Capitol Street Southeast, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656490, South Capitol Street Southeast, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway.",
+      "fingerprint": {
+        "name": "South Capitol Street Southeast",
+        "highway": "primary",
+        "length_m": 454.3,
+        "line": "-77.003250,38.867581 -77.007912,38.869456"
+      }
     },
     {
       "kind": "stress",
@@ -242,7 +332,13 @@
         "public_note": "Fast multi-lane bridge roadway; the Anacostia Riverwalk Trail on the bridge is the way across."
       },
       "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656491, South Capitol Street Southwest, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656491, South Capitol Street Southwest, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway.",
+      "fingerprint": {
+        "name": "South Capitol Street Southwest",
+        "highway": "primary",
+        "length_m": 454.4,
+        "line": "-77.007975,38.869360 -77.003312,38.867485"
+      }
     },
     {
       "kind": "stress",
@@ -257,7 +353,13 @@
         "public_note": "Multi-lane bridge roadway; the trail across the bridge is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (westbound).",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715828, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715828, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "primary",
+        "length_m": 320.8,
+        "line": "-76.976092,38.875964 -76.978034,38.876944 -76.979213,38.877519"
+      }
     },
     {
       "kind": "stress",
@@ -272,7 +374,13 @@
         "public_note": "Multi-lane bridge roadway; the trail across the bridge is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (eastbound).",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 118727221, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 118727221, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "primary",
+        "length_m": 352.4,
+        "line": "-76.979676,38.877637 -76.976253,38.875922"
+      }
     },
     {
       "kind": "stress",
@@ -287,7 +395,13 @@
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, from the ramp merge.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 946400435, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 946400435, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "trunk",
+        "length_m": 44.8,
+        "line": "-76.974959,38.875324 -76.974512,38.875121"
+      }
     },
     {
       "kind": "stress",
@@ -302,7 +416,13 @@
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, to the second ramp merge.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715834, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 86 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715834, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 86 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "trunk",
+        "length_m": 86.0,
+        "line": "-76.974512,38.875121 -76.973653,38.874733"
+      }
     },
     {
       "kind": "stress",
@@ -317,7 +437,13 @@
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, through the Fairlawn Avenue SE junction.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 936339897, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 936339897, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "trunk",
+        "length_m": 45.2,
+        "line": "-76.973653,38.874733 -76.973204,38.874525"
+      }
     },
     {
       "kind": "stress",
@@ -332,7 +458,13 @@
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },
       "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, from the DC 295 north ramp past the off-ramp merge.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 919160290, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 132 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 919160290, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 132 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "trunk",
+        "length_m": 131.8,
+        "line": "-76.972846,38.874582 -76.973083,38.874696 -76.974188,38.875141"
+      }
     },
     {
       "kind": "stress",
@@ -347,7 +479,13 @@
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },
       "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, to the DC 295 south ramp.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1120042712, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 32 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1120042712, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 32 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "trunk",
+        "length_m": 32.0,
+        "line": "-76.974188,38.875141 -76.974518,38.875270"
+      }
     },
     {
       "kind": "stress",
@@ -362,7 +500,13 @@
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },
       "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, from the DC 295 south ramp to the bridge.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 696737927, Pennsylvania Avenue Southeast, highway=primary, oneway, lanes 3, maxspeed 30 mph, 157 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 696737927, Pennsylvania Avenue Southeast, highway=primary, oneway, lanes 3, maxspeed 30 mph, 157 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named.",
+      "fingerprint": {
+        "name": "Pennsylvania Avenue Southeast",
+        "highway": "primary",
+        "length_m": 156.7,
+        "line": "-76.974518,38.875270 -76.975301,38.875586 -76.976092,38.875964"
+      }
     }
   ]
 }

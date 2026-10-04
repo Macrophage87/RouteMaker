@@ -43,6 +43,10 @@ already approved with the same tier and different adjustment fields is
 updated in place (`update`, audited as a change); a different tier is a
 conflict. `load_overrides` is the same command under the name that says so.
 
+A row may carry a `fingerprint` of its way (`pipeline.rematch`), checked here and kept in
+the file: the database row does not hold it, and the rebuild reads it from the image's
+copy of the file, to re-match the row if OSM splits or merges the way.
+
 The file may be read from standard input (`-`), because the api image carries
 `src/` and not `fixtures/`:
 
@@ -69,6 +73,7 @@ KINDS = frozenset({"access", "stress"})
 def parse_file(text: str, label: str) -> list[dict]:
     """The file's rows, validated, or CommandError naming what is wrong."""
     from pipeline.overrides import ACCESS_KEYS, stress_value_problem
+    from pipeline.rematch import fingerprint_problem
 
     try:
         document = json.loads(text)
@@ -127,6 +132,12 @@ def parse_file(text: str, label: str) -> list[dict]:
         for field in ("reason", "evidence"):
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise CommandError(f"{where}: {field} is required")
+        if "fingerprint" in row:
+            # Not loaded into the row: the rebuild reads it from the image's copy of
+            # this file (pipeline.rematch), but a malformed one is refused here too.
+            problem = fingerprint_problem(row["fingerprint"])
+            if problem:
+                raise CommandError(f"{where}: {problem}")
     return rows
 
 
