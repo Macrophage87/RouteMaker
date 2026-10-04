@@ -148,8 +148,18 @@ REQUIRED = [
     "reference static tiles tiles/standard tiles/no-trail tiles/ebike tiles/weekend"
 ][0].split()
 
-ALL_SERVICES = ["postgis", "caddy", "valhalla-standard", "valhalla-no-trail", "valhalla-ebike",
-                "valhalla-weekend", "api", "worker", "rebuild", "photon"]
+ALL_SERVICES = [
+    "postgis",
+    "caddy",
+    "valhalla-standard",
+    "valhalla-no-trail",
+    "valhalla-ebike",
+    "valhalla-weekend",
+    "api",
+    "worker",
+    "rebuild",
+    "photon",
+]
 
 # Variables of the caller's shell that would leak into the script under test.
 HOST_LEAKS = ("RESTART_POLICY", "COMPOSE_PROJECT", "COMPOSE_PROJECT_NAME")
@@ -180,7 +190,10 @@ class FakeHost(unittest.TestCase):
         self.write_env()
 
     def write_env(self, data_root: str | None = None, project: str | None = "routemaker") -> None:
-        lines = [f"DATA_ROOT={data_root if data_root is not None else self.data}", "RESTART_POLICY=no"]
+        lines = [
+            f"DATA_ROOT={data_root if data_root is not None else self.data}",
+            "RESTART_POLICY=no",
+        ]
         if project is not None:
             lines.insert(0, f"COMPOSE_PROJECT_NAME={project}")
         self.env_file.write_text("\n".join(lines) + "\n")
@@ -208,8 +221,11 @@ class FakeHost(unittest.TestCase):
         return path.read_text().splitlines() if path.exists() else []
 
     def mutating(self) -> list[str]:
-        return [c for c in self.calls()
-                if re.search(r" (up|stop|down|rm|restart|kill|update) ", f" {c} ")]
+        return [
+            c
+            for c in self.calls()
+            if re.search(r" (up|stop|down|rm|restart|kill|update) ", f" {c} ")
+        ]
 
     def ups(self) -> list[str]:
         return [c.split()[-1] for c in self.calls() if " up " in c]
@@ -220,7 +236,11 @@ class StartStackTests(FakeHost):
     def run_script(self, *args: str, **overrides: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [BASH, str(SCRIPT), *args],
-            env=self.env(**overrides), capture_output=True, text=True, timeout=90, check=False,
+            env=self.env(**overrides),
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
         )
 
     def status(self) -> str:
@@ -256,7 +276,9 @@ class StartStackTests(FakeHost):
         done = self.run_script()
         self.assertEqual(done.returncode, 1, done.stdout)
         self.assertIn("PG_VERSION", done.stdout)
-        self.assertEqual(self.mutating(), [], "nothing is stopped or started when the bind is wrong")
+        self.assertEqual(
+            self.mutating(), [], "nothing is stopped or started when the bind is wrong"
+        )
 
     def test_pg_version_must_be_a_file_not_a_directory(self) -> None:
         (self.data / "postgres" / "PG_VERSION").unlink()
@@ -278,9 +300,7 @@ class StartStackTests(FakeHost):
 
     def test_waits_for_paths_that_appear_late(self) -> None:
         shutil.rmtree(self.data / "tiles" / "weekend")
-        late = subprocess.Popen(
-            [BASH, "-c", f"sleep 1; mkdir -p '{self.data}/tiles/weekend'"]
-        )
+        late = subprocess.Popen([BASH, "-c", f"sleep 1; mkdir -p '{self.data}/tiles/weekend'"])
         self.addCleanup(late.wait)
         done = self.run_script(BOOT_WAIT_PREREQ_S="10", BOOT_SMOKE_S="2")
         self.assertEqual(done.returncode, 0, done.stdout)
@@ -290,9 +310,7 @@ class StartStackTests(FakeHost):
         # clears: the bind check gets the ~1 s that is left, not a fresh 6 s.
         shutil.rmtree(self.data / "tiles" / "weekend")
         self.make_phantom()
-        late = subprocess.Popen(
-            [BASH, "-c", f"sleep 5; mkdir -p '{self.data}/tiles/weekend'"]
-        )
+        late = subprocess.Popen([BASH, "-c", f"sleep 5; mkdir -p '{self.data}/tiles/weekend'"])
         self.addCleanup(late.wait)
         started = time.monotonic()
         done = self.run_script(BOOT_WAIT_PREREQ_S="6")
@@ -387,7 +405,7 @@ class StartStackTests(FakeHost):
         self.assertNotIn("migrate", " ".join(self.calls()))
 
     def test_empty_postgis_aborts_and_starts_nothing_else(self) -> None:
-        (self.fake / "psql.out").write_text("ERROR:  relation \"django_migrations\" does not exist")
+        (self.fake / "psql.out").write_text('ERROR:  relation "django_migrations" does not exist')
         (self.fake / "psql.rc").write_text("1")
         done = self.run_script()
         self.assertEqual(done.returncode, 1, done.stdout)
@@ -450,7 +468,7 @@ class StartStackTests(FakeHost):
                 '    [ -e "$FAKE_DIR/psql.hang" ]',
                 '    [ -e "$FAKE_DIR/recreated" ] && echo "68 1359193" >"$FAKE_DIR/psql.out"\n'
                 '    [ -e "$FAKE_DIR/psql.hang" ]',
-            ).replace('  up)\n', '  up)\n    touch "$FAKE_DIR/recreated"\n'),
+            ).replace("  up)\n", '  up)\n    touch "$FAKE_DIR/recreated"\n'),
         )
         done = self.run_script()
         self.assertEqual(done.returncode, 0, done.stdout)
@@ -496,16 +514,38 @@ class StartStackTests(FakeHost):
         self.assertIn("did not finish within 1s", done.stdout)
         self.assertIn("_routemaker-", done.stdout)
         self.assertNotIn("unexpected error", done.stdout)
-        self.assertEqual(self.ups(), ["postgis", "caddy"], "nothing after the timed-out call is started")
+        self.assertEqual(
+            self.ups(), ["postgis", "caddy"], "nothing after the timed-out call is started"
+        )
         self.assertTrue(self.status().startswith("FAILED"))
         self.assertIn("did not finish", self.status())
 
     def test_the_routers_and_photon_get_the_longer_limit(self) -> None:
-        for svc in ("valhalla-ebike", "photon"):
-            (self.fake / f"up.sleep_{svc}").write_text("2")
-        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1", BOOT_SLOW_COMPOSE_TIMEOUT_S="6")
+        # Read the limit each `up` was given off the fake's parent, the `timeout`
+        # that runs it, rather than racing a short limit against a sleep, so a
+        # busy runner cannot flake. (The script puts the system dirs first on
+        # PATH, so a `timeout` shim would not be picked up.)
+        logged = 'echo "$*" >>"$FAKE_DIR/calls.log"\n'
+        parent = 'tr "\\0" " " </proc/$PPID/cmdline >>"$FAKE_DIR/parent.log"\n'
+        parent += 'echo >>"$FAKE_DIR/parent.log"\n'
+        write_exec(self.fake / "docker", FAKE_DOCKER.replace(logged, logged + parent))
+        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="111", BOOT_SLOW_COMPOSE_TIMEOUT_S="333")
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertEqual(self.ups(), ALL_SERVICES)
+        limits = {}
+        for line in (self.fake / "parent.log").read_text().splitlines():
+            words = line.split()
+            if " up -d " in line:
+                self.assertEqual(Path(words[0]).name, "timeout", line)
+                limits[words[-1]] = words[1]
+        slow = {
+            "valhalla-standard",
+            "valhalla-no-trail",
+            "valhalla-ebike",
+            "valhalla-weekend",
+            "photon",
+        }
+        self.assertEqual(limits, {svc: "333" if svc in slow else "111" for svc in ALL_SERVICES})
 
     def test_the_other_services_keep_the_short_limit(self) -> None:
         (self.fake / "up.sleep_api").write_text("3")
@@ -517,7 +557,7 @@ class StartStackTests(FakeHost):
         (self.fake / "psql.out").write_text("0 0")
         write_exec(
             self.fake / "docker",
-            FAKE_DOCKER.replace('  up)\n', '  up)\n    touch "$FAKE_DIR/stop.hang"\n'),
+            FAKE_DOCKER.replace("  up)\n", '  up)\n    touch "$FAKE_DIR/stop.hang"\n'),
         )
         done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1")
         self.assertEqual(done.returncode, 1, done.stdout)
@@ -536,7 +576,11 @@ class StartStackTests(FakeHost):
 
     def test_warm_stack_starts_only_what_is_down(self) -> None:
         self.warm()
-        text = (self.fake / "ps.txt").read_text().replace("photon running healthy\n", "photon exited \n")
+        text = (
+            (self.fake / "ps.txt")
+            .read_text()
+            .replace("photon running healthy\n", "photon exited \n")
+        )
         (self.fake / "ps.txt").write_text(text)
         done = self.run_script()
         self.assertEqual(done.returncode, 0, done.stdout)
@@ -615,7 +659,9 @@ class StartStackTests(FakeHost):
         self.assertNotIn("mode:", done.stdout)
         self.assertEqual(self.mutating(), [])
         self.assertEqual([c for c in self.calls() if c.startswith("run ")], [])
-        self.assertEqual(len([c for c in self.calls() if c.startswith("compose") and " ps " in c]), 3)
+        self.assertEqual(
+            len([c for c in self.calls() if c.startswith("compose") and " ps " in c]), 3
+        )
         self.assertTrue(self.status().startswith("FAILED"))
         self.assertIn("running", (self.fake / "ps.txt").read_text())
 
@@ -630,7 +676,9 @@ class StartStackTests(FakeHost):
     def test_a_failed_ps_while_waiting_for_healthy_keeps_polling(self) -> None:
         write_exec(
             self.fake / "docker",
-            FAKE_DOCKER.replace('  up)\n', '  up)\n    [ "${*: -1}" = postgis ] && echo 2 >"$FAKE_DIR/ps.fail_n"\n'),
+            FAKE_DOCKER.replace(
+                "  up)\n", '  up)\n    [ "${*: -1}" = postgis ] && echo 2 >"$FAKE_DIR/ps.fail_n"\n'
+            ),
         )
         done = self.run_script(BOOT_POSTGIS_HEALTHY_S="10")
         self.assertEqual(done.returncode, 0, done.stdout)
@@ -727,7 +775,9 @@ class StartStackTests(FakeHost):
         done = self.run_script("--dry-run")
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertEqual(self.mutating(), [])
-        self.assertIn("DRYRUN: docker compose up -d --no-deps --force-recreate postgis", done.stdout)
+        self.assertIn(
+            "DRYRUN: docker compose up -d --no-deps --force-recreate postgis", done.stdout
+        )
         self.assertFalse((self.fake / "curl.log").exists())
         self.assertFalse((self.logs / "last-status").exists())
         self.assertFalse((self.data / ".boot-token").exists())
@@ -763,8 +813,11 @@ class StartStackTests(FakeHost):
         self.logs.mkdir()
         (self.logs / "last-status").write_text("OK earlier mode=COLD\n")
         proc = subprocess.Popen(
-            [BASH, str(SCRIPT)], env=self.env(BOOT_WAIT_PREREQ_S="30"),
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            [BASH, str(SCRIPT)],
+            env=self.env(BOOT_WAIT_PREREQ_S="30"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         deadline = time.monotonic() + 10
@@ -783,7 +836,11 @@ class PolicyTests(FakeHost):
     def policy(self, *args: str, **overrides: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [BASH, str(INSTALL), "policy", *args],
-            env=self.env(**overrides), capture_output=True, text=True, timeout=30, check=False,
+            env=self.env(**overrides),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
         )
 
     def updates(self) -> list[str]:
@@ -822,14 +879,17 @@ class StaticChecks(unittest.TestCase):
         block = re.search(r"REQUIRED_DIRS=\((.*?)\)", script, re.S)
         assert block is not None
         listed = set(block.group(1).split())
-        self.assertEqual(sorted(bound - listed), [], "compose binds dirs the boot script does not wait for")
+        self.assertEqual(
+            sorted(bound - listed), [], "compose binds dirs the boot script does not wait for"
+        )
 
     def test_start_order_covers_every_resident_service(self) -> None:
         import yaml
 
         services = yaml.safe_load((REPO / "compose.yaml").read_text())["services"]
         resident = {
-            name for name, svc in services.items()
+            name
+            for name, svc in services.items()
             if name not in {"migrate", "postgis"} and not svc.get("profiles")
         }
         script = SCRIPT.read_text()
@@ -876,19 +936,28 @@ class StaticChecks(unittest.TestCase):
         start = array("START_ORDER")
         slow = [s for s in start if s in array("SLOW_SERVICES")]
         self.assertTrue(slow)
-        sanity = (default("SANE_TRIES") * default("EXEC_TIMEOUT_S")
-                  + (default("SANE_TRIES") - 1) * default("SANE_GAP_S"))
+        sanity = default("SANE_TRIES") * default("EXEC_TIMEOUT_S") + (
+            default("SANE_TRIES") - 1
+        ) * default("SANE_GAP_S")
         worst = (
             # shared budget, a 60 s `docker info` past its end, one full bind check
-            default("WAIT_PREREQ_S") + 60 + 3 * 60 + default("POLL_S")
-            + default("SNAP_TRIES") * 30 + (default("SNAP_TRIES") - 1) * default("SNAP_GAP_S")
-            + sanity                                                   # before the mode
-            + 2 * default("COMPOSE_TIMEOUT_S")                         # stop clients, postgis
+            default("WAIT_PREREQ_S")
+            + 60
+            + 3 * 60
+            + default("POLL_S")
+            + default("SNAP_TRIES") * 30
+            + (default("SNAP_TRIES") - 1) * default("SNAP_GAP_S")
+            + sanity  # before the mode
+            + 2 * default("COMPOSE_TIMEOUT_S")  # stop clients, postgis
             + (len(start) - len(slow)) * default("COMPOSE_TIMEOUT_S")
             + len(slow) * default("SLOW_COMPOSE_TIMEOUT_S")
-            + default("POSTGIS_HEALTHY_S") + 30 + default("POLL_S")
-            + sanity                                                   # after the recreate
-            + default("SMOKE_S") + 3 * 90 + default("POLL_S")
+            + default("POSTGIS_HEALTHY_S")
+            + 30
+            + default("POLL_S")
+            + sanity  # after the recreate
+            + default("SMOKE_S")
+            + 3 * 90
+            + default("POLL_S")
         )
         unit = UNIT_IN.read_text()
         timeout = int(re.search(r"(?m)^TimeoutStartSec=(\d+)$", unit).group(1))
