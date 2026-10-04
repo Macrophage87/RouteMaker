@@ -217,7 +217,7 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         assert cursor.fetchone()[0] == 5
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.border_crossing")
         assert cursor.fetchone()[0] == 1
-    assert ValhallaUpstream.objects.count() == 4
+    assert ValhallaUpstream.objects.count() == 5
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id

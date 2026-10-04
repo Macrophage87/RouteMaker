@@ -1589,13 +1589,13 @@ def build_handlers(
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         routes = route_relations.read_routes(context.source_pbf)
-        closed = trail_closures.closures(context.ways, routes, areas[restricted_areas.PARK])
-        context.no_bicycle = closed.reasons
-        context.walk_bike = closed.walk_bike
-        context.destination_only = closed.destination_only
-        context.mtb_only = closed.mtb_only()
-        context.cbd_sidewalks = {w for w, r in closed.reasons.items() if r == cbd.NO_BICYCLE}
-        context.singletracks = {w for w, r in closed.reasons.items() if r == singletrack.NO_BICYCLE}
+        nobike = trail_closures.closures(context.ways, routes, areas[restricted_areas.PARK])
+        context.no_bicycle = nobike.reasons
+        context.walk_bike = nobike.walk_bike
+        context.destination_only = nobike.destination_only
+        context.mtb_only = nobike.mtb_only()
+        context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
+        context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -1608,7 +1608,7 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
-            if closed.reasons.get(way.osm_id) == trailaccess.MTB:
+            if nobike.reasons.get(way.osm_id) == trailaccess.MTB:
                 # No path rail on a trail only a mountain bike rides.
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
@@ -1624,9 +1624,9 @@ def build_handlers(
             len(beside),
             len(context.cbd_sidewalks),
             len(context.singletracks),
-            dict(sorted(closed.counts().items())),
-            len(closed.walk_bike),
-            len(closed.destination_only),
+            dict(sorted(nobike.counts().items())),
+            len(nobike.walk_bike),
+            len(nobike.destination_only),
         )
 
     def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:

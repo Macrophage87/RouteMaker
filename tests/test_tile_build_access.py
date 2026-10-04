@@ -277,6 +277,67 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         },
         OPEN,
     ),
+    # NO-BIKE-PATHS (OWNER-DECISIONS 291): each reason reaches the tiles closed,
+    # on a plain path and on one that carries a rating the parser would
+    # reopen it from.
+    *[
+        (
+            f"NO-BIKE-PATHS: {reason} on a path",
+            {"highway": "path", "foot": "yes", "rm:trail_class": "yes", "rm:no_bicycle": reason},
+            CLOSED,
+        )
+        for reason in (
+            "natural_surface",
+            "private",
+            "sac_scale",
+            "informal",
+            "foot_designated",
+            "trail_visibility",
+            "hiking_route",
+            "park_path",
+            "dismount",
+            "zoo",
+        )
+    ],
+    (
+        "NO-BIKE-PATHS: mtb on a bikeable-tagged dirt trail",
+        {
+            "highway": "path",
+            "bicycle": "yes",
+            "surface": "dirt",
+            "rm:trail_class": "yes",
+            "rm:no_bicycle": "mtb",
+        },
+        CLOSED,
+    ),
+    (
+        "NO-BIKE-PATHS: mtb on a trail rated by IMBA",
+        {
+            "highway": "path",
+            "bicycle": "designated",
+            "surface": "dirt",
+            "mtb:scale:imba": "0",
+            "rm:trail_class": "yes",
+            "rm:no_bicycle": "mtb",
+        },
+        CLOSED,
+    ),
+    (
+        "NO-BIKE-PATHS: the Zoo spur, a footway tagged bicycle=no",
+        {
+            "highway": "footway",
+            "footway": "sidewalk",
+            "bicycle": "no",
+            "rm:trail_class": "yes",
+            "rm:destination_only": "zoo",
+        },
+        OPEN,
+    ),
+    (
+        "NO-BIKE-PATHS: the same footway unmarked (the Zoo control)",
+        {"highway": "footway", "footway": "sidewalk", "bicycle": "no", "rm:trail_class": "yes"},
+        CLOSED,
+    ),
 ]
 
 # What the tile says the surface is, where a rating decides it. The parser
