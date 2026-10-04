@@ -107,6 +107,21 @@ def insert(schema: str, rows) -> None:
 
 
 @pytest.fixture
+def segment_schemas(segment_schemas):
+    """The schemas as the other fixtures see them, with every way on a long route.
+
+    The zoomed-out tiles keep only the long trails (OWNER-DECISIONS 375), by
+    columns the rows of the tests below do not set; a way on a long route
+    (`trail_route` 2) is kept at every zoom, so these tests are about the
+    classes and not the rule. TestLongTrails sets the columns itself.
+    """
+    for name in segment_schemas[:2]:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {name}.segment ALTER COLUMN trail_route SET DEFAULT 2")
+    return segment_schemas
+
+
+@pytest.fixture
 def live(segment_schemas):
     live, _staging = segment_schemas
     insert(live, CLASSES)
@@ -443,18 +458,21 @@ class TestLevels:
         assert expected(lambda tier, rule: rule in TRAILS_RULES and rule not in PATH_RULES)
         assert got
 
-    def test_the_trails_level_draws_at_a_z12_tiles_detail(self) -> None:
+    @pytest.mark.parametrize("level", ["TRAILS", "TRAILS_NEAR"])
+    def test_the_trails_levels_draw_at_a_z12_tiles_detail(self, level) -> None:
         """Round-1 mutant P13: 2048 units a side at z12 is a unit of 4.8 m, which
         merges the two carriageways of a trail beside a road into one line."""
-        assert (stress_tiles.TRAILS.extent, stress_tiles.TRAILS.buffer) == (4096, 32)
-        assert stress_tiles.TRAILS.merged
-        assert stress_tiles.TRAILS.predicate is trails_predicate
+        trails = getattr(stress_tiles, level)
+        assert (trails.extent, trails.buffer) == (4096, 32)
+        assert trails.merged
+        assert trails.predicate is trails_predicate
 
     def test_the_roads_come_in_at_their_named_zooms(self) -> None:
         """ "Zoom less than 12, show just bike paths and the metro/MARC. 12 and
         13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73)"""
         assert (stress_tiles.BUSY_ROADS_MIN_ZOOM, stress_tiles.QUIET_STREETS_MIN_ZOOM) == (12, 14)
-        assert stress_tiles.level_for(11) is stress_tiles.TRAILS
+        assert stress_tiles.level_for(10) is stress_tiles.TRAILS
+        assert stress_tiles.level_for(11) is stress_tiles.TRAILS_NEAR
         assert stress_tiles.level_for(12) is stress_tiles.level_for(13) is stress_tiles.BUSY
         assert stress_tiles.level_for(14) is stress_tiles.FULL
         assert stress_tiles.BUSY.predicate is busy_predicate
@@ -1179,7 +1197,7 @@ class TestCarFree:
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfms-v" in etag
+        assert "+cfmstl-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1265,3 +1283,141 @@ class TestMapClass:
         assert "map_class       text        NOT NULL DEFAULT 'road'" in ddl
         assert "CHECK (map_class IN ('road', 'barred', 'hidden', 'alley'))" in ddl
         assert "separate_bikeway boolean    NOT NULL DEFAULT false" in ddl
+
+
+MILE = 1609.344
+
+
+def insert_trail(schema, unpaved, route=0, run_mi=None, car_free=None) -> None:
+    """One open path in the middle of the tile, on route level `route` and in a
+    named run of `run_mi` miles (none when it has no name)."""
+    lon, lat = CENTRE[0] - 0.001, CENTRE[1]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, is_unpaved, facility, trail_name, trail_route, "
+            "trail_run_m, car_free_when) VALUES "
+            "(7, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, %s, true, "
+            "%s, 'path', %s, %s, %s, %s)",
+            [
+                lon, lat, lon + 0.002, lat, trail_rule("path", OPEN), unpaved,
+                None if run_mi is None else "A Trail", route,
+                None if run_mi is None else round(run_mi * MILE), car_free or [],
+            ],
+        )  # fmt: skip
+
+
+def lines_in(body: bytes) -> int:
+    return sum(len(f.lines) for f in decode(body).get("stress", type("L", (), {"features": []})).features)
+
+
+@db
+class TestLongTrails:
+    """The zoomed-out tiles keep the long trails (OWNER-DECISIONS 375, 2026-10-04:
+    "Also zoomed out, can we stick to mostly the longer trails, it's getting
+    messy."): a way on a route, or in a named run of trail long enough, with a
+    higher bar for an unpaved way and a higher bar again at z10 than at z11.
+    The miles are written out here, so the tests hold the schema's constants to
+    them."""
+
+    def test_the_bars_are_the_owners_decision(self) -> None:
+        from pipeline import schema
+
+        assert (schema.Z11_PAVED_RUN_MI, schema.Z11_UNPAVED_RUN_MI) == (3.0, 5.0)
+        assert (schema.Z10_PAVED_RUN_MI, schema.Z10_UNPAVED_RUN_MI) == (5.0, 8.0)
+        assert (schema.PAVED_ROUTE_MIN, schema.UNPAVED_ROUTE_MIN) == (1, 2)
+        assert stress_tiles.TRAILS.long_trails == (5.0, 8.0)
+        assert stress_tiles.TRAILS_NEAR.long_trails == (3.0, 5.0)
+        assert stress_tiles.BUSY.long_trails is stress_tiles.FULL.long_trails is None
+
+    @pytest.mark.parametrize(
+        ("unpaved", "route", "run_mi", "at_z10", "at_z11"),
+        [
+            (False, 0, None, False, False),  # no name, no route: a connector
+            (False, 1, None, True, True),  # any bicycle route keeps a paved way
+            (False, 2, None, True, True),
+            (False, 0, 2.9, False, False),
+            (False, 0, 3.0, False, True),  # z11's bar for a paved run
+            (False, 0, 4.9, False, True),
+            (False, 0, 5.0, True, True),  # z10's
+            (None, 0, 3.0, False, True),  # an unknown surface is read as paved
+            (None, 1, None, True, True),
+            (True, 0, None, False, False),
+            (True, 1, None, False, False),  # a local route is not enough for a dirt trail
+            (True, 2, None, True, True),
+            (True, 0, 4.9, False, False),
+            (True, 0, 5.0, False, True),  # z11's bar for an unpaved run
+            (True, 0, 7.9, False, True),
+            (True, 0, 8.0, True, True),  # z10's
+        ],
+    )
+    def test_each_zoom_keeps_the_ways_that_clear_its_bar(
+        self, client, segment_schemas, unpaved, route, run_mi, at_z10, at_z11
+    ) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, unpaved, route, run_mi)
+        kept = {z: lines_in(client.get(url(*tile_of(*CENTRE, z))).content) for z in (10, 11)}
+        assert kept == {10: int(at_z10), 11: int(at_z11)}
+
+    @pytest.mark.parametrize("z", [12, 13, 14, 16])
+    def test_from_z12_nothing_is_dropped_for_being_short(self, client, segment_schemas, z) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, True, 0, None)
+        assert lines_in(client.get(url(*tile_of(*CENTRE, z))).content) == 1
+
+    @pytest.mark.parametrize(("run_mi", "kept"), [(3.5, True), (0.1, False)])
+    def test_a_road_closed_at_set_times_is_judged_by_the_same_bar(
+        self, client, segment_schemas, run_mi, kept
+    ) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, False, 0, run_mi, car_free=["weekend"])
+        body = client.get(url(*tile_of(*CENTRE, 11))).content
+        assert lines_in(body) == int(kept)
+        if kept:
+            tile = decode(body)["stress"]
+            assert [f.properties.get("car_free") for f in tile.features] == ["weekend"]
+
+    @pytest.mark.parametrize("drop", [["trail_route", "trail_run_m"], ["trail_run_m"]])
+    def test_a_table_without_the_columns_draws_every_trail_as_before(
+        self, client, segment_schemas, drop
+    ) -> None:
+        """The columns arrive with a data rebuild; until then (and on a table
+        with only one of them) nothing is dropped, and the ETag says which
+        table the tiles were drawn from."""
+        live, _ = segment_schemas
+        insert_trail(live, True, 0, None)
+        with connection.cursor() as cursor:
+            for column in drop:
+                cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN {column}")
+        for z in (10, 11):
+            response = client.get(url(*tile_of(*CENTRE, z)))
+            assert lines_in(response.content) == 1
+            assert "+cfms-v" in response["ETag"] or "+cfmst-v" in response["ETag"]
+
+    def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, True, 2, None)
+        assert "+cfmstl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+
+    def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
+        optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})
+        for level in (stress_tiles.TRAILS, stress_tiles.TRAILS_NEAR):
+            z, x, y = tile_of(*CENTRE, level.min_zoom)
+            params = {"z": z, "x": x, "y": y, "extent": 4096, "buffer": 32, "margin": 0.01}
+            params["unit"] = 1.0
+            with connection.cursor() as cursor:
+                cursor.execute("SET enable_seqscan = off")
+                try:
+                    cursor.execute(f"EXPLAIN {stress_tiles.tile_sql(level, optional)}", params)
+                    plan = "\n".join(row[0] for row in cursor.fetchall())
+                finally:
+                    cursor.execute("RESET enable_seqscan")
+            assert "segment_overview_geom_idx" in plan
+
+    def test_the_rule_is_one_expression_in_the_schema(self) -> None:
+        from pipeline.schema import long_trails_predicate
+
+        sql = long_trails_predicate(5.0, 8.0)
+        assert "trail_route >= 2 OR COALESCE(trail_run_m, 0) >= 12875" in sql
+        assert "trail_route >= 1 OR COALESCE(trail_run_m, 0) >= 8047" in sql
+        assert "is_unpaved IS TRUE" in sql
