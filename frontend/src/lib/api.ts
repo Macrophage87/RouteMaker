@@ -87,7 +87,7 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  kind: "stretch" | "junction" | "via";
+  kind: "stretch" | "junction" | "via" | "walk";
   from_m: number;
   to_m: number;
   from_mi: number;

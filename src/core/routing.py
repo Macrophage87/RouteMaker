@@ -74,6 +74,7 @@ from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
 from routemaker import climbs, describe, intersections, ridetime, trace_junctions
 from routemaker import detour as detour_rules
+from routemaker import zoo
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
 from routemaker.measure import elevation_gain
@@ -1517,6 +1518,36 @@ def target_fields(final_m: float, target_m: float | None, ceiling_m: float | Non
     }
 
 
+ZOO_NOTE = (
+    "This point is inside the National Zoo, where bicycles are not ridden beyond the "
+    "bike racks by the Harvard Street entrance. The route goes to the racks."
+)
+
+
+def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[dict]]:
+    """A trip point inside the Zoo is moved to its bike racks: a route to the
+    Zoo ends at the racks (OWNER-DECISIONS 291(4)). Returns the points and, for
+    each one moved, what the answer reports (`moved_points`)."""
+    out: list[list[float]] = []
+    moved: list[dict] = []
+    for index, (lon, lat) in enumerate(points):
+        target = zoo.redirect(lon, lat)
+        if target is None:
+            out.append([lon, lat])
+            continue
+        out.append([target[0], target[1]])
+        moved.append(
+            {
+                "index": index,
+                "from": [round(lon, 6), round(lat, 6)],
+                "to": [round(target[0], 6), round(target[1], 6)],
+                "reason": "zoo_racks",
+                "note": ZOO_NOTE,
+            }
+        )
+    return out, moved
+
+
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -1535,6 +1566,7 @@ def plan(
     if started is None:
         started = clock()
     dials = dials or Dials()
+    points, moved_points = move_zoo_points(points)
     preset = presets.PRESETS[preset_name]
     stress_dial = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -2049,6 +2081,7 @@ def plan(
             "detour": detour,
             "description": described_full,
             "description_overview": described_overview,
+            "moved_points": moved_points,
         }
 
     body = _answer(trip, refined, dodges_of=dodges)
