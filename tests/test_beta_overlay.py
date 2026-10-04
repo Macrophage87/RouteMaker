@@ -210,12 +210,13 @@ PHOTON_XX = "-XX:MaxDirectMemorySize=192m -XX:+ExitOnOutOfMemoryError"
 
 
 def good() -> dict:
-    def svc(mem_mb: int, cpus: str = "1", **extra) -> dict:
+    def svc(mem_mb: int, cpus: str = "1", one_shot: bool = False, **extra) -> dict:
         return {
             "deploy": {"resources": {"limits": {"memory": f"{mem_mb}M", "cpus": cpus}}},
             "memswap_limit": f"{mem_mb}M",
             "cpu_shares": 512,
             "oom_score_adj": 500,
+            "restart": "no" if one_shot else "unless-stopped",
             **extra,
         }
 
@@ -234,7 +235,7 @@ def good() -> dict:
                 ports=[{"host_ip": "127.0.0.1", "published": "8087", "target": 8000}],
             ),
             "worker": svc(256, "0.5", environment={"WEEKLY_REBUILD_PAUSED": "1"}),
-            "migrate": svc(256, "0.5", environment={"WEEKLY_REBUILD_PAUSED": "1"}),
+            "migrate": svc(256, "0.5", one_shot=True, environment={"WEEKLY_REBUILD_PAUSED": "1"}),
             "postgis": svc(1024, "1.5", command=["postgres", "-c", "shared_buffers=256MB"]),
             "photon": svc(
                 1300,
@@ -329,6 +330,12 @@ def test_the_synthetic_good_stack_passes() -> None:
         (
             lambda s: s["api"]["environment"].update(WEB_CONCURRENCY="3"),
             "WEB_CONCURRENCY 3 leaves no worker free",
+        ),
+        (lambda s: s["api"].update(restart="no"), "api: restart is 'no'"),
+        (lambda s: s["photon"].pop("restart"), "photon: restart is None"),
+        (
+            lambda s: s["api"]["environment"].update(DJANGO_DEBUG="1"),
+            "api: DJANGO_DEBUG is '1'",
         ),
         (lambda s: s["postgis"].pop("cpu_shares"), "postgis: cpu_shares None is not below"),
         (lambda s: s["api"].update(cpu_shares=1024), "api: cpu_shares 1024 is not below"),
@@ -1051,6 +1058,18 @@ def test_the_wrapper_refuses_compose_settings_from_the_environment_or_dot_env(
         assert done.returncode == 2 and not calls.exists()
 
 
+@needs_sh
+@pytest.mark.parametrize(("var", "value"), [("RESTART_POLICY", "no"), ("DJANGO_DEBUG", "1")])
+def test_the_wrapper_refuses_a_restart_policy_or_debug_from_the_environment(
+    stub_docker, var: str, value: str
+) -> None:
+    env, calls = stub_docker
+    done = wrapper({**env, var: value}, "ps")
+    assert done.returncode == 2 and var in done.stderr and not calls.exists()
+    ok = wrapper({**env, "RESTART_POLICY": "unless-stopped"}, "ps")
+    assert ok.returncode == 0 and calls.exists()
+
+
 # --- the server-side gate: the checker on the server's own .env (S8) ---
 
 
@@ -1083,6 +1102,7 @@ def test_the_env_file_mode_checks_the_servers_env_and_never_prints_a_value(tmp_p
         ({"BETA_API_PORT": "0.0.0.0:8087"}, ""),
         ({"COMPOSE_PROFILES": "not-in-beta"}, "COMPOSE_PROFILES"),
         ({"WEB_CONCURRENCY": "7"}, "WEB_CONCURRENCY has no effect"),
+        ({"RESTART_POLICY": "no"}, "RESTART_POLICY must be unset or unless-stopped"),
     ],
 )
 def test_the_env_file_mode_refuses_a_bad_server_env(tmp_path: Path, overrides, expect) -> None:

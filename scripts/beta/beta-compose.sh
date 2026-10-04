@@ -24,6 +24,7 @@
 #   * COMPOSE_PROFILES, COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_PATH_SEPARATOR or
 #     COMPOSE_ENV_FILES in the environment, and COMPOSE_PROFILES or COMPOSE_FILE in .env:
 #     each would change the project, the files or the profiles behind the wrapper's back;
+#   * RESTART_POLICY (other than unless-stopped) or DJANGO_DEBUG in the environment;
 #   * --scale (a second copy of a service doubles its memory cap), and `run -p/--publish`
 #     (it would publish a port on every interface, not 127.0.0.1);
 #   * `down` or `rm` with -v/--volumes, and `down --rmi` (nothing durable is in a volume
@@ -48,6 +49,16 @@ for var in COMPOSE_PROFILES COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PATH_SEPAR
 		die "$var is set in the environment; unset it (.env and this wrapper decide the project, files and profiles)"
 	fi
 done
+
+# A shell variable beats .env in compose's substitution. RESTART_POLICY=no is the Docker Desktop
+# home machine's setting (compose.yaml, x-restart); on this server it would stop every container
+# coming back after an OOM kill or a reboot. DJANGO_DEBUG must stay off on a public site.
+if [ -n "${RESTART_POLICY:-}" ] && [ "$RESTART_POLICY" != unless-stopped ]; then
+	die "RESTART_POLICY is set to '$RESTART_POLICY' in the environment; unset it (the beta restarts unless-stopped)"
+fi
+if [ -n "${DJANGO_DEBUG:-}" ]; then
+	die "DJANGO_DEBUG is set in the environment; unset it (debug stays off on the beta)"
+fi
 
 env_file=${BETA_ENV_FILE:-$repo/.env}
 [ -r "$env_file" ] || die "no readable $env_file (scripts/beta/make-env.sh creates it)"

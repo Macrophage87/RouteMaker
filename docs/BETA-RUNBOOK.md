@@ -617,8 +617,11 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   them; only `db --replace-db --delete-beta-accounts` or rollback B/C to a dump from before they existed removes them.
 - **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without sessions or
   client-address rows). They are on the same disk; copying them off the server is the owner's decision.
-- **Reboot:** containers restart with Docker (`unless-stopped`). `/data` must be mounted before Docker starts, as it already is
-  for Docker's own storage there.
+- **Reboot:** containers restart with Docker (`unless-stopped`; `RESTART_POLICY` stays unset in `.env`, because
+  `no` is the home Docker Desktop machine's setting and `beta-compose.sh` and the checker refuse it here). `/data` must be
+  mounted before Docker starts, as it already is for Docker's own storage there.
+- **Debug stays off.** `make-env.sh` never writes `DJANGO_DEBUG`, so the containers run with it off; the checker and
+  `beta-compose.sh` refuse it being set. Do not add it to `.env`, even to chase a fault: read `beta-compose.sh logs api`.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design.
 - **No rebuild runs here.** `WEEKLY_REBUILD_PAUSED=1` and there is no rebuild container. New routing data always comes
   from home as a bundle.

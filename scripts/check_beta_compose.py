@@ -415,6 +415,23 @@ def check_mounts(services: dict, data_root: str | None) -> list[str]:
     return problems
 
 
+def check_restart_and_debug(services: dict) -> list[str]:
+    """The beta is a normal Linux host: every long-running service restarts unless-stopped
+    (compose.yaml's RESTART_POLICY=no is for the Docker Desktop home machine and must never
+    reach the server), and Django debug is off in every container that carries the setting."""
+    problems: list[str] = []
+    for name, service in sorted(services.items()):
+        if name not in ONE_SHOT and service.get("restart") != "unless-stopped":
+            problems.append(
+                f"{name}: restart is {service.get('restart')!r}, not 'unless-stopped' "
+                "(RESTART_POLICY must be unset or unless-stopped on the beta)"
+            )
+        debug = _env(service).get("DJANGO_DEBUG", "").strip().lower()
+        if debug not in ("", "0", "false", "no", "off"):
+            problems.append(f"{name}: DJANGO_DEBUG is {debug!r}; it must stay off on the beta")
+    return problems
+
+
 def check(compose: dict, data_root: str | None = None) -> list[str]:
     services = compose.get("services", {})
     return [
@@ -424,6 +441,7 @@ def check(compose: dict, data_root: str | None = None) -> list[str]:
         *check_ports(services),
         *check_budget(services),
         *check_runtime_settings(services),
+        *check_restart_and_debug(services),
         *check_valhalla(services),
         *check_mounts(services, data_root),
     ]
@@ -531,6 +549,11 @@ def check_env_file(values: dict[str, str]) -> list[str]:
     ]
     if values.get("COMPOSE_PROJECT_NAME", "") != "routemaker-beta":
         problems.append(".env: COMPOSE_PROJECT_NAME must be routemaker-beta")
+    if values.get("RESTART_POLICY", "unless-stopped") != "unless-stopped":
+        problems.append(
+            ".env: RESTART_POLICY must be unset or unless-stopped on the beta "
+            "(`no` is for the Docker Desktop home machine)"
+        )
     if "WEB_CONCURRENCY" in values:
         problems.append(
             ".env: WEB_CONCURRENCY has no effect on the beta (compose.beta.yaml sets it from "
