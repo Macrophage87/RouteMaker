@@ -1255,6 +1255,14 @@ def guard_function() -> str:
 CREATING = ("install -d", "prepare_data_root.sh", "mkdir -m 700", "python3 -m venv", 'ln -s "')
 
 
+TLS_BRANCH = re.compile(r'^\[ "\$TLS_OPTION" = ([AB]) \] && ')
+
+
+def unbranched(line: str) -> str:
+    """The line without step 9c's `[ "$TLS_OPTION" = A|B ] && ` prefix."""
+    return TLS_BRANCH.sub("", line)
+
+
 def gated_lines() -> list[str]:
     out = []
     for line in runbook_commands():
@@ -1278,12 +1286,14 @@ def test_every_creating_command_is_chained_behind_its_guard() -> None:
     lines = gated_lines()
     assert len(lines) >= 8, lines
     for line in lines:
-        guarded = line.startswith("rm_absent ") or line.startswith(
+        guarded = unbranched(line).startswith("rm_absent ") or unbranched(line).startswith(
             "grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)'"
         )
         assert guarded and " && " in line, line
     for path in ('"$RM_SRC"', '"$RM_INCOMING"', '"$RM_DATA"', '"$RM_STATE"', '"$NGINX_LINK"'):
-        assert any(line.startswith("rm_absent ") and path in line for line in lines), path
+        assert any(unbranched(line).startswith("rm_absent ") and path in line for line in lines), (
+            path
+        )
 
 
 @needs_sh
@@ -1319,6 +1329,8 @@ def test_a_failed_guard_stops_the_command_it_gates(tmp_path: Path, present: bool
         ):
             continue
         log.unlink(missing_ok=True)
+        branch = TLS_BRANCH.match(line)
+        env["TLS_OPTION"] = branch.group(1) if branch else ""
         done = subprocess.run(
             ["bash", "-c", f"{guard_function()}\n{line}"],
             cwd=REPO,
@@ -1330,7 +1342,7 @@ def test_a_failed_guard_stops_the_command_it_gates(tmp_path: Path, present: bool
         if present:
             assert not log.exists(), (line, log.read_text())
             assert done.returncode != 0, line
-        elif line.startswith("rm_absent "):
+        elif unbranched(line).startswith("rm_absent "):
             assert log.exists(), (line, done.stderr)
 
 
@@ -1450,3 +1462,21 @@ def test_every_routemaker_service_yields_to_the_hosts_other_sites() -> None:
     for name, service in OVERLAY["services"].items():
         assert service.get("cpu_shares") == 512, name
         assert service.get("oom_score_adj") == 500, name
+
+
+@needs_sh
+def test_rm_absent_refuses_an_empty_argument(tmp_path: Path) -> None:
+    """An unset variable must not slip past the guard (`rm_absent "$UNSET" && ...`)."""
+    for args in ('""', f'"{tmp_path / "absent"}" ""', ""):
+        done = run("bash", "-c", f"{guard_function()}\nrm_absent {args} && echo RAN")
+        assert done.returncode != 0 and "RAN" not in done.stdout, args
+    ok = run("bash", "-c", f'{guard_function()}\nrm_absent "{tmp_path / "absent"}" && echo RAN')
+    assert ok.returncode == 0 and "RAN" in ok.stdout
+
+
+def test_step_9c_runs_only_the_chosen_tls_options_line() -> None:
+    nine_c = RUNBOOK[RUNBOOK.index("### 9c. The full site") :]
+    nine_c = nine_c[: nine_c.index("```", nine_c.index("```sh") + 5)]
+    installs = [x.strip() for x in nine_c.splitlines() if '"$NGINX_SITE"' in x and "install" in x]
+    assert [TLS_BRANCH.match(x).group(1) for x in installs] == ["A", "B"], installs
+    assert "export TLS_OPTION=A" in RUNBOOK and "export TLS_OPTION=B" in RUNBOOK

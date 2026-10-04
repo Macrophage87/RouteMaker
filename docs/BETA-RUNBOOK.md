@@ -59,9 +59,9 @@ export RM_DATA=/data/routemaker
 export RM_SRC=/data/routemaker-src
 export RM_INCOMING=/data/routemaker-incoming
 # The guard every creating step uses: true only if NONE of the paths exists yet, naming each that
-# does. Every command that creates a RouteMaker path is written `rm_absent <paths> && <command>`
+# does; an empty argument (an unset variable) also fails it. Every command that creates a RouteMaker path is written `rm_absent <paths> && <command>`
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
-rm_absent() { ok=1; for p in "$@"; do [ ! -e "$p" ] && [ ! -L "$p" ] || { echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; }; done; [ "$ok" = 1 ]; }
+rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; then echo "EMPTY path (an unset variable?): stop and ask the owner" >&2; ok=0; elif [ -e "$p" ] || [ -L "$p" ]; then echo "EXISTS: $p: stop and ask the owner" >&2; ok=0; fi; done; [ "$ok" = 1 ]; }
 ```
 
 ## 1. Prerequisites and checks (changes nothing)
@@ -107,6 +107,8 @@ Then apply this rule, and report which option it gave and why:
   (it is listed by `certbot certificates`, or the owner confirms how it is renewed).
 - **Option A (a new certificate for this one name)** otherwise: `certbot certonly --webroot` for
   `routemaker.cieply.com` only (step 9b).
+
+Record the choice for step 9c, which branches on it: `export TLS_OPTION=A` or `export TLS_OPTION=B`.
 
 Neither option changes another site's TLS. Do not use certbot's `--nginx` authenticator or
 installer: it edits and reloads the host's nginx configuration at issue time and again at every
@@ -406,11 +408,11 @@ cd "$RM_SRC"
 scripts/beta/render-nginx.sh --stage full --api-port 8087 \
     --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full.conf"
-# exactly one of the next two lines acts:
+# exactly one of the next two lines acts, the one for the TLS_OPTION step 1 chose:
 # option A: replace the stage-1 file, only if it is the one this runbook installed in 9b (its link already points at it)
-grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)' "$NGINX_SITE" 2>/dev/null && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"
+[ "$TLS_OPTION" = A ] && grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)' "$NGINX_SITE" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"
 # option B: stage 1 was skipped, so this is a new file and must not exist yet
-rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
+[ "$TLS_OPTION" = B ] && rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload                                   # -t must say "syntax is ok" and "test is successful"
 ```
 
