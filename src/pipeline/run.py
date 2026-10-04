@@ -42,6 +42,8 @@ from routemaker import (
     ridetime,
     singletrack,
     speed_corrections,
+    trailaccess,
+    zoo,
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
@@ -58,9 +60,11 @@ from . import (
     reconcile,
     restricted_areas,
     retention,
+    route_relations,
     source,
     states,
     tiles,
+    trail_closures,
     trail_routes,
     variants,
     writers,
@@ -564,6 +568,15 @@ class RebuildContext:
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
     singletracks: set[int] = field(default_factory=set)
+    # Every `rm:no_bicycle` reason of the NO-BIKE-PATHS rules (routemaker.trailaccess,
+    # routemaker.zoo, pipeline.trail_closures), cbd_sidewalk and singletrack
+    # included, by way; the short dismount connectors routing keeps and the route
+    # description flags; the Zoo spur (destination-only); and the ways a future
+    # mountain-bike mode would ride.
+    no_bicycle: dict[int, str] = field(default_factory=dict)
+    walk_bike: set[int] = field(default_factory=set)
+    destination_only: set[int] = field(default_factory=set)
+    mtb_only: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
     speed_corrected: set[int] = field(default_factory=set)
     # The ways the stress map leaves out by their length or their place
@@ -1575,6 +1588,14 @@ def build_handlers(
         context.short_paths_hidden |= restricted_areas.roads_inside(placed, areas["military"])
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
+        routes = route_relations.read_routes(context.source_pbf)
+        closed = trail_closures.closures(context.ways, routes, areas[restricted_areas.PARK])
+        context.no_bicycle = closed.reasons
+        context.walk_bike = closed.walk_bike
+        context.destination_only = closed.destination_only
+        context.mtb_only = closed.mtb_only()
+        context.cbd_sidewalks = {w for w, r in closed.reasons.items() if r == cbd.NO_BICYCLE}
+        context.singletracks = {w for w, r in closed.reasons.items() if r == singletrack.NO_BICYCLE}
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -1587,22 +1608,25 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
-            if cbd.barred_sidewalk(way.tags, way.coordinates):
-                context.cbd_sidewalks.add(way.osm_id)
-            if singletrack.is_singletrack(way.tags):
-                context.singletracks.add(way.osm_id)
+            if closed.reasons.get(way.osm_id) == trailaccess.MTB:
+                # No path rail on a trail only a mountain bike rides.
+                context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
-            "barred to bicycles, %d singletrack ways avoided",
+            "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
+            "walk-your-bike connectors kept, %d destination-only",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
             len(beside),
             len(context.cbd_sidewalks),
             len(context.singletracks),
+            dict(sorted(closed.counts().items())),
+            len(closed.walk_bike),
+            len(closed.destination_only),
         )
 
     def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:
@@ -1769,10 +1793,13 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                if way.osm_id in context.cbd_sidewalks:
-                    derived["no_bicycle"] = cbd.NO_BICYCLE
-                if way.osm_id in context.singletracks:
-                    derived["no_bicycle"] = singletrack.NO_BICYCLE
+                reason = context.no_bicycle.get(way.osm_id)
+                if reason is not None and not (
+                    variant is variants.Variant.OFFROAD and reason in trail_closures.OFFROAD_KEEPS
+                ):
+                    derived["no_bicycle"] = reason
+                if way.osm_id in context.destination_only:
+                    derived["destination_only"] = zoo.DESTINATION_ONLY
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -1855,7 +1882,15 @@ def build_handlers(
             return facility.MapClass.BARRED
         if osm_id in context.short_paths_hidden or osm_id in context.singletracks:
             return facility.MapClass.HIDDEN
-        return facility.map_class(tags)
+        base = facility.map_class(tags)
+        reason = context.no_bicycle.get(osm_id)
+        if reason is not None and reason != trailaccess.MTB and base is facility.MapClass.ROAD:
+            # A trail the NO-BIKE-PATHS rules close (the Zoo's, a hiking path, a
+            # private golf-cart path) is not drawn as a bike facility; the base
+            # map shows it as it is (OWNER-DECISIONS 278, 290(b)). The
+            # mountain-bike class stays, faint (the tile's `mtb` property).
+            return facility.MapClass.BARRED
+        return base
 
     def write_segments() -> None:
         from .schema import schema_exists
@@ -1901,6 +1936,8 @@ def build_handlers(
                         car_free_when=car_free_when,
                         map_class=map_class_of(way.osm_id, way.tags).value,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
+                        mtb_only=way.osm_id in context.mtb_only,
+                        walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         # The graph's direction, not item 109's relief reading: a

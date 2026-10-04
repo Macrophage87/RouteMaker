@@ -80,7 +80,13 @@ def closures(
     result = TrailClosures()
     in_park = park_paths(ways, park_areas)
     chains = trailaccess.dismount_chains(
-        (way.osm_id, way.tags, way.node_ids, facility._length_m(way.coordinates)) for way in ways
+        (
+            way.osm_id,
+            way.tags,
+            way.node_ids,
+            facility._length_m(way.coordinates) if trailaccess.is_dismount(way.tags) else 0.0,
+        )
+        for way in ways
     )
     kept, long_dismount = trailaccess.dismount_reasons(chains)
     spur = zoo.spur_ways()

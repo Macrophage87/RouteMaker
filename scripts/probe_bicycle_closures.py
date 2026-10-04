@@ -48,7 +48,10 @@ ROUTERS = {
     "no-trail": os.environ.get("VALHALLA_NO_TRAIL_URL", "http://valhalla-no-trail:8002"),
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
+    "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
 }
+# The off-road graph reopens the mountain-bike class on purpose.
+OFFROAD_KEEPS = ("mtb",)
 MAX_PROBES = 200
 TIMEOUT_S = 60
 MILE_M = 1609.344
@@ -65,7 +68,9 @@ def _post(url: str, body: dict, headers: dict[str, str] | None = None) -> object
 def read_probes(path: Path) -> list[tiles.ClosureProbe]:
     with path.open(newline="") as handle:
         probes = [
-            tiles.ClosureProbe(int(row["way_id"]), float(row["lon"]), float(row["lat"]))
+            tiles.ClosureProbe(
+                int(row["way_id"]), float(row["lon"]), float(row["lat"]), row.get("reason") or ""
+            )
             for row in csv.DictReader(handle)
         ]
     if len(probes) > MAX_PROBES:
@@ -80,8 +85,9 @@ def locate(args: argparse.Namespace) -> int:
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        answer = _post(f"{url}/locate", tiles.closure_locate_request(probes))
-        readback = tiles.closure_readback(probes, answer)
+        held = [p for p in probes if not (name == "offroad" and p.reason in OFFROAD_KEEPS)]
+        answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
+        readback = tiles.closure_readback(held, answer)
         verdict = "ok"
         if readback.open_to_bicycles:
             verdict = "OPEN: " + " ".join(str(w) for w in readback.open_to_bicycles)

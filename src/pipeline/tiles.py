@@ -685,6 +685,9 @@ class ClosureProbe:
     way_id: int
     lon: float
     lat: float
+    # Why the way is closed (`rm:no_bicycle`), where the gate knows: the
+    # off-road graph reopens `mtb` on purpose and is not held to those probes.
+    reason: str = ""
 
 
 @dataclass(frozen=True)

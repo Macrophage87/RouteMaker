@@ -425,6 +425,14 @@ CREATE TABLE {schema}.segment (
     map_class       text        NOT NULL DEFAULT 'road'
                     CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
     separate_bikeway boolean    NOT NULL DEFAULT false,
+    -- NO-BIKE-PATHS (OWNER-DECISIONS 291): a way the standard graphs close for
+    -- being mountain-bike class or rated singletrack
+    -- (`routemaker.trailaccess.MTB`, `routemaker.singletrack`), kept for a
+    -- future MTB mode and drawn faint (tile property `mtb`). And a short
+    -- `bicycle=dismount` connector routing keeps, which the route description
+    -- flags "walk your bike here" (`walk_bike`).
+    mtb_only        boolean     NOT NULL DEFAULT false,
+    walk_bike       boolean     NOT NULL DEFAULT false,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

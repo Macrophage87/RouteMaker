@@ -343,7 +343,16 @@ def map_class(tags: dict[str, str]) -> MapClass:
         # A private path (inside the Pentagon's fence) is no one's; a public
         # one is a trail, whatever its facility.
         opened = tags.get("bicycle") in PUBLIC_WAY or tags.get("foot") in PUBLIC_WAY
-        return MapClass.HIDDEN if closed and not opened else MapClass.ROAD
+        if closed and not opened:
+            return MapClass.HIDDEN
+        # A trail a bicycle may not ride (a footway with no bicycle tag, a path
+        # tagged `bicycle=no`, steps) is not drawn as a bike path: it is left
+        # to the base map like a road a bicycle may not use (OWNER-DECISIONS
+        # 278, 290(b)). A short `bicycle=dismount` connector stays: routing
+        # keeps it, and the route says to walk.
+        if tags.get("bicycle") != "dismount" and not trail_open_to_bicycle(tags):
+            return MapClass.BARRED
+        return MapClass.ROAD
     if highway is None:
         return MapClass.ROAD
     bicycle = tags.get("bicycle")
