@@ -1006,5 +1006,16 @@ check("and none on another key is still one",
 check("and the exception does not excuse another key's restriction",
   not M.access_is_unrestricted({ oneway = "yes", ["bicycle:backward"] = "none", access = "private" }))
 
+-- OWNER-DECISIONS 291(4): the Zoo's destination-only spur.
+local spur = M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "no" },
+  { destination_only = true, is_trail_class = true })
+check("a destination-only way is opened to bicycles", spur.bicycle == "destination")
+check("and is destination-only for access", spur.access == "destination")
+check("a stricter access tag is kept on it",
+  M.remap_way({ highway = "service", access = "private" },
+    { destination_only = true }).access == nil)
+check("an unmarked footway is not opened",
+  M.remap_way({ highway = "footway" }, { is_trail_class = true }).bicycle == nil)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

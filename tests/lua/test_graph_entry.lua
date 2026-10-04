@@ -286,6 +286,18 @@ local _, open_out = transform_way({ highway = "footway", footway = "sidewalk", b
 check("an unmarked sidewalk open to bicycles stays open",
   open_out.bike_forward == "true", tostring(open_out.bike_forward))
 
+-- OWNER-DECISIONS 291(4): the Zoo spur's footway is open to bicycles, destination-only.
+local _, spur_out = transform_way({
+  highway = "footway", footway = "sidewalk", bicycle = "no", ["rm:destination_only"] = "zoo",
+  ["rm:trail_class"] = "yes",
+})
+check("the Zoo spur reaches the graph open to bicycles",
+  spur_out.bike_forward == "true" and spur_out.bike_backward == "true",
+  tostring(spur_out.bike_forward) .. "/" .. tostring(spur_out.bike_backward))
+check("and destination-only (upstream's private flag)", spur_out.private == "true",
+  tostring(spur_out.private))
+check("and the mark never reaches the tile build", spur_out["rm:destination_only"] == nil)
+
 -- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
 local _, single_out = transform_way({
   highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",

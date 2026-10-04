@@ -526,6 +526,20 @@ function M.remap_way(tags, derived)
     out.access = M.CEMETERY_ACCESS
   end
 
+  -- The Zoo's access spur (`rm:destination_only`, routemaker.zoo; OWNER-DECISIONS
+  -- 291(4)): open to a bicycle, but only to reach a point on or beside it. Like a
+  -- cemetery's ways, `access=destination` is upstream's destination-only, so a
+  -- route may enter only to end there; and `bicycle=destination` opens the
+  -- footways and sidewalks the spur runs over, which upstream closes by class
+  -- (or by `bicycle=no`). The spur is the one place this remap widens a bicycle
+  -- tag, and only for the ways the rebuild names.
+  if derived.destination_only then
+    if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
+      out.access = M.CEMETERY_ACCESS
+    end
+    out.bicycle = "destination"
+  end
+
   -- Last, so no line above can grant a direction back: the conditional-access
   -- resolution writes `bicycle:forward` / `:backward` from OSM's own
   -- `bicycle=no` + `bicycle:conditional=yes @ ...`.
