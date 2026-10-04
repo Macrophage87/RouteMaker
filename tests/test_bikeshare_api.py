@@ -204,10 +204,11 @@ class TestBikeshareAnswer:
         assert found and found.group(1) == gbfs.CREDIT
 
     def test_the_credit_names_the_operator_only_as_a_plain_source_note(self) -> None:
-        assert "Capital Bikeshare" in gbfs.CREDIT and "operated by Lyft" in gbfs.CREDIT
+        assert gbfs.CREDIT == "Capital Bikeshare"
         # The operator is named nowhere else in what a rider is shown: the rest of the words say
         # "Bikeshare" or "the operator".
         for text in bikeshare.OUTSIDE_REASON_WORDS.values():
+            text = text.replace(bikeshare.EBIKE_PAGE, "")  # the operator's own page, as a link
             assert "Capital" not in text and "Lyft" not in text
         for source in (Path(bikeshare.__file__).read_text(),):
             assert "Capital" not in source.replace("Capital Bikeshare Data", "")

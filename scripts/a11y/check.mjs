@@ -1834,15 +1834,15 @@ async function saidInDialog(p, text) {
   check("bikeshare: a marker's accessible name is its text equivalent", marker?.role === "image" && /^Step 1: take a classic bike/.test(marker?.name ?? ""), JSON.stringify(marker));
   check("bikeshare: the markers are told apart by their number, not colour", plan.markers.map((m) => m.badge).join() === "1,2");
   check("bikeshare: the legend names the dotted walk line and the numbered markers", /dotted line is a walk/.test(plan.legend) && /numbered 1 and 2/.test(plan.legend) && plan.legendSvgHidden === "true", plan.legend);
-  check("bikeshare: the panel prints the source citation, plain", plan.panelCredit === "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed.", plan.panelCredit);
-  check("bikeshare: the route credits carry it too", /Route data: .*Bikeshare station data: Capital Bikeshare \(operated by Lyft\), GBFS feed\./.test(plan.routeCredit ?? ""), plan.routeCredit);
+  check("bikeshare: the panel prints the source citation, plain", plan.panelCredit === "Capital Bikeshare.", plan.panelCredit);
+  check("bikeshare: the route credits carry it too", /Route data: .*; Capital Bikeshare\./.test(plan.routeCredit ?? ""), plan.routeCredit);
   check("bikeshare: a note says why a nearer dock was passed over", plan.notes.length === 1 && /has no classic bikes right now/.test(plan.notes[0]), JSON.stringify(plan.notes));
   check("bikeshare: the ride type and controls say Bikeshare, and name no operator", /^Bikeshare, classic bike/.test(plan.ride ?? "") && !/Capital|Lyft/.test(plan.ride ?? "") && plan.legend2 === "Bike", `${plan.ride} / ${plan.legend2}`);
   check("bikeshare: the bike choice is a radio group with classic on", plan.bikes.length === 2 && plan.bikes[0] === true && plan.bikes[1] === false, JSON.stringify(plan.bikes));
   check("bikeshare: the announcement is the plan in words", /^Bikeshare plan: Bikeshare, classic bike: about 19 min in all\. Walk 430 ft \(130 m\)/.test(plan.said), plan.said.slice(0, 120));
   check("bikeshare: the route line is not offered for dragging (it runs dock to dock)", true);
   const attribution = await p.eval("document.querySelector('.maplibregl-ctrl-attrib')?.textContent ?? ''");
-  check("bikeshare: the map's attribution shows the citation while a plan is drawn", /Bikeshare station data: Capital Bikeshare \(operated by Lyft\), GBFS feed/.test(attribution), attribution.slice(-160));
+  check("bikeshare: the map's attribution shows the citation while a plan is drawn", /Capital Bikeshare/.test(attribution), attribution.slice(-160));
   check("bikeshare: and the map's attribution carries no logo or image of the operator", await p.eval("document.querySelectorAll('.maplibregl-ctrl-attrib img').length === 0"));
   await p.shot(`${SHOTS}/bikeshare_plan.png`);
   await p.close();
@@ -1851,7 +1851,7 @@ async function saidInDialog(p, text) {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const attribution = await p.eval("document.querySelector('.maplibregl-ctrl-attrib')?.textContent ?? ''");
   const panel = await p.eval("document.querySelector('p.route-credit')?.textContent ?? ''");
-  check("bikeshare: an ordinary route shows no bikeshare citation, on the map or in the panel", !/Bikeshare station data/.test(attribution + panel) && (await p.eval("document.querySelectorAll('.dock-marker').length === 0")), attribution.slice(-120));
+  check("bikeshare: an ordinary route shows no bikeshare citation, on the map or in the panel", !/Capital Bikeshare/.test(attribution + panel) && (await p.eval("document.querySelectorAll('.dock-marker').length === 0")), attribution.slice(-120));
   await p.close();
 }
 {

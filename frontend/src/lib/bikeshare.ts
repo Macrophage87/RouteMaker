@@ -16,11 +16,27 @@ import type { LonLat } from "./geo.ts";
 
 /**
  * The source citation (OWNER-DECISIONS 301: "Even if the license doesn't require crediting
- * them, sources need citing."): plain text, no logo, no brand styling, no wording of
- * affiliation. The same words as `core.gbfs.CREDIT`, which tests/test_bikeshare_api.py holds
+ * them, sources need citing."), as the operator's name alone (OWNER-DECISIONS 304: "don't clog
+ * up the map with extra words"): plain text, no logo, no brand styling, no wording of
+ * affiliation. The fuller description is in docs/OPERATIONS.md. The same words as `core.gbfs.CREDIT`, which tests/test_bikeshare_api.py holds
  * this to. The owner confirms the wording.
  */
-export const BIKESHARE_CREDIT = "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed";
+export const BIKESHARE_CREDIT = "Capital Bikeshare";
+
+/** The operator's page on e-bike parking rules (OWNER-DECISIONS 305), shown as text and a link. */
+export const EBIKE_PAGE = "https://capitalbikeshare.com/how-it-works/ebike";
+
+/** A sentence as text and links: the e-bike page's address becomes a link, the rest stays text. */
+export function linkParts(text: string): { text: string; href?: string }[] {
+  const at = text.indexOf(EBIKE_PAGE);
+  if (at < 0) return [{ text }];
+  const parts: { text: string; href?: string }[] = [];
+  if (at > 0) parts.push({ text: text.slice(0, at) });
+  parts.push({ text: EBIKE_PAGE, href: EBIKE_PAGE });
+  const rest = text.slice(at + EBIKE_PAGE.length);
+  if (rest) parts.push({ text: rest });
+  return parts;
+}
 
 export const BIKES: readonly { id: Bike; label: string; hint: string }[] = [
   {

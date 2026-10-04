@@ -637,8 +637,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "credit: claims an affiliation",
         GB,
-        'CREDIT = "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed"',
-        'CREDIT = "Bikeshare station data: official Capital Bikeshare partner (operated by Lyft), GBFS feed"',
+        'CREDIT = "Capital Bikeshare"',
+        'CREDIT = "Official Capital Bikeshare partner"',
         PLAN_T + API_T,
     ),
     (

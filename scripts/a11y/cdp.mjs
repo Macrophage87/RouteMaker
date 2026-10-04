@@ -562,7 +562,7 @@ export const S_MASS_OUTSIDE_DC = (() => {
  * `bikeshare` has the walks, docks, availability, endings and notes. The words are the API's
  * (core.bikeshare); the source citation is core.gbfs.CREDIT.
  */
-const BIKESHARE_CREDIT = "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed";
+const BIKESHARE_CREDIT = "Capital Bikeshare";
 const dockStop = (kind, name, at, bikes, docks) => ({
   kind, name, lon: at[0], lat: at[1], station_id: `fx-${name.length}`, availability: "known", bikes_available: bikes, docks_available: docks,
 });

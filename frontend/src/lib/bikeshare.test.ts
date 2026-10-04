@@ -5,7 +5,9 @@ import type { BikesharePlan, RouteResponse } from "./api.ts";
 import { requestRoute, describeError } from "./api.ts";
 import {
   BIKESHARE_CREDIT,
+  EBIKE_PAGE,
   WALK_DASH,
+  linkParts,
   availabilityLine,
   bikeLabel,
   bikeshareOf,
@@ -104,8 +106,9 @@ function route(bikeshare: BikesharePlan | null, attribution = ["© OpenStreetMap
 // --- The credit (OWNER-DECISIONS 301) ----------------------------------------------------
 
 test("the source citation is plain, factual and names no affiliation", () => {
-  assert.equal(BIKESHARE_CREDIT, "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed");
-  assert.doesNotMatch(BIKESHARE_CREDIT, /official|partner|endorse|approved|affiliat|powered by|in association|<|http/i);
+  assert.equal(BIKESHARE_CREDIT, "Capital Bikeshare");
+  assert.ok(BIKESHARE_CREDIT.split(" ").length <= 2, "the name alone, no extra words");
+  assert.doesNotMatch(BIKESHARE_CREDIT, /official|partner|endorse|approved|affiliat|powered by|in association|GBFS|Lyft|<|http/i);
 });
 
 test("the route panel's credits include the source citation whenever bikeshare data is shown", () => {
@@ -146,7 +149,7 @@ test("the map's attribution shows the citation exactly while a bikeshare plan is
 
 test("the map's credit is not part of the always-on credits, which would cite data not shown", () => {
   const style = read("lib/mapStyle.ts");
-  assert.doesNotMatch(style, /Bikeshare station data/);
+  assert.doesNotMatch(style, /Capital Bikeshare/);
 });
 
 // --- Generic wording -------------------------------------------------------------------
@@ -169,6 +172,18 @@ test("the ride type and controls say Bikeshare generically, with no operator nam
 });
 
 // --- Walk legs and docks ---------------------------------------------------------------------
+
+test("the e-bike page address is shown as text and as a link, and fees are not built in", () => {
+  const said = `Ending outside a dock isn't offered because no-parking zones aren't published; see the operator's e-bike page for current parking rules: ${EBIKE_PAGE}`;
+  const parts = linkParts(said);
+  assert.equal(parts.map((p) => p.text).join(""), said);
+  assert.deepEqual(parts.filter((p) => p.href), [{ text: EBIKE_PAGE, href: "https://capitalbikeshare.com/how-it-works/ebike" }]);
+  assert.deepEqual(linkParts("no address"), [{ text: "no address" }]);
+  const panel = read("BikeshareSummary.tsx");
+  assert.match(panel, /<Words text=\{ending\.reason_text/);
+  assert.match(panel, /<Words text=\{note\}/);
+  assert.doesNotMatch(read("lib/bikeshare.ts") + panel, /\$\d|\d\.\d\d USD/);
+});
 
 test("walk legs are drawn as their own dotted line, told apart by pattern", () => {
   const walks = walkFeatures(plan());
@@ -261,7 +276,7 @@ test("an e-bike's ending is a choice only where an out-of-dock ending is offered
       plan().endings[0],
       {
         kind: "outside_dock", offered: false, chosen: false, reason: "no_zone_data", fee: null, fee_text: null, walk_m: null,
-        reason_text: "Ending an e-bike outside a dock is not offered: the operator publishes no map of no-parking zones.", text: "",
+        reason_text: "Ending outside a dock isn't offered because no-parking zones aren't published; see the operator's e-bike page for current parking rules: " + EBIKE_PAGE, text: "",
       },
     ],
   });

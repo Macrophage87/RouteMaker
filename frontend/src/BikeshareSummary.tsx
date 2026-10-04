@@ -18,8 +18,26 @@ import {
   endingChoices,
   endingLabel,
   hasEndingChoice,
+  linkParts,
   totals,
 } from "./lib/bikeshare.ts";
+
+/** A sentence of the API's words, its e-bike page address as a real link. */
+function Words({ text }: { text: string }) {
+  return (
+    <>
+      {linkParts(text).map((part, index) =>
+        part.href ? (
+          <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">
+            {part.text}
+          </a>
+        ) : (
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </>
+  );
+}
 
 export function BikeshareSummary({
   plan,
@@ -92,7 +110,7 @@ export function BikeshareSummary({
       )}
       {declined.map((ending) => (
         <p key={ending.kind} className="hint bikeshare-ending-declined">
-          {ending.reason_text}
+          <Words text={ending.reason_text ?? ""} />
         </p>
       ))}
       {plan.pricing_note && <p className="hint bikeshare-pricing">{plan.pricing_note}</p>}
@@ -101,7 +119,9 @@ export function BikeshareSummary({
           <h4>Notes on this plan</h4>
           <ul className="bikeshare-notes">
             {plan.notes.map((note, index) => (
-              <li key={index}>{note}</li>
+              <li key={index}>
+                <Words text={note} />
+              </li>
             ))}
           </ul>
         </>

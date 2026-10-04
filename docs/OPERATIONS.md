@@ -4108,3 +4108,23 @@ answer, Bikeshare plans answer 503 with `code: bikeshare_unavailable` when the s
 missing, and plan with "availability unknown" notes when only the availability feed is. The
 operator may end the data licence at will (OWNER-DECISIONS 300); removing the ride type is
 removing `bikeshare` from `core.presets.PRESETS`, the Caddyfile redirect and the front end's list.
+
+### Bikeshare: the full source reference
+
+(Move to docs/SOURCES.md at the rebase onto the release revision; OWNER-DECISIONS 306: credits on the
+map and in the app stay brief, like an in-text citation, and the full reference lives in the docs.)
+The credit shown to riders is "Capital Bikeshare" alone. The reference in full:
+
+- Data: Capital Bikeshare station information, station status, free-floating e-bike status and pricing
+  plans, from the operator's official GBFS 1.1 feed. Discovery feed:
+  https://gbfs.capitalbikeshare.com/gbfs/gbfs.json (it lists the feeds on gbfs.lyft.com).
+- Operator: Lyft.
+- Licence: the Capital Bikeshare Data License Agreement, https://capitalbikeshare.com/data-license-agreement
+  (read 2026-10-04, OWNER-DECISIONS 300). Non-exclusive, royalty-free, perpetual, any lawful purpose. It
+  forbids hosting, distributing or selling the data as a stand-alone dataset, using the operator's marks
+  without permission, stating or implying affiliation or endorsement, data mining, correlating the data
+  with personal information, and access other than through the provided interface. No attribution is
+  required (the credit is the owner's choice, item 301). The operator may terminate at will. Not legal advice.
+- Retrieval: live at request time, official endpoints only, cached in memory for 60 s, never stored,
+  republished or exported, with nothing about the visitor in a request.
+- Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305).

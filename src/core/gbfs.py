@@ -75,11 +75,12 @@ OPTIONAL_FEEDS = (
 )
 
 # The plain source citation (OWNER-DECISIONS 301: "Even if the license doesn't
-# require crediting them, sources need citing."): a factual source line, text
-# only, no mark, no wording of affiliation. The controls stay "Bikeshare". The
-# owner confirms the wording (OWNER-DECISIONS 300: "the owner decides on the
-# wording that names the operator").
-CREDIT = "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed"
+# require crediting them, sources need citing."), worded by OWNER-DECISIONS 304 as
+# the operator's name alone ("don't clog up the map with extra words"): text only,
+# no mark, no wording of affiliation. The controls stay "Bikeshare". What it is a
+# citation of (the official GBFS feed, operated by Lyft, under its data licence) is
+# in docs/OPERATIONS.md and docs/DEVELOPMENT.md, not on the map.
+CREDIT = "Capital Bikeshare"
 
 
 class Unavailable(Exception):

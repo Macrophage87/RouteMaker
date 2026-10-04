@@ -284,15 +284,20 @@ def outside_offer(bike: str, snapshot: gbfs.Snapshot, dest: LonLat) -> dict:
     return {"offered": True, "reason": None, "fee": fee}
 
 
+# The operator's own page on e-bike parking rules, given as text and a link (OWNER-DECISIONS 305:
+# the no-parking zones exist only inside the operator's app, with no public map or feed, so using
+# them would breach the data licence; the plan stays docks-only).
+EBIKE_PAGE = "https://capitalbikeshare.com/how-it-works/ebike"
+
 OUTSIDE_REASON_WORDS = {
     "classic_bikes_end_at_docks": "A classic bike is returned to a dock.",
     "no_zone_data": (
-        "Ending an e-bike outside a dock is not offered: the operator publishes no map of "
-        "no-parking zones, so the plan cannot tell where it is allowed."
+        "Ending outside a dock isn't offered because no-parking zones aren't published; see "
+        f"the operator's e-bike page for current parking rules: {EBIKE_PAGE}"
     ),
     "zones_unreadable": (
-        "Ending an e-bike outside a dock is not offered: the operator's no-parking zone data "
-        "could not be read just now."
+        "Ending outside a dock isn't offered because no-parking zones could not be read just "
+        f"now; see the operator's e-bike page for current parking rules: {EBIKE_PAGE}"
     ),
     "no_parking_zone": (
         "Ending an e-bike outside a dock is not offered here: the destination is in a zone "

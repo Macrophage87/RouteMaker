@@ -168,7 +168,7 @@ def test_the_credit_is_in_the_plan_and_the_route_attribution() -> None:
 
 def test_the_credit_is_plain_factual_and_claims_no_affiliation() -> None:
     credit = gbfs.CREDIT
-    assert credit == "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed"
+    assert credit == "Capital Bikeshare"  # the name alone (OWNER-DECISIONS 304)
     for implied in (
         "official",
         "partner",
@@ -386,7 +386,9 @@ def test_with_no_zone_data_only_a_dock_ending_is_offered() -> None:
     assert (
         not kinds["outside_dock"]["offered"] and kinds["outside_dock"]["reason"] == "no_zone_data"
     )
-    assert "publishes no map of no-parking zones" in kinds["outside_dock"]["reason_text"]
+    text = kinds["outside_dock"]["reason_text"]
+    assert "no-parking zones aren't published" in text
+    assert text.endswith("https://capitalbikeshare.com/how-it-works/ebike")
     assert plan["ending"] == "dock"
 
 
@@ -394,7 +396,7 @@ def test_an_outside_ending_asked_for_without_zone_data_falls_back_to_a_dock_with
     body, services = run(UNION, DUPONT, bike="ebike", ending=ENDING_OUTSIDE)
     plan = body["bikeshare"]
     assert plan["ending"] == "dock" and plan["end"]["kind"] == "dock"
-    assert any("not offered" in n and "The plan ends at a dock." in n for n in plan["notes"])
+    assert any("isn't offered" in n and "The plan ends at a dock." in n for n in plan["notes"])
     assert services.rides[0][1] != DUPONT  # never the destination itself
 
 

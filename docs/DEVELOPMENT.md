@@ -5480,3 +5480,12 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
 - Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py` (fixtures in
   `tests/data/gbfs`, a sample and not a dataset), `frontend/src/lib/bikeshare.test.ts`, section 13 of
   `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.
+
+Source citation and licence notes (OWNER-DECISIONS 301, 304, 305): the map attribution and the route
+credits say "Capital Bikeshare" and nothing more (`core.gbfs.CREDIT`, `BIKESHARE_CREDIT` in
+`frontend/src/lib/bikeshare.ts`; a test holds them equal). What it cites is the operator's official GBFS
+feed, operated by Lyft, used under the operator's Data License Agreement (item 300: official endpoints
+only, short in-memory caching, no republishing, no logos, no implied affiliation, nothing tied to users).
+Out-of-dock endings stay off for good: the operator's no-parking zones exist only inside its app, with no
+public map or feed, so using them would breach the licence. The plan says so in plain words and links
+https://capitalbikeshare.com/how-it-works/ebike for the current parking rules. No fee is built in.
