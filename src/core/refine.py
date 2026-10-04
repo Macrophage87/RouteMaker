@@ -981,7 +981,17 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         room = None if ctx.ceiling_m is None else ctx.ceiling_m - _trip_m(trip)
         rest_m = 0.0 if count == 1 else _trip_m(trip) - _trip_m(leg_trip)
         got = _seek_leg(
-            k, leg_trip, incumbent, reference, leg_stop, ctx, seek, reference_lts4, room, rest_m
+            k,
+            leg_trip,
+            incumbent,
+            reference,
+            leg_stop,
+            ctx,
+            seek,
+            reference_lts4,
+            room,
+            rest_m,
+            pooled=count == 1,
         )
         if got is not None:
             seek["taken"] = taken = True
@@ -1042,6 +1052,10 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["limited"] = seek["limited"] or "more_lts4"
             return best, best_trip
         seek["whole_trip"] = "taken"
+        # The spliced trip, read whole, is the one the routes to choose from may
+        # include; never a leg of it alone (B1).
+        if ctx.options is not None:
+            ctx.options.append((trip, read))
         return read, trip
     return best, trip
 
@@ -1062,6 +1076,7 @@ def _seek_leg(
     reference_lts4=(),
     room_m: float | None = None,
     rest_m: float = 0.0,
+    pooled: bool = True,
 ):
     """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
     else None. `reference` is the leg's exposure as the router first gave it
@@ -1069,7 +1084,11 @@ def _seek_leg(
     then, as a one-item list (the LTS 4 hold's, OWNER-DECISIONS 250). `room_m` is
     how many metres longer than the incumbent a candidate may be before the trip
     is past the ceiling (None: no limit), and `rest_m` the length of the rest of the
-    trip (the diminishing-returns rule is the whole trip's, `worth_it`)."""
+    trip (the diminishing-returns rule is the whole trip's, `worth_it`).
+    `pooled`: whether the candidates read are kept in `Context.options` for the
+    routes to choose from. Only where the leg is the whole trip: on a plan with
+    more than one leg (a loop, stops) a leg's candidate is one leg of the trip, and
+    is never offered as a whole route (combined correctness review, B1)."""
     start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
     span = haversine(Point(*start), Point(*end))
     shape = [
@@ -1205,11 +1224,11 @@ def _seek_leg(
             elif better(read, current, ctx, rest_m):
                 tried["outcome"] = "taken"
                 kept, current = (read, candidate), read
-                if ctx.options is not None:
+                if pooled and ctx.options is not None:
                     ctx.options.append((candidate, read))
             else:
                 tried["outcome"] = "not_better"
-                if ctx.options is not None:
+                if pooled and ctx.options is not None:
                     ctx.options.append((candidate, read))
         if out_of_time:
             seek["limited"] = "time"
@@ -1715,11 +1734,15 @@ def pick_candidates(pool: list, ctx: Context, reference: list[float]) -> list:
     answer = pool[0]
     chosen = [answer]
     limit = max(ctx.alternates, 1)
+    legs = len(answer[0].get("legs") or [])
     for trip, read in sorted(pool[1:], key=lambda o: o[1].key(ctx)):
         if len(chosen) >= limit:
             break
         if (
-            read.events is None
+            # A whole route only: as many legs as the answer, so never one leg of
+            # a loop or of a plan with stops (combined correctness review, B1).
+            len(trip.get("legs") or []) != legs
+            or read.events is None
             or too_long(read.length_m, ctx)
             or over_answer(read, answer[1], ctx)
             or more_lts4(read, reference, ctx)
