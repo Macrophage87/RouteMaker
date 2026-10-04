@@ -1458,25 +1458,21 @@ dialog.weight-dialog h2 {
 }
 
 /* The private-beta notice (lib/betaBanner.ts): only in a build made with
-   VITE_BETA=1. Beside the panel on a desktop, under the Undo/Redo row on a
-   phone; a status strip, not a dialog, so it covers little of the map. */
+   VITE_BETA=1. In the planner panel's own flow, under its header, so it never
+   overlays the map or the sheet at any zoom (final review, accessibility S2) and
+   its text follows the rider's font size. */
 .beta-banner {
-  position: absolute;
-  top: 12px;
-  left: 404px;
-  right: 60px;
-  max-width: 560px;
-  z-index: 3;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 8px 8px 12px;
+  margin: 8px 14px 0;
+  padding: 6px 6px 6px 10px;
   background: var(--bg);
   color: var(--text);
   border: 2px solid var(--border);
   border-radius: 8px;
-  box-shadow: var(--shadow);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .beta-banner p {
@@ -1488,13 +1484,4 @@ dialog.weight-dialog h2 {
   min-height: 44px;
   min-width: 44px;
   flex: none;
-}
-
-@media (max-width: 720px) {
-  .beta-banner {
-    top: 64px;
-    left: 10px;
-    right: 10px;
-    max-width: none;
-  }
 }

@@ -263,6 +263,11 @@ at `$RM_INCOMING` yet):
 scripts/beta/ship-data.sh --live-dir <live checkout> --build-frontend  user@server  /data/routemaker-incoming
 ```
 
+`--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
+neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
+for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
+the notice says only to tell the person who gave you access.
+
 It sends about 4 GB (see "What the bundle holds" below) and is resumable: if the connection drops the
 owner reruns the same command. `SHA256SUMS` arrives last, so a half-sent bundle has none.
 
@@ -478,8 +483,11 @@ is a 404; Django's static files are served; a route, a place search, a reverse l
 tile all answer.
 
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
-the map draws, a two-point route appears, and the **Beta banner** is shown at the top (it appears only in the
-front end built with `VITE_BETA=1`, which `ship-data.sh --build-frontend` does).
+the map draws, a two-point route appears, and the **Beta notice** is shown in the planner panel, under the
+RouteMaker heading (it appears only in the front end built with `VITE_BETA=1`, which
+`ship-data.sh --build-frontend` does). And one screen-reader pass (VoiceOver or NVDA): the password
+prompt is read and can be filled; "Beta notice" is in the landmarks list and is read after the
+heading; Dismiss puts focus on "Route planner".
 
 ## 11. Report back to the owner
 

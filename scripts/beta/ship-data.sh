@@ -42,8 +42,13 @@
 # Options:
 #   --live-dir DIR       the live stack's checkout: compose.yaml and .env [this repository]
 #   --stage DIR          where the bundle is assembled [~/beta-bundle, or $BETA_STAGE]
-#   --build-frontend     build the front end in the pinned node image, offline, with VITE_BETA=1
+#   --build-frontend     test (npm test) and build the front end in the pinned node image,
+#                        offline, with VITE_BETA=1 (the preferred way)
+#   --report-url URL     with --build-frontend: an https address the beta notice links to as
+#                        "Report a problem" (VITE_BETA_REPORT_URL; OWNER-DECISIONS 382). Without
+#                        it the notice names no channel and shows no link.
 #   --dist DIR           use an already-built front end instead (must contain index.html)
+#                        Unless --without frontend, one of --build-frontend or --dist is required.
 #   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules]
 #   --without PART       leave a part out: tiles, elevation, basemap, photon, frontend, db
 #                        (repeatable; for an update that changes only some of them)
@@ -101,7 +106,7 @@ repo=$(cd "$here/../.." && pwd)
 
 live_dir=$repo
 stage=${BETA_STAGE:-$HOME/beta-bundle}
-dist=""; build_frontend=0; node_modules=""; with_tile_dirs=0
+dist=""; build_frontend=0; node_modules=""; with_tile_dirs=0; report_url=""
 no_transfer=0; dry_run=0; bwlimit=""
 declare -A without=()
 positional=()
@@ -115,6 +120,7 @@ while [ $# -gt 0 ]; do
 		--stage) [ $# -ge 2 ] || die "$1 needs a value"; stage=$2; shift 2 ;;
 		--build-frontend) build_frontend=1; shift ;;
 		--dist) [ $# -ge 2 ] || die "$1 needs a value"; dist=$2; shift 2 ;;
+		--report-url) [ $# -ge 2 ] || die "$1 needs a value"; report_url=$2; shift 2 ;;
 		--node-modules) [ $# -ge 2 ] || die "$1 needs a value"; node_modules=$2; shift 2 ;;
 		--without)
 			[ $# -ge 2 ] || die "$1 needs a value"
@@ -131,6 +137,25 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+want() { [ -z "${without[$1]:-}" ]; }
+
+# The front end's source, decided before anything is read or staged.
+if want frontend; then
+	[ "$build_frontend" = 1 ] || [ -n "$dist" ] ||
+		die "give --build-frontend (preferred: tested and built here with VITE_BETA=1) or --dist DIR, or --without frontend"
+	[ "$build_frontend" = 0 ] || [ -z "$dist" ] || die "give --build-frontend or --dist, not both"
+fi
+if [ -n "$report_url" ]; then
+	[ "$build_frontend" = 1 ] || die "--report-url needs --build-frontend (the address is built into the front end)"
+	case "$report_url" in
+		https://[!/]*) ;;
+		*) die "--report-url must be an https:// address, not '$report_url'" ;;
+	esac
+	case "$report_url" in
+		*[!A-Za-z0-9._~:/?#!\$\&*+,\;=%-]* | *@*) die "--report-url has a character it may not carry (spaces, quotes, brackets, a user name): '$report_url'" ;;
+	esac
+fi
+
 if [ "$no_transfer" = 0 ]; then
 	[ ${#positional[@]} -eq 2 ] || die "give HOST and REMOTE_DIR (or --no-transfer); --help for usage"
 	remote_host=${positional[0]}
@@ -142,8 +167,6 @@ if [ "$no_transfer" = 0 ]; then
 else
 	[ ${#positional[@]} -eq 0 ] || [ ${#positional[@]} -eq 2 ] || die "with --no-transfer give nothing, or HOST and REMOTE_DIR"
 fi
-
-want() { [ -z "${without[$1]:-}" ]; }
 
 env_file="$live_dir/.env"
 [ -r "$env_file" ] || die "cannot read $env_file (--live-dir names the live stack's checkout)"
@@ -227,19 +250,20 @@ fi
 if want frontend; then
 	mkdir -p "$stage/frontend"
 	if [ "$build_frontend" = 1 ]; then
-		[ -z "$dist" ] || die "give --build-frontend or --dist, not both"
 		nm=${node_modules:-$repo/frontend/node_modules}
 		[ -d "$nm" ] || die "no node_modules at $nm (--node-modules); the build runs offline"
-		note "building the front end with VITE_BETA=1 in the pinned node image (no network)"
+		note "testing and building the front end with VITE_BETA=1 in the pinned node image (no network)"
 		# node_modules is mounted writable because vite writes a temp config beside it; it is
 		# removed afterwards. The source is read-only and the output goes straight to the stage.
+		# npm test runs first, on exactly the tree being shipped (the banner's and the planner's
+		# accessibility checks live in the front-end suite); a failure ships nothing.
 		docker run --rm --pull never --network none -u "$(id -u):$(id -g)" -e HOME=/tmp -e VITE_BETA=1 \
+			-e VITE_BETA_REPORT_URL="$report_url" \
 			-v "$repo/frontend:/app:ro" -v "$nm:/app/node_modules" -v "$stage/frontend:/out" -w /app \
-			"$NODE_IMAGE" sh -c 'npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' >&2
+			"$NODE_IMAGE" sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' >&2
 		rm -rf "$nm/.vite-temp"
-		printf 'VITE_BETA=1\ngit=%s\n' "$(git -C "$repo" rev-parse HEAD)" >"$stage/frontend/beta-build.txt"
+		printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$report_url" "$(git -C "$repo" rev-parse HEAD)" >"$stage/frontend/beta-build.txt"
 	else
-		[ -n "$dist" ] || dist="$repo/frontend/dist"
 		[ -f "$dist/index.html" ] || die "no front end at $dist: use --build-frontend, or --dist DIR with index.html"
 		cp -R "$dist"/. "$stage/frontend/"
 		if [ ! -f "$stage/frontend/beta-build.txt" ]; then

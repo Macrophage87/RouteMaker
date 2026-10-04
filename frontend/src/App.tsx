@@ -22,7 +22,7 @@ import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
 import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
-import { BetaBanner, isBetaBuild } from "./lib/betaBanner.ts";
+import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
@@ -803,7 +803,6 @@ export function App() {
       <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
         {SKIP_LINK_TEXT}
       </a>
-      <BetaBanner enabled={isBetaBuild(import.meta.env.VITE_BETA)} />
       <MapView
         points={points}
         loopVias={loopVias}
@@ -879,6 +878,10 @@ export function App() {
             {panelOpen ? "Hide" : "Plan"}
           </button>
         </header>
+        <BetaBanner
+          enabled={isBetaBuild(import.meta.env.VITE_BETA)}
+          reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
+        />
         <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
           {order.map((id) => sections[id])}
 

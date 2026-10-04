@@ -873,6 +873,67 @@ def test_ship_data_refuses_without_a_destination_and_an_unsafe_remote_dir(tmp_pa
     assert helped.returncode == 0 and "READ-ONLY on the live stack" in helped.stdout
 
 
+SHIP = "scripts/beta/ship-data.sh"
+
+
+@needs_sh
+def test_ship_data_stops_when_no_front_end_source_is_given() -> None:
+    """An error, not a warning (final review, accessibility nit): an old dist/ without the
+    beta notice must not ship by default."""
+    done = run("bash", SHIP, "--no-transfer", "--live-dir", "/nonexistent")
+    assert done.returncode == 2 and "give --build-frontend" in done.stderr, done.stderr
+    both = run("bash", SHIP, "--build-frontend", "--dist", "/tmp", "--no-transfer")
+    assert both.returncode == 2 and "not both" in both.stderr
+    skipped = run(
+        "bash", SHIP, "--without", "frontend", "--no-transfer", "--live-dir", "/nonexistent"
+    )
+    assert skipped.returncode == 2 and "cannot read /nonexistent/.env" in skipped.stderr
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://discord.gg/abc",
+        "https:///x",
+        "https://",
+        "javascript:alert(1)",
+        "https://example.org/a b",
+        "https://example.org/'",
+        'https://example.org/"',
+        "https://example.org/<x>",
+        "https://user:pw@example.org/",
+    ],
+)
+def test_ship_data_refuses_a_report_url_that_is_not_a_plain_https_address(url: str) -> None:
+    done = run(
+        "bash", SHIP, "--build-frontend", "--report-url", url, "--no-transfer", "--live-dir", "/x"
+    )
+    assert done.returncode == 2 and "--report-url" in done.stderr, (url, done.stderr)
+
+
+@needs_sh
+def test_ship_data_bakes_the_report_url_into_a_tested_build_only() -> None:
+    """OWNER-DECISIONS 382: the link is an optional build setting; --build-frontend also runs
+    the front-end tests on the tree being shipped (accessibility S5)."""
+    alone = run("bash", SHIP, "--report-url", "https://discord.gg/abc", "--dist", "/tmp")
+    assert alone.returncode == 2 and "needs --build-frontend" in alone.stderr
+    ok = run(
+        "bash",
+        SHIP,
+        "--build-frontend",
+        "--report-url",
+        "https://discord.gg/abc?x=1&y=2",
+        "--no-transfer",
+        "--live-dir",
+        "/nonexistent",
+    )
+    assert ok.returncode == 2 and "cannot read /nonexistent/.env" in ok.stderr  # got past the URL
+    text = (REPO / SHIP).read_text()
+    assert '-e VITE_BETA_REPORT_URL="$report_url"' in text
+    assert "sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out" in text
+
+
 @needs_sh
 def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> None:
     live = tmp_path / "live"
@@ -891,6 +952,8 @@ def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> N
         "--no-transfer",
         "--without",
         "db",
+        "--without",
+        "frontend",
     )
     assert done.returncode == 2 and "inside" in done.stderr, done.stderr
     done = run(
@@ -903,6 +966,8 @@ def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> N
         "--no-transfer",
         "--without",
         "db",
+        "--without",
+        "frontend",
     )
     assert done.returncode == 2 and "inside" in done.stderr, done.stderr
 
