@@ -48,10 +48,10 @@ MUTANTS: list[tuple[str, str, str, str, str]] = [
         "ts",
     ),
     (
-        "App: section for every ride type",
-        APP,
-        'preset === "mass-ride" && (\n            <FederalLandSection',
-        "true && (\n            <FederalLandSection",
+        "section for every ride type",
+        LG,
+        "  return federalShown(preset, true) ? h(FederalLandSection, props) : null;",
+        "  return h(FederalLandSection, props);",
         "ts",
     ),
     (

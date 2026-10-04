@@ -38,6 +38,7 @@ import {
   FEDERAL_OWNERSHIP,
   FEDERAL_POINTS_NONE,
   FEDERAL_UNAVAILABLE,
+  FederalLandFor,
   FederalLandSection,
   FederalLegend,
   federalPointText,
@@ -61,7 +62,8 @@ test("the overlay shows on Mass Ride and on no other ride type", () => {
 test("App wires it: the shading follows federalShown(preset, switch) and the section is Mass Ride's alone", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /federalVisible=\{federalShown\(preset, federalOn\)\}/);
-  assert.match(app, /preset === "mass-ride" && \(\s*<FederalLandSection/);
+  assert.match(app, /<FederalLandFor\s+preset=\{preset\}/);
+  assert.doesNotMatch(app, /<FederalLandSection/, "the section is only ever drawn through FederalLandFor");
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(view, /federalSync\.current\?\.\(\);\s*\}, \[props\.federalVisible\]\)/, "the map follows the prop");
   assert.match(view, /if \(!visible \|\| federalLoading\) return;/, "nothing is fetched while it is off");
@@ -401,4 +403,60 @@ test("the DC layers' credit rides on every map view, briefly: DC Open Data, CC B
   const credit = MAP_CREDITS.find((c) => /DC Open Data/.test(c));
   assert.equal(credit, 'DC Open Data (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, adapted)');
   assert.ok(MAP_ATTRIBUTION.includes(credit!));
+});
+
+// ---------- Mass Ride's alone (OWNER-DECISIONS 324) ----------
+
+/** A stand-in map that records each layer's visibility. */
+function layerMap() {
+  const sources = new Map<string, unknown>();
+  const layers = new Map<string, string>();
+  const map: FederalMap = {
+    getSource: (id) => sources.get(id),
+    addSource: (id, source) => void sources.set(id, source),
+    getStyle: () => ({ layers: [] }),
+    addLayer: (layer) => void layers.set((layer as { id: string }).id, (layer as { layout: { visibility: string } }).layout.visibility),
+    getLayer: (id) => (layers.has(id) ? {} : undefined),
+    hasImage: () => true,
+    addImage: () => {},
+    setLayoutProperty: (id, _name, value) => void layers.set(id, value),
+  };
+  return { map, layers };
+}
+
+const AREA: FederalData = {
+  type: "FeatureCollection",
+  features: [{ type: "Feature", properties: { kind: "nps", name: "The Mall", agency: "National Park Service" }, geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] } }],
+};
+
+test("every ride type but Mass Ride has no federal switch, legend, help or points list, whatever the switch was left at (324)", () => {
+  for (const preset of PRESETS) {
+    for (const on of [true, false]) {
+      const html = renderToStaticMarkup(
+        createElement(FederalLandFor, { preset: preset.id, on, onChange: () => {}, status: "ready", points: [{ index: 0, name: "The Mall", manager: "NPS" }], pointCount: 2, nameOf: () => "Start" }),
+      );
+      if (preset.id === "mass-ride") {
+        assert.match(html, /Show federal land on the map/, `${preset.id}: the switch`);
+        assert.match(html, /Your points on federal land:/);
+        assert.match(html, on ? /federal-legend/ : /^(?!.*federal-legend)/s, `${preset.id} ${on}: the legend with the switch`);
+      } else {
+        assert.equal(html, "", `${preset.id} (switch ${on ? "on" : "off"}): nothing`);
+      }
+    }
+  }
+});
+
+test("the map's federal layers are shown only on Mass Ride, through a ride-type change while they are shown (324)", () => {
+  const { map, layers } = layerMap();
+  addFederalLand(map, AREA, federalShown("mass-ride", true), "stress");
+  assert.ok(layers.size > 0 && [...layers.values()].every((v) => v === "visible"), "Mass Ride, switch on");
+  for (const preset of PRESETS) {
+    setFederalVisibility(map, federalShown(preset.id, true));
+    const want = preset.id === "mass-ride" ? "visible" : "none";
+    assert.ok([...layers.values()].every((v) => v === want), `${preset.id}: ${want}`);
+  }
+  setFederalVisibility(map, federalShown("mass-ride", false));
+  assert.ok([...layers.values()].every((v) => v === "none"), "Mass Ride, switch off");
+  // A map that never showed Mass Ride never had the layers added (MapView loads them only when shown).
+  for (const preset of PRESETS) if (preset.id !== "mass-ride") assert.equal(federalShown(preset.id, true), false);
 });

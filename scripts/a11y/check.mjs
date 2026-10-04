@@ -547,6 +547,16 @@ const federalFetched = (p) =>
   await sleep(300);
   const off = await p.eval("({ legend: !!document.querySelector('.federal-legend'), checked: document.querySelector('.federal-section input[type=checkbox]').checked, focus: document.activeElement?.type === 'checkbox' })");
   check("federal: Space turns it off, the legend goes and the focus stays on the switch", !off.legend && !off.checked && off.focus, JSON.stringify(off));
+  // Another ride type while it is shown: the section goes, and comes back with Mass Ride (OWNER-DECISIONS 324).
+  await p.key(" ", "Space", 32);
+  await sleep(300);
+  await p.eval(`location.hash = ${JSON.stringify(hashFor("default", 70))}; true`);
+  await sleep(1200);
+  const elsewhere = await p.eval("({ section: !!document.querySelector('.federal-section'), heading: !!document.getElementById('federal-heading'), list: /Your points on federal land/.test(document.body.innerText) })");
+  check("federal: another ride type has no section, switch, legend or points list (324)", !elsewhere.section && !elsewhere.heading && !elsewhere.list, JSON.stringify(elsewhere));
+  await p.eval(`location.hash = ${JSON.stringify(hashFor("mass-ride", 0))}; true`);
+  await sleep(1200);
+  check("federal: back on Mass Ride the section is there again, the switch as it was left", await p.eval("!!document.querySelector('.federal-section') && document.querySelector('.federal-section input[type=checkbox]').checked && !!document.querySelector('.federal-legend')"));
   await p.close();
 }
 {
@@ -678,7 +688,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 138;
+const EXPECTED = 140;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

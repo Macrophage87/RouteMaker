@@ -35,7 +35,7 @@ import { stationEdit, type RailVisibility, type StationRole } from "./lib/railSt
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
-import { FederalLandSection, type FederalStatus } from "./lib/federalLegend.ts";
+import { FederalLandFor, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
@@ -858,16 +858,16 @@ export function App() {
 
           {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
-          {preset === "mass-ride" && (
-            <FederalLandSection
-              on={federalOn}
-              onChange={setFederalOn}
-              status={federalStatus}
-              points={federalData ? federalPoints(points, federalData) : null}
-              pointCount={points.length}
-              nameOf={(index) => pointName(index, points.length)}
-            />
-          )}
+          {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
+          <FederalLandFor
+            preset={preset}
+            on={federalOn}
+            onChange={setFederalOn}
+            status={federalStatus}
+            points={federalData ? federalPoints(points, federalData) : null}
+            pointCount={points.length}
+            nameOf={(index) => pointName(index, points.length)}
+          />
 
           <footer className="panel-footer">
             <p>

@@ -13,9 +13,11 @@ import {
   FEDERAL_STYLE,
   PATTERN_SIZE,
   federalPatternPath,
+  federalShown,
   type FederalKind,
   type FederalPoint,
 } from "./federalLand.ts";
+import type { PresetId } from "./presets.ts";
 
 export type FederalStatus = "loading" | "ready" | "unavailable";
 
@@ -155,4 +157,15 @@ export function FederalLandSection({ on, onChange, status, points = null, pointC
     h("p", { className: "hint" }, FEDERAL_OWNERSHIP),
     h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),
   );
+}
+
+/**
+ * The section for the ride type in use: Mass Ride's alone, null for every other
+ * (OWNER-DECISIONS 324: "Federal land is probably only relevant in mass ride mode").
+ * The switch's state is kept while another ride type is chosen, but nothing of it, its
+ * legend, its help or the points list is shown there, and the map's layers follow
+ * federalShown (federalLand.ts).
+ */
+export function FederalLandFor({ preset, ...props }: Props & { preset: PresetId }): ReactElement | null {
+  return federalShown(preset, true) ? h(FederalLandSection, props) : null;
 }
