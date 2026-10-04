@@ -1203,7 +1203,9 @@ class TestTimeBudget:
         assert body["stress_m"]["unknown"] == pytest.approx(body["distance_m"], rel=0.01)
         assert body["stress_adjustments"] == []
         # And the route is one unknown section, as its totals are.
-        assert body["stress_spans"] == [{"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}]
+        assert body["stress_spans"] == [
+            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
+        ]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
     def test_a_route_answered_as_the_budget_ends_is_kept(

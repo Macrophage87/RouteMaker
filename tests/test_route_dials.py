@@ -1644,5 +1644,17 @@ class TestStressSpansThroughThePlan:
         points = [list(VERTICES[0]), list(VERTICES[-1]), list(VERTICES[0])]
         body = post(client, {"points": points, "preset": "default", "when": "weekday_rush"}).json()
         spans = body["stress_spans"]
-        assert spans[0] == {"from_m": 0, "to_m": 2200, "tier": 1, "facility": "path", "unpaved": None}
-        assert spans[-1] == {"from_m": 2200, "to_m": 3200, "tier": None, "facility": None, "unpaved": None}
+        assert spans[0] == {
+            "from_m": 0,
+            "to_m": 2200,
+            "tier": 1,
+            "facility": "path",
+            "unpaved": None,
+        }
+        assert spans[-1] == {
+            "from_m": 2200,
+            "to_m": 3200,
+            "tier": None,
+            "facility": None,
+            "unpaved": None,
+        }
