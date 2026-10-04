@@ -23,14 +23,14 @@ before it is answered (`core.routing.plan`):
 3. Judge (`judge`). The stress a dodge avoids is the extra LTS 4, Avoid and red
    junction cost, plus the extra LTS 3 and orange junction cost, that the main road
    would carry: the two figures OWNER-DECISIONS 258-260 rank by (`Analysis.top_m`,
-   `Analysis.second_m`). The dodge is kept if it avoids at least `MIN_AVOIDED_M` (a
-   quarter of a mile), plus `TURN_CHARGE_M` for each turn it adds past the two that
-   going off the road and back cannot do without (the turn load of item 254).
-   At the top of the slider (Trailmaxxing, Cargo with passengers: any plan whose
-   stress dial is at the top, `Context.maxcalm`), where distance ranks below LTS 3
-   (258-262), it is kept if it avoids more than the second level's tie step
-   (`refine.MAXCALM_STEPS[1]`, 50 m), with no turn charge (`TOP_TIE_RULE`, review r0
-   item 1, pending the owner's confirmation).
+   `Analysis.second_m`). On every ride type, Default included, the dodge is kept
+   if it avoids more than the second level's tie step (`refine.MAXCALM_STEPS[1]`,
+   50 m), with no turn charge (`TIE_RULE_ALL_PRESETS`, OWNER-DECISIONS 298(1),
+   "Same as Trailmaxxing (Recommended)", which amends 272's quarter mile); a dodge
+   that avoids nothing (Konterra) is removed everywhere. With the switch off, 272's
+   rule: at least
+   `MIN_AVOIDED_M` (a quarter of a mile), plus `TURN_CHARGE_M` for each turn it adds
+   past the two that going off the road and back cannot do without (item 254).
    Otherwise the main road's stretch is spliced in. Whatever that says, the route is
    never changed where it would carry more LTS 4, Avoid or red junction cost (the
    order of 258-262 and the hold of 250 are never broken), be longer (the target and
@@ -56,23 +56,23 @@ from . import refine, routing
 
 logger = logging.getLogger(__name__)
 
-# What a dodge must avoid to be kept (metres): a quarter of a mile of the higher
-# stress, the tunable of OWNER-DECISIONS 272 ("about 0.25 mi").
+# What a dodge must avoid to be kept where TIE_RULE_ALL_PRESETS is off (metres): a
+# quarter of a mile of the higher stress, the tunable of OWNER-DECISIONS 272 ("about
+# 0.25 mi"), which 298(1) amends.
 MIN_AVOIDED_M = 0.25 * 1609.344
 # What each turn past the two that every dodge has (off the road and back on) adds
 # to what it must avoid (metres): the turn load of item 254, about 260 ft.
 TURN_CHARGE_M = 80.0
 BASE_TURNS = 2
-# At the top of the slider the stress order ranks distance below LTS 3 (258-262), and
-# the search itself takes 5 m of extra distance for each metre of LTS 3 it saves
-# (268), so a quarter of a mile of LTS 3 is not given back to save a few hundred
-# metres there. With TOP_TIE_RULE a top-of-slider plan (`Context.maxcalm`) keeps a
-# dodge that avoids more than TOP_TIE_M, the second level's tie step, and charges no
-# turns; every other plan keeps the 0.25 mi + turn-charge rule above. Pending the
-# owner's confirmation (FOLLOWUP-DEDODGE review r0, item 1: 272 says "Applies to all
-# presets"): False puts every plan back on the 0.25 mi rule.
-TOP_TIE_RULE = True
-TOP_TIE_M = refine.MAXCALM_STEPS[1]
+# Every preset, Default included, keeps a dodge that avoids more than TIE_STEP_M, the
+# second level's tie step, and charges no turns (OWNER-DECISIONS 298(1), "Same as
+# Trailmaxxing (Recommended)": every preset removes only dodges that avoid within the
+# 50 m second-level tie step, amending 272's 0.25 mi rule; dodges that avoid nothing,
+# like Konterra's, are still removed everywhere). The stress order ranks distance below
+# LTS 3 (258-262), so a quarter of a mile of LTS 3 is not given back to save a few
+# hundred metres. False puts every plan back on 272's 0.25 mi + turn-charge rule above.
+TIE_RULE_ALL_PRESETS = True
+TIE_STEP_M = refine.MAXCALM_STEPS[1]
 # A detected dodge that turns fewer than BASE_TURNS times over its own stretch (from
 # the road's last edge to its first again: a straight run through an unnamed edge or
 # a way inside one road) or is shorter than MIN_DODGE_M is no weave: it is not checked
@@ -354,16 +354,16 @@ def avoided_m(dodge: refine.Analysis, direct: refine.Analysis) -> float:
     return max(0.0, direct.top_m - dodge.top_m) + max(0.0, direct.second_m - dodge.second_m)
 
 
-def top_rule(ctx: refine.Context) -> bool:
-    """Whether the plan is judged by the top of the slider's tie step (`TOP_TIE_RULE`)."""
-    return TOP_TIE_RULE and ctx.maxcalm
+def tie_rule() -> bool:
+    """Whether plans are judged by the tie step (`TIE_RULE_ALL_PRESETS`): every one."""
+    return TIE_RULE_ALL_PRESETS
 
 
-def needed_m(turns_saved: int, top: bool = False) -> float:
-    """What a dodge must avoid to be kept, given the turns the main road saves: at the
-    top of the slider (`top`), more than TOP_TIE_M whatever the turns."""
-    if top:
-        return TOP_TIE_M
+def needed_m(turns_saved: int, tie: bool = False) -> float:
+    """What a dodge must avoid to be kept, given the turns the main road saves: by the
+    tie step (`tie`), more than TIE_STEP_M whatever the turns."""
+    if tie:
+        return TIE_STEP_M
     return MIN_AVOIDED_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)
 
 
@@ -380,8 +380,8 @@ def judge(
     saved = turn_count(dodge.pieces) - turn_count(direct.pieces)
     extra = traced_m(dodge) - traced_m(direct)
     avoided = avoided_m(dodge, direct)
-    top = top_rule(ctx)
-    needed = needed_m(saved, top)
+    tie = tie_rule()
+    needed = needed_m(saved, tie)
 
     def keep(reason: str) -> Verdict:
         return Verdict(False, reason, avoided, needed, saved, extra)
@@ -398,8 +398,8 @@ def judge(
         return keep("longer")
     if refine.level3(direct, ctx) > refine.level3(dodge, ctx) + LENGTH_SLACK_M:
         return keep("hills")
-    # Within the tie step at the top of the slider is a tie (`refine.calmer`).
-    if (avoided > needed) if top else (avoided >= needed):
+    # Within the tie step is a tie (`refine.calmer`).
+    if (avoided > needed) if tie else (avoided >= needed):
         return keep("stress")
     return Verdict(True, "no_stress_gain", avoided, needed, saved, extra)
 
@@ -539,9 +539,9 @@ def empty_info() -> dict:
 
 
 def apply(trip: dict, ctx: refine.Context, budget_s: float = BUDGET_S) -> tuple[dict, dict]:
-    """The trip with every dodge that does not buy MIN_AVOIDED_M of calm replaced by
-    the main road, and what was found: `{found, removed, kept, skipped, checked,
-    saved_m, limited, items}` (`saved_m`: the metres the replacements took off the
+    """The trip with every dodge that does not buy more than TIE_STEP_M of calm
+    (`judge`) replaced by the main road, and what was found: `{found, removed, kept,
+    skipped, checked, saved_m, limited, items}` (`saved_m`: the metres the replacements took off the
     route), `limited` naming what stopped the pass short (`time`, `checks`) or None.
     Every dodge found is one of `items`, and removed, kept, skipped (`skip_reason`) or
     `unchecked` (the pass stopped first). The

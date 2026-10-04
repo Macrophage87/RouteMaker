@@ -382,9 +382,10 @@ def junction_cost_m(events: list | None, severity: str) -> float:
 # How much better, at each level of `Analysis.key`, a candidate must be to count
 # as better at that level, so that a trivial gain at a higher level does not force
 # a large loss at a lower one; within the step at one level the next decides.
-# The top figure: 15 m, about 50 ft (a trace's rounding and a driveway;
-# OWNER-DECISIONS 258, "allow ties within about 50 ft of LTS 4"). The second: 50 m,
-# about a block. The third: 50 m of distance, actual or effort-equivalent.
+# The top figure: 15 m, about 50 ft (a trace's rounding and a driveway; a design
+# choice under the strict order of OWNER-DECISIONS 258, not the owner's words). The
+# second: 50 m, about a block, the dodge pass's tie step on every ride type (298(1)).
+# The third: 50 m of distance, actual or effort-equivalent.
 MAXCALM_STEPS = (15.0, 50.0, 50.0)
 
 

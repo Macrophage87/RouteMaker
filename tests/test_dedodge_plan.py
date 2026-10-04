@@ -230,9 +230,9 @@ class TestThePlan:
         # Trailmaxxing weighs LTS 3 at 1.
         assert search["exposure_after_m"] == pytest.approx(unit.reach, abs=2.0)
 
-    def test_on_trailmaxxing_a_dodge_that_avoids_more_than_the_tie_step_stays(self, world) -> None:
-        """Review r0 item 1: 300 m of LTS 3 avoided is kept at the top of the slider,
-        and taken out below it (under the quarter mile)."""
+    def test_a_dodge_that_avoids_more_than_the_tie_step_stays_on_every_ride(self, world) -> None:
+        """OWNER-DECISIONS 298(1): 300 m of LTS 3 avoided is kept at the top of the slider
+        and on Default alike (272's quarter mile took it out below the top)."""
         unit, router = world(reach=300.0, side="1", main="3")
         top = routing.plan(
             [list(unit.a), list(unit.e)],
@@ -242,7 +242,8 @@ class TestThePlan:
         assert top["dodges"]["kept"] == 1 and top["dodges"]["items"][0]["reason"] == "stress"
         assert top["stress_m"]["3"] == 0.0
         below = plan(unit)
-        assert below["dodges"]["removed"] == 1
+        assert below["dodges"]["kept"] == 1 and below["dodges"]["removed"] == 0
+        assert below["dodges"]["items"][0]["needed_m"] == 50.0
 
     def test_it_is_the_planners_own_module_wired_in(self) -> None:
         """`plan` calls `core.dedodge.apply` once, on the answer's route, never on a loop,

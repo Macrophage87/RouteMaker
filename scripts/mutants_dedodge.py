@@ -65,21 +65,21 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "threshold: exactly enough is not enough",
         DD,
-        "    if (avoided > needed) if top else (avoided >= needed):",
-        "    if (avoided > needed) if top else (avoided > needed):",
+        "    if (avoided > needed) if tie else (avoided >= needed):",
+        "    if (avoided > needed) if tie else (avoided > needed):",
         TD,
     ),
     (
         "threshold: everything is kept",
         DD,
-        "    if (avoided > needed) if top else (avoided >= needed):",
+        "    if (avoided > needed) if tie else (avoided >= needed):",
         "    if True:",
         TD,
     ),
     (
         "threshold: nothing is kept for its stress",
         DD,
-        "    if (avoided > needed) if top else (avoided >= needed):",
+        "    if (avoided > needed) if tie else (avoided >= needed):",
         "    if False:",
         TD,
     ),
@@ -928,41 +928,49 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         TP,
     ),
     # --- r1: the top of the slider (review r0 item 1) -----------------------------------------
-    ("r1 top: the switch off", DD, "TOP_TIE_RULE = True", "TOP_TIE_RULE = False", TD + TP),
+    # The tie step on every preset (OWNER-DECISIONS 298(1); it was the top of the
+    # slider's alone, review r0 item 1, which "r1 top: on every plan" mutated to).
+    (
+        "298(1) tie: the switch off",
+        DD,
+        "TIE_RULE_ALL_PRESETS = True",
+        "TIE_RULE_ALL_PRESETS = False",
+        TD + TP,
+    ),
     (
         "r1 top: the first level's step",
         DD,
-        "TOP_TIE_M = refine.MAXCALM_STEPS[1]",
-        "TOP_TIE_M = refine.MAXCALM_STEPS[0]",
+        "TIE_STEP_M = refine.MAXCALM_STEPS[1]",
+        "TIE_STEP_M = refine.MAXCALM_STEPS[0]",
         TD,
     ),
     (
-        "r1 top: on every plan",
+        "298(1) tie: the top of the slider's alone again",
         DD,
-        "    return TOP_TIE_RULE and ctx.maxcalm",
-        "    return TOP_TIE_RULE",
+        "    return TIE_RULE_ALL_PRESETS",
+        "    return False",
         TD + TP,
     ),
     (
         "r1 top: the turns charged",
         DD,
-        "    if top:" + NL + "        return TOP_TIE_M",
-        "    if top:"
+        "    if tie:" + NL + "        return TIE_STEP_M",
+        "    if tie:"
         + NL
-        + "        return TOP_TIE_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
+        + "        return TIE_STEP_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
         TD,
     ),
     (
         "r1 top: the step itself is kept",
         DD,
-        "    if (avoided > needed) if top else (avoided >= needed):",
-        "    if (avoided >= needed) if top else (avoided >= needed):",
+        "    if (avoided > needed) if tie else (avoided >= needed):",
+        "    if (avoided >= needed) if tie else (avoided >= needed):",
         TD,
     ),
     (
         "r1 top: the verdict ignores the rule",
         DD,
-        "    needed = needed_m(saved, top)",
+        "    needed = needed_m(saved, tie)",
         "    needed = needed_m(saved)",
         TD,
     ),
