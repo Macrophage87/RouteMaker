@@ -47,8 +47,10 @@ export function insideCoverage([lon, lat]: LonLat): boolean {
  * finishes at the first point, so every click after the start is a via: even
  * the second click (no end to place), and the closing leg, last point back to
  * the start, is a slot too. Choosing it appends the click as the new last
- * point; a tie with another leg goes to the closing one, so the second click
- * of a loop is the second place visited, not a place spliced before the first.
+ * point, and a tie with another leg goes to the closing one. The tie decides
+ * the second stop (the third point): with a start and one stop the closing
+ * leg costs exactly what the way out does, so the stop is appended and the
+ * stops are visited in the order they were clicked.
  */
 export function addPoint(points: readonly LonLat[], point: LonLat, loop = false): LonLat[] {
   if (points.length >= MAX_POINTS) return [...points];
