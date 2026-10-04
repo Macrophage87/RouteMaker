@@ -687,17 +687,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         ["tests/test_candidates_whole_route.py"],
     ),
     (
-        "B1 the spliced whole trip not pooled",
-        RF,
-        "        if ctx.options is not None:"
-        + NL
-        + "            ctx.options.append((trip, read))"
-        + NL
-        + "        return read, trip",
-        "        return read, trip",
-        ["tests/test_candidates_whole_route.py"] + RFT,
-    ),
-    (
         "B1 pick_candidates takes another leg count",
         RF,
         '            len(trip.get("legs") or []) != legs'

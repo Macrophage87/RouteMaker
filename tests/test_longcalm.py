@@ -1710,6 +1710,9 @@ class TestLTS4NeverLosesToExtraLTS3:
         a = reading(lts4=5.0, lts3=1000.0, length=10_000.0)
         b = reading(lts4=0.0, lts3=800.0, length=11_000.0)
         assert refine.stress_saved_m(a, b, self.ctx) == pytest.approx(10.0 + 200.0)
+        # Within the top step a second-level loss still subtracts.
+        c = reading(lts4=0.0, lts3=1600.0, length=11_000.0)
+        assert refine.stress_saved_m(a, c, self.ctx) == pytest.approx(10.0 - 600.0)
         # 1,000 m added at 1 in 5 asks 200 m: 210 m pays; 1,100 m added does not.
         assert refine.better(b, a, self.ctx)
         assert not refine.better(with_(b, length_m=11_100.0), a, self.ctx)

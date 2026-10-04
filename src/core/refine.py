@@ -1099,11 +1099,10 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["whole_trip"] = "more_lts4"
             seek["limited"] = seek["limited"] or "more_lts4"
             return best, best_trip
+        # The spliced trip, read whole, is now the search's best and so the answer the
+        # routes to choose from are picked against; a leg of it alone is never
+        # pooled (B1, `pooled`).
         seek["whole_trip"] = "taken"
-        # The spliced trip, read whole, is the one the routes to choose from may
-        # include; never a leg of it alone (B1).
-        if ctx.options is not None:
-            ctx.options.append((trip, read))
         return read, trip
     return best, trip
 

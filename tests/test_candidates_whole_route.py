@@ -180,3 +180,26 @@ def test_a_two_point_plan_still_pools_its_seek_candidates(monkeypatch) -> None:
     trip = {"legs": [{"shape": "x"}], "summary": {"length": 10.0}}
     refine._seek(read, trip, read.exposure_m, ctx, {})
     assert seen == [True]
+
+
+def test_a_plan_of_two_legs_does_not_pool_its_legs_candidates(monkeypatch) -> None:
+    """The first guard (the second is `pick_candidates`' leg count): a leg's seek
+    candidates on a loop or a plan with stops are not kept in `Context.options`."""
+    seen: list = []
+
+    def fake_seek_leg(*args, **kwargs):
+        seen.append(kwargs.get("pooled"))
+        return None
+
+    monkeypatch.setattr(refine, "_seek_leg", fake_seek_leg)
+    monkeypatch.setattr(refine, "analyse", lambda trip, ctx, deadline, with_events=True: read)
+    from test_longcalm import alt_context, road
+
+    ctx = alt_context(ceiling_m=50_000.0)
+    _trip, read = road("answer", list(range(1, 11)), "1111311113")
+    read.via_m = [5000.0]
+    ctx.points = [[-77.2, LAT], [-77.1, LAT], [-77.0, LAT]]
+    ctx.request = {"locations": [{"lon": p[0], "lat": p[1]} for p in ctx.points]}
+    trip = {"legs": [{"shape": "a"}, {"shape": "b"}], "summary": {"length": 10.0}}
+    refine._seek(read, trip, read.exposure_m, ctx, {})
+    assert seen and all(pooled is False for pooled in seen)
