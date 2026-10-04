@@ -221,9 +221,9 @@ def test_the_rebuild_task_runs_the_real_handler_set(
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id
-    assert len(binaries.commands("valhalla_build_tiles")) == 4
-    assert len(binaries.commands("valhalla_service")) == 6, (
-        "four grade reads, the derived tag read and the weekend sentinel read"
+    assert len(binaries.commands("valhalla_build_tiles")) == 5
+    assert len(binaries.commands("valhalla_service")) == 7, (
+        "five grade reads, the derived tag read and the weekend sentinel read"
     )
     assert (root / "elevation" / "N38" / "N38W078.hgt").is_file()
 
