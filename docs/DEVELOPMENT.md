@@ -3720,27 +3720,31 @@ a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a 
 counts both halves.
 
 **Stops in a loop (OWNER-DECISIONS 374).** With "Make it a loop" on, the page treats the ride as a
-cycle that starts and finishes at the first point, so no second point has to be stacked on the start.
-The toggle can be chosen with the start alone; the route is asked for once there is a second point.
-Every later click is a stop (`geo.addPoint(points, point, loop)`: the closing leg, last point back to
-the start, is one of the slots and wins a tie; with a start and one stop the two legs tie exactly, so
-the second stop is appended and the stops are visited in the order they were clicked). Points are
-named "Start and finish" (`loop.LOOP_START_NAME`), "Stop 1", "Stop 2" and never "End" or "B" in the
-points list, map markers, search choices ("Start", "Stop"), rail station cards ("Start here", "Add as
-stop"), announcements and the GPX (`summary.pointName`, `pointText.pointLabel`, `gpx.planPointName`,
-`loop.loopStops`). Inside a sentence the start is "the start" ("Stop 2 added, between Stop 1 and the
-start"), and turning the toggle on or off is announced, since it renames the points
-(`pointText.loopToggledSaid`). Dragging the route line works on the closing leg too: the legs run over
-the points and the start again (`lineEdit.legPoints`), so the API's `leg_ends` fit them, and a drag on
-the way back appends the stop as a click there does (`lineEdit.insertIntoRide`); the preview runs to
-the start. Reverse keeps the start and finish and reverses the stops (`loop.reversedPoints`); with a
-start and one stop that changes nothing, so it is disabled. A ride that already ends on its start is
-reversed whole. The GPX names its points from the toggle, not the API's echoed `dials.loop` (which is
-also true for a ride ending on its start), and writes `loop=1` in its dials comment, which the import
-reads back, so a loop reopens as one. The request is unchanged (`loop_points` already passes through
-every point after the start and returns to it), and so are links (`loop=1`). A loop implied by an end
-on the start, with the toggle off, keeps "Start" and "End". Mass Ride has no loop, and its hints do
-not mention the toggle.
+cycle that starts and finishes at the first point, so no second point has to be stacked on the
+start. The toggle can be chosen with the start alone; the route is asked for once there is a second
+point. Every later click is a stop (`geo.addPoint(points, point, loop)`: the closing leg, last point
+back to the start, is one of the slots and wins a tie; with a start and one stop the two legs tie
+exactly, so the second stop is appended and the stops are visited in the order they were clicked).
+Points are named "Start and finish" (`loop.LOOP_START_NAME`), "Stop 1", "Stop 2" and never "End" or
+"B" in the points list, map markers, search choices ("Start", "Stop"), rail station cards ("Start
+here", "Add as stop"), announcements and the GPX (`summary.pointName`, `pointText.pointLabel`,
+`gpx.planPointName`, `loop.loopStops`). Inside a sentence the start is "the start" ("Stop 2 added,
+between Stop 1 and the start"), and a change that renames the points is announced: the toggle, a
+ride type into or out of Mass Ride (which has no loop), and an undo or redo that brings another loop
+state back (`pointText.loopChangeSaid`). Dragging the route line works on the closing leg too: the
+legs run over the points and the start again (`lineEdit.legPoints`), so the API's `leg_ends` fit
+them, and a drag on the way back appends the stop as a click there does (`lineEdit.insertIntoRide`);
+the preview runs to the start. Reverse keeps the start and finish and reverses the stops
+(`loop.reversedPoints`); with a start and one stop that changes nothing, so the button is
+`aria-disabled` with the reason as its description, and a press says it
+(`pointText.reverseUnavailableHint`), as the loop toggle does. A ride that already ends on its start
+is reversed whole. The GPX names its points from the toggle as it was when the route shown was
+planned (recorded with the route, as its points are, so a replan in progress does not mix the two),
+not the API's echoed `dials.loop` (which is also true for a ride ending on its start), and writes
+`loop=1` in its dials comment, which the import reads back, so a loop reopens as one. The request is
+unchanged (`loop_points` already passes through every point after the start and returns to it), and
+so are links (`loop=1`). A loop implied by an end on the start, with the toggle off, keeps "Start"
+and "End". Mass Ride has no loop, and its hints do not mention the toggle.
 
 ### The tables
 
