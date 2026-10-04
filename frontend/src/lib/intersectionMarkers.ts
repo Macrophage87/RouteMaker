@@ -16,7 +16,7 @@ export type Severity = JunctionWarning["severity"];
 /**
  * The two colours, as the stress map's tokens do: an orange and a red that stay
  * apart on a blue line. Never the colour alone (review r1): each has its own
- * shape (an orange triangle, a red octagon) and its own word in every list row
+ * shape (an orange triangle, a red diamond) and its own word in every list row
  * (`short`).
  */
 export const SEVERITY_COLOURS: Record<Severity, { fill: string; stroke: string; label: string; short: string }> = {
@@ -141,16 +141,20 @@ export function junctionHeadline(counts: JunctionCounts): string {
 export const JUNCTION_HINT =
   "Drag the route away from a marker to plan around the junction. A stop sign on a quiet street is never marked.";
 
-/** The two shapes: a warning triangle for orange, an octagon for red. */
+/**
+ * The two shapes: a warning triangle for orange, a diamond (the road-warning
+ * shape) for red. Red was an octagon until the owner: "It looks too much like an
+ * ordinary stop sign" ... "Or something else, a diamond perhaps?" (OWNER-DECISIONS 311).
+ */
 export const SEVERITY_SHAPES: Record<Severity, string> = {
   orange: "M12 2.5 22.5 20.5H1.5Z",
-  red: "M8.1 1.5h7.8l5.6 5.6v7.8l-5.6 5.6H8.1l-5.6-5.6V7.1Z",
+  red: "M12 1.5 22.5 12 12 22.5 1.5 12Z",
 };
 
 /**
  * The warning icon with an exclamation mark, as inline SVG markup for a map
  * marker's element: nothing is fetched, so the Content-Security-Policy is
- * unchanged. Orange is a triangle and red an octagon, so the two are told apart
+ * unchanged. Orange is a triangle and red a diamond, so the two are told apart
  * without their colours (an orange and a red are the pair colour-blind riders
  * most often confuse); the dark outline keeps either apart from the blue route
  * line and the base map.
@@ -159,7 +163,7 @@ export function warningIconSvg(severity: Severity, size = ICON_PX): string {
   const { fill, stroke } = SEVERITY_COLOURS[severity];
   const mark =
     severity === "red"
-      ? `<rect x="11" y="5.5" width="2" height="8" rx="1" fill="#fff"/><circle cx="12" cy="16.6" r="1.3" fill="#fff"/>`
+      ? `<rect x="11" y="7" width="2" height="7" rx="1" fill="#fff"/><circle cx="12" cy="16.6" r="1.3" fill="#fff"/>`
       : `<rect x="11" y="8.5" width="2" height="6" rx="1" fill="${stroke}"/><circle cx="12" cy="17" r="1.2" fill="${stroke}"/>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +

@@ -86,14 +86,20 @@ test("the two colours are an orange and a red, and stay apart", () => {
   assert.notEqual(orange.fill, red.fill);
   assert.match(orange.fill, /^#f59e0b$/);
   assert.match(red.fill, /^#dc2626$/);
-  // Never the colour alone (review r1): a triangle for orange, an octagon for red.
+  // Never the colour alone (review r1): a triangle for orange, a diamond for red (OWNER-DECISIONS 311).
   const a = warningIconSvg("orange");
   const b = warningIconSvg("red");
   assert.ok(a.includes(SEVERITY_SHAPES.orange) && !a.includes(SEVERITY_SHAPES.red));
   assert.ok(b.includes(SEVERITY_SHAPES.red) && !b.includes(SEVERITY_SHAPES.orange));
   assert.notEqual(a.replaceAll(orange.fill, "X").replaceAll(orange.stroke, "Y"), b.replaceAll(red.fill, "X").replaceAll(red.stroke, "Y"));
-  // The octagon has eight corners.
-  assert.equal((SEVERITY_SHAPES.red.match(/[hvlHVL]/g) ?? []).length + 1, 8);
+  // The diamond: four corners, at the middle of each side of the icon's square, so it reads as a
+  // road-warning sign and not as a stop sign's octagon.
+  assert.equal(SEVERITY_SHAPES.red, "M12 1.5 22.5 12 12 22.5 1.5 12Z");
+  const corners = SEVERITY_SHAPES.red.replace(/[MZ]/g, "").trim().split(/\s+/).map(Number);
+  assert.equal(corners.length / 2, 4, "four corners, not eight");
+  // The white exclamation mark sits inside it: the bar y 7-14 and the dot at 16.6, on the vertical centre line.
+  assert.match(b, /<rect x="11" y="7" width="2" height="7" rx="1" fill="#fff"\/><circle cx="12" cy="16.6" r="1.3" fill="#fff"\/>/);
+  assert.match(b, /fill="#dc2626" stroke="#7f1d1d" stroke-width="1\.6"/);
 });
 
 test("close markers are one group when zoomed out, and come apart when zoomed in", () => {

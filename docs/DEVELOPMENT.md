@@ -281,7 +281,8 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   default from Node 22.18; `tests/test_frontend.py` runs the same files inside
   pytest, skips on a machine without Node (WSL here) and fails in CI if the
   Node there is older or missing.
-- The junction markers (OWNER-DECISIONS 172) are `lib/intersectionMarkers.ts`
+- The junction markers (OWNER-DECISIONS 172; an orange triangle for higher stress and a red
+  diamond for very high stress, the diamond an octagon until 311) are `lib/intersectionMarkers.ts`
   (what is listed, worded and drawn, tested without a DOM), `IntersectionList.tsx`
   (the route summary's list) and `MapView.tsx` (a DOM marker for each, a card on
   click, the list's click opening the same card); the slider's words, its note at

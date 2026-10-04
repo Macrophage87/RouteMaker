@@ -131,6 +131,28 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ("no short credit", CSS, 'content: "© OpenStreetMap" / "";', 'content: "";', FIXES),
     # --- grouping ------------------------------------------------------------
     ("groups at the last zoom", IM, "  if (zoom >= maxZoom) return 0;\n", "", MARKERS),
+    # --- the red marker is a diamond (OWNER-DECISIONS 311) -----------------
+    (
+        "red marker back to the octagon",
+        IM,
+        'red: "M12 1.5 22.5 12 12 22.5 1.5 12Z",',
+        'red: "M8.1 1.5h7.8l5.6 5.6v7.8l-5.6 5.6H8.1l-5.6-5.6V7.1Z",',
+        MARKERS,
+    ),
+    (
+        "red marker the orange triangle",
+        IM,
+        'red: "M12 1.5 22.5 12 12 22.5 1.5 12Z",',
+        'red: "M12 2.5 22.5 20.5H1.5Z",',
+        MARKERS,
+    ),
+    (
+        "red mark where the octagon had it",
+        IM,
+        '<rect x="11" y="7" width="2" height="7" rx="1" fill="#fff"/>',
+        '<rect x="11" y="5.5" width="2" height="8" rx="1" fill="#fff"/>',
+        MARKERS,
+    ),
     (
         "last zoom exclusive",
         IM,
