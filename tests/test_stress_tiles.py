@@ -1327,7 +1327,7 @@ class TestLongTrails:
 
         assert schema.PAVED_ROUTE_MIN == 2  # OWNER-DECISIONS 377: not a local route
         assert stress_tiles.TRAILS.long_trails == schema.LongTrails(5.0, 8.0, 3)
-        assert stress_tiles.TRAILS_NEAR.long_trails == schema.LongTrails(3.0, 5.0, 3)
+        assert stress_tiles.TRAILS_NEAR.long_trails == schema.LongTrails(2.5, 5.0, 3)
         assert stress_tiles.BUSY.long_trails is stress_tiles.FULL.long_trails is None
 
     @pytest.mark.parametrize(
@@ -1337,11 +1337,12 @@ class TestLongTrails:
             (False, 1, None, False, False),  # a local route alone no longer does (377)
             (False, 2, None, True, True),  # and so does a long walking route
             (False, 3, None, True, True),
-            (False, 0, 2.9, False, False),
-            (False, 0, 3.0, False, True),  # z11's bar for a paved run
+            (False, 0, 2.4, False, False),
+            (False, 0, 2.5, False, True),  # z11's bar for a paved run (380: was 3 mi)
+            (False, 0, 2.54, False, True),  # the Grist Mill Trail
             (False, 0, 4.9, False, True),
             (False, 0, 5.0, True, True),  # z10's
-            (None, 0, 3.0, False, True),  # an unknown surface is read as paved
+            (None, 0, 2.5, False, True),  # an unknown surface is read as paved
             (None, 1, None, False, False),
             (True, 0, None, False, False),
             (True, 1, None, False, False),  # a local route is not enough for a dirt trail
@@ -1436,6 +1437,7 @@ class TestLongTrails:
         from pipeline.schema import LongTrails, long_trails_predicate
 
         sql = long_trails_predicate(LongTrails(5.0, 8.0, 3))
+        assert "COALESCE(trail_run_m, 0) >= 4023" in long_trails_predicate(LongTrails(2.5, 5.0, 3))
         assert "trail_route >= 3 OR COALESCE(trail_run_m, 0) >= 12875" in sql
         assert "trail_route >= 2 OR COALESCE(trail_run_m, 0) >= 8047" in sql
         assert "cardinality(car_free_when) > 0" not in sql

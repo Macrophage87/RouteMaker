@@ -237,10 +237,12 @@ PAVED_ROUTE_MIN = ROUTE_LONG_WALK
 TRAIL_RUN_GAP_M = 400
 METRES_PER_MILE = 1609.344
 # A run the length of these, by surface, keeps a way that is not on a route
-# (OWNER-DECISIONS 375; 377 left them as they were). z11 and z10 differ: the
-# further out, the longer. An unpaved way needs a long bicycle route at both
-# (378: a walking route no longer counts for it).
-Z11_PAVED_RUN_MI = 3.0
+# (OWNER-DECISIONS 375; 377 and 378 left them as they were). z11 and z10 differ:
+# the further out, the longer. An unpaved way needs a long bicycle route at both
+# (378: a walking route no longer counts for it). 380: the z11 paved bar came down
+# from 3 to 2.5 mi ("Yes, bring it in.") so the Grist Mill Trail, whose 2.54 mi is
+# all OSM maps of it, shows at z11; every other bar is as 375 set it.
+Z11_PAVED_RUN_MI = 2.5
 Z11_UNPAVED_RUN_MI = 5.0
 Z11_UNPAVED_ROUTE_MIN = ROUTE_LONG_BICYCLE
 Z10_PAVED_RUN_MI = 5.0
