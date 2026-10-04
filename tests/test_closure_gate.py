@@ -84,6 +84,25 @@ def test_a_rated_way_osm_closes_to_bicycles_is_held_closed(tags) -> None:
         {"highway": "service", "bicycle": "no", "cycleway:both": "lane", "mtb:scale": "1"},
         {"highway": "service", "bicycle": "no", "service": "driveway", "mtb:scale": "1"},
         {"highway": "residential", "bicycle": "no", "bicycle_road": "yes", "mtb:scale": "1"},
+        # The remap resolves a conditional grant onto the directional keys.
+        {
+            "highway": "path",
+            "bicycle": "no",
+            "bicycle:conditional": "yes @ (Sa-Su 00:00-24:00)",
+            "mtb:scale": "1",
+        },
+        {
+            "highway": "path",
+            "bicycle": "no",
+            "bicycle:forward:conditional": "yes @ (Sa-Su)",
+            "mtb:scale": "1",
+        },
+        {
+            "highway": "path",
+            "bicycle": "no",
+            "bicycle:backward:conditional": "yes @ (Sa-Su)",
+            "mtb:scale": "1",
+        },
     ],
 )
 def test_a_way_upstream_may_open_is_not(tags) -> None:

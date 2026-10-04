@@ -191,10 +191,15 @@ SINGLETRACK_REPORT = "singletrack-ways.txt"
 # rated OSM closure carrying one may be open by upstream's own reading and is
 # not one the gate can hold the graph to. `service=driveway` with no `access`
 # opens every mode over the bicycle tag, and any `cycleway*` key may set a
-# direction or both.
+# direction or both. A conditional grant is resolved onto the directional keys
+# by the remap itself (`M.remap_conditional_access`), so `bicycle=no` +
+# `bicycle:conditional=yes @ (...)` is open in the tile by design.
 _OPENS_OVER_BICYCLE_NO = (
     "bicycle:forward",
     "bicycle:backward",
+    "bicycle:conditional",
+    "bicycle:forward:conditional",
+    "bicycle:backward:conditional",
     "vehicle:forward",
     "vehicle:backward",
     "oneway:bicycle",

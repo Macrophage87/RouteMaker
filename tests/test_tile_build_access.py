@@ -211,6 +211,33 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         {"highway": "path", "oneway": "yes", "bicycle": "yes", "foot": "yes", **RATED},
         (OPEN, CLOSED),
     ),
+    # The Green Loop Trail (ways 1324891525, 1324891526): a one-way keeps its
+    # rating, and with it its surface class, since the parser keeps its
+    # reverse closed anyway (SINGLETRACK-review-r1).
+    (
+        "a rated one-way asphalt trail (the Green Loop Trail)",
+        {
+            "highway": "path",
+            "oneway": "yes",
+            "bicycle": "yes",
+            "foot": "yes",
+            "surface": "asphalt",
+            "mtb:scale": "3",
+        },
+        (OPEN, CLOSED),
+    ),
+    (
+        "the same, mapped oneway=-1",
+        {
+            "highway": "path",
+            "oneway": "-1",
+            "bicycle": "yes",
+            "foot": "yes",
+            "surface": "asphalt",
+            "mtb:scale": "3",
+        },
+        (CLOSED, OPEN),
+    ),
     # Grants hold, rated or not.
     (
         "OSM access=no with a cycle lane on a rated service road",
@@ -257,6 +284,8 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
 # open rated trail must keep its rating - the towpath above all - and its
 # unrated twin shows what the surface would be without one.
 SURFACES = {
+    "a rated one-way asphalt trail (the Green Loop Trail)": "path",
+    "the same, mapped oneway=-1": "path",
     "an open rated trail (not singletrack)": "path",
     "the same trail unrated": "dirt",
     "the C&O towpath above lock 21": "dirt",

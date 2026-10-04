@@ -2282,8 +2282,9 @@ not swap**, if:
 The rated OSM closures are chosen narrowly: `bicycle=no`, `foot` not `no`, an
 `mtb:*` key, and none of the keys upstream lets open a direction over
 `bicycle=no` (`bicycle:forward`/`:backward`, `vehicle:forward`/`:backward`,
-`oneway:bicycle`, any `cycleway*` key, `bicycle_road`, `cyclestreet`,
-`service=driveway`), and never a bridge the crossings fixture rules on. The
+`oneway:bicycle`, `bicycle:conditional` and its `:forward`/`:backward` forms,
+any `cycleway*` key, `bicycle_road`, `cyclestreet`, `service=driveway`), and
+never a bridge the crossings fixture rules on. The
 gate writes its probes to `<DATA_ROOT>/rebuild/reports/bicycle-closure-probes.csv`
 and every singletrack way id to `singletrack-ways.txt` beside it, for step 3.
 
@@ -2295,9 +2296,11 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
 The gate's probes against the four **serving** routers, one pedestrian locate
-each. Expect `0 open` everywhere and some found on every router but no-trail
-(which drops trails, so `0 found` is right there). `FOUND NONE` on another
-router usually means it was not restarted onto the new build. Then two trips,
+each. Expect `ok` on every line. Every router but no-trail finds most of the
+probes; no-trail drops trails, singletrack with them, so it finds only the OSM
+closures that are not trails (7 tracks in the 2026-10-03 extract: "7 found,
+ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
+trails usually means it was not restarted onto the new build. Then two trips,
 planned through the api as the planner plans them and map-matched on the router
 that served them. `--host` is the first name in the deployment's
 `DJANGO_ALLOWED_HOSTS`:
@@ -2312,15 +2315,18 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
 ```
 
 - Union Station to Penn Station on Default: **0 mi on singletrack**. Before the
-  fix it rode 2.7 mi [4.4 km] of it (Cascade Falls Trail, Lewis and Clark,
-  Garrett's Pass in the Patapsco valley). The route is about 56 mi; expect it
-  to move to roads and paved trails there.
+  fix this probe measured 1.27 mi [2.04 km] of it on the live routers
+  (SINGLETRACK-review-r1; that day's answer came from the weekend graph), in
+  the Patapsco valley. The route is about 56 mi; expect it to move to roads and
+  paved trails there.
 - Mountain Goat, end to end along the Cross County Trail's way 810382238
   (`mtb:scale=2`, singletrack): **0 mi on that way**. Before the fix it rode
-  1.2 mi [1.9 km] of it.
+  1.00 mi [1.61 km] of it.
 
 Each prints its distance and the distance on the ways to avoid, and exits 1 if
-that is more than nothing.
+that is more than nothing. Each `trip` is an ordinary signed-out request to
+`POST /api/route`, so it writes one rate-limit row and counts against the
+api's per-client limits like any anonymous request ("The public routing API").
 
 What the strip changes besides access, so it is not mistaken for a fault:
 
@@ -2328,12 +2334,15 @@ What the strip changes besides access, so it is not mistaken for a fault:
   or `bicycle:backward=no` keeps its open direction open and its closed one
   closed, as upstream's transform reads it. With the rating left on, the
   parser reopened the closed direction, which stock Valhalla still does. A
-  one-way rated trail loses its rating too (its reverse was closed either way).
+  one-way open in its own direction keeps its rating: the parser keeps its
+  reverse closed anyway.
 - **The rating is also a surface.** The parser classes an edge with a rating as
   surface `path`: an open dirt path rated `mtb:scale=2` is `path`, unrated
   `dirt`. Where the rating is stripped the edge is classed by its `surface`
-  tag. A way open both ways keeps its ratings and its class; the C&O towpath
-  above lock 21 (`mtb:scale:imba=0`, `dirt`) is unchanged.
+  tag. A way open both ways, or a one-way open its own way, keeps its ratings
+  and its class: the C&O towpath above lock 21 (`mtb:scale:imba=0`, `dirt`)
+  and the Green Loop Trail (one-way, `mtb:scale=3`, asphalt, `path`) are
+  unchanged.
 - **An untagged footway with a rating is closed**, as every other untagged
   footway is: way 481109137 (concrete, `mtb:scale=0`) was the one such way in
   the region, open only through its rating.

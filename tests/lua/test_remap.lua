@@ -952,7 +952,21 @@ end
 check("but keeps bare mtb, which reopens nothing", both_closed.mtb == "yes")
 check("and every other key", both_closed.surface == "dirt" and both_closed.bike_forward == "false")
 check("forward closed alone is closed", stripped(rated("false", "true"))["mtb:scale"] == nil)
-check("backward closed alone is closed (a one-way trail)", stripped(rated("true", "false"))["mtb:scale"] == nil)
+check("backward closed alone is closed", stripped(rated("true", "false"))["mtb:scale"] == nil)
+local function one_way(fwd, bwd, reverse)
+  local kv = rated(fwd, bwd)
+  kv.oneway = "true"
+  kv.oneway_reverse = reverse and "true" or "false"
+  return stripped(kv)
+end
+check("a one-way open its own way keeps its ratings (the parser keeps its reverse closed)",
+  one_way("true", "false")["mtb:scale"] == "2" and one_way("true", "false")["mtb:description"] == "rocky")
+check("and so does oneway=-1, which upstream has already swapped",
+  one_way("false", "true", true)["mtb:scale"] == "2")
+check("a one-way closed its own way is stripped", one_way("false", "false")["mtb:scale"] == nil)
+check("so is oneway=-1 closed its own way", one_way("true", "false", true)["mtb:scale"] == nil)
+check("and a forward-only closure on a way that is not one-way",
+  stripped(rated("false", "true"))["mtb:scale"] == nil)
 check("a direction upstream left unset is closed, as the parser reads it",
   stripped(rated(nil, "true"))["mtb:scale"] == nil)
 local open_both = stripped(rated("true", "true"))

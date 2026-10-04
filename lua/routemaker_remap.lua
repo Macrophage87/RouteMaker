@@ -597,20 +597,30 @@ end
 -- What the rating costs where it is removed: besides access, the parser also
 -- reads a rating as the edge's surface. An open dirt path rated `mtb:scale=2`
 -- gets the surface class `path`, and `dirt` without the rating. So the
--- open direction of a one-way rated trail is classed by its `surface` tag
--- alone. That is the one strip access did not need: the parser keeps a
--- one-way's reverse closed whatever the rating (tests/test_tile_build_access.py),
--- but upstream's output does not say which tag closed a direction, and reading
--- that back out of the tags is the second reading of access this is built to
--- avoid. A way open both ways is untouched, ratings and surface class: the C&O
--- towpath keeps its `mtb:scale:imba=0`.
+-- strip is not made where access does not need it.
+--
+-- A one-way open to bicycles in its own direction keeps its ratings: the
+-- parser keeps a one-way's reverse closed whatever the rating
+-- (tests/test_tile_build_access.py), so there is nothing for it to reopen, and
+-- stripping cost the Green Loop Trail (ways 1324891525 and 1324891526,
+-- `oneway=yes`, `mtb:scale=3`, asphalt) its `path` surface class
+-- (SINGLETRACK-review-r1). Upstream's output says it is that case without a
+-- second reading of the access tags: `oneway` is "true", and the direction the
+-- one-way runs - `bike_forward`, or `bike_backward` where `oneway_reverse` is
+-- "true" (`oneway=-1`, which upstream has already swapped) - is "true". A
+-- one-way closed in its own direction is stripped like any closure. A way open
+-- both ways is untouched too: the C&O towpath keeps its `mtb:scale:imba=0`.
 M.MTB_RATING_PREFIX = "mtb:"
 
 --- Remove every `mtb:*` key from upstream's output when either direction is
--- closed to bicycles. Takes and changes the table upstream's `ways_proc`
--- returned; returns whether it removed anything.
+-- closed to bicycles, but for a one-way's own reverse. Takes and changes the
+-- table upstream's `ways_proc` returned; returns whether it removed anything.
 function M.strip_ratings_if_closed(kv)
   if kv.bike_forward == "true" and kv.bike_backward == "true" then return false end
+  if kv.oneway == "true" then
+    local own = kv.oneway_reverse == "true" and kv.bike_backward or kv.bike_forward
+    if own == "true" then return false end
+  end
   local keys = {}
   for key in pairs(kv) do
     if type(key) == "string" and key:sub(1, #M.MTB_RATING_PREFIX) == M.MTB_RATING_PREFIX then

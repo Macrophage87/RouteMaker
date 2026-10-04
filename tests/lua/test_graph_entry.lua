@@ -329,7 +329,7 @@ local closed_cases = {
   { "an untagged footway", { highway = "footway" } },
   { "bicycle:forward=no alone", { highway = "path", ["bicycle:forward"] = "no", foot = "yes" } },
   { "oneway=yes + bicycle:forward=no", { highway = "path", oneway = "yes", ["bicycle:forward"] = "no", foot = "yes" } },
-  { "a one-way trail", { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes" } },
+  { "oneway=-1 + bicycle:forward=no", { highway = "path", oneway = "-1", ["bicycle:forward"] = "no", foot = "yes" } },
 }
 for _, case in ipairs(closed_cases) do
   local _, unrated_out = transform_way(case[2])
@@ -341,6 +341,23 @@ for _, case in ipairs(closed_cases) do
   check(case[1] .. ": with the same access as unrated",
     rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
 end
+-- A one-way open its own way keeps its ratings: the parser keeps its reverse
+-- closed anyway, and the rating is its surface class (SINGLETRACK-review-r1:
+-- the Green Loop Trail, oneway=yes, mtb:scale=3, asphalt).
+for _, case in ipairs({
+  { "a one-way trail", { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes", surface = "asphalt" } },
+  { "a oneway=-1 trail", { highway = "path", oneway = "-1", bicycle = "yes", foot = "yes", surface = "asphalt" } },
+}) do
+  local _, unrated_out = transform_way(case[2])
+  local _, rated_out = transform_way(rated(case[2]))
+  check(case[1] .. ": one-way to bicycles unrated",
+    (unrated_out.bike_forward == "true") ~= (unrated_out.bike_backward == "true"),
+    tostring(unrated_out.bike_forward) .. "/" .. tostring(unrated_out.bike_backward))
+  check(case[1] .. ": keeps its rating", rated_out["mtb:scale"] == "1" and rated_out["mtb:description"] == "roots")
+  check(case[1] .. ": with the same access as unrated",
+    rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
+end
+
 local open_cases = {
   { "bicycle=yes", { highway = "path", bicycle = "yes", foot = "yes" } },
   { "access=no + bicycle=designated", { highway = "path", access = "no", bicycle = "designated", foot = "yes" } },
