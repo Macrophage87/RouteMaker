@@ -1937,7 +1937,7 @@ the first host to run it is the first test of it.
    directories they started against.
 
    ```sh
-   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -2361,7 +2361,7 @@ build id, and the four routers keep answering from last week's tiles until they
 are restarted:
 
 ```sh
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -2450,7 +2450,7 @@ docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from django_migrations" </dev/null
 ```
 
-The count is the number of applied migrations: **68** on 2026-10-02 (core at
+The count is the number of applied migrations: **69** with the NO-BIKE-PATHS migration (68 on 2026-10-02, core at
 0009); anything else, an error included, is the race. Recover in this order,
 postgis first:
 
@@ -2462,7 +2462,7 @@ docker compose exec -T postgis psql -U routemaker -d routemaker -At \
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from live.segment" </dev/null
 docker compose up -d --no-deps --no-build --force-recreate \
-    caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend \
+    caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad \
     photon api worker rebuild
 ```
 
@@ -2572,7 +2572,7 @@ changes nothing — and `--confirm` is what performs it.
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -2755,7 +2755,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -3016,3 +3016,50 @@ of these:
 
 These are not triggers: `dodges.limited: "time"`, `calm_search.limited: "time"` on a long plan, the
 long-pool 503 while another long plan runs, and `candidates` null on most trips.
+
+## Paths bicycles may not ride (NO-BIKE-PATHS)
+
+OWNER-DECISIONS 278, 280, 281 and 290 to 291. Nothing here is live until the
+next rebuild; nothing is written to the live database or an override table.
+
+**What a rebuild now closes.** `pipeline.trail_closures` marks a way
+`rm:no_bicycle=<reason>` and the transform closes it to bicycles (the mark is
+stripped, and the singletrack strip in `lua/graph.lua` covers a rated way). The
+reasons are in `routemaker.trailaccess` (private, sac_scale, informal,
+foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb,
+dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
+The rebuild log line "facility classes: ..." carries the count per reason.
+
+**Five graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
+(`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
+291(2)). It has no weekend twin and falls back to the standard graph, as the
+weekend one does, when it is not promoted or not answering. Start it after the
+first rebuild that builds it: `docker compose up -d --no-deps --no-build
+valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
+Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
+32G the compose check allows.
+
+**The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
+NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
+destination-only (`rm:destination_only`; `bicycle=destination` and
+`access=destination`). A trip point inside the Zoo is moved to the racks and the
+answer's `moved_points` says so.
+
+**Display.** A trail-class way routing does not open to bicycles is
+`map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
+tile property `mtb` (and `rough`), drawn faint, facility `none`. The segment
+table has two new columns, `mtb_only` and `walk_bike`; the model's migration
+(core 0010) is state-only.
+
+**Walk your bike.** A `bicycle=dismount` connector under 500 ft (150 m), counting
+the ways that join it, stays and the route description gets a `walk` entry;
+longer ones close.
+
+**NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
+in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
+read, which needs the owner's approval as a fetch.
+
+**The gate.** VALIDATE reads back up to 8 ways of each new reason from every
+graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
+does the same after the swap and now reads the off-road router too.

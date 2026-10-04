@@ -40,7 +40,13 @@ REPO = Path(__file__).resolve().parent.parent
 
 # What the stack is called, from `compose.yaml`; `tests/test_acceptance.py`
 # holds each of these equal to the rendered configuration so they cannot drift.
-ROUTERS = ("valhalla-standard", "valhalla-no-trail", "valhalla-ebike", "valhalla-weekend")
+ROUTERS = (
+    "valhalla-standard",
+    "valhalla-no-trail",
+    "valhalla-ebike",
+    "valhalla-weekend",
+    "valhalla-offroad",
+)
 VARIANTS = ("standard", "no-trail", "ebike", "weekend")
 ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in VARIANTS}
 DJANGO_SERVICES = ("api", "worker", "rebuild")

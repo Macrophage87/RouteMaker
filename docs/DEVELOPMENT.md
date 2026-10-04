@@ -3144,7 +3144,7 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
-valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`); starting them against the
+valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad`); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes
 a completed swap: schema, tiles and settings table together.
