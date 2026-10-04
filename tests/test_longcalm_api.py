@@ -150,9 +150,10 @@ class TestTheDialsOnTheRequest:
         router(standard_router())
         assert post(client, top_body(target_distance_m=value)).status_code == 200
 
-    @pytest.mark.parametrize("value", [25, 48, 90, 450])
+    @pytest.mark.parametrize("value", [25, 48, 90, 450, 700])
     def test_the_weights_range_is_taken_as_sent(self, client, segments, router, value) -> None:
-        """OWNER-DECISIONS 337: 25 to 450 kg on every ride type, the ends included."""
+        """OWNER-DECISIONS 337, 352: 25 to 700 kg (55 to 1,543 lb) on every ride type, the
+        ends included (450 kg was the top until 352)."""
         router(standard_router())
         response = post(client, top_body(system_weight_kg=value))
         assert response.status_code == 200

@@ -209,7 +209,7 @@ class RouteIn(Schema):
         default=None,
         description=(
             "The rider's total system weight in kilograms, rider plus bike plus load"
-            " (OWNER-DECISIONS 264). The routing is designed for 25 to 700 (about 55 to 1,540 lb,"
+            " (OWNER-DECISIONS 264). The routing is designed for 25 to 700 (about 55 to 1,543 lb,"
             " 337, 352); a total outside that is accepted and planned at the nearer limit,"
             " silently, which the answer's dials echo (338, 352). Optional, and used only at"
             " the top of the stress"

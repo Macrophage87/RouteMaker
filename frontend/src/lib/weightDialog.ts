@@ -144,6 +144,15 @@ export function weightDialogBody(
   ];
 }
 
+/**
+ * What every close leaves (Save, Cancel, Clear, Escape: each ends with the dialog closed):
+ * blank fields and no refusal, so no figure typed stays in the closed <dialog>, which is
+ * still in the DOM (313, 317(b); the re-check's S2, and the mutation re-check's SF3).
+ */
+export function closedState(): { sheet: Worksheet; refused: string } {
+  return { sheet: BLANK, refused: "" };
+}
+
 /** What every open starts from: blank fields (317(b)), no refusal, and the checkbox as this browser has it. */
 export function openedState(props: Pick<DialogProps, "remembered" | "saved">): { sheet: Worksheet; remember: boolean; refused: string } {
   return { sheet: BLANK, remember: props.remembered, refused: "" };
@@ -174,8 +183,9 @@ export function WeightDialog(props: DialogProps): ReactElement {
       if (!dialog.open) dialog.showModal?.();
     } else {
       // Closed (Save, Cancel, Clear, Escape): blank, so nothing typed stays in the page (S2).
-      setSheet(BLANK);
-      setRefused("");
+      const end = closedState();
+      setSheet(end.sheet);
+      setRefused(end.refused);
       if (dialog.open) dialog.close();
     }
   }, [props.open]);

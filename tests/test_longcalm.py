@@ -1210,6 +1210,30 @@ class TestChoosingOptions:
     def test_with_no_limit_the_calmest_is_taken(self) -> None:
         assert refine.choose_options(self.chains(), [10_000.0, 10_000.0], None, self.ctx) == [1, 1]
 
+    def test_seeking_climbs_buys_no_miles_here_either(self) -> None:
+        """The re-check S1 probe as a one-leg chain (the mutation re-check's SF1): 20 km flat
+        with 1 km of LTS 3 against 40 km hilly (effort 60 km) with none, Hills at full seek and
+        no target. The even-out step charges the 20 km added as at the detent, so the 1 km saved
+        does not pay for it."""
+        ctx = top_context()
+        ctx.hills_seek_weight = 1.0
+        short = reading(length=20_000.0, effort=20_000.0, lts3=1_000.0)
+        long_ = reading(length=40_000.0, effort=60_000.0)
+        chain = [({"legs": [{"shape": "s"}]}, short), ({"legs": [{"shape": "l"}]}, long_)]
+        assert refine.choose_options([chain], [20_000.0], None, ctx) == [0]
+
+    def test_a_free_upgrade_is_taken_though_it_saves_no_stress(self) -> None:
+        """The `charge > 0.0` guard (the mutation re-check's N4): under a target the miles
+        are free (268, 271), so an option that ranks better on the blended distance (much
+        flatter, with Hills set to avoid) is taken though it carries 10 m more LTS 3."""
+        ctx = top_context(target_m=20_000.0)
+        ctx.hills_weight = 1.0
+        hilly = reading(length=10_000.0, effort=30_000.0, lts3=100.0)
+        flat = reading(length=11_000.0, effort=11_000.0, lts3=110.0)
+        assert refine.stress_saved_m(hilly, flat, ctx) < 0, "the premise: no stress saved"
+        chain = [({"legs": [{"shape": "h"}]}, hilly), ({"legs": [{"shape": "f"}]}, flat)]
+        assert refine.choose_options([chain], [10_000.0], None, ctx) == [1]
+
     def test_the_total_is_never_past_the_limit(self) -> None:
         chains = self.chains()
         for limit in (20_000.0, 20_999.0, 21_000.0, 21_999.0, 22_000.0):
@@ -1744,6 +1768,9 @@ class TestLTS4NeverLosesToExtraLTS3:
         # Within the top step a second-level loss still subtracts.
         c = reading(lts4=0.0, lts3=1600.0, length=11_000.0)
         assert refine.stress_saved_m(a, c, self.ctx) == pytest.approx(10.0 - 600.0)
+        # Exactly the step (15 m) is still within it: netted (the mutation re-check's N3).
+        edge = reading(lts4=15.0, lts3=1000.0, length=10_000.0)
+        assert refine.stress_saved_m(edge, c, self.ctx) == pytest.approx(30.0 - 600.0)
         # 1,000 m added at 1 in 5 asks 200 m: 210 m pays; 1,100 m added does not.
         assert refine.better(b, a, self.ctx)
         assert not refine.better(with_(b, length_m=11_100.0), a, self.ctx)

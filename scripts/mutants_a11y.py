@@ -9,6 +9,11 @@ edited, and runs the files with `node --test`:
 
     scripts/mutants_a11y.py NODE_MODULES_DIR [--only NAME] [--list]
 
+NODE_MODULES_DIR must be a directory named `node_modules` (e.g. /deps/node_modules): it is
+symlinked into the copy, and Node resolves the link to its real path, so under any other
+name react-dom cannot find react and the control fails before any mutant (the mutation
+re-check's N5).
+
 Run it where Node 22 is (the node:22 image has python3 too). Each line of
 MUTANTS is (name, file, old text, new text, test files); `old` must occur
 exactly once. Survivors are printed last and the exit status is their number.

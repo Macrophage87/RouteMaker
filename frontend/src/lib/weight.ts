@@ -12,7 +12,7 @@
  *   directly; blank parts take the ride type's defaults (defaultSplit). Saved values are
  *   never put back in the fields.
  * - 318: the two lines the dialog leads with (WEIGHT_PURPOSE, WEIGHT_ROUGH).
- * - 337-340, 352: every total is taken. One outside 25 to 700 kg (about 55 to 1,540 lb)
+ * - 337-340, 352: every total is taken. One outside 25 to 700 kg (55 to 1,543 lb)
  *   is planned at the nearer limit, silently (352: "Just have a very heavy setting and
  *   include silently"): no note about a limit is shown anywhere.
  *

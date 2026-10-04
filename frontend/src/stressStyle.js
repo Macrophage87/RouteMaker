@@ -71,10 +71,13 @@ const TIER_SHAPES = [
  * "twotone", in the owner's colours, and "blended" (a link's `?palette=warm`)
  * stays as an option. Where the two-tone colours break a rule the warm palette
  * keeps, the break is reported, not fixed: testSupport/defaultConflicts.ts
- * lists them (LTS 3 and LTS 4 are not 3:1 on the base map, the greyscale order
- * is lost, LTS 3 and 4 are close for a deuteranope, and LTS 4 is less
- * saturated than LTS 3), and defaultPalette.test.ts holds the default to every
- * other rule and to exactly those.
+ * lists them, and defaultPalette.test.ts holds the default to every other rule
+ * and to exactly those. 371 took two of the fixes proposed: LTS 3 and LTS 4 are
+ * ringed in near-black (#1c1917), which makes both 3:1 on the base map, and the
+ * yellow is #f3c81a (#f2c21b before), 1.44:1 from LTS 4 for a deuteranope.
+ * What is left: the line on its own edge inside the ring, the greyscale order,
+ * LTS 4 less saturated than LTS 3, Avoid against LTS 4 under deuteranopia, and
+ * the same-tier paved/unpaved pairs listed there.
  *
  * - "blended": one colour per tier between the two named - LTS 3 amber (over
  *   a dark casing, since amber is not 3:1 on the base map's greens), LTS 4 a
@@ -92,9 +95,10 @@ const TIER_SHAPES = [
  *   and that separation.
  * - "twotone" (the default since 351): the first colour as the line, the
  *   second as its casing - LTS 3 yellow on orange, LTS 4 orange on red, Avoid
- *   red on black. Closer to the owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
- *   on its casing 1.5:1) and the greyscale order is lost (stressContrast.test.ts
- *   holds the chosen palette to the rule, and reports the other).
+ *   red on black, LTS 3 and LTS 4 ringed in near-black (371). Closer to the
+ *   owner's words; inside the ring the line on its edge is 1.53:1 (LTS 3) and
+ *   2.34:1 (LTS 4), and the greyscale order is lost (defaultPalette.test.ts and
+ *   testSupport/defaultConflicts.ts hold exactly what is reported).
  * - "cvd" (OWNER-DECISIONS 208): the colour-blind-friendly option a rider
  *   switches to in the panel. Not a reading of the owner's colours: it is
  *   chosen by measurement to stay apart under protanopia, deuteranopia and
@@ -355,8 +359,8 @@ export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = curr
  *   14.3 CIEDE2000 from the paved LTS 3 amber at LTS 2 and 3; the sepia is 20
  *   or more from it at every step under normal vision.
  * - twotone (the default): greyer browns (taupe), because that palette's paved
- *   LTS 3 is a yellow (#f2c21b) a warm tan would sit on (6 CIEDE2000 under
- *   deuteranopia). Its LTS 1 is a pale taupe (#e6dad4; 350, 371): #d4bba6 was 9.1
+ *   LTS 3 is a yellow (#f3c81a since 371, #f2c21b before) a warm tan would sit
+ *   on (6 CIEDE2000 under deuteranopia). Its LTS 1 is a pale taupe (#e6dad4; 350, 371): #d4bba6 was 9.1
  *   from the yellow under tritanopia. Every step is 22 or more from the yellow
  *   under normal vision and 15 or more under every vision.
  * - cvd: an ochre-olive ramp on the yellow side of the blue-yellow axis all

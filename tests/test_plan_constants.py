@@ -98,7 +98,7 @@ def test_the_diminishing_returns() -> None:
 def test_the_system_weight_range_and_defaults() -> None:
     from routemaker import effort
 
-    # OWNER-DECISIONS 337: 25 kg to 450 kg (about 55 to 990 lb); the default about 90 kg.
+    # OWNER-DECISIONS 337, 352: 25 to 700 kg (55 to 1,543 lb; 450 kg until 352); default 90 kg.
     assert (effort.MASS_MIN_KG, effort.MASS_MAX_KG, effort.MASS_KG) == (25, 700, 90.0)
     assert effort.PASSENGERS_MASS_KG == 120.0
     assert _ts(DIALS_TS, "SYSTEM_WEIGHT_MIN_KG") == 25

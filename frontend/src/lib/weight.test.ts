@@ -376,3 +376,36 @@ test("the polite total says what it was given while the typing settles, and the 
   const src = (await import("node:fs")).readFileSync(new URL("./weightDialog.ts", import.meta.url), "utf8");
   assert.match(src, /setTimeout\(\(\) => setSaid\(live\), TOTAL_SAID_DELAY_MS\)/);
 });
+
+test("every way the dialog closes leaves it blank: closedState, and Save, Cancel, Clear and Escape all close it (the mutation re-check's SF3)", async () => {
+  const { closedState } = await import("./weightDialog.ts");
+  assert.deepEqual(closedState(), { sheet: BLANK, refused: "" });
+  const src = (await import("node:fs")).readFileSync(new URL("./weightDialog.ts", import.meta.url), "utf8");
+  // The effect's closed branch applies it, both halves.
+  assert.match(src, /const end = closedState\(\);\s*setSheet\(end\.sheet\);\s*setRefused\(end\.refused\);/);
+  // Escape (the dialog's cancel and close events) and Cancel reach onClose; Save and Clear close too.
+  assert.match(src, /onClose: \(\) => props\.onClose\(\),\s*onCancel: \(\) => props\.onClose\(\),/);
+  assert.match(src, /onSave: \(weight, remember\) => \{\s*props\.onSave\(weight, remember\);\s*close\(\);/);
+  assert.match(src, /onClear: \(\) => \{\s*props\.onClear\(\);\s*close\(\);/);
+  assert.match(src, /onClose: close,/);
+});
+
+test("a weight at either end of the range is read back as kept (the mutation re-check's N1)", () => {
+  for (const kg of [SYSTEM_WEIGHT_MIN_KG, SYSTEM_WEIGHT_MAX_KG]) {
+    assert.equal(migrate(String(kg), NOW)?.totalKg, kg, `${kg} kg as a bare figure`);
+    assert.equal(migrate({ totalKg: kg, setAt: 5 }, NOW)?.totalKg, kg, `${kg} kg stored`);
+    const kept = memory();
+    new WeightStore(kept).save({ name: DEFAULT_NAME, totalKg: kg, setAt: NOW }, true);
+    assert.equal(new WeightStore(kept).load(NOW)?.totalKg, kg, `${kg} kg round trip`);
+  }
+});
+
+test("parts that come to exactly the lowest total keep their parts (the mutation re-check's N2)", () => {
+  // 33.1 lb (15.0 kg) + 22.05 lb (10.0 kg) + 0: exactly 25 kg, in range, so the parts made it.
+  let sheet = editPart(BLANK, "rider", "33.1", SPLIT);
+  sheet = editPart(sheet, "bike", "22.05", SPLIT);
+  sheet = editPart(sheet, "cargo", "0", SPLIT);
+  const kept = toStored(sheet, SPLIT, NOW) as StoredWeight;
+  assert.equal(kept.totalKg, 25);
+  assert.deepEqual(kept.parts, { riderKg: 15, bikeKg: 10, cargoKg: 0 });
+});

@@ -791,7 +791,21 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '                "limited": "target_distance",' + NL + '                "no_fit": False,',
         AP,
     ),
-    # 337 and 338: the weight range is 25-450 kg, and a weight outside it the nearer limit.
+    # 337, 338 and 352: the weight range is 25-700 kg, and a weight outside it the nearer limit.
+    (
+        "MR01 the top tie step's edge counts as past it",
+        RF,
+        "    if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:",
+        "    if worse.top_m - calmer_one.top_m >= MAXCALM_STEPS[0]:",
+        LC,
+    ),
+    (
+        "MR04 a free upgrade is charged as if it cost",
+        RF,
+        "                if charge > 0.0 and saved < charge:",
+        "                if saved < charge:",
+        LC,
+    ),
     ("337 the range's floor back at 68", EFF, "MASS_MIN_KG = 25", "MASS_MIN_KG = 68", EF + AP),
     ("337 the range's ceiling back at 140", EFF, "MASS_MAX_KG = 700", "MASS_MAX_KG = 140", EF + AP),
     ("352 the ceiling back at 450", EFF, "MASS_MAX_KG = 700", "MASS_MAX_KG = 450", EF + AP),

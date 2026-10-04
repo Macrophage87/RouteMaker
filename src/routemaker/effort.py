@@ -34,7 +34,7 @@ from collections.abc import Sequence
 
 # The total system weight, in kilograms: rider, bike and what they carry (item 263:
 # "rider + bike ~90 kg"; item 264 makes it the rider's optional input). The range the
-# routing is designed for is 25 to 700 kg, about 55 to 1,540 lb (OWNER-DECISIONS 337:
+# routing is designed for is 25 to 700 kg, about 55 to 1,543 lb (OWNER-DECISIONS 337:
 # a 90 lb rider on a 16 lb bike is about 48 kg, and a very heavy rider on a
 # specialised bike is past the old 140; 352: the top raised from 450 to cover "people
 # who ride pedicabs with 2 passengers"), on every ride type; a total outside it is

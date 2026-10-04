@@ -12,10 +12,15 @@ import {
   contrastRatio,
   facilityLayers,
   gapHarshness,
+  gapLayers,
+  ringLayers,
   relativeLuminance,
   tiersFor,
 } from "./stressStyle.js";
 import { VISIONS, deltaE2000, lab, simulate } from "./testSupport/colourVision.ts";
+import { paintAt } from "./testSupport/paintAt.ts";
+
+type PaintLayer = { id: string; paint: Record<string, unknown>; filter?: unknown };
 import { FACILITY_CLASSES } from "./lib/facilityBar.ts";
 import { ROUTE_SECTION_WIDTHS } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR } from "./lib/stressBar.ts";
@@ -352,4 +357,29 @@ test("the facility bar and its swatches match the rails: the same colours, and a
 
 test("the rails' colours go dark to light: path, protected, painted", () => {
   assert.ok(relativeLuminance(PAINTED.color) > relativeLuminance(PROTECTED.color) && relativeLuminance(PROTECTED.color) > relativeLuminance(PATH.color));
+});
+
+// ---------------------------------------------------------------------------
+// The ring (371) and LTS 2's gap line (356): their paint, faint zooms and unpaved colour
+// (the mutation re-check's SF2)
+// ---------------------------------------------------------------------------
+
+test("the ring and the gap line are not drawn where the line is faint (z12-13, alleys), and are at z14", () => {
+  const layers = [...(ringLayers("s") as PaintLayer[]), ...(gapLayers("s") as PaintLayer[])];
+  assert.deepEqual(layers.map((l) => l.id), ["stress-ring-3", "stress-ring-4", "stress-gap-2"]);
+  for (const layer of layers) {
+    const tier = Number(layer.id.split("-").pop());
+    const busy = tier >= 3;
+    for (const zoom of [12, 13]) assert.equal(paintAt(layer, "line-opacity", { tier }, zoom), busy ? 0 : 1, `${layer.id} z${zoom}`);
+    assert.equal(paintAt(layer, "line-opacity", { tier }, 14), 1, `${layer.id} z14`);
+    assert.equal(paintAt(layer, "line-opacity", { tier, alley: true }, 16), 0, `${layer.id} alley`);
+  }
+});
+
+test("the gap line's colour follows the surface: in the cool palette, steel blue unpaved and pale grey-blue paved", () => {
+  const cool = tiersFor("cvd") as Tier[];
+  const gap = (gapLayers("s", undefined, cool) as PaintLayer[])[0];
+  assert.equal(paintAt(gap, "line-color", { tier: 2, unpaved: true }, 15), "#7a8fa3");
+  assert.equal(paintAt(gap, "line-color", { tier: 2, unpaved: false }, 15), "#a7b4c1");
+  assert.equal(paintAt(gap, "line-color", { tier: 2 }, 15), "#a7b4c1", "an unknown surface as paved");
 });
