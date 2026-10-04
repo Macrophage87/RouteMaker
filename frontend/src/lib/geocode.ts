@@ -469,20 +469,22 @@ export function searchView(state: {
   pointCount: number;
   full: boolean;
   chosen: PlaceChoice | null;
+  /** "Make it a loop" is on (OWNER-DECISIONS 374): no destination, every later place is a stop. */
+  loop?: boolean;
 }) {
   const current = normalQuery(state.query);
   const places = displayedPlaces(state.query, state.answered, state.result);
   const answeredNow = state.result !== null && current === state.answered;
-  const choice = choiceInForce(state.chosen, state.pointCount, state.full);
+  const choice = choiceInForce(state.chosen, state.pointCount, state.full, state.loop);
   return {
     places,
     // Open only with places for the query in the box: Enter picks from these.
     expanded: state.open && places.length > 0,
     answeredNow,
     searching: current.length >= MIN_QUERY_CHARS && !answeredNow,
-    choices: choicesFor(state.pointCount, state.full),
+    choices: choicesFor(state.pointCount, state.full, state.loop),
     choice,
-    effect: placeEffect(state.pointCount, choice),
+    effect: placeEffect(state.pointCount, choice, state.loop),
   };
 }
 
@@ -501,11 +503,13 @@ export function pickIntoPlan(
     current: () => LonLat[];
     commit: (next: LonLat[]) => void;
     remember: (point: LonLat, name: string, label: string) => void;
+    /** "Make it a loop" is on (OWNER-DECISIONS 374). */
+    loop?: boolean;
   },
 ): LonLat | null {
   const point = placeFromSearch(found, plan.remember);
   if (point === null) return null;
-  plan.commit(applyPlace(plan.current(), point, choice));
+  plan.commit(applyPlace(plan.current(), point, choice, plan.loop === true));
   return point;
 }
 
@@ -520,9 +524,10 @@ export interface PointRow {
 export function pointRows(
   points: readonly LonLat[],
   names: { name: (point: LonLat) => { name: string; label: string } | undefined },
+  loop = false,
 ): PointRow[] {
   return points.map((point, index) => ({
-    role: pointName(index, points.length),
+    role: pointName(index, points.length, loop),
     place: names.name(point),
     coords: coordinatesText(point),
   }));
@@ -566,9 +571,10 @@ export function comboboxKey(
 /** What a picked place is made: the start, the destination, or a stop on the way. */
 export type PlaceChoice = "start" | "end" | "via";
 
-/** The choice the box starts on: the start for an empty plan, else the destination. */
-export function defaultChoice(count: number): PlaceChoice {
-  return count === 0 ? "start" : "end";
+/** The choice the box starts on: the start for an empty plan, else the destination (a stop in a loop). */
+export function defaultChoice(count: number, loop = false): PlaceChoice {
+  if (count === 0) return "start";
+  return loop ? "via" : "end";
 }
 
 /**
@@ -576,22 +582,25 @@ export function defaultChoice(count: number): PlaceChoice {
  * chosen on a route that has since lost its end, or filled up, is not - and
  * otherwise the plan's default.
  */
-export function choiceInForce(chosen: PlaceChoice | null, count: number, full: boolean): PlaceChoice {
-  return chosen !== null && choicesFor(count, full).includes(chosen) ? chosen : defaultChoice(count);
+export function choiceInForce(chosen: PlaceChoice | null, count: number, full: boolean, loop = false): PlaceChoice {
+  return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop);
 }
 
 /** The choices open to a plan of `count` points (a stop needs a start and an end, and room). */
-export function choicesFor(count: number, full: boolean): PlaceChoice[] {
+export function choicesFor(count: number, full: boolean, loop = false): PlaceChoice[] {
   if (count === 0) return ["start"];
+  // A loop finishes at its start (OWNER-DECISIONS 374): a stop can follow the start alone, and there is no destination.
+  if (loop) return full ? ["start"] : ["start", "via"];
   return count >= 2 && !full ? ["start", "end", "via"] : ["start", "end"];
 }
 
 export type PlaceEffect = "start" | "replace-start" | "end" | "replace-end" | "via";
 
 /** What choosing a search result as `choice` does to a plan of `count` points. */
-export function placeEffect(count: number, choice: PlaceChoice): PlaceEffect {
+export function placeEffect(count: number, choice: PlaceChoice, loop = false): PlaceEffect {
   if (count === 0) return "start";
   if (choice === "start") return "replace-start";
+  if (loop) return "via";
   if (choice === "via" && count >= 2) return "via";
   return count === 1 ? "end" : "replace-end";
 }
@@ -601,8 +610,8 @@ export function placeEffect(count: number, choice: PlaceChoice): PlaceEffect {
  * then, as chosen, a new start, the destination (added after a lone start,
  * replacing an end), or a stop on the leg it lengthens least.
  */
-export function applyPlace(points: readonly LonLat[], point: LonLat, choice: PlaceChoice): LonLat[] {
-  switch (placeEffect(points.length, choice)) {
+export function applyPlace(points: readonly LonLat[], point: LonLat, choice: PlaceChoice, loop = false): LonLat[] {
+  switch (placeEffect(points.length, choice, loop)) {
     case "start":
     case "end":
       return [...points, point];
@@ -611,7 +620,7 @@ export function applyPlace(points: readonly LonLat[], point: LonLat, choice: Pla
     case "replace-end":
       return [...points.slice(0, -1), point];
     case "via":
-      return addPoint(points, point);
+      return addPoint(points, point, loop);
   }
 }
 

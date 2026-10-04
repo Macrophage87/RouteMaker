@@ -53,6 +53,7 @@ import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
+import { pointName } from "./lib/summary.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -94,6 +95,8 @@ export interface Frame {
 
 interface Props {
   points: LonLat[];
+  /** "Make it a loop" is on: the first point is the start and finish, the rest are stops (OWNER-DECISIONS 374). */
+  loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
   stressVisible: boolean;
@@ -158,10 +161,11 @@ const MAX_BOUNDS_PAD = 0.4;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
 
-function pointLabel(index: number, count: number): { text: string; name: string; kind: string } {
-  if (index === 0) return { text: "A", name: "Start", kind: "start" };
-  if (index === count - 1 && count > 1) return { text: "B", name: "End", kind: "end" };
-  return { text: String(index), name: `Stop ${index}`, kind: "via" };
+/** A marker's label. In a loop (OWNER-DECISIONS 374) the first is "Start and finish" and the rest are stops, never B or the end. */
+function pointLabel(index: number, count: number, loop: boolean): { text: string; name: string; kind: string } {
+  if (index === 0) return { text: "A", name: pointName(0, count, loop), kind: "start" };
+  if (!loop && index === count - 1 && count > 1) return { text: "B", name: "End", kind: "end" };
+  return { text: String(index), name: pointName(index, count, loop), kind: "via" };
 }
 
 type EditFeature =
@@ -653,6 +657,7 @@ export function MapView(props: Props) {
         pennColour: PENN_COLOUR,
         visibility: () => callbacks.current.rail,
         pointCount: () => callbacks.current.points.length,
+        loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
@@ -712,7 +717,7 @@ export function MapView(props: Props) {
     const focusInPopup = popup.current?.getElement().contains(document.activeElement) ?? false;
     closePopup(focusInPopup);
     markers.current = props.points.map((point, index) => {
-      const { text, name, kind } = pointLabel(index, props.points.length);
+      const { text, name, kind } = pointLabel(index, props.points.length, props.loopVias === true);
       const via = kind === "via";
       const element = document.createElement("div");
       element.className = `pin pin-${kind}`;
@@ -777,7 +782,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, markerDeps(props.points, props.markerReset));
+  }, [...markerDeps(props.points, props.markerReset), props.loopVias]);
 
   // The route line.
   useEffect(() => {

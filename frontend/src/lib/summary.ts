@@ -298,9 +298,16 @@ export function stillPlanningSaid(preset: string, dials: { stress: number } | un
   return calm ? "Still planning. Calm routes at this setting can take up to half a minute." : "Still planning.";
 }
 
-/** A point's name in the list: Start, Stop 1, Stop 2, ..., End. */
-export function pointName(index: number, count: number): string {
-  if (index === 0) return "Start";
-  if (index === count - 1 && count > 1) return "End";
+/**
+ * A point's name in the list: Start, Stop 1, Stop 2, ..., End. In a loop
+ * (OWNER-DECISIONS 374) the ride finishes at the start, so the first point is
+ * "Start and finish" and every other point is a stop, never the end.
+ */
+export function pointName(index: number, count: number, loop = false): string {
+  if (index === 0) return loop ? LOOP_START_NAME : "Start";
+  if (!loop && index === count - 1 && count > 1) return "End";
   return `Stop ${index}`;
 }
+
+/** The first point of a loop, where the ride starts and finishes. */
+export const LOOP_START_NAME = "Start and finish";

@@ -400,6 +400,8 @@ export interface GpxExport {
   routeText?: string;
   /** The plan's own points: start, vias, end. */
   planPoints: readonly LonLat[];
+  /** A loop the rider chose (OWNER-DECISIONS 374): the first point is "Start and finish" and the rest are stops. */
+  loop?: boolean;
   /** The route line. */
   geometry: readonly LonLat[];
 }
@@ -418,9 +420,9 @@ function position([lon, lat]: LonLat): string {
   return `lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"`;
 }
 
-export function planPointName(index: number, count: number): string {
-  if (index === 0) return "Start";
-  if (index === count - 1) return "End";
+export function planPointName(index: number, count: number, loop = false): string {
+  if (index === 0) return loop ? "Start and finish" : "Start";
+  if (!loop && index === count - 1) return "End";
   return `Stop ${index}`;
 }
 
@@ -457,7 +459,7 @@ export function writeGpx(input: GpxExport): string {
     lines.push(`    <type>${escapeXml(PLAN_TYPE_PREFIX + input.preset)}</type>`);
     input.planPoints.forEach((p, index) => {
       lines.push(`    <rtept ${position(p)}>`);
-      lines.push(`      <name>${planPointName(index, input.planPoints.length)}</name>`);
+      lines.push(`      <name>${planPointName(index, input.planPoints.length, input.loop === true)}</name>`);
       lines.push("    </rtept>");
     });
     lines.push("  </rte>");

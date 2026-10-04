@@ -56,7 +56,10 @@ export function PlaceSearch({
   gate,
   bias,
   onPick,
+  loop = false,
 }: {
+  /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
+  loop?: boolean;
   pointCount: number;
   /** The plan has as many points as a route can take. */
   full: boolean;
@@ -98,6 +101,7 @@ export function PlaceSearch({
     pointCount,
     full,
     chosen,
+    loop,
   });
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;

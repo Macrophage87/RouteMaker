@@ -24,7 +24,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
-import { loopNote } from "./lib/loop.ts";
+import { loopNote, loopStops } from "./lib/loop.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -110,6 +110,8 @@ export function App() {
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
   const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
   const planDials = useMemo(() => withWeight(dials, weight), [dials, weight]);
+  // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
+  const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -355,10 +357,10 @@ export function App() {
       return;
     }
     setNotice(null);
-    const next = addPoint(pointsRef.current, point);
+    const next = addPoint(pointsRef.current, point, loopVias);
     commit(next);
-    announce(`${pointName(next.indexOf(point), next.length)} added.`);
-  }, [commit, announce]);
+    announce(`${pointName(next.indexOf(point), next.length, loopVias)} added.`);
+  }, [commit, announce, loopVias]);
 
   const move = useCallback((index: number, point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -387,9 +389,9 @@ export function App() {
       }
       setNotice(null);
       commit(next);
-      announce(`Stop ${leg + 1} added, between ${pointName(leg, next.length)} and ${pointName(leg + 2, next.length)}.`);
+      announce(`Stop ${leg + 1} added, between ${pointName(leg, next.length, loopVias)} and ${pointName(leg + 2, next.length, loopVias)}.`);
     },
-    [commit, announce],
+    [commit, announce, loopVias],
   );
 
   // A station's Start here / End here / Add as stop (railStations.ts): an
@@ -399,15 +401,15 @@ export function App() {
       setNotice("That station is outside the area this map covers.");
       return;
     }
-    const edit = stationEdit(pointsRef.current, point, role);
+    const edit = stationEdit(pointsRef.current, point, role, loopVias);
     if ("refused" in edit) {
       if (edit.refused === "cap") setNotice(`A route can have at most ${MAX_POINTS} points.`);
       return;
     }
     setNotice(null);
     commit(edit.next);
-    announce(`${pointName(edit.index, edit.next.length)} set at the station.`);
-  }, [commit, announce]);
+    announce(`${pointName(edit.index, edit.next.length, loopVias)} set at the station.`);
+  }, [commit, announce, loopVias]);
 
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
@@ -415,6 +417,7 @@ export function App() {
     const point = pickIntoPlan(found, choice, {
       current: () => pointsRef.current,
       commit,
+      loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
     });
     if (point === null) return;
@@ -439,11 +442,11 @@ export function App() {
     (index: number) => {
       const current = pointsRef.current;
       if (index < 0 || index >= current.length) return;
-      const name = pointName(index, current.length);
+      const name = pointName(index, current.length, loopVias);
       commit(current.filter((_, i) => i !== index));
       announce(`${name} removed.`);
     },
-    [commit, announce],
+    [commit, announce, loopVias],
   );
   const clearAll = () => {
     setConfirmedKm(null);
@@ -580,6 +583,7 @@ export function App() {
       </h2>
       <PlaceSearch
         pointCount={points.length}
+        loop={loopVias}
         full={points.length >= MAX_POINTS}
         gate={geoGate}
         bias={searchBias}
@@ -588,21 +592,28 @@ export function App() {
       {points.length === 0 ? (
         <p className="hint">
           Search for a place, or click the map to set a start, then an end. Later clicks add a
-          stop on the nearest leg. Drag any marker to move it, or drag the route line to
+          stop on the nearest leg. Once the start is placed, you can turn on Make it a loop
+          under Adjust this ride; then each click after the start is a stop. Drag any marker to move it, or drag the route line to
           pull it through somewhere else (on a phone, press and hold the line first). Click a
           stop for Remove. From the keyboard, move the map with the arrow keys and use
           "Add point at map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (
         <PointsList
-          rows={pointRows(points, namer)}
+          rows={pointRows(points, namer, loopVias)}
           onRemove={removeAt}
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}
         />
       )}
-      {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
+      {points.length === 1 && (
+        <p className="hint">
+          {loopVias
+            ? "Now click the map to add a stop. The ride comes back to the start."
+            : "Now click the map where you want to finish, or turn on Make it a loop to come back here."}
+        </p>
+      )}
       {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
       <div className="actions">
         <button
@@ -745,6 +756,7 @@ export function App() {
       </a>
       <MapView
         points={points}
+        loopVias={loopVias}
         route={shown}
         stale={stale}
         stressVisible={stressVisible && stress === "available"}

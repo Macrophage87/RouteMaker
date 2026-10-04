@@ -427,8 +427,13 @@ export function allIconLines(stations: readonly Station[]): LineKey[][] {
 export type StationRole = "start" | "end" | "via";
 
 /** The roles a station can take in a plan of this many points. */
-export function stationRoles(count: number): StationRole[] {
+export function stationRoles(count: number, loop = false): StationRole[] {
   const roles: StationRole[] = ["start"];
+  // A loop finishes at its start and has no end to set; a stop can follow the start alone (OWNER-DECISIONS 374).
+  if (loop) {
+    if (count >= 1 && count < MAX_POINTS) roles.push("via");
+    return roles;
+  }
   if (count >= 1) roles.push("end");
   if (count >= 2 && count < MAX_POINTS) roles.push("via");
   return roles;
@@ -439,11 +444,11 @@ export function stationRoles(count: number): StationRole[] {
  * it lengthens least. Start and end replace what was there; a lone start gets
  * the station as its end.
  */
-export function placeAtStation(points: readonly LonLat[], point: LonLat, role: StationRole): LonLat[] {
-  if (!stationRoles(points.length).includes(role)) return [...points];
+export function placeAtStation(points: readonly LonLat[], point: LonLat, role: StationRole, loop = false): LonLat[] {
+  if (!stationRoles(points.length, loop).includes(role)) return [...points];
   if (role === "start") return points.length === 0 ? [point] : [point, ...points.slice(1)];
   if (role === "end") return points.length === 1 ? [points[0], point] : [...points.slice(0, -1), point];
-  return addPoint(points, point);
+  return addPoint(points, point, loop);
 }
 
 /** A station's Start here / End here / Add as via as an edit of the plan, or why it is not one. */
@@ -455,11 +460,11 @@ export type StationEdit = { next: LonLat[]; index: number } | { refused: "cap" |
  * ends. A via the 25-point cap leaves no room for is refused as "cap"; a role
  * the plan does not offer (a card opened for fewer points) as "role".
  */
-export function stationEdit(points: readonly LonLat[], point: LonLat, role: StationRole): StationEdit {
-  if (!stationRoles(points.length).includes(role)) {
+export function stationEdit(points: readonly LonLat[], point: LonLat, role: StationRole, loop = false): StationEdit {
+  if (!stationRoles(points.length, loop).includes(role)) {
     return { refused: role === "via" && points.length >= MAX_POINTS ? "cap" : "role" };
   }
-  const next = placeAtStation(points, point, role);
+  const next = placeAtStation(points, point, role, loop);
   const index = role === "start" ? 0 : role === "end" ? next.length - 1 : next.indexOf(point, 1);
   return { next, index };
 }

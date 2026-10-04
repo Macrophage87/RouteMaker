@@ -33,7 +33,8 @@ test("the toggle is off on a point-to-point ride, on and fixed on a round trip, 
   assert.match(implied.hint, /ends where it starts, so it is planned as a loop/);
   assert.match(off.hint, /a different way back/);
   assert.equal(loopView("mass-ride", true, [A, B]), null);
-  assert.equal(loopView("default", true, [A]), null);
+  // With the start alone it can be chosen (OWNER-DECISIONS 374).
+  assert.deepEqual([loopView("default", undefined, [A])!.checked, loopView("default", true, [A])!.checked], [false, true]);
   assert.equal(loopView("default", true, []), null);
 });
 

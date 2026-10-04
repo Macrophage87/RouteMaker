@@ -35,7 +35,7 @@ test("each Remove button says which point it removes", () => {
 
 test("App shows the list from pointRows, with its removal and focus wiring", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer\)\}\s+onRemove=\{removeAt\}/);
+  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer, loopVias\)\}\s+onRemove=\{removeAt\}/);
   assert.match(app, /removeRefs\.current\[index\] = button;/);
 });
 

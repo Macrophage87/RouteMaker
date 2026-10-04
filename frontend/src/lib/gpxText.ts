@@ -76,6 +76,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[]): GpxEx
     rideText: rideText(route),
     ...(gpxDescriptionText(route) ? { routeText: gpxDescriptionText(route) } : {}),
     planPoints: points,
+    ...(route.dials?.loop === true && route.preset !== "mass-ride" ? { loop: true } : {}),
     geometry: route.geometry.coordinates,
   };
 }

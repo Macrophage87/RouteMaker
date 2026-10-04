@@ -171,7 +171,7 @@ test("stops are Stop N in the points list, the announcements, the map and the GP
     assert.doesNotMatch(source, /`Via |"Via |Via point|via point|Add as via/, file);
   }
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /name: `Stop \$\{index\}`/);
+  assert.match(map, /name: pointName\(index, count, loop\)/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /announce\(`Stop \$\{leg \+ 1\} added,/);
 });

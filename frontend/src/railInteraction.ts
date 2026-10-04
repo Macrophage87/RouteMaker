@@ -29,6 +29,8 @@ export interface RailInteractionOptions {
   pennColour: string;
   visibility(): RailVisibility;
   pointCount(): number;
+  /** "Make it a loop" is on: a station can be a start or a stop, not an end (OWNER-DECISIONS 374). */
+  loop?(): boolean;
   onStationPoint(role: StationRole, point: LonLat): void;
 }
 
@@ -134,7 +136,7 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
       const content = summary(station, options, hit.elevator !== undefined);
       const actions = document.createElement("div");
       actions.className = "station-actions";
-      for (const role of stationRoles(options.pointCount())) {
+      for (const role of stationRoles(options.pointCount(), options.loop?.() === true)) {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = ROLE_TEXT[role];

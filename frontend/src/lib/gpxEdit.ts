@@ -34,9 +34,9 @@ export function rideAfterImport(
   return { preset: plan.preset, dials };
 }
 
-/** "Start", "Stop 3", "End": what RouteMaker's own export calls its points, which is no place name. ("Via 3" is what files from before the rename say.) */
+/** "Start", "Start and finish", "Stop 3", "End": what RouteMaker's own export calls its points, which is no place name. ("Via 3" is what files from before the rename say.) */
 function isRoleName(name: string): boolean {
-  return /^(Start|End|(?:Stop|Via) \d+)$/.test(name);
+  return /^(Start|Start and finish|End|(?:Stop|Via) \d+)$/.test(name);
 }
 
 /** The names the file gives its plan points, to show in the list as a search pick's name is. */

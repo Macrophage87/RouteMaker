@@ -100,7 +100,7 @@ test("App asks names for the plan's own points and renders the rows from pointRo
   // pointRows, and the pick goes through pickIntoPlan with App's commit.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /usePlaceNames\(points\)/);
-  assert.match(app, /pointRows\(points, namer\)/);
+  assert.match(app, /pointRows\(points, namer, loopVias\)/);
   assert.match(app, /pickIntoPlan\(found, choice, \{\s*current: \(\) => pointsRef\.current,\s*commit,/);
   assert.match(app, /remember: \(p, name, label\) => namer\.remember\(p, name, label\)/);
 });

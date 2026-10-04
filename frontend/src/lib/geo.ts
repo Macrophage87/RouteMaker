@@ -42,8 +42,15 @@ export function insideCoverage([lon, lat]: LonLat): boolean {
  * second the end; after that a click is a via, inserted on the leg it lengthens
  * least, so the start and end stay where the rider put them. Past the API's
  * ceiling the list is returned unchanged.
+ *
+ * With `loop` on (OWNER-DECISIONS 374) the ride is a cycle that starts and
+ * finishes at the first point, so every click after the start is a via: even
+ * the second click (no end to place), and the closing leg, last point back to
+ * the start, is a slot too. Choosing it appends the click as the new last
+ * point; a tie with another leg goes to the closing one, so the second click
+ * of a loop is the second place visited, not a place spliced before the first.
  */
-export function addPoint(points: readonly LonLat[], point: LonLat): LonLat[] {
+export function addPoint(points: readonly LonLat[], point: LonLat, loop = false): LonLat[] {
   if (points.length >= MAX_POINTS) return [...points];
   if (points.length < 2) return [...points, point];
   let bestIndex = 1;
@@ -55,6 +62,11 @@ export function addPoint(points: readonly LonLat[], point: LonLat): LonLat[] {
       bestCost = cost;
       bestIndex = i;
     }
+  }
+  if (loop) {
+    const last = points[points.length - 1];
+    const closing = haversineM(last, point) + haversineM(point, points[0]) - haversineM(last, points[0]);
+    if (closing <= bestCost) return [...points, point];
   }
   return [...points.slice(0, bestIndex), point, ...points.slice(bestIndex)];
 }

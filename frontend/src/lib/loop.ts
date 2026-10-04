@@ -1,6 +1,8 @@
 /**
  * Make it a loop (OWNER-DECISIONS 266): out to the destination and back to the start
  * by a different way. A ride that ends where it starts is one without asking.
+ * With the toggle on, the first point is the start and the finish and every later
+ * point is a stop (OWNER-DECISIONS 374): no second point is stacked on the start.
  */
 import type { RouteResponse } from "./api.ts";
 import type { PresetId } from "./presets.ts";
@@ -26,9 +28,22 @@ export interface LoopView {
 
 export const LOOP_LABEL = "Make it a loop";
 
-/** The toggle, or null where it does not apply (Mass Ride; fewer than two points). */
+/**
+ * Whether points are named and placed as a loop's: the rider turned "Make it a
+ * loop" on (OWNER-DECISIONS 374), so the first point is the start and finish and
+ * every later one a stop. Mass Ride has no loop. An implied loop (a ride that ends
+ * on its start without the toggle) keeps the usual names.
+ */
+export function loopStops(preset: PresetId, loop: boolean | undefined): boolean {
+  return preset !== "mass-ride" && loop === true;
+}
+
+/**
+ * The toggle, or null where it does not apply (Mass Ride; no points yet). With a
+ * start alone it can be chosen, and the next click is then a stop (374).
+ */
 export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[]): LoopView | null {
-  if (preset === "mass-ride" || points.length < 2) return null;
+  if (preset === "mass-ride" || points.length < 1) return null;
   const implied = isRoundTrip(points);
   return {
     label: LOOP_LABEL,
@@ -36,7 +51,9 @@ export function loopView(preset: PresetId, loop: boolean | undefined, points: re
     implied,
     hint: implied
       ? "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way."
-      : "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.",
+      : loop === true
+        ? "Starts and finishes at your first point. Each point you add after it is a stop on the way round, and the way back avoids the roads the way out used where there is another way."
+        : "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.",
   };
 }
 
