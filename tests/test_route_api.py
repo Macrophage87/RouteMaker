@@ -82,6 +82,8 @@ CONTRACT_KEYS = {
     "loop",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
+    # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
+    "bikeshare",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -608,7 +610,7 @@ class TestStressBreakdown:
 
 @db
 class TestWhatIsSentToTheRouter:
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:
         """PLAN, Stats source: the trace goes to the same variant and costing
         as the route that produced the shape."""
@@ -1187,7 +1189,7 @@ class TestTheTraceRequest:
         post(client, good_body())
         assert {loc["type"] for loc in fake.calls[0][1]["locations"]} == {"break"}
 
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_the_answer_names_the_variant_that_routed_it(
         self, name, client, segments, router
     ) -> None:

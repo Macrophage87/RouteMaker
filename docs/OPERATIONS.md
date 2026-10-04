@@ -4099,3 +4099,12 @@ route chart width estimate).
   Montgomery Planning files. The 2026-10-03 clipped extract is kept as
   `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
   was made. The old api ignores an `offroad` row in `valhalla_upstream`.
+## Bikeshare feeds
+
+The api container makes outbound HTTPS requests to the bikeshare operator's official GBFS feeds
+(`gbfs.capitalbikeshare.com`, `gbfs.lyft.com`; `core.gbfs`), at most once a minute per api worker
+while anyone is planning a Bikeshare route. They carry nothing of the visitor. If the feeds do not
+answer, Bikeshare plans answer 503 with `code: bikeshare_unavailable` when the station list is
+missing, and plan with "availability unknown" notes when only the availability feed is. The
+operator may end the data licence at will (OWNER-DECISIONS 300); removing the ride type is
+removing `bikeshare` from `core.presets.PRESETS`, the Caddyfile redirect and the front end's list.

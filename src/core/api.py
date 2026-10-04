@@ -25,6 +25,12 @@ slots are all busy or the request's time budget ran out (a long ride's with
 `"code": "long_ride_timed_out"`, not to be resent unasked), and 500 for anything
 else - never a traceback, whatever DEBUG says.
 
+A Bikeshare plan (`preset: "bikeshare"`, `core.bikeshare`) adds two answers of its own, each with
+a `code`: 422 `no_bikeshare` where no dock can start or end the ride (no bike of the type, no free
+slot, nothing in reach, no way on foot), and 503 `bikeshare_unavailable` with Retry-After where the
+operator's station list could not be had. A missing availability feed is not an error: the plan
+is made and says availability is unknown.
+
 The checks run in this order, outermost first: the content type and declared
 body size, then the per-minute count, then the in-flight slots, then Ninja's
 parse and validation. The content type comes before the count on purpose: a
@@ -49,7 +55,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing, segment_info
+from . import bikeshare, gbfs, geocode, presets, ratelimit, routing, segment_info
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +143,8 @@ LonLat = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 PresetName = Literal[tuple(presets.PRESETS)]  # type: ignore[valid-type]
 WhenName = Literal[ridetime.WHENS]  # type: ignore[valid-type]
 CarryingName = Literal[presets.CARRYING_CARGO, presets.CARRYING_PEOPLE]
+BikeName = Literal[presets.BIKE_CLASSIC, presets.BIKE_EBIKE]
+EndingName = Literal[bikeshare.ENDING_DOCK, bikeshare.ENDING_OUTSIDE]
 
 
 class RouteIn(Schema):
@@ -226,6 +234,22 @@ class RouteIn(Schema):
             " answer's `loop` says how much it shares. Not on Mass Ride."
         ),
     )
+    bike: BikeName | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 243): `classic` (a few gears, heavier and slower,"
+            " hill-averse) or `ebike` (hills barely count, assisted pace). Absent: classic."
+        ),
+    )
+    ending: EndingName | None = Field(
+        default=None,
+        description=(
+            "Bikeshare e-bike only (OWNER-DECISIONS 244): `dock` ends at the nearest dock with a"
+            " free slot, `outside_dock` at the destination itself, outside a dock, where the"
+            " operator's zone data allows it (otherwise the plan ends at a dock and says why)."
+            " Absent: dock."
+        ),
+    )
     target_distance_m: StrictInt | None = Field(
         default=None,
         ge=presets.TARGET_DISTANCE_MIN_M,
@@ -264,8 +288,20 @@ class RouteIn(Schema):
                 "Mass Ride keeps to the most direct roadway: a field that takes the road is not"
                 " steered onto side streets, so the traffic slider stays at its lowest"
             )
-        if self.assist and preset.assist_speed_kmh is None:
+        if self.assist and (preset.assist_speed_kmh is None or self.preset == presets.BIKESHARE):
             raise ValueError("assist applies to the Cargo Bike ride type only")
+        if self.preset == presets.BIKESHARE:
+            if len(self.points) != 2:
+                raise ValueError(
+                    "Bikeshare plans take a start and an end: the walk, the ride between docks"
+                    " and the walk are planned from those two points"
+                )
+            if self.loop:
+                raise ValueError("Bikeshare does not plan loops")
+            if self.ending == bikeshare.ENDING_OUTSIDE and (self.bike or "classic") != "ebike":
+                raise ValueError("only an e-bike can end outside a dock")
+        elif self.bike is not None or self.ending is not None:
+            raise ValueError("bike and ending apply to the Bikeshare ride type only")
         return self
 
     @field_validator("system_weight_kg")
@@ -315,11 +351,12 @@ class ConfirmLongOut(Schema):
 
 class BusyOut(Schema):
     error: str
-    code: Literal["long_ride_timed_out"] | None = Field(
+    code: Literal["long_ride_timed_out", "bikeshare_unavailable"] | None = Field(
         default=None,
         description=(
-            "Present only when a long ride ran out of its time budget: show it, and do not"
-            " resend it without the rider asking."
+            "`long_ride_timed_out`: a long ride ran out of its time budget: show it, and do not"
+            " resend it without the rider asking. `bikeshare_unavailable`: the operator's station"
+            " list could not be had."
         ),
     )
 
@@ -937,6 +974,99 @@ class ProfileOut(Schema):
     )
 
 
+class BikeshareStopOut(Schema):
+    """A dock, a free-floating e-bike or the destination, as the plan uses it."""
+
+    kind: Literal["dock", "free_bike", "outside_dock"]
+    name: str
+    lon: float
+    lat: float
+    station_id: str | None = Field(default=None, description="The operator's id for a dock.")
+    availability: Literal["known", "unknown"]
+    bikes_available: int | None = Field(
+        description="Bikes of the chosen type at the dock; null: unknown or not a dock."
+    )
+    classic_available: int | None = None
+    ebikes_available: int | None = None
+    docks_available: int | None = Field(description="Free slots; null: unknown or not a dock.")
+
+
+class BikeshareWalkOut(Schema):
+    """A walk leg (Valhalla pedestrian costing)."""
+
+    geometry: LineString
+    distance_m: float
+    duration_s: float
+    to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
+
+
+class BikeshareFeeOut(Schema):
+    name: str
+    price: str = Field(description="As the operator publishes it, a decimal string.")
+    currency: str
+    description: str = Field(description="The operator's own words for the plan.")
+
+
+class BikeshareEndingOut(Schema):
+    """One way to end the ride (OWNER-DECISIONS 244). An E-bike has two: the dock, and the
+    destination outside a dock where the operator's zone data allows it."""
+
+    kind: Literal["dock", "outside_dock"]
+    offered: bool
+    chosen: bool = Field(description="Whether this plan ends this way.")
+    reason: str | None = Field(
+        description=(
+            "Why an ending is not offered: `no_zone_data`, `zones_unreadable`,"
+            " `no_parking_zone` or `classic_bikes_end_at_docks`."
+        )
+    )
+    reason_text: str | None
+    fee: BikeshareFeeOut | None = Field(
+        description=(
+            "The out-of-dock fee, read from the operator's pricing plans, never assumed; null"
+            " where no plan names one. Information, not a quote."
+        )
+    )
+    fee_text: str | None
+    walk_m: float | None = Field(description="The walk from the dock to the destination.")
+    text: str
+
+
+class BikeshareStepOut(Schema):
+    kind: Literal["walk", "ride"]
+    text: str
+
+
+class BikesharePlanOut(Schema):
+    """The walks, docks, availability, fee and notes of a bikeshare plan
+    (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
+    walks are here."""
+
+    bike: BikeName
+    ending: EndingName
+    start: BikeshareStopOut
+    end: BikeshareStopOut
+    walk_start: BikeshareWalkOut | None
+    walk_end: BikeshareWalkOut | None
+    ride_m: float
+    ride_s: float
+    walk_m: float
+    walk_s: float
+    total_s: float = Field(description="Walking and riding, without stops.")
+    availability: Literal["live", "stale", "unknown"] = Field(
+        description="`unknown`: the operator's availability feed could not be read."
+    )
+    endings: list[BikeshareEndingOut]
+    pricing: list[BikeshareFeeOut] = Field(
+        description="E-bike: the operator's price plans, as information."
+    )
+    pricing_note: str | None
+    steps: list[BikeshareStepOut]
+    summary: str = Field(description="The plan in plain words, US units first, for reading aloud.")
+    notes: list[str]
+    credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
@@ -1083,6 +1213,13 @@ class CandidateOut(RouteBody):
 
 
 class RouteOut(RouteBody):
+    bikeshare: BikesharePlanOut | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 243-245): the walks, docks, availability, fee and"
+            " notes around this body, which is the ride leg between the docks."
+        ),
+    )
     rank: int | None = Field(
         default=None, description="1 where `candidates` has others: the answer's own place."
     )
@@ -1287,8 +1424,67 @@ def _stress_of(body: RouteIn) -> int:
     return presets.stress_start(body.preset, body.carrying)
 
 
+def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
+    """A Bikeshare plan (`core.bikeshare`): the operator's feeds, the walks and the ride."""
+    if started is None:
+        started = routing.clock()
+    bike = body.bike or presets.BIKE_CLASSIC
+    profile = presets.BIKESHARE_BIKES[bike]
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=profile.hills if body.hills is None else body.hills,
+        when=body.when,
+        assist=profile.assist,
+        avoid_gravel=body.avoid_gravel,
+        target_distance_m=body.target_distance_m,
+        system_weight_kg=body.system_weight_kg or profile.system_weight_kg,
+    )
+    deadline = routing.Deadline(
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, routing.ROUTER_TIMEOUT_S
+    )
+    snapshot = gbfs.client.snapshot()
+    services = bikeshare.RoutingServices(
+        deadline,
+        lambda points: routing.plan(
+            points, presets.BIKESHARE, long_ride=False, started=started, dials=dials
+        ),
+    )
+    return bikeshare.plan(
+        body.points[0],
+        body.points[1],
+        bike,
+        body.ending or bikeshare.ENDING_DOCK,
+        snapshot,
+        services,
+        profile.speed_kmh,
+    )
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):
     started = getattr(request, "routing_started", None)
+    if body.preset == presets.BIKESHARE:
+        try:
+            return Status(200, _bikeshare_body(body, started))
+        except bikeshare.NoBikeshare as refusal:
+            return JsonResponse({"error": str(refusal), "code": "no_bikeshare"}, status=422)
+        except gbfs.Unavailable:
+            refusal = JsonResponse(
+                {
+                    "error": (
+                        "Bikeshare station data is not available right now, so no dock can be "
+                        "chosen. Try again shortly."
+                    ),
+                    "code": "bikeshare_unavailable",
+                },
+                status=503,
+            )
+            refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+            return refusal
+        except (
+            routing.TooLong,
+            routing.NoRoute,
+            routing.RouterUnavailable,
+            routing.DeadlineExceeded,
+        ) as error:
+            return _router_refusal(error, body)
     try:
         dials = routing.Dials(
             stress=body.stress,
@@ -1307,11 +1503,22 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
                 body.points, body.preset, long_ride=long_ride, started=started, dials=dials
             ),
         )
-    except routing.TooLong:
+    except (
+        routing.TooLong,
+        routing.NoRoute,
+        routing.RouterUnavailable,
+        routing.DeadlineExceeded,
+    ) as error:
+        return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _router_refusal(error: Exception, body: RouteIn, long_plan: bool = False):
+    """The answer for a router error, the same for every ride type."""
+    if isinstance(error, routing.TooLong):
         return Status(400, {"error": ROUTER_TOO_LONG})
-    except routing.NoRoute as no_route:
+    if isinstance(error, routing.NoRoute):
         message = "No route joins these points on this preset."
-        if no_route.no_path and presets.PRESETS[body.preset].variant == "no-trail":
+        if error.no_path and presets.PRESETS[body.preset].variant == "no-trail":
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
@@ -1319,26 +1526,25 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
                 " no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
-    except routing.RouterUnavailable:
+    if isinstance(error, routing.RouterUnavailable):
         return Status(502, {"error": "The router is not answering; try again shortly."})
-    except routing.DeadlineExceeded:
-        # A JsonResponse rather than Status, so an ordinary 503 stays exactly
-        # {"error"} instead of carrying "code": null.
-        if long_ride or long_calm:
-            refusal = JsonResponse(
-                {
-                    "error": (
-                        "Planning this long ride ran out of time. Try again in"
-                        f" {DEADLINE_RETRY_S} seconds, or split it into shorter parts."
-                    ),
-                    "code": LONG_RIDE_TIMED_OUT,
-                },
-                status=503,
-            )
-        else:
-            refusal = _error(503, "Planning this route took too long; try again shortly.")
-        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
-        return refusal
+    # A JsonResponse rather than Status, so an ordinary 503 stays exactly
+    # {"error"} instead of carrying "code": null.
+    if long_plan:
+        refusal = JsonResponse(
+            {
+                "error": (
+                    "Planning this long ride ran out of time. Try again in"
+                    f" {DEADLINE_RETRY_S} seconds, or split it into shorter parts."
+                ),
+                "code": LONG_RIDE_TIMED_OUT,
+            },
+            status=503,
+        )
+    else:
+        refusal = _error(503, "Planning this route took too long; try again shortly.")
+    refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+    return refusal
 
 
 class CoverageGeometry(Schema):

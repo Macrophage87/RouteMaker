@@ -30,6 +30,8 @@ CONTRACT_PRESETS = {
     "fast",
     "cargo",
     "ebike",
+    # FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245, 299).
+    "bikeshare",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -360,6 +362,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         "trailmaxxing": 0.06,
         "gravel": 0.06,
         "ebike": 0.06,
+        # Bikeshare's is the implementation's proposal, not the owner's table: a heavy
+        # share bike brakes early (core.presets, "Bikeshare").
+        "bikeshare": 0.04,
         "mountain-goat": None,
         "fast": None,
     }

@@ -5448,3 +5448,35 @@ map and the canvas's name, Escape back to the map, the button and Close back to 
 help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
 opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
 /api/segment-info.
+## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301)
+
+`POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and
+optionally `ending` (`dock`, or `outside_dock` for an e-bike) plans a walk, a ride dock to dock and
+a walk. Two points only. The answer is the ride leg's route body, with the walks, docks,
+availability, fee information and notes under `bikeshare` (`core.api.BikesharePlanOut`).
+
+- `core/gbfs.py`: the operator's official GBFS feeds. In-memory snapshot, `CACHE_TTL_S` 60 s, a
+  `STALE_GRACE_S` of 120 s when a refresh fails, `FAILURE_PAUSE_S` 15 s before trying again; only
+  `https` on `ALLOWED_HOSTS`, redirects included; nothing is written, republished or exported, and
+  a request carries no user data (no cookie, no address, no body). A feed that fails is "unknown",
+  never "empty": no `station_status` means availability is unknown and the plan says so.
+- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
+  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
+  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
+  Valhalla pedestrian costing on the standard graph at 3 mph.
+- The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
+  exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
+  hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
+- The out-of-dock ending (244) needs the operator's `geofencing_zones` (GBFS 2.1) and a destination in
+  no zone that bars ending a ride. The operator publishes none today, so only docks are offered, and
+  the answer says why (`endings[].reason`). The fee is read from `system_pricing_plans`, matched by
+  what the plan says (`gbfs.OUT_OF_DOCK`); with none named the answer says the fee is not in the
+  operator's data. Fees are shown as information, never as a quote, and none is built in.
+- Tiles: the standard graph is built with `include_pedestrian: true`; a pedestrian route over it was
+  checked on 2026-10-04 (Union Station to the Capitol area, 1.04 km). The graph's stress remap can
+  make a cycleway cost like a path closed to pedestrians for bicycles only; walking uses Valhalla's
+  own pedestrian costing and is not routed by stress.
+- Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py` (fixtures in
+  `tests/data/gbfs`, a sample and not a dataset), `frontend/src/lib/bikeshare.test.ts`, section 13 of
+  `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.

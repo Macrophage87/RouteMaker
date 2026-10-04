@@ -61,7 +61,7 @@ export const LOOP_START_NAME = "Start and finish";
  * on its start without the toggle) keeps the usual names.
  */
 export function loopStops(preset: PresetId, loop: boolean | undefined): boolean {
-  return preset !== "mass-ride" && loop === true;
+  return preset !== "mass-ride" && preset !== "bikeshare" && loop === true;
 }
 
 /**
@@ -90,7 +90,7 @@ function loopHint(loop: boolean | undefined, implied: boolean, count: number): s
  * (OWNER-DECISIONS 374).
  */
 export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[]): LoopView | null {
-  if (preset === "mass-ride") return null;
+  if (preset === "mass-ride" || preset === "bikeshare") return null;
   const implied = isRoundTrip(points);
   return { label: LOOP_LABEL, checked: implied || loop === true, implied, hint: loopHint(loop, implied, points.length) };
 }

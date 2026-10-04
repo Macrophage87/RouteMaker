@@ -8,7 +8,7 @@
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
 import { parsePreset, type PresetId } from "./presets.ts";
-import { STRESS_DEFAULT_AT, fitDials, isCarrying, isWhen, type Dials } from "./dials.ts";
+import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
 /**
@@ -54,6 +54,10 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
     // "Make it a loop" (OWNER-DECISIONS 266); absent is off.
     if (dials.loop) params.set("loop", "1");
+    // Bikeshare (OWNER-DECISIONS 243, 244): the bike, and an e-bike's ending outside a dock. New
+    // fields an older link does not have, so the link's version stays 2.
+    if (dials.bike) params.set("bike", dials.bike);
+    if (dials.bike === "ebike" && dials.ending === "outside_dock") params.set("ending", "outside");
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
 }
@@ -91,6 +95,8 @@ export function decodePlan(hash: string): Plan {
     carrying: isCarrying(carrying) ? carrying : null,
     assist: params.get("assist") === "1",
     avoidGravel: params.get("avoidgravel") === "1",
+    ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
+    ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),
   });
   return { points, preset, dials };
 }

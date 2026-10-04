@@ -557,6 +557,61 @@ export const S_MASS_OUTSIDE_DC = (() => {
   r.profile.flow = { ...r.profile.flow, narrowest_m: 600 };
   return r;
 })();
+/**
+ * A Bikeshare plan (FOLLOWUP-BIKESHARE): the route body is the ride between the docks, and
+ * `bikeshare` has the walks, docks, availability, endings and notes. The words are the API's
+ * (core.bikeshare); the source citation is core.gbfs.CREDIT.
+ */
+const BIKESHARE_CREDIT = "Bikeshare station data: Capital Bikeshare (operated by Lyft), GBFS feed";
+const dockStop = (kind, name, at, bikes, docks) => ({
+  kind, name, lon: at[0], lat: at[1], station_id: `fx-${name.length}`, availability: "known", bikes_available: bikes, docks_available: docks,
+});
+export const S_BIKESHARE = (() => {
+  const r = copy();
+  r.preset = "bikeshare";
+  r.distance_m = 3400;
+  r.duration_s = 940;
+  r.dials = { stress: 80, hills: -60, when: "weekday", carrying: null, assist: false };
+  r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
+  r.attribution = [...BASE.attribution, BIKESHARE_CREDIT];
+  const start = coords[0];
+  const end = coords[40];
+  r.bikeshare = {
+    bike: "classic",
+    ending: "dock",
+    start: dockStop("dock", "Columbus Circle / Union Station", start, 5, 40),
+    end: dockStop("dock", "20th & O St NW / Dupont South", end, 0, 14),
+    walk_start: { geometry: { type: "LineString", coordinates: [[start[0] - 0.001, start[1] + 0.0005], start] }, distance_m: 130, duration_s: 97, to: "Columbus Circle / Union Station" },
+    walk_end: { geometry: { type: "LineString", coordinates: [end, [end[0] + 0.001, end[1] - 0.0005]] }, distance_m: 160, duration_s: 120, to: "your destination" },
+    ride_m: 3400, ride_s: 940, walk_m: 290, walk_s: 217, total_s: 1157,
+    availability: "live",
+    endings: [{ kind: "dock", offered: true, chosen: true, reason: null, reason_text: null, fee: null, fee_text: null, walk_m: 160, text: "End at the dock at 20th & O St NW / Dupont South, then walk 520 ft (160 m) to your destination." }],
+    pricing: [],
+    pricing_note: null,
+    steps: [
+      { kind: "walk", text: "Walk 430 ft (130 m) to the dock at Columbus Circle / Union Station, take a classic bike (5 available)." },
+      { kind: "ride", text: "Ride 2.1 mi (3.4 km) to the dock at 20th & O St NW / Dupont South (14 free slots)." },
+      { kind: "walk", text: "Return the bike, then walk 520 ft (160 m) to your destination." },
+    ],
+    summary: "Bikeshare, classic bike: about 19 min in all. Walk 430 ft (130 m) to the dock at Columbus Circle / Union Station, take a classic bike (5 available). Ride 2.1 mi (3.4 km) to the dock at 20th & O St NW / Dupont South (14 free slots). Return the bike, then walk 520 ft (160 m) to your destination.",
+    notes: ["The nearest dock, Union Station Plaza, 0.1 mi (0.2 km) away, has no classic bikes right now; the plan uses a farther one."],
+    credit: BIKESHARE_CREDIT,
+  };
+  return r;
+})();
+/** The same on an e-bike, with the out-of-dock ending on offer beside the dock (zones read, a fee in the data). */
+export const S_BIKESHARE_EBIKE = (() => {
+  const r = JSON.parse(JSON.stringify(S_BIKESHARE));
+  r.dials = { ...r.dials, hills: -20, assist: true };
+  r.bikeshare.bike = "ebike";
+  r.bikeshare.endings.push({
+    kind: "outside_dock", offered: true, chosen: false, reason: null, reason_text: null,
+    fee: { name: "Out-of-dock fee", price: "2.00", currency: "USD", description: "Leaving an e-bike outside a dock costs 2.00 USD." },
+    fee_text: "The operator's data lists Out-of-dock fee: 2.00 USD. Leaving an e-bike outside a dock costs 2.00 USD.",
+    walk_m: null, text: "End at your destination, outside a dock. The operator's data lists Out-of-dock fee: 2.00 USD.",
+  });
+  return r;
+})();
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
 
