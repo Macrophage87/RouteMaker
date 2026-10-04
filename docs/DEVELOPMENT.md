@@ -656,9 +656,12 @@ tier and under the switch, the unpaved mark and the path rail left off unpaved
 trails at every tier and ride time, the rail widths),
 `stressContrast.test.ts` (3:1 for every tier, plain and strong), the a11y
 harness's 8 checks of the lane switch (`scripts/a11y/check.mjs`), and
-`tests/test_describe.py` for `text_lanes_hidden` and `surface`. The 46 mutants
-of the r1 revision were run on a scratch copy and all killed; 11 more on the
-lane switch at r0 were all killed.
+`tests/test_describe.py` for `text_lanes_hidden` and `surface`. The mutants are
+`scripts/mutants_salience.py` (`--check`, `--runner`): the salience
+developer's r0 and r1 mutants, first run ad hoc, the release review's seams, and
+new ones for the legend, `cvd` Avoid's casing, the brown unpaved ramp (302) and
+the credits (301). The front-end ones are 71 of 71 killed; the Python ones need a
+`PGDATABASE`.
 
 ### The federal-land overlay (items 236-239, the map part)
 
