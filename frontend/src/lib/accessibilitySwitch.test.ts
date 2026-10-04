@@ -38,6 +38,7 @@ import {
   setAccessibility,
   storedAccessibility,
   stressCasingLayers,
+  gapLayers,
   stressLayers,
   styleKey,
   subscribePalette,
@@ -589,6 +590,19 @@ test("repaint wiring: the overlay's lines and casings, in colour and width, and 
   assert.equal(paint.length, TIERS.length * 5 + FACILITIES.length);
   // Every call set a colour or a width (a casing's gap included) and nothing else.
   assert.ok(paint.every(([, name]) => name === "line-color" || name === "line-width" || name === "line-gap-width"));
+});
+
+test("repaint wiring: LTS 2's gap layer (OWNER-DECISIONS 356) is repainted with the rest, in its colour and width", () => {
+  const { map, paint } = recordingMap(["stress-gap-2"], undefined);
+  withSwitch(true, () => setStressPalette(map as never));
+  const gap = (gapLayers("stress", undefined, tiersFor("cvd", true)) as Array<{ id: string; paint: Record<string, unknown> }>).find((l) => l.id === "stress-gap-2")!;
+  assert.deepEqual(
+    paint.map(([id, name, value]) => [id, name, JSON.stringify(value)]),
+    [
+      ["stress-gap-2", "line-color", JSON.stringify(gap.paint["line-color"])],
+      ["stress-gap-2", "line-width", JSON.stringify(gap.paint["line-width"])],
+    ],
+  );
 });
 
 test("repaint wiring: a layer the map does not have (the overlay unavailable) is skipped, not an error", () => {
