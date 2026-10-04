@@ -111,8 +111,10 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
   const first = loop
     ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
     : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
-  const toggle =
-    loop || preset === "mass-ride"
+  // After Clear the toggle stays on but is hidden until there is a start, so say how to get a one-way ride.
+  const toggle = loop
+    ? ` ${LOOP_LABEL} is on; once the start is placed, you can turn it off ${TOGGLE_PLACE}.`
+    : preset === "mass-ride"
       ? ""
       : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE};` +
         " then each click after the start is a stop.";
@@ -126,12 +128,13 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
   );
 }
 
-/** The hint with the start alone. */
+/** The hint with the start alone, with the keyboard's way to place the next point. */
 export function loneStartHint(preset: PresetId, loop: boolean): string {
-  if (loop) return "Now click the map to add a stop. The ride comes back to the start.";
-  if (preset === "mass-ride") return "Now click the map where you want to finish.";
+  const keys = 'or use "Add point at map center"';
+  if (loop) return `Now click the map to add a stop, ${keys}. The ride comes back to the start.`;
+  if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
   return (
-    `Now click the map where you want to finish, or turn on ${LOOP_LABEL} ${TOGGLE_PLACE}` +
-    " to finish back at the start."
+    `Now click the map where you want to finish, ${keys}. To finish back at the start instead,` +
+    ` turn on ${LOOP_LABEL} ${TOGGLE_PLACE}.`
   );
 }

@@ -7,7 +7,7 @@ import {
   dragPreview,
   dropStillValid,
   guessLegEnds,
-  insertIntoLeg,
+  insertIntoRide,
   legEnds,
   legOfSegment,
   nearestOnPath,
@@ -172,8 +172,8 @@ test("a via dragged from a leg goes into that leg, between its two points", () =
     [-77.0, 38.95],
   ];
   const via: LonLat = [-77.02, 38.93];
-  assert.deepEqual(insertIntoLeg(points, 0, via), [points[0], via, points[1], points[2]]);
-  assert.deepEqual(insertIntoLeg(points, 1, via), [points[0], points[1], via, points[2]]);
+  assert.deepEqual(insertIntoRide(points, 0, via, false), [points[0], via, points[1], points[2]]);
+  assert.deepEqual(insertIntoRide(points, 1, via, false), [points[0], points[1], via, points[2]]);
 });
 
 test("the grabbed leg wins over the leg a click there would lengthen least", () => {
@@ -186,17 +186,17 @@ test("the grabbed leg wins over the leg a click there would lengthen least", () 
   ];
   const via: LonLat = [-77.005, 38.93];
   assert.equal(addPoint(points, via).indexOf(via), 2);
-  assert.equal(insertIntoLeg(points, 0, via)?.indexOf(via), 1);
+  assert.equal(insertIntoRide(points, 0, via, false)?.indexOf(via), 1);
 });
 
 test("a full route takes no more vias, and a leg that is not there takes none", () => {
   const full: LonLat[] = Array.from({ length: MAX_POINTS }, (_, i) => [-77 + i * 0.001, 38.9]);
-  assert.equal(insertIntoLeg(full, 3, [-77, 38.95]), null);
+  assert.equal(insertIntoRide(full, 3, [-77, 38.95], false), null);
   const two: LonLat[] = [full[0], full[1]];
-  assert.equal(insertIntoLeg(two, 1, [-77, 38.95]), null);
-  assert.equal(insertIntoLeg(two, -1, [-77, 38.95]), null);
-  assert.equal(insertIntoLeg([L[0], L[2], L[4]], 0.5, [-77, 38.95]), null, "a leg is a whole number");
-  assert.equal(insertIntoLeg(full.slice(0, MAX_POINTS - 1), 0, [-77, 38.95])?.length, MAX_POINTS);
+  assert.equal(insertIntoRide(two, 1, [-77, 38.95], false), null);
+  assert.equal(insertIntoRide(two, -1, [-77, 38.95], false), null);
+  assert.equal(insertIntoRide([L[0], L[2], L[4]], 0.5, [-77, 38.95], false), null, "a leg is a whole number");
+  assert.equal(insertIntoRide(full.slice(0, MAX_POINTS - 1), 0, [-77, 38.95], false)?.length, MAX_POINTS);
 });
 
 test("the preview runs from the grabbed leg's two points to the cursor", () => {

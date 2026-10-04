@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
-import { dragPreview, insertIntoLeg, insertIntoRide, legEnds, legPoints, validLegEnds } from "./lineEdit.ts";
+import { dragPreview, insertIntoRide, legEnds, legPoints, validLegEnds } from "./lineEdit.ts";
 import { canReverse, reverseKeepsStart, reversedPoints } from "./loop.ts";
 import { insertedSaid } from "./pointText.ts";
 import { pointName } from "./summary.ts";
@@ -45,7 +45,8 @@ test("a drag on a loop's closing leg appends the stop, as a click there does", (
 
 test("off the loop a drag inserts as before", () => {
   const P = mid(B, C);
-  for (const leg of [0, 1]) assert.deepEqual(insertIntoRide([A, B, C], leg, P, false), insertIntoLeg([A, B, C], leg, P));
+  assert.deepEqual(insertIntoRide([A, B, C], 0, P, false), [A, P, B, C]);
+  assert.deepEqual(insertIntoRide([A, B, C], 1, P, false), [A, B, P, C]);
 });
 
 test("the point cap holds on the closing leg", () => {

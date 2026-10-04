@@ -651,7 +651,7 @@ export function App() {
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias)}</p>}
-      {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
+      {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
       <div className="actions">
         <button
           type="button"

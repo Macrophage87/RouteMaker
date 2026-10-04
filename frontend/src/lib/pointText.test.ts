@@ -135,7 +135,8 @@ test("the empty-plan hint: start then stops in a loop; the toggle offered only w
   const loop = emptyPlanHint("default", true);
   assert.match(loop, /set a start, then add stops/);
   assert.doesNotMatch(loop, /then an end/);
-  assert.doesNotMatch(loop, new RegExp(LOOP_LABEL));
+  // After Clear the toggle stays on, hidden until there is a start: say so, and how to turn it off.
+  assert.match(loop, /Make it a loop is on; once the start is placed, you can turn it off under Adjust this ride\./);
   const plain = emptyPlanHint("default", false);
   assert.match(plain, /set a start, then an end/);
   assert.match(plain, /turn on Make it a loop under Adjust this ride/);
@@ -149,12 +150,19 @@ test("the empty-plan hint: start then stops in a loop; the toggle offered only w
 });
 
 test("the lone-start hint: a stop next in a loop; the toggle offered only where the ride type has one", () => {
-  assert.equal(loneStartHint("default", true), "Now click the map to add a stop. The ride comes back to the start.");
+  assert.equal(
+    loneStartHint("default", true),
+    'Now click the map to add a stop, or use "Add point at map center". The ride comes back to the start.',
+  );
   assert.equal(
     loneStartHint("default", false),
-    "Now click the map where you want to finish, or turn on Make it a loop under Adjust this ride to finish back at the start.",
+    'Now click the map where you want to finish, or use "Add point at map center". To finish back at the start' +
+      " instead, turn on Make it a loop under Adjust this ride.",
   );
-  assert.equal(loneStartHint("mass-ride", false), "Now click the map where you want to finish.");
+  assert.equal(
+    loneStartHint("mass-ride", false),
+    'Now click the map where you want to finish, or use "Add point at map center".',
+  );
   assert.doesNotMatch(loneStartHint("mass-ride", false), /loop/i);
 });
 

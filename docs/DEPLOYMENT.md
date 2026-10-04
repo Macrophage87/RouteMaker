@@ -1173,7 +1173,7 @@ What the map shows and credits:
   metres per stress tier.
 - Everything outside the covered area (`/api/coverage`) is greyed out, with a
   thin dark line at the edge, over the base map and under its labels and the
-  overlay; the planner says "Grey areas are outside what RouteMaker covers."
+  overlay; the planner says "Gray areas are outside what RouteMaker covers."
   If `/api/coverage` does not answer, the map is shown without the mask.
 - The plan (points and ride type) lives in the URL fragment, so a link reopens
   it; a fragment is never sent to a server, and nothing signed out is saved.

@@ -140,24 +140,14 @@ export function legPoints(points: readonly LonLat[], loop: boolean): LonLat[] {
 
 /**
  * The rider's points with `via` put into leg `leg` of `legPoints(points,
- * loop)`. The closing leg of a loop (leg `points.length - 1`) appends it.
- * Null at the cap, or for no such leg.
+ * loop)`, between points[leg] and points[leg + 1]. The closing leg of a loop
+ * (leg `points.length - 1`) appends it. Null when the route already has the
+ * most points one request may carry, or for no such leg.
  */
 export function insertIntoRide(points: readonly LonLat[], leg: number, via: LonLat, loop: boolean): LonLat[] | null {
   const legs = legPoints(points, loop).length - 1;
   if (points.length >= MAX_POINTS) return null;
   if (!Number.isInteger(leg) || leg < 0 || leg >= legs) return null;
-  return [...points.slice(0, leg + 1), via, ...points.slice(leg + 1)];
-}
-
-/**
- * The points with `via` put into leg `leg` (between points[leg] and
- * points[leg + 1]). Null when the route already has the most points one
- * request may carry, or there is no such leg.
- */
-export function insertIntoLeg(points: readonly LonLat[], leg: number, via: LonLat): LonLat[] | null {
-  if (points.length >= MAX_POINTS) return null;
-  if (!Number.isInteger(leg) || leg < 0 || leg > points.length - 2) return null;
   return [...points.slice(0, leg + 1), via, ...points.slice(leg + 1)];
 }
 

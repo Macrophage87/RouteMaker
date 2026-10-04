@@ -212,6 +212,15 @@ test("the GPX of a route follows the plan it was routed for, whatever the toggle
   assert.notEqual(planFromGpx(parseGpx(asOneWay)).dials?.loop, true);
 });
 
+test("a GPX opens as a loop only for loop=1", () => {
+  const xml = writeGpx(exportOf(loopRoute, [A, B, C], true));
+  for (const value of ["0", "", "true", "yes"]) {
+    const edited = xml.replace(";loop=1<", `;loop=${value}<`);
+    assert.notEqual(edited, xml);
+    assert.notEqual(planFromGpx(parseGpx(edited)).dials?.loop, true, `loop=${value}`);
+  }
+});
+
 test("share links: loop with a start and a stop round-trips, and an old hash decodes as before", () => {
   const dials = { ...startDials("default"), loop: true };
   const back = decodePlan(encodePlan([A, B], "default", dials));
