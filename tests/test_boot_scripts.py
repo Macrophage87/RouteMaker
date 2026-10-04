@@ -37,6 +37,8 @@ FAKE_DOCKER = r"""#!/usr/bin/env bash
 # docker_up (exists = answers), never_healthy (exists), phantom/ (a stale view:
 # every bind source S is read from phantom/S instead).
 echo "$*" >>"$FAKE_DIR/calls.log"
+# Real compose warns on stderr on every call when `.env` names an unset variable.
+[ -e "$FAKE_DIR/compose.warn" ] && [ "$1" = compose ] && echo 'level=warning msg="The X variable is not set. Defaulting to a blank string."' >&2
 echo "${RESTART_POLICY-<unset>}" >>"$FAKE_DIR/policy.log"
 [ "$1" = info ] && { [ -e "$FAKE_DIR/docker_up" ]; exit; }
 if [ "$1" = ps ]; then
@@ -572,6 +574,15 @@ class StartStackTests(FakeHost):
         done = self.run_script()
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertIn("mode: WARM", done.stdout)
+        self.assertEqual(self.mutating(), [])
+
+    def test_compose_warnings_on_stderr_do_not_make_a_sane_cluster_cold(self) -> None:
+        self.warm()
+        (self.fake / "compose.warn").write_text("")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertIn("mode: WARM", done.stdout)
+        self.assertNotIn("unparseable", done.stdout)
         self.assertEqual(self.mutating(), [])
 
     def test_warm_stack_starts_only_what_is_down(self) -> None:

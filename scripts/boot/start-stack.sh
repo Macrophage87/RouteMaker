@@ -305,12 +305,15 @@ postgis_healthy() {
 
 # Prints "MIGRATIONS SEGMENTS" (diagnostics go to stderr, which is logged too). Non-zero if postgis cannot answer within the exec timeout
 # (an empty cluster has no django_migrations or live.segment, so that lands here).
+# Only stdout is parsed: compose writes its own warnings to stderr on every call
+# (an unset variable in `.env`, for one), and folding those in made a sane cluster
+# unparseable, so every boot took the COLD path.
 db_numbers() {
   local out
   out=$(DC_T=$EXEC_TIMEOUT_S dc exec -T postgis psql -X -q -At -F ' ' \
     -U "$PGUSER" -d "$PGDATABASE" \
-    -c "select (select count(*) from django_migrations), (select count(*) from live.segment)" 2>&1) || {
-    log "psql failed: $(head -c 300 <<<"$out" | tr '\n' ' ')" >&2
+    -c "select (select count(*) from django_migrations), (select count(*) from live.segment)") || {
+    log "psql failed (its stderr, if any, is logged above): $(head -c 300 <<<"$out" | tr '\n' ' ')" >&2
     return 1
   }
   if ! [[ "$out" =~ ^[0-9]+\ [0-9]+$ ]]; then
