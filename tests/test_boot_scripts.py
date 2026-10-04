@@ -38,7 +38,9 @@ FAKE_DOCKER = r"""#!/usr/bin/env bash
 # every bind source S is read from phantom/S instead).
 echo "$*" >>"$FAKE_DIR/calls.log"
 # Real compose warns on stderr on every call when `.env` names an unset variable.
-[ -e "$FAKE_DIR/compose.warn" ] && [ "$1" = compose ] && echo 'level=warning msg="The X variable is not set. Defaulting to a blank string."' >&2
+if [ -e "$FAKE_DIR/compose.warn" ] && [ "$1" = compose ]; then
+  echo 'level=warning msg="The X variable is not set. Defaulting to a blank."' >&2
+fi
 echo "${RESTART_POLICY-<unset>}" >>"$FAKE_DIR/policy.log"
 [ "$1" = info ] && { [ -e "$FAKE_DIR/docker_up" ]; exit; }
 if [ "$1" = ps ]; then
@@ -583,6 +585,7 @@ class StartStackTests(FakeHost):
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertIn("mode: WARM", done.stdout)
         self.assertNotIn("unparseable", done.stdout)
+        self.assertIn("The X variable is not set", done.stdout)  # stderr still logged
         self.assertEqual(self.mutating(), [])
 
     def test_warm_stack_starts_only_what_is_down(self) -> None:
