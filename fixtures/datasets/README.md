@@ -73,6 +73,10 @@ Alignment'`): 162 of the layer's 163 features were downloaded.
 
 ### Credits
 
+These were the credit lines until 2026-10-04. OWNER-DECISIONS 306 made every credit
+brief ("DC Open Data (CC BY 4.0, adapted)", "Open Baltimore", "Montgomery County
+Planning Department"); the full references are in docs/SOURCES.md.
+
 | Layer | Credit line | Where |
 | --- | --- | --- |
 | Roadway Block | "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the District: Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0" | `routing.ATTRIBUTION`, `VOLUME_CREDITS` in `frontend/src/lib/mapStyle.ts` |

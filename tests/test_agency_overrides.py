@@ -105,15 +105,16 @@ def test_the_baltimore_file_never_raises_a_tier() -> None:
 
 def test_the_credits_ride_with_the_rows() -> None:
     """OWNER-DECISIONS 181: the Montgomery County Planning credit in the same change,
-    in the words its licence asks for; Baltimore's is the owner's line (159)."""
+    in the words its licence asks for; Baltimore's, brief since 306 (it was the owner's
+    line of 159), with the full reference in docs/SOURCES.md."""
     from core import routing
 
     credits = " ".join(routing.ATTRIBUTION)
     assert "Montgomery County Planning Department" in credits
-    assert "City of Baltimore, Open Baltimore" in credits
-    frontend = (REPO / "frontend" / "src" / "lib" / "mapStyle.ts").read_text()
-    assert "Montgomery County Planning" in frontend
-    assert "bike facilities and trails in Baltimore" in frontend
+    assert "Open Baltimore" in credits
+    frontend = (REPO / "frontend" / "src" / "lib" / "credits.json").read_text()
+    assert "Montgomery County Planning Department" in frontend
+    assert "Open Baltimore" in frontend
 
 
 def test_nothing_is_left_proposed() -> None:

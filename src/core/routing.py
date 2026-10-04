@@ -1975,6 +1975,11 @@ def plan(
     return body
 
 
+# The credits are brief, as an in-text citation is (OWNER-DECISIONS 306: "keep it
+# brief and put the full information in documentation"); docs/SOURCES.md is the
+# reference list, and tests/test_credits.py holds each line here to an entry there.
+# ODbL keeps its own form, and the District's CC BY 4.0 layers keep what that licence
+# asks of a credit (section 3(a)(1)): the licence, linked, and that they were adapted.
 # PLAN, Licensing, and the public-tier rules in force (owner decision of
 # 2026-09-26): ODbL attribution for everything OpenStreetMap-derived, which is
 # the route itself and its stress tiers. DDOT's traffic volume ("2024 Traffic
@@ -2003,19 +2008,11 @@ def plan(
 # Department", in the same change as the rows. Protomaps is credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
-    "© OpenStreetMap contributors, ODbL",
-    "Stress tiers use traffic volume, and routing the Central Business District boundary,"
-    " from the District Department of Transportation, adapted, CC BY 4.0"
-    " (https://creativecommons.org/licenses/by/4.0/)",
-    "Traffic volume: Virginia Department of Transportation",
-    "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia"
-    " (Open Data DC), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
-    "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the"
-    " District: Roadway Block, District Department of Transportation (DDOT) / DC GIS"
-    " (Open Data DC), adapted, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
-    "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of"
-    " Baltimore, Open Baltimore",
-    "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County"
-    " Planning Department",
-    "Elevation: USGS 3D Elevation Program",
+    "© OpenStreetMap contributors (ODbL)",
+    "DC Open Data (CC BY 4.0, adapted): https://creativecommons.org/licenses/by/4.0/",
+    "VDOT",
+    "Open Baltimore",
+    "Montgomery County Planning Department",
+    "USGS 3DEP",
+    "U.S. Census Bureau",
 )

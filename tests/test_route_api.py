@@ -17,6 +17,7 @@ import math
 import socket
 import threading
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -293,7 +294,7 @@ class TestAnswer:
         credits = " | ".join(post(client, good_body()).json()["attribution"])
         assert "OpenStreetMap" in credits and "ODbL" in credits
         assert "CC BY 4.0" in credits
-        assert "Virginia" in credits
+        assert "VDOT" in credits
 
     def test_multi_leg_geometry_is_one_line_with_no_repeated_joint(
         self, client, segments, router
@@ -2228,23 +2229,24 @@ class TestTransportEdges:
         assert (refused.value.status, refused.value.code) == (404, None)
 
 
-def test_the_attribution_names_ddot_its_licence_and_the_change() -> None:
-    """CC BY 4.0 section 3(a)(1)(B): an adaptation says it was modified and
-    links the licence."""
-    ddot = [line for line in routing.ATTRIBUTION if "Central Business District" in line]
-    assert len(ddot) == 1
-    assert "District Department of Transportation" in ddot[0]
-    assert "CC BY 4.0" in ddot[0]
-    assert "adapted" in ddot[0]
-    assert "Central Business District" in ddot[0], "the CBD boundary (routemaker.cbd) is DDOT's"
-    assert "creativecommons.org/licenses/by/4.0" in ddot[0]
+def test_the_attribution_names_dc_open_data_its_licence_and_the_change() -> None:
+    """CC BY 4.0 section 3(a)(1)(B): an adaptation says it was modified and links the
+    licence. One brief credit covers the District's layers (DDOT's volume and CBD, the
+    Capitol grounds, the Roadway Block: OWNER-DECISIONS 306), docs/SOURCES.md each."""
+    dc = [line for line in routing.ATTRIBUTION if "DC Open Data" in line]
+    assert len(dc) == 1
+    assert "CC BY 4.0" in dc[0] and "adapted" in dc[0]
+    assert "creativecommons.org/licenses/by/4.0" in dc[0]
     assert any("USGS" in line for line in routing.ATTRIBUTION)
     assert not any("courtesy" in line for line in routing.ATTRIBUTION)
-    # Review r1, B2: the Capitol grounds polygon decides CBD exemptions too.
-    aoc = [line for line in routing.ATTRIBUTION if "Architect of the Capitol" in line]
-    assert len(aoc) == 1
-    assert "Open Data DC" in aoc[0] and "CC BY 4.0" in aoc[0]
-    assert "creativecommons.org/licenses/by/4.0" in aoc[0]
+    sources = (Path(__file__).resolve().parents[1] / "docs" / "SOURCES.md").read_text()
+    for layer in (
+        "2024 Traffic Volume",
+        "DDOT Central Business District",
+        "Architect of the Capitol",
+        "Roadway Block",
+    ):
+        assert layer in sources
 
 
 def test_the_attribution_credits_the_agency_street_layers_as_their_licences_ask() -> None:
@@ -2254,19 +2256,11 @@ def test_the_attribution_credits_the_agency_street_layers_as_their_licences_ask(
     (OWNER-DECISIONS 159). Montgomery County Planning is credited in the same change as
     the Avoid rows derived from its layer (OWNER-DECISIONS 181), in the words its
     licence asks for: "attribution to the Montgomery County Planning Department"."""
-    block = [line for line in routing.ATTRIBUTION if "Roadway Block" in line]
-    assert len(block) == 1
-    assert "District Department of Transportation (DDOT) / DC GIS" in block[0]
-    assert "adapted" in block[0] and "CC BY 4.0" in block[0]
-    assert "creativecommons.org/licenses/by/4.0" in block[0]
-    assert "traffic counts" in block[0]
+    assert "DC Open Data (CC BY 4.0, adapted)" in " ".join(routing.ATTRIBUTION)
     baltimore = [line for line in routing.ATTRIBUTION if "Baltimore" in line]
-    assert len(baltimore) == 1
-    assert "City of Baltimore, Open Baltimore" in baltimore[0]
+    assert baltimore == ["Open Baltimore"]
     montgomery = [line for line in routing.ATTRIBUTION if "Montgomery" in line]
-    assert len(montgomery) == 1
-    assert "Montgomery County Planning Department" in montgomery[0]
-    assert "Bicycle Level of Traffic Stress" in montgomery[0]
+    assert montgomery == ["Montgomery County Planning Department"]
 
 
 @db

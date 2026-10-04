@@ -36,10 +36,11 @@ from django.conf import settings
 
 from routemaker.geo import Point, haversine
 
-# Photon's data is OpenStreetMap's (ODbL); the geocoder itself is Photon.
+# Photon's data is OpenStreetMap's (ODbL); the geocoder itself is Photon. Brief, as
+# every credit is (OWNER-DECISIONS 306); docs/SOURCES.md has the full references.
 ATTRIBUTION = (
-    "© OpenStreetMap contributors, ODbL",
-    "Place search: Photon (komoot), Apache 2.0",
+    "© OpenStreetMap contributors (ODbL)",
+    "Photon",
 )
 
 # More than a typeahead can show and a small, bounded answer.
