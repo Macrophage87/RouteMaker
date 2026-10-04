@@ -1,0 +1,255 @@
+# nginx site for the RouteMaker private beta (OWNER-DECISIONS 360-362).
+#
+# This is a TEMPLATE. scripts/beta/render-nginx.sh fills the placeholders written between @ signs
+# and keeps one of the two stages below; docs/BETA-RUNBOOK.md says when to use
+# each. Installing it adds ONE file to the host's nginx and changes nothing else:
+# no default_server, no edit to nginx.conf, no http-level setting that another
+# site would inherit. Every http-level name it declares (the upstream, the map)
+# is prefixed `rmbeta_` so it cannot collide with a site that is already there.
+#
+# It does what compose.yaml's Caddy does today (Caddyfile), minus Caddy's own TLS:
+#   /                    the built front end, static
+#   /static/             Django's collected static files
+#   /basemap/            the self-hosted base map, same-origin requests only
+#   /<preset>            the 302 redirects to /#preset=<preset>
+#   everything else      the api on 127.0.0.1:@API_PORT@
+# and adds what a public-internet beta needs: HTTP basic auth, X-Robots-Tag, robots.txt.
+#
+# Public (no basic auth), and ONLY these two:
+#   /robots.txt                         so a crawler is told to go away rather than shown a login
+#   /.well-known/acme-challenge/        port 80 only, for Let's Encrypt validation
+# Everything else, including /healthz, /auth/ and the admin path, is behind basic auth.
+# Basic auth is in front of Discord sign-in, which stays optional and works through it:
+# the browser sends the same credentials on the redirect back from Discord.
+#
+# add_header does not inherit into a location that has its own add_header, so every
+# location that sets one repeats X-Robots-Tag and Strict-Transport-Security;
+# tests/test_beta_overlay.py fails if one is missed.
+
+# BEGIN stage:acme
+# Stage 1, before a certificate exists: port 80, answering only the ACME challenge.
+# Install this, run `certbot certonly --nginx -d @SERVER_NAME@` (or --webroot with
+# -w @ACME_ROOT@), then re-render with --stage full and the certificate paths.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @SERVER_NAME@;
+
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root @ACME_ROOT@;
+        default_type text/plain;
+        auth_basic off;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
+    location / {
+        return 404;
+    }
+}
+# END stage:acme
+
+# BEGIN stage:full
+upstream rmbeta_api {
+    server 127.0.0.1:@API_PORT@;
+    keepalive 8;
+}
+
+# The base map is for this site's own pages only (Caddyfile: /basemap/*). Key is
+# "<Origin>|<Referer>": allowed when the Origin is this site, or when there is no
+# Origin and the Referer is a page on this site. Anything else is foreign.
+map "$http_origin|$http_referer" $rmbeta_basemap_foreign {
+    default 1;
+    "~^https://@SERVER_NAME_RE@\|" 0;
+    "~^\|https://@SERVER_NAME_RE@/" 0;
+}
+
+# Port 80: ACME challenges stay answerable (renewals), everything else goes to https.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @SERVER_NAME@;
+
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root @ACME_ROOT@;
+        default_type text/plain;
+        auth_basic off;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    # nginx 1.25.1 or newer. On an older nginx, delete this line and put `http2`
+    # after `ssl` on the two listen lines; `nginx -t` says which is needed.
+    http2 on;
+    server_name @SERVER_NAME@;
+
+    ssl_certificate     @CERT_FULLCHAIN@;
+    ssl_certificate_key @CERT_KEY@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    @TLS_OPTIONS_INCLUDE@
+
+    # --- the beta's gate ---------------------------------------------------------
+    # Not for indexing, and behind a password. The htpasswd file is made on the
+    # server by scripts/beta/make-htpasswd.sh; it is never in the repository.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Strict-Transport-Security "max-age=86400" always;
+    auth_basic           "RouteMaker beta";
+    auth_basic_user_file @HTPASSWD_FILE@;
+
+    client_max_body_size 1m;
+
+    # JSON and vector tiles compress well; the base map archive and images do not.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 256;
+    gzip_types application/json application/vnd.mapbox-vector-tile text/plain text/css
+               application/javascript text/javascript image/svg+xml;
+
+    # --- public: robots.txt ------------------------------------------------------
+    location = /robots.txt {
+        auth_basic off;
+        default_type text/plain;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        return 200 "User-agent: *\nDisallow: /\n";
+    }
+
+    # --- the front end (Caddyfile @frontend) --------------------------------------
+    # The same security headers Caddy sets, the same CSP verbatim.
+    location = / {
+        root @DATA_ROOT@/frontend;
+        try_files /index.html =404;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /index.html {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /licenses.txt {
+        root @DATA_ROOT@/frontend;
+        default_type text/plain;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /favicon.svg {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+
+    # Hashed file names: a changed file is a new name, so they never change.
+    location ^~ /assets/ {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Referrer-Policy "same-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # --- preset links (Caddyfile @preset-*) ----------------------------------------
+    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|gravel|fast|cargo|ebike)/?$ {
+        return 302 "/#preset=$1";
+    }
+
+    # --- Django's collected static files (Caddyfile handle_path /static/*) -----------
+    location ^~ /static/ {
+        alias @DATA_ROOT@/static/;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+    }
+
+    # --- the base map (Caddyfile handle_path /basemap/*) -----------------------------
+    # Same-origin only, and only the three paths the app asks for; any other path is a
+    # 404 for this site's own pages and a 403 for anyone else. pmtiles is read with
+    # Range requests, which nginx answers natively.
+    location = /basemap/region.pmtiles {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        alias @DATA_ROOT@/basemap/region.pmtiles;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "private, no-cache" always;
+    }
+
+    location ^~ /basemap/fonts/ {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        alias @DATA_ROOT@/basemap/fonts/;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "private, max-age=86400" always;
+    }
+
+    location ^~ /basemap/sprites/ {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        alias @DATA_ROOT@/basemap/sprites/;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "private, max-age=86400" always;
+    }
+
+    location ^~ /basemap/ {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        return 404;
+    }
+
+    # --- everything else is the api (Caddyfile's final handle) ------------------------
+    # /api/, /tiles/stress/, /auth/, /healthz, and the admin path. A plan takes up to
+    # 47 s (gunicorn kills a worker at 60 s), so the timeouts here are longer than
+    # that, so the api's own answer reaches the browser rather than nginx's 504.
+    location / {
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Replaced, not appended: the api rate-limits on the last entry, and
+        # Caddy overwrites a client-sent value the same way.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+}
+# END stage:full

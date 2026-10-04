@@ -1,0 +1,125 @@
+#!/bin/sh
+# Renders deploy/beta/nginx-routemaker.conf.template into an nginx site file.
+#
+# It only prints (or writes the file named by --out). It never touches /etc, never
+# runs nginx, and never reads a secret: the htpasswd FILE is named, not read.
+#
+#   render-nginx.sh --stage acme [--out FILE]
+#       Port 80 only, answering the ACME challenge. For before a certificate exists.
+#   render-nginx.sh --stage full --cert-fullchain F --cert-key K [--out FILE]
+#       The whole site: 80 redirects to 443, 443 serves the beta.
+#
+# Options (defaults in brackets; DATA_ROOT and BETA_API_PORT are read out of .env by
+# sed, never by sourcing it):
+#   --server-name NAME       [routemaker.cieply.com]
+#   --api-port N             [BETA_API_PORT from .env, else 8087]
+#   --data-root PATH         [DATA_ROOT from .env, else /data/routemaker]
+#   --htpasswd FILE          [/etc/nginx/routemaker-beta.htpasswd]
+#   --acme-root PATH         [/var/www/routemaker-acme]
+#   --tls-options-include F  an nginx file to include in the 443 server, such as
+#                            certbot's /etc/letsencrypt/options-ssl-nginx.conf
+#   --env-file FILE          [<repo>/.env]
+set -eu
+
+die() { echo "render-nginx: $*" >&2; exit 2; }
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+template="$repo/deploy/beta/nginx-routemaker.conf.template"
+[ -r "$template" ] || die "cannot read $template"
+
+stage=""; out=""; server_name="routemaker.cieply.com"; api_port=""; data_root=""
+htpasswd="/etc/nginx/routemaker-beta.htpasswd"; acme_root="/var/www/routemaker-acme"
+cert_fullchain=""; cert_key=""; tls_include=""; env_file="$repo/.env"
+
+while [ $# -gt 0 ]; do
+	[ $# -ge 2 ] || die "$1 needs a value"
+	case "$1" in
+		--stage) stage=$2 ;;
+		--out) out=$2 ;;
+		--server-name) server_name=$2 ;;
+		--api-port) api_port=$2 ;;
+		--data-root) data_root=$2 ;;
+		--htpasswd) htpasswd=$2 ;;
+		--acme-root) acme_root=$2 ;;
+		--cert-fullchain) cert_fullchain=$2 ;;
+		--cert-key) cert_key=$2 ;;
+		--tls-options-include) tls_include=$2 ;;
+		--env-file) env_file=$2 ;;
+		*) die "unknown option $1" ;;
+	esac
+	shift 2
+done
+
+case "$stage" in acme | full) ;; *) die "--stage acme|full is required" ;; esac
+
+env_value() { # the last KEY= line of the env file, quotes stripped, never evaluated
+	[ -r "$env_file" ] || return 0
+	sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$env_file" | tail -n 1 | tr -d '\r' | sed "s/^['\"]//; s/['\"]\$//"
+}
+
+[ -n "$api_port" ] || api_port=$(env_value BETA_API_PORT)
+[ -n "$api_port" ] || api_port=8087
+[ -n "$data_root" ] || data_root=$(env_value DATA_ROOT)
+[ -n "$data_root" ] || data_root=/data/routemaker
+
+safe() { # name value: a word with no space, quote, brace, semicolon, backslash or @
+	case "$2" in
+		'' | *[!A-Za-z0-9._/:-]*) die "$1 has a character this renderer will not put in an nginx file: '$2'" ;;
+	esac
+}
+safe server-name "$server_name"
+safe api-port "$api_port"
+safe data-root "$data_root"
+safe htpasswd "$htpasswd"
+safe acme-root "$acme_root"
+case "$api_port" in *[!0-9]*) die "--api-port must be a number" ;; esac
+case "$data_root" in /?*) ;; *) die "--data-root must be an absolute path" ;; esac
+case "$data_root" in / | /etc | /usr | /var | /home | /root | /data) die "--data-root '$data_root' is not a RouteMaker directory" ;; esac
+
+if [ "$stage" = full ]; then
+	[ -n "$cert_fullchain" ] && [ -n "$cert_key" ] || die "--stage full needs --cert-fullchain and --cert-key"
+	safe cert-fullchain "$cert_fullchain"
+	safe cert-key "$cert_key"
+	[ -z "$tls_include" ] || safe tls-options-include "$tls_include"
+fi
+
+# The server name as a regular expression (dots escaped), with the backslashes doubled once
+# more so that sed's replacement side writes them out literally.
+name_re=$(printf '%s' "$server_name" | sed 's/\./\\\\./g')
+
+keep_stage() { # print the template with the other stage's section removed, and the marker lines
+	awk -v keep="$stage" '
+		/^# BEGIN stage:/ { split($0, a, ":"); in_section = 1; wanted = (a[2] == keep); next }
+		/^# END stage:/ { in_section = 0; next }
+		{ if (!in_section || wanted) print }
+	' "$template"
+}
+
+rendered=$(keep_stage | sed \
+	-e "s|@SERVER_NAME_RE@|$name_re|g" \
+	-e "s|@SERVER_NAME@|$server_name|g" \
+	-e "s|@API_PORT@|$api_port|g" \
+	-e "s|@DATA_ROOT@|$data_root|g" \
+	-e "s|@HTPASSWD_FILE@|$htpasswd|g" \
+	-e "s|@ACME_ROOT@|$acme_root|g" \
+	-e "s|@CERT_FULLCHAIN@|$cert_fullchain|g" \
+	-e "s|@CERT_KEY@|$cert_key|g")
+
+if [ -n "$tls_include" ]; then
+	rendered=$(printf '%s\n' "$rendered" | sed "s|@TLS_OPTIONS_INCLUDE@|include $tls_include;|")
+else
+	rendered=$(printf '%s\n' "$rendered" | sed '/@TLS_OPTIONS_INCLUDE@/d')
+fi
+
+if printf '%s\n' "$rendered" | grep -n '@[A-Z_]*@' >&2; then
+	die "unfilled placeholders remain (listed above)"
+fi
+
+if [ -n "$out" ]; then
+	[ ! -e "$out" ] || [ -n "${RENDER_NGINX_FORCE:-}" ] || die "$out exists; remove it or set RENDER_NGINX_FORCE=1"
+	printf '%s\n' "$rendered" >"$out"
+	echo "render-nginx: wrote $out (stage $stage)" >&2
+else
+	printf '%s\n' "$rendered"
+fi

@@ -1,0 +1,182 @@
+# The private-beta overlay (OWNER-DECISIONS 360-362, FOLLOWUP-BETA-DEPLOY).
+#
+#   docker compose -f compose.yaml -f compose.beta.yaml --env-file .env <command> <named services>
+#
+# scripts/beta/beta-compose.sh runs exactly that and refuses a bare `up`, so use it.
+#
+# What this overlay is for: the owner's shared EC2 host (15 GiB RAM, about 8.6 GiB
+# free, NO swap, 4 vCPU, nginx already serving other sites on 80/443). RouteMaker
+# must never be the reason another site on that host dies, so every container gets
+# a hard memory cap: when something spikes, the kernel kills RouteMaker's own
+# container (restart: unless-stopped brings it back), not the host's other sites.
+#
+# What it changes against compose.yaml, and nothing else:
+#   * `caddy` and `rebuild` are parked behind the `not-in-beta` profile, so a plain
+#     `up` can never start them. nginx is the edge; tiles, database and Photon
+#     index are built at home and shipped (scripts/beta/ship-data.sh).
+#   * The api alone publishes a port, bound to 127.0.0.1 only; nginx proxies to it.
+#     Postgres, Photon and the routers stay on the compose network.
+#   * Hard memory caps (deploy.resources.limits.memory, with memswap_limit equal to
+#     it so a container cannot borrow swap even if the host grows some) and CPU caps.
+#   * gunicorn at 3 workers, PostgreSQL's shared_buffers sized to its cap, Photon's
+#     heap sized to its cap, and WEEKLY_REBUILD_PAUSED=1 so nothing queues rebuild jobs
+#     that no worker will ever take.
+#
+# The budget, against what the local stack measured at idle (docker stats, 2026-10-04):
+#
+#   service            cap      cpus  measured idle        why this cap
+#   postgis            1024M    1.5   0.21 GB              shared_buffers 256M + ~40 backends' work_mem
+#                                                          + 64M maintenance (pg_restore) + page cache
+#   api                1200M    2.0   0.55 GB at 7 workers 3 workers is about 0.25 GB; the rest is for
+#                                                          route/tile response peaks, 4x headroom
+#   photon             1300M    1.0   1.04 GB at -Xmx1g    heap 896M + ~400M for metaspace, threads
+#                                                          and direct buffers; the 0.74 GB index is
+#                                                          mmapped page cache, reclaimable
+#   valhalla x4         768M    2.0   0.04-0.67 GB each    working set is the mmapped tiles.tar
+#                                                          (0.4-0.5 GB) plus 2 workers; mapped file
+#                                                          pages are reclaimed, not OOM-killed
+#   worker              320M    0.5   0.07 GB              nightly pg_dump and sweeps only
+#   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
+#
+#   resident total: 1024 + 1200 + 1300 + 4*768 + 320 = 6916 MiB = 6.75 GiB, against about
+#   8.6 GiB available, so a spike in every container at once still leaves 1.8 GiB.
+#   `valhalla-offroad` (below) will add 768 MiB when it ships: 7.5 GiB, which leaves
+#   only 1.1 GiB, so the other caps need a second look at that point (the beta
+#   checker, scripts/check_beta_compose.py, is the gate and will say so).
+#
+# One consequence of 3 gunicorn workers is worth knowing: settings.routing_concurrency
+# is workers - 2 - GEOCODE_CONCURRENCY, floored at one, so the beta plans ONE route at a
+# time across the whole site (the stress-tile draw gets one slot too). Two friends
+# planning at the same instant means the second waits for the first, up to ~50 s.
+# Raise BETA_WEB_CONCURRENCY and the api cap together if that is not enough.
+
+services:
+  # --- not in the beta ---------------------------------------------------------
+  caddy:
+    profiles: ["not-in-beta"]
+  rebuild:
+    profiles: ["not-in-beta"]
+
+  # --- the app ----------------------------------------------------------------
+  api:
+    environment:
+      # Written here, not read from `.env`, so a stray WEB_CONCURRENCY=7 left in
+      # the file cannot undo the memory budget.
+      WEB_CONCURRENCY: ${BETA_WEB_CONCURRENCY:-3}
+      WEEKLY_REBUILD_PAUSED: "1"
+    ports:
+      - "127.0.0.1:${BETA_API_PORT:-8087}:8000"
+    memswap_limit: 1200M
+    deploy:
+      resources:
+        limits: { memory: 1200M, cpus: "2" }
+
+  worker:
+    environment:
+      WEEKLY_REBUILD_PAUSED: "1"
+      STRESS_PREDRAW_WORKERS: "1"
+    memswap_limit: 320M
+    deploy:
+      resources:
+        limits: { memory: 320M, cpus: "0.5" }
+
+  migrate:
+    environment:
+      WEEKLY_REBUILD_PAUSED: "1"
+    memswap_limit: 256M
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "0.5" }
+
+  postgis:
+    # The image's entrypoint passes a command that starts with `postgres` straight
+    # through. 256 MB of shared_buffers holds the hot part of `live` (606 MB, mostly
+    # the segment table) and all of `public` (105 MB); the rest is the OS cache's.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+      - -c
+      - max_parallel_workers_per_gather=1
+      - -c
+      - random_page_cost=1.1
+    # Docker's default /dev/shm is 64 MB; parallel queries want more.
+    shm_size: 128m
+    memswap_limit: 1024M
+    deploy:
+      resources:
+        limits: { memory: 1024M, cpus: "1.5" }
+
+  photon:
+    # The base command, verbatim, with only the JVM heap changed from -Xms1g -Xmx1g
+    # to -Xms512m -Xmx896m. tests/test_beta_overlay.py fails if the two ever differ
+    # anywhere else, so a change to the base command cannot silently diverge from this.
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -d /photon/data/photon_data/node_1 ]; then
+          echo "photon: no index at /photon/data/photon_data; import one (docs/DEPLOYMENT.md, Photon)" >&2
+          exec sleep infinity
+        fi
+        exec java -Xms512m -Xmx896m -jar /photon/photon.jar serve \
+          -listen-ip 0.0.0.0 -data-dir /photon/data \
+          -max-results 10 -max-reverse-results 1 -query-timeout 3
+    memswap_limit: 1300M
+    deploy:
+      resources:
+        limits: { memory: 1300M, cpus: "1" }
+
+  # --- the four routers --------------------------------------------------------
+  # Two valhalla workers each, as in compose.yaml: a route and a place-name lookup
+  # (which goes to the standard router) must not queue behind each other.
+  valhalla-standard:
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
+  valhalla-no-trail:
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
+  valhalla-ebike:
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
+  valhalla-weekend:
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
+
+  # --- placeholder: the off-road router, which comes with NO-BIKE ---------------
+  # Not started (profile `offroad`), and there is no valhalla/valhalla-offroad.json
+  # in this release, so nothing refers to it yet. When the release that carries the
+  # config lands: ship tiles/offroad in the bundle, add `offroad` to the api's
+  # VALHALLA_* environment as that release documents, and start it with
+  #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad
+  # after re-checking the memory budget (see the header).
+  valhalla-offroad:
+    profiles: ["offroad"]
+    restart: ${RESTART_POLICY:-unless-stopped}
+    image: ghcr.io/valhalla/valhalla:3.5.1
+    command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
+    volumes:
+      - ${DATA_ROOT}/tiles/offroad:/data/tiles/offroad:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
