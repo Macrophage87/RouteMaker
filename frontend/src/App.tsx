@@ -668,8 +668,8 @@ export function App() {
 
   // The bottom bar: a sheet opens in the panel body (Legend opens Map layers at its legend), and
   // Back, or Escape, closes it and gives the focus back to the button that opened it.
-  // The Plan button, and the phone header's "Show planner": the planner's view, and the focus on its heading
-  // (OWNER-DECISIONS 392). From a sheet the view changes and focusOnViewChange (cause planButton) does it;
+  // The Plan button: the planner's view, and the focus on its heading (OWNER-DECISIONS 392). The phone
+  // header's "Show planner" also shows the planner but leaves the focus on the toggle (cause panelToggle). From a sheet the view changes and focusOnViewChange (cause planButton) does it;
   // already on the planner nothing changes, so the heading is focused and the panel scrolled to the top here.
   const showPlanner = (focusHeading = true) => {
     viewCause.current = focusHeading ? "planButton" : "panelToggle";

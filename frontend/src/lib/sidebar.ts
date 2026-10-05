@@ -187,8 +187,9 @@ export const ROUTE_FOLDS = {
 // ---- Where the focus goes ---------------------------------------------------------
 
 /**
- * Why the panel changed view: a bar button, Back (or Escape), the Plan button (or the phone header's
- * "Show planner"), or a question or error that needs the planner.
+ * Why the panel changed view: a bar button, Back (or Escape), the Plan button (planButton, which
+ * focuses the heading), the phone header's "Show planner" (panelToggle, which leaves the focus on the
+ * toggle), or a question or error that needs the planner.
  */
 export type ViewCause = "bar" | "back" | "error" | "confirm" | "planButton" | "panelToggle";
 
