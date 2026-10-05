@@ -862,7 +862,15 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
 
 **Front end only:** ship with `ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend [--report-url <the same as before>]
 --without tiles --without elevation --without basemap --without photon --without db "$RM_SSH_HOST" /data/routemaker-incoming`,
-then `sudo ... files`. Nothing restarts; `index.html` is read per request.
+then save the old `index.html` and run `sudo ... files`. `files` replaces `frontend/index.html` without keeping the old one, so
+save it first, as the full release path does:
+
+```
+sudo cp -p "$RM_DATA/frontend/index.html" "$RM_DATA/backups/index.html.pre-frontend-<time>"   # then: sudo ... files
+```
+
+Nothing restarts; `index.html` is read per request. **Undo** (the old hashed assets are still on disk, so this brings the old
+app back): `sudo cp -p "$RM_DATA/backups/index.html.pre-frontend-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"`.
 
 ## Operating notes
 
