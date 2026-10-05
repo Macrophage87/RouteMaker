@@ -3493,7 +3493,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 203 checks, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 208 checks, section 17 for the loop box
   and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
@@ -3504,33 +3504,65 @@ Tests: `lib/sidebar.test.ts`.
 Front end only. A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
-never takes it (a look-up asks the browser's permission); an arrow key and Enter, or a click, does.
+never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
+key and Enter, or a click, does. Its second line says what it will do ("Sets the start.", "Adds it as
+a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places found, plus Your location.").
 
 - **The look-up** is `lib/geolocation.ts`, behind `GeoEnv` (`isSecureContext` and a `getCurrentPosition`
   that tests stub; `browserEnv()` is the only reader of `window`). One `getCurrentPosition` per press, with
-  `enableHighAccuracy`, a 10 s timeout and a 30 s `maximumAge`. No `watchPosition`, no tracking. `locate`
-  never rejects: every outcome is a `LocateResult` (`denied`, `unavailable`, `timeout`, `unsupported`,
-  `insecure`), each with a plain sentence in `LOCATE_MESSAGES`.
-- **The result** goes in by the map click's path in `App.tsx` (`useMyLocation`: `addPoint`, loop-aware,
-  one undo step): the start of an empty plan, else the next point. It is announced once through the app
-  region ("Start set to your location, accurate to about 49 ft (15 m).", US units first, from
-  `formatDistance`), after "Finding your location..." (also said through that region, shown beside the
-  button as plain text). The hint says it is approximate and that the marker can be dragged. The map flies
-  there and draws an accuracy circle (`MapView.tsx`, `location-accuracy` source) while the point is in the plan.
-- **Failures** are the Points notice (a `role="status"` line, said once; through the app region only
-  while the planner is hidden, as the other notices). Outside coverage and "25 points" reuse the click's
-  texts. The notice is cleared and set again 150 ms later, so a second press with the same answer is
-  said again. On an insecure page or without geolocation the button stays in the Tab order,
+  `enableHighAccuracy`, a 10 s timeout and a 30 s `maximumAge`; after a browser timeout, one more try
+  without high accuracy (`RETRY_OPTIONS`), in the same press. No `watchPosition`, no tracking. Each call
+  settles once, and an app-side watchdog (`LOCATE_WATCHDOG_MS`, timeout + 20 s) ends a look-up the browser
+  never answers (a dismissed or ignored prompt, which the browser's own timeout does not cover) as a
+  timeout, with no retry. `locate` never rejects: every outcome is a `LocateResult` (`denied`,
+  `unavailable`, `timeout`, `unsupported`, `insecure`), each with a plain sentence in `LOCATE_MESSAGES`.
+  `locateGate` keeps it to one look-up at a time; a press while one runs says "Finding your location..." again.
+- **The result** is decided by `placeFix` (pure, unit-tested; `App.tsx` only calls it), with the loop
+  flag read after the wait. From the button it goes in by the map click's path (`addPoint`, loop-aware,
+  one undo step): the start of an empty plan, else the next point. From the "Your location" choice it
+  follows the search's Start / Destination / Stop choice, as a picked place does (`applyPlace`). It is
+  announced once through the app region ("Start set to your location, accurate to about 50 ft (15 m).",
+  US units first, rounded to a friendly figure by `formatRadius`; over about 330 ft (100 m) it adds
+  "That is rough; search for the exact place if you can."), after "Finding your location..." (also said
+  through that region, shown beside the button as plain text and its description while busy). The hint
+  says it is approximate: "Drag its marker, or search for the exact place, to adjust it." The map flies
+  there and draws an accuracy circle (`MapView.tsx`, `location-accuracy` source, under the route) while
+  the point is in the plan.
+- **Failures** are the Points notice (a `role="status"` line that is always rendered, empty when there is
+  no notice, so screen readers speak a new message; said through the app region only while the planner
+  is hidden, as the other notices). Outside coverage says "Your location is outside the area this map
+  covers (the DC region to Baltimore)."; "25 points" reuses the click's text. The notice is cleared and
+  set again 150 ms later, so a second press with the same answer is said again; a map edit in that window
+  cancels it. On an insecure page or without geolocation the button stays in the Tab order,
   `aria-disabled`, with the reason as its description and in plain text beside it.
-- **Privacy.** Links and GPX keep full precision (the feature is for navigating on the go). The fix and the
-  list of points that came from a look-up (`here`, `fromHere` in `App.tsx`) are React state only: never
-  in `localStorage`, the link hash, GPX metadata or a log (a test reads the sources for that). Copy link
-  shows one line, "This link includes your location as the start." (`linkLocationNote`; "as a point on
-  the route" when only a later point is a fix), decided by point object identity, so dragging the marker
-  (a new point) clears it, and an undo that brings the same point back restores it.
-- **Tests:** `lib/geolocation.test.ts`; the browser check uses CDP's `Emulation.setGeolocationOverride`
-  and `Browser.setPermission` (granted, denied, no position) and a script that makes `isSecureContext`
-  false. A timeout is covered by the unit test only (CDP cannot make one).
+- **Privacy.** Links and GPX keep full precision (the feature is for navigating on the go), so the point
+  itself is in the link, the address bar and GPX like any clicked point, by design. What is never in the
+  link, GPX, storage or a log is the flag that a point came from the location (`fromHere`) and the fix's
+  accuracy (`here`): React state only (a test reads the sources for that, and that they reach only the
+  note, the hint and the circle). Copy link shows one line, "This link includes your location as the
+  start." (`linkLocationNote`; "as a point on the route" when only a later point came from the location),
+  decided by point object identity. The button is described by it, and a press says it with the
+  confirmation ("Link copied. This link includes your location as the start."). A drag of a point that
+  came from the location keeps the note (`movedFromHere`: the moved point is still the rider's spot); an
+  undo that brings a point back restores it.
+  - The address bar holds the location as soon as it is in the plan (the plan's hash, as for any point),
+    so the browser's own share or copy of the address, and its history, carry it with no note.
+  - A reload, back or forward, or the sign-in round trip loses the note (the flag is memory only), while
+    the link still holds the location.
+  - The sign-in round trip (`lib/signIn.ts`) keeps the plan's hash, location and all, in this tab's
+    sessionStorage only for the round trip; it is read once and removed on the next load, and nothing is
+    sent to the server. Owner decision pending: `SKIP_SIGN_IN_PLAN_WITH_LOCATION = true` would skip it
+    for a plan that holds a location (a one-line change).
+  - The beta's nginx logs paths without query strings (`rmbeta_noquery`), since a reverse look-up and a
+    search carry a location in theirs; Valhalla's slow-request log is off (`long_request` far past the
+    30 s timeout, scripts/build_valhalla_configs.py).
+- **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
+  button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).
+- **Tests:** `lib/geolocation.test.ts` (look-up, watchdog, retry, `placeFix`, gate, note rules, the
+  never-stored source scan), `planEdits.test.ts` (undo gives back the same point objects; a drag makes a
+  new one); the browser check (section 18) uses CDP's `Emulation.setGeolocationOverride` and
+  `Browser.setPermission` (granted, denied, no position) and a script that makes `isSecureContext`
+  false. A timeout is covered by the unit tests only (CDP cannot make one).
 
 ### Groups at stops and in full detail (items 247, 248)
 
