@@ -535,6 +535,32 @@ class TestLevels:
             "max": tile_cache.PREDRAW_MAX_ZOOM,
         }
 
+    def test_the_front_end_thins_its_lines_at_the_zooms_the_long_trail_levels_start_at(
+        self,
+    ) -> None:
+        """The front end's zoomed-out widths step at z11, where TRAILS_NEAR starts
+        (correctness review NIT 7 of ZOOMED-TRAILS), and its legend gives the
+        paved run bars the levels use."""
+        import re
+        from pathlib import Path
+
+        from pipeline import schema
+
+        frontend = Path(__file__).resolve().parents[1] / "frontend" / "src"
+        style = (frontend / "stressStyle.js").read_text()
+        near = re.search(r"export const ZOOMED_OUT_NEAR_ZOOM = (\d+);", style)
+        full = re.search(r"export const FULL_WIDTH_MIN_ZOOM = (\d+);", style)
+        assert near and full, "stressStyle.js no longer declares the zoomed-out zooms"
+        assert int(near.group(1)) == stress_tiles.TRAILS_NEAR_MIN_ZOOM
+        assert int(full.group(1)) == stress_tiles.BUSY_ROADS_MIN_ZOOM
+        assert stress_tiles.level_for(stress_tiles.TRAILS_NEAR_MIN_ZOOM - 1) is stress_tiles.TRAILS
+        assert stress_tiles.level_for(stress_tiles.TRAILS_NEAR_MIN_ZOOM) is stress_tiles.TRAILS_NEAR
+        legend = (frontend / "lib" / "stressLegend.ts").read_text()
+        runs = re.search(r"PAVED_RUN_MI = \{ 11: ([\d.]+), 10: ([\d.]+) \}", legend)
+        assert runs, "stressLegend.ts no longer declares PAVED_RUN_MI"
+        assert float(runs.group(1)) == schema.Z11_PAVED_RUN_MI
+        assert float(runs.group(2)) == schema.Z10_PAVED_RUN_MI
+
     @pytest.mark.parametrize("z", [10, 12, 14])
     def test_a_tier_the_tiles_have_not_met_is_carried_as_the_table_holds_it(
         self, client, segment_schemas, z
@@ -999,6 +1025,11 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
+    def test_the_long_trails_are_format_5(self) -> None:
+        # A forgotten bump would serve the old z10-11 tiles as current (mutation
+        # review NIT 7 of ZOOMED-TRAILS).
+        assert stress_tiles.FORMAT_VERSION == 5
+
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
         before = client.get(path)["ETag"]
@@ -1396,6 +1427,24 @@ class TestLongTrails:
         insert_trail(live, False, 0, 0.1)
         assert lines_in(client.get(url(*tile_of(*CENTRE, 11))).content) == 0
 
+    @pytest.mark.parametrize(("route", "kept"), [(0, False), (3, True)])
+    def test_a_road_closed_to_cars_for_good_is_judged_like_a_trail(
+        self, client, segment_schemas, route, kept
+    ) -> None:
+        """OWNER-DECISIONS 381: "I think off is fine here. Nobody routes around
+        the tiny roads." Only a timed closure is exempt; a road closed to cars
+        for good is a path, kept at z10-11 by a route or a run, as any trail."""
+        live, _ = segment_schemas
+        insert_trail(live, False, route, 0.3)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET is_trail_class = false, stress_rule = "
+                "'closed to motor traffic: an off-road path'"
+            )
+        for z in (10, 11):
+            assert lines_in(client.get(url(*tile_of(*CENTRE, z))).content) == int(kept), z
+        assert lines_in(client.get(url(*tile_of(*CENTRE, 12))).content) == 1
+
     @pytest.mark.parametrize(
         ("bridge", "run_mi", "at_z10", "at_z11"),
         [
@@ -1417,7 +1466,12 @@ class TestLongTrails:
 
     @pytest.mark.parametrize(
         "drop",
-        [["trail_route", "trail_run_m", "trail_bridge"], ["trail_run_m"], ["trail_bridge"]],
+        [
+            ["trail_route", "trail_run_m", "trail_bridge"],
+            ["trail_route"],
+            ["trail_run_m"],
+            ["trail_bridge"],
+        ],
     )
     def test_a_table_without_the_columns_draws_every_trail_as_before(
         self, client, segment_schemas, drop

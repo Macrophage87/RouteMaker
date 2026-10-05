@@ -177,13 +177,13 @@ class Level:
     predicate: object = None
     # The bars for the long-trails rule (`pipeline.schema.long_trails_predicate`),
     # or None to keep every way the predicate selects. Applied only to a table
-    # that has the route and run columns (LONG_TRAIL_COLUMNS); on one without,
-    # today's tiles are drawn.
+    # that has all three long-trail columns (LONG_TRAIL_COLUMNS); on one
+    # without, today's tiles are drawn.
     long_trails: LongTrails | None = None
 
 
 # The thresholds are the named constants in `pipeline.schema`, from
-# OWNER-DECISIONS 375 and 377.
+# OWNER-DECISIONS 375, 377, 378 and 380.
 TRAILS = Level(
     "trails",
     MIN_ZOOM,
@@ -286,9 +286,9 @@ FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 # The three columns the long-trails rule reads (OWNER-DECISIONS 375, 377), which the
 # rebuild writes from the OSM route relations and way names
 # (`pipeline.trail_routes`). Not carried in a tile: they only choose which ways
-# the z10-11 tiles hold. A table promoted before them has neither, and its
+# the z10-11 tiles hold. A table promoted before them has none of them, and its
 # zoomed-out tiles keep every path and trail, as they did; the rule applies
-# only where both are there. A data rebuild adds them; nothing else does.
+# only where all three are there. A data rebuild adds them; nothing else does.
 LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 
 _MERGED = """
@@ -470,8 +470,9 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all four (`+cfms`): the facility, the car-free times, the map
-    # class, the separate bikeway.
+    # key with all seven (`+cfmsbtl`, about 33 characters), in the order of
+    # the column names: the car-free times, the facility, the map class, the
+    # separate bikeway, and the long trails' bridge, route and run.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'
 
