@@ -54,6 +54,14 @@ TILE_ROOT = "/data/tiles/{variant}/current"
 # grade cap has no max_grade to read.
 ELEVATION_DIR = "/data/elevation"
 
+# loki's and thor's `logging.long_request` (ms): a request slower than this is
+# logged as a warning, and that warning can carry the request itself - its
+# locations, which may be the rider's own position ("Use my location",
+# OWNER-DECISIONS 395: never logged beyond the route request). Upstream's 100 and
+# 110 ms are passed by most bike routes. This is far past httpd's
+# timeout_seconds (30 s below), so no request ever reaches it.
+NEVER_LONG_MS = 3_600_000.0
+
 OVERRIDES: dict = {
     "mjolnir": {
         # The key that matters most. An unrecognised or misplaced Lua key makes
@@ -74,9 +82,9 @@ OVERRIDES: dict = {
         # route reports nothing.
         "actions": ["route", "trace_route", "trace_attributes", "locate", "status"],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
-        "logging": {"type": "std_out", "color": False},
+        "logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS},
     },
-    "thor": {"logging": {"type": "std_out", "color": False}},
+    "thor": {"logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS}},
     "odin": {"logging": {"type": "std_out", "color": False}},
     "service_limits": {
         "bicycle": {
