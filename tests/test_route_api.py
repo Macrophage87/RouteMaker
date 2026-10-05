@@ -334,10 +334,16 @@ class TestAnswer:
     def test_a_mass_ride_has_riders_a_minute_that_a_climb_lowers(
         self, client, segments, router
     ) -> None:
-        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a two-lane street
-        (the segment table has no lanes here: one a direction) carries about 198 riders a
-        minute; a 6% climb of 300 m carries fewer, and the climb's row says by how much."""
+        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a street whose
+        Mass Ride width (`mass_usable_width_m`, the column the capacity map colours by) is
+        6.7 m carries about 198 riders a minute; a 6% climb of 300 m carries fewer, and the
+        climb's row says by how much. The column wins over the lanes' estimate (three lanes
+        a direction here would be 298): the chart and the map agree (394, 404)."""
         heights = [10.0] * 6 + [10.0 + 1.8 * i for i in range(1, 11)] + [28.0] * 4
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET mass_usable_width_m = 6.7, road_lanes = 3"
+            )
         answers = standard_router()
         answers.answers["route"] = route_answer([(VERTICES, 2.2, heights)])
         router(answers)
@@ -392,13 +398,18 @@ class TestAnswer:
         assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
         assert profile["crossings_complete"] is False
 
-    def test_a_mass_rides_width_comes_from_the_segments_lanes_and_one_way(
-        self, client, segments, router
+    def test_on_an_older_table_a_mass_rides_width_comes_from_the_segments_lanes(
+        self, client, segments, router, monkeypatch
     ) -> None:
-        """Mutation review, finding 4: `road_lanes` and `road_oneway` reach the width end
-        to end. Way 101 is a 2-lane one-way (6.7 m: 198 a minute; one lane a direction
-        would be 99, two-way 396), way 202 a 2-lane two-way street (13.4 m: 396), and way
-        303 has no segment row (not known). Level all the way, so no grade factor."""
+        """Mutation review, finding 4: on a table built before `mass_usable_width_m`, the
+        estimate's `road_lanes` reach the width end to end. Way 101 is a 2-lane one-way
+        (6.7 m: 198 a minute; one lane a direction would be 99), way 202 a street of 2 lanes
+        a direction, two-way: its own side only (OWNER-DECISIONS 406), 6.7 m, 198 (it was
+        13.4 m, 396, before the rebuild bundle), and way 303 has no segment row (not known).
+        Level all the way, so no grade factor."""
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
+        monkeypatch.setattr(routing, "_capacity_column_seen", False)
         with connection.cursor() as cursor:
             cursor.execute(
                 f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
@@ -416,7 +427,7 @@ class TestAnswer:
         profile = response.json()["profile"]
         at = dict(zip(profile["m"], profile["riders_per_min"], strict=True))
         assert at[450] == 198
-        assert at[1290] == 396
+        assert at[1290] == 198
         assert at[2010] is None
         assert profile["unchecked"] == [] and profile["avoid"] == []
 
