@@ -818,29 +818,49 @@ class ProfileFlowOut(Schema):
 
 
 class ProfileCrossingOut(Schema):
-    """A Mass Ride's major junction (OWNER-DECISIONS 333): a signalized or stop-controlled
-    crossing of a street of 2 or more lanes, or any junction with a stress rating."""
+    """A Mass Ride's major junction (OWNER-DECISIONS 333, 396): one that crosses or joins a
+    road of LTS 3 or higher, whatever its control, or any junction with a stress rating."""
 
     m: int
     street: str | None = Field(description="The cross street as mapped; null if unnamed.")
     severity: Literal["orange", "red"] | None = Field(
-        description="The planner's junction marker (triangle, diamond); null: none."
+        description=(
+            "The planner's junction marker (triangle, diamond); null where the junction is"
+            " major only for the busy road it crosses or joins (a dot)."
+        )
     )
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     lanes: int | None = Field(description="Lanes of the street, both directions, if known.")
     crossed_tier: int | None
+    kind: Literal["flagged", "crossing", "joining"] = Field(
+        default="flagged",
+        description=(
+            "Why it is major: a junction the planner flags, a busy road crossed (riding"
+            " along a busy road past a busy cross street included), or a busy road joined."
+        ),
+    )
     corkers_needed: bool = Field(
         description="Corkers hold it (OWNER-DECISIONS 142): the crossed road is LTS 3 or worse."
     )
 
 
+class ProfileRangeOut(Schema):
+    """A stretch of the profile, metres along the route from its first sample to its last."""
+
+    from_m: int
+    to_m: int
+
+
 class ProfileOut(Schema):
     """The route's elevation along its distance, for the route chart (OWNER-DECISIONS
-    322, 323; Mass Ride 328, 332, 333). Parallel arrays, one entry a router sample, in the
-    order ridden: the router samples every `interval_m` along each leg, so `m` is the leg's
-    start plus that spacing, never past the leg's end (a joint is two samples at one
-    place). `elevation_m` is null where the router had none, and `grade_pct` is read across
-    four samples (`routemaker.profile`), signed, positive uphill."""
+    322, 323; Mass Ride 328, 332, 333, 396). Parallel arrays, one entry a router sample, in
+    the order ridden: the router samples every `interval_m` along each leg, so `m` is the
+    leg's start plus that spacing, never past the leg's end (a joint is two samples at one
+    place; a leg with no elevation is a null height at each end). A route over about 60 km
+    is thinned to about 2,000 samples (`routemaker.profile.thin`: each window keeps its
+    steepest grade, its lowest riders figure and its gaps), after every figure is worked out
+    on every sample. `elevation_m` is null where the router had none, and `grade_pct` is
+    read across four samples (`routemaker.profile`), signed, positive uphill."""
 
     interval_m: float
     m: list[int]
@@ -851,12 +871,28 @@ class ProfileOut(Schema):
         default=None,
         description=(
             "Mass Ride only: the grade-adjusted riders a minute at each sample"
-            " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown."
+            " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown or"
+            " the stretch is marked Avoid (325: no carrying capacity)."
         ),
     )
     flow: ProfileFlowOut | None = None
     crossings: list[ProfileCrossingOut] | None = Field(
-        default=None, description="Mass Ride only: the major junctions, in route order."
+        default=None,
+        description=(
+            "Mass Ride only: the major junctions, in route order. Null where they were not"
+            " checked (the junctions could not be read in time); an empty list is none."
+        ),
+    )
+    avoid: list[ProfileRangeOut] | None = Field(
+        default=None,
+        description="Mass Ride only: the stretches marked Avoid (325), which carry no figure.",
+    )
+    unchecked: list[ProfileRangeOut] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the stretches on a leg that could not be traced, where neither"
+            " the width nor the junctions are known."
+        ),
     )
 
 

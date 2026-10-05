@@ -1090,30 +1090,35 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
         return None
 
 
+# What a Mass Ride's stretch with no width is (`_flow_stretches`): marked Avoid (325: no
+# carrying capacity, said "Avoid"), or on a leg that could not be traced (neither its
+# width nor its junctions are known, so its intersections were not checked).
+STRETCH_AVOID = "avoid"
+STRETCH_UNTRACED = "untraced"
+
+
 def _flow_stretches(
     leg_runs: list, pieces: list[Piece], classes: list
-) -> list[tuple[float, float | None]]:
-    """(metres, usable width) along the route in the order ridden, as the stress sections
-    are cut (`stress_spans`): the width a Mass Ride's group has (`routemaker.flow`), None
-    for a leg that could not be traced."""
-    out: list[tuple[float, float | None]] = []
+) -> list[tuple[float, float | None, str | None]]:
+    """(metres, physical usable width, note) along the route in the order ridden, as the
+    stress sections are cut (`stress_spans`): the width a Mass Ride's group has
+    (`routemaker.flow.usable_width_m`), None with `STRETCH_AVOID` on a stretch marked
+    Avoid and with `STRETCH_UNTRACED` on a leg that could not be traced."""
+    out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
-                out.append(
-                    (
-                        pieces[i].metres,
-                        flow.usable_width_m(
-                            klass[0],
-                            klass[1],
-                            getattr(klass, "lanes", None),
-                            getattr(klass, "oneway", None),
-                        ),
-                    )
+                width = flow.usable_width_m(
+                    klass[0],
+                    klass[1],
+                    getattr(klass, "lanes", None),
+                    getattr(klass, "oneway", None),
                 )
+                note = STRETCH_AVOID if flow.is_avoid(klass[0]) else None
+                out.append((pieces[i].metres, width, note))
         else:
-            out.append((run, None))
+            out.append((run, None, STRETCH_UNTRACED))
     return out
 
 
@@ -1121,21 +1126,62 @@ def _round_or_none(value: float | None, places: int = 1) -> float | None:
     return None if value is None else round(value, places)
 
 
+def _int_or_none(value: float | None) -> int | None:
+    return None if value is None else round(value)
+
+
+def _ranges(sample_m: list[float], flags: list[bool]) -> list[dict]:
+    """The runs of flagged samples, as {from_m, to_m} from the first sample of each to
+    its last."""
+    out: list[dict] = []
+    start = last = None
+    for m, on in zip(sample_m, flags, strict=True):
+        if on:
+            start = m if start is None else start
+            last = m
+        elif start is not None:
+            out.append({"from_m": round(start), "to_m": round(last)})
+            start = None
+    if start is not None:
+        out.append({"from_m": round(start), "to_m": round(last)})
+    return out
+
+
+def _crossing_out(major) -> dict:
+    return {
+        "m": round(major.m),
+        "street": describe.street_name_of(major),
+        "severity": major.severity,
+        "control": major.control.value,
+        "lanes": major.lanes,
+        "crossed_tier": major.crossed_tier,
+        "kind": getattr(major, "kind", intersections.MAJOR_FLAGGED),
+        "corkers_needed": major.corkers_needed,
+    }
+
+
 def route_profile(
     legs: list,
     spans: list[dict],
-    flow_stretches: list[tuple[float, float | None]] | None = None,
+    flow_stretches: list[tuple] | None = None,
     majors: list | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
     router's per-leg samples (`ELEVATION_INTERVAL_M`): where each sample is along the
     route, its height, the grade there (`routemaker.profile`), and the sustained climbs.
 
-    On a Mass Ride (`flow_stretches`: the width along the route) it also has the
-    grade-adjusted riders a minute at each sample (OWNER-DECISIONS 328, `routemaker.flow`),
-    the narrowest point, the capacity each climb costs, and the major junctions
-    (`majors`, OWNER-DECISIONS 333). None where no leg had any elevation: the route is
-    answered all the same."""
+    On a Mass Ride (`flow_stretches`: (metres, width, note) along the route,
+    `_flow_stretches`) it also has the grade-adjusted riders a minute at each sample
+    (OWNER-DECISIONS 328, `routemaker.flow`), the narrowest point, the capacity each climb
+    costs, where the route is marked Avoid (325) or was not traced, and the major junctions
+    (`majors`, OWNER-DECISIONS 333, 396). `majors` None is "not checked" (the junctions
+    were not read: over budget, or the reads failed), sent as `crossings: null`, never as
+    an empty list, which says there are none.
+
+    The climbs (`climbs.runs`) are found once, and every figure is worked out on every
+    sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
+    (`profile.thin`). None where no leg had any elevation: the route is answered all the
+    same."""
     try:
         chart_legs = []
         offset = 0.0
@@ -1146,11 +1192,19 @@ def route_profile(
         samples = profile_rules.sample_positions(chart_legs, ELEVATION_INTERVAL_M)
         if not any(height is not None for _m, height in samples):
             return None
+        sample_m = [m for m, _h in samples]
         grade_at = profile_rules.grades(samples)
-        found = profile_rules.climb_list(samples, grade_at, spans)
+        runs = climbs.runs(samples)
+        found = profile_rules.climb_list(samples, grade_at, spans, runs)
         riders = level = None
+        notes: list[str | None] = []
         if flow_stretches is not None:
-            riders, level = flow.per_sample(samples, grade_at, flow_stretches)
+            pairs = [(stretch[0], stretch[1]) for stretch in flow_stretches]
+            riders, level = flow.per_sample(samples, grade_at, pairs, runs)
+            notes = [
+                flow_stretches[i][2] if i is not None and len(flow_stretches[i]) > 2 else None
+                for i in flow.stretch_index(sample_m, flow_stretches)
+            ]
         rows = []
         for climb in found:
             row = {
@@ -1164,46 +1218,44 @@ def route_profile(
                 "min_riders_per_min": None,
             }
             if riders is not None and level is not None:
-                inside = [
-                    (r, v)
-                    for (m, _h), r, v in zip(samples, riders, level, strict=True)
-                    if r is not None and v and climb.from_m <= m <= climb.to_m
+                on = [
+                    (riders[i], level[i])
+                    for i in profile_rules.inside(sample_m, climb.from_m, climb.to_m)
+                    if riders[i] is not None and level[i]
                 ]
-                if inside:
-                    row["capacity_drop_pct"] = max(round(100 * (1 - r / v)) for r, v in inside)
-                    row["min_riders_per_min"] = min(r for r, _v in inside)
+                if on:
+                    row["capacity_drop_pct"] = round(max(100 * (1 - r / v) for r, v in on))
+                    row["min_riders_per_min"] = round(min(r for r, _v in on))
             rows.append(row)
+        heights = [h for _m, h in samples]
+        keep = profile_rules.thin(heights, grade_at, riders)
         body: dict = {
             "interval_m": ELEVATION_INTERVAL_M,
-            "m": [round(m) for m, _h in samples],
-            "elevation_m": [_round_or_none(h) for _m, h in samples],
-            "grade_pct": [_round_or_none(None if g is None else g * 100) for g in grade_at],
+            "m": [round(sample_m[i]) for i in keep],
+            "elevation_m": [_round_or_none(heights[i]) for i in keep],
+            "grade_pct": [
+                _round_or_none(None if grade_at[i] is None else grade_at[i] * 100) for i in keep
+            ],
             "climbs": rows,
-            "riders_per_min": riders,
+            "riders_per_min": None,
             "flow": None,
             "crossings": None,
+            "avoid": None,
+            "unchecked": None,
         }
         if riders is not None:
-            known = [(r, m) for (m, _h), r in zip(samples, riders, strict=True) if r is not None]
+            body["riders_per_min"] = [_int_or_none(riders[i]) for i in keep]
+            known = [(round(r), m) for m, r in zip(sample_m, riders, strict=True) if r is not None]
             narrow = min(known, default=None)
             typical = sorted(r for r, _m in known)
             body["flow"] = {
                 "narrowest_riders_per_min": narrow[0] if narrow else None,
-                "narrowest_m": narrow[1] if narrow else None,
+                "narrowest_m": round(narrow[1]) if narrow else None,
                 "typical_riders_per_min": typical[len(typical) // 2] if typical else None,
             }
-            body["crossings"] = [
-                {
-                    "m": round(major.m),
-                    "street": describe.street_name_of(major),
-                    "severity": major.severity,
-                    "control": major.control.value,
-                    "lanes": major.lanes,
-                    "crossed_tier": major.crossed_tier,
-                    "corkers_needed": major.corkers_needed,
-                }
-                for major in (majors or [])
-            ]
+            body["avoid"] = _ranges(sample_m, [note == STRETCH_AVOID for note in notes])
+            body["unchecked"] = _ranges(sample_m, [note == STRETCH_UNTRACED for note in notes])
+            body["crossings"] = None if majors is None else [_crossing_out(x) for x in majors]
         return body
     except Exception:  # noqa: BLE001 - a route is answered without its profile
         logger.warning("the route profile could not be built", exc_info=True)
@@ -1983,19 +2035,21 @@ def plan(
             majors = intersections.majors_of_events(events)
         if events is not None and refine_context.group:
             events = intersections.number_groups(events, stops_m)
+        profiled_from = clock()
         profile = route_profile(
             legs,
             spans,
             _flow_stretches(leg_runs, pieces, classes) if preset_name == "mass-ride" else None,
             majors if preset_name == "mass-ride" else None,
         )
+        profile_s = clock() - profiled_from
         described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
         described_full, described_overview = described if described else (None, None)
         joined_at = clock()
         if joined_at - started > budget_s:
             logger.warning(
                 "a %s plan on %s took %.1f s, past its %s s budget: route %.1f s, trace %.1f s, "
-                "joins %.1f s%s",
+                "joins %.1f s (the chart's profile %.2f s of them)%s",
                 preset_name,
                 variant,
                 joined_at - started,
@@ -2003,6 +2057,7 @@ def plan(
                 routed_at - started,
                 traced_at - routed_at,
                 joined_at - traced_at,
+                profile_s,
                 " (skipped)" if over_budget else "",
             )
 

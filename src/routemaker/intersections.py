@@ -921,14 +921,22 @@ def penalty_m(events: list[Event]) -> float:
 
 # --- Major junctions, for the Mass Ride route chart ----------------------------
 
-# OWNER-DECISIONS 333: "Put the major intersections on it as well." Major means a
-# signalised or stop-controlled crossing of a street of 2 or more lanes, or any
-# junction with a stress rating (one the planner flags). A flagged junction needs
-# corkers where its crossed road is LTS 3 or worse (item 142: "only crossings of LTS 3,
-# LTS 4 or Avoid roads"); a street that is only wide and controlled does not.
-MAJOR_LANES = 2
-MAJOR_CONTROLS = frozenset({Control.SIGNAL, Control.STOP, Control.ALL_STOP, Control.CROSS_STOP})
+# OWNER-DECISIONS 396, which replaces 333's lane-count rule: "Similar rules to other
+# riding. Go by stress ratings of the roads." A junction is major on the Mass Ride chart
+# when the road it crosses or joins is rated LTS 3 or higher (`BUSY_TIER`), whatever the
+# control (a signal, a stop, or none), or when the junction itself carries a stress
+# rating (an event the planner flags). There is no lane counting and no "any stop sign"
+# rule. Busy roads the group reading turns into no event are marked all the same: a
+# right turn onto an arterial, or riding along a busy road past a busy cross street.
+# Corkers are needed at the major junctions (142, by the crossed road's tier: LTS 3, 4
+# or Avoid).
+MAJOR_TIER = BUSY_TIER
 CORKER_TIER = BUSY_TIER
+
+# What made a junction major: a flagged event, a busy road crossed, or one joined.
+MAJOR_FLAGGED = "flagged"
+MAJOR_CROSSING = "crossing"
+MAJOR_JOINING = "joining"
 
 
 @dataclass(frozen=True)
@@ -938,15 +946,17 @@ class Major:
     m: float
     lon: float
     lat: float
-    # The crossed street's names, as `Event.road_names` and `Event.road_display`.
+    # The crossed or joined street's names, as `Event.road_names` and `.road_display`.
     names: frozenset[str]
     display: tuple[str, ...]
     # The planner's own marker where the junction is flagged: orange or red; None where
-    # the crossing is only wide and controlled.
+    # it is major only for the busy road it crosses or joins.
     severity: str | None
     control: Control
+    # The street's lanes in all (both directions), where known: said, not counted.
     lanes: int | None
     crossed_tier: int | None
+    kind: str = MAJOR_FLAGGED
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -985,33 +995,51 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             e.control,
             None,
             e.crossed_tier,
+            MAJOR_FLAGGED,
         )
         for e in events
         if e.flagged
     ]
 
 
+def busy_roads_at(junction: Junction) -> list[tuple[Road, str]]:
+    """The roads of LTS 3 or higher a junction crosses or joins, busiest first, each
+    with how (`MAJOR_CROSSING`, `MAJOR_JOINING`). Joined is the road turned or run onto
+    from another one (not the rider's own road going on, and not straight on from one
+    busy road into the next, which `cost_of` does not count as joining either)."""
+    found = [(road, MAJOR_CROSSING) for road in junction.crossed if road.busy]
+    out = junction.outgoing
+    if (
+        out.busy
+        and not junction.continues
+        and (not junction.incoming.busy or junction.movement is not Movement.STRAIGHT)
+    ):
+        found.append((out, MAJOR_JOINING))
+    return sorted(found, key=lambda pair: -(pair[0].tier or 0))
+
+
+def _counted(majors: Sequence[Major], junction: Junction, road: Road) -> bool:
+    """Whether a junction's busy road is one already counted: the same node, or the
+    same street (or an unnamed one) within MERGE_WITHIN_M (its other carriageway, a
+    slip lane)."""
+    for major in majors:
+        if major.m == junction.m:
+            return True
+        near = abs(major.m - junction.m) <= MERGE_WITHIN_M
+        if near and (major.names & road.names or not road.names or not major.names):
+            return True
+    return False
+
+
 def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> list[Major]:
-    """A route's major junctions, in route order: the flagged events, and every other
-    signalised or stop-controlled junction whose crossed (or entered) street has
-    `MAJOR_LANES` or more lanes. One street within MERGE_WITHIN_M of one already
-    counted is the same junction (its other carriageway, a slip lane)."""
+    """A route's major junctions (OWNER-DECISIONS 396), in route order: the flagged
+    events, and every other junction that crosses or joins a road of LTS 3 or higher,
+    whatever its control. One junction gives one major, for its busiest road."""
     majors = majors_of_events(events)
     for junction in sorted(share_controls(list(junctions)), key=lambda j: j.m):
-        if junction.control not in MAJOR_CONTROLS:
-            continue
-        roads = list(junction.crossed)
-        if junction.movement is not Movement.STRAIGHT and not junction.continues:
-            roads.append(junction.outgoing)
-        for road in roads:
-            lanes = _lanes_total(road)
-            if lanes is None or lanes < MAJOR_LANES or road.busy:
-                continue
-            if any(
-                abs(m.m - junction.m) <= MERGE_WITHIN_M and (m.names & road.names or not road.names)
-                for m in majors
-            ):
-                continue
+        for road, kind in busy_roads_at(junction):
+            if _counted(majors, junction, road):
+                break
             majors.append(
                 Major(
                     junction.m,
@@ -1021,8 +1049,9 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     road.display,
                     None,
                     junction.control,
-                    lanes,
+                    _lanes_total(road),
                     road.tier,
+                    kind,
                 )
             )
             break

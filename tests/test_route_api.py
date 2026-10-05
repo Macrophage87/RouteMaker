@@ -330,6 +330,34 @@ class TestAnswer:
         assert profile["climbs"][0]["min_riders_per_min"] == min(known)
         assert isinstance(profile["crossings"], list)
 
+    def test_a_mass_rides_width_comes_from_the_segments_lanes_and_one_way(
+        self, client, segments, router
+    ) -> None:
+        """Mutation review, finding 4: `road_lanes` and `road_oneway` reach the width end
+        to end. Way 101 is a 2-lane one-way (6.7 m: 198 a minute; one lane a direction
+        would be 99, two-way 396), way 202 a 2-lane two-way street (13.4 m: 396), and way
+        303 has no segment row (not known). Level all the way, so no grade factor."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
+                " WHERE osm_way_id = 101"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = false"
+                " WHERE osm_way_id = 202"
+            )
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, [10.0] * 75)])
+        router(answers)
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        at = dict(zip(profile["m"], profile["riders_per_min"], strict=True))
+        assert at[450] == 198
+        assert at[1290] == 396
+        assert at[2010] is None
+        assert profile["unchecked"] == [] and profile["avoid"] == []
+
     def test_nothing_about_the_request_needs_or_makes_a_session(
         self, client, segments, router
     ) -> None:

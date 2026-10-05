@@ -23,6 +23,8 @@ nothing is drawn or computed across it.
 
 from __future__ import annotations
 
+import bisect
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -67,10 +69,17 @@ def sample_positions(legs: Sequence[Leg], interval_m: float) -> list[tuple[float
     """(metres along the route, height) for every sample, in the order ridden.
 
     A leg's last sample never lies past the leg's end; the first sample of the next
-    leg is at that same distance, so the joint is a pair of samples at one place.
+    leg is at that same distance, so the joint is a pair of samples at one place. A leg
+    the router gave no heights for is a gap: a None height at its start and its end, so
+    nothing (a grade, a climb, a line) is read across it (as `core.routing.grade_profile`
+    does).
     """
     out: list[tuple[float, float | None]] = []
     for leg in legs:
+        if not leg.heights:
+            out.append((leg.start_m, None))
+            out.append((leg.start_m + max(leg.length_m, 0.0), None))
+            continue
         for i, height in enumerate(leg.heights):
             out.append((leg.start_m + min(i * interval_m, leg.length_m), height))
     return out
@@ -125,22 +134,31 @@ def _worst_tier(spans: Sequence[dict], from_m: float, to_m: float) -> int | None
     return max(tiers) if tiers else None
 
 
+def inside(sample_m: Sequence[float], from_m: float, to_m: float) -> range:
+    """The indices of the samples from `from_m` to `to_m` (both included), for sample
+    positions in route order (they never decrease): two bisections, not a scan."""
+    return range(bisect.bisect_left(sample_m, from_m), bisect.bisect_right(sample_m, to_m))
+
+
 def climb_list(
     samples: Sequence[tuple[float, float | None]],
     grade_at: Sequence[float | None],
     spans: Sequence[dict] = (),
+    runs: Sequence[climbs.Run] | None = None,
 ) -> list[Climb]:
-    """The route's sustained climbs worth listing, in the order ridden."""
+    """The route's sustained climbs worth listing, in the order ridden. `runs` is the
+    profile's `climbs.runs`, computed here when not given."""
+    if runs is None:
+        runs = climbs.runs(list(samples))
+    sample_m = [m for m, _h in samples]
     found = []
-    for run in climbs.runs(list(samples)):
+    for run in runs:
         if run.rise_m <= 0:
             continue
-        inside = [
-            g
-            for (m, _h), g in zip(samples, grade_at, strict=True)
-            if g is not None and run.start_m <= m <= run.end_m
+        on = [
+            grade_at[i] for i in inside(sample_m, run.start_m, run.end_m) if grade_at[i] is not None
         ]
-        peak = max(max(inside, default=run.grade), run.grade)
+        peak = max(max(on, default=run.grade), run.grade)
         if run.grade < MIN_CLIMB_GRADE and peak < MIN_CLIMB_PEAK_GRADE:
             continue
         found.append(
@@ -154,3 +172,44 @@ def climb_list(
             )
         )
     return found
+
+
+# The most samples a route answer carries (operations review, SHOULD-FIX 3): every
+# sample up to about 60 km (37 mi) at 30 m, and on a longer route about this many. The
+# chart is 300-700 px wide, so more would be many samples to a pixel.
+MAX_SAMPLES = 2000
+
+
+def thin(
+    heights: Sequence[float | None],
+    grade_at: Sequence[float | None],
+    riders: Sequence[float | None] | None = None,
+    limit: int = MAX_SAMPLES,
+) -> list[int]:
+    """The indices of the samples to send, in order: all of them up to `limit`, and on
+    a longer route about `limit`, window by window. Each window keeps its steepest
+    grade (so the grade bands survive), on a Mass Ride its lowest riders figure (so a
+    bottleneck does), and its first gap in the heights or the riders (so a gap stays a
+    gap); the route's first and last samples are always kept. The grades, climbs and
+    riders are worked out on every sample before this, so no figure changes."""
+    n = len(heights)
+    if n <= limit:
+        return list(range(n))
+    picks = 3 if riders is not None else 2
+    window = math.ceil(n * picks / limit)
+    keep = {0, n - 1}
+    for start in range(0, n, window):
+        part = range(start, min(start + window, n))
+        graded = [i for i in part if grade_at[i] is not None]
+        keep.add(max(graded, key=lambda i: abs(grade_at[i])) if graded else part[0])
+        gaps = [i for i in part if heights[i] is None]
+        if gaps:
+            keep.add(gaps[0])
+        if riders is not None:
+            known = [i for i in part if riders[i] is not None]
+            if known:
+                keep.add(min(known, key=lambda i: riders[i]))
+            unknown = [i for i in part if riders[i] is None]
+            if unknown:
+                keep.add(unknown[0])
+    return sorted(keep)
