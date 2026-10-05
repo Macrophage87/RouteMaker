@@ -86,7 +86,12 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     layer's count is stale there, and reversible lanes count as zero everywhere
     unless a reviewed block is allowlisted. The reason, and the owner's source for
     it: DCist, "Say goodbye to reversible lanes on Connecticut Avenue and hello to a
-    bike-friendly redesign", 2021-12-15 (dcist.com), credited here.
+    bike-friendly redesign", 2021-12-15 (dcist.com), credited here. Connecticut Avenue
+    NW north of Calvert St is then given three travel lanes each way by the owner's own
+    knowledge (OWNER-DECISIONS 412, 2026-10-05: "Connect is 3 but one is sometimes used
+    for parking, though double and even triple parking also happens."), overriding the
+    layer's 1 + 1 plus 2 reversible: `fixtures/lane_overrides/`. The owner is the source;
+    the Dupont Circle underpass's bike access and LTS 4 are decision 416.
   - **Metro Stations Regional** (<https://opendata.dc.gov/datasets/metro-stations-regional>;
     ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51`) and
     **Metro Station Entrances (Regional)** (the same service, layer 111), retrieved

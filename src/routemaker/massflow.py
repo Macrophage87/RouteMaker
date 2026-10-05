@@ -285,8 +285,10 @@ def _dc_block_width_m(block, rules: DcRules = DC_RULES) -> float | None:
             bikes = bikes[:-1]
         return through * lane_m + sum(bikes)
     if ib or ob:
+        # A lane override's part-time parking lane (412) is not a lane the ride has.
+        parked = block.part_time_parking_lanes or 0
         return min(
-            (lanes.get(direction, 0) + reversible // 2) * lane_m + painted(direction)
+            max(1, lanes.get(direction, 0) + reversible // 2 - parked) * lane_m + painted(direction)
             for direction in DIRECTIONS
             if lanes.get(direction, 0)
         )

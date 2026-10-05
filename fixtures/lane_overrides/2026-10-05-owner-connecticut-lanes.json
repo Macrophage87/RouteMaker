@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "decided": "2026-10-05",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 412 (with 405, 411, 413, 414). Read by the rebuild from its image (routemaker.lane_overrides) when the District's blocks are loaded; nothing is loaded into the database.",
+  "overrides": [
+    {
+      "id": "connecticut-ave-nw-north-of-calvert-lanes",
+      "agency": "dc-roadway-block",
+      "street": "CONNECTICUT AVE NW",
+      "north_of_lat": 38.9235,
+      "travel_lanes_per_direction": 3,
+      "part_time_parking_lanes_per_direction": 1,
+      "source": "OWNER-DECISIONS 412 (2026-10-05): \"Connect is 3 but one is sometimes used for parking, though double and even triple parking also happens.\" The old reversible lanes (ended 2020, decision 405) are ordinary lanes now, so DC's 1 + 1 plus 2 reversible is stale. Three travel lanes each way north of Calvert St NW (38.9235 N) for the classifier and crossing stress; the curb lane is part-time parking, so the Mass Ride's usable width is two lanes on its own side. Double and triple parking is a known hazard, not modelled. 413: K St to Dupont Circle stays LTS 3. 414: the blocks between N St and R St, where the through traffic is in the Dupont underpass, are south of Calvert St and none of them is touched."
+    }
+  ]
+}

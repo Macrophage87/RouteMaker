@@ -895,8 +895,9 @@ order), and nothing asks for hazards.
   sides: 21 ft (6.40 m) a direction, 189. DC one lane each way of 8 ft between parked cars:
   8 ft (2.44 m), 72. DC one-way 3 lanes of 11 ft, no parking: 33 ft (10.06 m), 297. DC 10 ft
   lane and a 5 ft bike lane beside parking, each way: 10 + 5 - 3.5 = 11.5 ft (3.51 m), 103.
-  Connecticut Ave NW (1 + 1 and 2 reversible, 10 ft): 10 ft (3.05 m), 90, the reversible lanes
-  being zero (405). A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
+  Connecticut Ave NW north of Calvert St (1 + 1 and 2 reversible, 10 ft; before the 412 lane
+  override): 10 ft (3.05 m), 90, the reversible lanes being zero (405). With the override, 3 + 3
+  lanes less the part-time parking lane is 2 lanes of DC's 9 ft: 18 ft (5.49 m), 162. A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
   width: OSM's, e.g. an untagged residential street, 11 ft (3.35 m), 99. OSM 30 ft curb-to-curb
   with `parking:both=lane`: (30 - 2 x 7.9) / 2 = 7.1 ft (2.17 m), 64.
 * **One model with the elevation chart.** There is one `src/routemaker/flow.py`, the elevation
@@ -4665,10 +4666,40 @@ delegates to it. `settings.MASS_RIDE_DC_*` must equal the module's lists
 (`test_agency_roads.test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists`).
 A block with only reversible lanes, none counted, gives no count, and OSM's stands.
 
-Effect on the 2026-10-03 inputs: Connecticut Ave NW north of Calvert St (1 + 1 lanes, 2
-reversible) reads one lane a direction, not three; at 30 mph and 17,000 to 28,000 vehicles
-a day the single-lane row plus the volume bump is still LTS 4. The segment table's
-`road_lanes` follows, so the junction model prices crossing it as one lane a direction.
+Effect on the 2026-10-03 inputs, before the lane override below: Connecticut Ave NW north
+of Calvert St (1 + 1 lanes, 2 reversible) read one lane a direction, not three; at 30 mph
+and 17,000 to 28,000 vehicles a day the single-lane row plus the volume bump was still
+LTS 4. Decision 412 now gives that road three lanes each way (next section).
+
+**Connecticut Ave NW's lanes (412, 413, 414, 416).** North of Calvert St the street has
+three travel lanes each way today ("Connect is 3 but one is sometimes used for parking,
+though double and even triple parking also happens."): the old reversible lanes became
+ordinary lanes. `fixtures/lane_overrides/2026-10-05-owner-connecticut-lanes.json`, read by
+`routemaker.lane_overrides` as `pipeline.run.load_road_blocks` loads the District's blocks
+(the one place a block's geometry and facts are together), sets a Connecticut Ave NW block
+whose middle is at or north of 38.9235 N (Calvert St NW) to 3 + 3 (never fewer than DC
+records), drops its reversible count (405's zero holds everywhere else) and marks one lane
+a direction as part-time parking (`RoadFacts.part_time_parking_lanes`). The classifier and
+crossing stress (`road_lanes`) count all three. The Mass Ride width
+(`massflow._dc_block_width_m`) leaves the parking lane out: two lanes on the ride's own
+side at DC's per-lane width, 9 ft, so 18 ft (5.49 m), 162 riders a minute (it was one
+lane, 9 ft, 81, under 405's zero). Double and triple parking is a known hazard, not
+modelled. It covers 44 of the layer's 61 Connecticut Ave NW blocks (the 2026-10-03 data):
+those recording reversible lanes, and those north of Calvert St recording 2 + 2 or 3 + 2
+(the far north, past 38.9625 N, reads 2 + 2 in the layer and now 3 + 3 by the owner's
+"north of Calvert St"; revisit if the owner knows otherwise). Blocks south of Calvert St, including R St to Calvert St and the Dupont
+underpass, are untouched. 413: K St to Dupont Circle stays LTS 3; the 411 corridor runs
+from R St north.
+
+**The Dupont Circle underpass (414, 416).** Between N St and R St the commuter traffic is
+in the underpass, so the surface roadway and the service lanes around the circle are lower
+stress (414): they are not in the 411 corridor and keep the classifier's tier (LTS 3 on the
+2026-10-03 build). OSM tags the underpass's ten ways (the tunnel, layer -1, and its portal
+ramps) `bicycle=no`, so the build bars them. The owner (416): "Bikes can pass underneath.
+There's no sign to say they are prohibited. Underneath is LTS4." The access and stress rows
+of `fixtures/overrides/2026-10-05-owner-dupont-underpass.json` set `bicycle=yes` and tier 4
+on those ten ways (hidden, category other, no public note). Load them with
+`load_overrides` before the rebuild (fixtures/overrides/README.md).
 
 **Connecticut Ave NW, R St to Calvert St (409).** Rated LTS 3 because DC posts it 25 mph:
 `stress.urban_two_way_floor` steps a two-way city street of two lanes a direction to LTS 4

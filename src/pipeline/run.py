@@ -40,6 +40,7 @@ from routemaker import (
     corridors,
     divided,
     facility,
+    lane_overrides,
     massflow,
     ridetime,
     singletrack,
@@ -516,11 +517,15 @@ class ReferenceData:
                 path,
             )
             return ()
+        # Owner-known lane counts where the layer is stale (OWNER-DECISIONS 412).
+        overrides = lane_overrides.load()
         return tuple(
             conflation.RoadFeature(
                 feature_id=row["id"],
                 coordinates=[tuple(c) for c in row["coordinates"]],
-                facts=agency_roads.RoadFacts.from_json(row["facts"]),
+                facts=lane_overrides.apply(
+                    agency_roads.RoadFacts.from_json(row["facts"]), row["coordinates"], overrides
+                ),
             )
             for row in json.loads(path.read_text())
         )

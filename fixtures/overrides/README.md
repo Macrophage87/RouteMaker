@@ -77,6 +77,7 @@ in a reviewed commit.
 | File | Decision |
 |---|---|
 | `2026-09-26-owner-bicycle-access.json` | Key Bridge's Virginia approaches and the 11th Street local span's south landing, including its run onto Martin Luther King Jr Avenue SE, are legal to ride (owner, 2026-09-26, in two answers; the file grew from six rows to twelve and reloading it adds only the new ones). See `fixtures/crossings/README.md`. Needs the crossings of 2026-09-26 installed first (above). |
+| `2026-10-05-owner-dupont-underpass.json` | The Dupont Circle underpass of Connecticut Ave NW, N St to R St, and its portal ramps (OWNER-DECISIONS 416): ten ways, all OSM `bicycle=no`. "Bikes can pass underneath. There's no sign to say they are prohibited. Underneath is LTS4." A `bicycle=yes` access row and a tier-4 stress row each (hidden, category other). The surface roadway and service lanes around the circle are not in it (414). |
 
 ## Stress rows, and the files of 2026-09-27
 

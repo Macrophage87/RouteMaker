@@ -382,6 +382,9 @@ class RoadFacts:
     # corrections name it by (`withheld_blocks`); the installed block id is
     # built from the ArcGIS row number.
     block_key: str | None = None
+    # Travel lanes a direction that are part-time parking (a lane override,
+    # OWNER-DECISIONS 412): counted for the classifier, left out of the Mass Ride width.
+    part_time_parking_lanes: int | None = None
 
     def to_json(self) -> dict:
         """Only what is present, so a block with little to say costs little."""
