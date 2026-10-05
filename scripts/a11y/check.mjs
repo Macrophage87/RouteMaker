@@ -932,7 +932,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   }
   const press = async (p) => {
     await p.eval("document.querySelector('.locate-button').click(); true");
-    await sleep(1200);
+    await sleep(300);
+    // The look-up is done when the button's "Finding your location" text is gone; the notice follows 150 ms later.
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(900);
   };
 
   {
