@@ -1153,8 +1153,10 @@ What the map shows and credits:
   the API are printed under its breakdown.
 - The stress overlay is drawn from `/tiles/stress/{z}/{x}/{y}.pbf` (layer
   `stress`, properties `tier`, `trail`, `unpaved` and `facility`) from zoom 10
-  to 16; zoomed out to 10-11 only the long trails, from 12 the trails and LTS 3-4 roads, from 14 every
-  street and footway, and below 10 nothing, where the legend says
+  to 16; zoomed out to 10-11 only the long trails and the roads closed to
+  cars at set times, drawn thinner (docs/OPERATIONS.md, "The long trails"),
+  from 12 every trail and the LTS 3-4 roads, from 14 every street and
+  footway, and below 10 nothing, where the legend says
   "Zoom in to see traffic stress". Bike facilities are rails either side of
   the stress line, told apart by shape first (OWNER-DECISIONS 276, 277): an
   off-road path a solid 2.5 px violet rail (left off an unpaved trail, 290), a

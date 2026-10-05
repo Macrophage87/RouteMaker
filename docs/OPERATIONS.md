@@ -640,9 +640,9 @@ map's grey area. A coordinate that is not a tile is 400, and a deployment with
 no live segment table yet is 404 with `no-store`, which the front end reads as
 "no overlay".
 
-| Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
+| Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
-| 10-11 | only the long traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`, then `long_trails_predicate`: below); one feature per class, simplified | miles of path drawn, region-wide (Columbia and Patapsco box): z10-11 before 5,461 (311), z11 now 1,052 (17), z10 now 907 (15); from the 2026-10-03 build, ZOOMED-TRAILS-dev.md |
+| 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
 | 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
 | 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
@@ -662,38 +662,92 @@ then "Car free roads stay. The point at this zoom is to see what would be a
 great long distance trip." and "Local trails only at higher zooms. Basically,
 at birds eye view I want to see a bicycle version of the interstate routes."
 (377), "Patapsco Traverse appears to be a mountain bike trail. Make sure to
-not include those." (378), and, for the z11 paved bar of 3 mi that dropped the
-Grist Mill Trail (2.54 mi), "Yes, bring it in." (380: 2.5 mi). A path or trail is drawn at z10-11 only when it is
-part of something long: `segment.trail_route` (the OSM route relation it is
-in: 1 a local bicycle route, which qualifies nothing; 2 a long walking route,
-US:NST or an iwn, nwn or rwn network; 3 a bicycle route at an icn, ncn or rcn
-network) is at least 2 for a paved way, and 3 for an unpaved one; or
-`segment.trail_run_m`, the length of its named run (same-named ways chained
-within 400 m of one another), is at least 2.5 miles paved and 5 unpaved at z11,
-5 and 8 at z10. A road closed to cars at set times (`car_free_when` set) is
-kept whatever its length. A mountain-bike way (in a route=mtb relation, or
-tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`, unless paved) is
-written with route 0 and no name, so it never qualifies and adds nothing to a
-run. The bars are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI`
-and its siblings). An unknown surface is paved. The z10 and z11 tiles are two
-levels (`core.stress_tiles.TRAILS` and `TRAILS_NEAR`); the lines are drawn
-thinner there too (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`).
+not include those." (378), for the z11 paved bar of 3 mi that dropped the
+Grist Mill Trail (2.54 mi), "Yes, bring it in." (380: 2.5 mi), and of the
+roads closed to cars for good, "I think off is fine here. Nobody routes
+around the tiny roads." (381). A path or trail is drawn at z10-11 only when
+it is part of something long:
 
-A short bridge (bridge=* other than no, at most `TRAIL_BRIDGE_MAX_M`, 100 m) with a
-trail way at each end is judged as its trail is, whatever its deck's surface
-(`segment.trail_bridge`: 1 between paved ways, 2 where either is unpaved), so a
-wooden bridge does not punch a hole in a paved trail; it keeps no bridge on its
-own and extends no trail.
+- its `segment.trail_route`, the OSM route relation it is in, is at least 2
+  for a paved way and 3 for an unpaved one (1 is a local bicycle route or one
+  with no network, which qualifies nothing; 2 a long walking route, US:NST or
+  an iwn, nwn or rwn network; 3 a bicycle route at an icn, ncn or rcn
+  network; a relation whose `route` lists several values, such as
+  `hiking;mtb`, is read as each of them); or
+- its `segment.trail_run_m`, the length of its named run, is at least:
 
-These are **segment columns the rebuild writes** (`trail_name`, `trail_route`,
-`trail_run_m`, `trail_bridge`; `pipeline.trail_routes` reads the route relations from the
-source extract and chains the runs in the staging schema). Until a rebuild
-has promoted them the tiles keep every path and trail at z10-11, as before:
-the rule applies only to a live table that has `trail_route`, `trail_run_m` and
-`trail_bridge`, which the ETag names (`t`, `l`, `b`), so deploying the api and
-running the pre-draw before the rebuild is safe and changes nothing; the
-next rebuild's pre-draw draws the thinned tiles. Route relations and names
-are OSM's, cited with the rest of the map's data.
+  | | paved | unpaved |
+  | --- | --- | --- |
+  | z11 | 2.5 mi (4.0 km) | 5 mi (8.0 km) |
+  | z10 | 5 mi (8.0 km) | 8 mi (12.9 km) |
+
+  A run is the drawn trail ways of one name (case-blind, and without a
+  trailing parenthetical or bracket, Extension, Extn, Connector or
+  Connection) that chain within 1,300 ft (400 m) of one another. A way with
+  no name of its own takes the name of the long route (level 2 or 3) it is
+  in; a local route's name is not used, so a local route cannot keep a way
+  through it (377).
+
+A road closed to cars at set times (`car_free_when` set) is kept whatever its
+length (377). A road closed to cars for good is not exempt: it is a path,
+judged like any trail by its route and its named run, and otherwise shown
+from z12 (381). A mountain-bike way (in a route relation that is an mtb one,
+or tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`, unless the
+way is paved) is written with route 0 and no name, so it never qualifies and
+adds nothing to a run. The paved exemption is for the tags only (Upper Rock
+Creek, Northwest Branch and the Cross County Trail carry an `mtb:scale` on
+asphalt); on the 2026-10-03 extract it changes nothing, since every flagged
+drawn way is flagged by its relation. An unknown surface is paved. The bars
+are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI` and its
+siblings). The z10 and z11 tiles are two levels (`core.stress_tiles.TRAILS`
+and `TRAILS_NEAR`), and the front end draws the lines and rails thinner
+there (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`), never with a
+casing edge, a rail or an unpaved mark under a pixel.
+
+**Short bridges** (the orchestrator's decision, not the owner's, after the
+Grist Mill Trail's two wooden bridges left holes in a paved trail at z11). A
+drawn trail way tagged bridge=* other than no is a candidate. Candidates
+whose ends meet (a bridge and its boardwalk, or one bridge OSM splits in two)
+are one chain, judged as one: at most `TRAIL_BRIDGE_MAX_M`, 330 ft (100 m),
+in all, and each of its outer ends must meet a drawn trail way that is not a
+candidate (the same-named one first, then the one on the highest route, with
+the longest run, nearest). Each way of the chain takes the greater of its own
+route and run and the lower of its ends' (an end on a route that keeps its
+trail sets no bar on the run), and is judged on its trail's surface, not its
+deck's: `segment.trail_bridge` is 1 between paved ways and 2 where an end is
+unpaved. So it keeps no bridge on its own and lowers none. A bridge whose end
+meets another bridge in that bridge's middle, not at its end, is not chained
+to it, and is judged on its own deck.
+
+**The columns are the rebuild's** (`trail_name`, `trail_route`, `trail_run_m`,
+`trail_bridge`). `pipeline.trail_routes` reads the route relations from the
+source extract (one relations-only pass), the writer stores a name only on a
+way the zoomed-out map draws, and `derive_trail_runs` ANALYZEs the staging
+table, chains the runs and judges the bridges (10 s on the full
+table). VALIDATE then refuses a build whose columns came out wrong
+(`pipeline.run.assert_long_trails`): the Washington & Old Dominion Trail
+(OSM way 8810729) and the C&O Canal towpath (10595312),
+`settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS`, must each be on a long bicycle
+route in a run of 8 mi (12.9 km) or more; at least
+`settings.REBUILD_LONG_TRAIL_FLOORS` rows, 6,000 and 2,200,
+must be on a long route and in a run of 2.5 mi (4.0 km) or more (about half
+of the 2026-10-03 build's 12,503 and 4,402); and no bridge may be
+left unjudged. If a later extract splits or replaces a sentinel way, move the
+sentinel; don't drop it.
+
+Until a rebuild has promoted the columns the tiles keep every path and trail
+at z10-11, as before: the rule applies only to a live table that has all of
+`trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
+`l`, `b`). FORMAT_VERSION 5 must reach the api and the pipeline images
+together: build both under one TAG (`docker compose build`, or `build api
+rebuild` as in the format-change steps below), never `build api` alone. The
+pre-draw evicts every format but its own, so an api and a rebuild at
+different formats leave the api's z10-14 cache cold after every weekly
+rebuild. Recreate `rebuild` only while no rebuild is running. Deploying both
+and running the pre-draw before the data rebuild draws the same tiles as
+before, only thinner (every cached tile is drawn again, as the format
+changed); the next rebuild's pre-draw draws the long trails only. Route
+relations and names are OSM's, cited with the rest of the map's data.
 
 Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
@@ -885,8 +939,10 @@ refills itself.
 
 Run the pre-draw by hand on a deployment whose live table was promoted before
 the cache existed (the first deploy of this change), after a deploy that
-changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale;
-3 is the zoomed-out tiles becoming the paths and trails alone; 5 the long trails only), and after
+changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale:
+3 was the zoomed-out tiles becoming the paths and trails alone, 4 the busy
+roads at z12-13 and the quiet streets from z14, 5 the long trails only at
+z10-11), and after
 `rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
 of. The weekly rebuild's own pre-draw runs in the `rebuild` service, so a
 change to what it draws reaches it with the pipeline image. It skips what is
@@ -941,7 +997,8 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v4"`, or `+cfms-v4"` with all four optional columns) and a repeat with `If-None-Match` is 304; a
+   (`-v5"`, or `+cfmsbtl-v5"` with all seven optional columns) and a repeat
+   with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.
 
