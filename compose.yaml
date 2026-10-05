@@ -649,7 +649,8 @@ services:
   # Gravel and Mountain Goat ride. Two workers, as its siblings, but 1536M, not
   # their 2G: it serves two presets of ten, and a sibling idles at 40 to 500 MB
   # resident. 2G would take the swap-time peak to 33.0G, over the 32G check
-  # (scripts/check_compose_limits.py); 1536M keeps it at 31.5G. 1.1 GB of tiles
+  # (scripts/check_compose_limits.py); 1536M keeps it at 32.0G, exactly at the
+  # limit, so any further raise anywhere fails the check. 1.1 GB of tiles
   # on disk.
   #
   # Behind the profile `offroad`, so a plain `docker compose up -d` never starts

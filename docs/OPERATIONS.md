@@ -2234,7 +2234,8 @@ the first host to run it is the first test of it.
    directories they started against.
 
    ```sh
-   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
+   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+   docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -2658,7 +2659,8 @@ build id, and the four routers keep answering from last week's tiles until they
 are restarted:
 
 ```sh
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -2823,9 +2825,17 @@ docker compose exec -T postgis psql -U routemaker -d routemaker -At \
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from live.segment" </dev/null
 docker compose up -d --no-deps --no-build --force-recreate \
-    caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad \
+    caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend \
     photon api worker rebuild
 ```
+
+**Never name `valhalla-offroad` in an `up` on the small host** (the 10 GB WSL
+machine, or the beta). Naming a service in `up` starts it whatever its profile, so
+it would put a fifth router in memory there; and before the first rebuild that
+builds it, Docker would create `${DATA_ROOT}/tiles/offroad` as root for its bind,
+which the rebuild (uid 10001) then cannot write. Where it does run, start it
+after the routers above with `docker compose --profile offroad up -d --no-deps
+--no-build --force-recreate valhalla-offroad`.
 
 **Never a plain `docker compose up -d` here.** Without `--no-deps` it starts
 `migrate` against whatever postgis has, which on the empty cluster creates a
@@ -2933,7 +2943,8 @@ changes nothing — and `--confirm` is what performs it.
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -3116,7 +3127,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend valhalla-offroad`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -3412,8 +3423,11 @@ router is not answering: no 500, no change in the request. The planner remembers
 failure for `WEEKEND_FAILURE_TTL_S` and tries again after. Where there is memory
 for it (1536M of limit; the standard router sits at about 450 MB resident here, over 1.1 GB of tiles), start it with the
 command above after the swap, and `restart` it after later rebuilds as the others.
-`docker compose restart valhalla-offroad` with the profile off does nothing, so
-add `--profile offroad`.
+A `restart` that names `valhalla-offroad` where it has no container fails ("no such
+service", with or without `--profile offroad`) and restarts none of the other
+routers on the same line, so the four-router restart never names it. Restart it on
+its own line, `docker compose --profile offroad restart valhalla-offroad`, and only
+where it runs.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
@@ -3444,14 +3458,18 @@ does the same after the swap and now reads the off-road router too.
 One deploy and one rebuild carry NO-BIKE-PATHS and the singletrack fix, the arterial
 calibration, main's front end and log changes, the route chart, the z12-13 ride layer
 (calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
-and Connecticut Ave NW changes (OWNER-DECISIONS 391, 394-410; reports/REBUILD-BUNDLE-integration.md).
+and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
+the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
+394-424; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
+reports, kept outside the repository).
 Nothing in it is live until the rebuild promotes the new table.
 
-**Images, all under one TAG.** api (also the worker's and migrate's image), pipeline (the
-`rebuild` service), and the front end. `docker compose build api rebuild` (or `docker
-compose build`), never `build api` alone: tile format 7 must reach the api and the pipeline
-together, or the weekly pre-draw evicts the api's cache every week (above, "The stress
-tiles"). The front end (`ship-data.sh` / docs/DEPLOYMENT.md) goes last.
+**Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
+(the `rebuild` service). `docker compose build api rebuild` (or `docker compose build`),
+never `build api` alone: tile format 7 must reach the api and the pipeline together, or the
+weekly pre-draw evicts the api's cache every week (above, "The stress tiles"). The front end
+is not a compose image: it is built and installed separately (docs/DEPLOYMENT.md, "The
+public front end"), and goes last.
 
 **Migration.** core 0010 (`segment.mtb_only`, `walk_bike`) is state only: the segment table
 is unmanaged and created whole by each rebuild. `migrate` records it and runs no SQL. The
@@ -3460,29 +3478,198 @@ need no migration, as `facility` and the trail columns did not: the rebuild's DD
 them (`pipeline.schema.SEGMENT_DDL`) and the writer fills all 37 columns. The api reads
 each one only where the live table has it, so the new api is safe on the old table.
 
-**The order.**
+**The order.** Run from the deployment checkout, one step at a time, with `</dev/null` on
+every docker command. Steps marked **(owner)** need the owner's OK. Each step names its
+rollback point; "Rollback", below, uses them.
 
-1. Pre-flight as in the last runbook (reports/REBUILD-RUNBOOK.md 0.x): memory, `docker ps`,
-   `/tmp`, the extract's age, the window.
-2. Build the api and pipeline images under the new TAG; recreate `migrate` (it applies
-   0010), then `api worker rebuild` with `--no-deps --no-build`. Never a plain `up -d`; the
-   off-road router stays off (compose profile `offroad`).
-3. Run the rebuild. VALIDATE now also refuses: under 98% of road or path rows with a Mass
-   Ride width, or a median road outside 60-200 riders a minute; the calm-run floors
-   (Elmer School Road at 2 mi); Connecticut Ave NW under 60% LTS 4, or under 95% north of
-   R St NW; and, as before, the long trails and the closure probes on all five graphs.
-4. After the swap: restart the four routers (and `--profile offroad` the fifth only where
-   there is memory), run the pre-draw (every tile is new at format 7, and it now also draws
-   the Mass Ride tiles over the District, a few hundred more: "The tile cache", above), then
-   the post-swap probes (`scripts/probe_bicycle_closures.py`, which reads the off-road router too).
-5. Ship the front end.
-6. Check: an ETag ending `-v7"` (`+kcfrmwoesbtl-v7"` with every optional column); a z12
-   tile with no LTS 3+ road; a z12 `/tiles/mass/` tile over downtown DC holding the busy
-   roads with `rpm` (ETag `W/"mass-...+fmw-...-v2"`), and one over Baltimore empty;
-   `SELECT left(version, 8), count(*) FROM stress_tile_cache GROUP BY 1` showing both
-   `W/"stres` and `W/"mass-` rows; a Mass Ride's route sections carrying `rpm`; the logs'
-   "CONNECTICUT AVE NW: N% LTS 4" line and "named corridors" summary (two corridors).
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
+D=$DATA_ROOT
+Q() { docker compose exec -T postgis psql -U routemaker -d routemaker -AtX -c "$1" </dev/null; }
+```
 
-**Rollback** is the usual one ("Rolling back a rebuild"): the old table has none of the new
-columns, and the new api and front end fall back on it (no ride layer at z12-13, no
-capacity colours, no roadside look, the old route chart width estimate).
+**A. Before the day.** The commit deployed is the reviewed bundle SHA with main as an
+ancestor (the main ruleset fast-forwards only), with the front-end tests and CI green on
+it. Deploy that SHA, not the branch name.
+
+**B. Pre-flight (read-only).** Start between 07:30 and about 23:00 UTC, so the 8 h budget
+(`REBUILD_TIMEOUT_S`) ends before the 07:00 backup; do not recreate `worker` between 07:00
+and 07:30 UTC.
+
+```sh
+free -m; docker ps --format '{{.Names}}' </dev/null; df -h /tmp   # only this stack's containers; /tmp near empty
+ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # older than 6 days: the rebuild downloads, so STOP and ask the owner
+Q "select count(*) from django_migrations"                       # note it (68 before the bundle)
+Q "select count(*) from live.segment"                            # note it
+Q "select id,task_name,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"
+Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1"
+Q "select kind,count(*) from override where approved group by 1"
+```
+
+If `available` is under 7000 MB, stop photon (`docker compose stop photon`). **(owner)**
+Close the heavy apps on the host and pause Windows Update for the run. C: wants 15 GB free.
+
+**C. Rollback points.** Nothing changes yet; these are what "Rollback" restores.
+
+```sh
+L=$(git rev-parse --short HEAD)
+docker tag ghcr.io/macrophage87/routemaker-api:dev      ghcr.io/macrophage87/routemaker-api:pre-bundle-$L      </dev/null
+docker tag ghcr.io/macrophage87/routemaker-pipeline:dev ghcr.io/macrophage87/routemaker-pipeline:pre-bundle-$L </dev/null
+cp $D/frontend/index.html ~/frontend-index-pre-bundle.html
+for v in standard no-trail ebike weekend; do echo "$v $(readlink $D/tiles/$v/current)"; done > ~/tiles-pre-bundle.txt
+Q "select max(id) from override" > ~/override-maxid-pre-bundle.txt
+ls -l $D/backups | tail -1                                        # last night's backup is there
+```
+
+**D. Hold the weekly tick (S3 of the operations review). (owner: `.env` edit)** Every
+Procrastinate worker runs the periodic deferrer for the whole registry, so the maintenance
+`worker` queues the Tuesday 08:00 UTC `weekly_rebuild` even while `rebuild` is stopped, and
+the job waits `todo`. Recreating `rebuild` (step G) would then start a full rebuild at
+once, before the overrides of step H and the tile-build check of step F; and a tick queued
+behind a hand-fired run promotes a **second** build straight after, whose swap drops
+`live_old`, the pre-bundle rollback target. So pause it first ("Pausing the weekly
+rebuild", above):
+
+```sh
+grep -q '^WEEKLY_REBUILD_PAUSED=' .env || echo 'WEEKLY_REBUILD_PAUSED=1' >> .env
+grep '^WEEKLY_REBUILD_PAUSED=' .env                                # WEEKLY_REBUILD_PAUSED=1
+Q "select id,status,args from procrastinate_jobs where task_name='weekly_rebuild' and status='todo'"
+```
+
+A `todo` row here (after 08:00 UTC on a Tuesday) is the waiting tick. Leave it: with the
+pause in `.env` it ends "paused" as soon as `rebuild` starts in step G, and the check
+there shows it gone. `run_rebuild_now` passes `manual=True`, so the pause does not hold it.
+
+**E. Code and images.**
+
+```sh
+git status --short                                               # empty
+git merge --ff-only <reviewed SHA>
+docker compose build api rebuild </dev/null 2>&1 | tee ~/bundle-build.log
+```
+
+The api build may contact Docker Hub for its base image **(owner OK)**. `lua/` is bound
+live into `rebuild`, but `rebuild` is stopped and paused, so nothing builds early.
+
+**F. The tile-build check** (about 2 s; `lua/graph.lua` changed, "Firing a rebuild by hand"):
+
+```sh
+scripts/check_tile_build_access.sh                               # exit 0 required; the new pipeline image, --network none
+```
+
+**G. Migrate, then recreate** (no job `doing`):
+
+```sh
+docker compose run --rm --no-deps migrate </dev/null                 # applies core 0010 (state only, no SQL)
+Q "select count(*) from django_migrations"                           # one more than in B
+grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: check again just before the recreate
+docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
+docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
+Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
+```
+
+Never a plain `up -d`, and never name `valhalla-offroad` in an `up` on this host ("After a
+host restart", above). Rollback point: the images tagged in C.
+
+**H. Reference data and overrides.** The Dupont Circle underpass rows (OWNER-DECISIONS
+414, 416: `bicycle=yes` and LTS 4 on the ten underpass ways OSM tags `bicycle=no`) are
+database rows and take effect only once loaded. **(owner OK: a live DB write.)** Dry run
+first, then `--confirm`, before the rebuild:
+
+```sh
+docker compose exec -T rebuild python3 scripts/install_reference_data.py --data-root /data </dev/null   # harmless; the crossings file is unchanged
+docker compose exec -T api python manage.py load_access_overrides - --actor <owner discord id> \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json      # dry: 20 to create (10 access, 10 stress), no conflict
+docker compose exec -T api python manage.py load_access_overrides - --actor <owner discord id> --confirm \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json
+```
+
+Baltimore's Harford Road (282a): see "Rebuild checklist: Harford Road (decision 282a)",
+above. The Baltimore file is loaded only if the owner approves it, and the owner then
+deletes the stress row for way 424993005 in the admin; without that, `override-rematch.md`
+lists that row as `failed`, which is expected. Rollback point: the override max id saved
+in C (rows above it are this step's).
+
+**I. The rebuild** (about 3-3.5 h on a quiet host; abandoned at 8 h). No lane work meanwhile.
+
+```sh
+docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
+docker compose logs -f rebuild </dev/null
+```
+
+Watch for `facility classes:`, `AADT smoothing`, `named corridors` (two corridors),
+`override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
+R St NW), the Mass Ride width line (at least 98% of road and path rows with a width, the
+median road 60-200 riders a minute), the calm-run floors (Elmer School Road at 2 mi), the
+long trails, the closure readback on **five** graphs, and `Stress tile cache pre-drawn:
+11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A
+VALIDATE refusal is terminal and nothing is promoted: keep the code (the new api is safe on
+the old table), hold the front end, and report.
+
+**J. After the swap.** The run row's notice prints the same restart as here.
+
+```sh
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend </dev/null
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate </dev/null
+#   four "ok" lines and "offroad: not running, skipped" where the off-road router is off
+Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1"   # five rows; offroad has no previous on its first build
+Q "select left(version,8),count(*) from stress_tile_cache group by 1"            # W/"stres and W/"mass- rows
+Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236" # the Dupont underpass: road, 4
+curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
+curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
+curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
+```
+
+If the run row says the pre-draw was cut short, run `docker compose exec -T api python
+manage.py predraw_stress_tiles`. Then the two `trip` probes ("Bicycle closures in the
+tiles", step 3) and verify-release. Leave `valhalla-offroad` off on this host: Gravel and
+Mountain Goat answer with `variant: "standard"`. Check also: a z12 stress tile with no LTS
+3+ road; a z12 `/tiles/mass/` tile over downtown DC holding the busy roads with `rpm`; a
+Mass Ride's route sections carrying `rpm`.
+
+**K. The front end, last** (docs/DEPLOYMENT.md, "The public front end"). Then check the
+Mass Ride map at z10, z12 and z14, the DC mask and the outside-DC notice. Start photon
+again if it was stopped. Rollback point: the `index.html` saved in C.
+
+**L. The weekly schedule (owner).** Decide when to unpause: remove the line from `.env`,
+then `docker compose up -d --no-deps --no-build --force-recreate rebuild`. Do it before
+the next Tuesday 08:00 UTC, or leave it paused on purpose. While it stays paused the
+rollback target (`live_old`, the `previous` links) lasts.
+
+**M. The beta (after live is verified).** Use the bundle's sha-tagged image, then
+`scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend "$RM_SSH_HOST"
+/data/routemaker-incoming`; it sends `tiles/offroad` too (about 1.1 GB more). On the
+server, receive the bundle, restart the **four** routers (as `receive-data.sh` prints),
+and run `predraw_stress_tiles`. Do **not** start the beta's off-road router: it would take
+the beta over its memory ceiling. No nginx change is needed.
+
+**Rollback.** The old table has none of the new columns, and the new api and front end
+fall back on it (no ride layer at z12-13, no capacity colours, no roadside look, the old
+route chart width estimate).
+
+- **The rebuild refused, or failed before the swap:** nothing changed in the data. Keep
+  the new images (the api is safe on the old table) and keep the pause on.
+- **The data at fault after the swap:** with the **new** rebuild image (the old one
+  ignores the off-road router's links and row):
+
+  ```sh
+  docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null              # dry: back to the saved build; offroad withdrawn
+  docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+  docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend </dev/null
+  docker compose stop valhalla-offroad </dev/null                                     # a no-op where it never ran
+  docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null
+  docker compose exec -T api python manage.py predraw_stress_tiles </dev/null
+  ```
+
+  Keep `WEEKLY_REBUILD_PAUSED=1`, or the next tick promotes the bundle again. The
+  rollback target lasts only until the next swap, so no second rebuild runs before the
+  decision.
+- **The code at fault:** the front end first (`index.html` from C), then the images (the
+  `pre-bundle-<sha>` tags from C, then `up -d --no-deps --no-build --force-recreate api
+  worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the same for
+  `rebuild`). Roll the data back first if it is also going back. The old images have the
+  pause (355 is on main). Migration 0010 stays applied, which is harmless. The Dupont rows
+  (ids above the saved max id) stay until the owner deletes them in the admin. The old api
+  ignores an `offroad` row in `valhalla_upstream`.

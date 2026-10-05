@@ -178,7 +178,8 @@ def predraw(
 ) -> Predrawn:
     """Draw every z10-`max_zoom` tile over the coverage box not yet cached, and then
     every Mass Ride tile over the District's box (core.mass_tiles, OWNER-DECISIONS 415):
-    a few hundred more, z10-14, drawn only from a table with the capacity column.
+    187 more at 2026-10-03's counts (z10 4, z11 6, z12 12, z13 35, z14 130), drawn only
+    from a table with the capacity column.
 
     Stops when `budget_s` is spent, counting what it did not reach, which is
     drawn on first request instead. Each draw runs under

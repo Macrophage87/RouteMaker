@@ -460,6 +460,8 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     from pipeline.rebuild import RebuildTimedOut, StageNotImplemented
     from pipeline.run import ReferenceDataMissing, ValidationFailed
     from pipeline.tiles import DiskGateRefused, TilePathsNotPerVariant
+    from routemaker.corridors import CorridorRefused
+    from routemaker.lane_overrides import LaneOverrideRefused
 
     return (
         ValidationFailed,
@@ -471,6 +473,10 @@ def terminal_causes() -> tuple[type[Exception], ...]:
         RebuildTimedOut,
         subprocess.TimeoutExpired,
         SwapUndoIncomplete,
+        # A broken corridor or lane-override fixture is in the image: a retry
+        # re-runs about 2 h of work to meet the same file (operations review nit).
+        CorridorRefused,
+        LaneOverrideRefused,
     )
 
 

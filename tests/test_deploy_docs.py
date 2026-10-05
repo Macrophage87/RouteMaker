@@ -934,12 +934,34 @@ def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -
                 if tokens[:3] == ["docker", "compose", "restart"]
             ]
     assert restarts, "no guide restarts the routers after a rebuild"
+    # A router behind a compose profile (the off-road one) has no container where
+    # the profile is off, and a `restart` naming it there fails and restarts none
+    # of the others (REBUILD-BUNDLE operations review, S1). So the plain restart
+    # names every default router, and a gated one only on its own
+    # `docker compose --profile <p> restart <it>` line.
+    gated = {name for name in routers if SERVICES[name].get("profiles")}
+    default = routers - gated
     for name, tokens, stopped in restarts:
         named = {token for token in tokens[3:] if not token.startswith("-")}
-        assert stopped <= routers and not named & stopped and named | stopped == routers, (
-            f"{name} runs `{' '.join(tokens)}`; the services that load tiles at start, "
-            f"which are the only ones a restart is for, are {sorted(routers)}"
+        assert (
+            stopped <= routers
+            and not named & stopped
+            and not named & gated
+            and named | (stopped - gated) == default
+        ), (
+            f"{name} runs `{' '.join(tokens)}`; the services that load tiles at start "
+            f"and run by default, which are the only ones a plain restart is for, are "
+            f"{sorted(default)}; a profile-gated router ({sorted(gated)}) gets its own line"
         )
+    profile_restarts = {
+        tokens[-1]
+        for body in ALL_DOCUMENTS.values()
+        for tokens in snippet_commands(body) + inline_commands(body)
+        if tokens[:3] == ["docker", "compose", "--profile"] and "restart" in tokens
+    }
+    assert gated <= profile_restarts, (
+        f"no guide restarts {sorted(gated - profile_restarts)} on its own profile line"
+    )
     assert any(stopped for _name, _tokens, stopped in restarts), (
         "no guide stops a withdrawn router, so the exception above checks nothing"
     )
@@ -1379,7 +1401,9 @@ def snippet_commands(text: str) -> list[list[str]]:
     commands = []
     for block in shell_snippets(text):
         for line in block.replace("\\\n", " ").splitlines():
-            tokens = line.split("#", 1)[0].split()
+            # `</dev/null` keeps docker from reading the heredoc a command runs in;
+            # it is the shell's, not the command's argv.
+            tokens = [t for t in line.split("#", 1)[0].split() if t != "</dev/null"]
             if tokens:
                 commands.append(tokens)
     return commands
@@ -1600,7 +1624,9 @@ def documented_manage_commands(documents=None) -> list[tuple[str, str | None, li
                 continue
             # A redirection is the shell's, not an argument: `< file.json` feeds
             # `load_access_overrides -` its standard input.
-            command = re.split(r"\s(?:\|\||&&|;|\||<|>)\s", PLACEHOLDER.sub("1", match.group(1)))[0]
+            command = re.split(
+                r"\s(?:\|\||&&|;|\||<|>)\s|\s</dev/null", PLACEHOLDER.sub("1", match.group(1))
+            )[0]
             service = re.search(
                 r"docker compose (?:exec|run)\s+(?:-\S+\s+)*(\S+)\s+(?:\./)?manage\.py", line
             )
