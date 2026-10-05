@@ -125,6 +125,8 @@ interface Props {
   rail: RailVisibility;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
+  /** Whether to load the federal-land data even with the shading off: a Mass Ride's planner lists the points on it. */
+  federalWanted?: boolean;
   onFederalStatus: (status: FederalStatus) => void;
   /** The federal-land data once it has come: App lists the plan's points on it (lib/federalLand.ts federalPoints). */
   onFederalData?: (data: FederalData) => void;
@@ -343,7 +345,7 @@ export function MapView(props: Props) {
         if (!visible) federal?.close();
         return;
       }
-      if (!visible || federalLoading) return;
+      if (!(visible || callbacks.current.federalWanted) || federalLoading) return;
       federalLoading = true;
       callbacks.current.onFederalStatus("loading");
       void loadFederalLand(federalLandUrl).then((data) => {
@@ -929,7 +931,7 @@ export function MapView(props: Props) {
   // The federal-land shading: on for a Mass Ride, off for any other ride type.
   useEffect(() => {
     federalSync.current?.();
-  }, [props.federalVisible]);
+  }, [props.federalVisible, props.federalWanted]);
 
   return <div ref={container} className="map" role="region" aria-label="Map" />;
 }

@@ -227,6 +227,15 @@ export function sheetEscape(event: SheetKeyEvent, onBack: () => void): boolean {
   return true;
 }
 
+/**
+ * Whether the points notice must be said through the app-level live region: when there is one and the
+ * planner, whose own status shows it, is hidden (a bar sheet, or the phone's sheet closed). With the
+ * planner shown its own region says it, so it is not said twice.
+ */
+export function noticeSaidElsewhere(notice: string | null, plannerShown: boolean): boolean {
+  return notice !== null && notice !== "" && !plannerShown;
+}
+
 /** The parts of an element the compact points' focus rescue reads. */
 export interface FocusContainer {
   contains(node: unknown): boolean;

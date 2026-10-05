@@ -65,8 +65,11 @@ test("App wires it: the shading follows federalShown(preset, switch) and the sec
   assert.match(app, /<FederalLandFor\s+preset=\{preset\}/);
   assert.doesNotMatch(app, /<FederalLandSection/, "the section is only ever drawn through FederalLandFor");
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(view, /federalSync\.current\?\.\(\);\s*\}, \[props\.federalVisible\]\)/, "the map follows the prop");
-  assert.match(view, /if \(!visible \|\| federalLoading\) return;/, "nothing is fetched while it is off");
+  assert.match(view, /federalSync\.current\?\.\(\);\s*\}, \[props\.federalVisible, props\.federalWanted\]\)/, "the map follows the props");
+  // Fetched for a Mass Ride whatever the switch says (the planner lists the points on federal land; the
+  // sidebar recheck's R-N1), and never for another ride type.
+  assert.match(view, /if \(!\(visible \|\| callbacks\.current\.federalWanted\) \|\| federalLoading\) return;/, "nothing is fetched unless shown or wanted");
+  assert.match(app, /federalWanted=\{federalShown\(preset, true\)/);
 });
 
 // ---------- colour plus a cue ----------

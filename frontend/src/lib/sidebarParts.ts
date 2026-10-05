@@ -11,7 +11,7 @@ import { Fragment, createElement as h, useId, useState, type ReactElement, type 
 import { RIDE_ACTION_SPOKEN, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
 import { stressZoomNotice } from "./stressLegend.ts";
-import { ACCESSIBILITY_LABEL } from "./accessibilitySwitch.ts";
+import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL } from "./accessibilitySwitch.ts";
 
 /**
  * The Ride line: one line saying how the ride is set, and Edit, which opens the controls
@@ -117,12 +117,13 @@ export function JunctionLegend(): ReactElement {
 
 /**
  * Ready to place, not placed (PLANNER_EXTRAS, an open owner question): the zoom notice in one line
- * over the planner, as well as in the Map layers sheet. Plain text, not a live region: the sheet's
- * copy is the one that speaks.
+ * over the planner, as well as in the Map layers sheet. A live region that stays in the page, so a
+ * change of notice is said: the sheet's copy is hidden whenever the planner shows, and the planner is
+ * hidden whenever the sheet shows, so only one of the two can ever speak.
  */
-export function PlannerZoomNotice({ zoom, shown }: { zoom: number | null; shown: boolean }): ReactElement | null {
+export function PlannerZoomNotice({ zoom, shown }: { zoom: number | null; shown: boolean }): ReactElement {
   const notice = stressZoomNotice(zoom, shown);
-  return notice ? h("p", { className: "notice planner-zoom" }, notice) : null;
+  return h("div", { className: "planner-zoom", role: "status" }, notice ? h("p", { className: "notice" }, notice) : null);
 }
 
 /**
@@ -130,11 +131,27 @@ export function PlannerZoomNotice({ zoom, shown }: { zoom: number | null; shown:
  * the planner, a toggle button doing what the Map layers sheet's switch does. No id of its own, so
  * it never shares one with the switch.
  */
-export function AccessibilityShortcut({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }): ReactElement {
+export function AccessibilityShortcut({
+  on,
+  paletteFromAddress = false,
+  onChange,
+}: {
+  on: boolean;
+  /** The palette came from the address (palette= in the link): said as the sheet's switch says it. */
+  paletteFromAddress?: boolean;
+  onChange: (on: boolean) => void;
+}): ReactElement {
+  const hintId = useId();
+  const hint = [ACCESSIBILITY_HINT, paletteFromAddress ? ACCESSIBILITY_ADDRESS_NOTE : ""].filter(Boolean).join(" ");
   return h(
-    "button",
-    { type: "button", className: "secondary accessibility-shortcut", "aria-pressed": on, onClick: () => onChange(!on) },
-    ACCESSIBILITY_LABEL,
-    h("span", { "aria-hidden": "true" }, `: ${on ? "On" : "Off"}`),
+    Fragment,
+    null,
+    h(
+      "button",
+      { type: "button", className: "secondary accessibility-shortcut", "aria-pressed": on, "aria-describedby": hintId, onClick: () => onChange(!on) },
+      ACCESSIBILITY_LABEL,
+      h("span", { "aria-hidden": "true" }, `: ${on ? "On" : "Off"}`),
+    ),
+    h("span", { id: hintId, className: "visually-hidden" }, hint),
   );
 }

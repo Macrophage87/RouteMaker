@@ -77,8 +77,12 @@ export function quickFigures(route: Pick<RouteResponse, "stress_m" | "facility_m
 }
 
 /** One share as a screen reader hears it: "LTS 1, comfortable for most people: 61 percent". */
-function spokenShare(s: { short: string; label?: string; percent: number }): string {
-  const meaning = s.label ? `, ${s.label.charAt(0).toLowerCase()}${s.label.slice(1)}` : "";
+/** A tier's meaning where its own label would read badly after its name ("Avoid, legal, but best avoided"). */
+const SPOKEN_MEANING: Record<string, string> = { "5": "roads best avoided" };
+
+function spokenShare(s: { key?: string; short: string; label?: string; percent: number }): string {
+  const own = s.key !== undefined ? SPOKEN_MEANING[s.key] : undefined;
+  const meaning = own ? `, ${own}` : s.label ? `, ${s.label.charAt(0).toLowerCase()}${s.label.slice(1)}` : "";
   return `${s.short}${meaning}: ${s.percent} percent`;
 }
 
@@ -87,7 +91,7 @@ function spokenShare(s: { short: string; label?: string; percent: number }): str
  * (the a11y review's S2: "LTS 1 61 percent" was heard as one number). The figure around it is named by
  * its caption, so this does not repeat "Traffic stress along the route".
  */
-export function stressBarLabel(segments: ReadonlyArray<{ short: string; label?: string; percent: number }>): string {
+export function stressBarLabel(segments: ReadonlyArray<{ key?: string; short: string; label?: string; percent: number }>): string {
   return segments
     .filter((s) => s.percent > 0)
     .map(spokenShare)

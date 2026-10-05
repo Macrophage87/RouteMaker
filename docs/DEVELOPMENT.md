@@ -3394,9 +3394,9 @@ or worse.
 - At 320 px with WCAG text spacing a row's severity and distance wrap inside it
   (`grid-template-columns: 18px minmax(0, auto) minmax(0, 1fr)`, `white-space:
   normal`).
-- The browser check (scripts/a11y/check.mjs, 80 checks) adds sections 7 and 8: the
-  rows at 320 px with text spacing, and the description (the toggle's name, the scroll
-  boxes, Full detail, the copy reply, a group's nested crossings).
+- The browser check (scripts/a11y/check.mjs) adds sections 7 and 8: the rows at
+  320 px with text spacing, and the description (the Directions fold's summary, the
+  scroll boxes, Full detail, the copy reply, a group's nested crossings).
 
 ### The sidebar (312)
 
@@ -3421,7 +3421,11 @@ Tests: `lib/sidebar.test.ts`.
   "Edit points" (`rescueCompactFocus`), so it is never left in a hidden element.
 - **Live regions.** The route's (`.status-line`) and the points' (`said`) are outside
   the panel, so a bar sheet or the phone's hidden sheet does not silence them; the
-  visible copy in the planner is `aria-hidden`.
+  planner's visible copy of the slow and waiting lines is `aria-hidden`, and "No route
+  yet." is plain text read where it stands. The points notice is a status in the Points
+  section, and is also said through `said` while the planner is hidden
+  (`noticeSaidElsewhere`), never both at once. A Mass Ride loads the federal-land data
+  whatever the shading switch says (`federalWanted`), for the planner's points list.
 - **Scrolling.** `.panel-body` is a column: the beta banner (its first child), the
   scrolling `.panel-scroll`, then the pinned route actions and bottom bar. On a short
   or zoomed screen (`@media (max-height: 32.5em), (max-width: 22.5em)`, 520 px and
@@ -3450,8 +3454,10 @@ Tests: `lib/sidebar.test.ts`.
   never inlined as `data:` URIs (which `font-src 'self'` would refuse).
 - **Open owner questions, ready to change.** The fourth bar button is About
   (`BAR_ITEMS`); the theme follows the system; `PLANNER_EXTRAS` turns on the planner's
-  zoom notice (`PlannerZoomNotice`) and an Accessibility toggle in the planner
-  (`AccessibilityShortcut`, no ids of its own), both built and off.
+  zoom notice (`PlannerZoomNotice`, a live region of its own, which only speaks while
+  the planner shows) and an Accessibility toggle in the planner (`AccessibilityShortcut`,
+  described by the switch's hint and its from-link note, with no ids the switch uses),
+  both built and off.
 - **The browser check** (scripts/a11y/check.mjs) opens the Ride settings on every page
   it checks, and the Map layers sheet or the Directions fold where a section needs
   them.

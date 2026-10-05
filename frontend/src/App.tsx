@@ -82,6 +82,7 @@ import {
   foldTitle,
   linkSaidFor,
   linkToCopy,
+  noticeSaidElsewhere,
   rescueCompactFocus,
   searchLede,
   selectionCopy,
@@ -392,6 +393,15 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+
+  // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
+  // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
+  // the app-level region then, and only then (no second reading while the planner shows it; recheck S1).
+  const plannerShownNow = useRef(true);
+  plannerShownNow.current = view === "planner" && panelOpen;
+  useEffect(() => {
+    if (noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
+  }, [notice, announce]);
 
   const syncHistory = useCallback(
     () => setCan({ undo: history.current.canUndo, redo: history.current.canRedo }),
@@ -785,7 +795,9 @@ export function App() {
         Points
       </h2>
       {PLANNER_EXTRAS.zoomNotice && <PlannerZoomNotice zoom={zoom} shown={stressVisible && stress === "available"} />}
-      {PLANNER_EXTRAS.accessibilityShortcut && <AccessibilityShortcut on={accessibilityOn()} onChange={(on) => setAccessibility(on)} />}
+      {PLANNER_EXTRAS.accessibilityShortcut && (
+        <AccessibilityShortcut on={accessibilityOn()} paletteFromAddress={paletteSetByAddress()} onChange={(on) => setAccessibility(on)} />
+      )}
       {/* The controls stay in the page while the points are compact (hidden), so the search keeps its state. */}
       <div id="points-search" ref={pointsSearchRef} className="points-controls" hidden={compactPoints}>
         <PlaceSearch
@@ -892,8 +904,9 @@ export function App() {
       <div className="status-shown" aria-hidden="true">
         {status.kind === "loading" && slow && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
-        {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
       </div>
+      {/* Read where it stands, not spoken: it never changes while shown (recheck N-new-2). */}
+      {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
       {status.kind === "confirm" && (
         <div
           className="confirm"
@@ -1015,6 +1028,7 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
         federalVisible={federalShown(preset, federalOn)}
+        federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
         onStationPoint={placeStation}
@@ -1047,7 +1061,6 @@ export function App() {
         {status.kind === "loading" && slow && <p>{stillPlanningSaid(preset, dials)}</p>}
         {status.kind === "waiting" && <p>{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
-        {status.kind === "idle" && points.length < 2 && <p>No route yet.</p>}
       </div>
       <aside
         ref={panelRef}

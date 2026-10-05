@@ -29,6 +29,7 @@ import {
   foldTitle,
   linkSaidFor,
   linkToCopy,
+  noticeSaidElsewhere,
   rescueCompactFocus,
   rideActionLabel,
   searchLede,
@@ -45,6 +46,7 @@ import { stressSegments } from "./stressBar.ts";
 import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE } from "./stressLegend.ts";
 import { sheetOrder } from "./sheet.ts";
 import { FederalPointsList } from "./federalLegend.ts";
+import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT } from "./accessibilitySwitch.ts";
 import { breakdownParts } from "./facilityBar.ts";
 // The rendered parts are createElement modules: node's test runner reads .ts, not .tsx.
 import { AccessibilityShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
@@ -238,6 +240,22 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
   assert.ok(app.indexOf("rescueCompactFocus({") > app.indexOf("}, [routeFirst]);"));
 });
 
+test("the points notice is said through the app's region while the planner is hidden, and only then (recheck S1)", () => {
+  assert.equal(noticeSaidElsewhere("That point is outside the area this map covers.", false), true);
+  assert.equal(noticeSaidElsewhere("That point is outside the area this map covers.", true), false, "the planner's own status says it");
+  assert.equal(noticeSaidElsewhere(null, false), false);
+  assert.equal(noticeSaidElsewhere("", false), false);
+  assert.match(app, /plannerShownNow\.current = view === "planner" && panelOpen;/);
+  assert.match(app, /if \(noticeSaidElsewhere\(notice, plannerShownNow\.current\)\) announce\(notice as string\);\s*\}, \[notice, announce\]\);/);
+});
+
+test("a Mass Ride loads the federal-land data whatever the shading switch says, for the planner's list (recheck R-N1)", () => {
+  assert.match(app, /federalWanted=\{federalShown\(preset, true\)/);
+  const map = src("../MapView.tsx");
+  assert.match(map, /if \(!\(visible \|\| callbacks\.current\.federalWanted\) \|\| federalLoading\) return;/);
+  assert.match(map, /\}, \[props\.federalVisible, props\.federalWanted\]\);/);
+});
+
 test("Mass Ride's points on federal land are listed in the planner too, with their own heading id", () => {
   const points = app.slice(app.indexOf("const federalPlanner"), app.indexOf("const routeSection"));
   assert.match(points, /federalShown\(preset, true\) && \(/);
@@ -309,6 +327,8 @@ test("the stress bar is one image with each share in its name, and a line of tex
     "LTS 1, comfortable for most people: 61 percent; LTS 2, comfortable for most adults: 30 percent; LTS 4, heavy or fast traffic: 9 percent",
   );
   assert.equal(stressBarKey(segments), "LTS 1: 61%, LTS 2: 30%, LTS 4: 9%");
+  // Avoid is not read "Avoid, legal, but best avoided" (recheck N-new-1).
+  assert.equal(stressBarLabel([{ key: "5", short: "Avoid", label: "Legal, but best avoided", percent: 2 }]), "Avoid, roads best avoided: 2 percent");
   assert.match(app, /<figure className="stress stress-main" aria-labelledby="stress-figure-caption">/);
   assert.match(app, /<div className="stress-bar" role="img" aria-label=\{stressBarLabel\(segments\)\}>/);
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
@@ -599,12 +619,18 @@ test("the zoom explanations are behind 'What each zoom level shows'; the zoom no
 
 test("the parts the owner has not decided are built, and off: the zoom notice and the Accessibility shortcut in the planner", () => {
   assert.deepEqual(PLANNER_EXTRAS, { zoomNotice: false, accessibilityShortcut: false });
-  assert.match(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })), /^<p class="notice planner-zoom">Zoom in to see traffic stress on roads/);
-  assert.equal(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 16, shown: true })), "");
+  // A live region kept in the page, so a change is said (recheck: the sheet's copy is hidden while the planner shows).
+  assert.match(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })), /^<div class="planner-zoom" role="status"><p class="notice">Zoom in to see traffic stress on roads/);
+  assert.equal(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 16, shown: true })), '<div class="planner-zoom" role="status"></div>');
   const shortcut = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: true, onChange: () => {} }));
-  assert.equal(shortcut, '<button type="button" class="secondary accessibility-shortcut" aria-pressed="true">Accessibility<span aria-hidden="true">: On</span></button>');
+  const described = /<button type="button" class="secondary accessibility-shortcut" aria-pressed="true" aria-describedby="([^"]+)">Accessibility<span aria-hidden="true">: On<\/span><\/button><span id="([^"]+)" class="visually-hidden">([^<]+)<\/span>/.exec(shortcut);
+  assert.ok(described, shortcut);
+  assert.equal(described[1], described[2], "described by its hint");
+  assert.equal(described[3], ACCESSIBILITY_HINT);
+  const fromLink = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: false, paletteFromAddress: true, onChange: () => {} }));
+  assert.ok(fromLink.includes(`${ACCESSIBILITY_HINT} ${ACCESSIBILITY_ADDRESS_NOTE}`), "the from-link note, as the sheet's switch shows it");
   assert.match(app, /\{PLANNER_EXTRAS\.zoomNotice && <PlannerZoomNotice/);
-  assert.match(app, /\{PLANNER_EXTRAS\.accessibilityShortcut && <AccessibilityShortcut/);
+  assert.match(app, /\{PLANNER_EXTRAS\.accessibilityShortcut && \(\s*<AccessibilityShortcut on=\{accessibilityOn\(\)\} paletteFromAddress=\{paletteSetByAddress\(\)\}/);
 });
 
 // ---- the font and the stylesheet ------------------------------------------------
@@ -682,6 +708,11 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.ok(region > 0 && region < app.indexOf("<aside"), "before the panel, outside it");
   assert.match(app.slice(region, app.indexOf("<aside")), /\{status\.kind === "ok" && routeSaid && <p>\{routeSaid\}<\/p>\}/);
   assert.match(app, /<div className="status-shown" aria-hidden="true">/);
+  // "No route yet." is read where it stands, and is not in the live region (recheck N-new-2).
+  assert.doesNotMatch(app.slice(region, app.indexOf("<aside")), /No route yet/);
+  const shownCopy = app.slice(app.indexOf('<div className="status-shown"'));
+  assert.doesNotMatch(shownCopy.slice(0, shownCopy.indexOf("</div>")), /No route yet/);
+  assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
   assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
