@@ -12,7 +12,7 @@ the whole file before running anything. Every step says what it changes and how 
 | `/data/routemaker-src` | The checkout of the exact release sha | `rm -rf` it |
 | `/data/routemaker` | `DATA_ROOT`: tiles, database files, Photon index, base map, front end, backups | `rm -rf` it, only after the owner agrees |
 | `/data/routemaker-incoming` | The bundle as shipped from home (about 4 GB) | `rm -rf` it |
-| nginx | **One new file** (`routemaker-beta.conf`) and one htpasswd file beside `nginx.conf`. No existing file is edited. | delete both, `nginx -t`, reload |
+| nginx | **One new file** (`routemaker-beta.conf`) and one htpasswd file beside `nginx.conf`. No existing file is edited. Once running, nginx also writes the beta's own two logs, `/var/log/nginx/rmbeta-access.log` and `/var/log/nginx/rmbeta-error.log` (rotated with the host's other nginx logs) | delete both files, `nginx -t`, reload; then `rm -f` the two logs and their rotated copies (`rmbeta-*.log*`) |
 | `/var/www/routemaker-acme` | Only if option A (certbot `--webroot`) is chosen | `rm -rf` it |
 | `~/routemaker-beta-state` | Mode 700: the before/after copies of `nginx -T` and the other sites' status codes | `rm -rf` it |
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
@@ -787,6 +787,7 @@ cd "$RM_SRC"
 sudo rm -f "$NGINX_SITE"; sudo rm -f /etc/nginx/sites-enabled/routemaker-beta.conf     # whichever exist
 sudo nginx -t && sudo nginx -s reload
 sudo rm -f /etc/nginx/routemaker-beta.htpasswd
+sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.log*   # the beta's own nginx logs, rotated copies too
 scripts/beta/beta-compose.sh down
 docker image rm ghcr.io/macrophage87/routemaker-api:<TAG>
 # destructive, owner's say-so: the data and the checkout
@@ -917,7 +918,13 @@ app back): `sudo cp -p "$RM_DATA/backups/index.html.pre-frontend-<time>" "$RM_DA
 - **The shell does not reach compose.** `beta-compose.sh` runs compose with only `PATH`, `HOME`, `DOCKER_HOST` and
   `DOCKER_CONFIG` from your environment (the gate renders with the same four), so every setting comes from `.env`.
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
-- **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design.
+- **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design:
+  the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
+  with no query string, no client address and no tester name. Reverse look-ups and searches (`/api/reverse`,
+  `/api/geocode`, whose queries hold a location) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  a 502 or 504 there leaves no line; read the api's log for its side. Upstream errors on every other path still go to the
+  host's own nginx error log, with the request line (those paths carry no location in a query; a tile path does show
+  the area viewed, as any map pan does).
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
   worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
   and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one

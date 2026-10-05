@@ -705,11 +705,42 @@ def test_the_access_log_never_records_a_query_string() -> None:
     for leak in leaks:
         assert leak not in body, leak
     assert not re.search(r"\$arg_", body)
+    # nor who asked: no client address, no tester name, no forwarded address
+    for who in ("$remote_addr", "$binary_remote_addr", "$remote_user", "$http_x_forwarded_for"):
+        assert who not in body, who
     servers = re.split(r"^server \{", full, flags=re.M)[1:]
     assert len(servers) == 2
     for server in servers:
         logs = re.findall(r"^\s*access_log\s+(.*?);", server, re.M)
         assert logs == ["/var/log/nginx/rmbeta-access.log rmbeta_noquery"], logs
+
+
+def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings() -> None:
+    """An upstream error line records the request with its query (OWNER-DECISIONS 395)."""
+    full = stage("full")
+    found = dict(locations(full))
+    body = found["~ ^/api/(reverse|geocode)/?$"]
+    assert re.findall(r"^\s*error_log\s+(.*?);", body, re.M) == [
+        "/var/log/nginx/rmbeta-error.log crit"
+    ]
+
+    # the regex wins over the prefix location /, and must proxy exactly as it does
+    def proxy_lines(text: str) -> list[str]:
+        return [ln.strip() for ln in text.splitlines() if ln.strip().startswith("proxy_")]
+
+    assert proxy_lines(body) == proxy_lines(found["/"])
+    assert proxy_lines(body)
+    # no add_header here, so the server's noindex and HSTS headers still apply
+    assert "add_header" not in body and "auth_basic" not in body
+    # every api path the front end sends a query string to is covered by it
+    sources = [
+        f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
+    ]
+    queried = {m for text in sources for m in re.findall(r"[`\"'](/api/[a-z]+)\?", text)}
+    assert queried == {"/api/reverse", "/api/geocode"}, queried
+    for path in queried:
+        assert re.fullmatch(r"/api/(reverse|geocode)/?", path), path
+    assert not re.fullmatch(r"/api/(reverse|geocode)/?", "/api/route")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
