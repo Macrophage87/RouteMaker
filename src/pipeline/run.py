@@ -1758,7 +1758,7 @@ def build_handlers(
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
-                        mass_capacity_rpm=massflow.capacity_rpm(
+                        mass_usable_width_m=massflow.usable_width_rounded(
                             way.tags, getattr(stress, "lanes", None)
                         ),
                         # The graph's direction, not item 109's relief reading: a

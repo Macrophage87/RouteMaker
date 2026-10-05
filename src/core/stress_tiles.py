@@ -89,7 +89,7 @@ from pipeline.schema import (
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
-    MASS_CAPACITY_COLUMN,
+    MASS_WIDTH_COLUMN,
     MOTOR_ONLY_RULE,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_BRIDGE_COLUMN,
@@ -104,6 +104,7 @@ from pipeline.schema import (
     trails_predicate,
     validate_schema_name,
 )
+from routemaker import flow
 
 from . import ratelimit, tile_cache
 
@@ -262,11 +263,14 @@ OPTIONAL_PROPERTIES = {
     "car_free": CAR_FREE_COLUMN,
     "map_class": MAP_CLASS_COLUMN,
     "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
-    "rpm": MASS_CAPACITY_COLUMN,
+    "rpm": MASS_WIDTH_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
 RPM_STEP = 10
+# Riders a minute for each metre of usable width, from `routemaker.flow`: the column holds
+# the width, and the tile computes the riders, so tuning the constants needs no rebuild.
+RPM_PER_METRE_SQL = repr(round(flow.level_riders_per_min(1.0), 6))
 
 # How an optional property is drawn from its column, where it is not the
 # column as it is. `car_free`: the ride times a road closed to motor traffic
@@ -285,7 +289,10 @@ OPTIONAL_EXPRESSIONS = {
     # feature never moves band; and the zoomed-out levels, which collect every
     # segment of one value into one feature, are not split into a feature per
     # distinct figure (one per integer would be about 400 values a class).
-    "rpm": f"(floor(s.{MASS_CAPACITY_COLUMN} / {RPM_STEP}.0) * {RPM_STEP})::int",
+    "rpm": (
+        f"(floor(round(s.{MASS_WIDTH_COLUMN}::numeric * {RPM_PER_METRE_SQL}) / {RPM_STEP}.0)"
+        f" * {RPM_STEP})::int"
+    ),
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -471,7 +478,7 @@ ETAG_LETTERS = {
     TRAIL_BRIDGE_COLUMN: "b",
     TRAIL_ROUTE_COLUMN: "t",
     TRAIL_RUN_COLUMN: "l",
-    MASS_CAPACITY_COLUMN: "r",
+    MASS_WIDTH_COLUMN: "r",
 }
 
 

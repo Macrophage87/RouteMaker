@@ -4242,14 +4242,16 @@ def test_the_mass_ride_capacity_reaches_the_segment_table(workspace, states) -> 
     assert report.completed
     with connection.cursor() as cursor:
         cursor.execute(
-            f"SELECT osm_way_id, mass_capacity_rpm FROM {context.staging_schema}.segment"
+            f"SELECT osm_way_id, mass_usable_width_m FROM {context.staging_schema}.segment"
         )
         stored = dict(cursor.fetchall())
     assert stored and all(rpm is not None for rpm in stored.values())
     for way in context.ways:
         if way.osm_id in stored:
             lanes = getattr(context.stress_by_way[way.osm_id], "lanes", None)
-            assert stored[way.osm_id] == massflow.capacity_rpm(way.tags, lanes), way.osm_id
+            assert stored[way.osm_id] == pytest.approx(
+                massflow.usable_width_rounded(way.tags, lanes), abs=0.01
+            ), way.osm_id
 
 
 def test_a_rebuild_that_loses_the_capacity_is_refused(workspace, states, monkeypatch) -> None:
@@ -4257,7 +4259,7 @@ def test_a_rebuild_that_loses_the_capacity_is_refused(workspace, states, monkeyp
     the old Mass Ride map unannounced, since the tiles fall back without the column."""
     from routemaker import massflow
 
-    monkeypatch.setattr(massflow, "capacity_rpm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(massflow, "usable_width_rounded", lambda *args, **kwargs: None)
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root)

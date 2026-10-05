@@ -13,7 +13,7 @@ from django.db import connection
 
 from core import routing
 from pipeline import mass_capacity
-from pipeline.schema import MASS_CAPACITY_COLUMN, SEGMENT_DDL
+from pipeline.schema import MASS_WIDTH_COLUMN, SEGMENT_DDL
 from routemaker import massflow
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -143,16 +143,16 @@ def test_the_bands_are_the_front_ends() -> None:
 
 class TestTheColumn:
     def test_the_segment_table_has_it_as_an_optional_integer(self) -> None:
-        assert MASS_CAPACITY_COLUMN == "mass_capacity_rpm"
-        assert "mass_capacity_rpm integer" in SEGMENT_DDL
+        assert MASS_WIDTH_COLUMN == "mass_usable_width_m"
+        assert "mass_usable_width_m real" in SEGMENT_DDL
         # Nullable: a table, and a row, from before it has none.
-        assert "mass_capacity_rpm integer   CHECK" in SEGMENT_DDL
-        assert "NOT NULL" not in SEGMENT_DDL.split("mass_capacity_rpm")[1].split("\n")[0]
+        assert "mass_usable_width_m real      CHECK" in SEGMENT_DDL
+        assert "NOT NULL" not in SEGMENT_DDL.split("mass_usable_width_m")[1].split("\n")[0]
 
     def test_the_writer_writes_it(self) -> None:
         source = (ROOT / "src" / "pipeline" / "writers.py").read_text()
-        assert 'row.get("mass_capacity_rpm")' in source
-        assert "mass_capacity_rpm)" in source
+        assert 'row.get("mass_usable_width_m")' in source
+        assert "mass_usable_width_m)" in source
 
 
 def summary(**changes) -> mass_capacity.CapacitySummary:
@@ -218,25 +218,26 @@ class TestTheSummaryOfARealTable:
             for way, trail, map_class, rpm in rows:
                 cursor.execute(
                     f"INSERT INTO {staging}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                    "stress_rule, is_trail_class, map_class, mass_capacity_rpm) VALUES "
+                    "stress_rule, is_trail_class, map_class, mass_usable_width_m) VALUES "
                     "(%s, 0, ST_GeomFromText('LINESTRING(-77 38.9,-77.01 38.91)', 4326), 2, 'x', "
                     "%s, %s, %s)",
-                    [way, trail, map_class, rpm],
+                    [way, trail, map_class, None if rpm is None else rpm / massflow.RPM_PER_METRE],
                 )
         got = mass_capacity.capacity_summary(staging)
         assert (got.road_rows, got.road_with) == (4, 3)
         assert (got.path_rows, got.path_with) == (2, 1)
-        assert (got.road_min, got.road_max, got.road_median) == (99, 395, 198.0)
+        assert (got.road_min, got.road_max) == (99, 395)
+        assert got.road_median == pytest.approx(198.0, abs=0.01)
 
-    def test_the_column_refuses_a_figure_out_of_range(self, segment_schemas) -> None:
+    def test_the_column_refuses_a_width_out_of_range(self, segment_schemas) -> None:
         _live, staging = segment_schemas
         from django.db import DatabaseError
 
         with connection.cursor() as cursor, pytest.raises(DatabaseError):
             cursor.execute(
                 f"INSERT INTO {staging}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                "stress_rule, mass_capacity_rpm) VALUES (1, 0, "
-                "ST_GeomFromText('LINESTRING(-77 38.9,-77.01 38.91)', 4326), 2, 'x', 9000)"
+                "stress_rule, mass_usable_width_m) VALUES (1, 0, "
+                "ST_GeomFromText('LINESTRING(-77 38.9,-77.01 38.91)', 4326), 2, 'x', 99)"
             )
 
 

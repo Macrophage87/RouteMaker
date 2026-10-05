@@ -750,8 +750,8 @@ changed); the next rebuild's pre-draw draws the long trails only. Route
 relations and names are OSM's, cited with the rest of the map's data.
 
 **The Mass Ride capacity column** (FOLLOWUP-MASSRIDE-MAP part 1, OWNER-DECISIONS 325-327,
-387). `segment.mass_capacity_rpm` is the flat-ground riders a minute `routemaker.massflow`
-gives each segment from its way's tags and the classifier's lanes; the tiles carry it as `rpm`
+387). `segment.mass_usable_width_m` is the usable width in metres `routemaker.massflow`
+gives each segment from its way's tags and the classifier's lanes; `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
 (rounded down to ten; ETag letter `r`), the route's coloured sections carry it for a Mass Ride,
 and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
 came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path

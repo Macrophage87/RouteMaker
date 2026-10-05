@@ -75,7 +75,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("trail_name"),
             row.get("trail_route", 0),
             row.get("trail_bridge", 0),
-            row.get("mass_capacity_rpm"),
+            row.get("mass_usable_width_m"),
         )
         for row in rows
     ]
@@ -157,7 +157,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
-                     trail_name, trail_route, trail_bridge, mass_capacity_rpm)
+                     trail_name, trail_route, trail_bridge, mass_usable_width_m)
                     VALUES {args}"""
             )
             written += len(batch)

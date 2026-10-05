@@ -70,9 +70,9 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import MASS_CAPACITY_COLUMN, validate_schema_name
+from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, intersections, ridetime, trace_junctions
+from routemaker import climbs, describe, flow, intersections, ridetime, trace_junctions
 from routemaker import detour as detour_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
@@ -334,7 +334,7 @@ ORDER BY p.ordinality
 """
 
 # Whether the live segment table has the Mass Ride capacity column
-# (`pipeline.schema.MASS_CAPACITY_COLUMN`): written by the first rebuild after the
+# (`pipeline.schema.MASS_WIDTH_COLUMN`): written by the first rebuild after the
 # capacity map shipped. Without it a Mass Ride's sections carry no capacity and
 # the map draws them by stress, as it did. Remembered once seen, as above.
 _capacity_column_seen = False
@@ -348,7 +348,7 @@ def _has_capacity_column(schema: str) -> bool:
         cursor.execute(
             "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
             "AND table_name = 'segment' AND column_name = %s",
-            [schema, MASS_CAPACITY_COLUMN],
+            [schema, MASS_WIDTH_COLUMN],
         )
         _capacity_column_seen = cursor.fetchone()[0] == 1
     return _capacity_column_seen
@@ -397,7 +397,7 @@ class PieceClass(tuple):
 
     unpaved: bool | None
     # The segment's Mass Ride capacity, riders a minute on the flat, or None where
-    # the table has none (`pipeline.schema.MASS_CAPACITY_COLUMN`).
+    # the table has none (`pipeline.schema.MASS_WIDTH_COLUMN`).
     rpm: int | None
 
     def __new__(cls, tier: str, facility: str, unpaved: bool | None = None, rpm: int | None = None):
@@ -428,8 +428,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
-        + (f", s.{MASS_CAPACITY_COLUMN}" if with_capacity else ""),
-        capacity_out=f", seg.{MASS_CAPACITY_COLUMN}" if with_capacity else "",
+        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else ""),
+        capacity_out=f", seg.{MASS_WIDTH_COLUMN}" if with_capacity else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     classes = []
@@ -438,7 +438,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
-            rpm = row[3] if with_capacity and len(row) > 3 else None
+            width = row[3] if with_capacity and len(row) > 3 else None
+            rpm = round(flow.level_riders_per_min(width)) if width is not None else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -446,7 +447,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
                     kind if kind in FACILITY_KEYS else "unknown",
                     unpaved,
-                    rpm if isinstance(rpm, int) else None,
+                    rpm,
                 )
             )
     return classes

@@ -27,6 +27,7 @@ from django.test import override_settings
 from test_ratelimit import in_one_window
 
 from core import presets, routing
+from routemaker import flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -2433,15 +2434,15 @@ class TestSurfaceOfPieces:
 class TestMassRideCapacitySections:
     """The Mass Ride's route line is coloured by carrying capacity, riders a minute
     (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
-    table's `mass_capacity_rpm`, for a Mass Ride only and only where the table has it."""
+    table's `mass_usable_width_m`, for a Mass Ride only and only where the table has it."""
 
     @staticmethod
     def capacities(segments, by_way: dict[int, int | None]) -> None:
         with connection.cursor() as cursor:
             for way, rpm in by_way.items():
                 cursor.execute(
-                    f"UPDATE {segments}.segment SET mass_capacity_rpm = %s WHERE osm_way_id = %s",
-                    [rpm, way],
+                    f"UPDATE {segments}.segment SET mass_usable_width_m = %s WHERE osm_way_id = %s",
+                    [None if rpm is None else rpm / flow.level_riders_per_min(1.0), way],
                 )
 
     def test_a_mass_ride_carries_the_capacity_and_ends_a_section_where_the_band_does(
@@ -2463,7 +2464,7 @@ class TestMassRideCapacitySections:
         self, client, segments, router, monkeypatch
     ) -> None:
         with connection.cursor() as cursor:
-            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_capacity_rpm")
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
         monkeypatch.setattr(routing, "_capacity_column_seen", False)
         router(standard_router())
         response = post(client, good_body("mass-ride"))

@@ -860,11 +860,13 @@ order), and nothing asks for hazards.
   The column is the flat-ground (level) figure only: the grade adjustment depends on direction
   and on distance into a climb, so the route chart applies it, not the tiles. The legend says
   "on the flat".
-* **The column.** `segment.mass_capacity_rpm integer` (`pipeline.schema.MASS_CAPACITY_COLUMN`),
-  written by the segment writer for every row from the way's tags and the classifier's lanes
+* **The column.** `segment.mass_usable_width_m real` (metres; `pipeline.schema.MASS_WIDTH_COLUMN`; revised
+  from riders a minute on the coordinator's call: the column is physical width, and `routemaker.flow` turns it
+  into riders when tiles and routes are served, so tuning the flow constants needs no rebuild and the map
+  and chart cannot disagree), written by the segment writer for every row from the way's tags and the classifier's lanes
   (`pipeline.run.write_segments`). Nullable: a table built before it has none, and nothing breaks.
 * **The tile property** (`core.stress_tiles`): `rpm`, an optional property in the same way as
-  `facility` and the long-trail columns (`OPTIONAL_PROPERTIES`), rounded down to a multiple of 10
+  `facility` and the long-trail columns (`OPTIONAL_PROPERTIES`), computed in the tile SQL from the width and `flow`'s constant (`RPM_PER_METRE_SQL`), rounded down to a multiple of 10
   (`RPM_STEP`) so the band edges (60, 120, 200) never move and the zoomed-out levels, which merge
   every segment of one value into one feature, are not split a feature per integer. ETag letter
   `r` (the tag is now `+cfmrsbtl` on a full table). FORMAT_VERSION 6.
@@ -923,7 +925,7 @@ order), and nothing asks for hazards.
   198, service 99, tertiary and secondary 198, primary and trunk 297. Corridors in DC (share
   60-120 / 120-200 / 200+): Constitution Ave NW 0 / 0 / 100%, Pennsylvania Ave NW 8 / 19 / 74%,
   Massachusetts Ave NW 0 / 24 / 76%, 14th St NW 5 / 23 / 72%, K St NW 37 / 22 / 40%, Ohio Dr SW
-  73 / 17 / 10%. **No road is under 60.** One travel lane is 99, and a road would have to be narrower
+  73 / 17 / 10%. **Where the width comes from** (road rows, 449,583): class default 75.5% (73.0% of length), a `lanes` tag 20.7% (25.0%), `lanes:forward` and `lanes:backward` 2.8%, the classifier's lanes (agency or curated) 0.9%, a mapped `width` 0.1%; a painted lane on the roadway adds width on 1.6% (737 mi). So three quarters of roads carry a typical width for their class, which is why the legend says the figure is an estimate. **No road is under 60.** One travel lane is 99, and a road would have to be narrower
   than 6.7 ft (2.0 m) to fall under 60, so the red bottleneck band shows on no road in the first
   build; it will come from part 2's reductions (grade, surface, turns) and from any narrowing the
   owner wants modelled (open questions in reports/MASSRIDE-MAP-dev.md). Paths are 69% under 60,

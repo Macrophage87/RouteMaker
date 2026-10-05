@@ -347,12 +347,12 @@ MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
 
-# The Mass Ride map's per-segment capacity, in riders a minute on the flat
+# The Mass Ride map's per-segment usable width, metres (riders a minute follow from it)
 # (`routemaker.massflow`; OWNER-DECISIONS 325-327, 387). Carried in a stress tile
 # as `rpm` where the live table has the column, and left out of one that has not
 # (`core.stress_tiles.OPTIONAL_PROPERTIES`), so a table promoted before it draws the
 # Mass Ride map as it was.
-MASS_CAPACITY_COLUMN = "mass_capacity_rpm"
+MASS_WIDTH_COLUMN = "mass_usable_width_m"
 
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
@@ -490,11 +490,12 @@ CREATE TABLE {schema}.segment (
     -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
     -- ways, 2 where an end is unpaved, 0 otherwise (3 only during the rebuild).
     trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
-    -- The Mass Ride capacity (`routemaker.massflow`; OWNER-DECISIONS 325-327, 387):
-    -- riders a minute the way carries on the flat, from its usable width. The
-    -- stress tiles carry it as `rpm`, and the Mass Ride map is coloured by it.
+    -- The width a mass-ride group has on the way, metres (`routemaker.massflow`;
+    -- OWNER-DECISIONS 325-327, 387). Riders a minute is computed from it by
+    -- `routemaker.flow` when tiles and routes are served (the stress tiles carry `rpm`),
+    -- so tuning the flow constants needs no rebuild.
     -- Null on a table built before the column existed (the map then draws as it did).
-    mass_capacity_rpm integer   CHECK (mass_capacity_rpm BETWEEN 0 AND 5000),
+    mass_usable_width_m real      CHECK (mass_usable_width_m BETWEEN 0 AND 60),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

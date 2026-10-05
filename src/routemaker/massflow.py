@@ -37,7 +37,7 @@ adjustment depends on direction and distance into a climb, so the route chart
 applies it (`flow.adjusted_riders_per_min`), not the map tiles.
 
 Pure functions of a way's tags: the rebuild writes the answer onto
-`segment.mass_capacity_rpm` (`pipeline.run`), and nothing reads the tags again.
+`segment.mass_usable_width_m` (`pipeline.run`), and nothing reads the tags again.
 """
 
 from __future__ import annotations
@@ -147,6 +147,14 @@ def usable_width_m(tags: Mapping[str, str], per_direction_lanes: int | None = No
         if side.value in PAINTED_CYCLEWAY:
             width += side.width_m if side.width_m else PAINTED_LANE_DEFAULT_M
     return min(max(width, MIN_USABLE_WIDTH_M), MAX_USABLE_WIDTH_M)
+
+
+def usable_width_rounded(
+    tags: Mapping[str, str], per_direction_lanes: int | None = None
+) -> float | None:
+    """`usable_width_m` to the centimetre: what the segment table stores."""
+    width = usable_width_m(tags, per_direction_lanes)
+    return None if width is None else round(width, 2)
 
 
 def capacity_rpm(tags: Mapping[str, str], per_direction_lanes: int | None = None) -> int | None:

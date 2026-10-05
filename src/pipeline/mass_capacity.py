@@ -1,6 +1,7 @@
 """The Mass Ride capacity column: what VALIDATE reads back before a promotion.
 
-`segment.mass_capacity_rpm` is written by the segment writer from
+`segment.mass_usable_width_m` (metres; `routemaker.flow` makes riders a minute of it) is
+written by the segment writer from
 `routemaker.massflow` (OWNER-DECISIONS 325-327, 387) and read by the stress tiles
 (`core.stress_tiles`, the `rpm` property) and by the route's coloured sections
 (`core.routing`). The tiles carry it silently and the map colours by it, so a
@@ -20,7 +21,7 @@ from typing import NamedTuple
 
 from routemaker.massflow import MIN_USABLE_WIDTH_M, RPM_PER_METRE
 
-from .schema import MASS_CAPACITY_COLUMN, validate_schema_name
+from .schema import MASS_WIDTH_COLUMN, validate_schema_name
 
 # The share of road rows, and of path rows, that must carry a figure. A row has
 # none only where `routemaker.massflow` could not read a width (no `highway`, or a
@@ -60,18 +61,23 @@ def capacity_summary(schema: str) -> CapacitySummary:
     from django.db import connection
 
     validate_schema_name(schema)
-    col = MASS_CAPACITY_COLUMN
+    col = MASS_WIDTH_COLUMN
+    # The sentinel judges riders a minute, which `routemaker.flow` makes of the width.
+    k = RPM_PER_METRE
     with connection.cursor() as cursor:
         cursor.execute(
             f"""SELECT count(*) FILTER (WHERE map_class = 'road' AND NOT is_trail_class),
                        count({col}) FILTER (WHERE map_class = 'road' AND NOT is_trail_class),
                        count(*) FILTER (WHERE is_trail_class),
                        count({col}) FILTER (WHERE is_trail_class),
-                       min({col}) FILTER (WHERE map_class = 'road' AND NOT is_trail_class),
-                       max({col}) FILTER (WHERE map_class = 'road' AND NOT is_trail_class),
-                       percentile_cont(0.5) WITHIN GROUP (ORDER BY {col})
+                       round(min({col}::numeric * %s)
+                           FILTER (WHERE map_class = 'road' AND NOT is_trail_class)),
+                       round(max({col}::numeric * %s)
+                           FILTER (WHERE map_class = 'road' AND NOT is_trail_class)),
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY {col} * %s)
                            FILTER (WHERE map_class = 'road' AND NOT is_trail_class)
-                FROM {schema}.segment"""
+                FROM {schema}.segment""",
+            [k, k, k],
         )
         return CapacitySummary(*cursor.fetchone())
 

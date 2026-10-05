@@ -25,6 +25,7 @@ from pipeline.schema import (
     drop_segment_schema,
     trails_predicate,
 )
+from routemaker import flow
 from routemaker.classes import (
     SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
@@ -1536,9 +1537,9 @@ class TestMassCapacity:
                 lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.00025
                 cursor.execute(
                     f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                    "stress_rule, mass_capacity_rpm) VALUES (%s, 0, ST_MakeLine("
+                    "stress_rule, mass_usable_width_m) VALUES (%s, 0, ST_MakeLine("
                     "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 3, 'x', %s)",
-                    [2000 + i, lon, lat, lon + 0.002, lat, rpm],
+                    [2000 + i, lon, lat, lon + 0.002, lat, rpm / flow.level_riders_per_min(1.0)],
                 )
 
     @staticmethod
@@ -1570,11 +1571,11 @@ class TestMassCapacity:
         before = client.get(url(*tile_of(*CENTRE, 14)))
         assert "+cfmrsbtl-v" in before["ETag"]
         with connection.cursor() as cursor:
-            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN mass_capacity_rpm")
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN mass_usable_width_m")
         after = client.get(url(*tile_of(*CENTRE, 14)))
         assert self.rpms(client, 14) == [-1]
         assert "+cfmsbtl-v" in after["ETag"]
 
     def test_the_etag_letter_and_the_property_come_from_the_column(self) -> None:
-        assert stress_tiles.ETAG_LETTERS["mass_capacity_rpm"] == "r"
-        assert stress_tiles.OPTIONAL_PROPERTIES["rpm"] == "mass_capacity_rpm"
+        assert stress_tiles.ETAG_LETTERS["mass_usable_width_m"] == "r"
+        assert stress_tiles.OPTIONAL_PROPERTIES["rpm"] == "mass_usable_width_m"

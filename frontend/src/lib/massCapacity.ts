@@ -31,7 +31,8 @@ export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
  * (both credited with the map); the density and pace are calibrated to counts of DC Bike Party rides.
  */
 export const CAPACITY_SOURCE =
-  "Modelled from OpenStreetMap and DC Roadway Block lane and width data, calibrated to counts of DC Bike Party rides.";
+  "An estimate, on the flat: modelled from OpenStreetMap and DC Roadway Block lane and width data, with a typical width " +
+  "for its kind of road where those are not mapped, calibrated to counts of DC Bike Party rides.";
 
 /** The route panel's title for the same figures. */
 export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
