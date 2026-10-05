@@ -70,7 +70,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
 
   return (
     <section key="presets" className="ride-type" aria-labelledby="ride-type-heading">
-      <h2 id="ride-type-heading">Ride type</h2>
+      <h3 id="ride-type-heading">Ride type</h3>
       <div className="ride-type-current">
         <p>
           <strong>

@@ -1,4 +1,37 @@
 /*
+ * Atkinson Hyperlegible (OWNER-DECISIONS 312), self-hosted: the site's CSP is
+ * `font-src 'self'`, so the files are served from /fonts/ (frontend/public/fonts)
+ * and never from a font service. The files are not in the repository until the
+ * owner approves the download; until then local() finds the font where it is
+ * installed, and otherwise the browser takes the next family in --font, the
+ * system stack the panel used before, with no error and no change of layout
+ * beyond the letter shapes. font-display: swap shows the text at once.
+ * Files: atkinson-hyperlegible-regular.woff2 (400) and
+ * atkinson-hyperlegible-bold.woff2 (700).
+ */
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible"),
+    local("AtkinsonHyperlegible-Regular"),
+    url("/fonts/atkinson-hyperlegible-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Bold"),
+    local("AtkinsonHyperlegible-Bold"),
+    url("/fonts/atkinson-hyperlegible-bold.woff2") format("woff2");
+}
+
+/*
  * The planner's chrome. The map is the light Protomaps flavour in both themes;
  * the panel follows the system theme. Text colours are chosen for at least
  * 4.5:1 against their background in each theme (WCAG AA for body text).
@@ -30,7 +63,9 @@
      stylesAccessibility.test.ts measures it against the map's colours. */
   --map-focus: #111827;
   --map-focus-inner: #ffffff;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  /* Atkinson Hyperlegible first, then the system stack that was the whole of it before. */
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  font-family: var(--font);
   font-size: 15px;
   line-height: 1.4;
 }
@@ -170,7 +205,7 @@ body {
   position: absolute;
   top: 12px;
   left: 12px;
-  width: 380px;
+  width: 400px;
   max-height: calc(100% - 24px);
   display: flex;
   flex-direction: column;
@@ -202,9 +237,25 @@ body {
   font-size: 0.9rem;
 }
 
+/* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
+   GPX and link, the bottom bar), which stay in view (OWNER-DECISIONS 312). */
 .panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 4px 14px 12px;
+  padding: 4px 14px 10px;
+}
+
+.panel-body > .beta-banner {
+  margin: 8px 14px 4px;
 }
 
 .panel-body[hidden] {
@@ -213,7 +264,12 @@ body {
 
 .panel h2 {
   font-size: 1rem;
-  margin: 14px 0 6px;
+  margin: 12px 0 6px;
+}
+
+.panel h3 {
+  font-size: 0.95rem;
+  margin: 10px 0 6px;
 }
 
 .hint {
@@ -1484,4 +1540,365 @@ dialog.weight-dialog h2 {
   min-height: 44px;
   min-width: 44px;
   flex: none;
+}
+
+/* --- The sidebar redesign (OWNER-DECISIONS 312, mockup v3): Points first, the Ride line, folds, the
+   pinned actions, the bottom bar and its sheets. Every target is 44 px high at least. --- */
+
+.panel button,
+.panel summary {
+  min-height: 44px;
+}
+
+.panel button.link,
+.panel .toggle {
+  min-height: 44px;
+}
+
+.panel .toggle {
+  padding: 0;
+}
+
+.panel .actions {
+  gap: 8px;
+}
+
+.panel .actions button {
+  flex: 1 1 auto;
+}
+
+button.secondary,
+.route-actions button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Points */
+.point-add button {
+  flex: 1 1 100%;
+}
+
+.point-tools {
+  margin-top: 8px;
+}
+
+.point-tools button {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.points li {
+  min-height: 44px;
+}
+
+.panel .points button.link {
+  flex: none;
+  min-width: 44px;
+}
+
+.more-tips {
+  margin-top: 4px;
+}
+
+.tips-toggle {
+  padding: 0 4px;
+  text-decoration: underline;
+}
+
+.tips-body[hidden] {
+  display: none;
+}
+
+/* The Ride line: a heading holding one wide button */
+.ride-settings {
+  margin: 8px -14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.ride-settings h2.ride-line {
+  margin: 0;
+}
+
+.ride-line-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  font-weight: 400;
+}
+
+.ride-line-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.ride-line-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.ride-line-summary {
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.ride-line-action {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.ride-settings-body {
+  padding: 0 14px 8px;
+}
+
+.ride-settings-body[hidden] {
+  display: none;
+}
+
+.ride-settings-body .ride-type {
+  margin-top: 0;
+}
+
+/* When: two to a row, so the four choices take two lines */
+.dials fieldset.when {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 10px;
+  margin: 8px 0;
+}
+
+.dials fieldset.when legend {
+  grid-column: 1 / -1;
+}
+
+.dials fieldset.when .hint {
+  grid-column: 1 / -1;
+}
+
+/* The route summary: the totals line, the bar, the quick figures */
+.stats.totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  margin: 4px 0;
+}
+
+.stats.totals > div {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.stats.totals dt {
+  font-size: 0.8rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.stats.totals .stat-distance {
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stats.totals .stat-distance dd {
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.stress-main {
+  margin: 6px 0;
+}
+
+.stress-main figcaption {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.stress-main .stress-bar {
+  height: 14px;
+  gap: 2px;
+}
+
+.stress-key {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.quick-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.quick-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.quick-figure dt {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.quick-figure dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* Folds: native <details>, closed unless said */
+details.fold {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+details.fold > summary {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+details.fold > .fold-body {
+  padding: 0 12px 12px;
+}
+
+details.fold fieldset.candidates {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+details.fold .stress,
+details.fold .junctions {
+  margin-top: 4px;
+}
+
+details.zoom-notes {
+  margin: 8px 0;
+}
+
+/* Pinned under the scrolling part while a route is shown */
+.route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.route-actions button {
+  flex: 1 1 0;
+}
+
+.route-actions .link-said {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* The bottom bar */
+.bottom-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+}
+
+.panel .bar-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 4px 2px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+  font-size: 0.8rem;
+}
+
+.bar-button[aria-current="true"] {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* A sheet: Back and a heading over its content */
+.sheet[hidden],
+.planner-view[hidden] {
+  display: none;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.sheet-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.sheet-back {
+  min-width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* The panel's own scrolling on a phone: the sheet is half the screen, so the pinned parts stay slim. */
+@media (max-width: 720px) {
+  .route-actions {
+    padding: 6px 14px;
+  }
+
+  .panel .bar-button {
+    min-height: 48px;
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .bar-button svg {
+    flex: none;
+  }
+}
+
+/* Forced colors: the bar's and the Ride line's buttons keep their borders and the system's colors. */
+@media (forced-colors: active) {
+  .bar-button,
+  .ride-line-button {
+    border-color: ButtonText;
+  }
 }

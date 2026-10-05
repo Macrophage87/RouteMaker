@@ -57,7 +57,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
   const metro = Object.values(METRO_LINES);
   return (
     <section aria-labelledby="rail-heading">
-      <h2 id="rail-heading">Rail stations</h2>
+      <h3 id="rail-heading">Rail stations</h3>
       <label className="toggle">
         <input
           type="checkbox"

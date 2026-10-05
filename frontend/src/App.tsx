@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -24,7 +24,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
-import { announceHow, candidateRoute } from "./lib/candidates.ts";
+import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
 import {
   addedSaid,
@@ -58,7 +58,24 @@ import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
-import { GpxPanel } from "./GpxPanel.tsx";
+import { GpxPanel, downloadGpx } from "./GpxPanel.tsx";
+import { BottomBar, Fold, MoreTips, QuickFigures, RideSettings, SheetFrame } from "./Sidebar.tsx";
+import {
+  COPY_LINK,
+  COPY_LINK_DONE,
+  COPY_LINK_FAILED,
+  SHEET_TITLES,
+  copyText,
+  foldTitle,
+  linkToCopy,
+  searchLede,
+  selectionCopy,
+  type BarItem,
+  type PanelView,
+} from "./lib/sidebar.ts";
+import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
+import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
+import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
@@ -162,6 +179,21 @@ export function App() {
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
+  // which Legend opens scrolled to the legend, GPX, About). The planner stays in the page, hidden,
+  // so nothing it holds is lost (OWNER-DECISIONS 312).
+  const [view, setView] = useState<PanelView>("planner");
+  const [legendTarget, setLegendTarget] = useState(false);
+  const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
+  const openedBy = useRef<BarItem["id"]>("layers");
+  const prevView = useRef<PanelView>("planner");
+  const layersHeadingRef = useRef<HTMLHeadingElement>(null);
+  const legendHeadingRef = useRef<HTMLHeadingElement>(null);
+  const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
+  const aboutHeadingRef = useRef<HTMLHeadingElement>(null);
+  // What "Copy link" answered: said politely, and again for a second press.
+  const [linkSaid, setLinkSaid] = useState("");
+  const linkPresses = useRef(0);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -273,15 +305,35 @@ export function App() {
   // sheet is hidden they would otherwise be invisible, so the sheet opens
   // (sheet.ts), for each new one.
   useEffect(() => {
-    if (opensSheet(status.kind)) setPanelOpen(true);
+    if (opensSheet(status.kind)) {
+      setPanelOpen(true);
+      // The question and the errors are in the planner, not in a bar sheet.
+      setView("planner");
+    }
   }, [status]);
+
+  // A bar sheet takes the focus to its heading when it opens (the legend's, for Legend), and the
+  // way back takes it to the bar button that opened it. Before the long-ride question's effect
+  // below, which takes the focus after it when both happen at once.
+  useEffect(() => {
+    const was = prevView.current;
+    prevView.current = view;
+    if (view === "planner") {
+      if (was !== "planner") barButtons.current[openedBy.current]?.focus();
+      return;
+    }
+    const heading = { layers: layersHeadingRef, gpx: gpxHeadingRef, about: aboutHeadingRef }[view];
+    const target = view === "layers" && legendTarget ? legendHeadingRef : heading;
+    target.current?.focus();
+    target.current?.scrollIntoView?.({ block: "start" });
+  }, [view, legendTarget]);
 
   // The long-ride question takes the focus, so a keyboard rider lands on it
   // (once the sheet is open: a hidden button cannot take it).
   const focusPlan = focusesPlanButton(status.kind, panelOpen);
   useEffect(() => {
-    if (focusPlan) planButtonRef.current?.focus();
-  }, [focusPlan]);
+    if (focusPlan && view === "planner") planButtonRef.current?.focus();
+  }, [focusPlan, view]);
 
   // After Remove, the focus goes to the next Remove button, or to Add.
   useEffect(() => {
@@ -553,6 +605,25 @@ export function App() {
     pointsHeadingRef.current?.focus();
   };
 
+  // The bottom bar: a sheet opens in the panel body (Legend opens Map layers at its legend), and
+  // Back, or Escape, closes it and gives the focus back to the button that opened it.
+  const openSheet = (item: BarItem) => {
+    openedBy.current = item.id;
+    setLegendTarget(item.toLegend === true);
+    setView(item.opens);
+  };
+  const backToPlanner = () => setView("planner");
+  // "Copy link": the address, which carries the plan and never the weight (OWNER-DECISIONS 313).
+  // Cleared first and set again a moment later, so a second press is said again.
+  const copyLink = async () => {
+    const press = ++linkPresses.current;
+    setLinkSaid("");
+    const done = await copyText(linkToCopy(window.location), navigator.clipboard, selectionCopy);
+    window.setTimeout(() => {
+      if (press === linkPresses.current) setLinkSaid(done ? COPY_LINK_DONE : COPY_LINK_FAILED);
+    }, 150);
+  };
+
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
     const panel = panelRef.current?.getBoundingClientRect();
@@ -642,7 +713,7 @@ export function App() {
         onPick={pickPlace}
       />
       {points.length === 0 ? (
-        <p className="hint">{emptyPlanHint(preset, loopVias)}</p>
+        <p className="hint">{searchLede(preset, loopVias)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, namer, loopVias)}
@@ -653,8 +724,7 @@ export function App() {
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias)}</p>}
-      {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
-      <div className="actions">
+      <div className="actions point-add">
         <button
           type="button"
           ref={addRef}
@@ -667,6 +737,9 @@ export function App() {
         >
           Add point at map center
         </button>
+      </div>
+      {/* The compact row: Reverse, Undo, Redo and Clear. */}
+      <div className="actions point-tools">
         {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
             the Tab order with its reason as its description, as the loop toggle does
             (DialsPanel), and a press says the reason. */}
@@ -679,9 +752,6 @@ export function App() {
         >
           Reverse
         </button>
-        <button type="button" onClick={clearAll} disabled={points.length === 0}>
-          Clear
-        </button>
         {!narrow && (
           <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
             Undo
@@ -692,8 +762,16 @@ export function App() {
             Redo
           </button>
         )}
+        <button type="button" onClick={clearAll} disabled={points.length === 0}>
+          Clear
+        </button>
       </div>
       {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
+      {/* The how-to, collapsed (the mockup's "More tips"). */}
+      <MoreTips>
+        <p className="hint">{emptyPlanHint(preset, loopVias)}</p>
+        {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
+      </MoreTips>
       {notice && (
         <p className="notice" role="status">
           {notice}
@@ -753,13 +831,18 @@ export function App() {
           )}
         </div>
       )}
-      {shown && <CandidatePicker answer={answer} choice={choice} onChoose={choose} />}
       {shown && (
         <RouteSummary
           route={shown}
           points={routedPoints}
           narrow={narrow}
           onSelectJunction={(index) => setJunctionFocus((f) => ({ index, nonce: (f?.nonce ?? 0) + 1 }))}
+          picker={
+            candidateRows(answer) === null ? null : (
+              <CandidatePicker answer={answer} choice={choice} onChoose={choose} />
+            )
+          }
+          pickerCount={candidateRows(answer)?.length ?? 0}
         />
       )}
     </section>
@@ -767,7 +850,7 @@ export function App() {
 
   const sections: Record<SheetSection, ReactElement> = {
     presets: (
-      <Fragment key="presets">
+      <RideSettings key="presets" summary={rideSummary(preset, dials)} spoken={rideSummarySpoken(preset, dials)}>
         {presetsSection}
         <DialsPanel
           preset={preset}
@@ -790,7 +873,7 @@ export function App() {
           points={points}
           resolvedWhen={route?.dials?.when ?? null}
         />
-      </Fragment>
+      </RideSettings>
     ),
     points: pointsSection,
     route: routeSection,
@@ -878,80 +961,138 @@ export function App() {
             {panelOpen ? "Hide" : "Plan"}
           </button>
         </header>
-        <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
+        <div id="panel-body" className="panel-body" hidden={!panelOpen}>
           <BetaBanner
             enabled={isBetaBuild(import.meta.env.VITE_BETA)}
             reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
           />
-          {order.map((id) => sections[id])}
+          <div ref={panelBodyRef} className="panel-scroll">
+            <div className="planner-view" hidden={view !== "planner"}>
+              {order.map((id) => sections[id])}
+            </div>
 
-          <GpxPanel
-            route={shown}
-            routedPoints={routedPoints}
-            loop={routedLoop}
-            points={points}
-            planStatus={status.kind}
-            imported={imported}
-            onImport={openImported}
-            onRefine={refineImported}
-            getMap={getMap}
-          />
+            {/* The bottom bar's sheets stay in the page while hidden, so the opened GPX file
+                and the switches keep their state. */}
+            <SheetFrame
+              id="sheet-layers"
+              title={SHEET_TITLES.layers}
+              open={view === "layers"}
+              onBack={backToPlanner}
+              headingRef={layersHeadingRef}
+            >
+              <section aria-labelledby="layers-heading">
+                <h3 id="layers-heading">Traffic stress</h3>
+                <AccessibilitySwitch
+                  on={accessibilityOn()}
+                  source={accessibilitySource()}
+                  paletteFromAddress={paletteSetByAddress()}
+                  onChange={(on) => setAccessibility(on)}
+                />
+                {/* Shown with or without the stress map: it also changes the route's facility totals
+                    and description (the a11y review's SF4). */}
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
+                {stress === "available" && (
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={stressVisible}
+                      onChange={(event) => setStressVisible(event.target.checked)}
+                    />
+                    Show traffic stress on the map
+                  </label>
+                )}
+                {stress === "checking" && <p className="hint">Checking the stress map…</p>}
+                {stress === "unavailable" && (
+                  <p className="hint">
+                    Stress map unavailable for now. Routes still show how much of each ride is on each stress level.
+                  </p>
+                )}
+              </section>
 
-          <section aria-labelledby="layers-heading">
-            <h2 id="layers-heading">Traffic stress</h2>
-            <AccessibilitySwitch
-              on={accessibilityOn()}
-              source={accessibilitySource()}
-              paletteFromAddress={paletteSetByAddress()}
-              onChange={(on) => setAccessibility(on)}
-            />
-            {/* Shown with or without the stress map: it also changes the route's facility totals
-                and description (the a11y review's SF4). */}
-            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
-            {stress === "available" && (
-              <>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={stressVisible}
-                    onChange={(event) => setStressVisible(event.target.checked)}
-                  />
-                  Show traffic stress on the map
-                </label>
-                <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} />
-              </>
-            )}
-            {stress === "checking" && <p className="hint">Checking the stress map…</p>}
-            {stress === "unavailable" && (
+              {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+              {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
+              <FederalLandFor
+                preset={preset}
+                on={federalOn}
+                onChange={setFederalOn}
+                status={federalStatus}
+                points={federalData ? federalPoints(points, federalData) : null}
+                pointCount={points.length}
+                nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
+              />
+
+              <section aria-labelledby="legend-heading">
+                <h3 id="legend-heading" ref={legendHeadingRef} tabIndex={-1}>
+                  Legend
+                </h3>
+                {stress === "available" ? (
+                  <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                ) : (
+                  <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
+                )}
+              </section>
+            </SheetFrame>
+
+            <SheetFrame
+              id="sheet-gpx"
+              title={SHEET_TITLES.gpx}
+              open={view === "gpx"}
+              onBack={backToPlanner}
+              headingRef={gpxHeadingRef}
+            >
+              <GpxPanel
+                route={shown}
+                routedPoints={routedPoints}
+                loop={routedLoop}
+                points={points}
+                planStatus={status.kind}
+                imported={imported}
+                onImport={openImported}
+                onRefine={refineImported}
+                getMap={getMap}
+              />
+            </SheetFrame>
+
+            <SheetFrame
+              id="sheet-about"
+              title={SHEET_TITLES.about}
+              open={view === "about"}
+              onBack={backToPlanner}
+              headingRef={aboutHeadingRef}
+            >
               <p className="hint">
-                Stress map unavailable for now. Routes still show how much of each ride is on each stress level.
+                Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
+                reopens it. Saving routes and peer review are coming for riders who{" "}
+                <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
+                  sign in with Discord
+                </a>
+                ; your current plan is kept across the sign-in.
               </p>
-            )}
-          </section>
+            </SheetFrame>
+          </div>
 
-          {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+          {/* Pinned under the scrolling part while a route is shown: its file and its link. */}
+          {view === "planner" && shown && (
+            <div className="route-actions">
+              <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop)}>
+                Download GPX
+              </button>
+              <button type="button" className="secondary" onClick={copyLink}>
+                {COPY_LINK}
+              </button>
+              <span role="status" className="visually-hidden">
+                {linkSaid}
+              </span>
+              {linkSaid && (
+                <span className="hint link-said" aria-hidden="true">
+                  {linkSaid}
+                </span>
+              )}
+            </div>
+          )}
 
-          {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
-          <FederalLandFor
-            preset={preset}
-            on={federalOn}
-            onChange={setFederalOn}
-            status={federalStatus}
-            points={federalData ? federalPoints(points, federalData) : null}
-            pointCount={points.length}
-            nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
-          />
-
-          <footer className="panel-footer">
-            <p>
-              Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
-              reopens it. Saving routes and peer review are coming for riders who{" "}
-              <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
-                sign in with Discord
-              </a>
-              ; your current plan is kept across the sign-in.
-            </p>
-          </footer>
+          <BottomBar view={view} legend={legendTarget} onOpen={openSheet} buttonRef={(id, button) => (barButtons.current[id] = button)} />
         </div>
       </aside>
     </div>
@@ -987,11 +1128,16 @@ function RouteSummary({
   points,
   narrow,
   onSelectJunction,
+  picker,
+  pickerCount,
 }: {
   route: RouteResponse;
   points: LonLat[];
   narrow: boolean;
   onSelectJunction: (index: number) => void;
+  /** The routes to choose from (CandidatePicker), or null with one route. */
+  picker: ReactNode;
+  pickerCount: number;
 }) {
   useStressStyle();
   const segments = stressSegments(route.stress_m);
@@ -999,6 +1145,10 @@ function RouteSummary({
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
   const pace = paceText(route);
+  // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
+  // figures in view; Stress and facilities, Directions, Junctions to watch and Routes to choose
+  // from as folds. There is no elevation chart yet (322), so no fold for one.
+  const junctions = route.intersections == null ? null : junctionItems(route).length;
   return (
     <div className="summary">
       {detour && (
@@ -1016,8 +1166,8 @@ function RouteSummary({
           {loopSaid}
         </p>
       )}
-      <dl className="stats">
-        <div>
+      <dl className="stats totals">
+        <div className="stat-distance">
           <dt>Distance</dt>
           <dd>{formatDistance(route.distance_m)}</dd>
         </div>
@@ -1035,20 +1185,11 @@ function RouteSummary({
         </div>
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
-      <FacilityBreakdown route={route} />
-      <IntersectionList route={route} onSelect={onSelectJunction} />
-      <RouteDescription route={route} />
-      {/* Riders often arrive by a shared link, straight into a route, and a
-          phone has no hover to show the handle: say that the line moves. */}
-      <p className="hint reshape">
-        {narrow
-          ? "To reshape the route, press and hold the line, then drag it."
-          : "To reshape the route, drag the line."}
-      </p>
       {segments.length > 0 && (
-        <figure className="stress" aria-labelledby="stress-figure-caption">
+        <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
           <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
-          <div className="stress-bar" aria-hidden="true">
+          {/* One image to a screen reader, named with each share; the line under it says the same in text. */}
+          <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
             {segments
               .filter((s) => s.fraction > 0)
               .map((s) => (
@@ -1060,20 +1201,51 @@ function RouteSummary({
                 />
               ))}
           </div>
-          <ul className="stress-list">
-            {segments.map((s) => (
-              <li key={s.key}>
-                <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
-                <span className="stress-name">{s.short}</span>
-                <span className="visually-hidden">, </span>
-                <span className="stress-pct">{s.percent}%</span>
-                <span className="visually-hidden">, </span>
-                <span className="stress-label">{s.label}</span>
-              </li>
-            ))}
-          </ul>
+          <p className="stress-key" aria-hidden="true">
+            {stressBarKey(segments)}
+          </p>
         </figure>
       )}
+      <QuickFigures figures={quickFigures(route)} />
+      <FacilityBreakdown route={route} part="notices" />
+      <Fold title="Stress and facilities">
+        {segments.length > 0 && (
+          <figure className="stress" aria-labelledby="stress-detail-caption">
+            <figcaption id="stress-detail-caption">Traffic stress, stretch by stretch</figcaption>
+            <ul className="stress-list">
+              {segments.map((s) => (
+                <li key={s.key}>
+                  <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
+                  <span className="stress-name">{s.short}</span>
+                  <span className="visually-hidden">, </span>
+                  <span className="stress-pct">{s.percent}%</span>
+                  <span className="visually-hidden">, </span>
+                  <span className="stress-label">{s.label}</span>
+                </li>
+              ))}
+            </ul>
+          </figure>
+        )}
+        <FacilityBreakdown route={route} part="figures" />
+      </Fold>
+      <RouteDescription route={route} fold />
+      {junctions !== null && (
+        <Fold title={foldTitle("Junctions to watch", junctions)}>
+          <IntersectionList route={route} onSelect={onSelectJunction} />
+        </Fold>
+      )}
+      {picker && (
+        <Fold title={foldTitle("Routes to choose from", pickerCount)} open>
+          {picker}
+        </Fold>
+      )}
+      {/* Riders often arrive by a shared link, straight into a route, and a
+          phone has no hover to show the handle: say that the line moves. */}
+      <p className="hint reshape">
+        {narrow
+          ? "To reshape the route, press and hold the line, then drag it."
+          : "To reshape the route, drag the line."}
+      </p>
       <p className="route-credit">Route data: {route.attribution.join("; ")}.</p>
     </div>
   );

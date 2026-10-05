@@ -19,7 +19,14 @@ import { seekNote } from "./lib/summary.ts";
  */
 const PAUSE = <span className="visually-hidden">, </span>;
 
-export function FacilityBreakdown({ route }: { route: RouteResponse }) {
+/**
+ * `part` splits it for the sidebar's layout (OWNER-DECISIONS 312): the notices (the traffic-tolerant
+ * warning, the roads best avoided, what the hills search found) stay in view, and the figures (the route
+ * colors and the bike facilities) sit in the "Stress and facilities" fold. The default is all of it.
+ */
+export function FacilityBreakdown({ route, part = "all" }: { route: RouteResponse; part?: "all" | "notices" | "figures" }) {
+  const figures = part !== "notices";
+  const notices = part !== "figures";
   const id = useId();
   useStressStyle(); // the route colours below follow the accessibility switch
   const showHighLanes = useHighStressLanes(); // painted lanes on LTS 4 and Avoid count as no facility unless the switch is on
@@ -31,7 +38,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   const casing = routeCasing();
   return (
     <>
-      {colours.length > 0 && (
+      {figures && colours.length > 0 && (
         <figure className="stress route-colours" aria-labelledby={`${id}-colours`}>
           <figcaption id={`${id}-colours`}>The route on the map, by traffic stress</figcaption>
           <ul className="stress-list" aria-label="Route color legend">
@@ -53,18 +60,18 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
           </ul>
         </figure>
       )}
-      {warning && (
+      {notices && warning && (
         <p className="notice traffic-tolerant" role="note">
           {warning}
         </p>
       )}
-      {avoid > 0 && (
+      {notices && avoid > 0 && (
         <p className="notice avoid" role="note">
           {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways and some bridge roadways. The
           planner uses them only where every other way is much longer.
         </p>
       )}
-      {rows.length > 0 && (
+      {figures && rows.length > 0 && (
         <figure className="stress facility" aria-labelledby={`${id}-facility`}>
           <figcaption id={`${id}-facility`}>Bike facilities along the route</figcaption>
           <div className="stress-bar" aria-hidden="true">
@@ -93,7 +100,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
           </ul>
         </figure>
       )}
-      {seek && (
+      {notices && seek && (
         <p className="hint seek" role="note">
           {seek}
         </p>

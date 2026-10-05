@@ -14,11 +14,16 @@
  *   merges short stretches, the full list shows every entry; remembered.
  * - "Copy description" and "Download as text" (a cue sheet, no network) take
  *   whichever view is shown.
+ *
+ * In the sidebar redesign (OWNER-DECISIONS 312) it is also "Directions (N steps)", one of the route
+ * summary's folds: `fold` draws the same list, checkbox and buttons inside a native <details> with
+ * that summary, in place of its own heading and toggle button. Without `fold` it is as it was.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import { useHighStressLanes } from "./useStressStyle.ts";
+import { copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import {
   DESCRIPTION_HEADING,
   chevron,
@@ -41,32 +46,11 @@ import {
 /** How long the copy reply waits after clearing, so that it is a change a screen reader says. */
 export const COPY_REPLY_DELAY_MS = 150;
 
-async function copy(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Fall through to the selection method.
-  }
-  try {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.append(area);
-    area.select();
-    const done = document.execCommand("copy");
-    area.remove();
-    return done;
-  } catch {
-    return false;
-  }
+function copy(text: string): Promise<boolean> {
+  return copyText(text, navigator.clipboard, selectionCopy);
 }
 
-export function RouteDescription({ route }: { route: RouteResponse }) {
+export function RouteDescription({ route, fold = false }: { route: RouteResponse; fold?: boolean }) {
   const [open, setOpen] = useState<boolean>(() => readOpen());
   const [chosen, setChosen] = useState<DescriptionView>(() => readView());
   const choice = hasOverview(route);
@@ -116,6 +100,66 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
+  const items = entries.map((entry, i) => {
+    const crossings = crossingsOf(entry);
+    return (
+      <li key={i} className={`description-${entry.kind}`}>
+        {entry.text}
+        {crossings.length > 0 ? (
+          // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).
+          <ol className="description-crossings" aria-label="Crossings in this group, in route order">
+            {crossings.map((crossing, k) => (
+              <li key={k}>{crossing.text}</li>
+            ))}
+          </ol>
+        ) : null}
+      </li>
+    );
+  });
+
+  const actions = (
+    <div className="actions description-actions">
+      <button type="button" onClick={onCopy}>
+        Copy description
+      </button>
+      <button type="button" onClick={onDownload}>
+        Download as text
+      </button>
+      <span role="status" className="hint description-status">
+        {copied === "done" ? "Copied." : copied === "failed" ? "Could not copy. Use Download as text." : ""}
+      </span>
+    </div>
+  );
+
+  if (fold) {
+    return (
+      <details
+        className="fold route-description"
+        open={open}
+        onToggle={(event) => {
+          const now = (event.currentTarget as HTMLDetailsElement).open;
+          if (now !== open) {
+            setOpen(now);
+            writeOpen(now);
+          }
+        }}
+      >
+        <summary>{foldTitle("Directions", stepsCount(entries.length))}</summary>
+        <div className="fold-body">
+          {choice ? (
+            <label className="description-view">
+              <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
+              Full detail
+            </label>
+          ) : null}
+          {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
+          <ol className="description-list">{items}</ol>
+          {actions}
+        </div>
+      </details>
+    );
+  }
+
   return (
     <section className="route-description" aria-labelledby="route-description-heading">
       <h3 id="route-description-heading">{DESCRIPTION_HEADING}</h3>
@@ -145,34 +189,9 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
         </p>
       )}
       <ol id={listId} className="description-list" hidden={!open}>
-        {entries.map((entry, i) => {
-          const crossings = crossingsOf(entry);
-          return (
-            <li key={i} className={`description-${entry.kind}`}>
-              {entry.text}
-              {crossings.length > 0 ? (
-                // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).
-                <ol className="description-crossings" aria-label="Crossings in this group, in route order">
-                  {crossings.map((crossing, k) => (
-                    <li key={k}>{crossing.text}</li>
-                  ))}
-                </ol>
-              ) : null}
-            </li>
-          );
-        })}
+        {items}
       </ol>
-      <div className="actions description-actions">
-        <button type="button" onClick={onCopy}>
-          Copy description
-        </button>
-        <button type="button" onClick={onDownload}>
-          Download as text
-        </button>
-        <span role="status" className="hint description-status">
-          {copied === "done" ? "Copied." : copied === "failed" ? "Could not copy. Use Download as text." : ""}
-        </span>
-      </div>
+      {actions}
     </section>
   );
 }

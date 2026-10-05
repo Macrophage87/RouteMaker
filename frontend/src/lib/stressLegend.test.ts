@@ -88,7 +88,8 @@ test("rendered: the notice as a status, then the hint", () => {
 test("App's legend passes the zoom and whether the overlay is on", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // App.tsx is not rendered by a test: it only places the legend (the legend itself is rendered below).
-  assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} \/>/);
+  // In the sidebar's Map layers sheet the zoom explanations are behind a disclosure (foldedZoom, OWNER-DECISIONS 312).
+  assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
 });
 
 test("one phrase for what the map shows zoomed out, wherever the legend says it", () => {

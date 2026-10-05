@@ -216,7 +216,10 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [],
   const loopHintId = useId();
   return (
     <section className="dials" aria-labelledby="dials-heading">
-      <h2 id="dials-heading">Adjust this ride</h2>
+      {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
+          sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, loop,
+          avoid gravel. Every control and its behaviour is as before. */}
+      <h3 id="dials-heading">Ride settings</h3>
       {view.assistToggle && (
         <label className="toggle">
           <input
@@ -232,6 +235,77 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [],
           Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike&apos;s motor
           rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.
         </p>
+      )}
+      <Slider
+        label="Traffic"
+        view={view.traffic}
+        value={draft.stress}
+        onDraft={(stress) => setDraft({ ...draft, stress })}
+        onRelease={release}
+      />
+      {view.warning && (
+        <p className="notice traffic-tolerant" role="note">
+          {view.warning}
+        </p>
+      )}
+      <Slider
+        label="Hills"
+        view={view.hills}
+        value={draft.hills}
+        onDraft={(hills) => setDraft({ ...draft, hills })}
+        onRelease={release}
+      />
+      <fieldset className="when">
+        <legend>When</legend>
+        <label className="toggle">
+          <input
+            type="radio"
+            name="when"
+            value=""
+            checked={dials.when === null}
+            onChange={() => onCommit({ ...dials, when: null })}
+          />
+          Now
+          {dials.when === null && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+        </label>
+        {WHENS.map((option) => (
+          <label key={option.id} className="toggle">
+            <input
+              type="radio"
+              name="when"
+              value={option.id}
+              checked={dials.when === option.id}
+              onChange={() => onCommit({ ...dials, when: option.id as When })}
+            />
+            {option.label}
+          </label>
+        ))}
+        <p className="hint">
+          On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
+          are planned as traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in
+          the breakdown.
+        </p>
+      </fieldset>
+      {view.target && (
+        <NumberDial
+          label={view.target.label}
+          value={view.target.value}
+          rule={view.target.rule}
+          hint={view.target.hint}
+          how={view.target.how}
+          parse={parseTarget}
+          onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
+        />
+      )}
+      {/* The rider and bike weight: the line and Change, never the number (OWNER-DECISIONS 313-318). */}
+      {view.weight && weight && (
+        <WeightSetting
+          saved={weight.saved}
+          remembered={weight.remembered}
+          split={defaultSplit(dials.carrying)}
+          onSave={weight.onSave}
+          onClear={weight.onClear}
+        />
       )}
       {loop && (
         <div className="dial">
@@ -264,77 +338,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [],
         />
         Avoid gravel
       </label>
-      <Slider
-        label="Traffic"
-        view={view.traffic}
-        value={draft.stress}
-        onDraft={(stress) => setDraft({ ...draft, stress })}
-        onRelease={release}
-      />
-      {view.warning && (
-        <p className="notice traffic-tolerant" role="note">
-          {view.warning}
-        </p>
-      )}
-      {view.target && (
-        <NumberDial
-          label={view.target.label}
-          value={view.target.value}
-          rule={view.target.rule}
-          hint={view.target.hint}
-          how={view.target.how}
-          parse={parseTarget}
-          onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
-        />
-      )}
-      <Slider
-        label="Hills"
-        view={view.hills}
-        value={draft.hills}
-        onDraft={(hills) => setDraft({ ...draft, hills })}
-        onRelease={release}
-      />
-      {/* The rider and bike weight: the line and Change, never the number (OWNER-DECISIONS 313-318). */}
-      {view.weight && weight && (
-        <WeightSetting
-          saved={weight.saved}
-          remembered={weight.remembered}
-          split={defaultSplit(dials.carrying)}
-          onSave={weight.onSave}
-          onClear={weight.onClear}
-        />
-      )}
-      <fieldset className="when">
-        <legend>When</legend>
-        <label className="toggle">
-          <input
-            type="radio"
-            name="when"
-            value=""
-            checked={dials.when === null}
-            onChange={() => onCommit({ ...dials, when: null })}
-          />
-          Now
-          {dials.when === null && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
-        </label>
-        {WHENS.map((option) => (
-          <label key={option.id} className="toggle">
-            <input
-              type="radio"
-              name="when"
-              value={option.id}
-              checked={dials.when === option.id}
-              onChange={() => onCommit({ ...dials, when: option.id as When })}
-            />
-            {option.label}
-          </label>
-        ))}
-        <p className="hint">
-          On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
-          are planned as traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in
-          the breakdown.
-        </p>
-      </fieldset>
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
           Back to this ride type's settings

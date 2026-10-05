@@ -90,15 +90,35 @@ export function stressZoomHint(zoom: number | null): string {
   return text;
 }
 
-export function StressZoomNotes({ zoom, shown }: { zoom: number | null; shown: boolean }): ReactElement {
+/** The link text of the disclosure the sidebar's Map layers sheet puts the zoom explanations behind (OWNER-DECISIONS 312). */
+export const ZOOM_LEVELS_LINK = "What each zoom level shows";
+
+export function StressZoomNotes({
+  zoom,
+  shown,
+  folded = false,
+}: {
+  zoom: number | null;
+  shown: boolean;
+  /**
+   * The sidebar's Map layers sheet: the notice for the zoom the map is at stays in view (it says why the
+   * map looks empty), and the standing explanations are behind "What each zoom level shows".
+   */
+  folded?: boolean;
+}): ReactElement {
   const notice = stressZoomNotice(zoom, shown);
-  return h(
-    Fragment,
-    null,
-    notice && h("p", { className: "notice", role: "status" }, notice),
-    h("p", { className: "hint" }, stressZoomHint(zoom)),
-    h("p", { className: "hint" }, CAR_FREE_NOTE),
-  );
+  const noticeEl = notice && h("p", { className: "notice", role: "status" }, notice);
+  const hint = h("p", { className: "hint" }, stressZoomHint(zoom));
+  const carFree = h("p", { className: "hint" }, CAR_FREE_NOTE);
+  if (folded) {
+    return h(
+      Fragment,
+      null,
+      noticeEl,
+      h("details", { className: "fold zoom-notes" }, h("summary", null, ZOOM_LEVELS_LINK), h("div", { className: "fold-body" }, hint, carFree)),
+    );
+  }
+  return h(Fragment, null, noticeEl, hint, carFree);
 }
 
 // ---- The legend itself (moved out of App.tsx so a test renders it) ----------
@@ -205,10 +225,13 @@ export function StressLegend({
   facilities,
   zoom,
   shown,
+  foldedZoom = false,
 }: {
   facilities: ReadonlySet<string>;
   zoom: number | null;
   shown: boolean;
+  /** The zoom explanations behind a disclosure (the Map layers sheet); false keeps them in the text. */
+  foldedZoom?: boolean;
 }): ReactElement {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
@@ -225,7 +248,7 @@ export function StressLegend({
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
     ),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
-    h(StressZoomNotes, { zoom, shown }),
+    h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
     facilities.size > 0 &&
       h(
         Fragment,

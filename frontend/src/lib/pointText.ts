@@ -104,7 +104,7 @@ export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number)
 }
 
 /** Where to find the toggle, said only where the ride type has one. */
-const TOGGLE_PLACE = "under Adjust this ride";
+const TOGGLE_PLACE = "in the ride settings (the Ride line's Edit button)";
 
 /** The hint before any point is placed. */
 export function emptyPlanHint(preset: PresetId, loop: boolean): string {

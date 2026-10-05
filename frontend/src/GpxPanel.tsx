@@ -49,6 +49,22 @@ function bounds(line: readonly LonLat[]): [number, number, number, number] {
   return [west, south, east, north];
 }
 
+/**
+ * Download the route shown as a GPX file, built here from it (gpx.ts). Shared by this panel's
+ * Download GPX and the sidebar's pinned one (App.tsx, OWNER-DECISIONS 312).
+ */
+export function downloadGpx(route: RouteResponse, routedPoints: LonLat[], loop: boolean): void {
+  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop))], { type: "application/gpx+xml" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exportFileName(route);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "error"; message: string };
 
 /**
@@ -134,21 +150,15 @@ export function GpxPanel(props: Props) {
   };
 
   const download = () => {
-    if (!route) return;
-    const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop))], { type: "application/gpx+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = exportFileName(route);
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    if (route) downloadGpx(route, routedPoints, loop);
   };
 
   return (
     <section aria-labelledby="gpx-heading" className="gpx">
-      <h2 id="gpx-heading">GPX file</h2>
+      {/* The GPX sheet's own heading names it (App.tsx); this one stays for the section's name. */}
+      <h3 id="gpx-heading" className="visually-hidden">
+        GPX file
+      </h3>
       <div className="actions">
         <button type="button" onClick={() => input.current?.click()} disabled={reading.kind === "reading"}>
           Open GPX…

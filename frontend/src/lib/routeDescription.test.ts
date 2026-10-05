@@ -152,7 +152,8 @@ test("nothing is announced on a route change: no live region but the copy reply"
 });
 
 test("App places it in the route summary and the component stays separate", () => {
-  assert.match(app, /<RouteDescription route=\{route\} \/>/);
+  // In the sidebar redesign (312) it is the "Directions" fold of the route summary: `fold`.
+  assert.match(app, /<RouteDescription route=\{route\} fold \/>/);
 });
 
 // --- OWNER-DECISIONS 224: stops are "Stop N" everywhere ---
