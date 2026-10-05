@@ -307,7 +307,8 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
 
 ### The accessibility switch and the colour-blind-friendly palette
 
-The panel's Accessibility switch (OWNER-DECISIONS 208, 209, 211, 212; PLAN.md,
+The panel's High contrast switch, called Accessibility until OWNER-DECISIONS 384
+(208, 209, 211, 212; PLAN.md,
 Owner amendments) turns on the `cvd` palette in `frontend/src/stressStyle.js`
 and draws the overlay stronger. The state lives in that module and is read
 through `currentTiers()`, never kept from import time; `subscribePalette()`
@@ -511,7 +512,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 142` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 149` in `scripts/a11y/check.mjs`.
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -523,7 +524,7 @@ the owner approved it on the r1 preview (297). Display only: no rating and no
 data changed.
 
 **The tiers** (the warm `blended` palette, the default until 351; the two-tone
-default is in "The default palette", below; widths with the Accessibility switch
+default is in "The default palette", below; widths with the High contrast switch
 off):
 
 | Tier | Line | Casing | Dash | Width | Ink | Gap harshness |
@@ -570,7 +571,7 @@ off):
   to the rule:** its 0.90 (1.33 with the switch on) is harsher than LTS 3's.
   That is reported, not enforced, because fixing it means changing LTS 2. The
   owner accepted it as built (297).
-- **The Accessibility switch** still widens every line by half a pixel and
+- **The High contrast switch** still widens every line by half a pixel and
   every casing by a pixel more. Since 292 it pushes only the calm tiers'
   casings (LTS 1 and 2) to black or white. A busy tier's casing, which is what
   its gaps show, is left as it is: black under LTS 3 would score 0.97 against
@@ -741,7 +742,7 @@ left the grey at 2.86:1.
   colours.
 
 **Painted lanes on high-stress roads (275).** A switch, "Show bike lanes on
-high-stress roads" (`role="switch"`, after the Accessibility switch), is off by
+high-stress roads" (`role="switch"`, after the High contrast switch), is off by
 default and remembered as `routemaker.highStressLanes`. While it is off:
 - the painted-lane layer leaves out tiers 4 and 5 (`HIGH_STRESS_LANE_MIN_TIER`);
 - the facility bar counts a painted lane on LTS 4 or Avoid as no facility;
@@ -3408,7 +3409,7 @@ the two parts for open questions, written with createElement so a test renders t
 Tests: `lib/sidebar.test.ts`.
 
 - **Views, not modals.** The panel body shows the planner or one of the bar's sheets
-  (Map layers, which Legend opens at its legend; GPX; About). Each is in the page all
+  (Map layers, which Legend opens at its legend; GPX; Settings). Each is in the page all
   the time, `hidden` when not shown, so the search, the opened GPX file, the slider
   drafts and the switches keep their state, and a GPX import keeps fitting while
   another view shows.
@@ -3439,26 +3440,42 @@ Tests: `lib/sidebar.test.ts`.
 - **FacilityBreakdown's `part`**: "notices" (the traffic-tolerant warning, the roads
   best avoided, the hills search) stays in view; "figures" (the route colors and the
   bike facilities) goes in the Stress and facilities fold (`breakdownParts`).
-- **The font.** `--font` names Atkinson Hyperlegible first, so an installed copy is
-  used now. The self-hosted files go in `frontend/src/fonts/` with relative `url()`s
-  (`fonts/fonts.css`), which Vite fingerprints into `/assets/`: both edges already
+- **The font (switched on, OWNER-DECISIONS 384).** `--font` names Atkinson Hyperlegible
+  first, so an installed copy is used before the downloaded one. The self-hosted files
+  are in `frontend/src/fonts/` (`atkinson-hyperlegible-regular.woff2` at 400,
+  `atkinson-hyperlegible-bold.woff2` at 700, and `OFL.txt`, the SIL Open Font License;
+  sha256 in docs/SOURCES.md), with relative `url()`s in `fonts/fonts.css`, which
+  `main.tsx` imports after `./styles.css`. Vite fingerprints the files into `/assets/`
+  (a build gives `/assets/atkinson-hyperlegible-regular-<hash>.woff2` and
+  `...-bold-<hash>.woff2`, and the built CSS names only those): both edges already
   serve `/assets/` with a year's immutable cache and every publish path copies it, so
-  no Caddy, nginx or deploy change is needed. Until the owner approves the download,
-  nothing imports `fonts.css`, so no page asks for a missing file and nothing 404s.
-  The switch is one commit: add `atkinson-hyperlegible-regular.woff2` (400),
-  `atkinson-hyperlegible-bold.woff2` (700) and `OFL.txt` (the SIL Open Font License)
-  to `frontend/src/fonts/`, add `import "./fonts/fonts.css";` to `main.tsx` after
-  `./styles.css`, and credit the font with the other credits. The sidebar test fails
-  if the import and the two files are not both present or both absent, or if the
-  licence is missing. The files are well over Vite's 4 KB inline limit, so they are
-  never inlined as `data:` URIs (which `font-src 'self'` would refuse).
-- **Open owner questions, ready to change.** The fourth bar button is About
-  (`BAR_ITEMS`); the theme follows the system; `PLANNER_EXTRAS` turns on the planner's
-  zoom notice (`PlannerZoomNotice`, a live region of its own, which only speaks while
-  the planner shows) and an Accessibility toggle in the planner (`AccessibilityShortcut`,
-  described by the switch's hint and its from-link note, with no ids the switch uses),
-  both built and off.
-- **The browser check** (scripts/a11y/check.mjs, 142 checks, all passing on the
+  no Caddy, nginx or deploy change is needed. The files are well over Vite's 4 KB
+  inline limit, so they are never `data:` URIs (which `font-src 'self'` would refuse).
+  The credit: the `licenceNotices` plugin (`src/licences/notices.mjs`, `BUNDLED_FONTS`,
+  `withFontNotices`) appends "Atkinson Hyperlegible - 2020 (OFL-1.1)" and the full OFL
+  text to the built `licenses.txt`, and fails the build if the licence file is missing;
+  `src/lib/credits.json` gives the map's credits "Atkinson Hyperlegible (SIL OFL)", with
+  its `Credit:` line in docs/SOURCES.md. The sidebar test fails if the import and the
+  two files are not both there, or the licence is missing; `notices.test.mjs` checks
+  that the credit and the licence text reach `licenses.txt`.
+- **Settings, High contrast (OWNER-DECISIONS 384).** The fourth bar button is Settings
+  (`BAR_ITEMS`, id `settings`; it was About): its sheet holds a "Display" group with the
+  High contrast switch, then the sign-in note. No other settings are listed. The switch
+  is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
+  `routemaker.accessibility` storage key, the `a11y` root class and the `palette=` link
+  value (`cool` and the older `cvd`) are unchanged, so existing share links decode the
+  same. Its hint is "Bolder lines, stronger borders and colors that don't rely on red and
+  green." (no disability word). It is one state (`stressStyle.js`) shown twice, in Map
+  layers (ids `a11y-switch`, `a11y-label`, `a11y-hint`) and in Settings (ids
+  `settings-contrast-*`, from the component's `idBase`), because both sheets are in the
+  page at once. `barCurrent` (`lib/sidebar.ts`) decides which bar button is current.
+- **Decided, ready to change.** The theme follows the system's light or dark setting
+  (384: "system"). `PLANNER_EXTRAS` holds two parts built and decided off (384): the
+  planner's zoom notice (`PlannerZoomNotice`, a live region of its own, which only speaks
+  while the planner shows; the notice lives in the Map layers sheet) and the planner's
+  High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
+  from-link note, with no ids the switch uses).
+- **The browser check** (scripts/a11y/check.mjs, 149 checks, all passing on the
   sidebar) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses

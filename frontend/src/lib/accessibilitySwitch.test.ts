@@ -1,4 +1,4 @@
-// The accessibility switch (OWNER-DECISIONS 208, 209, 211, 212): where it
+// The accessibility switch, shown as "High contrast" since OWNER-DECISIONS 384 (208, 209, 211, 212): where it
 // starts (stored > the system's request for more contrast > off), the palette
 // it chooses (?palette= > the switch > the default), what happens when storage
 // or matchMedia fails, and that a flip reaches every place the stress colours
@@ -772,13 +772,13 @@ test("nothing keeps the tiers from import time: a flip would not reach it", () =
   assert.deepEqual(reads, []);
 });
 
-test("the switch is a labelled role=switch button, with its state in words and a one-line description", () => {
+test("the High contrast switch is a labelled role=switch button, with its state in words and a one-line description", () => {
   const off = renderToStaticMarkup(createElement(AccessibilitySwitch, { on: false, source: "default", paletteFromAddress: false, onChange: () => {} }));
   assert.match(off, /<button type="button" role="switch" id="a11y-switch" class="switch" aria-checked="false" aria-labelledby="a11y-label" aria-describedby="a11y-hint">/);
-  assert.match(off, /<span id="a11y-label" class="switch-label">Accessibility<\/span>/);
-  assert.equal(ACCESSIBILITY_LABEL, "Accessibility");
+  assert.match(off, /<span id="a11y-label" class="switch-label">High contrast<\/span>/);
+  assert.equal(ACCESSIBILITY_LABEL, "High contrast");
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
-  assert.match(off, new RegExp(`<p class="hint" id="a11y-hint">${ACCESSIBILITY_HINT.replace(/[.]/g, "\\.")}</p>`));
+  assert.match(off, new RegExp(`<p class="hint" id="a11y-hint">${ACCESSIBILITY_HINT.replace(/[.]/g, "\\.").replace(/'/g, "&#x27;")}</p>`));
   assert.ok(!ACCESSIBILITY_HINT.includes("\n") && ACCESSIBILITY_HINT.length < 120, "one line");
   const on = renderToStaticMarkup(createElement(AccessibilitySwitch, { on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);

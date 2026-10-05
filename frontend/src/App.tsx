@@ -61,7 +61,7 @@ import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { GpxPanel, downloadGpx } from "./GpxPanel.tsx";
 import {
-  AccessibilityShortcut,
+  HighContrastShortcut,
   BottomBar,
   Fold,
   JunctionLegend,
@@ -197,7 +197,7 @@ export function App() {
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
-  // which Legend opens scrolled to the legend, GPX, About). The planner stays in the page, hidden,
+  // which Legend opens scrolled to the legend, GPX, Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
   const [legendTarget, setLegendTarget] = useState(false);
@@ -218,7 +218,7 @@ export function App() {
   const layersHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
-  const aboutHeadingRef = useRef<HTMLHeadingElement>(null);
+  const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
   // What "Copy link" answered: said politely, and again for a second press.
   const [linkSaid, setLinkSaid] = useState("");
   const linkPresses = useRef(0);
@@ -362,7 +362,7 @@ export function App() {
     else if (target.kind === "error") errorRef.current?.focus();
     else if (target.kind === "plan") planButtonRef.current?.focus();
     else {
-      const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, about: aboutHeadingRef }[target.view];
+      const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef }[target.view];
       heading.current?.focus();
       heading.current?.scrollIntoView?.({ block: "start" });
     }
@@ -795,8 +795,8 @@ export function App() {
         Points
       </h2>
       {PLANNER_EXTRAS.zoomNotice && <PlannerZoomNotice zoom={zoom} shown={stressVisible && stress === "available"} />}
-      {PLANNER_EXTRAS.accessibilityShortcut && (
-        <AccessibilityShortcut on={accessibilityOn()} paletteFromAddress={paletteSetByAddress()} onChange={(on) => setAccessibility(on)} />
+      {PLANNER_EXTRAS.highContrastShortcut && (
+        <HighContrastShortcut on={accessibilityOn()} paletteFromAddress={paletteSetByAddress()} onChange={(on) => setAccessibility(on)} />
       )}
       {/* The controls stay in the page while the points are compact (hidden), so the search keeps its state. */}
       <div id="points-search" ref={pointsSearchRef} className="points-controls" hidden={compactPoints}>
@@ -1103,7 +1103,7 @@ export function App() {
               onBack={backToPlanner}
               headingRef={layersHeadingRef}
             >
-              {/* In 312's order: traffic stress, high-stress lanes, accessibility colors, federal land
+              {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
                   (Mass Ride's alone), rail stations; then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">Traffic stress</h3>
@@ -1186,12 +1186,24 @@ export function App() {
             </SheetFrame>
 
             <SheetFrame
-              id="sheet-about"
-              title={SHEET_TITLES.about}
-              open={view === "about"}
+              id="sheet-settings"
+              title={SHEET_TITLES.settings}
+              open={view === "settings"}
               onBack={backToPlanner}
-              headingRef={aboutHeadingRef}
+              headingRef={settingsHeadingRef}
             >
+              {/* The same switch and the same state as in Map layers (one module state, so a flip in
+                  either shows in both), with ids of its own: both sheets are in the page at once. */}
+              <section aria-labelledby="settings-display-heading">
+                <h3 id="settings-display-heading">Display</h3>
+                <AccessibilitySwitch
+                  idBase="settings-contrast"
+                  on={accessibilityOn()}
+                  source={accessibilitySource()}
+                  paletteFromAddress={paletteSetByAddress()}
+                  onChange={(on) => setAccessibility(on)}
+                />
+              </section>
               <p className="hint">
                 Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
                 reopens it. Saving routes and peer review are coming for riders who{" "}

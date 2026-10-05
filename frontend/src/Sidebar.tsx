@@ -11,12 +11,12 @@
  * the Back button (or Escape) takes it back to the bar button that opened it.
  */
 import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import { BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
+import { BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
 
 // The parts a test renders are written with createElement in lib/sidebarParts.ts (node's test runner
 // reads .ts, not .tsx); App.tsx takes them from here with the rest.
-export { AccessibilityShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./lib/sidebarParts.ts";
+export { HighContrastShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./lib/sidebarParts.ts";
 
 /** Help that is not needed every time, behind a toggle (the mockup's "More tips"). */
 export function MoreTips({ children }: { children: ReactNode }) {
@@ -57,10 +57,10 @@ const ICONS: Record<BarItem["id"], ReactNode> = {
     </>
   ),
   gpx: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
-  about: (
+  settings: (
     <>
-      <circle cx="12" cy="8" r="3" />
-      <path d="M5 21c0-4 3-6 7-6s7 2 7 6" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
     </>
   ),
 };
@@ -81,7 +81,7 @@ export function BottomBar({
   return (
     <nav aria-label={BAR_NAME} className="bottom-bar">
       {BAR_ITEMS.map((item) => {
-        const current = view === item.opens && (item.id !== "layers" || !legend) && (item.id !== "legend" || legend);
+        const current = barCurrent(item, view, legend);
         return (
           <button
             key={item.id}

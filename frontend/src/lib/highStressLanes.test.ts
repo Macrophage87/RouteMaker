@@ -345,10 +345,10 @@ test("with no stress map the switch is still there, and its description says wha
   assert.ok(withMap.includes(HIGH_STRESS_LANES_HINT), "with the map, the default");
 });
 
-test("the panel places the switch just before the Accessibility switch, outside the overlay's block, telling it whether the map is there", () => {
+test("the panel places the switch just before the High contrast switch, outside the overlay's block, telling it whether the map is there", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // App.tsx is not rendered by a test: where it places the switch is read here. The sidebar's Map
-  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, high-stress lanes, accessibility colors.
+  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, high-stress lanes, high contrast.
   assert.match(
     app,
     /\{stress === "unavailable" && \([\s\S]*?\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} \/>\s*<AccessibilitySwitch/,

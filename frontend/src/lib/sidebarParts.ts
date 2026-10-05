@@ -116,7 +116,7 @@ export function JunctionLegend(): ReactElement {
 }
 
 /**
- * Ready to place, not placed (PLANNER_EXTRAS, an open owner question): the zoom notice in one line
+ * Ready to place, not placed (PLANNER_EXTRAS; the owner left it off, 384): the zoom notice in one line
  * over the planner, as well as in the Map layers sheet. A live region that stays in the page, so a
  * change of notice is said: the sheet's copy is hidden whenever the planner shows, and the planner is
  * hidden whenever the sheet shows, so only one of the two can ever speak.
@@ -127,11 +127,11 @@ export function PlannerZoomNotice({ zoom, shown }: { zoom: number | null; shown:
 }
 
 /**
- * Ready to place, not placed (PLANNER_EXTRAS, an open owner question): the Accessibility colours in
- * the planner, a toggle button doing what the Map layers sheet's switch does. No id of its own, so
- * it never shares one with the switch.
+ * Ready to place, not placed (PLANNER_EXTRAS; the owner left it off, 384): High contrast in
+ * the planner, a toggle button doing what the Map layers and Settings sheets' switch does. No id of
+ * its own, so it never shares one with the switch.
  */
-export function AccessibilityShortcut({
+export function HighContrastShortcut({
   on,
   paletteFromAddress = false,
   onChange,
@@ -148,7 +148,7 @@ export function AccessibilityShortcut({
     null,
     h(
       "button",
-      { type: "button", className: "secondary accessibility-shortcut", "aria-pressed": on, "aria-describedby": hintId, onClick: () => onChange(!on) },
+      { type: "button", className: "secondary high-contrast-shortcut", "aria-pressed": on, "aria-describedby": hintId, onClick: () => onChange(!on) },
       ACCESSIBILITY_LABEL,
       h("span", { "aria-hidden": "true" }, `: ${on ? "On" : "Off"}`),
     ),

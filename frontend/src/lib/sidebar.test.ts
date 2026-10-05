@@ -14,6 +14,7 @@ import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, 
 import {
   BAR_ITEMS,
   BAR_NAME,
+  barCurrent,
   COPY_LINK,
   COPY_LINK_DONE,
   COPY_LINK_FAILED,
@@ -46,10 +47,11 @@ import { stressSegments } from "./stressBar.ts";
 import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE, stressZoomNotice } from "./stressLegend.ts";
 import { sheetOrder } from "./sheet.ts";
 import { FederalPointsList } from "./federalLegend.ts";
-import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT } from "./accessibilitySwitch.ts";
+import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_CLASS, ACCESSIBILITY_CONTRAST_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL, AccessibilitySwitch } from "./accessibilitySwitch.ts";
+import { ACCESSIBILITY_STORAGE_KEY } from "../stressStyle.js";
 import { breakdownParts } from "./facilityBar.ts";
 // The rendered parts are createElement modules: node's test runner reads .ts, not .tsx.
-import { AccessibilityShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
+import { HighContrastShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const app = src("../App.tsx");
@@ -339,6 +341,12 @@ test("the route's folds: Stress and facilities, Directions, Junctions to watch, 
   assert.equal(foldTitle("Stress and facilities", null), "Stress and facilities");
   assert.equal(stepsCount(1), "1 step");
   assert.equal(stepsCount(12), "12 steps");
+  // The edges (the mutation re-check's NIT B): a count of 0 is still said, as "(0)" and "0 steps".
+  assert.equal(foldTitle("x", 0), "x (0)");
+  assert.equal(stepsCount(0), "0 steps");
+  // The Junctions fold: drawn only when the route has intersections, and counted by what the list shows.
+  assert.match(app, /const junctions = route\.intersections == null \? null : junctionItems\(route\)\.length;/);
+  assert.match(app, /\{junctions !== null && \(\s*<Fold title=\{foldTitle\(ROUTE_FOLDS\.junctions\.title, junctions\)\}/);
   const at = (text: string) => {
     const i = app.indexOf(text, app.indexOf("function RouteSummary"));
     assert.ok(i > 0, text);
@@ -426,6 +434,8 @@ test("GPX and Copy link are pinned under the scrolling part, outside it", () => 
   assert.ok(scrollEnd > 0 && pinned > scrollEnd, "outside .panel-scroll");
   assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop\)\}>\s*Download GPX/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSaid\}/);
+  // Unpinned while a sheet is open (the mutation re-check's NIT D): only the planner view shows the actions.
+  assert.match(app, /\{view === "planner" && shown && \(\s*<div className="route-actions">/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
   assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
@@ -479,9 +489,9 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Map layers, Legend, GPX and About: real buttons, each with words", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Map layers", "Legend", "GPX", "About"]);
-  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["layers", "layers", "gpx", "about"]);
+test("the bottom bar is Map layers, Legend, GPX and Settings: real buttons, each with words", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Map layers", "Legend", "GPX", "Settings"]);
+  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["layers", "layers", "gpx", "settings"]);
   assert.equal(BAR_ITEMS.filter((i) => i.toLegend).length, 1, "only Legend opens at the legend");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
@@ -493,8 +503,9 @@ test("the bottom bar is Map layers, Legend, GPX and About: real buttons, each wi
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Map layers", "GPX file", "About RouteMaker"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Map layers", "GPX file", "Settings"]);
   assert.match(sidebar, /aria-label="Back to the planner"/);
+  assert.match(sidebar, /<button type="button" className="sheet-back" aria-label="Back to the planner" onClick=\{onBack\}>/, "Back goes back (NIT A)");
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
@@ -506,9 +517,9 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
-  const views: PanelView[] = ["planner", "layers", "gpx", "about"];
+  const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
   const causes: ViewCause[] = ["bar", "back", "error", "confirm"];
-  const ids: BarItem["id"][] = ["layers", "legend", "gpx", "about"];
+  const ids: BarItem["id"][] = ["layers", "legend", "gpx", "settings"];
   for (const was of views)
     for (const view of views)
       for (const legendTarget of [false, true])
@@ -579,7 +590,7 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
 
 test("the Map layers sheet holds the switches in 312's order, then the full legend with its junctions", () => {
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  // Traffic stress, high-stress lanes, accessibility colors, federal land, rail stations (OWNER-DECISIONS 312).
+  // Traffic stress, high-stress lanes, high contrast, federal land, rail stations (OWNER-DECISIONS 312).
   const parts = [
     "Show traffic stress on the map",
     "<HighStressLanesSwitch",
@@ -618,28 +629,28 @@ test("the zoom explanations are behind 'What each zoom level shows'; the zoom no
   assert.doesNotMatch(renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11, shown: true })), /<details/);
 });
 
-test("the parts the owner has not decided are built, and off: the zoom notice and the Accessibility shortcut in the planner", () => {
-  assert.deepEqual(PLANNER_EXTRAS, { zoomNotice: false, accessibilityShortcut: false });
+test("the parts the owner decided OFF (384) are built, and off: the zoom notice and the High contrast shortcut in the planner", () => {
+  assert.deepEqual(PLANNER_EXTRAS, { zoomNotice: false, highContrastShortcut: false });
   // A live region kept in the page, so a change is said (recheck: the sheet's copy is hidden while the planner shows).
   assert.equal(
     renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })),
     `<div class="planner-zoom" role="status"><p class="notice">${stressZoomNotice(11, true)}</p></div>`,
   );
   assert.equal(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 16, shown: true })), '<div class="planner-zoom" role="status"></div>');
-  const shortcut = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: true, onChange: () => {} }));
-  const described = /<button type="button" class="secondary accessibility-shortcut" aria-pressed="true" aria-describedby="([^"]+)">Accessibility<span aria-hidden="true">: On<\/span><\/button><span id="([^"]+)" class="visually-hidden">([^<]+)<\/span>/.exec(shortcut);
+  const shortcut = renderToStaticMarkup(createElement(HighContrastShortcut, { on: true, onChange: () => {} }));
+  const described = /<button type="button" class="secondary high-contrast-shortcut" aria-pressed="true" aria-describedby="([^"]+)">High contrast<span aria-hidden="true">: On<\/span><\/button><span id="([^"]+)" class="visually-hidden">([^<]+)<\/span>/.exec(shortcut);
   assert.ok(described, shortcut);
   assert.equal(described[1], described[2], "described by its hint");
-  assert.equal(described[3], ACCESSIBILITY_HINT);
-  const fromLink = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: false, paletteFromAddress: true, onChange: () => {} }));
-  assert.ok(fromLink.includes(`${ACCESSIBILITY_HINT} ${ACCESSIBILITY_ADDRESS_NOTE}`), "the from-link note, as the sheet's switch shows it");
+  assert.equal(described[3].replace(/&#x27;/g, "'"), ACCESSIBILITY_HINT);
+  const fromLink = renderToStaticMarkup(createElement(HighContrastShortcut, { on: false, paletteFromAddress: true, onChange: () => {} }));
+  assert.ok(fromLink.replace(/&#x27;/g, "'").includes(`${ACCESSIBILITY_HINT} ${ACCESSIBILITY_ADDRESS_NOTE}`), "the from-link note, as the sheet's switch shows it");
   assert.match(app, /\{PLANNER_EXTRAS\.zoomNotice && <PlannerZoomNotice/);
-  assert.match(app, /\{PLANNER_EXTRAS\.accessibilityShortcut && \(\s*<AccessibilityShortcut on=\{accessibilityOn\(\)\} paletteFromAddress=\{paletteSetByAddress\(\)\}/);
+  assert.match(app, /\{PLANNER_EXTRAS\.highContrastShortcut && \(\s*<HighContrastShortcut on=\{accessibilityOn\(\)\} paletteFromAddress=\{paletteSetByAddress\(\)\}/);
 });
 
 // ---- the font and the stylesheet ------------------------------------------------
 
-test("Atkinson Hyperlegible: fonts/fonts.css, relative url()s for Vite's /assets/, imported only once the files are there", () => {
+test("Atkinson Hyperlegible: fonts/fonts.css, relative url()s for Vite's /assets/, imported, with the files beside it", () => {
   const fonts = src("../fonts/fonts.css");
   const faces = [...fonts.matchAll(/@font-face \{([^}]*)\}/g)].map((m) => m[1]);
   assert.equal(faces.length, 2);
@@ -657,6 +668,8 @@ test("Atkinson Hyperlegible: fonts/fonts.css, relative url()s for Vite's /assets
   const imported = /^import "\.\/fonts\/fonts\.css";$/m.test(main);
   assert.equal(files[0], files[1], "both font files, or neither");
   assert.equal(imported, files[0], imported ? "fonts.css is imported but the font files are missing" : "the font files are there but fonts.css is not imported");
+  assert.ok(imported && files[0] && files[1], "the font is switched on (OWNER-DECISIONS 384)");
+  assert.match(main, /import "\.\/styles\.css";\s*import "\.\/fonts\/fonts\.css";/, "after styles.css");
   if (imported) assert.ok(existsSync(new URL("../fonts/OFL.txt", import.meta.url)), "the SIL Open Font License ships with the files");
   assert.match(css, /--font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;/);
   assert.match(css, /font-family: var\(--font\);/);
@@ -689,7 +702,8 @@ test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned
   assert.match(rule, /\.panel \{\s*overflow-y: auto;/);
   assert.match(rule, /\.panel-body,\s*\.panel-scroll \{\s*flex: none;\s*min-height: auto;\s*overflow: visible;/);
   // The banner stays the first thing, and nothing moves it or hides it (mutation NIT 2).
-  assert.doesNotMatch(css, /\.beta-banner[^{]*\{[^}]*(\border:|display: none)/);
+  // Not moved, not hidden: display, visibility and opacity too (the mutation re-check's NIT C).
+  assert.doesNotMatch(css, /\.beta-banner[^{]*\{[^}]*(\border:|display: none|visibility: hidden|opacity: 0(?![.\d]))/);
   assert.doesNotMatch(css, /\.panel-scroll[^{]*\{[^}]*\border:/);
   assert.doesNotMatch(css, /\.panel-footer/, "the old footer's rules are gone with it");
   // The scroll to the top reaches whichever scrolls.
@@ -727,4 +741,68 @@ test("on a desktop the points come first, then the Ride line, then the route; on
   assert.deepEqual(sheetOrder(false, "ok", true), ["points", "presets", "route"]);
   assert.deepEqual(sheetOrder(true, "ok", true), ["route", "points", "presets"]);
   assert.deepEqual(sheetOrder(true, "idle", false), ["points", "presets", "route"]);
+});
+
+// ---- OWNER-DECISIONS 384: App's dispatch, the bar's current button, the Settings sheet ----------------
+
+test("App dispatches the focus decision to the right element (the mutation re-check's NIT A)", () => {
+  const effect = app.slice(app.indexOf("const target = focusOnViewChange("), app.indexOf("}, [view, legendTarget]);"));
+  assert.match(effect, /if \(target\.kind === "bar"\) barButtons\.current\[target\.id\]\?\.focus\(\);/);
+  assert.match(effect, /else if \(target\.kind === "error"\) errorRef\.current\?\.focus\(\);/);
+  assert.match(effect, /else if \(target\.kind === "plan"\) planButtonRef\.current\?\.focus\(\);/);
+  assert.match(effect, /const heading = target\.legend \? legendHeadingRef : \{ layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef \}\[target\.view\];/);
+  // Legend opens Map layers at its legend; the others do not.
+  assert.match(app, /setLegendTarget\(item\.toLegend === true\);/);
+  assert.match(app, /<BottomBar view=\{view\} legend=\{legendTarget\} onOpen=\{openSheet\}/);
+});
+
+test("the bar's current button: the sheet showing, and of Map layers and Legend only the one that opened it", () => {
+  const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
+  for (const view of views)
+    for (const legend of [false, true])
+      for (const item of BAR_ITEMS) {
+        const want = view === item.opens && (item.id === "legend" ? legend : item.id === "layers" ? !legend : true);
+        assert.equal(barCurrent(item, view, legend), want, `${view} legend=${legend} ${item.id}`);
+      }
+  assert.match(sidebar, /const current = barCurrent\(item, view, legend\);/);
+  assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
+});
+
+test("the Settings sheet (384): a Display group with the High contrast switch, then the sign-in note; one state, unique ids", () => {
+  const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("{/* Pinned under"));
+  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{view === "settings"\}/);
+  assert.match(sheet, /<h3 id="settings-display-heading">Display<\/h3>/);
+  assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
+  assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
+  assert.match(sheet, /rememberPlan\(session\(\), window\.location\.hash\)/);
+  assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
+  // Both copies read the one module state, so a flip in either shows in both; their ids differ.
+  const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
+  assert.match(layers, /<AccessibilitySwitch\s+on=\{accessibilityOn\(\)\}/);
+  const a = renderToStaticMarkup(createElement(AccessibilitySwitch, { on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));
+  const b = renderToStaticMarkup(createElement(AccessibilitySwitch, { idBase: "settings-contrast", on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));
+  const ids = (html: string) => [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids(a), ["a11y-switch", "a11y-label", "a11y-hint"]);
+  assert.deepEqual(ids(b), ["settings-contrast-switch", "settings-contrast-label", "settings-contrast-hint"]);
+  assert.ok(b.includes('aria-labelledby="settings-contrast-label"') && b.includes('aria-describedby="settings-contrast-hint"'));
+  assert.ok(b.includes(">High contrast</span>"));
+  assert.equal(new Set([...ids(a), ...ids(b)]).size, 6, "no id twice in the page");
+});
+
+test("High contrast (384): the words say what it does and name no disability; the identifiers and the link are as they were", () => {
+  assert.equal(ACCESSIBILITY_LABEL, "High contrast");
+  assert.equal(ACCESSIBILITY_HINT, "Bolder lines, stronger borders and colors that don't rely on red and green. Kept in this browser.");
+  for (const text of [ACCESSIBILITY_LABEL, ACCESSIBILITY_HINT, ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_CONTRAST_NOTE, BAR_ITEMS.map((i) => i.description).join(" ")])
+    assert.doesNotMatch(text, /accessib|colou?r.?blind|disab|impair|blind/i, text);
+  // No visible word anywhere in the app's text still says "Accessibility" for the switch.
+  assert.doesNotMatch(app, />\s*Accessibility\s*</);
+  assert.equal(ACCESSIBILITY_CLASS, "a11y", "the root class is unchanged");
+  assert.equal(ACCESSIBILITY_STORAGE_KEY, "routemaker.accessibility", "what a browser remembers is unchanged");
+});
+
+test("Settings (384): theme follows the system, the planner zoom notice stays off; both decided", () => {
+  assert.equal(PLANNER_EXTRAS.zoomNotice, false);
+  assert.equal(PLANNER_EXTRAS.highContrastShortcut, false);
+  assert.doesNotMatch(css, /data-theme|\.theme-toggle/, "no theme switch: the panel follows prefers-color-scheme");
+  assert.match(css, /@media \(prefers-color-scheme: dark\)/);
 });

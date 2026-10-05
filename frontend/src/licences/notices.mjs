@@ -19,6 +19,10 @@
  *   it is read from the source maps maplibre-gl ships beside its bundle, and
  *   each one's LICENSE file is added under a heading of its own.
  *
+ * - The self-hosted font (Atkinson Hyperlegible, OWNER-DECISIONS 384) is a file, not a
+ *   package, so build.license never lists it. Its credit and the full SIL Open Font
+ *   License text (frontend/src/fonts/OFL.txt) are appended under their own heading.
+ *
  * A bundled package left without licence text fails the build.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -85,6 +89,25 @@ export function completeLicences(text, { fill, inlined = [] }) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
 }
 
+/** The fonts the app serves from /assets/ (src/fonts/fonts.css), each with the licence file shipped beside it. */
+export const BUNDLED_FONTS = [
+  { name: "Atkinson Hyperlegible", version: "2020", license: "OFL-1.1", file: "src/fonts/OFL.txt" },
+];
+
+/**
+ * The notices with the bundled fonts' credit and licence text added under a heading of their own.
+ * `fonts` is [{name, version, license, text}]; throws when one has no text, as a package without
+ * text does.
+ */
+export function withFontNotices(text, fonts) {
+  if (fonts.length === 0) return text;
+  const missing = fonts.filter((f) => !f.text || !f.text.trim()).map((f) => f.name);
+  if (missing.length > 0) throw new Error(`no licence text for bundled font(s): ${missing.join(", ")}`);
+  const out = [text.replace(/\s+$/, ""), "", "---", "", "Fonts served with the app (the SIL Open Font License allows this; the licence travels with the font):", ""];
+  for (const f of fonts) out.push(`## ${f.name} - ${f.version} (${f.license})`, "", f.text.trim(), "");
+  return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
+}
+
 /** A package's own licence file's text, or null. */
 export function licenceFile(dir) {
   const name = readdirSync(dir).find((f) => /^(licen[cs]e|copying)/i.test(f));
@@ -114,7 +137,8 @@ export function licenceNotices(root, fileName = "licenses.txt") {
           return { name, version: pkg.version, license: pkg.license, text: licenceFile(dir) ?? committed(name) };
         });
         if (!existsSync(file)) throw new Error(`${fileName} was not written by build.license`);
-        writeFileSync(file, completeLicences(readFileSync(file, "utf8"), { fill: committed, inlined }));
+        const fonts = BUNDLED_FONTS.map((f) => ({ ...f, text: existsSync(join(root, f.file)) ? readFileSync(join(root, f.file), "utf8") : null }));
+        writeFileSync(file, withFontNotices(completeLicences(readFileSync(file, "utf8"), { fill: committed, inlined }), fonts));
       },
     },
   };

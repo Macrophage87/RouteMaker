@@ -5,7 +5,7 @@
  * called a bike lane in the route description (the owner: "Kenilworth avenue
  * is hillarious at having a bike lane on it."). Protected lanes and paths are
  * unaffected, as are the stress ratings. A button with role="switch" like the
- * Accessibility switch, so a keyboard (Space or Enter) and a screen reader
+ * High contrast switch, so a keyboard (Space or Enter) and a screen reader
  * (name, state, description) reach it. Written with createElement so a test
  * renders it.
  *

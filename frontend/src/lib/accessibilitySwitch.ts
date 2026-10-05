@@ -1,5 +1,7 @@
 /**
- * The panel's "Accessibility" switch (OWNER-DECISIONS 208, 211, 212): on, the
+ * The panel's "High contrast" switch (OWNER-DECISIONS 208, 211, 212; renamed from
+ * "Accessibility" by 384, whose wording drops any disability word; the identifiers, the
+ * storage key and the palette= link value keep their names): on, the
  * stress colours are a colour-blind-friendly set, the lines and their casings
  * are drawn stronger, and the panel's borders and muted text are stronger too
  * (styles.css, `.a11y` on the page's root). Off unless the rider turned it on,
@@ -9,10 +11,10 @@
 import { createElement as h, type ReactElement } from "react";
 import { accessibilityOn, subscribePalette } from "../stressStyle.js";
 
-export const ACCESSIBILITY_LABEL = "Accessibility";
+export const ACCESSIBILITY_LABEL = "High contrast";
 
 export const ACCESSIBILITY_HINT =
-  "Color-blind friendly stress colors, bolder lines, and stronger borders and text. Kept in this browser.";
+  "Bolder lines, stronger borders and colors that don't rely on red and green. Kept in this browser.";
 
 export const ACCESSIBILITY_ADDRESS_NOTE = "The address (palette= in the link) chooses the stress colors; the rest still applies.";
 
@@ -22,11 +24,17 @@ export const ACCESSIBILITY_CONTRAST_NOTE = "On because your device asks for more
 export const ACCESSIBILITY_CLASS = "a11y";
 
 export function AccessibilitySwitch({
+  idBase = "a11y",
   on,
   source,
   paletteFromAddress,
   onChange,
 }: {
+  /**
+   * The ids' stem: "a11y" (a11y-switch, a11y-label, a11y-hint) in the Map layers sheet, another in the
+   * Settings sheet, because both sheets are in the page at once and an id must be unique (384).
+   */
+  idBase?: string;
   on: boolean;
   /** What the state is down to: the rider's "chosen", the system's "contrast", or "default". */
   source: string;
@@ -45,17 +53,17 @@ export function AccessibilitySwitch({
       {
         type: "button",
         role: "switch",
-        id: "a11y-switch",
+        id: `${idBase}-switch`,
         className: "switch",
         "aria-checked": on,
-        "aria-labelledby": "a11y-label",
-        "aria-describedby": "a11y-hint",
+        "aria-labelledby": `${idBase}-label`,
+        "aria-describedby": `${idBase}-hint`,
         onClick: () => onChange(!on),
       },
-      h("span", { id: "a11y-label", className: "switch-label" }, ACCESSIBILITY_LABEL),
+      h("span", { id: `${idBase}-label`, className: "switch-label" }, ACCESSIBILITY_LABEL),
       h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
     ),
-    h("p", { className: "hint", id: "a11y-hint" }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
+    h("p", { className: "hint", id: `${idBase}-hint` }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
   );
 }
 

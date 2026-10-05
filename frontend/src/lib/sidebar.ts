@@ -11,18 +11,18 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
 /** The views the panel body shows: the planner, or one of the bottom bar's sheets. */
-export type PanelView = "planner" | "layers" | "gpx" | "about";
+export type PanelView = "planner" | "layers" | "gpx" | "settings";
 
 /** The sheets, and where each one's heading is (the focus goes to it on open). */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   layers: "Map layers",
   gpx: "GPX file",
-  about: "About RouteMaker",
+  settings: "Settings",
 };
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
-  id: "layers" | "legend" | "gpx" | "about";
+  id: "layers" | "legend" | "gpx" | "settings";
   /** Its text, always shown beside the icon. */
   label: string;
   /** The sheet it opens. */
@@ -34,31 +34,38 @@ export interface BarItem {
 }
 
 /**
- * Map layers, Legend, GPX and About. The mockup's fourth button is Settings,
- * but the app has no settings page: what a settings page would hold lives in
- * the ride settings (the Ride line's Edit) and the Map layers sheet, so the
- * fourth button is the page's one remaining piece, About and sign-in. (An open
- * owner question: a Settings sheet replaces this item, with About inside it.)
+ * Map layers, Legend, GPX and Settings (OWNER-DECISIONS 384; it was "About" until
+ * then). The Settings sheet holds the sign-in note and a Display group with the
+ * High contrast switch; nothing else is there, so no fake settings.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
   { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
   { id: "legend", label: "Legend", opens: "layers", toLegend: true, description: "Opens the map legend, in the map layers." },
   { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
-  { id: "about", label: "About", opens: "about", description: "Opens notes on planning without signing in, and sign in." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display options, and sign in." },
 ];
+
+/**
+ * Whether a bar button is the current one: its sheet is the view showing, and of the two buttons
+ * that open Map layers only the one that did (Legend, or Map layers). Pure, so a test runs it over
+ * every view and button (the mutation re-check's NIT A).
+ */
+export function barCurrent(item: Pick<BarItem, "id" | "opens">, view: PanelView, legend: boolean): boolean {
+  return view === item.opens && (item.id !== "layers" || !legend) && (item.id !== "legend" || legend);
+}
 
 /** The bottom bar's landmark name: the pages of the panel it switches between. */
 export const BAR_NAME = "Panel pages";
 
 /**
- * Parts the owner has not decided on (SIDEBAR-dev open questions), built and
- * ready to place: flip a flag to show them in the planner.
+ * Parts built and ready to place, both decided OFF (OWNER-DECISIONS 384, items 3 and 4);
+ * flip a flag to show one in the planner.
  * - `zoomNotice`: the one-line zoom notice ("Zoom in to see traffic stress on
- *   roads...") over the points, as well as in the Map layers sheet.
- * - `accessibilityShortcut`: the Accessibility colors on/off in the planner, as
- *   well as the switch in the Map layers sheet.
+ *   roads...") over the points; the notice lives in the Map layers sheet.
+ * - `highContrastShortcut`: the High contrast on/off in the planner; the switch is
+ *   in the Map layers sheet and the Settings sheet.
  */
-export const PLANNER_EXTRAS = { zoomNotice: false, accessibilityShortcut: false } as const;
+export const PLANNER_EXTRAS = { zoomNotice: false, highContrastShortcut: false } as const;
 
 /** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
 export const MASS_RIDE_LAYERS_NOTE = "Mass Ride has its own layers, such as federal land.";

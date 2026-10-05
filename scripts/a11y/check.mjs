@@ -51,7 +51,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   return p;
 }
 
-/** Opens a bottom-bar sheet by its button's label ("Map layers", "Legend", "GPX", "About"). */
+/** Opens a bottom-bar sheet by its button's label ("Map layers", "Legend", "GPX", "Settings"). */
 async function openSheet(p, label = "Map layers") {
   await p.eval(`[...document.querySelectorAll('.bar-button')].find((b) => b.textContent.startsWith(${JSON.stringify(label)}))?.click(); true`);
   await sleep(250);
@@ -619,7 +619,7 @@ const federalFetched = (p) =>
   check("lanes switch: its target is at least 24 px tall (2.5.8)", box.h >= 24 && box.w >= 24, JSON.stringify(box));
   check("lanes switch: its state is also in visible words, not colour", await p.eval(`document.querySelector('${id} .switch-state').textContent === 'Off'`));
   // The keyboard: Tab to it from "Show traffic stress on the map" (312's order: traffic stress, high-stress
-  // lanes, accessibility colors), Space turns it on, Space again turns it off.
+  // lanes, high contrast), Space turns it on, Space again turns it off.
   await p.eval("document.querySelector('#show-stress').focus(); true");
   await p.tab();
   check("lanes switch: the next Tab stop after Show traffic stress on the map", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
@@ -728,11 +728,37 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 16. Settings (OWNER-DECISIONS 384): the fourth bar button, and the one High contrast switch in two sheets ----
+{
+  const p = await open();
+  const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
+  check("settings: the bottom bar is Map layers, Legend, GPX, Settings", JSON.stringify(bar) === JSON.stringify(["Map layers", "Legend", "GPX", "Settings"]), JSON.stringify(bar));
+  await openSheet(p, "Settings");
+  check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
+  const inSettings = await axNode(p, "#settings-contrast-switch");
+  // The Map layers sheet is hidden now, so it is not in the accessibility tree: its name is read from the
+  // label the switch points at.
+  const inLayers = await p.eval("(() => { const s = document.querySelector('#a11y-switch'); const l = document.getElementById(s.getAttribute('aria-labelledby')); return { role: s.getAttribute('role'), name: l?.textContent }; })()");
+  check("settings: the switch there is named \"High contrast\", off, described in neutral words", inSettings?.role === "switch" && inSettings?.name === "High contrast" && String(inSettings?.checked) === "false" && /^Bolder lines, stronger borders and colors that don't rely on red and green\./.test(inSettings?.description ?? "") && !/blind|accessib|disab/i.test(inSettings?.description ?? ""), JSON.stringify(inSettings));
+  check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
+  check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
+  await p.eval("document.querySelector('#settings-contrast-switch').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(200);
+  const both = await p.eval("[document.querySelector('#settings-contrast-switch'), document.querySelector('#a11y-switch')].map((e) => e.getAttribute('aria-checked'))");
+  check("settings: one state: flipping it here turns the Map layers copy on, and the page root takes the class", JSON.stringify(both) === JSON.stringify(["true", "true"]) && (await p.eval("document.documentElement.classList.contains('a11y')")), JSON.stringify(both));
+  await p.eval("localStorage.removeItem('routemaker.accessibility'); true");
+  await p.key("Escape", "Escape", 27);
+  await sleep(250);
+  check("settings: Escape goes back and the focus returns to the Settings button", (await p.eval("document.activeElement?.classList.contains('bar-button') && document.activeElement.textContent.startsWith('Settings')")), await focused(p));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 142;
+const EXPECTED = 149;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

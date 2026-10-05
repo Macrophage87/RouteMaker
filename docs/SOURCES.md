@@ -178,6 +178,24 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Apache 2.0 (the software); the places are OpenStreetMap's, ODbL.
 - Records: docs/DEPLOYMENT.md, "Photon".
 
+## Atkinson Hyperlegible (the panel's font)
+
+- Credit: `Atkinson Hyperlegible`
+- What it is: the typeface the panel is set in (OWNER-DECISIONS 312, 384), self-hosted as
+  `frontend/src/fonts/atkinson-hyperlegible-regular.woff2` (400) and
+  `atkinson-hyperlegible-bold.woff2` (700), which the build serves as hashed
+  `/assets/*.woff2` files. The credit is shown with the map's other credits because the
+  owner has the app credit everything it ships (a licence-asked notice is the full text
+  in `licenses.txt`).
+- Publisher: Braille Institute of America, Inc. (copyright 2020).
+- Licence: SIL Open Font License 1.1, the full text in `frontend/src/fonts/OFL.txt`
+  (sha256 `f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143`) and, with the
+  credit, in the built `licenses.txt` (the `licenceNotices` plugin,
+  `frontend/src/licences/notices.mjs`). Font files, sha256:
+  regular `d64ba838ef5472bba248620ec4fd8b5aa7cf0db2908e0bb230600caf279ba7bc`, bold
+  `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
+- Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { COMMITTED_NOTICES, completeLicences, inlinedPackages, licenceFile, packageOf } from "./notices.mjs";
+import { BUNDLED_FONTS, COMMITTED_NOTICES, completeLicences, inlinedPackages, licenceFile, packageOf, withFontNotices } from "./notices.mjs";
 
 const FRONTEND = new URL("../../", import.meta.url);
 
@@ -115,4 +115,27 @@ test("the notices cover every package inlined in the maplibre-gl this lockfile i
     (name) => !licenceFile(new URL(`node_modules/${name}/`, FRONTEND).pathname) && !(name in COMMITTED_NOTICES),
   );
   assert.deepEqual(without, [], "inlined packages with neither a licence file nor a committed notice");
+});
+
+test("the self-hosted font's credit and the full SIL Open Font License are added under a heading of its own (384)", () => {
+  assert.deepEqual(BUNDLED_FONTS.map((f) => f.name), ["Atkinson Hyperlegible"]);
+  const fonts = BUNDLED_FONTS.map((f) => ({ ...f, text: readFileSync(new URL(f.file, FRONTEND), "utf8") }));
+  const text = withFontNotices(completeLicences(VITE, { fill: () => "text" }), fonts);
+  assert.match(text, /^## Atkinson Hyperlegible - 2020 \(OFL-1\.1\)$/m);
+  assert.match(text, /Copyright 2020 Braille Institute of America, Inc\./);
+  assert.match(text, /SIL OPEN FONT LICENSE Version 1\.1 - 26 February 2007/);
+  assert.match(text, /PERMISSION & CONDITIONS/);
+  assert.match(text, /DISCLAIMER/);
+  // The earlier entries are untouched and the font comes after them.
+  assert.ok(text.indexOf("## pmtiles") < text.indexOf("## Atkinson Hyperlegible"));
+  // A font with no text fails the build, as a package without text does.
+  assert.throws(() => withFontNotices(VITE, [{ name: "Atkinson Hyperlegible", version: "2020", license: "OFL-1.1", text: " " }]), /Atkinson Hyperlegible/);
+  assert.equal(withFontNotices(VITE, []), VITE);
+});
+
+test("the font files, the licence and the plugin's wiring are in place", () => {
+  for (const name of ["atkinson-hyperlegible-regular.woff2", "atkinson-hyperlegible-bold.woff2", "OFL.txt"])
+    assert.ok(existsSync(new URL(`src/fonts/${name}`, FRONTEND)), name);
+  const plugin = readFileSync(new URL("src/licences/notices.mjs", FRONTEND), "utf8");
+  assert.match(plugin, /withFontNotices\(completeLicences\(readFileSync\(file, "utf8"\), \{ fill: committed, inlined \}\), fonts\)/);
 });

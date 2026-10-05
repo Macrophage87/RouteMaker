@@ -5,13 +5,11 @@
  * beta nginx) already serve with a year's immutable cache, and which every publish path copies; no
  * edge or deploy change is needed (the sidebar operations review's SF1).
  *
- * NOT IMPORTED YET: the two .woff2 files wait on the owner's approval. Until they are in this folder,
- * nothing imports this file, so no page asks for a font that is not there (no 404s, no API traffic),
- * and a build has nothing to resolve. The switch is one commit (docs/DEVELOPMENT.md, "The sidebar
- * (312)"): add atkinson-hyperlegible-regular.woff2 (400) and atkinson-hyperlegible-bold.woff2 (700)
- * here with the SIL Open Font License text (OFL.txt) and a credit, then add
- * `import "./fonts/fonts.css";` to main.tsx after "./styles.css". lib/sidebar.test.ts fails if the
- * import and the files are not both there or both absent.
+ * IMPORTED (OWNER-DECISIONS 384, "5 yes"): main.tsx imports this file after ./styles.css, and
+ * atkinson-hyperlegible-regular.woff2 (400), atkinson-hyperlegible-bold.woff2 (700) and the SIL Open
+ * Font License (OFL.txt) are in this folder. The licence and the credit are in the built licenses.txt
+ * (licences/notices.mjs, BUNDLED_FONTS) and in the map's credits (lib/credits.json). lib/sidebar.test.ts
+ * fails if the import and the files are not both there, or the licence is missing.
  *
  * local() comes first, so a rider who has the font installed downloads nothing. font-display: swap
  * shows the text at once in the system stack (--font in styles.css) and swaps when the file arrives.
