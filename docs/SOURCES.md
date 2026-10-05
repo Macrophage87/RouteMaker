@@ -200,8 +200,10 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
 
 ## The Mass Ride flow model (pending: FOLLOWUP-FLOW-CALIBRATION)
 
-- Credit: none yet; the chart says what its figure is ("Riders per minute: an
-  estimate from lane widths and the Mass Ride flow model, indicative (about ±25%)").
+- Credit: on the chart's source line, "Riders per minute: estimated from OpenStreetMap
+  lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill
+  adjustment not yet checked)." OpenStreetMap is credited as the map's data already
+  (above); the DC Bike Party counts are the owner's (PLAN item 173).
 - What: `routemaker.flow`, the riders-a-minute figure of the Mass Ride route chart
   (OWNER-DECISIONS 328, 332) and, once built, the capacity map (387 part 1).
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the

@@ -4277,7 +4277,7 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
 
-## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396)
+## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 
 The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
 riders per minute". Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
@@ -4309,16 +4309,28 @@ leg had any elevation), built by `core.routing.route_profile`:
   (`narrowest_riders_per_min`, `narrowest_m`, `typical_riders_per_min`, the median), each
   climb's `capacity_drop_pct` (the most it takes off a stretch) and `min_riders_per_min`,
   `avoid` and `unchecked` (the stretches marked Avoid, and those on an untraced leg, as
-  `{from_m, to_m}`), and `crossings`. `crossings` is null where the junctions were not
-  read (over budget, a deadline, a failed read): the chart says "not checked", never
-  "none", which is `[]`.
+  `{from_m, to_m}`: the stretches' own ends, summed along the route, not their first and
+  last samples, so a 20 m Avoid between two samples keeps its range), and `crossings`.
+  `crossings` is null where the junctions were not read (over budget, a deadline, a
+  failed read): the chart says "not checked", never "none", which is `[]`.
+  `crossings_complete` is false where only the flagged junctions could be read (finding
+  the busy-road ones failed): the chart says the list may be incomplete.
+- A Mass Ride's riders are read at more places than the heights (`routing._flow_samples`):
+  a pair of samples at each place the width or the note changes (the end of one stretch
+  and the start of the next, at one distance), so a one-block bottleneck is never stepped
+  over and the line steps where the width does; and one every 30 m along a leg the router
+  gave no heights for (a null height, a figure all the same). The climbs are found on the
+  height samples alone; the typical figure is the median of the regular samples only.
 - Cost and size: `climbs.runs` is found once and shared; each climb's samples are found by
   bisection and the climb distance by one pointer, so the profile is about linear in the
   samples. Its time is in the plan's "joins" warning ("the chart's profile N s of them").
   Every figure is worked out on every sample, then a route of more than
-  `profile.MAX_SAMPLES` (2,000, about 60 km or 37 mi) is thinned to about that many
-  (`profile.thin`: each window keeps its steepest grade, its lowest riders figure and its
-  first gap), so the grade bands, the bottlenecks and the gaps survive.
+  `profile.MAX_SAMPLES` (2,000, about 60 km or 37 mi) is thinned to close to that many
+  (`profile.thin`: each window keeps its steepest grade, its highest and lowest heights,
+  its lowest riders figure and its first gap), so the grade bands, the summits and valley
+  floors, the bottlenecks and the gaps survive. The window is first sized for the most
+  picks a window can make (4, or 6 on a Mass Ride), then narrowed by bisection to the
+  narrowest that keeps the picks actually made within the limit.
 
 **The flow model** is `routemaker.flow`; there was no flow code before it, only PLAN's
 "The headline number: modelled throughput". It is accepted as the working model
@@ -4380,13 +4392,17 @@ not the rider's own road going on and not straight on from one busy road into th
 street passed while riding along a busy road, are marked though group mode makes no event
 of them. One junction gives one major, for its busiest road; one at the same node as one
 already counted, or of the same street (or an unnamed one) within `MERGE_WITHIN_M`, is the
-same junction. `kind` says why (`flagged`, `crossing`, `joining`), and `corkers_needed`
-is true where the crossed road is LTS 3 or worse (item 142). There is no lane counting and
+same junction; an unnamed major (a path crossing) does not hide a named busy road beside
+it, and only the majors within `MERGE_WITHIN_M` are looked at (bisection). `kind` says why
+(`flagged`, `crossing`, `joining`), and `corkers_needed` is true where the crossed or
+joined road is LTS 3 or worse (item 142; 400: a turn onto a busy road needs corkers as a
+crossing does). `Major.crossed_tier` (the API's `crossed_tier`) is that road's tier. There is no lane counting and
 no stop-sign rule. They ride beside the events as `RouteEvents.majors`
 (`core.junctions.with_majors`, Mass Ride only), which falls back to the flagged events
 (`majors_of_events`) if finding the majors fails, so the planner's own junction events
 always survive; where the events were merged into a plain list (a long plan's reads) the
-flagged ones alone are used. They are not extra events: the description, the refine search
+flagged ones alone are used. Both fallbacks are marked incomplete (`RouteEvents.complete`,
+and `plan()`'s own), sent as `crossings_complete: false`. They are not extra events: the description, the refine search
 and the junction list never see them.
 
 **The front end.**
@@ -4411,19 +4427,27 @@ and the junction list never see them.
   intersection. Hovering or touching reads the same, a click or a touch pins the position;
   focus shows the marker and leaving hides it, keeping the position for the return. The
   tables are behind a closed "Climbs as a table" (on a Mass Ride "Climbs, bottlenecks and
-  intersections as tables"), with captions and header cells. A source line under the
-  chart cites USGS 3DEP and, on a Mass Ride, the flow model.
+  intersections as tables"), with captions and header cells. C and I read the Shift key,
+  not the letter's case, so Caps Lock does not reverse them. A source line under the
+  chart cites USGS 3DEP and, on a Mass Ride, OpenStreetMap lane counts and DC Bike Party
+  counts ("indicative (level roads about ±25%; hill adjustment not yet checked)"). The
+  summary's stress shares and the climbs' Stress column say the map's class
+  ("traffic-free path", "unpaved, LTS 2"), as the key and the sentence do.
 - `App.tsx` puts the fold first in the route summary (`ROUTE_FOLDS.elevation`; "Stress and
   facilities" stays after it), open beside the map and closed on a small screen
   (`sidebar.chartFoldOpen(narrow)`). `scrubPoint` goes to `MapView`, which draws the
   `.scrub-marker` (a ring with a cross, dark outside and white inside: a shape, not a
   colour; `aria-hidden`; not in the tab order) and eases the map to it if it leaves the
-  screen.
+  screen (kept: OWNER-DECISIONS 399, "auto pan").
 - Colour is never the only cue: the 5% to 8% band is amber with dark dots and the
   8%-or-more band amber with a hatch; the strip's tiers carry the stress bar's patterns,
   a path is drawn in the map's path colour and an unpaved stretch in its brown with dots;
   each riders band has a pattern of its own (cross-hatch, diagonal, dots, horizontal
-  lines); Avoid is a near-black cross-hatch on coral with AVOID written where it fits; the
+  lines); Avoid (397) is magenta #d6008f, the route line's own Avoid, with dark chevrons,
+  a two-tone frame (near-black outside, white inside: one tone is 3:1 from any band or
+  panel, which no single fill can be) and a white AVOID at the 11-unit type (4.9:1), or
+  "A" on a block under 36 units (drawn at least 10 wide), listed in the key only when the
+  route has some; the
   narrowest point is a downward triangle with its figure; junction markers are a triangle,
   a diamond and a dot, each named in the key and the table. The guides' figures are in the
   text colour beside a band-colour swatch; their lines are 3:1 on the panel (the light
