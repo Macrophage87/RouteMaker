@@ -3377,14 +3377,19 @@ or worse.
   0.6 mi (1.0 km): ..."). The spans are grid items, and a name computed from them put
   a space before each comma and colon.
 - The description list has no scroll box of its own (its `max-height` is gone): the
-  panel (`.panel-body`) is the one scroll container, and it holds the toggle, the
-  checkbox and the buttons, so it is scrolled by keyboard in every browser. A
+  panel's scrolling part (`.panel-scroll`, or on a short or zoomed screen the whole
+  `.panel`; "The sidebar (312)" below) is the one scroll container, and it holds the
+  fold's summary, the checkbox and the buttons, so it is scrolled by keyboard in every
+  browser. A
   focusable `tabIndex={0}` box would have added a Tab stop with nothing to do and,
   with a group's crossings nested in it, a box inside a box on a phone. The browser
   check asserts that every visible scroll box in the panel is focusable or holds
   something focusable.
-- The toggle is named "Route description: 11 steps, overview"; "Full detail" has no
-  leading space and a 24 px target; Copy clears its reply and sets it again 150 ms
+- In the app the list is the route summary's Directions fold, a native `<details>`
+  whose summary reads "Directions (11 steps)", after a hidden h3 "Directions". Without
+  `fold` the component still draws its own heading and a toggle named "Route
+  description: 11 steps, overview" (no caller in the app uses it now). "Full detail"
+  has no leading space and a 24 px target; Copy clears its reply and sets it again 150 ms
   later, so a second press is said again.
 - At 320 px with WCAG text spacing a row's severity and distance wrap inside it
   (`grid-template-columns: 18px minmax(0, auto) minmax(0, 1fr)`, `white-space:
@@ -3392,6 +3397,64 @@ or worse.
 - The browser check (scripts/a11y/check.mjs, 80 checks) adds sections 7 and 8: the
   rows at 320 px with text spacing, and the description (the toggle's name, the scroll
   boxes, Full detail, the copy reply, a group's nested crossings).
+
+### The sidebar (312)
+
+OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
+what differs). Code: `App.tsx` places it; `Sidebar.tsx` (MoreTips, QuickFigures,
+BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
+the two parts for open questions, written with createElement so a test renders them);
+`lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.
+Tests: `lib/sidebar.test.ts`.
+
+- **Views, not modals.** The panel body shows the planner or one of the bar's sheets
+  (Map layers, which Legend opens at its legend; GPX; About). Each is in the page all
+  the time, `hidden` when not shown, so the search, the opened GPX file, the slider
+  drafts and the switches keep their state, and a GPX import keeps fitting while
+  another view shows.
+- **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
+  to its heading (the legend's, for Legend); Back or Escape returns it to the bar
+  button that opened the sheet; an error that brings the planner back takes it to the
+  error, the long-ride question to "Plan it". Escape is not the sheet's inside a
+  dialog or on the place search's list (`sheetEscape`). When a route arrives and the
+  points compact, a focus in the search, Add point at map center or the tools goes to
+  "Edit points" (`rescueCompactFocus`), so it is never left in a hidden element.
+- **Live regions.** The route's (`.status-line`) and the points' (`said`) are outside
+  the panel, so a bar sheet or the phone's hidden sheet does not silence them; the
+  visible copy in the planner is `aria-hidden`.
+- **Scrolling.** `.panel-body` is a column: the beta banner (its first child), the
+  scrolling `.panel-scroll`, then the pinned route actions and bottom bar. On a short
+  or zoomed screen (`@media (max-height: 32.5em), (max-width: 22.5em)`, 520 px and
+  360 px at 16 px text) the whole `.panel` scrolls as one instead, so at 400% zoom of
+  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, banner and
+  Dismiss included, where the pinned parts left the planner 0 px.
+- **Copy link** copies `linkToCopy`: this page and `encodePlan(points, preset, dials)`,
+  the fragment App writes to the address bar, which never holds the weight (313). Its
+  "Link copied." is polite, said again on a second press, and cleared when the plan
+  changes.
+- **FacilityBreakdown's `part`**: "notices" (the traffic-tolerant warning, the roads
+  best avoided, the hills search) stays in view; "figures" (the route colors and the
+  bike facilities) goes in the Stress and facilities fold (`breakdownParts`).
+- **The font.** `--font` names Atkinson Hyperlegible first, so an installed copy is
+  used now. The self-hosted files go in `frontend/src/fonts/` with relative `url()`s
+  (`fonts/fonts.css`), which Vite fingerprints into `/assets/`: both edges already
+  serve `/assets/` with a year's immutable cache and every publish path copies it, so
+  no Caddy, nginx or deploy change is needed. Until the owner approves the download,
+  nothing imports `fonts.css`, so no page asks for a missing file and nothing 404s.
+  The switch is one commit: add `atkinson-hyperlegible-regular.woff2` (400),
+  `atkinson-hyperlegible-bold.woff2` (700) and `OFL.txt` (the SIL Open Font License)
+  to `frontend/src/fonts/`, add `import "./fonts/fonts.css";` to `main.tsx` after
+  `./styles.css`, and credit the font with the other credits. The sidebar test fails
+  if the import and the two files are not both present or both absent, or if the
+  licence is missing. The files are well over Vite's 4 KB inline limit, so they are
+  never inlined as `data:` URIs (which `font-src 'self'` would refuse).
+- **Open owner questions, ready to change.** The fourth bar button is About
+  (`BAR_ITEMS`); the theme follows the system; `PLANNER_EXTRAS` turns on the planner's
+  zoom notice (`PlannerZoomNotice`) and an Accessibility toggle in the planner
+  (`AccessibilityShortcut`, no ids of its own), both built and off.
+- **The browser check** (scripts/a11y/check.mjs) opens the Ride settings on every page
+  it checks, and the Map layers sheet or the Directions fold where a section needs
+  them.
 
 ### Groups at stops and in full detail (items 247, 248)
 
