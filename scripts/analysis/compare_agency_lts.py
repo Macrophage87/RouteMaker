@@ -85,7 +85,7 @@ def internal_output_dir(path: str | Path | None, repo: Path = REPO) -> Path:
     if resolved == root or root in resolved.parents:
         raise RefusedOutput(
             f"refusing to write an internal-only report inside the repository ({resolved}); "
-            "use a directory outside it, such as /home/steph/rmdata/data/reports/internal"
+            "use a directory outside it, such as ~/rmdata/data/reports/internal"
         )
     return resolved
 

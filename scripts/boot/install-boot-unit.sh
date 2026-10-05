@@ -17,7 +17,7 @@
 #                                          once so the NEXT reboot does not race.
 #   install-boot-unit.sh --help
 #
-# Lingering (the one sudo step, run by the owner):  sudo loginctl enable-linger steph
+# Lingering (the one sudo step, run by the owner):  sudo loginctl enable-linger "$USER"
 
 set -Eeuo pipefail
 
@@ -25,7 +25,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=${ROUTEMAKER_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}
 UNIT=routemaker-boot.service
 UNIT_DIR=${BOOT_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}
-LOG_DIR=${BOOT_LOG_DIR:-/home/steph/rmdata/boot}
+LOG_DIR=${BOOT_LOG_DIR:-$HOME/rmdata/boot}
 USER_NAME=${USER:-$(id -un)}
 DOCKER=${BOOT_DOCKER:-docker}
 ENV_FILE=${BOOT_ENV_FILE:-$REPO_DIR/.env}
