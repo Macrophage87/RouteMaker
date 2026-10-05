@@ -7,15 +7,8 @@
 #
 # Installing it adds ONE file to the host's nginx and changes nothing else:
 # no default_server, no edit to nginx.conf, no http-level setting that another
-# site would inherit. Every http-level name it declares (the upstream, the map,
-# the log format) is prefixed `rmbeta_` so it cannot collide with a site that is
-# already there.
-#
-# Its access log leaves out query strings (`rmbeta_noquery`, the path only): a
-# new point is reverse-geocoded as /api/reverse?lat=..&lon=.., and a search sends
-# the map centre, which after "Use my location" is the rider's own spot
-# (OWNER-DECISIONS 395: the position is never logged beyond the route request).
-# gunicorn's access log already strips them (docker/api-entrypoint.sh).
+# site would inherit. Every http-level name it declares (the upstream, the map)
+# is prefixed `rmbeta_` so it cannot collide with a site that is already there.
 #
 # It does what compose.yaml's Caddy does today (Caddyfile), minus Caddy's own TLS:
 #   /                    the built front end, static
@@ -65,9 +58,6 @@ server {
 # END stage:acme
 
 # BEGIN stage:full
-# The path only, never the query string ($uri, not $request or $request_uri), and no Referer.
-log_format rmbeta_noquery '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time';
-
 upstream rmbeta_api {
     server 127.0.0.1:@API_PORT@;
     keepalive 8;
@@ -97,8 +87,6 @@ server {
         add_header X-Robots-Tag "noindex, nofollow" always;
     }
 
-    access_log /var/log/nginx/rmbeta-access.log rmbeta_noquery;
-
     location / {
         return 301 https://$host$request_uri;
     }
@@ -111,8 +99,6 @@ server {
     # after `ssl` on the two listen lines; `nginx -t` says which is needed.
     http2 on;
     server_name @SERVER_NAME@;
-
-    access_log /var/log/nginx/rmbeta-access.log rmbeta_noquery;
 
     ssl_certificate     @CERT_FULLCHAIN@;
     ssl_certificate_key @CERT_KEY@;
