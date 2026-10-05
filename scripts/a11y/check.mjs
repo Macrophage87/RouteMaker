@@ -912,11 +912,101 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 
+{
+  // "Use my location" (OWNER-DECISIONS 395): the CDP geolocation override and the permission, granted, denied and unavailable.
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const live = `(() => [...document.querySelectorAll('[role=status],[aria-live]')].map((e) => e.textContent.trim()).filter(Boolean))()`;
+  const holders = (text) => `(() => [...document.querySelectorAll('[role=status],[aria-live]')].filter((e) => e.textContent.includes(${JSON.stringify(text)})).length)()`;
+  async function emptyPlan({ permission = "granted", at = { latitude: 38.8893, longitude: -77.0502, accuracy: 15 }, secure = true } = {}) {
+    const p = await newPage(b, { width: 1280, height: 900 });
+    await mock(p, S_DEFAULT);
+    await media(p, { scheme: "light" });
+    await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: permission, origin: ORIGIN, browserContextId: p.contextId });
+    if (at) await p.s("Emulation.setGeolocationOverride", at);
+    else await p.s("Emulation.setGeolocationOverride", {});
+    if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
+    await p.s("Page.navigate", { url: `${ORIGIN}/` });
+    if (!(await p.waitFor("!!document.querySelector('.locate-button')", 30000))) throw new Error("no Use my location button");
+    await sleep(500);
+    return p;
+  }
+  const press = async (p) => {
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(1200);
+  };
+
+  {
+    const p = await emptyPlan();
+    const box = await p.eval(`(() => { const r = (e) => { const x = e.getBoundingClientRect(); return { top: x.top, bottom: x.bottom, left: x.left, w: x.width, h: x.height }; }; const b = document.querySelector('.locate-button'); const i = document.querySelector('.place-search input'); return { b: r(b), i: r(i), inPoints: !!b.closest('section[aria-labelledby=points-heading]') }; })()`);
+    const ax = await axNode(p, ".locate-button");
+    check("locate: the button is named Use my location, a button, in the Points section", ax?.role === "button" && ax?.name === "Use my location" && box.inPoints, JSON.stringify({ ax, inPoints: box.inPoints }));
+    check("locate: the button is 44 px or more each way and beside the search box (same row, to its right)", box.b.w >= 44 && box.b.h >= 44 && box.b.left >= box.i.left + box.i.w - 1 && box.b.top < box.i.bottom && box.b.bottom > box.i.top, JSON.stringify(box));
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    const opt = await p.eval("(() => { const o = [...document.querySelectorAll('.place-results [role=option]')]; return { n: o.length, first: o[0]?.textContent, shown: !document.querySelector('.place-results').hidden }; })()");
+    check("locate: with the search box focused and empty, Your location is the one choice in the list", opt.n === 1 && opt.shown && /^Your location/.test(opt.first ?? ""), JSON.stringify(opt));
+    await p.key("ArrowDown", "ArrowDown", 40);
+    await p.enter();
+    await sleep(1500);
+    const said = await p.eval(live);
+    const startSaid = said.filter((t) => /Start set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
+    check("locate: choosing Your location sets the start and says it, with US units first", startSaid.length >= 1, JSON.stringify(said));
+    check("locate: said once, in one live region (no double announcement)", (await p.eval(holders("set to your location"))) === 1);
+    const hint = await p.eval("document.querySelector('.place-search')?.textContent ?? ''");
+    check("locate: the hint marks it approximate and says the marker can be dragged", /approximate, to about \d+ ft \(15 m\)\. Drag its marker/.test(hint), hint.slice(0, 300));
+    const rows = await p.eval("document.querySelectorAll('.points > li').length");
+    check("locate: one point is in the plan", rows >= 1, String(rows));
+    await press(p);
+    const second = await p.eval(live);
+    check("locate: a second press adds the next point, like a map click", second.some((t) => /^(End|Stop \d+) set to your location/.test(t)), JSON.stringify(second));
+    const note = await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const noteText = note ? await p.eval("document.querySelector('.link-note').textContent") : "";
+    check("locate: Copy link shows the one-line note that the link includes the location as the start", noteText === "This link includes your location as the start.", noteText);
+    const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
+    check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
+    await p.shot(`${SHOTS}/locate_granted.png`);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ permission: "denied" });
+    await press(p);
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: permission denied is a plain message in a status, said once", /Your location is blocked for this site/.test(text) && (await p.eval(holders("blocked for this site"))) === 1, text);
+    const points = await p.eval("document.querySelectorAll('.place-search ~ *').length >= 0 && !document.querySelector('.link-note')");
+    check("locate: a denial adds no point and no link note", points === true);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ at: null });
+    await press(p);
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: position unavailable is a plain message, said once", /could not be found right now/.test(text) && (await p.eval(holders("could not be found"))) === 1, text);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ at: { latitude: 40.7128, longitude: -74.006, accuracy: 20 } });
+    await press(p);
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: outside coverage uses the existing notice", /outside the area this map covers/.test(text) && (await p.eval(holders("outside the area"))) === 1, text);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ secure: false });
+    const ax = await axNode(p, ".locate-button");
+    const attr = await p.eval("document.querySelector('.locate-button').getAttribute('aria-disabled')");
+    check("locate: on an insecure page the button stays in the Tab order, aria-disabled, with the reason as its description", attr === "true" && /secure \(HTTPS\)/.test(ax?.description ?? ""), JSON.stringify(ax));
+    await press(p);
+    const pts = await p.eval("!!document.querySelector('.link-note')");
+    check("locate: a press on the insecure page asks nothing and adds nothing", pts === false);
+    await p.close();
+  }
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 187;
+const EXPECTED = 203;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

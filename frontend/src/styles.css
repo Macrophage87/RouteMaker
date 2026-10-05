@@ -771,6 +771,28 @@ button.secondary {
   margin: 0 0 8px;
 }
 
+.place-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.place-search-row input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.locate-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.locate-button[aria-disabled="true"] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .place-search-label {
   display: block;
   font-weight: 600;
@@ -1980,4 +2002,10 @@ details.zoom-notes {
     min-height: auto;
     overflow: visible;
   }
+}
+
+/* Copy link's one-line note about the rider's location (OWNER-DECISIONS 395). */
+.route-actions .link-note {
+  flex: 1 0 100%;
+  margin: 4px 0 0;
 }

@@ -57,6 +57,17 @@ import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
+import {
+  FINDING_LOCATION,
+  LOCATE_MESSAGES,
+  approximateHint,
+  browserEnv,
+  linkLocationNote,
+  locate,
+  locateSupport,
+  locationSaid,
+  type Fix,
+} from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { GpxPanel, downloadGpx } from "./GpxPanel.tsx";
@@ -145,6 +156,10 @@ function useNarrow(): boolean {
   }, []);
   return narrow;
 }
+
+/** The points notice for a point outside the map, from a click, a station, or the rider's location. */
+const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
+const maxPointsNotice = () => `A route can have at most ${MAX_POINTS} points.`;
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -240,6 +255,16 @@ export function App() {
   // What an edit on the map did, for a screen reader: the map itself says
   // nothing. The count makes the same sentence twice a new announcement.
   const [said, setSaid] = useState({ text: "", count: 0 });
+  // "Use my location" (OWNER-DECISIONS 395). The last fix, kept in memory only: never in localStorage, the
+  // link, a GPX file or a log. Whether the plan's start came from it is whether its point object is
+  // still in the plan (linkLocationNote), so moving the marker, which makes a new point, clears it.
+  const [here, setHere] = useState<Fix | null>(null);
+  // Every point that came from a look-up, for the link note (the start may be an earlier one than `here`).
+  const [fromHere, setFromHere] = useState<LonLat[]>([]);
+  const [locating, setLocating] = useState(false);
+  const locatePress = useRef(0);
+  const geoEnv = useMemo(() => browserEnv(), []);
+  const locateReady = locateSupport(geoEnv);
   // The GPX file opened last (GpxPanel), until the plan is cleared.
   const [imported, setImported] = useState<ImportedPlan | null>(null);
   // The ride type, the sliders and the opened file as they are now, for the
@@ -482,11 +507,11 @@ export function App() {
 
   const place = useCallback((point: LonLat) => {
     if (!insideCoverage(point)) {
-      setNotice("That point is outside the area this map covers (the DC region to Baltimore).");
+      setNotice(OUTSIDE_NOTICE);
       return;
     }
     if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(`A route can have at most ${MAX_POINTS} points.`);
+      setNotice(maxPointsNotice());
       return;
     }
     setNotice(null);
@@ -494,6 +519,48 @@ export function App() {
     commit(next);
     announce(addedSaid(next.indexOf(point), next.length, loopVias));
   }, [commit, announce, loopVias]);
+
+  // "Use my location": one look-up per press (lib/geolocation.ts), then the map click's path. A failure is the
+  // Points notice (a status, said once; through the app region only while the planner is hidden). It is
+  // cleared and set again a moment later, so a second press with the same answer is said again.
+  const useMyLocation = useCallback(async () => {
+    if (locating) return;
+    const press = ++locatePress.current;
+    setLocating(true);
+    setNotice(null);
+    announce(FINDING_LOCATION);
+    const result = await locate(geoEnv);
+    if (press !== locatePress.current) return;
+    setLocating(false);
+    const refuse = (text: string) => {
+      setNotice(null);
+      window.setTimeout(() => {
+        if (press === locatePress.current) setNotice(text);
+      }, 150);
+    };
+    if (!result.ok) {
+      refuse(LOCATE_MESSAGES[result.reason]);
+      return;
+    }
+    const { point, accuracyM } = result.fix;
+    if (!insideCoverage(point)) {
+      refuse(OUTSIDE_NOTICE);
+      return;
+    }
+    if (pointsRef.current.length >= MAX_POINTS) {
+      refuse(maxPointsNotice());
+      return;
+    }
+    // The same path as a map click: addPoint, loop-aware, one undo step.
+    setNotice(null);
+    const next = addPoint(pointsRef.current, point, loopVias);
+    commit(next);
+    announce(locationSaid(next.indexOf(point), next.length, loopVias, accuracyM));
+    setHere(result.fix);
+    setFromHere((prior) => [...prior, point].slice(-MAX_POINTS));
+    mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
+  }, [locating, geoEnv, announce, commit, loopVias]);
+  const hereInPlan = here !== null && points.includes(here.point);
 
   const move = useCallback((index: number, point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -716,6 +783,9 @@ export function App() {
     return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
   }, []);
 
+  // Copy link keeps full precision; when the rider's location is in the plan it says so, in one line.
+  const linkNote = linkLocationNote(points, fromHere);
+
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // The line can be dragged when it is the route of the points as they are:
@@ -833,6 +903,12 @@ export function App() {
           gate={geoGate}
           bias={searchBias}
           onPick={pickPlace}
+          locate={{
+            support: locateReady,
+            busy: locating,
+            note: hereInPlan && here ? approximateHint(here.accuracyM) : "",
+            onLocate: () => void useMyLocation(),
+          }}
         />
       </div>
       {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
@@ -1065,6 +1141,7 @@ export function App() {
         onLineDrop={insertOnLine}
         onRemovePoint={removeFromMap}
         markerReset={markerReset}
+        accuracy={hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null}
         junctionFocus={junctionFocus}
         onReady={(map) => {
           mapRef.current = map;
@@ -1295,6 +1372,7 @@ export function App() {
                   {linkSaid}
                 </span>
               )}
+              {linkNote && <p className="hint link-note">{linkNote}</p>}
             </div>
           )}
 
