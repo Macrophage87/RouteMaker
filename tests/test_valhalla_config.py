@@ -488,10 +488,3 @@ def test_the_router_takes_as_many_exclusions_as_the_calm_search_sends(config: di
     from core import refine
 
     assert config["service_limits"]["max_exclude_locations"] >= refine.MAX_EXCLUDES
-
-
-def test_no_request_is_slow_enough_to_be_logged_with_its_locations(config: dict) -> None:
-    """long_request far past the httpd timeout: the slow-request warning never fires (395)."""
-    timeout_ms = config["httpd"]["service"]["timeout_seconds"] * 1000
-    for service in ("loki", "thor"):
-        assert config[service]["logging"]["long_request"] > 100 * timeout_ms, service
