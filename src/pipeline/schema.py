@@ -308,6 +308,72 @@ def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
     return long
 
 
+# THE RIDE LAYER (OWNER-DECISIONS 391, 2026-10-05): "I'm more concerned with the
+# places to ride than the places not to." At z12-13 the stress map is a "where to
+# ride" view: no LTS 3, LTS 4 or Avoid road is drawn (they come in from z14, with
+# the quiet streets), and what is drawn is
+#
+# - the long and connected traffic-free paths: a path whose connected network
+#   (traffic-free paths within CALM_PATH_GAP_M of one another, so a road crossing
+#   does not break a trail in two) or whose named run (`trail_run_m`) is at least
+#   RIDE_PATH_RUN_MI; short isolated stubs and mountain-bike trails wait for z14;
+# - the similarly long calm streets: LTS 1 streets in a run of the same name,
+#   within CALM_STREET_GAP_M of one another, of at least RIDE_STREET_RUN_MI,
+#   measured like a trail's named run; and
+# - the roads closed to cars at set times, whatever their length (as 377 does).
+#
+# `calm_run_m` holds the length of that run or network, in metres, on the ways
+# that are candidates (`pipeline.trail_routes.derive_calm_runs`): 0 on a candidate
+# before it is derived, and null on every other way (a way that is not a path and
+# not an LTS 1 street, or a mountain-bike trail). Written by the rebuild alone, so
+# a live table from before it has no such column and draws today's z12-13.
+#
+# The thresholds are tunable and measured against the region before review
+# (docs/OPERATIONS.md, "The ride layer (z12-13)").
+CALM_RUN_COLUMN = "calm_run_m"
+# Traffic-free paths within this many metres (100 ft) are one network: a road
+# crossing, a trailhead's parking lot.
+CALM_PATH_GAP_M = 30
+# Same-named calm streets within this many metres (330 ft) are one run: a street
+# that crosses a busy road and carries on, or jogs a little.
+CALM_STREET_GAP_M = 100
+# "short isolated stubs (under about 0.25 mi)".
+RIDE_PATH_RUN_MI = 0.25
+# A calm street is a long one at this run, in miles: twice the stub bar. Measured on the
+# 2026-10-03 extract with the live table's rows (docs/OPERATIONS.md, "The ride layer (z12-13)"):
+# at 0.25 mi nearly every named residential street is in (Annandale: 60 mi of calm streets,
+# most of the layer again); at 1 mi almost none is (3 mi); 0.5 mi keeps the through streets and
+# loop roads, about 17 mi in the Annandale-Alexandria box and 1,800 mi in the region.
+RIDE_STREET_RUN_MI = 0.5
+
+
+def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
+    """The z12-13 ride layer's condition, on a table with the `calm_run_m`
+    column (`core.stress_tiles.RIDE_LAYER`): a path or trail in a long enough
+    connected network or named run, an LTS 1 street in a long enough run, and
+    with `has_car_free` any road closed to cars at set times. A way that is
+    neither a path nor an LTS 1 street has no run (null), so it is not in it."""
+    path_m = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
+    street_m = round(RIDE_STREET_RUN_MI * METRES_PER_MILE)
+    run = f"COALESCE({CALM_RUN_COLUMN}, 0)"
+    paths = f"({trails_predicate(has_facility)} AND {run} >= {path_m})"
+    streets = f"(stress_tier = 1 AND NOT is_trail_class AND {run} >= {street_m})"
+    if has_car_free:
+        return f"({paths} OR {streets} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return f"({paths} OR {streets})"
+
+
+# The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
+# ride-layer tile can draw, which are well under a tenth of the table, so a z12
+# tile's scan does not read every street in the box. The query's predicate implies
+# it: each of its terms is a run at or above the shorter of the two bars, or a
+# timed closure.
+_RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_STREET_RUN_MI) * METRES_PER_MILE)
+RIDE_INDEX_PREDICATE = (
+    f"COALESCE({CALM_RUN_COLUMN}, 0) >= {_RIDE_INDEX_MIN_M} OR cardinality({CAR_FREE_COLUMN}) > 0"
+)
+
+
 # What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
 # `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the paths and trails, and the roads
 # at LTS 3 and above - Avoid (tier 5) and the expressways included. The owner,
@@ -506,6 +572,12 @@ CREATE TABLE {schema}.segment (
     -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
     -- ways, 2 where an end is unpaved, 0 otherwise (3 only during the rebuild).
     trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
+    -- The ride layer (`calm_run_m`; OWNER-DECISIONS 391): the length in metres of the
+    -- connected network or named run of a traffic-free path, or the named run of an
+    -- LTS 1 street, which the z12-13 tiles keep it for. 0 on such a way until
+    -- `pipeline.trail_routes.derive_calm_runs` sets it; null on every other way and
+    -- on a mountain-bike trail.
+    calm_run_m      integer,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 
@@ -522,6 +594,9 @@ CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
 -- time; this index holds just those rows (core.trailseek.corridor_segments).
 CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {seek};
+-- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
+CREATE INDEX segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {ride};
 
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
@@ -549,7 +624,10 @@ def create_segment_schema(schema: str) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             SEGMENT_DDL.format(
-                schema=schema, overview=OVERVIEW_INDEX_PREDICATE, seek=SEEK_INDEX_PREDICATE
+                schema=schema,
+                overview=OVERVIEW_INDEX_PREDICATE,
+                seek=SEEK_INDEX_PREDICATE,
+                ride=RIDE_INDEX_PREDICATE,
             )
         )
 

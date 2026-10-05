@@ -1158,3 +1158,22 @@ def is_unpaved(tags: dict[str, str]) -> bool | None:
     if surface is None:
         return None
     return surface not in {"asphalt", "concrete", "paved", "paving_stones", "chipseal"}
+
+
+def inferred_unpaved(tags: dict[str, str]) -> bool | None:
+    """`is_unpaved` as the map and the segment table carry it: a way tagged
+    `highway=track` with no `surface` is read as unpaved, unless its
+    `tracktype` is `grade1` (paved or nearly so). OWNER-DECISIONS 376 (park
+    trails with no surface tag, PARK-TRAILS-investigation.md, part C): a track
+    is a farm, forest or park access way and is gravel or dirt in nearly every
+    case, so it draws brown, with the unpaved mark, and stays open to bicycles.
+
+    Only the stored column, and so the map, the unpaved ranking and the trail
+    seek, read it; the classifier's own speed cap for an unpaved rural lane keeps
+    reading `is_unpaved`, so no tier changes. An explicit `surface` always wins,
+    and any other way with no surface stays unknown (None).
+    """
+    unpaved = is_unpaved(tags)
+    if unpaved is None and tags.get("highway") == "track" and tags.get("tracktype") != "grade1":
+        return True
+    return unpaved

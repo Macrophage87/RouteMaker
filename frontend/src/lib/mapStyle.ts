@@ -108,11 +108,15 @@ export function stressSource(origin: string) {
  * starts (core/stress_tiles.py, whose levels tests/test_stress_tiles.py holds
  * equal to these). The owner, 2026-09-29: "Zoom less than 12, show just bike
  * paths and the metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet
- * streets." (OWNER-DECISIONS 73). Below `min` nothing is drawn; from `min`
- * only the traffic-free paths and trails; from `busy` the roads at LTS 3 and
- * above (BUSY_ROADS_MIN_ZOOM in core/stress_tiles.py); from `quiet` the quiet
- * streets and every segment (QUIET_STREETS_MIN_ZOOM). `max` is the source's
+ * streets." (OWNER-DECISIONS 73), and on 2026-10-05, of 12 and 13: "I'm more
+ * concerned with the places to ride than the places not to." (391). Below
+ * `min` nothing is drawn; from `min` only the long traffic-free paths and
+ * trails; from `ride` the "where to ride" layer: the long and connected
+ * paths and the long calm streets, and no busy road
+ * (RIDE_LAYER_MIN_ZOOM in core/stress_tiles.py); from `quiet` every segment:
+ * the busy roads at LTS 3 and above, the quiet streets, and the rest
+ * (QUIET_STREETS_MIN_ZOOM). `max` is the source's
  * maxzoom: the deepest tile the map asks for, all of them drawn ahead after
  * each rebuild (core/tile_cache.py), and z15-16 are drawn from the z14 tile.
  */
-export const STRESS_ZOOMS = { min: 10, busy: 12, quiet: 14, max: 14 } as const;
+export const STRESS_ZOOMS = { min: 10, ride: 12, quiet: 14, max: 14 } as const;

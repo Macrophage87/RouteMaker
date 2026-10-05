@@ -10,7 +10,10 @@ writes what that rule reads, beside the rest of a segment's row:
 - `trail_run_m`, the length of the way's named run, derived in the staging
   schema once the rows are written (`derive_trail_runs`); and
 - `trail_bridge`, how a short bridge inside a trail is judged
-  (`judge_bridges`).
+  (`judge_bridges`); and
+- `calm_run_m`, the length of the connected network or named run a path or a calm
+  street is part of, which the z12-13 "where to ride" layer keeps it for
+  (OWNER-DECISIONS 391; `derive_calm_runs`).
 
 The relations are OSM's, cited as the rest of the map's data is.
 """
@@ -24,6 +27,9 @@ import osmium
 from routemaker.singletrack import SCALE_KEYS, grade, is_paved
 
 from .schema import (
+    CALM_PATH_GAP_M,
+    CALM_RUN_COLUMN,
+    CALM_STREET_GAP_M,
     PAVED_ROUTE_MIN,
     ROADSIDE_TRAIL_FACILITY,
     ROUTE_ANY_BICYCLE,
@@ -117,6 +123,26 @@ def is_zoomed_out_trail(facility: str, is_trail_class: bool, car_free_when) -> b
         or (facility == ROADSIDE_TRAIL_FACILITY and is_trail_class)
         or bool(car_free_when)
     )
+
+
+def is_calm_candidate(
+    *,
+    zoomed_out_trail: bool,
+    mountain_bike: bool,
+    mtb_only: bool,
+    is_trail_class: bool,
+    stress_tier: int,
+    map_class: str,
+) -> bool:
+    """Whether the way can be in the z12-13 ride layer (OWNER-DECISIONS 391), and
+    so is written with a `calm_run_m` of 0 for `derive_calm_runs` to set: a path
+    or trail the zoomed-out map draws (`is_zoomed_out_trail`), or a road at LTS 1
+    that is not a trail; never a mountain-bike trail (a way in a route=mtb
+    relation, one tagged as such, or one the no-bike-paths rules call mountain-bike
+    only), and nothing that is not a drawn road (a hidden, barred or alley way)."""
+    if mountain_bike or mtb_only or map_class != "road":
+        return False
+    return zoomed_out_trail or (stress_tier == 1 and not is_trail_class)
 
 
 class Routes(NamedTuple):
@@ -222,6 +248,50 @@ WHERE s.id = runs.id
 """
 
 
+# The calm runs (`derive_calm_runs`, OWNER-DECISIONS 391). A candidate is written
+# with `calm_run_m` 0 (`is_calm_candidate`). A path or trail (the zoomed-out map's
+# `trails` rule) gets the length of the connected network of such candidates
+# (eps CALM_PATH_GAP_M), or of its named run (`trail_run_m`) if that is longer; a
+# street gets the length of the run of same-named street candidates within
+# CALM_STREET_GAP_M, and a street with no name stays 0: a run is a named thing.
+_DERIVE_CALM_PATHS = """
+UPDATE {schema}.segment AS s
+SET {calm} = GREATEST(runs.run_m, COALESCE(s.{run}, 0))
+FROM (
+    SELECT id, round(sum(length_m) OVER (PARTITION BY chain))::integer AS run_m
+    FROM (
+        SELECT id,
+               ST_Length(geometry::geography) AS length_m,
+               ST_ClusterDBSCAN(
+                   ST_Transform(geometry, {srid}), eps := {gap}, minpoints := 1
+               ) OVER () AS chain
+        FROM {schema}.segment
+        WHERE {calm} = 0 AND map_class = 'road' AND {trails}
+    ) AS chained
+) AS runs
+WHERE s.id = runs.id
+"""
+
+_DERIVE_CALM_STREETS = """
+UPDATE {schema}.segment AS s
+SET {calm} = runs.run_m
+FROM (
+    SELECT id, round(sum(length_m) OVER (PARTITION BY name_key, chain))::integer AS run_m
+    FROM (
+        SELECT id,
+               {key} AS name_key,
+               ST_Length(geometry::geography) AS length_m,
+               ST_ClusterDBSCAN(
+                   ST_Transform(geometry, {srid}), eps := {gap}, minpoints := 1
+               ) OVER (PARTITION BY {key}) AS chain
+        FROM {schema}.segment
+        WHERE {calm} = 0 AND map_class = 'road' AND NOT {trails} AND {key} IS NOT NULL
+    ) AS chained
+) AS runs
+WHERE s.id = runs.id
+"""
+
+
 # The short bridges (`judge_bridges`). A candidate (trail_bridge 3) is a drawn
 # trail way tagged bridge=*. Candidates whose ends meet are one chain (a bridge
 # and its boardwalk, or a bridge OSM splits in two), judged as one: the chain is
@@ -311,6 +381,24 @@ def runs_sql(schema: str) -> str:
     )
 
 
+def calm_runs_sql(schema: str) -> tuple[str, str]:
+    """The two UPDATEs that set the calm runs: the paths', then the streets'
+    (`derive_calm_runs`)."""
+    validate_schema_name(schema)
+    common = {
+        "schema": schema,
+        "calm": CALM_RUN_COLUMN,
+        "run": TRAIL_RUN_COLUMN,
+        "srid": RUN_PROJECTION_SRID,
+        "trails": trails_predicate(True, True),
+        "key": NAME_KEY.format(name=TRAIL_NAME_COLUMN),
+    }
+    return (
+        _DERIVE_CALM_PATHS.format(gap=CALM_PATH_GAP_M, **common),
+        _DERIVE_CALM_STREETS.format(gap=CALM_STREET_GAP_M, **common),
+    )
+
+
 def bridges_sql(schema: str) -> str:
     """The UPDATE that judges the short bridges (`judge_bridges`)."""
     validate_schema_name(schema)
@@ -361,6 +449,23 @@ def derive_trail_runs(schema: str) -> int:
     return set_runs
 
 
+def derive_calm_runs(schema: str) -> tuple[int, int]:
+    """Set `calm_run_m` on the staging schema's candidates (OWNER-DECISIONS 391):
+    (the paths set, the streets set). Run after `derive_trail_runs`, whose
+    `trail_run_m` a path's run is at least. Returns the number of rows set."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    paths, streets = calm_runs_sql(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(paths)
+        set_paths = cursor.rowcount
+        cursor.execute(streets)
+        set_streets = cursor.rowcount
+        cursor.execute(f"ANALYZE {schema}.segment")
+    return set_paths, set_streets
+
+
 class LongTrailSummary(NamedTuple):
     """What VALIDATE reads of the long-trail columns before a promotion."""
 
@@ -395,3 +500,43 @@ def long_trail_summary(schema: str, sentinel_ways, run_floor_m: int) -> LongTrai
         )
         sentinels = {way: (route, run) for way, route, run in cursor.fetchall()}
     return LongTrailSummary(on_route, in_run, unjudged, sentinels)
+
+
+class CalmRunSummary(NamedTuple):
+    """What VALIDATE reads of the calm-run column before a promotion."""
+
+    # Path rows (is_trail_class) in a run of at least the ride layer's path bar.
+    path_rows: int
+    # Street rows (not is_trail_class) in a run of at least the street bar.
+    street_rows: int
+    # Named candidates left at 0: always 0 after the derive, so a nonzero count
+    # is a derive that did not run to the end.
+    unset_named: int
+    # {sentinel way id: its longest calm run}; a way the table does not hold is absent.
+    sentinels: dict[int, int]
+
+
+def calm_run_summary(
+    schema: str, sentinel_ways, path_floor_m: int, street_floor_m: int
+) -> CalmRunSummary:
+    """Count the staging schema's ride-layer rows and read the sentinel ways."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT count(*) FILTER (WHERE is_trail_class AND {CALM_RUN_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE NOT is_trail_class AND {CALM_RUN_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE {CALM_RUN_COLUMN} = 0 AND "
+            f"{NAME_KEY.format(name=TRAIL_NAME_COLUMN)} IS NOT NULL) "
+            f"FROM {schema}.segment",
+            [path_floor_m, street_floor_m],
+        )
+        paths, streets, unset = cursor.fetchone()
+        cursor.execute(
+            f"SELECT osm_way_id, COALESCE(max({CALM_RUN_COLUMN}), 0) FROM {schema}.segment "
+            "WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id",
+            [list(sentinel_ways)],
+        )
+        sentinels = dict(cursor.fetchall())
+    return CalmRunSummary(paths, streets, unset, sentinels)

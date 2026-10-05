@@ -48,7 +48,7 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, is_rough, is_unpaved
+from routemaker.stress import classify, inferred_unpaved, is_rough
 
 from . import (
     aadt_smoothing,
@@ -73,7 +73,14 @@ from . import (
     writers,
 )
 from .rebuild import RebuildTimedOut, Stage
-from .schema import METRES_PER_MILE, ROUTE_LONG_BICYCLE, Z10_UNPAVED_RUN_MI, Z11_PAVED_RUN_MI
+from .schema import (
+    METRES_PER_MILE,
+    RIDE_PATH_RUN_MI,
+    RIDE_STREET_RUN_MI,
+    ROUTE_LONG_BICYCLE,
+    Z10_UNPAVED_RUN_MI,
+    Z11_PAVED_RUN_MI,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -853,6 +860,56 @@ def assert_derived_tags_reached_the_tiles(sentinel_value: str | None, expected: 
 LONG_TRAIL_SENTINEL_ROUTE = ROUTE_LONG_BICYCLE
 LONG_TRAIL_SENTINEL_RUN_M = round(Z10_UNPAVED_RUN_MI * METRES_PER_MILE)
 LONG_TRAIL_FLOOR_RUN_M = round(Z11_PAVED_RUN_MI * METRES_PER_MILE)
+
+
+# The ride layer's sentinel and floors (OWNER-DECISIONS 391; the same idea as the long
+# trails'): the path sentinels (the W&OD and the C&O, which are long trails too) must come
+# out in a connected network or run of at least LONG_TRAIL_SENTINEL_RUN_M, the street
+# sentinel in a calm run of at least the street bar, and the table must hold at least
+# `settings.REBUILD_CALM_RUN_FLOORS` path rows in a run of the path bar and street rows in
+# a run of the street bar.
+CALM_PATH_RUN_M = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
+CALM_STREET_RUN_M = round(RIDE_STREET_RUN_MI * METRES_PER_MILE)
+
+
+def assert_calm_runs(
+    summary,
+    path_sentinels: Sequence[int],
+    street_sentinels: Sequence[int],
+    floors: Sequence[int],
+) -> None:
+    """The z12-13 "where to ride" layer's runs came out of the rebuild: `calm_run_m`
+    is written by this rebuild alone and the tiles filter on it silently, so a pass
+    that lost the names or the geometry would promote a z12-13 map holding nothing
+    but the roads closed to cars."""
+    if summary.unset_named:
+        raise ValidationFailed(
+            f"{summary.unset_named} named ride-layer candidates are still at calm_run_m 0: "
+            "the calm-run derive did not run to the end"
+        )
+    wanted = [(way, LONG_TRAIL_SENTINEL_RUN_M, "path") for way in path_sentinels]
+    wanted += [(way, CALM_STREET_RUN_M, "street") for way in street_sentinels]
+    for way, minimum, kind in wanted:
+        if way not in summary.sentinels:
+            raise ValidationFailed(
+                f"the calm-run {kind} sentinel way {way} is not in the segment table; if the "
+                "extract split or replaced it, move the sentinel "
+                "(settings.REBUILD_SENTINEL_CALM_PATH_WAYS or _STREET_WAYS), don't drop it"
+            )
+        if summary.sentinels[way] < minimum:
+            raise ValidationFailed(
+                f"the calm-run {kind} sentinel way {way} came out at a run of "
+                f"{summary.sentinels[way]} m, not {minimum} m or more: the names or the "
+                "geometry were lost, and z12-13 would drop the long paths and calm streets"
+            )
+    path_floor, street_floor = floors
+    if summary.path_rows < path_floor or summary.street_rows < street_floor:
+        raise ValidationFailed(
+            f"{summary.path_rows} path rows are in a run of {CALM_PATH_RUN_M} m or more and "
+            f"{summary.street_rows} street rows in one of {CALM_STREET_RUN_M} m or more, under "
+            f"the floors of {path_floor} and {street_floor} (settings.REBUILD_CALM_RUN_FLOORS): "
+            "the ride layer did not come out of the rebuild"
+        )
 
 
 def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[int]) -> None:
@@ -2072,8 +2129,19 @@ def build_handlers(
             car_free_when = sorted(context.car_free_by_way.get(way.osm_id, ()))
             # Only a way the zoomed-out map draws is named for a run or judged as
             # a bridge (operations review N-2: a street's name is never read).
-            long_trail = not mountain_bike and trail_routes.is_zoomed_out_trail(
-                way_facility, trail, car_free_when
+            zoomed_out_trail = trail_routes.is_zoomed_out_trail(way_facility, trail, car_free_when)
+            long_trail = not mountain_bike and zoomed_out_trail
+            way_map_class = map_class_of(way.osm_id, way.tags).value
+            # The z12-13 ride layer (OWNER-DECISIONS 391): a path or an LTS 1 street
+            # that can be in a long enough run; its length is derived after the rows
+            # are written (`trail_routes.derive_calm_runs`), from 0 here.
+            calm_candidate = trail_routes.is_calm_candidate(
+                zoomed_out_trail=zoomed_out_trail,
+                mountain_bike=mountain_bike,
+                mtb_only=way.osm_id in context.mtb_only,
+                is_trail_class=trail,
+                stress_tier=int(stress.tier),
+                map_class=way_map_class,
             )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
@@ -2084,12 +2152,12 @@ def build_handlers(
                         stress,
                         sinuosity=sinuosity([Point(lon, lat) for lon, lat in piece]),
                         is_trail_class=trail,
-                        is_unpaved=is_unpaved(way.tags),
+                        is_unpaved=inferred_unpaved(way.tags),
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
                         facility=way_facility,
                         car_free_when=car_free_when,
-                        map_class=map_class_of(way.osm_id, way.tags).value,
+                        map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         mtb_only=way.osm_id in context.mtb_only,
                         walk_bike=way.osm_id in context.walk_bike,
@@ -2101,8 +2169,9 @@ def build_handlers(
                         trail_name=trail_routes.way_name(
                             way.tags, context.route_names.get(way.osm_id)
                         )
-                        if long_trail
+                        if long_trail or calm_candidate
                         else None,
+                        calm_run_m=0 if calm_candidate else None,
                         trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
                         trail_bridge=3
                         if long_trail and trail_routes.is_bridge_way(way.tags)
@@ -2112,6 +2181,7 @@ def build_handlers(
         context.rows = rows
         writers.write_segments(context.staging_schema, rows)
         trail_routes.derive_trail_runs(context.staging_schema)
+        trail_routes.derive_calm_runs(context.staging_schema)
 
     def validate() -> None:
         if set(context.build_logs) != set(variants.Variant):
@@ -2146,6 +2216,20 @@ def build_handlers(
             ),
             sentinel_ways,
             _setting("REBUILD_LONG_TRAIL_FLOORS"),
+        )
+
+        calm_path_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_PATH_WAYS"))
+        calm_street_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_STREET_WAYS"))
+        assert_calm_runs(
+            trail_routes.calm_run_summary(
+                context.staging_schema,
+                (*calm_path_sentinels, *calm_street_sentinels),
+                CALM_PATH_RUN_M,
+                CALM_STREET_RUN_M,
+            ),
+            calm_path_sentinels,
+            calm_street_sentinels,
+            _setting("REBUILD_CALM_RUN_FLOORS"),
         )
 
         assert_bicycle_closures_reached_the_tiles(sample_closures())

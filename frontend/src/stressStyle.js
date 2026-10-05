@@ -402,6 +402,25 @@ export const UNPAVED_PALETTES = {
 const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true], unpaved, paved];
 
 /**
+ * A path or trail whose surface OpenStreetMap does not give (OWNER-DECISIONS 376, A, from
+ * PARK-TRAILS-investigation.md): a trail-class feature (the tiles' "trail") with no "unpaved"
+ * at all, which the tiles leave out when the surface is unknown ("true" is unpaved, "false"
+ * is paved). Park trails with no surface tag were drawn like a paved path, with a path's
+ * rails and a dark edge; they may be either. It is a style only: nothing is closed.
+ * Roads with no surface tag (nearly every street) are not this; they draw as they always did.
+ */
+const surfaceUnknown = ["all", ["==", ["get", "trail"], true], ["!", ["has", "unpaved"]]];
+
+/**
+ * The surface-unknown line's shape (no colour in it): short, even dashes, a dash as long as
+ * 0.8 of its gap (2 on, 1.5 off, in line widths), which no tier has (LTS 2 is long dashes
+ * with short gaps, LTS 3 almost solid) and the unpaved mark is not (a dotted line drawn over
+ * a solid brown one). It is drawn in LTS 1's own colours, as the line it is, with a dashed
+ * edge of the same length, and with no path rails.
+ */
+export const UNKNOWN_SURFACE_DASH = [2, 1.5];
+
+/**
  * What this browser remembers of the accessibility switch: true (on), false
  * (off, chosen), or null where nothing is stored, the value is not one this
  * page wrote, or storage throws.
@@ -678,7 +697,7 @@ export const BESIDE_ROAD_MIN_ZOOM = 15;
  * stick to mostly the longer trails, it's getting messy."). At z10 and z11 a path
  * was drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
  * side: 9.5 px a line), which is what turned Columbia's pathways into solid
- * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.busy`, which a test holds
+ * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.ride`, which a test holds
  * equal) the line and the rails are scaled, each by its own factor at z10 and at
  * z11, so a long trail reads as a line and not a ribbon (a path is 5.4 px at
  * z10, 6.9 px at z11). The casing's edge is not thinned (scale 1): it is a pixel
@@ -797,8 +816,11 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
   const filters = {};
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
-    filters[`stress-${tier.tier}`] = filter;
-    filters[`stress-casing-${tier.tier}`] = filter;
+    // LTS 1's line and edge leave the surface-unknown trails to their own layers.
+    const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
+    filters[`stress-${tier.tier}`] = own;
+    filters[`stress-casing-${tier.tier}`] = own;
+    if (tier.tier === 1) filters["stress-unknown"] = filters["stress-unknown-casing"] = [...filter, surfaceUnknown];
     if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
     if (hasRingLayer(tier.tier)) filters[`stress-ring-${tier.tier}`] = [...filter, ["!=", ["get", "unpaved"], true]];
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
@@ -808,8 +830,12 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown
-    // surface, which keeps its rails.
-    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true]);
+    // surface, which keeps its rails on a road that is not a trail, and not on
+    // a trail.
+    //
+    // 376, A: a trail whose surface is not mapped has none either (surfaceUnknown): it may be
+    // either, and drawn like a paved path it read as one.
+    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);
     // A painted lane is not drawn on LTS 4 and Avoid unless the rider asked
     // (a missing tier counts as 0, which draws it, as a rating-less road
     // has no stress to be high). The tile's own tier: a road closed to cars
@@ -830,6 +856,53 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     filter: filters[`stress-${tier.tier}`],
     paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
+}
+
+/**
+ * The surface-unknown trails (OWNER-DECISIONS 376, A): LTS 1's line and edge, both dashed
+ * (UNKNOWN_SURFACE_DASH) so the line does not read as a solid, paved path, with no rails and
+ * no dark continuous edge: the edge is the dashes' own, so a gap shows the base map. The
+ * edge's dash is the line's in its own width, which differs from the line's at z10-11, so it
+ * follows the zoom (`unknownEdgeDash`). A tier other than 1 is drawn as it is (an
+ * override on a trail), by its own layers.
+ */
+function unknownEdgeDash(tier, zoom) {
+  const line = zoom === null ? tier.width : zoomedOutLine(tier, zoom);
+  const casing = zoom === null ? casingWidth(tier) : zoomedOutCasing(tier, zoom);
+  return UNKNOWN_SURFACE_DASH.map((d) => (d * line) / casing);
+}
+
+/** The edge's dash by zoom, for the map: one per zoomed-out grade, then the full widths' (a "step", as the widths are). */
+export function unknownEdgeDashByZoom(tier) {
+  return [
+    "step",
+    ["zoom"],
+    ...zoomedOutStops((zoom) => ["literal", unknownEdgeDash(tier, zoom)]),
+    ["literal", unknownEdgeDash(tier, null)],
+  ];
+}
+
+export function unknownSurfaceLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  const tier = tiers[0];
+  return [
+    {
+      id: "stress-unknown-casing",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: filters["stress-unknown-casing"],
+      paint: { ...casingPaint(tier), "line-dasharray": unknownEdgeDashByZoom(tier) },
+    },
+    {
+      id: "stress-unknown",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: filters["stress-unknown"],
+      paint: { ...linePaint(tier.color, tier.width, false, (zoom) => zoomedOutLine(tier, zoom)), "line-dasharray": UNKNOWN_SURFACE_DASH },
+    },
+  ];
 }
 
 /**
@@ -1163,6 +1236,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
     ...gapLayers(sourceId, when, tiers),
+    ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
   ];

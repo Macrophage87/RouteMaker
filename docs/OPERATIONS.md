@@ -643,15 +643,15 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 | Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
 | 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
-| 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
+| 12-13 | the ride layer (391): long and connected traffic-free paths, calm streets in a long run, and roads closed to cars at set times; no road at LTS 3 or above (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`); one feature per class, simplified. On a table without the column, what it drew before: the paths and the roads at LTS 3 and above (`busy_predicate`) | region-wide 6,812 mi against 25,017 before; the Annandale-Alexandria box 83.9 mi against 272.6; z12 over the box 48 KB against 127 KB ("The ride layer", below) |
 | 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
 The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
 metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
 (OWNER-DECISIONS 73; before it, "Zoomed out just show the trails.", 65, and
 "Show roadside trails (Recommended)", 66). The zooms are
-`core.stress_tiles.BUSY_ROADS_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
-(14), paired with `STRESS_ZOOMS.busy` and `.quiet` in
+`core.stress_tiles.RIDE_LAYER_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
+(14), paired with `STRESS_ZOOMS.ride` and `.quiet` in
 `frontend/src/lib/mapStyle.ts` (a test fails while they differ): change both,
 rebuild the api image and the front end, and run the pre-draw. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
@@ -738,7 +738,8 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 5 must reach the api and the pipeline images
+`l`, `b`). FORMAT_VERSION 6 (5 was the long trails; 6 the ride layer and the
+surface-unknown trails) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -749,6 +750,141 @@ before, only thinner (every cached tile is drawn again, as the format
 changed); the next rebuild's pre-draw draws the long trails only. Route
 relations and names are OSM's, cited with the rest of the map's data.
 
+**The ride layer (z12-13, OWNER-DECISIONS 391).** The owner, 2026-10-05, on
+a screenshot of Annandale and Alexandria: "I'm more concerned with the places
+to ride than the places not to." Busy roads: "Hide them until zoom 14." Ride
+layer: "Long and connected paths as well as similar long calm streets." At z12
+and z13 the stress map is a "where to ride" view:
+
+- **Not drawn:** LTS 3, LTS 4, Avoid and the roads bikes may not use, and the
+  junction warning markers. They come in from z14 with the quiet streets. (The
+  only junction markers on the map are a planned route's own, and the route
+  keeps its own busy stretches and junctions at every zoom, so nothing changes
+  there.)
+- **Drawn:** the long and connected traffic-free paths, the calm streets in a
+  long run, and the roads closed to cars at set times, whatever their length
+  (377). One feature per class, simplified, as before
+  (`core.stress_tiles.RIDE_LAYER`; `pipeline.schema.ride_layer_predicate`).
+
+The rule reads one new column, `segment.calm_run_m`, written by the rebuild
+(`pipeline.trail_routes.derive_calm_runs`, 12 s on the full table, right after
+`derive_trail_runs`). Its value is the length in metres of:
+
+- for a path or trail the zoomed-out map draws (`trails_predicate`): the
+  connected network of such paths, whatever their names, joined within 100 ft
+  (30 m, `CALM_PATH_GAP_M`; a road crossing does not break a trail), or its
+  named run (`trail_run_m`) if that is longer, so a long named trail keeps
+  whatever its gaps. Short isolated stubs come out under the bar and wait for
+  z14;
+- for a street at LTS 1 that is not a trail: the run of the streets of its
+  name (case-blind, and without a trailing parenthetical or Extension, as the
+  trail runs are) that chain within 330 ft (100 m, `CALM_STREET_GAP_M`), "measured
+  like the zoomed-out trail runs". A street with no name has no run;
+- null on every other way, and on a mountain-bike trail (a way in a route=mtb
+  relation, one tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`
+  unless paved, or one the no-bike-paths rules call mountain-bike only), so
+  those wait for z14 as well.
+
+The writer marks the candidates (a `calm_run_m` of 0, `trail_routes.is_calm_candidate`)
+and the derive sets them; a street's name is written to `trail_name` for the
+same reason a trail's is. Names and routes are OSM's, cited with the rest of the
+map's data.
+
+**The thresholds** are named constants in `pipeline.schema`, tunable and held by
+tests: `RIDE_PATH_RUN_MI` 0.25 mi (1,320 ft, 0.4 km) and `RIDE_STREET_RUN_MI`
+0.5 mi (0.8 km). 0.25 mi is the owner's own figure for a stub. A calm street
+needs more, and 0.5 mi is the measured choice: at 0.25 mi nearly every named
+residential street is in and the layer stays busy; at 1 mi almost none is, and
+Annandale gets no calm street at all. Measured read-only on a copy of the live
+table's 1,359,547 segments (the 2026-10-03 build's, which predates the
+no-bike-paths map classes) with names and routes read from the 2026-10-03
+source extract by the rebuild's own code (bridge judging left out), the
+Annandale-Alexandria box being -77.20,38.79 to -77.04,38.86 (about 42 mi², a
+segment counting where its middle is):
+
+| | Region: ways, miles | Annandale box: ways, miles |
+| --- | --- | --- |
+| z12-13 before (paths, and roads at LTS 3 and above) | 144,190, 25,017 mi (paths 5,454; LTS 3 5,432; LTS 4 12,610; Avoid 1,515) | 3,928, 272.6 mi (paths 75.3; LTS 3 93.4; LTS 4 103.9) |
+| z12-13 after (the ride layer) | 35,961, 6,812 mi (paths 5,019; calm streets 1,787; timed car-free roads of LTS 3 and up 1.7) | 682, 83.9 mi (paths 66.8; calm streets 17.0) |
+| z12 tiles over the box, bytes | before 126,726 (6 tiles) | after 48,188 |
+| z13 tiles over the box, bytes | before 81,637 (12 tiles) | after 29,220 |
+
+The streets' bar, miles of calm street kept (region, box), with the 2.0 and 3.0
+mi rows showing how few streets have so long a run:
+
+| run | 0.25 mi | 0.5 mi | 0.75 mi | 1 mi | 1.5 mi | 2 mi | 3 mi |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| region | 3,225 | 1,787 | 1,146 | 794 | 478 | 279 | 124 |
+| box | 59.6 | 17.0 | 7.1 | 3.4 | 1.7 | 0 | 0 |
+
+The paths' bar (region, box): 0.1 mi 5,267 and 74.0; 0.25 mi 5,025 and 66.8;
+0.5 mi 4,725 and 60.3; 1 mi 4,276 and 51.1; 2 mi 3,730 and 47.1 (every candidate
+path is 5,233 and 75.3; 152 mi of mountain-bike trail are left out). The gap hardly matters: calm
+street miles at 0.5 mi with a 16 ft, 100 ft, 330 ft and 1,300 ft gap are 1,719,
+1,752, 1,787 and 1,862 in the region. Of the 21,119 mi of LTS 1 roads, 12,832
+have no name (service roads and tracks) and are never in the layer. Re-measure with
+`derive_calm_runs` on a copy before moving a bar, and update `RIDE_RUN_MI` in
+`frontend/src/lib/stressLegend.ts` with it (a test holds them equal).
+
+**VALIDATE** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
+no named candidate may be left at 0 (the derive ran to the end); the path
+sentinels, the W&OD (OSM way 8810729) and the C&O towpath (10595312),
+`settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
+(12.9 km) or more; the street sentinel, Lakeview Drive in the Annandale-Alexandria box (OSM way
+8814005, a 1.7 mi LTS 1 run), `settings.REBUILD_SENTINEL_CALM_STREET_WAYS`, must
+be in a run of 0.5 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
+rows, 15,000 path rows in a run of 0.25 mi and 2,400 street rows in one of 0.5 mi
+(about half of the copy's 30,972 and 4,939), must exist. As with the long
+trails, if a later extract splits or replaces a sentinel way, move the sentinel;
+don't drop it.
+
+**Tiles, ETag and fallback.** `core.stress_tiles.level_for(z, optional)` returns
+`RIDE_LAYER` for z12-13 on a live table that has `calm_run_m`, and `BUSY` (what z12-13
+drew before: the paths and the roads at LTS 3 and above, faint, with the front end's
+`FAINT` rules) on one that does not, so a table promoted before this rebuild draws
+today's z12-13 until the data rebuild promotes the column. The ETag names it with
+`k` (`+kcfrmosbtl-v6"` with all ten optional columns, about 33 characters, inside the
+cache's 64) and `FORMAT_VERSION` is 6 (the same format as the surface-unknown
+properties below: the tile cache key changes, so run the pre-draw as the steps
+below say). The ride layer has its own partial index,
+`segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
+(a test); the busy-road layer keeps the overview index.
+
+**Decision 390 at z12-13.** "Solid is probably fine" for LTS 3 and 4 below zoom
+14 is moot where no busy road is drawn there. On a live table without
+`calm_run_m` the busy roads still draw at z12-13 and are still faint, as they did:
+the solid-below-14 change is its own front-end change (390) and this branch does not
+carry it, so where it lands it must apply to that fallback only.
+
+**What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
+`mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
+"Zoom in to see busy roads and every street. This is the where-to-ride view: connected
+paths and trails and long calm streets. Busy roads, mountain-bike trails and short
+paths show from zoom 14."; and the standing hint, which gives the two runs in feet
+and miles (kilometres in brackets), says the busy roads, mountain-bike trails, shorter
+paths, the other streets and the junction warnings on the map show from zoom 14,
+and that a planned route shows its own busy stretches and junction warnings at every
+zoom. On a table without the column the text is ahead of the tiles until the rebuild.
+
+**Surface unknown (OWNER-DECISIONS 376; PARK-TRAILS-investigation.md).** "A and
+C". *A, style only:* a trail-class feature with no surface tag (the tile carries no
+`unpaved`, since a null is left out; no new property is needed) draws as its own
+line: LTS 1's colours in short even dashes (`UNKNOWN_SURFACE_DASH`, 2 on and 1.5
+off in line widths), the edge dashed to match so the gaps show the base map, and no
+path rails and no continuous dark edge. The dashes are the cue that is not colour,
+and the legend has a "Surface unknown" row in words: "A path or trail with no
+surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the
+LTS 1 colors, with no edge lines." Nothing is closed; roads with no surface tag
+(nearly every street) draw as before, and a roadside trail with no surface keeps its
+protected-lane rails. *C, a pipeline change:* `routemaker.stress.inferred_unpaved`
+reads `highway=track` with no `surface` as unpaved unless `tracktype=grade1`, so
+the stored `is_unpaved` makes it brown, with the unpaved mark, and open (the
+classifier's own unpaved speed cap still reads the raw tag, so no tier moves; the
+unpaved-surface ranking and the trail seek read the stored column, so a track with
+no surface now counts as unpaved there). *Not B* (no untagged path is closed) *and
+not D* (`SHORT_PATH_M` stays 150 m). The investigation counted about 3,145 such
+tracks (763 mi) region-wide; a rebuild's log is the place to read the real figure.
+
 Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
 units a side are half a pixel each at z16. z15-16 are still served, for the
@@ -757,7 +893,8 @@ contract.
 **How the busy roads draw** (the front end's `stressStyle.js`; the tiles are
 the same whatever the style decides):
 
-- faint - 40% opacity and 60% width (`FAINT`) - at z12-13, and solid from
+- faint - 40% opacity and 60% width (`FAINT`) - at z12-13 (only on a table that still
+  draws busy roads there: from the ride layer's rebuild none is drawn below z14), and solid from
   `SOLID_MIN_ZOOM` (14): "The high LTS roads aren't that important because
   you aren't going to route around them." - "Show them faintly", then "Make
   solid at 14" (OWNER-DECISIONS 76, 77);
@@ -997,7 +1134,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v5"`, or `+cfmsbtl-v5"` with all seven optional columns) and a repeat
+   (`-v6"`, or `+kcfrmosbtl-v6"` with all ten optional columns) and a repeat
    with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.

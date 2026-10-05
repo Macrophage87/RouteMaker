@@ -3544,6 +3544,35 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391)
+
+What shipped, and where to look. The server side and the measurements are in
+docs/OPERATIONS.md, "The ride layer (z12-13)".
+
+- **Pipeline.** `pipeline.schema` holds the constants (`RIDE_PATH_RUN_MI`,
+  `RIDE_STREET_RUN_MI`, `CALM_PATH_GAP_M`, `CALM_STREET_GAP_M`),
+  `ride_layer_predicate` and the partial index; `pipeline.trail_routes` holds
+  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE
+  summary (`calm_run_summary`); `pipeline.run.assert_calm_runs` is the check, and the
+  tests' autouse fixture (`tests/conftest.py`) blanks its sentinels and floors as it does the
+  long trails'. `routemaker.stress.inferred_unpaved` is 376 C.
+- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE), `tests/test_stress.py`
+  (the track rule), `tests/test_stress_tiles.py` (`TestRideLayer`, which adds the column back:
+  every other test of that file runs on a table without it, the fallback, so they hold
+  today's z12-13 and each is one `DROP COLUMN` from the new one), and the front end's
+  `stressStyle.test.mjs`, `stressPatterns.test.ts`, `stressLegend.test.ts` and
+  `format.test.ts`. The `STRESS_ZOOMS` parity test reads `ride` and `quiet`; the legend's
+  `RIDE_RUN_MI` is held equal to the schema's constants.
+- **Style.** `stressStyle.js` has `unknownSurfaceLayers` (two layers,
+  `stress-unknown-casing` and `stress-unknown`, drawn after the casings and before the
+  tier lines; `setStressPalette` repaints them, and their edge's dash with them, since the
+  dash is in the edge's own width, which the High contrast switch changes). LTS 1's
+  `stress-1`, `stress-casing-1` and the path rails leave a feature with `trail` true and
+  no `unpaved` to them. The dashes are the cue that is not colour; the legend row says
+  so in words.
+- **Not done here:** decision 390 (solid LTS 3 and 4 below zoom 14), which is its own
+  change; on a table with `calm_run_m` it is moot at z12-13.
+
 ## Long calm trips, the target distance and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 271)
 
 The owner's words are in PLAN.md, Owner amendments, "FOLLOWUP-LONG-CALM"; this is how it is built
