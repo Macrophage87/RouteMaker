@@ -460,31 +460,31 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const none = await p.eval("document.querySelectorAll('input[placeholder=Default]').length");
   check("target distance: not offered below the top of the traffic slider", none === 0, String(none));
-  const toggle = await axNode(p, ".dials .toggle input[aria-describedby]");
+  const toggle = await axNode(p, ".loop-toggle input");
   check("loop: the toggle is named for what it does and described, off by default", toggle?.role === "checkbox" && toggle?.name === "Make it a loop" && toggle?.checked === false && /different way back/.test(toggle?.description ?? ""), JSON.stringify(toggle));
   const before = p.routeRequests;
-  await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').focus(); true");
+  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(1500);
-  const checked = await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').checked");
+  const checked = await p.eval("document.querySelector('.loop-toggle input').checked");
   check("loop: Space turns it on and plans once", checked === true && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${p.routeRequests - before} plans`);
   await p.close();
 }
 {
   // A ride that ends where it starts is a loop, shown on and fixed.
   const p = await open({ route: S_DEFAULT, hash: "#p=-77.04000,38.91000;-77.01000,38.89000;-77.04000,38.91000&preset=default&v=2&stress=70&hills=0" });
-  const state = await axNode(p, ".dials .toggle input[aria-describedby]");
+  const state = await axNode(p, ".loop-toggle input");
   check("loop: a ride ending where it starts shows the toggle on and not changeable, and says why", state?.checked === true && state?.disabled === true && /ends where it starts/.test(state?.description ?? ""), JSON.stringify(state));
   // aria-disabled, not disabled: it stays in the Tab order, and Space changes nothing (the a11y review's N6).
   const before = p.routeRequests;
-  await p.eval("document.querySelector('.dials .toggle input[aria-describedby]').focus(); true");
-  const focusable = await p.eval("document.activeElement === document.querySelector('.dials .toggle input[aria-describedby]')");
+  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
+  const focusable = await p.eval("document.activeElement === document.querySelector('.loop-toggle input')");
   await p.key(" ", "Space", 32);
   await sleep(1200);
-  const after = await p.eval("({ checked: document.querySelector('.dials .toggle input[aria-describedby]').checked, attr: document.querySelector('.dials .toggle input[aria-describedby]').getAttribute('aria-disabled'), disabled: document.querySelector('.dials .toggle input[aria-describedby]').disabled })");
-  check("loop: when implied it keeps the focus, and Space neither unticks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
-  const size = await p.eval("(() => { const r = document.querySelector('.dials .toggle').getBoundingClientRect(); return Math.round(r.height); })()");
-  check("loop: its row is a 24 px target (2.5.8)", size >= 24, `${size} px`);
+  const after = await p.eval("({ checked: document.querySelector('.loop-toggle input').checked, attr: document.querySelector('.loop-toggle input').getAttribute('aria-disabled'), disabled: document.querySelector('.loop-toggle input').disabled })");
+  check("loop: when implied it keeps the focus, and Space neither unchecks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
+  const size = await p.eval("(() => { const r = document.querySelector('.loop-toggle .toggle').getBoundingClientRect(); return Math.round(r.height); })()");
+  check("loop: its row is a 44 px target (2.5.8, and the owner's 44 px rule)", size >= 44, `${size} px`);
   await p.close();
 }
 
@@ -728,11 +728,11 @@ const federalFetched = (p) =>
   await p.close();
 }
 
-// ---- 16. Settings (OWNER-DECISIONS 384): the fourth bar button, and the one High contrast switch in two sheets ----
+// ---- 16. Settings (OWNER-DECISIONS 384): the fifth bar button, and the one High contrast switch in two sheets ----
 {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Map layers, Legend, GPX, Settings", JSON.stringify(bar) === JSON.stringify(["Map layers", "Legend", "GPX", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Plan, Map layers, Legend, GPX, Settings", JSON.stringify(bar) === JSON.stringify(["Plan", "Map layers", "Legend", "GPX", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   const inSettings = await axNode(p, "#settings-contrast-switch");
@@ -765,11 +765,359 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
+const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
+{
+  // An empty planner: the box is there with no point, says what to place when checked, and says it once.
+  const p = await newPage(b, { width: 1280, height: 900 });
+  await mock(p, S_DEFAULT, {});
+  await media(p, {});
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await p.waitFor("!!document.querySelector('.loop-toggle input')", 40000);
+  await sleep(800);
+  const box = await axNode(p, ".loop-toggle input");
+  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", unchecked", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === false, JSON.stringify(box));
+  const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!(document.querySelector('#points-search').compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.querySelector('.toggle').getBoundingClientRect().height) }; })()");
+  check("loop first: it is in the Points section, after the search, and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
+  check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
+  await p.eval("window.__said = []; const live = document.querySelector('p.visually-hidden[role=status]'); new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
+  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(700);
+  const on = await axNode(p, ".loop-toggle input");
+  const hint = await p.eval("(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()");
+  check("loop first: checked with no point, the hint is visible text, \"Place the starting point, then a stop or two along the way.\"", on?.checked === true && hint.visible && hint.text === FIRST_HINT, JSON.stringify(hint));
+  check("loop first: the box is described by it", on?.description === FIRST_HINT, JSON.stringify(on?.description));
+  const live = await p.eval("document.querySelectorAll('.loop-toggle [role=status], .loop-toggle [role=alert], .loop-toggle [aria-live]').length");
+  check("loop first: the box and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
+  const said = await p.eval("window.__said");
+  check("loop first: it is announced once when the box is checked", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.length === 1, JSON.stringify(said));
+  check("loop first: checking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
+  check("loop first: the empty-plan words do not send the rider to the Ride line", !/Edit button|ride settings/.test(await p.eval("document.querySelector('.tips-body').textContent")), "");
+  await p.close();
+}
+{
+  // Mass Ride has no loop: no box, with no point placed.
+  const p = await newPage(b, { width: 1280, height: 900 });
+  await mock(p, S_MASS, {});
+  await media(p, {});
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/#preset=mass-ride&v=2` });
+  await p.waitFor("!!document.querySelector('#points-search')", 40000);
+  await sleep(800);
+  check("loop first: Mass Ride has no Make it a loop box", (await p.eval("document.querySelectorAll('.loop-toggle').length")) === 0 && !/loop/i.test(await p.eval("document.querySelector('#points-search').closest('section').textContent")), "");
+  await p.close();
+}
+{
+  // With a route shown and the points compact, the box is still there (it sits outside what Edit points hides).
+  const p = await open({ ride: false });
+  const compact = await p.eval("(() => { const s = document.querySelector('#points-search'); const t = document.querySelector('.loop-toggle input'); return { searchHidden: s.hidden, box: !!t && t.getBoundingClientRect().height > 0 }; })()");
+  check("loop first: with a route shown and the points compact, the search is hidden and the box stays", compact.searchHidden && compact.box, JSON.stringify(compact));
+  // The Plan button: first in the bar, current on the planner, returns from a sheet to the planner's heading.
+  const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => ({ text: x.querySelector('span').textContent, current: x.getAttribute('aria-current') }))");
+  check("plan: five buttons, Plan first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Plan" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
+  // Exact names: the hint is a sibling of each button, not part of its name, and is the description (said once).
+  const names = [];
+  for (const id of ["plan", "layers", "legend", "gpx", "settings"]) {
+    const ax = await axNode(p, `#bar-${id}`);
+    names.push([ax?.role, ax?.name]);
+  }
+  check("plan: the five bar buttons are named exactly Plan, Map layers, Legend, GPX, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Map layers"], ["button", "Legend"], ["button", "GPX"], ["button", "Settings"]]), JSON.stringify(names));
+  const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
+  const described = [];
+  for (const id of ["plan", "layers", "legend", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
+  check("plan: each bar hint is a hidden sibling, off the screen, and still the button's description", hints.length === 5 && hints.every((h) => h.hidden && !h.inButton && h.text) && described.every(Boolean), JSON.stringify({ hints, described }));
+  const planAx = await axNode(p, "#bar-plan");
+  check("plan: its description says where it goes, in the Back label's words", /^Shows the planner: /.test(planAx?.description ?? ""), JSON.stringify(planAx?.description));
+  await openSheet(p, "GPX");
+  const during = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.getAttribute('aria-current'))");
+  check("plan: on a sheet the Plan button is not current and that sheet's is", during[0] === null && during[3] === "true", JSON.stringify(during));
+  const backText = await p.eval("document.querySelector('#sheet-gpx .sheet-back').textContent.trim()");
+  const backAx = await axNode(p, "#sheet-gpx .sheet-back");
+  check("plan: the sheet's Back button says \"Back to planner\" in visible words, and its name is the same", backText === "Back to planner" && backAx?.name === "Back to planner", JSON.stringify({ backText, name: backAx?.name }));
+  await p.eval("document.querySelector('.bar-button').click(); true");
+  await sleep(300);
+  const back = await p.eval("({ planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent, current: document.querySelector('.bar-button').getAttribute('aria-current') })");
+  check("plan: pressing it returns to the planner, marks it current, and puts the focus on the planner's heading", back.planner && back.focus === "H1:RouteMaker" && back.current === "true", JSON.stringify(back));
+  await openSheet(p, "Settings");
+  await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
+  await sleep(300);
+  check("plan: Back still returns the focus to the bar button that opened the sheet", await p.eval("document.activeElement?.classList.contains('bar-button') && document.activeElement.textContent.startsWith('Settings')"), await focused(p));
+  await p.close();
+}
+for (const [width, height] of [[320, 700], [375, 812]]) {
+  const p = await open({ width, height, mobile: true, ride: false });
+  const fit = await p.eval(`(() => {
+    const buttons = [...document.querySelectorAll('.bar-button')].map((x) => { const r = x.getBoundingClientRect(); const label = x.querySelector('span'); return { text: label.textContent, w: Math.round(r.width), h: Math.round(r.height), clipped: x.scrollWidth > x.clientWidth + 1, inside: r.left >= -0.5 && r.right <= innerWidth + 0.5 }; });
+    return { scroll: document.documentElement.scrollWidth, buttons }; })()`);
+  check(`plan at ${width} px: five buttons, each at least 44 px both ways, inside the screen, nothing clipped`, fit.buttons.length === 5 && fit.buttons.every((x) => x.w >= 44 && x.h >= 44 && x.inside && !x.clipped) && fit.scroll <= width, JSON.stringify(fit));
+  const labels = await p.eval(`[...document.querySelectorAll('.bar-button')].map((x) => ({ px: parseFloat(getComputedStyle(x.querySelector('span')).fontSize), overflow: x.scrollHeight > x.clientHeight }))`);
+  check(`plan at ${width} px: the bar labels are at least 12 px and a two-line label stays inside its button`, labels.every((l) => l.px >= 12 && !l.overflow), JSON.stringify(labels));
+  await p.shot(`${SHOTS}/bar_${width}.png`, await p.eval("(() => { const r = document.querySelector('.bottom-bar').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: r.height + 8 }; })()"));
+  await openSheet(p, "Map layers");
+  const sheet = await p.eval("(() => { const r = document.querySelector('#sheet-layers .sheet-back').getBoundingClientRect(); const h = document.querySelector('#sheet-layers-title').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), inside: r.right <= innerWidth && h.right <= innerWidth + 0.5 }; })()");
+  check(`plan at ${width} px: the Back to planner button is at least 44 px and the sheet's header fits`, sheet.w >= 44 && sheet.h >= 44 && sheet.inside && (await p.eval("document.documentElement.scrollWidth")) <= width, JSON.stringify(sheet));
+  await p.shot(`${SHOTS}/sheet_back_${width}.png`, await p.eval("(() => { const r = document.querySelector('#sheet-layers .sheet-header').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: r.height + 8 }; })()"));
+  await p.close();
+}
+
+{
+  // Large text at 320 px: the five buttons wrap onto a second row rather than clip.
+  const p = await open({ width: 320, height: 700, mobile: true, ride: false });
+  await p.eval("document.documentElement.style.fontSize = '24px'; true");
+  await sleep(300);
+  const fit = await p.eval(`(() => {
+    const buttons = [...document.querySelectorAll('.bar-button')].map((x) => { const r = x.getBoundingClientRect(); return { top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), clipped: x.scrollWidth > x.clientWidth + 1, inside: r.left >= -0.5 && r.right <= innerWidth + 0.5 }; });
+    return { rows: new Set(buttons.map((x) => x.top)).size, scroll: document.documentElement.scrollWidth, buttons }; })()`);
+  check("plan at 320 px with 24 px text: five buttons, 44 px or more each way, inside the screen, nothing clipped, a second row where needed", fit.buttons.length === 5 && fit.buttons.every((x) => x.w >= 44 && x.h >= 44 && x.inside && !x.clipped) && fit.scroll <= 320 && fit.rows >= 2, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/bar_320_text24.png`);
+  await p.close();
+}
+{
+  // The phone header's toggle, and Plan on a scrolled planner.
+  const p = await open({ width: 375, height: 812, mobile: true, ride: false });
+  const first = await p.eval("(() => { const t = document.querySelector('.panel-toggle'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), controls: t.getAttribute('aria-controls') }; })()");
+  check("toggle: the phone header's button reads Hide planner, with aria-expanded and aria-controls", first.text === "Hide planner" && first.expanded === "true" && first.controls === "panel-body", JSON.stringify(first));
+  await openSheet(p, "GPX");
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(200);
+  const hidden = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), hidden: document.getElementById('panel-body').hidden })");
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(300);
+  const shown = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), planner: !document.querySelector('.planner-view').hidden, gpx: document.getElementById('sheet-gpx').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
+  check("toggle: hiding says Show planner; showing it again returns to the planner (not the sheet that was open) and the focus stays on the toggle", hidden.text === "Show planner" && hidden.expanded === "false" && hidden.hidden && shown.text === "Hide planner" && shown.expanded === "true" && shown.planner && shown.gpx && shown.focus === "BUTTON:Hide planner", JSON.stringify({ hidden, shown }));
+  await p.eval("document.querySelector('.panel-scroll').scrollTop = 150; true");
+  await sleep(100);
+  const before = await p.eval("document.querySelector('.panel-scroll').scrollTop");
+  await p.eval("document.querySelector('#bar-plan').click(); true");
+  await sleep(300);
+  const after = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, focus: document.activeElement?.tagName })");
+  check("plan: pressed on a scrolled planner it scrolls to the top and focuses the heading", before > 0 && after.top === 0 && after.focus === "H1", JSON.stringify({ before, after }));
+  // From a scrolled sheet: Plan shows the planner at its top.
+  await openSheet(p, "Map layers");
+  await p.eval("document.querySelector('.panel-scroll').scrollTop = 200; true");
+  await sleep(100);
+  const sheetTop = await p.eval("document.querySelector('.panel-scroll').scrollTop");
+  await p.eval("document.querySelector('#bar-plan').click(); true");
+  await sleep(300);
+  const planned = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName })");
+  check("plan: pressed on a scrolled sheet it shows the planner at its top and focuses the heading", sheetTop > 0 && planned.top === 0 && planned.planner && planned.focus === "H1", JSON.stringify({ sheetTop, planned }));
+  // Show planner from the Legend sheet too.
+  await openSheet(p, "Legend");
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(300);
+  const fromLegend = await p.eval("({ planner: !document.querySelector('.planner-view').hidden, layers: document.getElementById('sheet-layers').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
+  check("toggle: Show planner from the Legend sheet also returns to the planner, the focus on the toggle", fromLegend.planner && fromLegend.layers && fromLegend.focus === "BUTTON:Hide planner", JSON.stringify(fromLegend));
+  await p.close();
+}
+
+// ---- 18. Use my location (OWNER-DECISIONS 395) ----
+{
+  // "Use my location" (OWNER-DECISIONS 395): the CDP geolocation override and the permission, granted, denied and unavailable.
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const live = `(() => [...document.querySelectorAll('[role=status],[aria-live]')].map((e) => e.textContent.trim()).filter(Boolean))()`;
+  const holders = (text) => `(() => [...document.querySelectorAll('[role=status],[aria-live]')].filter((e) => e.textContent.includes(${JSON.stringify(text)})).length)()`;
+  async function emptyPlan({ permission = "granted", at = { latitude: 38.8893, longitude: -77.0502, accuracy: 15 }, secure = true, hash = "", script = "" } = {}) {
+    const p = await newPage(b, { width: 1280, height: 900 });
+    await mock(p, S_DEFAULT);
+    await media(p, { scheme: "light" });
+    await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: permission, origin: ORIGIN, browserContextId: p.contextId });
+    if (at) await p.s("Emulation.setGeolocationOverride", at);
+    else await p.s("Emulation.setGeolocationOverride", {});
+    if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
+    if (script) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: script });
+    await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
+    if (!(await p.waitFor("!!document.querySelector('.locate-button')", 30000))) throw new Error("no Use my location button");
+    await sleep(500);
+    return p;
+  }
+  // Counts each time a live region's text changes to one holding `text` (the app region toggles a trailing
+  // space, so the same words said again count again).
+  const countSaid = (text) => `(() => { window.__said = 0; const last = new WeakMap(); const scan = () => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent; if (last.get(e) !== t) { last.set(e, t); if (t.includes(${JSON.stringify(text)})) window.__said += 1; } } }; scan(); window.__said = 0; new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()`;
+  const press = async (p) => {
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(300);
+    // The look-up is done when the button's "Finding your location" text is gone; the notice follows 150 ms later.
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(900);
+  };
+
+  {
+    const p = await emptyPlan();
+    const box = await p.eval(`(() => { const r = (e) => { const x = e.getBoundingClientRect(); return { top: x.top, bottom: x.bottom, left: x.left, w: x.width, h: x.height }; }; const b = document.querySelector('.locate-button'); const i = document.querySelector('.place-search input'); return { b: r(b), i: r(i), inPoints: !!b.closest('section[aria-labelledby=points-heading]') }; })()`);
+    const ax = await axNode(p, ".locate-button");
+    check("locate: the button is named Use my location, a button, in the Points section", ax?.role === "button" && ax?.name === "Use my location" && box.inPoints, JSON.stringify({ ax, inPoints: box.inPoints }));
+    check("locate: the button is 44 px or more each way and beside the search box (same row, to its right)", box.b.w >= 44 && box.b.h >= 44 && box.b.left >= box.i.left + box.i.w - 1 && box.b.top < box.i.bottom && box.b.bottom > box.i.top, JSON.stringify(box));
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    const opt = await p.eval("(() => { const o = [...document.querySelectorAll('.place-results [role=option]')]; return { n: o.length, first: o[0]?.textContent, shown: !document.querySelector('.place-results').hidden }; })()");
+    check("locate: with the search box focused and empty, Your location is the one choice in the list", opt.n === 1 && opt.shown && /^Your location/.test(opt.first ?? ""), JSON.stringify(opt));
+    await p.key("ArrowDown", "ArrowDown", 40);
+    await p.enter();
+    await sleep(1500);
+    const said = await p.eval(live);
+    const startSaid = said.filter((t) => /Start set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
+    check("locate: choosing Your location sets the start and says it, with US units first", startSaid.length >= 1, JSON.stringify(said));
+    check("locate: said once, in one live region (no double announcement)", (await p.eval(holders("set to your location"))) === 1);
+    const hint = await p.eval("document.querySelector('.place-search')?.textContent ?? ''");
+    check("locate: the hint marks it approximate and says the marker can be dragged or the place searched", /approximate, to about \d+ ft \(15 m\)\. Drag its marker, or search for the exact place, to adjust it\./.test(hint), hint.slice(0, 300));
+    const rows = await p.eval("document.querySelectorAll('.points > li').length");
+    check("locate: one point is in the plan", rows >= 1, String(rows));
+    // Every text the live regions held during the second press, to hear the pending sentence too.
+    await p.eval("(() => { window.__heard = []; const o = new MutationObserver(() => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent.trim(); if (t && !window.__heard.includes(t)) window.__heard.push(t); } }); o.observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
+    await press(p);
+    const second = await p.eval(live);
+    check("locate: a second press adds the next point, like a map click", second.some((t) => /^(End|Stop \d+) set to your location/.test(t)), JSON.stringify(second));
+    const heard = await p.eval("window.__heard");
+    check("locate: the press says Finding your location… while it looks", heard.includes("Finding your location…"), JSON.stringify(heard));
+    const START_NOTE = "This link includes your location as the start.";
+    const note = await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const noteText = note ? await p.eval("document.querySelector('.link-note').textContent") : "";
+    check("locate: Copy link shows the one-line note that the link includes the location as the start", noteText === START_NOTE, noteText);
+    // Through the accessibility tree: the note is not hidden from it, and Copy link is described by it.
+    await p.eval("(() => { const b = [...document.querySelectorAll('.route-actions button')].find((e) => e.textContent.trim() === 'Copy link'); if (b) b.id = '__copy'; return !!b; })()");
+    const noteAx = await axNode(p, ".link-note");
+    const copyAx = await axNode(p, "#__copy");
+    check("locate: the note is in the accessibility tree and describes the Copy link button", !!noteAx && !noteAx.ignored && copyAx?.description === START_NOTE, JSON.stringify({ noteAx, copyAx }));
+    try {
+      await b.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: ORIGIN, browserContextId: p.contextId });
+    } catch {
+      // An older Chrome without these: Copy link falls back to the selection copy.
+    }
+    await p.eval("document.getElementById('__copy').click(); true");
+    await sleep(900);
+    const copied = await p.eval("document.querySelector('.route-actions [role=status]')?.textContent ?? ''");
+    check("locate: pressing Copy link says the note with the confirmation", copied === `Link copied. ${START_NOTE}`, copied);
+    const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
+    check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
+    await p.shot(`${SHOTS}/locate_granted.png`);
+    await p.close();
+  }
+  {
+    // A drag of the location's marker keeps the note (the moved point is still the rider's spot), and so does
+    // its undo. A start from the link, then the location as the end, both where the map shows them (the mocked
+    // route's view), so the end's marker is the one under the mouse and no other point is from the location.
+    const POINT_NOTE = "This link includes your location as a point on the route.";
+    const p = await emptyPlan({ hash: "#p=-77.03500,38.90200&preset=default&v=2&stress=70&hills=0", at: { latitude: 38.8955, longitude: -77.0205, accuracy: 15 } });
+    await press(p);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    await sleep(800);
+    const hashBefore = await p.eval("location.hash");
+    const pin = await p.eval("(() => { const m = document.querySelector('.pin.pin-end'); if (!m) return null; const r = m.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2; const hit = document.elementFromPoint(x, y); return { at: [x, y], hit: !!hit && (hit === m || m.contains(hit)) }; })()");
+    if (pin?.hit) {
+      const [x, y] = pin.at;
+      await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+      for (let i = 1; i <= 6; i += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: x + i * 6, y: y + i * 4, button: "left", buttons: 1 });
+      await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: x + 36, y: y + 24, button: "left", clickCount: 1 });
+    }
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
+    check("locate: dragging the location's marker moves it and keeps the Copy link note", !!pin?.hit && dragged.hash !== hashBefore && dragged.note === POINT_NOTE, JSON.stringify({ pin, dragged, hashBefore }));
+    // Undo: the points are compact while a route shows, so the button is pressed where it is.
+    const undid = await p.eval("(() => { const u = [...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && !e.disabled); u?.click(); return !!u; })()");
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const undone = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
+    check("locate: undoing the drag puts the point back and keeps the Copy link note", undid && undone.hash === hashBefore && undone.note === POINT_NOTE, JSON.stringify({ undid, undone, hashBefore }));
+    await p.shot(`${SHOTS}/locate_drag.png`);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ permission: "denied" });
+    // The Points notice is a live region before any message (a region created holding its text is often not spoken).
+    const NOTICE = "section[aria-labelledby=points-heading] > p.notice[role=status]";
+    const region = await p.eval(`(() => { const e = document.querySelector(${JSON.stringify(NOTICE)}); if (!e) return null; e.__pre = 1; e.id = e.id || '__notice'; return { id: e.id, text: e.textContent, empty: e.classList.contains('notice-empty') }; })()`);
+    const regionAx = region ? await axNode(p, `#${region.id}`) : null;
+    check("locate: before any message the Points notice is there, empty, and in the accessibility tree", !!region && region.text === "" && region.empty && !!regionAx && !regionAx.ignored, JSON.stringify({ region, regionAx }));
+    // Enter in the empty box, with nothing highlighted, never takes Your location: no look-up, no message, no point.
+    await p.eval(countSaid("Finding your location"));
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    await p.enter();
+    await sleep(1500);
+    const afterEnter = await p.eval(`({ said: window.__said, notice: document.querySelector(${JSON.stringify(NOTICE)})?.textContent ?? null, points: document.querySelectorAll('.points > li').length })`);
+    check("locate: Enter in the empty search box asks for no location (Your location is never the Enter default)", afterEnter.said === 0 && afterEnter.notice === "" && afterEnter.points === 0, JSON.stringify(afterEnter));
+    await p.eval("document.activeElement?.blur(); true");
+    await press(p);
+    const same = await p.eval(`(() => { const e = document.querySelector(${JSON.stringify(NOTICE)}); return { pre: e?.__pre === 1, text: e?.textContent ?? '' }; })()`);
+    check("locate: the same notice element, already in the page, holds the denial", same.pre && /blocked for this site/.test(same.text), JSON.stringify(same));
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: permission denied is a plain message in a status, said once", /Your location is blocked for this site/.test(text) && (await p.eval(holders("blocked for this site"))) === 1, text);
+    const points = await p.eval("document.querySelectorAll('.place-search ~ *').length >= 0 && !document.querySelector('.link-note')");
+    check("locate: a denial adds no point and no link note", points === true);
+    await p.close();
+  }
+  {
+    // A two-point plan, Start chosen, then Your location: it replaces the start (the choice reaches placeFix).
+    const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
+    await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
+    // With a route shown the points are compact: Edit points opens the search, as a rider would.
+    await p.waitFor("!![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')", 20000);
+    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')?.click(); true");
+    await sleep(500);
+    const chose = await p.eval("(() => { const r = document.querySelector('.place-choice input[type=radio][value=start]'); if (!r) return false; r.click(); return r.checked; })()");
+    await sleep(300);
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    const line = await p.eval("[...document.querySelectorAll('.place-results [role=option]')][0]?.textContent ?? ''");
+    await p.eval(countSaid("Start set to your location"));
+    await p.key("ArrowDown", "ArrowDown", 40);
+    await p.enter();
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(1500);
+    const got = await p.eval("({ said: window.__said, rows: document.querySelectorAll('.points > li').length, hash: location.hash })");
+    check("locate: on a two-point plan with Start chosen, Your location replaces the start", chose && /^Your location\s*Replaces the start\./.test(line) && got.said >= 1 && got.rows === 2 && got.hash.startsWith("#p=-77.05020,38.88930;-77.01000,38.89000&"), JSON.stringify({ chose, line, got }));
+    await p.close();
+  }
+  {
+    // A slow look-up (2.5 s): a second press while it runs is answered again and starts no second look-up.
+    const slow = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); window.__lookups = 0; Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => { window.__lookups += 1; setTimeout(() => real(ok, fail, o), 2500); } }); })()";
+    const p = await emptyPlan({ script: slow });
+    await p.eval(countSaid("Finding your location"));
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(500);
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(500);
+    const during = await p.eval("({ said: window.__said, lookups: window.__lookups })");
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(1200);
+    const after = await p.eval("({ lookups: window.__lookups, points: document.querySelectorAll('.points > li').length })");
+    check("locate: a press during the look-up says Finding your location… again and starts no second look-up", during.said === 2 && after.lookups === 1 && after.points === 1, JSON.stringify({ during, after }));
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ at: null });
+    await press(p);
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: position unavailable is a plain message, said once", /could not be found right now/.test(text) && (await p.eval(holders("could not be found"))) === 1, text);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ at: { latitude: 40.7128, longitude: -74.006, accuracy: 20 } });
+    await press(p);
+    const text = (await p.eval(live)).join(" | ");
+    check("locate: outside coverage uses the existing notice", /outside the area this map covers/.test(text) && (await p.eval(holders("outside the area"))) === 1, text);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ secure: false });
+    const ax = await axNode(p, ".locate-button");
+    const attr = await p.eval("document.querySelector('.locate-button').getAttribute('aria-disabled')");
+    check("locate: on an insecure page the button stays in the Tab order, aria-disabled, with the reason as its description", attr === "true" && /secure \(HTTPS\)/.test(ax?.description ?? ""), JSON.stringify(ax));
+    await press(p);
+    const pts = await p.eval("!!document.querySelector('.link-note')");
+    check("locate: a press on the insecure page asks nothing and adds nothing", pts === false);
+    await p.close();
+  }
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 156;
+const EXPECTED = 213;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

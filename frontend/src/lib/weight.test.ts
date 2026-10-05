@@ -250,7 +250,7 @@ test("signed out, it is kept in this browser only when the rider ticks Remember,
   assert.deepEqual(new WeightStore(storage).load(NOW), SAVED, "a new visit finds it");
   assert.equal(new WeightStore(storage).remembered(), true);
   store.save(SAVED, false);
-  assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false, "unticked: taken out of the browser");
+  assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false, "unchecked: taken out of the browser");
   store.save(SAVED, true);
   store.clear();
   assert.equal(store.load(NOW), null);
@@ -311,7 +311,7 @@ test("the weight is never in a downloaded GPX file, even from a route planned wi
   assert.doesNotMatch(gpx, /weight|93\b|kg/i);
 });
 
-test("every open starts blank, whatever is saved, with the Remember tick as this browser has it (317(b))", async () => {
+test("every open starts blank, whatever is saved, with the Remember checkbox as this browser has it (317(b))", async () => {
   const { openedState } = await import("./weightDialog.ts");
   assert.deepEqual(openedState({ saved: SAVED, remembered: true }), { sheet: BLANK, remember: true, refused: "" });
   assert.deepEqual(openedState({ saved: null, remembered: false }), { sheet: BLANK, remember: false, refused: "" });

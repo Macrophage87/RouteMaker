@@ -512,7 +512,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 156` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs`.
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -3162,6 +3162,41 @@ pipeline is run (`scripts/acceptance.py --only A1 A2` is the short gate).
 what each image installs and why, the `collectstatic` deploy step, and the list
 of things that still stop a `docker compose up`.
 
+### Logs and the rider's position (OWNER-DECISIONS 395, 401)
+
+395 says the rider's position is "never stored or logged beyond the route request, like any
+clicked point". A point reaches the server three ways: the route request (a POST with a JSON
+body, so no request line holds it), a reverse look-up (`/api/reverse?lat=..&lon=..`) and a search
+near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the logs:
+
+- **gunicorn** logs the path without the query (`%(U)s`, docker/api-entrypoint.sh), with the
+  duration (`%(D)s`): that is where a slow route now shows.
+- **Valhalla** (401): loki's and thor's `logging.long_request` is `NEVER_LONG_MS`, 3,600,000 ms,
+  far past httpd's 30 s timeout, so their slow-request warning, which can carry the request,
+  never fires. The cost is that Valhalla's own slow-request warnings are gone for every route;
+  route timing comes from the app's side: the time of the whole plan request, not of each router call
+  (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's Caddy keeps no access log). The routers read
+  the config only at start, so a deploy needs a restart. On the live stack:
+  `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend` (restart, not `up -d`).
+  tests/test_valhalla_config.py pins it on all four configs.
+- **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
+  `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
+  `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
+  not asked for by name: owner to confirm, and the same for dropping the client address and tester name), because an
+  upstream error line (a 502 while the api restarts, a 504) records the whole request. Every other
+  path's upstream errors still reach the host's error log; none of them has a location in a query.
+  tests/test_beta_overlay.py pins the format, both servers' access log, and that every
+  `/api/...?` path in the front end is one of the two.
+- **Tile paths** (`/tiles/stress/{z}/{x}/{y}.pbf`) are logged by nginx and gunicorn and show the
+  area viewed, to about a mile [2 km] at zoom 14. That is true of any map pan and is
+  not a position fix.
+
+Open: Photon's own request logging is unverified (`docker logs photon` after one search on a dev
+stack; a log4j override if queries show). Whether Valhalla logs a request on an error path (no
+suitable edges, say) is unverified, and so is the app's own log of Valhalla's refusal text (src/core/routing.py logs it
+when a router refuses a route request or a trace_attributes call); `"do_not_track": true` in the route request would be belt and
+braces. A `Permissions-Policy: geolocation=(self)` header at the edge is a separate deploy change.
+
 ## Contraflow on the no-trail graph
 
 The owner, 2026-10-02 (OWNER-DECISIONS 192 and 193): "contraflow lanes are not
@@ -3422,13 +3457,16 @@ the two parts for open questions, written with createElement so a test renders t
 Tests: `lib/sidebar.test.ts`.
 
 - **Views, not modals.** The panel body shows the planner or one of the bar's sheets
-  (Map layers, which Legend opens at its legend; GPX; Settings). Each is in the page all
+  (Map layers, which Legend opens at its legend; GPX; Settings); the bar's first button,
+  Plan, is the way back (below). Each is in the page all
   the time, `hidden` when not shown, so the search, the opened GPX file, the slider
   drafts and the switches keep their state, and a GPX import keeps fitting while
   another view shows.
 - **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
   to its heading (the legend's, for Legend); Back or Escape returns it to the bar
-  button that opened the sheet; an error that brings the planner back takes it to the
+  button that opened the sheet; the Plan button takes it to the planner's heading, the
+  `h1` (cause `planButton`, `{ kind: "planner" }`; on the planner already, App focuses the
+  heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
   dialog or on the place search's list (`sheetEscape`). When a route arrives and the
   points compact, a focus in the search, Add point at map center or the tools goes to
@@ -3471,8 +3509,23 @@ Tests: `lib/sidebar.test.ts`.
   `licenses.txt` (which the map's "Software licences" link opens), not a data credit. The sidebar test fails if the import and the
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
-- **Settings, High contrast (OWNER-DECISIONS 384).** The fourth bar button is Settings
-  (`BAR_ITEMS`, id `settings`; it was About): its sheet holds a "Display" group with the
+- **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
+  Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
+  `aria-current` while the planner shows and no other button then). It returns from any
+  sheet; on the planner it focuses the heading and scrolls to the top. The focus differs on
+  purpose (the reading of 392): Plan goes to the planner as a whole, so to its `h1`; Back and
+  Escape undo the opening of a sheet, so they return to the bar button that opened it. The
+  hint of each bar button is a sibling `hidden` span (`aria-describedby`), so a
+  button's name is its label alone. The phone header's toggle reads "Hide planner" / "Show
+  planner" (`aria-expanded`, `aria-controls`), and Show always shows the planner and leaves the focus on the toggle (cause `panelToggle`). The sheets' Back button reads "Back to planner"
+  in visible words (`BACK_LABEL`, no `aria-label`, so its name is its label); it and Escape
+  still return the focus to the bar button that opened the sheet. There is no title link.
+  The bar is a grid of tracks at least 3.5rem wide (five across at 320 px, a second row
+  under large text); at 720 px and below each button is the icon over its words, which wrap
+  ("Map layers" on two lines), 48 px high, with 44 px targets; the Back button is 44 px high
+  and the sheet header wraps.
+- **Settings, High contrast (OWNER-DECISIONS 384).** Settings is a bar button
+  (`BAR_ITEMS`, id `settings`; it was About; since 392/393 it is the fifth of five, Plan first): its sheet holds a "Display" group with the
   High contrast switch, then a "Signing in" section with the sign-in note. No other settings are listed. The switch
   is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
   `routemaker.accessibility` storage key, the `a11y` root class and the `palette=` link
@@ -3488,11 +3541,84 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 156 checks, all passing on the
-  sidebar) opens the Ride settings and the "Junctions to watch" fold on every page it
+- **The browser check** (scripts/a11y/check.mjs, 213 checks, section 17 for the loop box
+  and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.
+
+### Use my location (OWNER-DECISIONS 395)
+
+Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) are on
+their own branch, wip/privacy-logs (OWNER-DECISIONS 401). A "Use my location" button sits beside the search box (`.place-search-row`, in
+`PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
+empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
+never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
+key and Enter, or a click, does. Its second line says what it will do ("Sets the start.", "Adds it as
+a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places found, plus Your location.").
+
+- **The look-up** is `lib/geolocation.ts`, behind `GeoEnv` (`isSecureContext` and a `getCurrentPosition`
+  that tests stub; `browserEnv()` is the only reader of `window`). One `getCurrentPosition` per press, with
+  `enableHighAccuracy`, a 10 s timeout and a 30 s `maximumAge`; after a browser timeout, one more try
+  without high accuracy (`RETRY_OPTIONS`), in the same press. No `watchPosition`, no tracking. Each call
+  settles once, and an app-side watchdog (`LOCATE_WATCHDOG_MS`, timeout + 20 s) ends a look-up the browser
+  never answers (a dismissed or ignored prompt, which the browser's own timeout does not cover) as a
+  timeout, with no retry. Where the browser has the Permissions API (`GeoEnv.permission`), a prompt still
+  open gets `PROMPT_WATCHDOG_MS` (60 s) instead, and the first watchdog starts again when it is answered,
+  so a rider who reads the prompt for a while and then grants it is not cut off by a cold GPS; the
+  query never delays the call. `locate` never rejects: every outcome is a `LocateResult` (`denied`,
+  `unavailable`, `timeout`, `unsupported`, `insecure`), each with a plain sentence in `LOCATE_MESSAGES`.
+  `locateGate` keeps it to one look-up at a time; a press while one runs says "Finding your location..." again.
+- **The result** is decided by `placeFix` (pure, unit-tested; `App.tsx` only calls it), with the loop
+  flag read after the wait. From the button it goes in by the map click's path (`addPoint`, loop-aware,
+  one undo step): the start of an empty plan, else the next point. From the "Your location" choice it
+  follows the search's Start / Destination / Stop choice, as a picked place does (`applyPlace`). It is
+  announced once through the app region ("Start set to your location, accurate to about 50 ft (15 m).",
+  US units first, rounded to a friendly figure by `formatRadius`; over about 330 ft (100 m) it adds
+  "That is rough; search for the exact place if you can."), after "Finding your location..." (also said
+  through that region, shown beside the button as plain text and its description while busy). The hint
+  says it is approximate: "Drag its marker, or search for the exact place, to adjust it." The map flies
+  there and draws an accuracy circle (`MapView.tsx`, `location-accuracy` source, under the route) while
+  the point is in the plan.
+- **Failures** are the Points notice (a `role="status"` line that is always rendered, empty when there is
+  no notice, so screen readers speak a new message; said through the app region only while the planner
+  is hidden, as the other notices). Outside coverage says "Your location is outside the area this map
+  covers (the DC region to Baltimore)."; "25 points" reuses the click's text. The notice is cleared and
+  set again 150 ms later, so a second press with the same answer is said again; a map edit in that window
+  cancels it. On an insecure page or without geolocation the button stays in the Tab order,
+  `aria-disabled`, with the reason as its description and in plain text beside it.
+- **Privacy.** Links and GPX keep full precision (the feature is for navigating on the go), so the point
+  itself is in the link, the address bar and GPX like any clicked point, by design. What is never in the
+  link, GPX, storage or a log is the flag that a point came from the location (`fromHere`) and the fix's
+  accuracy (`here`): React state only (a test reads the sources for that, and that they reach only the
+  note, the hint and the circle). Copy link shows one line, "This link includes your location as the
+  start." (`linkLocationNote`; "as a point on the route" when only a later point came from the location),
+  decided by point object identity. The button is described by it, and a press says it with the
+  confirmation ("Link copied. This link includes your location as the start."). A drag of a point that
+  came from the location keeps the note (`movedFromHere`: the moved point is still the rider's spot); an
+  undo that brings a point back restores it.
+  - The address bar holds the location as soon as it is in the plan (the plan's hash, as for any point),
+    so the browser's own share or copy of the address, and its history, carry it with no note.
+  - A reload, back or forward, or the sign-in round trip loses the note (the flag is memory only), while
+    the link still holds the location.
+  - The sign-in round trip (`lib/signIn.ts`) keeps the plan's hash, location and all, in this tab's
+    sessionStorage only for the round trip; it is read once and removed on the next load, and nothing is
+    sent to the server. This is the accepted exception to "never stored" (OWNER-DECISIONS 398, "yes, keep
+    location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
+    sheet's sign-in sentence and two test pins changed (the comment at the switch).
+  - Server logs are not this branch's: with wip/privacy-logs (PLAN 401), which merges first, the location
+    in a reverse look-up's or a search's query stays out of the beta nginx logs and Valhalla's slow-request
+    log is off. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+    viewed, as any map pan does.
+- **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
+  button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).
+- **Tests:** `lib/geolocation.test.ts` (look-up, watchdog, retry, `placeFix`, gate, note rules, the
+  never-stored source scan over all of App, the real watchdog limits and the open prompt under
+  `mock.timers`, and source pins on App's and PlaceSearch's handoffs: the ride read after the wait, the
+  list's choice, Enter through `pickTarget`, the drag's captured point), `planEdits.test.ts` (undo gives back the same point objects; a drag makes a
+  new one); the browser check (section 18) uses CDP's `Emulation.setGeolocationOverride` and
+  `Browser.setPermission` (granted, denied, no position) and a script that makes `isSecureContext`
+  false. A timeout is covered by the unit tests only (CDP cannot make one).
 
 ### Groups at stops and in full detail (items 247, 248)
 
@@ -3819,6 +3945,17 @@ calm plan** (`routing.plan`: `long_calm` is false for a loop), so a long Trailma
 calm search at all. The span is `straight_span_m` over the loop's points, the way back included, so
 a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
 counts both halves.
+
+**Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
+section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),
+not behind the Ride line's Edit; it is outside the part that hides while the points are
+compact, so a route being shown does not take it away. It shows with no point placed, and
+never on Mass Ride (`loopView` returns null there). Checked before any point, its visible hint,
+also its description, is `LOOP_FIRST_HINT` ("Place the starting point, then a stop or two
+along the way."), and "Loop on." plus those words are said once (`LOOP_FIRST_SAID`, from
+`loopChangeSaid`, the one function the toggle, a ride-type change and undo or redo call; with
+no points the state alone is said: the loop on with what to place, or "Loop off."). Its hint id is
+a `useId()`. `emptyPlanHint` and `loneStartHint` say "check Make it a loop under the search". `DialsPanel` no longer has the toggle or a `points` prop.
 
 **Stops in a loop (OWNER-DECISIONS 374).** With "Make it a loop" on, the page treats the ride as a
 cycle that starts and finishes at the first point, so no second point has to be stacked on the

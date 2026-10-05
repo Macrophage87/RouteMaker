@@ -9,6 +9,7 @@ import {
   emptyPlanHint,
   insertedSaid,
   loopChangeSaid,
+  LOOP_FIRST_SAID,
   loneStartHint,
   loopToggledSaid,
   pointLabel,
@@ -126,20 +127,26 @@ test("a change of the ride says how the points are renamed, and only when they a
   assert.equal(loopChangeSaid(massOn, on, 3), loopToggledSaid(true, 3));
   assert.equal(loopChangeSaid(massOff, massOn, 3), null, "the toggle does nothing on a Mass Ride");
   assert.equal(loopChangeSaid(off, massOn, 3), null);
-  // No points: nothing is renamed.
-  assert.equal(loopChangeSaid(off, on, 0), null);
-  assert.equal(loopChangeSaid(on, massOn, 0), null);
+  // No points: nothing is renamed, so only the state is said: the loop on, with what to place first (389), or "Loop off.".
+  assert.equal(loopChangeSaid(off, on, 0), "Loop on. Place the starting point, then a stop or two along the way.");
+  assert.equal(loopChangeSaid(off, on, 0), LOOP_FIRST_SAID);
+  assert.equal(loopChangeSaid(on, off, 0), "Loop off.", "off with no point says so, whether pressed or undone");
+  assert.equal(loopChangeSaid(on, on, 0), null, "and nothing when it did not change");
+  // Out of Mass Ride into a ride type with the loop on, with no point: the box comes back checked, so say it.
+  assert.equal(loopChangeSaid(massOn, on, 0), LOOP_FIRST_SAID);
+  assert.equal(loopChangeSaid(on, massOn, 0), "Loop off.");
 });
 
 test("the empty-plan hint: start then stops in a loop; the toggle offered only where the ride type has one", () => {
   const loop = emptyPlanHint("default", true);
   assert.match(loop, /set a start, then add stops/);
   assert.doesNotMatch(loop, /then an end/);
-  // After Clear the toggle stays on, hidden until there is a start: say so, and how to turn it off.
-  assert.match(loop, /The "Make it a loop" toggle is on; once the start is placed, you can turn it off in the ride settings \(the Ride line's Edit button\)\./);
+  // After Clear the toggle stays on, in view under the search (388, 389): say so, and how to turn it off.
+  assert.match(loop, /"Make it a loop" is checked, under the search; uncheck it for a ride that ends somewhere else\./);
   const plain = emptyPlanHint("default", false);
   assert.match(plain, /set a start, then an end/);
-  assert.match(plain, /turn on Make it a loop in the ride settings \(the Ride line's Edit button\)/);
+  assert.match(plain, /To finish back at the start, check "Make it a loop" under the search; then each click after the start is a stop\./);
+  assert.doesNotMatch(`${loop} ${plain}`, /ride settings|Edit button/, "the toggle is no longer behind the Ride line (388)");
   const mass = emptyPlanHint("mass-ride", false);
   assert.match(mass, /set a start, then an end/);
   assert.doesNotMatch(mass, /loop/i);
@@ -157,7 +164,7 @@ test("the lone-start hint: a stop next in a loop; the toggle offered only where 
   assert.equal(
     loneStartHint("default", false),
     'Now click the map where you want to finish, or use "Add point at map center". To finish back at the start' +
-      " instead, turn on Make it a loop in the ride settings (the Ride line's Edit button).",
+      ' instead, check "Make it a loop" under the search.',
   );
   assert.equal(
     loneStartHint("mass-ride", false),
@@ -171,6 +178,7 @@ test("the toggle's hint with a start alone talks of no end point", () => {
   const B: LonLat = [-76.98, 38.9];
   const off = loopView("default", false, [A])!;
   assert.equal(off.hint, "Turn on to finish back at the start. Each point you add is then a stop.");
+  assert.equal(loopView("default", false, [])!.hint, off.hint, "the same before any point (389)");
   assert.doesNotMatch(off.hint, /end point/);
   assert.match(loopView("default", false, [A, B])!.hint, /end point/);
   const on = loopView("default", true, [A])!;

@@ -98,7 +98,7 @@ test("the toggle can be chosen with the start alone, and its hint no longer says
   // Off, with the start alone, there is no end point yet to speak of; with two points there is.
   assert.doesNotMatch(loopView("default", undefined, [A])!.hint, /end point/);
   assert.match(loopView("default", undefined, [A, B])!.hint, /end point/);
-  assert.equal(loopView("default", true, []), null);
+  assert.equal(loopView("default", true, [])!.hint, "Place the starting point, then a stop or two along the way.", "shown with no point (389)");
   assert.equal(loopView("mass-ride", true, [A]), null);
   const implied = loopView("default", undefined, [A, B, A])!;
   assert.deepEqual([implied.checked, implied.implied], [true, true]);

@@ -568,6 +568,17 @@ export function comboboxKey(
   return { kind: "none" };
 }
 
+/**
+ * The option an Enter picks (comboboxKey's "pick"), from the list as shown
+ * (`items`, which may lead with an extra option such as "Your location") and
+ * the places in it. With nothing highlighted it is the first *place*, never the
+ * extra option: "Your location" asks the browser's permission, so only a
+ * deliberate highlight picks it (OWNER-DECISIONS 395).
+ */
+export function pickTarget<T, P extends T>(active: number, index: number, items: readonly T[], places: readonly P[]): T | undefined {
+  return active < 0 ? places[0] : items[index];
+}
+
 /** What a picked place is made: the start, the destination, or a stop on the way. */
 export type PlaceChoice = "start" | "end" | "via";
 

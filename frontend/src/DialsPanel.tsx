@@ -17,8 +17,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { WHENS, type Dials, type When } from "./lib/dials.ts";
-import { loopView } from "./lib/loop.ts";
-import type { LonLat } from "./lib/geo.ts";
 import { panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
 import { WeightSetting } from "./lib/weightDialog.ts";
@@ -28,8 +26,6 @@ interface Props {
   preset: PresetId;
   dials: Dials;
   onCommit: (dials: Dials) => void;
-  /** The ride's points: a ride that ends where it starts is a loop (OWNER-DECISIONS 266). */
-  points?: readonly LonLat[];
   /** What "Now" came to on the last route: one of the three settings. */
   resolvedWhen?: When | null;
   /** The rider and bike weight, kept by App (lib/weight.ts WeightStore): never in `dials` or the link. */
@@ -187,15 +183,7 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
-/** The dials with the loop on, or off (taken off the object). */
-function withLoop(dials: Dials, on: boolean): Dials {
-  const next: Dials = { ...dials };
-  if (on) next.loop = true;
-  else delete next.loop;
-  return next;
-}
-
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [], weight }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -212,13 +200,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [],
     else keys.current.now(commitDraft);
   };
   const view = panelView(preset, dials, draft);
-  const loop = loopView(preset, dials.loop, points);
-  const loopHintId = useId();
   return (
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
-          sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, loop,
-          avoid gravel. Every control and its behaviour is as before. */}
+          sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, avoid
+          gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
       <h3 id="dials-heading">Ride settings</h3>
       {view.assistToggle && (
         <label className="toggle">
@@ -306,29 +292,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [],
           onSave={weight.onSave}
           onClear={weight.onClear}
         />
-      )}
-      {loop && (
-        <div className="dial">
-          <label className="toggle">
-            {/* aria-disabled, not disabled, when the ride is a loop already: it stays in
-                the Tab order with its reason as its description (the a11y review's N6),
-                and a press changes nothing. */}
-            <input
-              type="checkbox"
-              checked={loop.checked}
-              aria-disabled={loop.implied || undefined}
-              aria-describedby={loopHintId}
-              onChange={(event) => {
-                if (loop.implied) return;
-                onCommit(withLoop(dials, event.target.checked));
-              }}
-            />
-            {loop.label}
-          </label>
-          <p className="hint" id={loopHintId}>
-            {loop.hint}
-          </p>
-        </div>
       )}
       <label className="toggle">
         <input

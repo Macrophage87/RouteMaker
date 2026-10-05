@@ -51,6 +51,8 @@ export async function newPage(b, { width = 1280, height = 900, mobile = false } 
   const s = (m, p) => b.send(m, p, sessionId);
   const page = {
     s,
+    /** For Browser.setPermission and the like, which are per context. */
+    contextId: browserContextId,
     listeners: new Set(),
     async close() {
       b.off(handler);
@@ -183,6 +185,8 @@ export async function axNode(page, selector) {
     expanded: prop("expanded"),
     checked: prop("checked") === "true" ? true : prop("checked") === "false" ? false : prop("checked"),
     disabled: prop("disabled"),
+    /** Left out of the accessibility tree (aria-hidden, display: none and the like). */
+    ignored: n.ignored === true,
   };
 }
 
