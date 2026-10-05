@@ -2759,8 +2759,8 @@ and removed on another. That is not a fault and not a rollback trigger.
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
 from t9, the worktree that serves the stack, one heredoc per call, with `</dev/null` on every docker
-command. Below, `$REPO` is that worktree's path and `$DATA_ROOT` the `DATA_ROOT` in its `.env`;
-set both first.
+command. Below, `$REPO` is that worktree's path (set it first), and each snippet exports
+`DATA_ROOT` with the value in its `.env`.
 The order is: pre-flight, **rollback points**, fast-forward, the api image, recreate api and worker,
 the front end last, then **verify**. Keep out of 07:00-07:30 UTC (the nightly backup) and away from
 the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-DECISIONS 293).
@@ -2770,6 +2770,7 @@ the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-
 index backup may be two releases back. `L` is the short commit t9 is on:
 
 ```sh
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
 cd "$REPO"; D=$DATA_ROOT; L=$(git rev-parse --short HEAD)
 docker tag ghcr.io/macrophage87/routemaker-api:dev ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null
 docker image inspect --format '{{.Id}}' ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null   # the live image's id
@@ -2848,6 +2849,7 @@ changes (302), and `calm_search` carries `no_fit` and the `limited` code `"ceili
 ("Long calm plans ..., Rollback", above); the old front end works against the new API.
 
 ```sh
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
 cd "$REPO"; D=$DATA_ROOT; L=<the short commit saved in step 0.1>
 docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
