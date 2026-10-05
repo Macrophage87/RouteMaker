@@ -2,9 +2,13 @@
  * The route panel's stress breakdown: the API's `stress_m` (metres of the route
  * on each tier, plus what no segment rated) as bar segments. Colours are the
  * overlay's own, and every segment carries a label and a percentage so the bar
- * does not rely on colour alone.
+ * does not rely on colour alone. Avoid is the route's own magenta, as on the route
+ * line and the route chart (OWNER-DECISIONS 397), with its cross-hatch in the
+ * near-black the route chart's strip uses (styles.css .stress-seg-5): this bar shows
+ * the route, beside its line, so one Avoid stretch has one colour (r3 spec, SF-1).
  */
 import { ACCESSIBILITY_PALETTE, currentPalette, currentTiers } from "../stressStyle.js";
+import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA } from "./avoidColour.ts";
 
 export type StressKey = "1" | "2" | "3" | "4" | "5" | "unknown";
 export type StressMetres = Partial<Record<StressKey, number>>;
@@ -66,8 +70,7 @@ export function stressSegments(stress: StressMetres): StressSegment[] {
       key: String(t.tier) as StressKey,
       short: t.short,
       label: t.label,
-      color: t.color,
-      casing: t.casing,
+      ...(t.tier === 5 ? { color: ROUTE_AVOID_MAGENTA, casing: ROUTE_AVOID_HALO } : { color: t.color, casing: t.casing }),
     })),
     { key: "unknown" as StressKey, ...unrated(), casing: unrated().color },
   ].map((row) => ({ ...row, metres: metresOf(stress, row.key) }));

@@ -57,6 +57,9 @@ CONTRACT_KEYS = {
     "leg_ends",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
+    # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
+    # profile, and on a Mass Ride its riders a minute and major junctions.
+    "profile",
     # Additive, FOLLOWUP-INTERSECTIONS (OWNER-DECISIONS items 163-172):
     # the stressful junctions, the calm search and the detour.
     "intersections",
@@ -280,6 +283,120 @@ class TestAnswer:
         body = post(client, good_body()).json()
         assert body["climb_m"] == pytest.approx(25.0)
         assert body["descent_m"] == pytest.approx(5.0)
+
+    def test_the_profile_is_the_routers_elevation_samples_with_grades_and_no_riders(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 322, 323: the chart's data is the router's per-leg elevation
+        (every ELEVATION_INTERVAL_M), where each sample is along the route, and the
+        grade there. Off a Mass Ride there are no riders a minute or crossings."""
+        router(standard_router())
+        profile = post(client, good_body()).json()["profile"]
+        assert profile["interval_m"] == routing.ELEVATION_INTERVAL_M
+        assert profile["m"] == [0, 30, 60, 90]
+        assert profile["elevation_m"] == [10.0, 20.0, 15.0, 30.0]
+        assert len(profile["grade_pct"]) == 4
+        # Read across the samples either side (here all four, 90 m): (30 - 10) / 90.
+        assert profile["grade_pct"][1] == pytest.approx((30.0 - 10.0) / 90 * 100, abs=0.1)
+        assert profile["riders_per_min"] is None
+        assert profile["flow"] is None and profile["crossings"] is None
+
+    def test_a_route_with_no_elevation_has_a_null_profile(self, client, segments, router) -> None:
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, [])])
+        router(answers)
+        response = post(client, good_body())
+        assert response.status_code == 200
+        assert response.json()["profile"] is None
+
+    def test_a_mass_ride_has_riders_a_minute_that_a_climb_lowers(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a two-lane street
+        (the segment table has no lanes here: one a direction) carries about 198 riders a
+        minute; a 6% climb of 300 m carries fewer, and the climb's row says by how much."""
+        heights = [10.0] * 6 + [10.0 + 1.8 * i for i in range(1, 11)] + [28.0] * 4
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, heights)])
+        router(answers)
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        assert len(profile["riders_per_min"]) == len(profile["m"]) == len(heights)
+        assert profile["riders_per_min"][0] == 198
+        known = [r for r in profile["riders_per_min"] if r is not None]
+        assert min(known) < 198
+        assert profile["flow"]["narrowest_riders_per_min"] == min(known)
+        assert profile["flow"]["typical_riders_per_min"] == 198
+        assert profile["climbs"] and profile["climbs"][0]["capacity_drop_pct"] > 20
+        assert profile["climbs"][0]["min_riders_per_min"] == min(known)
+        assert isinstance(profile["crossings"], list)
+
+    def test_a_mass_ride_whose_junctions_were_not_read_says_not_checked_end_to_end(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Mutation re-review SHOULD-FIX 1: junctions not read (a failed or late read) reach
+        the chart as `crossings: null`, never as `[]` ("none")."""
+        router(standard_router())
+        monkeypatch.setattr(routing, "_events", lambda *_args: None)
+        profile = post(client, good_body("mass-ride")).json()["profile"]
+        assert profile["crossings"] is None
+        assert profile["crossings_complete"] is None
+
+    def test_an_over_budget_mass_ride_says_its_junctions_were_not_checked(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Over budget the joins are skipped: the chart says "not checked"."""
+        router(standard_router())
+        clock = iter(range(0, 10_000, 30))
+        monkeypatch.setattr(routing, "clock", lambda: float(next(clock)))
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        assert profile is not None and profile["crossings"] is None
+
+    def test_a_mass_ride_whose_events_come_as_a_plain_list_lists_its_flagged_junctions(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Events without majors beside them: the flagged ones stand in, said as possibly
+        incomplete (correctness re-review R3, mutation re-review SHOULD-FIX 1)."""
+        router(standard_router())
+        full = post(client, good_body("mass-ride")).json()["profile"]
+        assert full["crossings_complete"] is True
+        original = routing._events
+        monkeypatch.setattr(routing, "_events", lambda *args: list(original(*args) or []))
+        profile = post(client, good_body("mass-ride")).json()["profile"]
+        assert isinstance(profile["crossings"], list)
+        assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
+        assert profile["crossings_complete"] is False
+
+    def test_a_mass_rides_width_comes_from_the_segments_lanes_and_one_way(
+        self, client, segments, router
+    ) -> None:
+        """Mutation review, finding 4: `road_lanes` and `road_oneway` reach the width end
+        to end. Way 101 is a 2-lane one-way (6.7 m: 198 a minute; one lane a direction
+        would be 99, two-way 396), way 202 a 2-lane two-way street (13.4 m: 396), and way
+        303 has no segment row (not known). Level all the way, so no grade factor."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
+                " WHERE osm_way_id = 101"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = false"
+                " WHERE osm_way_id = 202"
+            )
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, [10.0] * 75)])
+        router(answers)
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        at = dict(zip(profile["m"], profile["riders_per_min"], strict=True))
+        assert at[450] == 198
+        assert at[1290] == 396
+        assert at[2010] is None
+        assert profile["unchecked"] == [] and profile["avoid"] == []
 
     def test_nothing_about_the_request_needs_or_makes_a_session(
         self, client, segments, router

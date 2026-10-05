@@ -188,11 +188,19 @@ export function stepsCount(n: number): string {
  * are closed (Directions remembers its own state).
  */
 export const ROUTE_FOLDS = {
+  // The route chart (OWNER-DECISIONS 322, 323), in the elevation slot; App closes it on a small screen. Its title
+  // on a Mass Ride is "Elevation and riders per minute" (profileChart.ts foldName).
+  elevation: { title: "Elevation and stress", open: true },
   facilities: { title: "Stress and facilities", open: false },
   directions: { title: "Directions", open: false },
   junctions: { title: "Junctions to watch", open: false },
   choices: { title: "Routes to choose from", open: true },
 } as const;
+
+/** Whether the route chart's fold starts open: open beside the map, offered collapsed on a small screen (OWNER-DECISIONS 322). */
+export function chartFoldOpen(narrow: boolean): boolean {
+  return ROUTE_FOLDS.elevation.open && !narrow;
+}
 
 // ---- Where the focus goes ---------------------------------------------------------
 

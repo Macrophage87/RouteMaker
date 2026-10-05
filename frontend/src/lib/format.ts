@@ -76,6 +76,16 @@ export function formatRadius(metres: number): string {
   return `${feet} ft (${metric} m)`;
 }
 
+/**
+ * A place on a chart's distance axis, miles first, kilometres in brackets, short enough to label a tick:
+ * "0 mi (0 km)", "4 mi (6.4 km)", "26 mi (42 km)" (the route chart, OWNER-DECISIONS 322).
+ */
+export function formatAxisDistance(metres: number): string {
+  const at = Math.max(Number.isFinite(metres) ? metres : 0, 0);
+  const short = (value: number) => (value >= 10 ? Math.round(value) : Number(value.toFixed(1))).toString();
+  return `${short(at / METRES_PER_MILE)} mi (${short(at / 1000)} km)`;
+}
+
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
 export function formatExtra(metres: number): string {
   if (!usable(metres)) return DASH;

@@ -67,7 +67,10 @@ from routemaker.intersections import (
     Junction,
     Movement,
     Road,
+    RouteEvents,
     assess_route,
+    major_crossings,
+    majors_of_events,
 )
 from routemaker.trace_junctions import (
     APPROACH_M,
@@ -903,4 +906,23 @@ def events_of(
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
-    return assess_route(build_junctions(raws, nodes, roads), group)
+    built = build_junctions(raws, nodes, roads)
+    events = assess_route(built, group)
+    if not group:
+        return events
+    return with_majors(built, events)
+
+
+def with_majors(built: list[Junction], events: list[Event]) -> RouteEvents:
+    """A Mass Ride's events with its major junctions beside them (OWNER-DECISIONS 333,
+    396), which take in busy roads the planner does not flag. A failure in finding them
+    costs only the chart's extra crossings: the flagged events stand in for them
+    (`majors_of_events`), marked incomplete so the chart says the list may be missing
+    some (correctness re-review R3), and the events themselves (the markers, the corker
+    list, the description's junctions) are kept whatever happens (operations review,
+    SHOULD-FIX 1)."""
+    try:
+        return RouteEvents(events, major_crossings(built, events))
+    except Exception:  # noqa: BLE001 - the route's own junction events must survive
+        logger.warning("the major junctions could not be found", exc_info=True)
+        return RouteEvents(events, majors_of_events(events), complete=False)

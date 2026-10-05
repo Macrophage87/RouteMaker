@@ -198,6 +198,24 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
+## The Mass Ride flow model (pending: FOLLOWUP-FLOW-CALIBRATION)
+
+- Credit: on the chart's source line, "Riders per minute: estimated from OpenStreetMap
+  lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill
+  adjustment not yet checked)." OpenStreetMap is credited as the map's data already
+  (above); the DC Bike Party counts are the owner's (PLAN item 173).
+- What: `routemaker.flow`, the riders-a-minute figure of the Mass Ride route chart
+  (OWNER-DECISIONS 328, 332) and, once built, the capacity map (387 part 1).
+- Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
+  owner's counts of three DC Bike Party rides (PLAN item 173,
+  `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item
+  175). The grade factors (the climb's 12 per unit of grade above 1%, the 150 m
+  set-in, the descent's 5 per unit past 4%, the 30% and 60% floors) are not from a
+  measurement.
+- Status: accepted as the working model (OWNER-DECISIONS 394); sources pending
+  FOLLOWUP-FLOW-CALIBRATION, which checks the constants against the literature and the
+  owner's DC event videos and records the sources here.
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from

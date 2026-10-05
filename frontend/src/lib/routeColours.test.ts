@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FACILITIES, currentTiers } from "../stressStyle.js";
+import { FACILITIES, contrastRatio, currentTiers, setAccessibility } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
+  ROUTE_AVOID_HALO,
+  ROUTE_AVOID_MAGENTA,
+  ROUTE_AVOID_MARK,
+  ROUTE_AVOID_MARK_DASH,
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
   routeClasses,
@@ -14,6 +18,8 @@ import {
   spanClass,
 } from "./routeColours.ts";
 import { UNRATED } from "./stressBar.ts";
+import { ROUTE_AVOID_LAYER_ID, routeAvoidLayer } from "./mapGlue.ts";
+import { readFileSync } from "node:fs";
 
 // A straight line east along 38.9 N, one vertex every 0.001 degrees (~86.6 m).
 const LINE: LonLat[] = Array.from({ length: 11 }, (_, i) => [-77.05 + i * 0.001, 38.9] as LonLat);
@@ -26,12 +32,36 @@ function span(from_m: number, to_m: number, tier: number | null, facility: Stres
 test("each class is drawn in the stress map's own colour, from the shared tokens", () => {
   // OWNER-DECISIONS item 81; the tiles lane owns the palette (item 74).
   for (const tier of currentTiers()) {
+    if (tier.tier === 5) continue;
     assert.equal(spanClass({ tier: tier.tier, facility: "none" }).color, tier.color, `LTS ${tier.tier}`);
   }
+  // Avoid on the route is one magenta (OWNER-DECISIONS 397), paved or unpaved.
+  assert.equal(spanClass({ tier: 5, facility: "none" }).color, ROUTE_AVOID_MAGENTA);
+  assert.equal(spanClass({ tier: 5, facility: "none", unpaved: true }).color, ROUTE_AVOID_MAGENTA);
   const path = FACILITIES.find((f) => f.facility === "path");
   assert.equal(spanClass({ tier: 2, facility: "path" }).color, path?.color);
   assert.equal(spanClass({ tier: null, facility: null }).color, UNRATED.color);
   assert.equal(spanClass({ tier: 9, facility: "lane" }).key, "unknown", "a tier the style does not know");
+});
+
+test("Avoid is magenta on the route in every palette, over a near-black halo 3:1 from it, and only where the route rides it (397)", () => {
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      for (const key of ["5", "u5"]) {
+        const c = routeClasses().find((x) => x.key === key)!;
+        assert.equal(c.color, ROUTE_AVOID_MAGENTA, `${key}${on ? " (high contrast)" : ""}`);
+        assert.equal(c.halo, ROUTE_AVOID_HALO);
+        assert.ok(contrastRatio(c.color, c.halo) >= 3, `${contrastRatio(c.color, c.halo).toFixed(2)}:1`);
+      }
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+  // The map's own Avoid roads keep the palette's colour: only the route is repainted.
+  assert.notEqual(currentTiers().find((t) => t.tier === 5)?.color, ROUTE_AVOID_MAGENTA);
+  assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 3)]).some((r) => r.key === "5"), false, "no Avoid entry on a route without Avoid");
+  assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 5)]).find((r) => r.key === "5")?.color, ROUTE_AVOID_MAGENTA);
 });
 
 test("traffic-free comes before the tier, and a lane is its tier", () => {
@@ -39,6 +69,38 @@ test("traffic-free comes before the tier, and a lane is its tier", () => {
   assert.equal(spanClass({ tier: 3, facility: "lane" }).key, "3");
   assert.equal(spanClass({ tier: 5, facility: "protected" }).key, "5");
   assert.equal(spanClass({ tier: null, facility: "path" }).key, "path");
+  // But Avoid comes before traffic-free, so the route line matches the chart's magenta (r3 N3).
+  assert.equal(spanClass({ tier: 5, facility: "path" }).key, "5");
+  assert.equal(spanClass({ tier: 5, facility: "path" }).color, ROUTE_AVOID_MAGENTA);
+});
+
+test("a paved Avoid section carries the white dash-dot, in every palette; nothing else does, and an unpaved Avoid keeps its dots instead", () => {
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
+      const features = sectionFeatures(routeSections(LINE, [span(0, 300, 3), span(300, 600, 5), span(600, 900, 5, "none")].map((s, i) => (i === 2 ? { ...s, unpaved: true } : s)))).features;
+      assert.deepEqual(features.map((f) => [f.properties.key, f.properties.avoid, f.properties.unpaved]), [["3", false, false], ["5", true, false], ["u5", false, true]]);
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+  assert.ok(contrastRatio(ROUTE_AVOID_MARK, ROUTE_AVOID_MAGENTA) >= 3);
+  // Its dash is a dash-dot, unlike the unpaved mark's even dots.
+  assert.equal(ROUTE_AVOID_MARK_DASH.length, 4);
+  assert.notEqual(ROUTE_AVOID_MARK_DASH[0], ROUTE_AVOID_MARK_DASH[2]);
+  // The map layer that draws it: only the marked sections, in their mark colour, above the unpaved dots.
+  const layer = routeAvoidLayer("route-stress");
+  assert.equal(layer.id, ROUTE_AVOID_LAYER_ID);
+  assert.deepEqual(layer.filter, ["==", ["get", "avoid"], true]);
+  assert.deepEqual(layer.paint["line-color"], ["get", "mark"]);
+  assert.deepEqual(layer.paint["line-dasharray"], [...ROUTE_AVOID_MARK_DASH]);
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  const unpavedAt = mapView.indexOf("map.addLayer(routeUnpavedLayer(");
+  const avoidAt = mapView.indexOf("map.addLayer(routeAvoidLayer(");
+  assert.ok(unpavedAt > 0 && avoidAt > unpavedAt && avoidAt < mapView.indexOf('id: "route-line"'));
+  // The legend's swatch draws it too.
+  assert.match(readFileSync(new URL("../FacilityBreakdown.tsx", import.meta.url), "utf8"), /row\.mark && \(/);
 });
 
 test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, then not rated", () => {
@@ -105,7 +167,8 @@ test("one section covers the whole line", () => {
 test("the sections become one GeoJSON feature each, coloured", () => {
   const collection = sectionFeatures(routeSections(LINE, [span(0, 500, 1), span(500, 1000, 5)]));
   assert.equal(collection.features.length, 2);
-  assert.equal(collection.features[1].properties.color, currentTiers()[4].color);
+  assert.equal(collection.features[1].properties.color, ROUTE_AVOID_MAGENTA, "Avoid on the route is magenta (397)");
+  assert.equal(collection.features[0].properties.color, currentTiers()[0].color);
   assert.equal(collection.features[1].properties.key, "5");
   assert.deepEqual(sectionFeatures(null), { type: "FeatureCollection", features: [] });
 });

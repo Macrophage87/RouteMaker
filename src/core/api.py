@@ -805,6 +805,127 @@ class MovedPointOut(Schema):
     note: str = Field(description="One plain sentence to show the rider.")
 
 
+class ProfileClimbOut(Schema):
+    """One sustained climb of the profile, for the chart's climbs table
+    (OWNER-DECISIONS 322; on a Mass Ride also 328(c): the capacity it costs)."""
+
+    from_m: int = Field(description="Metres along the route where it starts.")
+    to_m: int
+    gain_m: float
+    avg_grade_pct: float
+    max_grade_pct: float
+    tier: int | None = Field(description="The highest LTS tier (1-5) of the sections it rides.")
+    capacity_drop_pct: int | None = Field(
+        default=None,
+        description="Mass Ride only: the most the climb takes off a stretch's riders a minute.",
+    )
+    min_riders_per_min: int | None = Field(
+        default=None, description="Mass Ride only: the least the climb carries."
+    )
+
+
+class ProfileFlowOut(Schema):
+    narrowest_riders_per_min: int | None
+    narrowest_m: int | None = Field(description="Metres along the route to the narrowest sample.")
+    typical_riders_per_min: int | None = Field(description="The median over the route.")
+
+
+class ProfileCrossingOut(Schema):
+    """A Mass Ride's major junction (OWNER-DECISIONS 333, 396): one that crosses or joins a
+    road of LTS 3 or higher, whatever its control, or any junction with a stress rating."""
+
+    m: int
+    street: str | None = Field(description="The cross street as mapped; null if unnamed.")
+    severity: Literal["orange", "red"] | None = Field(
+        description=(
+            "The planner's junction marker (triangle, diamond); null where the junction is"
+            " major only for the busy road it crosses or joins (a dot)."
+        )
+    )
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
+    lanes: int | None = Field(description="Lanes of the street, both directions, if known.")
+    crossed_tier: int | None = Field(
+        description="The tier of the road that makes it major: crossed, or joined (`kind`)."
+    )
+    kind: Literal["flagged", "crossing", "joining"] = Field(
+        default="flagged",
+        description=(
+            "Why it is major: a junction the planner flags, a busy road crossed (riding"
+            " along a busy road past a busy cross street included), or a busy road joined."
+        ),
+    )
+    corkers_needed: bool = Field(
+        description=(
+            "Corkers hold it (OWNER-DECISIONS 142, 400): the crossed or joined road is LTS 3"
+            " or worse; a left or right turn onto such a road needs them as a crossing does."
+        )
+    )
+
+
+class ProfileRangeOut(Schema):
+    """A stretch of the profile, metres along the route, from where the stretch begins to
+    where it ends (the route's own stretches, not the samples)."""
+
+    from_m: int
+    to_m: int
+
+
+class ProfileOut(Schema):
+    """The route's elevation along its distance, for the route chart (OWNER-DECISIONS
+    322, 323; Mass Ride 328, 332, 333, 396). Parallel arrays, one entry a router sample, in
+    the order ridden: the router samples every `interval_m` along each leg, so `m` is the
+    leg's start plus that spacing, never past the leg's end (a joint is two samples at one
+    place; a leg with no elevation is a null height at each end). A route over about 60 km
+    is thinned to close to 2,000 samples (`routemaker.profile.thin`: each window keeps its
+    steepest grade, its highest and lowest heights, its lowest riders figure and its gaps),
+    after every figure is worked out on every sample. On a Mass Ride there are riders
+    samples too at each place the width changes (a pair at one distance, one each side)
+    and along a leg with no elevation (a null height). `elevation_m` is null where the
+    router had none, and `grade_pct` is read across four samples (`routemaker.profile`),
+    signed, positive uphill."""
+
+    interval_m: float
+    m: list[int]
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+    climbs: list[ProfileClimbOut]
+    riders_per_min: list[int | None] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the grade-adjusted riders a minute at each sample"
+            " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown or"
+            " the stretch is marked Avoid (325: no carrying capacity)."
+        ),
+    )
+    flow: ProfileFlowOut | None = None
+    crossings: list[ProfileCrossingOut] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the major junctions, in route order. Null where they were not"
+            " checked (the junctions could not be read in time); an empty list is none."
+        ),
+    )
+    crossings_complete: bool | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: false where only the flagged junctions could be read (finding"
+            " the busy-road ones failed), so `crossings` may be incomplete; null with"
+            " `crossings` null."
+        ),
+    )
+    avoid: list[ProfileRangeOut] | None = Field(
+        default=None,
+        description="Mass Ride only: the stretches marked Avoid (325), which carry no figure.",
+    )
+    unchecked: list[ProfileRangeOut] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the stretches on a leg that could not be traced, where neither"
+            " the width nor the junctions are known."
+        ),
+    )
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
@@ -817,6 +938,10 @@ class RouteBody(Schema):
     facility_m: FacilityOut
     stress_adjustments: list[StressAdjustmentOut]
     stress_spans: list[StressSpanOut]
+    # The elevation along the route for the route chart (OWNER-DECISIONS 322, 323), and on
+    # a Mass Ride its riders a minute and major junctions (328, 333). Additive: null where
+    # no leg had elevation.
+    profile: ProfileOut | None = None
     dials: DialsOut
     hills_seek: HillsSeekOut | None
     hills_avoid: HillsAvoidOut | None

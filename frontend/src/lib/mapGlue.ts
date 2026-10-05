@@ -20,7 +20,7 @@ import {
 import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import type { RouteResponse } from "./api.ts";
-import { routePaint, routeSections, sectionFeatures } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, routePaint, routeSections, sectionFeatures } from "./routeColours.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -132,6 +132,24 @@ export function routeUnpavedLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
   };
 }
 
+export const ROUTE_AVOID_LAYER_ID = "route-avoid";
+
+/**
+ * The white dash-dot down the middle of the route's paved Avoid sections (OWNER-DECISIONS 397 asks
+ * that the magenta is not the only cue): drawn as the unpaved mark is, at the mark's width, from the
+ * feature's own `mark` colour. An unpaved Avoid carries the unpaved dots instead (routeColours.ts).
+ */
+export function routeAvoidLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
+  return {
+    id: ROUTE_AVOID_LAYER_ID,
+    type: "line" as const,
+    source: sourceId,
+    filter: ["==", ["get", "avoid"], true],
+    layout: { "line-join": "round" as const },
+    paint: { "line-color": ["get", "mark"], "line-width": ["get", "markWidth"], "line-dasharray": [...ROUTE_AVOID_MARK_DASH] },
+  };
+}
+
 /**
  * Draw the route's sections in the palette in use: cut the route at its
  * stress spans, put them in the sections source, and set the route layers'
@@ -153,6 +171,7 @@ export function setRouteSections(
   map.setPaintProperty("route-ring", "line-opacity", paint.haloOpacity);
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
+  map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
 }
 
 /** Show or hide every overlay layer that is on the map. */

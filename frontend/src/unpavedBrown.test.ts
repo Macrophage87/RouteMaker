@@ -232,8 +232,11 @@ test("an unpaved section of the route is drawn in its tier's brown, with its unp
   for (const tier of tiers) {
     const cls = spanClass({ tier: tier.tier, facility: "none", unpaved: true });
     assert.equal(cls.key, `u${tier.tier}`);
-    assert.equal(cls.color, tier.unpavedColor);
-    assert.equal(cls.halo, tier.unpavedCasing);
+    // An unpaved Avoid on the route is the route's one Avoid magenta, with its dotted mark (OWNER-DECISIONS 397; routeColours.test.ts).
+    if (tier.tier !== 5) {
+      assert.equal(cls.color, tier.unpavedColor);
+      assert.equal(cls.halo, tier.unpavedCasing);
+    }
     assert.equal(cls.width, spanClass({ tier: tier.tier, facility: "none" }).width, "the paved tier's width");
     assert.ok(isUnpavedClass(cls.key));
   }

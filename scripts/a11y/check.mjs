@@ -1109,6 +1109,154 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await press(p);
     const pts = await p.eval("!!document.querySelector('.link-note')");
     check("locate: a press on the insecure page asks nothing and adds nothing", pts === false);
+// ---- 19. The route chart (OWNER-DECISIONS 322, 323, 328, 332, 333): a slider with the spoken sentence, its tables, the map marker ----
+{
+  const p = await open({ junctions: false });
+  const fold = await p.eval(`(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and stress'); const d = h?.nextElementSibling; return { heading: !!h, details: d?.tagName, open: d?.open, summary: d?.querySelector('summary')?.textContent }; })()`);
+  check("chart: an \"Elevation and stress\" fold with its own heading, open beside the map", fold.heading && fold.details === "DETAILS" && fold.open === true && fold.summary === "Elevation and stress", JSON.stringify(fold));
+  const first = await axNode(p, ".pc-plot");
+  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
+  check("chart: its description is the key hint only (the summary is the text just before it)", /^Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? "") && !/Over 2\.9 mi/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
+  check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
+  const shares = await p.eval("document.querySelector('.pc-summary').textContent");
+  check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
+  check("chart: no colour-only cue: the grade bands are named in words, and each has a pattern over the amber", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.includes('Grade 5% to 8%') && l.includes('Grade 8% or more') && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg pattern[id$="-dots"]') && !!document.querySelector('.pc-svg path.pc-band-1[fill$="-dots)"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
+  check("chart: the strip and its key say a traffic-free path as the map does", await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|') === 'Traffic-free path|LTS 2'"), await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|')"));
+  await p.eval("document.querySelector('.pc-plot').focus(); true");
+  check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
+  for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+  await sleep(150);
+  const three = await axNode(p, ".pc-plot");
+  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(three?.valuetext ?? ""), three?.valuetext);
+  check("chart: and put a marker on the map, hidden from a screen reader (the sentence is the announcement)", await p.eval("(() => { const m = document.querySelector('.scrub-marker'); return !!m && m.getAttribute('aria-hidden') === 'true' && m.tabIndex < 0; })()"));
+  for (let i = 0; i < 9; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+  await sleep(150);
+  const climb = await axNode(p, ".pc-plot");
+  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test(climb?.valuetext ?? ""), climb?.valuetext);
+  await p.shot(`${SHOTS}/chart_stress_focused.png`);
+  await p.key("End", "End", 35);
+  await sleep(100);
+  check("chart: End goes to the end of the route", /^Mile 2\.9: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  await p.key("Home", "Home", 36);
+  await sleep(100);
+  check("chart: Home goes to Mile 0.0", /^Mile 0\.0: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""));
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
+  await p.key("c", "KeyC", 67);
+  await sleep(100);
+  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  await p.key("Home", "Home", 36);
+  for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+  await sleep(100);
+  // The mouse over a focused slider: the marker and the readout follow it; the spoken value does not (a11y S3).
+  const box = await p.eval("(() => { const r = document.querySelector('.pc-svg').getBoundingClientRect(); return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.3 }; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
+  await sleep(200);
+  const hovered = await p.eval("({ readout: document.querySelector('.pc-readout').textContent, now: document.querySelector('.pc-plot').getAttribute('aria-valuetext') })");
+  check("chart: a mouse over the focused slider moves the readout but not the value a screen reader hears", /^Mile 1\.\d: elevation/.test(hovered.readout) && /^Mile 0\.3: /.test(hovered.now), JSON.stringify(hovered));
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
+  await sleep(150);
+  await p.tab();
+  await sleep(250);
+  check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
+  // The mouse: hovering moves the same marker.
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
+  await sleep(200);
+  check("chart: hovering the picture moves a marker on the map too, and shows the same sentence", await p.eval("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout').textContent)"), await p.eval("document.querySelector('.pc-readout').textContent"));
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
+  await sleep(150);
+  await p.eval("document.querySelector('.pc-plot').focus(); true");
+  await sleep(100);
+  check("chart: coming back to it carries on from where the keyboard left it (a11y N2)", /^Mile 0\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  await p.eval("document.activeElement.blur(); true");
+  await sleep(150);
+  const table = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); const was = d.open; d.querySelector('summary').click(); const t = d.querySelector('table'); return { was, summary: d.querySelector('summary').textContent, caption: t?.querySelector('caption')?.textContent, heads: [...t.querySelectorAll('thead th')].map((x) => x.textContent), row: [...t.querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), rowHead: t.querySelector('tbody tr:first-child > *').tagName }; })()`);
+  await sleep(150);
+  check("chart: the climbs table is behind a closed \"Climbs as a table\"", table.was === false && table.summary === "Climbs as a table", JSON.stringify(table));
+  check("chart: it has a caption and column headers: start, length, gain, average, maximum, stress", table.caption === "Climbs, in the order ridden" && JSON.stringify(table.heads) === JSON.stringify(["Start", "Length", "Gain", "Average grade", "Maximum grade", "Stress"]), JSON.stringify(table));
+  check("chart: the climb's row, in feet first", JSON.stringify(table.row) === JSON.stringify(["Mile 1.1", "0.2 mi (0.3 km)", "68 ft (21 m)", "7%", "9%", "LTS 2"]) && table.rowHead === "TH", JSON.stringify(table.row));
+  const ax = await axNode(p, ".pc-table");
+  check("chart: the table is a table to a screen reader, named by its caption", ax?.role === "table" && ax.name === "Climbs, in the order ridden", JSON.stringify(ax));
+  check("chart: the stress strip is drawn, a section for each stress section, with a frame", await p.eval("document.querySelectorAll('.pc-svg g > rect[fill]').length >= 2 && !!document.querySelector('.pc-strip-frame')"));
+  check("chart: nothing is wider than the panel at 1280 px", await p.eval("(() => { const c = document.querySelector('.elevation-chart'); return c.scrollWidth <= c.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth; })()"));
+  check("chart: no id is used twice (the patterns' ids are unique)", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
+  await p.close();
+}
+{
+  // A phone: the fold is collapsed to begin with, and opens to a chart that fits.
+  const p = await open({ width: 375, height: 800, mobile: true, junctions: false, ride: false });
+  const shut = await p.eval("(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and stress'); const d = h?.nextElementSibling; return d ? d.open : null; })()");
+  check("chart at 375 px: the fold is collapsed by default", shut === false, String(shut));
+  await p.eval("(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and stress'); h.nextElementSibling.querySelector('summary').click(); return true; })()");
+  await sleep(300);
+  const fit = await p.eval("(() => { const s = document.querySelector('.pc-svg').getBoundingClientRect(); return { w: Math.round(s.width), page: document.documentElement.scrollWidth, win: window.innerWidth, readable: parseFloat(getComputedStyle(document.querySelector('.pc-axis-text')).fontSize) * (s.width / 360) }; })()");
+  check("chart at 375 px: opened, it fits the screen and its type stays 8 px or more", fit.page <= fit.win && fit.w <= fit.win && fit.readable >= 8, JSON.stringify(fit));
+  await p.eval("document.querySelector('.elevation-chart').scrollIntoView({ block: 'center' }); true");
+  await sleep(200);
+  await p.shot(`${SHOTS}/chart_stress_375.png`);
+  await p.close();
+}
+{
+  // The Mass Ride version: the riders-per-minute area in place of the strip, and the major intersections.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false });
+  const heading = await p.eval("[...document.querySelectorAll('h3')].map((x) => x.textContent).filter((t) => /^Elevation/.test(t))");
+  check("mass chart: the fold is \"Elevation and riders per minute\"", JSON.stringify(heading) === JSON.stringify(["Elevation and riders per minute"]), JSON.stringify(heading));
+  const shape = await p.eval(`(() => ({
+    strip: !!document.querySelector('.pc-strip-frame'),
+    patterns: [...document.querySelectorAll('.pc-svg pattern[id*="-flow-"]')].map((x) => x.id.replace(/^.*-flow-/, '')).sort(),
+    fills: [...new Set([...document.querySelectorAll('.pc-svg path[fill-opacity]')].map((x) => x.getAttribute('fill')))].sort(),
+    guides: [...document.querySelectorAll('.pc-guide-text')].map((x) => x.textContent),
+    ticks: document.querySelectorAll('.pc-tick').length,
+    names: [...document.querySelectorAll('.pc-cross-text')].map((x) => x.textContent),
+    legend: [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent),
+  }))()`);
+  check("mass chart: no stress strip; the riders area is filled in the band colours, each with its own pattern", !shape.strip && JSON.stringify(shape.patterns) === JSON.stringify(["crosshatch", "diagonal", "dots", "horizontal"]) && shape.fills.every((f) => ["#d7191c", "#f28e2b", "#1a9850", "#6a3d9a"].includes(f)) && shape.fills.length >= 3, JSON.stringify(shape));
+  check("mass chart: the dotted guides are labelled 60, 120 and 200", JSON.stringify(shape.guides) === JSON.stringify(["60", "120", "200"]), JSON.stringify(shape.guides));
+  const guides = await p.eval(`(() => { const probe = document.createElement('span'); probe.style.color = 'var(--text)'; probe.style.backgroundColor = 'var(--bg)'; document.querySelector('.elevation-chart').append(probe); const cs = getComputedStyle(probe); const bg = cs.backgroundColor; const t = cs.color; probe.remove(); return { bg, text: t, labels: [...document.querySelectorAll('.pc-guide-text')].map((x) => getComputedStyle(x).fill), lines: [...document.querySelectorAll('.pc-guide')].map((x) => getComputedStyle(x).stroke), swatches: [...document.querySelectorAll('.pc-guide-swatch')].map((x) => x.getAttribute('fill')) }; })()`);
+  const rgb = (s) => (s.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map(Number);
+  check("mass chart: the guides' figures are in the text colour, beside a swatch of the band colour (a11y S1)", guides.labels.every((f) => f === guides.text) && JSON.stringify(guides.swatches) === JSON.stringify(["#d7191c", "#f28e2b", "#1a9850"]), JSON.stringify(guides));
+  check("mass chart: each guide line is 3:1 or more on the panel", guides.lines.length === 3 && guides.lines.every((s) => contrast(rgb(s), rgb(guides.bg)) >= 3), JSON.stringify(guides.lines.map((s) => contrast(rgb(s), rgb(guides.bg)).toFixed(2))));
+  const marks = await p.eval(`(() => ({ caret: !!document.querySelector('.pc-narrowest path'), label: document.querySelector('.pc-narrowest-text')?.textContent, avoid: document.querySelectorAll('.pc-avoid').length, avoidText: document.querySelector('.pc-avoid-text')?.textContent, avoidFill: document.querySelector('.pc-avoid rect')?.getAttribute('fill'), avoidSize: parseFloat(getComputedStyle(document.querySelector('.pc-avoid-text')).fontSize), avoidInk: getComputedStyle(document.querySelector('.pc-avoid-text')).fill, avoidHatch: document.querySelector('.pc-svg pattern[id$="-avoid"] path')?.getAttribute('d'), bottleneckHatch: document.querySelector('.pc-svg pattern[id$="-flow-crosshatch"] path')?.getAttribute('d') }))()`);
+  check("mass chart: the narrowest point is marked with a shape and its figure (147)", marks.caret && marks.label === "Narrowest 55", JSON.stringify(marks));
+  check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Avoid (A where narrow): no carrying capacity") && shape.legend.includes("Narrowest point (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
+  check("mass chart: Avoid is magenta with a white word at the chart's 11-unit type and a texture of its own, not the bottleneck's cross-hatch (397)", marks.avoidFill === "#d6008f" && marks.avoidSize === 11 && /255, 255, 255|#fff/i.test(marks.avoidInk) && !!marks.avoidHatch && marks.avoidHatch !== marks.bottleneckHatch, JSON.stringify(marks));
+  check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
+  check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
+  await p.eval("document.querySelector('.pc-plot').focus(); true");
+  for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+  await sleep(150);
+  const ax = await axNode(p, ".pc-plot");
+  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Elevation and riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(ax));
+  await p.shot(`${SHOTS}/chart_mass_focused.png`);
+  await p.key("i", "KeyI", 73);
+  await sleep(100);
+  check("mass chart: I jumps to the next major intersection", /^Mile 1\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  for (let i = 0; i < 10; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+  await sleep(100);
+  check("mass chart: on the Avoid stretch it says Avoid, never a figure", /^Mile 2\.3: level, Avoid, no carrying capacity\. Next: 9th Street Northwest/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  await p.key("End", "End", 35);
+  await sleep(100);
+  check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]) }; })()`);
+  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker and corkers", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed", JSON.stringify(tables));
+  await p.close();
+}
+{
+  // Forced colours (a11y S6): the chart and its key both keep their colours, so they still match; the words follow the system's text colour.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false, forced: true });
+  const forced = await p.eval(`(() => { const probe = document.createElement('span'); probe.style.color = 'CanvasText'; document.body.append(probe); const text = getComputedStyle(probe).color; probe.style.color = 'Canvas'; document.body.append(probe); const canvas = getComputedStyle(probe).color; probe.remove(); const svg = document.querySelector('.pc-svg'); const keys = [...document.querySelectorAll('.pc-legend svg')]; return { text, svg: getComputedStyle(svg).forcedColorAdjust, keys: keys.map((k) => getComputedStyle(k).forcedColorAdjust), border: keys.map((k) => getComputedStyle(k).borderTopStyle), axis: getComputedStyle(document.querySelector('.pc-axis-text')).fill, line: getComputedStyle(document.querySelector('.pc-line')).stroke, dot: getComputedStyle(document.querySelector('.pc-dot')).fill, frame: getComputedStyle(document.querySelector('.pc-avoid-frame')).stroke, inner: getComputedStyle(document.querySelector('.pc-avoid-inner')).stroke, canvas }; })()`);
+  check("chart in forced colours: the picture and its key keep their colours, the key's swatches framed", forced.svg === "none" && forced.keys.length >= 6 && forced.keys.every((k) => k === "none") && forced.border.every((b) => b === "solid"), JSON.stringify(forced));
+  check("chart in forced colours: its words and line are the system's text colour", forced.axis === forced.text && forced.line === forced.text && forced.dot === forced.text && forced.frame === forced.text && forced.inner === forced.canvas && forced.canvas !== forced.text, JSON.stringify(forced));
+  await p.close();
+}
+{
+  // For the eye only: both charts in the dark theme, scrolled into view and with the scrub at the climb (no checks).
+  for (const [route, preset, name] of [[S_DEFAULT, "default", "stress"], [S_MASS, "mass-ride", "mass"]]) {
+    const p = await open({ route, hash: hashFor(preset, 70), scheme: "dark", junctions: false });
+    await p.eval("(() => { const c = document.querySelector('.elevation-chart'); c.scrollIntoView({ block: 'center' }); const t = c.querySelector('.pc-plot'); t.focus(); return true; })()");
+    for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+    await sleep(300);
+    await p.shot(`${SHOTS}/chart_${name}_dark.png`);
     await p.close();
   }
 }
@@ -1117,7 +1265,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 213;
+const EXPECTED = 258;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
