@@ -256,7 +256,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
   const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
   assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
-  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, "s");
+  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py).
+  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? "mass" : "s");
 });
 
 test("the ring (OWNER-DECISIONS 371) is drawn on paved and unknown-surface roads only, never on an unpaved one", () => {
@@ -402,7 +403,11 @@ test("stressFilters covers every overlay layer, and a style with them validates"
   assert.deepEqual([...Object.keys(filters), ...Object.keys(massFilters())].sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
   const style = {
     version: 8,
-    sources: { stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] } },
+    sources: {
+      stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
+      // The Mass Ride layers' own tiles (core/mass_tiles.py).
+      mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+    },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };
   assert.deepEqual(spec.validateStyleMin(style), []);

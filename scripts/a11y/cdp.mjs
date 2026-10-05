@@ -135,6 +135,8 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  */
 export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   page.routeRequests = 0;
+  // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
+  page.tileRequests = { stress: 0, mass: 0 };
   await page.s("Fetch.enable", {
     patterns: [{ urlPattern: "*/api/*" }, { urlPattern: "*/tiles/*" }, { urlPattern: "*/basemap/*" }, { urlPattern: "*/auth/*" }],
   });
@@ -145,7 +147,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
     let status = 404;
     let body = "";
     let type = "text/plain";
-    if (url.pathname.startsWith("/tiles/stress/")) {
+    if (url.pathname.startsWith("/tiles/mass/")) {
+      // The Mass Ride map's own tiles (core/mass_tiles.py): roads with a capacity on a rebuilt
+      // table, and empty on one without the column.
+      page.tileRequests.mass += 1;
+      status = stressTiles ? 200 : 503;
+      type = "application/x-protobuf";
+      if (stressTiles === "capacity") body = capacityTile();
+    } else if (url.pathname.startsWith("/tiles/stress/")) {
+      page.tileRequests.stress += 1;
       status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
       // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
@@ -524,6 +534,15 @@ export const S_MASS_CAPACITY = (() => {
     { from_m: 3400, to_m: 3600, tier: 5, facility: "none", unpaved: null, rpm: null },
     { from_m: 3600, to_m: 4660, tier: 2, facility: "none", unpaved: null, rpm: 150 },
   ];
+  return r;
+})();
+/**
+ * The same Mass Ride with its start across the Potomac in Rosslyn, Virginia: part of the route is
+ * outside the District, which Mass Ride planning covers alone for now (OWNER-DECISIONS 418a).
+ */
+export const S_MASS_OUTSIDE_DC = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
+  r.geometry.coordinates = [[-77.072, 38.896], ...r.geometry.coordinates];
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>

@@ -8,6 +8,7 @@
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { MASS_AVOID, MASS_BANDS } from "../massStyle.js";
 import type { RouteResponse } from "./api.ts";
+import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "./dcBoundary.ts";
 import { formatDistance } from "./format.ts";
 import {
   AVOID_LEGEND_TEXT,
@@ -75,6 +76,9 @@ export function MassLegend(): ReactElement {
       row("avoid", h(AvoidSwatch), AVOID_LEGEND_TEXT),
     ),
     h("p", { className: "hint capacity-source" }, CAPACITY_SOURCE),
+    // DC only for now (OWNER-DECISIONS 418), in words, with the boundary's source.
+    h("p", { className: "hint mass-dc-only" }, MASS_DC_ONLY),
+    h("p", { className: "hint dc-boundary-source" }, DC_BOUNDARY_CREDIT),
   );
 }
 

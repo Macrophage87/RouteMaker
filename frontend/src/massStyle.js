@@ -19,22 +19,30 @@
  * differs from its neighbour in width and the lower two in dash (massStyle.test.ts
  * measures the pairs under simulated colour vision; docs/DEVELOPMENT.md has the table).
  *
- * The capacity is the tiles' `rpm` (core/stress_tiles.py), rounded down to ten, so the
- * band edges (multiples of ten) never move. A table without the column (promoted before
- * the rebuild that writes it) carries no `rpm`: nothing here draws, the stress layers are
- * not hidden (`massHides`), and the Mass Ride map is as it was.
+ * The capacity is the `rpm` of the Mass Ride's own tiles (core/mass_tiles.py, source
+ * MASS_SOURCE_ID), rounded down to ten, so the band edges (multiples of ten) never move.
+ * Those tiles draw every road with a capacity at every zoom the map asks for, z10-14
+ * (OWNER-DECISIONS 415: the busy roads too at z12-13, where the stress tiles are the ride
+ * layer), and only inside the District of Columbia (418), clipped to its boundary. A table
+ * without the column (promoted before the rebuild that writes it) gives empty tiles, and
+ * nothing here draws.
  *
- * Hidden in this mode, where the tiles carry `rpm`: the LTS colours, and the facility
- * rails - path, protected and painted lane (325). Trails and paths are not drawn at all
- * (126, 127: "Ignore off road trails and the like, don't even show them"). A stretch
- * marked Avoid shows only "Avoid", in its own style with no capacity colour (325, 327:
- * near-black on coral, with the label).
+ * Hidden in this mode, at every zoom: every stress-map layer - the LTS colours, the
+ * facility rails (path, protected and painted lane), the trails and paths, the zoomed-out
+ * long trails and the ride layer's calm roads (325; 417: "Mass rides should mainly only show
+ * capacity and federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail
+ * PBL etc should not be shown at any zoom in mass ride."), and the base map's path names
+ * (lib/mapGlue.ts, setMassMode). A stretch marked Avoid shows only "Avoid", in its own
+ * style with no capacity colour (325, 327: near-black on coral, with the label).
  *
  * HAZARDS (part 3, not built): rider-marked Caution and Warning side rails come from the
  * peer-review backend, which does not exist yet (387). `hazardLayers` is where they join:
  * an empty list, drawn over the capacity lines and under the Avoid label. Nothing is
  * drawn, and nothing here asks a backend for hazards.
  */
+
+/** The Mass Ride tiles' source (lib/mapStyle.ts, massSource; core/mass_tiles.py). */
+export const MASS_SOURCE_ID = "mass";
 
 /** The bands, lowest first. `min` inclusive, `max` exclusive (the last has none). */
 export const MASS_BANDS = [
@@ -123,8 +131,8 @@ export function massFilters() {
 export const massHides = ["!", ["has", "rpm"]];
 
 /**
- * A width that grows with the zoom: the busy roads are the only ones the tiles carry at
- * z12-13, and a full-width line there would fill the map; from z16 it is as drawn.
+ * A width that grows with the zoom: every road is drawn from z10 (core/mass_tiles.py), and a
+ * full-width line there would fill the map; from z16 it is as drawn.
  */
 function byZoom(width) {
   return ["interpolate", ["linear"], ["zoom"], 12, width * 0.45, 14, width * 0.8, 16, width];
@@ -148,7 +156,7 @@ export const HAZARDS_BUILT = false;
  * stretches, then the hazard seam, then the Avoid label. `strong` is the accessibility
  * switch (a pixel more of casing).
  */
-export function massLayers(sourceId = "stress", sourceLayer = "stress", strong = false) {
+export function massLayers(sourceId = MASS_SOURCE_ID, sourceLayer = "stress", strong = false) {
   const filters = massFilters();
   const extra = strong ? MASS_STRONG_CASING_EXTRA_PX : MASS_CASING_EXTRA_PX;
   const base = { type: "line", source: sourceId, "source-layer": sourceLayer };

@@ -205,7 +205,11 @@ test("out of the Mass Ride mode, and on a table without the column, the stress l
   // A style holding the stress layers and the Mass Ride's validates.
   const style = {
     version: 8,
-    sources: { stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] } },
+    sources: {
+      stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
+      // The Mass Ride layers' own tiles (core/mass_tiles.py).
+      mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+    },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };
   assert.deepEqual(spec.validateStyleMin(style as never), []);

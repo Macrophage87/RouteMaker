@@ -54,6 +54,7 @@ import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/fed
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { CAPACITY_FOLD_TITLE, CAPACITY_LEGEND_TITLE, capacitySummary, isMassRide } from "./lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
+import { MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -989,6 +990,8 @@ export function App() {
           {compactPoints ? "Edit points" : "Done editing points"}
         </button>
       )}
+      {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
+      {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       <div className="actions point-add">
@@ -1478,6 +1481,9 @@ function RouteSummary({
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
+  // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
+  // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
+  const outsideDc = outsideDcNote(route);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
   // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
@@ -1486,6 +1492,11 @@ function RouteSummary({
   const junctions = route.intersections == null ? null : junctionItems(route).length;
   return (
     <div className="summary">
+      {outsideDc && (
+        <p className="notice mass-outside-dc" role="note">
+          {outsideDc}
+        </p>
+      )}
       {detour && (
         <p className={`notice detour detour-${detour.level}`} role="note">
           {detour.text}

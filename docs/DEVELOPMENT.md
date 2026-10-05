@@ -940,14 +940,53 @@ order), and nothing asks for hazards.
   (the narrowest point, the shares, the words), `lib/massLegend.ts` (the legend and the route's
   list), and the route line's classes in `lib/routeColours.ts` (`m0` to `m3`, `mavoid`; the dashed
   ones have a layer of their own each, `lib/mapGlue.ts` `routeDashLayers`). The capacity layers
-  are on the map always and drawn only in Mass Ride mode (`setMassMode`); in that mode the stress
-  and facility layers take out the features that carry `rpm` (`massHides`). **The fallback:** the
-  tiles of a table without the column carry no `rpm`, so nothing is hidden, the capacity layers
-  draw nothing, and the legend and panel (which learn it from the map, `watchForCapacity`, and
-  from the route's sections) are the stress ones: Mass Ride shows its current styling, never an
-  error. Every street shows from zoom 14; at zoom 12-13 only the long calm roads do, because the
-  tiles there are the ride layer (OWNER-DECISIONS 391, 402a; the rebuild bundle), which carries no
-  busy road; trails, paths and alleys are never drawn in this mode.
+  are on the map always and drawn only in Mass Ride mode (`setMassMode`), from the Mass Ride
+  tiles below, not the stress tiles. In that mode EVERY stress-map layer is hidden, at every zoom
+  (`overlayLayerShown`; OWNER-DECISIONS 417: "Mass rides should mainly only show capacity and
+  federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail PBL etc should not
+  be shown at any zoom in mass ride."): the LTS colours, the path, protected-lane and painted-lane
+  rails, the trails and surface marks, the z10-11 long trails and the z12-13 ride layer's calm
+  roads. The base map's `roads_labels_minor` names no path then (`MASS_PATH_LABEL_FILTER`: no
+  trail-name labels); the base map itself, the federal-land overlay, the rail stations and the
+  planned route with its markers stay. Every other ride type is unchanged. (`massHides` is still
+  on the stress layers' filters in that mode; it no longer matters, as they are hidden.)
+  **The fallback:** a table without the column gives empty Mass Ride tiles, so the capacity
+  layers draw nothing, and the legend and panel (which learn it from the map, `watchForCapacity`,
+  now from either tile set, and from the route's sections) are the stress ones, never an error;
+  the map then shows no road colours at all in Mass Ride mode (the stress layers stay hidden).
+  The bundle's rebuild writes the column, so this is only a table promoted before it.
+* **The Mass Ride tiles** (`GET /tiles/mass/{z}/{x}/{y}.pbf`, `core.mass_tiles`; OWNER-DECISIONS
+  415, 418). The stress tiles' z12-13 is the ride layer (391), which holds only the long calm
+  roads, and the owner asked for the busy roads' capacity there too ("Busy roads should yes.").
+  So the Mass Ride map has its own tile set, read only in that mode (`mapStyle.ts` `massSource`,
+  source id `mass`; a source no visible layer reads fetches nothing, so the stress map never
+  loads them and the Mass Ride map loads no stress tile past MapView's one probe). Layer
+  `stress`, properties `tier` and `rpm` (the stress tiles' own `rpm` expression); every public
+  road with a capacity, no trail, path or alley (`map_class = 'road'`, not trail class, facility
+  not `path`). z10-13 merged by (tier, rpm) and simplified, as the stress tiles' zoomed-out
+  levels; z14 one feature per segment, buffer 64; past z14 empty (the map draws z15-16 from z14).
+  The stress tiles and their ride layer are unchanged, and so is their FORMAT_VERSION (7).
+* **DC only** (418, 418a: "Grey out everywhere outside DC on that map too as we don't support it
+  yet."; "Yes" to a warning). The District's boundary is OpenStreetMap's admin_level=4 US-DC
+  relation, written by `scripts/build_dc_boundary.py` (with the rebuild's `pipeline.states` ring
+  code; 163 vertices, simplified to about 30 ft) to two identical files,
+  `src/core/geodata/dc-boundary.geojson` and `frontend/src/massride-data/dc-boundary.json`
+  (`tests/test_mass_tiles.py` holds them equal; credited in docs/SOURCES.md and under the
+  legend). The tiles clip every line to it in SQL (`ST_Intersection` where a line is not covered,
+  lines only), and a tile that misses the District's box is empty without a query. The map greys
+  everything outside it in Mass Ride mode (`lib/dcBoundary.ts` `DC_MASK_LAYERS`: the coverage
+  mask's grey at 0.5 opacity, and a dashed dark edge so the boundary is not told by shading
+  alone), over the base map and under its labels and the overlays. In words: the legend and the
+  planner say "Mass Ride planning covers DC only for now. Outside the District of Columbia the
+  map is grayed out and no riders-per-minute figures are drawn." (`MASS_DC_ONLY`). A Mass Ride
+  route with any vertex, or any stretch's middle, outside the boundary gets "Part of this route
+  is outside the area Mass Ride planning covers (DC only for now)." (`outsideDcNote`): shown in
+  the route view (`.mass-outside-dc`, role note) and said with the route's sentence in the
+  route's polite live region (`summary.ts` `announceRoute`). Other ride types never get it.
+* **Zooms in Mass Ride mode.** Every road in DC shows its riders per minute from zoom 10, busy
+  roads included (`MASS_ZOOM_HINT`); below zoom 10 the legend says to zoom in. The legend keeps
+  "6-8 mph" (404). Trails, paths, protected bike lanes, bike lanes and alleys are never drawn in
+  this mode.
 * **Colours** (327): red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7
   px solid, purple #6a3d9a 8.5 px solid; each outlined by a halo 3:1 from it (dark under the red,
   orange and green, white under the purple), which shows in the dash gaps. Avoid: near-black

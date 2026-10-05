@@ -48,6 +48,15 @@ def one_tile_box():
         yield
 
 
+@pytest.fixture(autouse=True)
+def no_mass_tiles(monkeypatch):
+    """The stress tiles' pre-draw alone: the Mass Ride tiles it also draws over the District
+    (core.mass_tiles) are tests/test_mass_tiles.py's."""
+    from core import mass_tiles
+
+    monkeypatch.setattr(mass_tiles, "tiles_over_dc", lambda max_zoom=14: [])
+
+
 def rows(version: str | None = None) -> int:
     with connection.cursor() as cursor:
         if version is None:

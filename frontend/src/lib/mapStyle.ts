@@ -8,11 +8,13 @@
  * without the package installed.
  */
 import { BASEMAP } from "../stressStyle.js";
+import { MASS_SOURCE_ID } from "../massStyle.js";
 import CREDITS_DATA from "./credits.json" with { type: "json" };
 import { protocolUrl } from "./stressProtocol.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
+export { MASS_SOURCE_ID };
 export const SPRITE_FLAVOR = "light";
 /** The zoom the map opens at, over central DC (MapView.tsx); the rail stations show from it. */
 export const OPENING_ZOOM = 11.2;
@@ -98,6 +100,20 @@ export function stressSource(origin: string) {
   return {
     type: "vector" as const,
     tiles: [protocolUrl(`${origin}/tiles/stress/{z}/{x}/{y}.pbf`)],
+    minzoom: STRESS_ZOOMS.min,
+    maxzoom: STRESS_ZOOMS.max,
+  };
+}
+
+/**
+ * The Mass Ride map's own tiles (core/mass_tiles.py; OWNER-DECISIONS 415, 417, 418): every road
+ * with a capacity, inside the District, at every zoom the stress tiles are asked for. Only Mass
+ * Ride mode draws from it; a source no visible layer reads fetches nothing.
+ */
+export function massSource(origin: string) {
+  return {
+    type: "vector" as const,
+    tiles: [protocolUrl(`${origin}/tiles/mass/{z}/{x}/{y}.pbf`)],
     minzoom: STRESS_ZOOMS.min,
     maxzoom: STRESS_ZOOMS.max,
   };

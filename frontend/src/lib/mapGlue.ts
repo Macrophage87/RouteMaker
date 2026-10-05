@@ -23,7 +23,8 @@ import {
 } from "../stressStyle.js";
 import { massLayerIds, massLayers } from "../massStyle.js";
 import type { When } from "./dials.ts";
-import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
+import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
+import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
 import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, sectionFeatures, type RouteClassKey } from "./routeColours.ts";
 
@@ -37,6 +38,34 @@ export interface OverlayMap {
   setLayoutProperty(id: string, name: string, value: string): void;
   setFilter(id: string, filter: unknown): void;
   setPaintProperty(id: string, name: string, value: unknown): void;
+  /** MapLibre's; a stand-in may leave it out (the base map's path names then stay as they are). */
+  getFilter?(id: string): unknown;
+}
+
+/**
+ * Whether an overlay layer shows: with the overlay's switch on, a Mass Ride layer only in that
+ * mode and every other (stress-map) layer only out of it (OWNER-DECISIONS 417, 417a: no trail,
+ * protected bike lane or other facility layer at any zoom on the Mass Ride map).
+ */
+export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn()): boolean {
+  return visible && (MASS_IDS.has(id) ? mass : !mass);
+}
+
+const MASS_IDS = new Set<string>(massLayerIds());
+
+/**
+ * The base map's layer that names minor roads and paths (@protomaps/basemaps
+ * `roads_labels_minor`). In Mass Ride mode it names no path (417a: no trail-name labels); out
+ * of it, as the package drew it.
+ */
+export const BASEMAP_PATH_LABEL_LAYER = "roads_labels_minor";
+export const MASS_PATH_LABEL_FILTER = ["in", "kind", "minor_road", "other"];
+const basemapLabelFilter = new WeakMap<object, unknown>();
+
+function setBasemapPathLabels(map: OverlayMap, mass: boolean): void {
+  if (!map.getFilter || !map.getLayer(BASEMAP_PATH_LABEL_LAYER)) return;
+  if (!basemapLabelFilter.has(map)) basemapLabelFilter.set(map, map.getFilter(BASEMAP_PATH_LABEL_LAYER));
+  map.setFilter(BASEMAP_PATH_LABEL_LAYER, mass ? MASS_PATH_LABEL_FILTER : basemapLabelFilter.get(map));
 }
 
 /**
@@ -47,27 +76,33 @@ export interface OverlayMap {
 export function addStressOverlay(map: OverlayMap, origin: string, visible: boolean, when?: When): boolean {
   if (map.getSource(STRESS_SOURCE_ID)) return false;
   map.addSource(STRESS_SOURCE_ID, stressSource(origin));
+  // The Mass Ride map's own tiles (core/mass_tiles.py), read only by its layers.
+  if (!map.getSource(MASS_SOURCE_ID)) map.addSource(MASS_SOURCE_ID, massSource(origin));
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
-  const mass = new Set<string>(massLayerIds());
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
-    // The Mass Ride layers (massStyle.js) are on only in that mode.
-    const shown = visible && (!mass.has(layer.id) || massRideOn());
+    // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.
+    const shown = overlayLayerShown(layer.id, visible);
     map.addLayer({ ...layer, layout: { ...layer.layout, visibility: shown ? "visible" : "none" } }, firstSymbol);
   }
+  setBasemapPathLabels(map, massRideOn());
   return true;
 }
 
 /**
- * The map becomes (or stops being) the Mass Ride's (OWNER-DECISIONS 325): the stress and facility
- * layers stop drawing the features that carry a capacity and the capacity layers show, or the
- * reverse. In place, from the same tiles. `visible` is the overlay's switch. Before the map has
- * its layers there is nothing to set: the overlay is added in the mode then (addStressOverlay).
+ * The map becomes (or stops being) the Mass Ride's (OWNER-DECISIONS 325, 417, 417a, 418): every
+ * stress-map layer is hidden and the capacity layers show, the base map names no path, and the
+ * grey mask outside the District shows (lib/dcBoundary.ts); or the reverse. In place.
+ * `visible` is the overlay's switch (the mask follows the mode alone: it says where Mass Ride
+ * planning works whether or not the colours are on). Before the map has its layers there is
+ * nothing to set: the overlay and the mask are added in the mode then.
  */
 export function setMassMode(map: OverlayMap | null, on: boolean, when: When, visible: boolean): void {
   setMassRide(on);
   if (!map) return;
   setStressWhen(map, when);
   setStressVisibility(map, visible);
+  setBasemapPathLabels(map, on);
+  setDcMaskVisibility(map, on);
 }
 
 /**
@@ -231,11 +266,9 @@ export function setRouteSections(
 
 /** Show or hide every overlay layer that is on the map. */
 export function setStressVisibility(map: OverlayMap, visible: boolean): void {
-  const mass = new Set<string>(massLayerIds());
   for (const { id } of stressOverlayLayers(STRESS_SOURCE_ID)) {
-    // The Mass Ride layers follow the mode as well as the switch.
-    const shown = visible && (!mass.has(id) || massRideOn());
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", shown ? "visible" : "none");
+    // Every layer follows the mode as well as the switch (overlayLayerShown).
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", overlayLayerShown(id, visible) ? "visible" : "none");
   }
 }
 
@@ -544,13 +577,15 @@ export function watchForFacilities(map: FacilityMap, seen: (kinds: ReadonlySet<s
 }
 
 /**
- * Whether the stress tiles on screen carry the Mass Ride capacity (`rpm`; core/stress_tiles.py).
- * A table promoted before the capacity column has none, and the Mass Ride map is then the stress
- * map as it was: its legend and panel say so by this.
+ * Whether the tiles on screen carry the Mass Ride capacity (`rpm`): the Mass Ride tiles
+ * (core/mass_tiles.py), which only Mass Ride mode loads, or the stress tiles (core/stress_tiles.py),
+ * which every other mode does. A table promoted before the capacity column has none: the legend
+ * and panel say so by this.
  */
 export function capacityOnMap(map: FacilityMap): boolean {
-  if (!map.getSource(STRESS_SOURCE_ID)) return false;
-  return map.querySourceFeatures(STRESS_SOURCE_ID, { sourceLayer: STRESS_TILE_LAYER, filter: ["has", "rpm"] }).length > 0;
+  return [MASS_SOURCE_ID, STRESS_SOURCE_ID].some(
+    (id) => !!map.getSource(id) && map.querySourceFeatures(id, { sourceLayer: STRESS_TILE_LAYER, filter: ["has", "rpm"] }).length > 0,
+  );
 }
 
 /** Report once the map has drawn a feature with a capacity (remembered: it is a property of the table, not the view). */

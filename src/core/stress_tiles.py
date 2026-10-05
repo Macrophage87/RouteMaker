@@ -614,5 +614,8 @@ def stress_tile(request, z: int, x: int, y: int) -> HttpResponse:
     if drawn_oid == oid:
         # Not when a promotion landed between the lookup and the draw: this
         # body belongs to the new table, and its own requests will cache it.
-        tile_cache.put(etag, z, x, y, body)
+        # The Mass Ride tiles share the cache (core.mass_tiles): an eviction keeps theirs.
+        from . import mass_tiles
+
+        tile_cache.put(etag, z, x, y, body, also_keep=(mass_tiles.etag_for(oid, optional),))
     return _tile_response(body, etag=etag_for(drawn_oid, optional))

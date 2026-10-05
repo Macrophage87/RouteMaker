@@ -29,7 +29,7 @@
  * against the base map's own fill colours.
  */
 
-import { massHides, massLayers } from "./massStyle.js";
+import { MASS_SOURCE_ID, massHides, massLayers } from "./massStyle.js";
 
 // The tiers' shapes: what tells them apart without colour. Weight rises with
 // stress (OWNER-DECISIONS 274, 283: "If I didn't see the key, I'd think that
@@ -816,10 +816,10 @@ function linePaint(color, width, busy, zoomedOut = null) {
 }
 
 /**
- * Whether the map is the Mass Ride's (OWNER-DECISIONS 325): set by App from the ride type. Where
- * the tiles carry the capacity (`rpm`), the stress layers - LTS colours, facility rails and the
- * Avoid style - are not drawn then, and massStyle.js's layers are. Where they do not (a table
- * promoted before the capacity column), nothing is hidden and the map is as it was.
+ * Whether the map is the Mass Ride's (OWNER-DECISIONS 325): set by App from the ride type. The
+ * stress layers - LTS colours, facility rails, trails and the Avoid style - are not drawn then, at
+ * any zoom (417, 417a; lib/mapGlue.ts hides them), and massStyle.js's layers are, from the Mass
+ * Ride tiles. Their filters also take out any feature with a capacity (`massHides`).
  */
 let massRide = false;
 const massListeners = new Set();
@@ -1276,9 +1276,9 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
-    // The Mass Ride map's own layers, over these: drawn only in that mode, and only where the tiles
-    // carry the capacity (their filters need `rpm`; massStyle.js).
-    ...massLayers(sourceId, STRESS_TILE_LAYER, accessibilityOn()),
+    // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn
+    // only in that mode, where every layer above is hidden (lib/mapGlue.ts; OWNER-DECISIONS 417a).
+    ...massLayers(MASS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()),
   ];
 }
 

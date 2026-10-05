@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -1302,7 +1302,20 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const axLegend = await axNode(p, ".mass-legend");
   check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6-8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
   const notes = await p.eval("[...document.querySelectorAll('#sheet-layers .hint')].map((h) => h.textContent).join(' | ')");
-  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths and bike lanes are not drawn/.test(notes) && /OpenStreetMap and DC Roadway Block/.test(notes), notes.slice(0, 200));
+  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/.test(notes) && /OpenStreetMap and DC Roadway Block/.test(notes), notes.slice(0, 200));
+  // DC only for now (OWNER-DECISIONS 418), in words beside the gray mask, with the boundary's source.
+  const dcOnly = await p.eval(`({ legend: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '',
+    planner: document.querySelector('#route-planner .mass-dc-only')?.textContent ?? '' })`);
+  check("capacity: the legend says in words that Mass Ride planning covers DC only for now, and credits the District's boundary",
+    /^Mass Ride planning covers DC only for now\. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn\.$/.test(dcOnly.legend) && dcOnly.credit === "District of Columbia boundary: © OpenStreetMap contributors (ODbL).", JSON.stringify(dcOnly));
+  check("capacity: the planner says DC only for now in words too, not by the gray map alone", dcOnly.planner === dcOnly.legend && dcOnly.planner !== "", JSON.stringify(dcOnly));
+  // 417, 417a: no trail, protected lane or other stress-map layer at any zoom. Every one of them reads the stress
+  // tiles and the capacity layers read their own, so a Mass Ride's map asks for none of the stress tiles past MapView's probe.
+  check("capacity: the Mass Ride map draws from its own tiles, and no stress-map layer (trails, protected lanes, the ride layer) asks for a tile",
+    p.tileRequests.mass > 0 && p.tileRequests.stress <= 1, JSON.stringify(p.tileRequests));
+  // 418a: a route inside DC has no notice.
+  const inside = await p.eval("({ shown: !!document.querySelector('.mass-outside-dc'), said: /outside the area Mass Ride/.test(document.querySelector('.status-line')?.textContent ?? '') })");
+  check("capacity: a Mass Ride inside DC shows and says no outside-DC notice", !inside.shown && !inside.said, JSON.stringify(inside));
   await p.eval("document.querySelector('.mass-legend').scrollIntoView({ block: 'center' }); true");
   await sleep(600);
   await p.shot(`${SHOTS}/capacity_legend.png`, await p.eval("(() => { const r = document.querySelector('#sheet-layers').getBoundingClientRect(); return { x: Math.max(0, r.left), y: 0, width: Math.round(r.width), height: Math.min(900, Math.round(r.height)) }; })()"));
@@ -1319,6 +1332,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(1500);
   const other = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats') })");
   check("capacity: another ride type keeps the traffic stress legend and panel, with no riders-per-minute figures", !other.mass && other.stress && !other.figures, JSON.stringify(other));
+  check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
   await p.close();
 }
 {
@@ -1329,11 +1343,22 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: a Mass Ride on a table without the column (no rpm in the tiles or the route) shows its current styling: the stress legend, bar and no figures", !old.mass && old.stress && !old.figures && old.bar, JSON.stringify(old));
   await p.close();
 }
+{
+  // OWNER-DECISIONS 418a: part of a Mass Ride's route outside DC is shown and said, in words.
+  const p = await open({ route: S_MASS_OUTSIDE_DC, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  const notice = "Part of this route is outside the area Mass Ride planning covers (DC only for now).";
+  const out = await p.eval(`(() => { const n = document.querySelector('.summary .mass-outside-dc'); const r = n?.getBoundingClientRect();
+    return { text: n?.textContent ?? '', visible: !!r && r.width > 0 && r.height > 0, said: document.querySelector('.status-line')?.textContent ?? '',
+      live: document.querySelector('.status-line')?.getAttribute('aria-live') }; })()`);
+  check("outside DC: a Mass Ride route that leaves the District shows the notice in words in the route view", out.text === notice && out.visible, JSON.stringify(out));
+  check("outside DC: the route's polite live region says it with the route", out.said.includes(notice) && out.live === "polite", JSON.stringify(out));
+  await p.close();
+}
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 268;
+const EXPECTED = 275;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

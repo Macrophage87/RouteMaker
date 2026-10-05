@@ -3,6 +3,7 @@ import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
+import { outsideDcNote } from "./dcBoundary.ts";
 import {
   formatClimb,
   formatDistance,
@@ -252,7 +253,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     `${head}${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]
+  return [figures, outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]
     .filter(Boolean)
     .join(" ");
 }

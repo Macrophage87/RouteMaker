@@ -210,7 +210,15 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         )
         tiles, zooms = cursor.fetchone()
     assert tiles > 0 and zooms == 5, (tiles, zooms)
-    assert f"{tiles} drawn" in run.detail, run.detail
+    # And the Mass Ride tiles over the District (core.mass_tiles, 415), in the same count.
+    from core import mass_tiles
+
+    mass = mass_tiles.etag_for(*stress_tiles.live_table())
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM stress_tile_cache WHERE version = %s", [mass])
+        (mass_count,) = cursor.fetchone()
+    assert mass_count == len(mass_tiles.tiles_over_dc()), mass_count
+    assert f"{tiles + mass_count} drawn" in run.detail, run.detail
 
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.segment")

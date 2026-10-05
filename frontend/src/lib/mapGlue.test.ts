@@ -2,6 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BASEMAP_PATH_LABEL_LAYER,
+  MASS_PATH_LABEL_FILTER,
+  overlayLayerShown,
   COVERAGE_MASK_LAYERS,
   COVERAGE_SOURCE_ID,
   addCoverageMask,
@@ -31,7 +34,7 @@ import {
   type FacilityMap,
   type OverlayMap,
 } from "./mapGlue.ts";
-import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
+import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 import { massLayerIds, massLayers } from "../massStyle.js";
@@ -643,14 +646,68 @@ test("the lane cut is a clause of its own: the painted rails keep the ride time'
 
 // ---- The Mass Ride map (OWNER-DECISIONS 325-327, 387) ----
 
-test("a Mass Ride's map adds the capacity layers visible, and the stress layers keep drawing only features without a capacity", () => {
+test("a Mass Ride's map adds the capacity layers visible, from its own tiles, and every stress-map layer hidden (417, 417a)", () => {
   try {
     setMassRide(true);
-    const { map, added } = fakeMap(BASE);
+    const { map, added, sources } = fakeMap(BASE);
     addStressOverlay(map, "https://example.test", true);
-    for (const a of added) assert.equal(a.layer.layout?.visibility, "visible", a.layer.id);
+    for (const a of added) assert.equal(a.layer.layout?.visibility, MASS_IDS.has(a.layer.id) ? "visible" : "none", a.layer.id);
+    // Trails, rails, the zoomed-out long trails and calm roads: all stress-map layers, all hidden.
+    for (const id of ["stress-1", "stress-unknown", "facility-path", "facility-protected", "facility-lane", "stress-unpaved-1"]) {
+      assert.equal(added.find((a) => a.layer.id === id)?.layer.layout?.visibility, "none", id);
+    }
+    for (const a of added.filter((a) => MASS_IDS.has(a.layer.id))) assert.equal((a.layer as { source?: string }).source, MASS_SOURCE_ID);
+    assert.deepEqual(sources.get(MASS_SOURCE_ID), massSource("https://example.test"));
     const stress = added.find((a) => a.layer.id === "stress-3")!.layer as unknown as { filter: unknown[] };
     assert.deepEqual(stress.filter.at(-1), ["!", ["has", "rpm"]]);
+  } finally {
+    setMassRide(false);
+  }
+});
+
+test("a layer shows by the switch and the mode: the capacity layers only in Mass Ride, the stress map's only out of it", () => {
+  assert.equal(overlayLayerShown("mass-line-good", true, true), true);
+  assert.equal(overlayLayerShown("mass-line-good", true, false), false);
+  assert.equal(overlayLayerShown("stress-1", true, true), false);
+  assert.equal(overlayLayerShown("facility-protected", true, true), false);
+  assert.equal(overlayLayerShown("stress-1", true, false), true);
+  for (const mass of [true, false]) for (const id of ["stress-1", "mass-line-good"]) assert.equal(overlayLayerShown(id, false, mass), false);
+});
+
+test("the Mass Ride tiles' source: its own path, the stress tiles' zooms", () => {
+  const source = massSource("https://example.test");
+  assert.match(source.tiles[0], /\/tiles\/mass\/\{z\}\/\{x\}\/\{y\}\.pbf$/);
+  assert.equal(source.minzoom, stressSource("https://example.test").minzoom);
+  assert.equal(source.maxzoom, stressSource("https://example.test").maxzoom);
+});
+
+test("in Mass Ride mode the base map names no path (417a: no trail-name labels), and its own filter comes back after", () => {
+  const original = ["in", "kind", "minor_road", "other", "path"];
+  const filters: Record<string, unknown> = { [BASEMAP_PATH_LABEL_LAYER]: original };
+  const layout: Record<string, string> = {};
+  const map = {
+    getLayer: (id: string) => (id === BASEMAP_PATH_LABEL_LAYER || id.startsWith("massride-dc") ? {} : undefined),
+    getFilter: (id: string) => filters[id],
+    setFilter: (id: string, filter: unknown) => {
+      filters[id] = filter;
+    },
+    setPaintProperty: () => {},
+    setLayoutProperty: (id: string, _name: string, value: string) => {
+      layout[id] = value;
+    },
+  } as unknown as OverlayMap;
+  try {
+    setMassMode(map, true, "weekday_offpeak", true);
+    assert.deepEqual(filters[BASEMAP_PATH_LABEL_LAYER], MASS_PATH_LABEL_FILTER);
+    assert.ok(!(MASS_PATH_LABEL_FILTER as string[]).includes("path"));
+    assert.equal(layout["massride-dc-mask"], "visible", "the grey outside DC shows in Mass Ride mode (418)");
+    assert.equal(layout["massride-dc-edge"], "visible");
+    setMassMode(map, false, "weekday_offpeak", true);
+    assert.deepEqual(filters[BASEMAP_PATH_LABEL_LAYER], original);
+    assert.equal(layout["massride-dc-mask"], "none");
+    // The mask follows the mode, not the overlay switch: it says where Mass Ride planning works.
+    setMassMode(map, true, "weekday_offpeak", false);
+    assert.equal(layout["massride-dc-mask"], "visible");
   } finally {
     setMassRide(false);
   }
@@ -675,11 +732,13 @@ test("switching the mode sets every stress filter again and shows or hides the c
     assert.equal(massRideOn(), true);
     assert.deepEqual(filters, stressFilters("weekday_offpeak", undefined, true));
     assert.equal(layout["mass-line-good"], "visible");
-    assert.equal(layout["stress-3"], "visible", "the stress layers are on; their filters take the capacity features out");
+    assert.equal(layout["stress-3"], "none", "every stress-map layer is hidden in Mass Ride mode (417a)");
+    assert.equal(layout["facility-protected"], "none");
     setMassMode(map, false, "weekday_offpeak", true);
     assert.equal(massRideOn(), false);
     assert.deepEqual(filters, stressFilters("weekday_offpeak", undefined, false));
     assert.equal(layout["mass-line-good"], "none");
+    assert.equal(layout["stress-3"], "visible");
     // With the overlay switched off, nothing shows in either mode.
     setMassMode(map, true, "weekday_offpeak", false);
     assert.equal(layout["mass-line-good"], "none");

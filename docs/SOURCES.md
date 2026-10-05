@@ -32,6 +32,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   credit form per <https://www.openstreetmap.org/copyright>.
 - Retrieved: weekly; the extract's date is the rebuild's (`check_operations`).
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures).
+- Also: **the District of Columbia's boundary** on the Mass Ride map (OWNER-DECISIONS 418,
+  418a: the grey outside DC, the capacity tiles' clip, the route's "outside DC" notice). It is the
+  extract's `boundary=administrative`, `admin_level=4`, `ISO3166-2=US-DC` relation, joined into rings
+  by the rebuild's own `pipeline.states` code and simplified to about 30 ft (10 m) by
+  `scripts/build_dc_boundary.py`; nothing was downloaded for it. Written 2026-10-05 from the
+  2026-10-03 extract (`district-of-columbia-latest.osm.pbf`; the merged extract gives the same
+  bytes): 1 polygon, 163 vertices, 3,630 bytes, about 68.3 sq mi (177 km², land and water).
+  The two copies, `frontend/src/massride-data/dc-boundary.json` (the map) and
+  `src/core/geodata/dc-boundary.geojson` (the tiles), are the same bytes
+  (`tests/test_mass_tiles.py`). Credit: the line above, on the map, and "District of Columbia
+  boundary: © OpenStreetMap contributors (ODbL)." under the Mass Ride legend.
 
 ## Protomaps base map
 

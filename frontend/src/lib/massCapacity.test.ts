@@ -163,13 +163,15 @@ test("the route view's figures: the narrowest point and the typical, each a term
 });
 
 test("the zoom note says where roads come in, and what this map leaves out", () => {
+  // The Mass Ride tiles draw every road from z10, busy ones too (OWNER-DECISIONS 415).
   assert.equal(massZoomNotice(null, true), null);
-  assert.equal(massZoomNotice(11, false), null);
-  assert.match(massZoomNotice(11, true)!, /Zoom in to see roads/);
-  assert.match(massZoomNotice(13, true)!, /until zoom 14/);
-  assert.equal(massZoomNotice(14, true), null);
+  assert.equal(massZoomNotice(9, false), null);
+  assert.match(massZoomNotice(9, true)!, /Zoom in to see roads/);
+  for (const z of [10, 11, 12, 13, 14, 16]) assert.equal(massZoomNotice(z, true), null, `z${z}`);
   const html = renderToStaticMarkup(createElement(MassZoomNotes, { zoom: 11, shown: true }));
-  assert.match(html, /Trails, paths and bike lanes are not drawn/);
+  assert.match(html, /Every road in DC shows its riders per minute from zoom 10, busy roads included/);
+  assert.match(html, /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/);
+  assert.doesNotMatch(html, /long calm roads/);
 });
 
 // --- The route line -----------------------------------------------------------------------

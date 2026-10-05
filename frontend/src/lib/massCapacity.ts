@@ -48,24 +48,23 @@ export const CAPACITY_FOLD_TITLE = "Riders per minute";
 export const CAPACITY_MEANS =
   `Riders per minute is how many riders a road lets through each minute on the flat at ${CAPACITY_SPEED}, from the width a ride ` +
   "has in its own direction, after parked cars. " +
-  "A ride flows at its narrowest point. Trails and bike lanes are not drawn here.";
+  "A ride flows at its narrowest point. Trails, protected bike lanes and bike lanes are not drawn here.";
 
 /**
- * What the Mass Ride map draws at the zoom it is at, in words (the tiles' levels, core/stress_tiles.py): no
- * roads below z12; from z12 the ride layer (OWNER-DECISIONS 391, 402a), whose only roads are the long calm
- * ones; every street from z14. Null when there is nothing to say.
+ * What the Mass Ride map draws at the zoom it is at, in words. Its own tiles (core/mass_tiles.py) draw
+ * every road with a capacity from the stress tiles' first zoom (OWNER-DECISIONS 415: the busy roads too,
+ * at z12-13), so the only thing to say is below it. Null when there is nothing to say.
  */
 export function massZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
-  if (zoom < STRESS_ZOOMS.ride) return "Zoom in to see roads and how many riders per minute they carry.";
-  if (zoom < STRESS_ZOOMS.quiet) return `Zoom in to see every street. Only the long calm roads are drawn until zoom ${STRESS_ZOOMS.quiet}.`;
+  if (zoom < STRESS_ZOOMS.min) return "Zoom in to see roads and how many riders per minute they carry.";
   return null;
 }
 
-/** The standing note under the legend: where roads come in, and what this map leaves out. */
+/** The standing note under the legend: where roads come in, and what this map leaves out (417, 417a). */
 export const MASS_ZOOM_HINT =
-  `Every street shows from zoom ${STRESS_ZOOMS.quiet}; from zoom ${STRESS_ZOOMS.ride} only the long calm roads do. ` +
-  "Trails, paths and bike lanes are not drawn on this map, and nor are alleys.";
+  `Every road in DC shows its riders per minute from zoom ${STRESS_ZOOMS.min}, busy roads included. ` +
+  "Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom, and nor are alleys.";
 
 /** The legend row for a band: "Under 60: bottleneck". */
 export function bandLegendText(index: number): string {

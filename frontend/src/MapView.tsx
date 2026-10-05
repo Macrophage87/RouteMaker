@@ -25,7 +25,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -54,6 +54,7 @@ import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
+import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
@@ -607,6 +608,9 @@ export function MapView(props: Props) {
 
     map.on("load", () => {
       loaded.current = true;
+      // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
+      // over the base map, under its labels, the overlays and the route.
+      addDcMask(map, callbacks.current.massCapacity === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route-casing",

@@ -1204,6 +1204,30 @@ oldest out first. Rows for an older table or tile format are deleted by the
 next pre-draw or eviction. The table is left out of the nightly dump; it
 refills itself.
 
+**The Mass Ride tiles** (`GET /tiles/mass/{z}/{x}/{y}.pbf`, `core/mass_tiles.py`;
+OWNER-DECISIONS 415, 417, 418) share this cache under their own ETag,
+`W/"mass-<oid>+fmw-<boundary digest>-v1"` (33 characters with a ten-digit oid; never
+equal to a stress tag, so neither tile set's rows are read as the other's). They are
+the Mass Ride map's: every road with a capacity at z10-14, clipped to the District
+of Columbia, empty outside the District's box and past z14. The pre-draw draws them
+too, after the stress tiles: every z10-14 tile the District's box reaches, a few
+hundred (under 300; `tests/test_mass_tiles.py`), on a table that has
+`mass_usable_width_m` (none on an older table), counted in the same run-row line.
+Measured read-only on the live 2026-10-03 table with a stand-in width (2026-10-05, load
+from another agent's run): the z10 tile over DC 1.0-3.0 s and about 100 KB, z11 0.8-6.2 s
+and 96 KB, z12 0.6 s and 73 KB, z13 0.3 s, z14 0.25 s; well inside the pre-draw's 20 s,
+but a cold z10-11 can pass the 2 s on-request draw timeout and be answered 503 with
+Retry-After until the pre-draw has run.
+An eviction keeps both the stress and the Mass Ride tags of the live table
+(`tile_cache.evict(..., also_keep=...)`), so neither evicts the other. Their own
+format is `core.mass_tiles.FORMAT_VERSION` (1), apart from the stress tiles' 7: a
+change to one re-draws only its own tiles. A new DC boundary file changes the
+digest, so its tiles are new too; re-run the pre-draw after deploying one. The
+draw slots, the draw timeout, the per-address limit and the Retry-After answers
+are the stress tiles' (below). The edge needs no change: Caddy and the beta's nginx
+send every `/tiles/*` path to the api, and Caddy compresses the vector-tile type
+whatever the path.
+
 Run the pre-draw by hand on a deployment whose live table was promoted before
 the cache existed (the first deploy of this change), after a deploy that
 changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale:
@@ -3442,11 +3466,15 @@ each one only where the live table has it, so the new api is safe on the old tab
    (Elmer School Road at 2 mi); Connecticut Ave NW under 60% LTS 4, or under 95% north of
    R St NW; and, as before, the long trails and the closure probes on all five graphs.
 4. After the swap: restart the four routers (and `--profile offroad` the fifth only where
-   there is memory), run the pre-draw (every tile is new at format 7), then the post-swap
-   probes (`scripts/probe_bicycle_closures.py`, which reads the off-road router too).
+   there is memory), run the pre-draw (every tile is new at format 7, and it now also draws
+   the Mass Ride tiles over the District, a few hundred more: "The tile cache", above), then
+   the post-swap probes (`scripts/probe_bicycle_closures.py`, which reads the off-road router too).
 5. Ship the front end.
 6. Check: an ETag ending `-v7"` (`+kcfrmwoesbtl-v7"` with every optional column); a z12
-   tile with no LTS 3+ road; a Mass Ride's route sections carrying `rpm`; the logs'
+   tile with no LTS 3+ road; a z12 `/tiles/mass/` tile over downtown DC holding the busy
+   roads with `rpm` (ETag `W/"mass-...+fmw-...-v1"`), and one over Baltimore empty;
+   `SELECT left(version, 8), count(*) FROM stress_tile_cache GROUP BY 1` showing both
+   `W/"stres` and `W/"mass-` rows; a Mass Ride's route sections carrying `rpm`; the logs'
    "CONNECTICUT AVE NW: N% LTS 4" line and "named corridors" summary (two corridors).
 
 **Rollback** is the usual one ("Rolling back a rebuild"): the old table has none of the new
