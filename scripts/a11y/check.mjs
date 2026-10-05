@@ -1084,7 +1084,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
     await sleep(1200);
     const after = await p.eval("({ lookups: window.__lookups, points: document.querySelectorAll('.points > li').length })");
-    check("locate: a press during the look-up says Finding your location… again and starts no second look-up", during.said >= 2 && after.lookups === 1 && after.points === 1, JSON.stringify({ during, after }));
+    check("locate: a press during the look-up says Finding your location… again and starts no second look-up", during.said === 2 && after.lookups === 1 && after.points === 1, JSON.stringify({ during, after }));
     await p.close();
   }
   {

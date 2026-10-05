@@ -31,8 +31,10 @@ export const RETRY_WATCHDOG_MS = RETRY_OPTIONS.timeout + 5_000;
 /**
  * While the browser's permission prompt is open (the Permissions API says "prompt"), the first
  * look-up's limit instead: reading the prompt is the rider's time, not the GPS's (the correctness
- * re-review's W1). Once the prompt is answered, LOCATE_WATCHDOG_MS starts again from then. A
- * browser without the Permissions API keeps LOCATE_WATCHDOG_MS from the press.
+ * re-review's W1). When the browser reports the prompt answered (a "change" event to a state other
+ * than "prompt"), LOCATE_WATCHDOG_MS starts again from then. Some browsers keep reporting "prompt"
+ * after the rider allows; there this cap stays 60 s from the press. A browser without the
+ * Permissions API keeps LOCATE_WATCHDOG_MS from the press.
  */
 export const PROMPT_WATCHDOG_MS = 60_000;
 
@@ -122,8 +124,9 @@ export function cleanAccuracy(accuracy: number): number {
 
 /**
  * One call of getCurrentPosition, settled once: by the browser, or by the watchdog if the browser never answers.
- * With `prompt` (the first call only), a permission prompt still open gets `prompt.ms` instead, and when it is
- * answered the watchdog starts again from then. The call itself is never delayed by the permission query.
+ * With `prompt` (the first call only), a permission prompt still open gets `prompt.ms` instead, and when the
+ * browser reports it answered the watchdog starts again from then (a browser that keeps saying "prompt" leaves
+ * `prompt.ms` from the press). The call itself is never delayed by the permission query.
  */
 function attempt(
   api: GeoApi,

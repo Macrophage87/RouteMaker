@@ -3558,9 +3558,9 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
     sent to the server. This is the accepted exception to "never stored" (OWNER-DECISIONS 398, "yes, keep
     location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
     sheet's sign-in sentence and two test pins changed (the comment at the switch).
-  - Server logs are not this branch's: wip/privacy-logs (OWNER-DECISIONS 401) keeps the location in a
-    reverse look-up's or a search's query out of the beta nginx logs and turns off Valhalla's slow-request
-    log. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+  - Server logs are not this branch's: with wip/privacy-logs (PLAN 401), which merges first, the location
+    in a reverse look-up's or a search's query stays out of the beta nginx logs and Valhalla's slow-request
+    log is off. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
     viewed, as any map pan does.
 - **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
   button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).

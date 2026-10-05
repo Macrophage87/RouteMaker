@@ -151,6 +151,7 @@ test("the real watchdog limits: the first is the browser's timeout + 20 s, the r
   assert.equal(LOCATE_WATCHDOG_MS, LOCATE_OPTIONS.timeout + 20_000);
   assert.ok(RETRY_WATCHDOG_MS > RETRY_OPTIONS.timeout, "the retry's watchdog is past its browser timeout");
   assert.ok(RETRY_WATCHDOG_MS < LOCATE_WATCHDOG_MS, "and shorter than the first's (not swapped)");
+  assert.equal(PROMPT_WATCHDOG_MS, 60_000, "an ignored prompt frees the button after a minute, not an hour");
   assert.ok(PROMPT_WATCHDOG_MS > LOCATE_WATCHDOG_MS, "an open prompt gets longer");
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
@@ -192,8 +193,14 @@ function permissionStatus(initial: string) {
   const status = {
     state: initial,
     listeners,
-    addEventListener: (_type: "change", listener: () => void) => void listeners.add(listener),
-    removeEventListener: (_type: "change", listener: () => void) => void listeners.delete(listener),
+    addEventListener: (type: string, listener: () => void) => {
+      assert.equal(type, "change", "the watchdog listens for the permission's change event");
+      listeners.add(listener);
+    },
+    removeEventListener: (type: string, listener: () => void) => {
+      assert.equal(type, "change", "and removes the same one");
+      listeners.delete(listener);
+    },
     answer(next: string) {
       status.state = next;
       for (const listener of [...listeners]) listener();
