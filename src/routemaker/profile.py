@@ -28,7 +28,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from . import climbs
+from . import climbs, flow
 
 # Samples either side of a sample that its grade is read across (the rise from the
 # sample this many before to the one this many after, over the metres between).
@@ -210,6 +210,34 @@ def _window_picks(
     return keep
 
 
+# At most this fraction (1 / N) of the samples sent go to the bottleneck runs' ends.
+BOTTLENECK_END_SHARE = 4
+
+
+def _bottleneck_ends(riders: Sequence[float | None] | None) -> set[int]:
+    """The first and last sample of each run of riders figures under the first band's
+    edge (a bottleneck: flow.BAND_EDGES), as the front end's bottlenecks table reads a
+    run (profileChart.ts bottleneckRows: a known figure under 60 starts or continues one,
+    anything else ends it). The figure is rounded first, as the answer sends it
+    (routing._int_or_none), so 59.6 is not a bottleneck here either."""
+    if riders is None:
+        return set()
+    edge = flow.BAND_EDGES[0]
+    ends: set[int] = set()
+    start: int | None = None
+    for i, r in enumerate(riders):
+        if r is not None and round(r) < edge:
+            if start is None:
+                start = i
+                ends.add(i)
+        elif start is not None:
+            ends.add(i - 1)
+            start = None
+    if start is not None:
+        ends.add(len(riders) - 1)
+    return ends
+
+
 # The most picks one window makes: its steepest grade, its highest and lowest heights and
 # its first gap; on a Mass Ride its lowest riders figure and its first unknown one too.
 WINDOW_PICKS = 4
@@ -228,8 +256,11 @@ def thin(
     a valley floor do, where the grade is near 0: correctness re-review R2), on a Mass
     Ride its lowest riders figure (so a bottleneck does), and its first gap in the
     heights or the riders (so a gap stays a gap); the route's first and last samples are
-    always kept. The grades, climbs and riders are worked out on every sample before
-    this, so no figure changes.
+    always kept. On a Mass Ride the first and last sample of every run under the first
+    band's edge (60 riders a minute, a bottleneck) are kept too, so the chart's
+    bottlenecks table measures each run from its own ends, not from the window picks
+    inside it (r3 correctness, N1). The grades, climbs and riders are worked out on every
+    sample before this, so no figure changes.
 
     The window is first sized for the most picks a window can make, which keeps the
     answer within `limit` (and a window's picks over it at most). Most windows make
@@ -240,14 +271,21 @@ def thin(
     if n <= limit:
         return list(range(n))
     most = WINDOW_PICKS_MASS if riders is not None else WINDOW_PICKS
-    window = math.ceil(n * most / limit)
-    keep = _window_picks(heights, grade_at, riders, window)
+    ends = _bottleneck_ends(riders)
+    # The windows share what the bottleneck ends leave. A route with more than a quarter of
+    # the limit in run ends (hundreds of separate bottlenecks: not a real Mass Ride) keeps
+    # none, so the answer stays within the limit and a window's picks.
+    if len(ends) > limit // BOTTLENECK_END_SHARE:
+        ends = set()
+    room = limit - len(ends)
+    window = math.ceil(n * most / room)
+    keep = _window_picks(heights, grade_at, riders, window) | ends
     # The narrowest window that stays within `limit`, by bisection (a few passes, each one
     # pass over the samples): no narrower than one pick a window could fit.
-    lo, hi = math.ceil(n / limit), window
+    lo, hi = math.ceil(n / room), window
     while lo < hi:
         mid = (lo + hi) // 2
-        again = _window_picks(heights, grade_at, riders, mid)
+        again = _window_picks(heights, grade_at, riders, mid) | ends
         if len(again) <= limit:
             hi, keep = mid, again
         else:

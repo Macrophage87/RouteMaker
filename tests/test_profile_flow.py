@@ -557,6 +557,61 @@ class TestRouteProfile:
         assert body["flow"]["narrowest_m"] == 100
         assert body["flow"]["typical_riders_per_min"] == 198
 
+    @staticmethod
+    def bottleneck_runs(body):
+        """The bottlenecks table's runs as the front end reads them (profileChart.ts
+        bottleneckRows): from the first to the last known riders figure under 60."""
+        runs, start, last, low = [], None, None, None
+        for at, r in zip(body["m"], body["riders_per_min"], strict=True):
+            if r is not None and r < flow.BAND_EDGES[0]:
+                start = at if start is None else start
+                last, low = at, r if low is None else min(low, r)
+            elif start is not None:
+                runs.append((start, last, low))
+                start, low = None, None
+        if start is not None:
+            runs.append((start, last, low))
+        return runs
+
+    @pytest.mark.parametrize("seed", range(8))
+    def test_thinning_a_long_mass_ride_keeps_each_bottlenecks_ends(self, seed, monkeypatch):
+        """Correctness r3 N1: on a 150 km Mass Ride the boundary pairs were thinned away,
+        so a 45 m bottleneck read as 14 m and a 250 m one as 165 m. Each run under 60
+        riders a minute now keeps its first and last sample, so the table's lengths and
+        lowest figures are the unthinned ones."""
+        import random
+
+        rng = random.Random(seed)
+        total = 150_000.0
+        n = round(total / STEP) + 1
+        heights = [10.0 + 20.0 * math.sin(i / 40.0) + (i % 7) for i in range(n)]
+        stretches, at = [], 0.0
+        while at < total:
+            wide = min(rng.uniform(400.0, 3000.0), total - at)
+            stretches.append((wide, 6.7, None))
+            at += wide
+            if at >= total:
+                break
+            short = min(rng.choice([15.0, 45.0, rng.uniform(20.0, 400.0)]), total - at)
+            riders = rng.uniform(30.0, 58.0)
+            stretches.append((short, riders / flow.level_riders_per_min(1.0), None))
+            at += short
+        thinned = routing.route_profile([self.leg(heights, total)], [], stretches, [])
+        assert len(thinned["m"]) < n, "the route was thinned"
+        assert len(thinned["m"]) <= profile.MAX_SAMPLES + profile.WINDOW_PICKS_MASS + 2
+        monkeypatch.setattr(profile, "thin", lambda h, *_a, **_k: list(range(len(h))))
+        full = routing.route_profile([self.leg(heights, total)], [], stretches, [])
+        assert len(full["m"]) > n
+        expected = self.bottleneck_runs(full)
+        assert len(expected) > 30
+        assert self.bottleneck_runs(thinned) == expected
+
+    def test_the_bottleneck_ends_are_each_runs_first_and_last_sample(self):
+        riders = [100.0, 59.0, 40.0, 59.4, 59.6, 30.0, None, 20.0, 100.0, 10.0]
+        # 59.6 is sent as 60, which is not a bottleneck; a gap ends a run too.
+        assert profile._bottleneck_ends(riders) == {1, 3, 5, 7, 9}
+        assert profile._bottleneck_ends(None) == set()
+
     def test_a_leg_with_no_elevation_keeps_its_avoid_and_its_riders(self):
         """Correctness re-review R1: a 2 km leg with no heights holding a 200 m Avoid and a
         900 m stretch at 59 riders a minute gave `avoid: []` and a line drawn straight
