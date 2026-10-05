@@ -4431,3 +4431,61 @@ def test_the_districts_lane_widths_reach_the_mass_ride_column(workspace, states)
         next(way.tags for way in context.ways if way.osm_id == 100)
     )
     assert osm_only != pytest.approx(widths[0], abs=0.01)
+
+
+def reference_road_block(speed_mph: int) -> dict:
+    """Way 100's block (named as the way is, so it conflates), standing in for the owner's
+    reference LTS 4 road: two lanes each way and a busy count, so 30 mph is LTS 4 and 25 mph
+    LTS 3 (stress.urban_two_way_floor)."""
+    return street_block(
+        "dc-ct",
+        {
+            "speed_mph": {"ob": speed_mph},
+            "lanes": {"ib": 2, "ob": 2},
+            "way": "both",
+            "aadt": 20000,
+            "aadt_year": 2020,
+            "parking_lanes": 0,
+        },
+    )
+
+
+def lts4_sentinel_on(settings) -> None:
+    settings.REBUILD_SENTINEL_LTS4_STREET = "TEST ROAD"
+    settings.REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.85
+
+
+def test_the_reference_lts4_road_passes_validate_when_it_is_lts4(workspace, states, settings):
+    """OWNER-DECISIONS 408, 409, through the real stages: the street's rows are found by
+    their block and read back from the staging table."""
+    lts4_sentinel_on(settings)
+    source, root = workspace
+    context, report = run_pipeline(
+        source, root, roadway=[reference_road_block(30)], skip=NOT_SWAPPED
+    )
+    assert report.completed
+    assert int(context.stress_by_way[100].tier) == 4
+
+
+def test_a_rebuild_whose_reference_lts4_road_came_out_calmer_is_refused(
+    workspace, states, settings
+) -> None:
+    lts4_sentinel_on(settings)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, roadway=[reference_road_block(25)])
+    assert caught.value.stage is Stage.VALIDATE
+    assert "TEST ROAD" in str(caught.value.cause)
+    assert "Most of Conn Ave is LTS4" in str(caught.value.cause)
+
+
+def test_a_reference_street_the_roadway_block_does_not_have_is_refused(
+    workspace, states, settings
+) -> None:
+    lts4_sentinel_on(settings)
+    settings.REBUILD_SENTINEL_LTS4_STREET = "NOT A STREET NW"
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, roadway=[reference_road_block(30)])
+    assert caught.value.stage is Stage.VALIDATE
+    assert "no block named NOT A STREET NW" in str(caught.value.cause)

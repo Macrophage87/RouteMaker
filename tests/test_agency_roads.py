@@ -146,7 +146,9 @@ def test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists() -> 
 
     from routemaker import massflow
 
-    assert frozenset(settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS) == A.VERIFIED_REVERSIBLE_BLOCKS
+    assert (
+        frozenset(settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS) == A.VERIFIED_REVERSIBLE_BLOCKS
+    )
     assert frozenset(settings.MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS) == A.ENDED_REVERSIBLE_STREETS
     assert massflow.DC_RULES.ended_reversible_streets == A.ENDED_REVERSIBLE_STREETS
 

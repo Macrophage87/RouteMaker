@@ -43,6 +43,8 @@ def _no_long_trail_sentinels(settings):
     # And the Mass Ride capacity's median road is a region's, not a toy extract's
     # (the share and the plausible range of a road's figure are still checked).
     settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (0, 5000)
+    # And the reference LTS 4 road (OWNER-DECISIONS 408) is the region's Connecticut Ave NW.
+    settings.REBUILD_SENTINEL_LTS4_STREET = ""
 
 
 @pytest.fixture

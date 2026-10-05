@@ -58,6 +58,7 @@ from . import (
     discrepancies,
     elevation,
     extract,
+    lts_sentinels,
     mass_capacity,
     overrides,
     promotion,
@@ -1081,6 +1082,45 @@ def assert_bicycle_closures_reached_the_tiles(readbacks: dict) -> None:
             for variant, readback in readbacks.items()
         ),
     )
+
+
+def assert_reference_lts4_street(
+    context: RebuildContext,
+    street: str,
+    min_share: float,
+    north_of_lat: float,
+    north_min_share: float,
+) -> lts_sentinels.StreetTiers | None:
+    """The owner's reference LTS 4 road came out LTS 4 (OWNER-DECISIONS 408, 409;
+    `pipeline.lts_sentinels`). Off with an empty street; skipped, with a warning, on a
+    rebuild with no agency street layer installed (it classifies from OSM alone)."""
+    if not street:
+        return None
+    reference = context.require_reference()
+    if not reference.road_blocks:
+        logger.warning(
+            "no agency street layer is installed, so the reference LTS 4 road (%s) is not checked",
+            street,
+        )
+        return None
+    ids = lts_sentinels.block_ids(reference.road_blocks, street)
+    if not ids:
+        raise ValidationFailed(
+            f"the installed Roadway Block has no block named {street}, so the owner's "
+            "reference LTS 4 road (OWNER-DECISIONS 408) cannot be checked"
+        )
+    tiers = lts_sentinels.street_tiers(context.staging_schema, street, ids, north_of_lat)
+    found = lts_sentinels.problems(tiers, min_share, north_min_share)
+    if found:
+        raise ValidationFailed("; ".join(found))
+    logger.info(
+        "%s: %.0f%% LTS 4, %.0f%% north of %.4f N",
+        street,
+        100 * tiers.share,
+        100 * tiers.north_share,
+        north_of_lat,
+    )
+    return tiers
 
 
 def assert_mass_capacity(
@@ -2253,6 +2293,13 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        assert_reference_lts4_street(
+            context,
+            _setting("REBUILD_SENTINEL_LTS4_STREET"),
+            _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
+        )
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),

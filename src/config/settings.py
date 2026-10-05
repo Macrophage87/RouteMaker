@@ -387,6 +387,17 @@ REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (60, 200)
 # Connecticut Ave NW's ended in 2020, DCist 2021-12-15) except on the BLOCKKEYs
 # of the reviewed allowlist, which is empty until the owner has checked blocks
 # against current conditions; the streets named in the last setting never count.
+# The owner's reference LTS 4 road (OWNER-DECISIONS 408, 409; `pipeline.lts_sentinels`):
+# VALIDATE refuses a build where less than the first share of the street's segment rows
+# (found by the DC Roadway Block blocks of this ROUTENAME) is LTS 4 or Avoid, or less than
+# the second share north of the latitude (R St NW): "Most of Conn Ave is LTS4" and "I'd say
+# it's LTS4 north of R." The 2026-10-03 build gave 49% and 72% (R St to Calvert St was
+# LTS 3 at a posted 25 mph); with the R St to Calvert St corridor (fixtures/corridors/)
+# about 67% and 99%. An empty street turns the check off (the test suite's toy extracts).
+REBUILD_SENTINEL_LTS4_STREET = "CONNECTICUT AVE NW"
+REBUILD_SENTINEL_LTS4_MIN_SHARE = 0.6
+REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.9126
+REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0
 MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
 MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()
