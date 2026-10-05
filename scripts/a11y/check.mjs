@@ -918,7 +918,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const ORIGIN = `http://127.0.0.1:${PORT}`;
   const live = `(() => [...document.querySelectorAll('[role=status],[aria-live]')].map((e) => e.textContent.trim()).filter(Boolean))()`;
   const holders = (text) => `(() => [...document.querySelectorAll('[role=status],[aria-live]')].filter((e) => e.textContent.includes(${JSON.stringify(text)})).length)()`;
-  async function emptyPlan({ permission = "granted", at = { latitude: 38.8893, longitude: -77.0502, accuracy: 15 }, secure = true } = {}) {
+  async function emptyPlan({ permission = "granted", at = { latitude: 38.8893, longitude: -77.0502, accuracy: 15 }, secure = true, hash = "", script = "" } = {}) {
     const p = await newPage(b, { width: 1280, height: 900 });
     await mock(p, S_DEFAULT);
     await media(p, { scheme: "light" });
@@ -926,11 +926,15 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     if (at) await p.s("Emulation.setGeolocationOverride", at);
     else await p.s("Emulation.setGeolocationOverride", {});
     if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
-    await p.s("Page.navigate", { url: `${ORIGIN}/` });
+    if (script) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: script });
+    await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
     if (!(await p.waitFor("!!document.querySelector('.locate-button')", 30000))) throw new Error("no Use my location button");
     await sleep(500);
     return p;
   }
+  // Counts each time a live region's text changes to one holding `text` (the app region toggles a trailing
+  // space, so the same words said again count again).
+  const countSaid = (text) => `(() => { window.__said = 0; const last = new WeakMap(); const scan = () => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent; if (last.get(e) !== t) { last.set(e, t); if (t.includes(${JSON.stringify(text)})) window.__said += 1; } } }; scan(); window.__said = 0; new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()`;
   const press = async (p) => {
     await p.eval("document.querySelector('.locate-button').click(); true");
     await sleep(300);
@@ -957,7 +961,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     check("locate: choosing Your location sets the start and says it, with US units first", startSaid.length >= 1, JSON.stringify(said));
     check("locate: said once, in one live region (no double announcement)", (await p.eval(holders("set to your location"))) === 1);
     const hint = await p.eval("document.querySelector('.place-search')?.textContent ?? ''");
-    check("locate: the hint marks it approximate and says the marker can be dragged", /approximate, to about \d+ ft \(15 m\)\. Drag its marker/.test(hint), hint.slice(0, 300));
+    check("locate: the hint marks it approximate and says the marker can be dragged or the place searched", /approximate, to about \d+ ft \(15 m\)\. Drag its marker, or search for the exact place, to adjust it\./.test(hint), hint.slice(0, 300));
     const rows = await p.eval("document.querySelectorAll('.points > li').length");
     check("locate: one point is in the plan", rows >= 1, String(rows));
     // Every text the live regions held during the second press, to hear the pending sentence too.
@@ -985,34 +989,102 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await sleep(900);
     const copied = await p.eval("document.querySelector('.route-actions [role=status]')?.textContent ?? ''");
     check("locate: pressing Copy link says the note with the confirmation", copied === `Link copied. ${START_NOTE}`, copied);
-    // A drag of the location's marker keeps the note (the moved point is still the rider's spot), and so does its undo.
-    const pin = await p.eval("(() => { const m = document.querySelector('.pin.pin-start'); if (!m) return null; const r = m.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()");
-    if (pin) {
-      await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: pin[0], y: pin[1], button: "left", clickCount: 1 });
-      for (let i = 1; i <= 6; i += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: pin[0] + i * 6, y: pin[1] + i * 4, button: "left", buttons: 1 });
-      await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: pin[0] + 36, y: pin[1] + 24, button: "left", clickCount: 1 });
-    }
-    await sleep(1500);
-    await p.waitFor("!!document.querySelector('.link-note')", 20000);
-    const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', undo: !![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && e.offsetParent && !e.disabled) })");
-    check("locate: dragging the location's marker keeps the Copy link note", !!pin && dragged.note === START_NOTE && dragged.undo, JSON.stringify({ pin, dragged }));
-    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && e.offsetParent && !e.disabled)?.click(); true");
-    await sleep(1500);
-    await p.waitFor("!!document.querySelector('.link-note')", 20000);
-    const undone = await p.eval("document.querySelector('.link-note')?.textContent ?? ''");
-    check("locate: undoing the drag keeps the Copy link note", undone === START_NOTE, undone);
     const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
     check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
     await p.shot(`${SHOTS}/locate_granted.png`);
     await p.close();
   }
   {
-    const p = await emptyPlan({ permission: "denied" });
+    // A drag of the location's marker keeps the note (the moved point is still the rider's spot), and so does
+    // its undo. A start from the link, then the location as the end, both where the map shows them (the mocked
+    // route's view), so the end's marker is the one under the mouse and no other point is from the location.
+    const POINT_NOTE = "This link includes your location as a point on the route.";
+    const p = await emptyPlan({ hash: "#p=-77.03500,38.90200&preset=default&v=2&stress=70&hills=0", at: { latitude: 38.8955, longitude: -77.0205, accuracy: 15 } });
     await press(p);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    await sleep(800);
+    const hashBefore = await p.eval("location.hash");
+    const pin = await p.eval("(() => { const m = document.querySelector('.pin.pin-end'); if (!m) return null; const r = m.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2; const hit = document.elementFromPoint(x, y); return { at: [x, y], hit: !!hit && (hit === m || m.contains(hit)) }; })()");
+    if (pin?.hit) {
+      const [x, y] = pin.at;
+      await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+      for (let i = 1; i <= 6; i += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: x + i * 6, y: y + i * 4, button: "left", buttons: 1 });
+      await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: x + 36, y: y + 24, button: "left", clickCount: 1 });
+    }
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
+    check("locate: dragging the location's marker moves it and keeps the Copy link note", !!pin?.hit && dragged.hash !== hashBefore && dragged.note === POINT_NOTE, JSON.stringify({ pin, dragged, hashBefore }));
+    // Undo: the points are compact while a route shows, so the button is pressed where it is.
+    const undid = await p.eval("(() => { const u = [...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && !e.disabled); u?.click(); return !!u; })()");
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const undone = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
+    check("locate: undoing the drag puts the point back and keeps the Copy link note", undid && undone.hash === hashBefore && undone.note === POINT_NOTE, JSON.stringify({ undid, undone, hashBefore }));
+    await p.shot(`${SHOTS}/locate_drag.png`);
+    await p.close();
+  }
+  {
+    const p = await emptyPlan({ permission: "denied" });
+    // The Points notice is a live region before any message (a region created holding its text is often not spoken).
+    const NOTICE = "section[aria-labelledby=points-heading] > p.notice[role=status]";
+    const region = await p.eval(`(() => { const e = document.querySelector(${JSON.stringify(NOTICE)}); if (!e) return null; e.__pre = 1; e.id = e.id || '__notice'; return { id: e.id, text: e.textContent, empty: e.classList.contains('notice-empty') }; })()`);
+    const regionAx = region ? await axNode(p, `#${region.id}`) : null;
+    check("locate: before any message the Points notice is there, empty, and in the accessibility tree", !!region && region.text === "" && region.empty && !!regionAx && !regionAx.ignored, JSON.stringify({ region, regionAx }));
+    // Enter in the empty box, with nothing highlighted, never takes Your location: no look-up, no message, no point.
+    await p.eval(countSaid("Finding your location"));
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    await p.enter();
+    await sleep(1500);
+    const afterEnter = await p.eval(`({ said: window.__said, notice: document.querySelector(${JSON.stringify(NOTICE)})?.textContent ?? null, points: document.querySelectorAll('.points > li').length })`);
+    check("locate: Enter in the empty search box asks for no location (Your location is never the Enter default)", afterEnter.said === 0 && afterEnter.notice === "" && afterEnter.points === 0, JSON.stringify(afterEnter));
+    await p.eval("document.activeElement?.blur(); true");
+    await press(p);
+    const same = await p.eval(`(() => { const e = document.querySelector(${JSON.stringify(NOTICE)}); return { pre: e?.__pre === 1, text: e?.textContent ?? '' }; })()`);
+    check("locate: the same notice element, already in the page, holds the denial", same.pre && /blocked for this site/.test(same.text), JSON.stringify(same));
     const text = (await p.eval(live)).join(" | ");
     check("locate: permission denied is a plain message in a status, said once", /Your location is blocked for this site/.test(text) && (await p.eval(holders("blocked for this site"))) === 1, text);
     const points = await p.eval("document.querySelectorAll('.place-search ~ *').length >= 0 && !document.querySelector('.link-note')");
     check("locate: a denial adds no point and no link note", points === true);
+    await p.close();
+  }
+  {
+    // A two-point plan, Start chosen, then Your location: it replaces the start (the choice reaches placeFix).
+    const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
+    await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
+    // With a route shown the points are compact: Edit points opens the search, as a rider would.
+    await p.waitFor("!![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')", 20000);
+    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')?.click(); true");
+    await sleep(500);
+    const chose = await p.eval("(() => { const r = document.querySelector('.place-choice input[type=radio][value=start]'); if (!r) return false; r.click(); return r.checked; })()");
+    await sleep(300);
+    await p.eval("document.querySelector('.place-search input').focus(); true");
+    await sleep(300);
+    const line = await p.eval("[...document.querySelectorAll('.place-results [role=option]')][0]?.textContent ?? ''");
+    await p.eval(countSaid("Start set to your location"));
+    await p.key("ArrowDown", "ArrowDown", 40);
+    await p.enter();
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(1500);
+    const got = await p.eval("({ said: window.__said, rows: document.querySelectorAll('.points > li').length, hash: location.hash })");
+    check("locate: on a two-point plan with Start chosen, Your location replaces the start", chose && /^Your location\s*Replaces the start\./.test(line) && got.said >= 1 && got.rows === 2 && got.hash.startsWith("#p=-77.05020,38.88930;-77.01000,38.89000&"), JSON.stringify({ chose, line, got }));
+    await p.close();
+  }
+  {
+    // A slow look-up (2.5 s): a second press while it runs is answered again and starts no second look-up.
+    const slow = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); window.__lookups = 0; Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => { window.__lookups += 1; setTimeout(() => real(ok, fail, o), 2500); } }); })()";
+    const p = await emptyPlan({ script: slow });
+    await p.eval(countSaid("Finding your location"));
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(500);
+    await p.eval("document.querySelector('.locate-button').click(); true");
+    await sleep(500);
+    const during = await p.eval("({ said: window.__said, lookups: window.__lookups })");
+    await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
+    await sleep(1200);
+    const after = await p.eval("({ lookups: window.__lookups, points: document.querySelectorAll('.points > li').length })");
+    check("locate: a press during the look-up says Finding your location… again and starts no second look-up", during.said >= 2 && after.lookups === 1 && after.points === 1, JSON.stringify({ during, after }));
     await p.close();
   }
   {
@@ -1045,7 +1117,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 208;
+const EXPECTED = 213;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
