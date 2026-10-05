@@ -912,6 +912,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 
+// ---- 18. Use my location (OWNER-DECISIONS 395) ----
 {
   // "Use my location" (OWNER-DECISIONS 395): the CDP geolocation override and the permission, granted, denied and unavailable.
   const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -959,12 +960,47 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     check("locate: the hint marks it approximate and says the marker can be dragged", /approximate, to about \d+ ft \(15 m\)\. Drag its marker/.test(hint), hint.slice(0, 300));
     const rows = await p.eval("document.querySelectorAll('.points > li').length");
     check("locate: one point is in the plan", rows >= 1, String(rows));
+    // Every text the live regions held during the second press, to hear the pending sentence too.
+    await p.eval("(() => { window.__heard = []; const o = new MutationObserver(() => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent.trim(); if (t && !window.__heard.includes(t)) window.__heard.push(t); } }); o.observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
     await press(p);
     const second = await p.eval(live);
     check("locate: a second press adds the next point, like a map click", second.some((t) => /^(End|Stop \d+) set to your location/.test(t)), JSON.stringify(second));
+    const heard = await p.eval("window.__heard");
+    check("locate: the press says Finding your location… while it looks", heard.includes("Finding your location…"), JSON.stringify(heard));
+    const START_NOTE = "This link includes your location as the start.";
     const note = await p.waitFor("!!document.querySelector('.link-note')", 20000);
     const noteText = note ? await p.eval("document.querySelector('.link-note').textContent") : "";
-    check("locate: Copy link shows the one-line note that the link includes the location as the start", noteText === "This link includes your location as the start.", noteText);
+    check("locate: Copy link shows the one-line note that the link includes the location as the start", noteText === START_NOTE, noteText);
+    // Through the accessibility tree: the note is not hidden from it, and Copy link is described by it.
+    await p.eval("(() => { const b = [...document.querySelectorAll('.route-actions button')].find((e) => e.textContent.trim() === 'Copy link'); if (b) b.id = '__copy'; return !!b; })()");
+    const noteAx = await axNode(p, ".link-note");
+    const copyAx = await axNode(p, "#__copy");
+    check("locate: the note is in the accessibility tree and describes the Copy link button", !!noteAx && !noteAx.ignored && copyAx?.description === START_NOTE, JSON.stringify({ noteAx, copyAx }));
+    try {
+      await b.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: ORIGIN, browserContextId: p.contextId });
+    } catch {
+      // An older Chrome without these: Copy link falls back to the selection copy.
+    }
+    await p.eval("document.getElementById('__copy').click(); true");
+    await sleep(900);
+    const copied = await p.eval("document.querySelector('.route-actions [role=status]')?.textContent ?? ''");
+    check("locate: pressing Copy link says the note with the confirmation", copied === `Link copied. ${START_NOTE}`, copied);
+    // A drag of the location's marker keeps the note (the moved point is still the rider's spot), and so does its undo.
+    const pin = await p.eval("(() => { const m = document.querySelector('.pin.pin-start'); if (!m) return null; const r = m.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()");
+    if (pin) {
+      await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: pin[0], y: pin[1], button: "left", clickCount: 1 });
+      for (let i = 1; i <= 6; i += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: pin[0] + i * 6, y: pin[1] + i * 4, button: "left", buttons: 1 });
+      await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: pin[0] + 36, y: pin[1] + 24, button: "left", clickCount: 1 });
+    }
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', undo: !![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && e.offsetParent && !e.disabled) })");
+    check("locate: dragging the location's marker keeps the Copy link note", !!pin && dragged.note === START_NOTE && dragged.undo, JSON.stringify({ pin, dragged }));
+    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Undo' && e.offsetParent && !e.disabled)?.click(); true");
+    await sleep(1500);
+    await p.waitFor("!!document.querySelector('.link-note')", 20000);
+    const undone = await p.eval("document.querySelector('.link-note')?.textContent ?? ''");
+    check("locate: undoing the drag keeps the Copy link note", undone === START_NOTE, undone);
     const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
     check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
     await p.shot(`${SHOTS}/locate_granted.png`);
@@ -1009,7 +1045,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 203;
+const EXPECTED = 208;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

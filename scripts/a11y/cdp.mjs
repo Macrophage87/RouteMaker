@@ -185,6 +185,8 @@ export async function axNode(page, selector) {
     expanded: prop("expanded"),
     checked: prop("checked") === "true" ? true : prop("checked") === "false" ? false : prop("checked"),
     disabled: prop("disabled"),
+    /** Left out of the accessibility tree (aria-hidden, display: none and the like). */
+    ignored: n.ignored === true,
   };
 }
 
