@@ -738,7 +738,7 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 5 must reach the api and the pipeline images
+`l`, `b`). FORMAT_VERSION 5 (6 since the Mass Ride capacity, below) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -748,6 +748,23 @@ and running the pre-draw before the data rebuild draws the same tiles as
 before, only thinner (every cached tile is drawn again, as the format
 changed); the next rebuild's pre-draw draws the long trails only. Route
 relations and names are OSM's, cited with the rest of the map's data.
+
+**The Mass Ride capacity column** (FOLLOWUP-MASSRIDE-MAP part 1, OWNER-DECISIONS 325-327,
+387). `segment.mass_capacity_rpm` is the flat-ground riders a minute `routemaker.massflow`
+gives each segment from its way's tags and the classifier's lanes; the tiles carry it as `rpm`
+(rounded down to ten; ETag letter `r`), the route's coloured sections carry it for a Mass Ride,
+and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
+came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path
+rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
+`settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (90 to 260; about 198 on the live extract). Until a
+rebuild has promoted the column, nothing changes for a rider: the tiles carry no `rpm`, the Mass
+Ride map keeps its current styling and its legend and panel are the stress ones, with no error and
+nothing to do. FORMAT_VERSION 6 (the tile format after the long trails' 5) must reach the api
+and the pipeline images together, as the note above says: build both under one TAG (`docker
+compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
+the api's cache every week. The data takes effect after the next rebuild; the front end and the
+api that read it are safe before it. Roads show on the Mass Ride map from zoom 12 (the busier
+ones) and every street from zoom 14, as the tiles carry them; trails, paths and alleys never.
 
 Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096

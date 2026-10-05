@@ -834,6 +834,100 @@ validity and a few known places), and the browser check section 9 of
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
 
+### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
+
+"The focus is on carrying capacity, not LTS here ... The headline color should be riders per
+minute." In Mass Ride mode the map and the route line are coloured by riders per minute, and the
+LTS colours and the path, protected-lane and painted-lane rails are not drawn. Part 1 is the
+capacity map; part 2 is the route chart (it needs the elevation chart, 322, 323) and part 3 is
+the rider-marked hazards, which wait for the peer-review backend. Hazards are not built: the
+seam is `hazardLayers()` in `frontend/src/massStyle.js` (an empty list, in its place in the draw
+order), and nothing asks for hazards.
+
+* **The model** (`src/routemaker/massflow.py`, the plan's headline throughput): riders a minute =
+  60 x 0.37 riders per m2 x 0.7 utilisation x usable width x 1.9 m/s, so 29.5 riders a minute for
+  every metre of usable width: 99 for an 11 ft (3.35 m) lane, 198 for a 22 ft two-lane street.
+  The flat, straight, clear-road figure; the climbs, signals and surface of part 2 reduce it.
+  Usable width is the carriageway's own `width` where mapped (2.4 to 40 m), else the travel lanes
+  times 11 ft (the tagged `lanes`, or `lanes:forward` plus `lanes:backward`, else the
+  classifier's through lanes a direction, else a highway-class default), plus a painted bike lane
+  on the roadway (5 ft where no width is surveyed), never a protected lane (127), and never a
+  parking lane (parked cars are in it: a proposal for the owner). One module holds the constants,
+  and `tests/test_mass_capacity.py` holds the front end's band edges equal to its own.
+* **The column.** `segment.mass_capacity_rpm integer` (`pipeline.schema.MASS_CAPACITY_COLUMN`),
+  written by the segment writer for every row from the way's tags and the classifier's lanes
+  (`pipeline.run.write_segments`). Nullable: a table built before it has none, and nothing breaks.
+* **The tile property** (`core.stress_tiles`): `rpm`, an optional property in the same way as
+  `facility` and the long-trail columns (`OPTIONAL_PROPERTIES`), rounded down to a multiple of 10
+  (`RPM_STEP`) so the band edges (60, 120, 200) never move and the zoomed-out levels, which merge
+  every segment of one value into one feature, are not split a feature per integer. ETag letter
+  `r` (the tag is now `+cfmrsbtl` on a full table). FORMAT_VERSION 6.
+* **The VALIDATE sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
+  least 98% of the road rows and of the path rows carry a figure; no road row is under 44 or over
+  1,181 riders a minute; and the median road lies in `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`,
+  90 to 260 (a model in the wrong units, or with a zero constant, is a refused build). The tests'
+  toy extracts set the median range wide (`tests/conftest.py`).
+* **The route.** `core.routing.classify` reads the column where the live table has it
+  (`PieceClass.rpm`), and for a Mass Ride `stress_spans` ends a section where the capacity changes
+  band and gives each `rpm`, the lowest along it (a stretch marked Avoid is one section with null).
+  Another ride type, and a table without the column, carry no figures, and the route is drawn by
+  stress as it was. A section folded away for being under 10 m does not lower its neighbour's
+  figure, so a section's figure always lies in the band its colour says.
+* **The front end.** `frontend/src/massStyle.js` (bands, layers, filters), `lib/massCapacity.ts`
+  (the narrowest point, the shares, the words), `lib/massLegend.ts` (the legend and the route's
+  list), and the route line's classes in `lib/routeColours.ts` (`m0` to `m3`, `mavoid`; the dashed
+  ones have a layer of their own each, `lib/mapGlue.ts` `routeDashLayers`). The capacity layers
+  are on the map always and drawn only in Mass Ride mode (`setMassMode`); in that mode the stress
+  and facility layers take out the features that carry `rpm` (`massHides`). **The fallback:** the
+  tiles of a table without the column carry no `rpm`, so nothing is hidden, the capacity layers
+  draw nothing, and the legend and panel (which learn it from the map, `watchForCapacity`, and
+  from the route's sections) are the stress ones: Mass Ride shows its current styling, never an
+  error. Roads show from zoom 12 (the busier roads; every street from 14) because that is what the
+  tiles carry; trails, paths and alleys are never drawn in this mode.
+* **Colours** (327): red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7
+  px solid, purple #6a3d9a 8.5 px solid; each outlined by a halo 3:1 from it (dark under the red,
+  orange and green, white under the purple), which shows in the dash gaps. Avoid: near-black
+  #14040a on coral #ee3b2c, dash-dot, labelled AVOID. The widths thin out below zoom 16.
+* **The colour-blind check** (327: "the implementation must verify it under CVD simulation").
+  `frontend/src/massStyle.test.ts`, with the repo's own simulator and CIEDE2000
+  (`testSupport/colourVision.ts`, Machado 2009 at severity 1.0). A pair of bands whose colours
+  are under 20 apart for any vision must differ in a cue besides colour (width by 1.5 px or more,
+  or dash), and the red and the green must differ in both. The colour distances, CIEDE2000:
+
+  | pair | normal | protan | deutan | tritan |
+  |---|---|---|---|---|
+  | under 60 / 60-120 | 29.7 | 29.0 | 17.6 | 18.8 |
+  | under 60 / 120-200 (red / green) | 70.0 | 21.4 | 10.8 | 63.1 |
+  | under 60 / 200+ | 39.4 | 47.3 | 54.6 | 33.6 |
+  | 60-120 / 120-200 | 49.6 | 9.6 | 20.1 | 59.8 |
+  | 60-120 / 200+ | 59.7 | 62.2 | 65.1 | 38.1 |
+  | 120-200 / 200+ | 52.0 | 52.6 | 45.8 | 41.4 |
+
+  Red and green are 10.8 apart for a deuteranope and 21.4 for a protanope; they differ in width
+  (4 against 7 px) and dash (dashed against solid). Orange and green are 9.6 apart for a
+  protanope; they differ in width (5.5 against 7 px) and dash.
+* **Measured** (read-only against the live table, 2026-10-05; the live table has no capacity
+  column yet, so the figure is `massflow` applied to the live segments' lanes and the live
+  extract's way tags, joined on the OSM way id, weighted by segment length). 1,343,687 ways,
+  121,400 mi. Roads (class road, not trail class): 63,667 mi, 80 of 449,583 rows without a figure
+  (0.02%); paths: all 408,875 rows have one. Capacity on roads: median 198, 5th to 95th
+  percentile 99 to 198, range 74 to 1,181. Band shares of road length: 0.0% under 60, 25.5% 60-120,
+  69.6% 120-200, 4.9% 200+; of the LTS 3+ roads (what the zoom 12-13 tiles hold): 0.0%, 5.5%,
+  79.4%, 15.1%; of DC's LTS 3+ roads: 0.0%, 10.4%, 45.3%, 44.3%. By class: residential median
+  198, service 99, tertiary and secondary 198, primary and trunk 297. Corridors in DC (share
+  60-120 / 120-200 / 200+): Constitution Ave NW 0 / 0 / 100%, Pennsylvania Ave NW 8 / 19 / 74%,
+  Massachusetts Ave NW 0 / 24 / 76%, 14th St NW 5 / 23 / 72%, K St NW 37 / 22 / 40%, Ohio Dr SW
+  73 / 17 / 10%. **No road is under 60.** One travel lane is 99, and a road would have to be narrower
+  than 6.7 ft (2.0 m) to fall under 60, so the red bottleneck band shows on no road in the first
+  build; it will come from part 2's reductions (grade, surface, turns) and from any narrowing the
+  owner wants modelled (open questions in reports/MASSRIDE-MAP-dev.md). Paths are 69% under 60,
+  and are not drawn.
+* **Tests.** `tests/test_mass_capacity.py` (the model, the sentinel, the sections),
+  `tests/test_stress_tiles.py::TestMassCapacity` (the tile property, the fallback, the ETag),
+  `tests/test_route_api.py::TestMassRideCapacitySections`, `tests/test_pipeline_end_to_end.py` (the
+  column written, and a build that loses it refused), and on the front end
+  `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`.
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The

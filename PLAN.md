@@ -451,6 +451,7 @@ Deferred work the owner has named, each with the OWNER-DECISIONS items that deci
   - GPX stays in the bottom bar with a route shown (the mockup drops it to three buttons), so "Open GPX…" is always reachable.
 - **FOLLOWUP-ELEVATION-CHART** (322, 323). "A route view in most cases should have the option to show a chart of elevation, with steep slopes highlighted and stress on a rolling basis." Approved as drawn ("looks good."), to build with the sidebar redesign.
 - **FOLLOWUP-MASSRIDE-MAP** (325-334). "This needs a redesign. The focus is on carrying capacity, not LTS here." Approved as drawn ("Looks good"), after the release, with the sidebar redesign and the elevation chart.
+  Implemented as, part 1 (wip/massride-map, 2026-10-05, OWNER-DECISIONS 387: built before the rebuild bundle; docs/DEVELOPMENT.md "The Mass Ride capacity map", docs/OPERATIONS.md "The Mass Ride capacity column"): the capacity map. The pipeline writes `segment.mass_capacity_rpm`, the flat-ground riders a minute from the plan's headline model (0.37 riders per m2 x 0.7 x usable width x 1.9 m/s: 99 a lane, 198 on 22 ft; `routemaker.massflow`); the stress tiles carry it as an optional `rpm` (rounded down to ten, ETag letter `r`, FORMAT_VERSION 6) and fall back to the old styling on a table without it; VALIDATE has a sentinel (98% of road and path rows, a plausible range, the median road 90 to 260). In Mass Ride mode only, the map is drawn in the four bands of 326 and 327 (red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7 px solid, purple #6a3d9a 8.5 px solid), the LTS colours and the path, protected-lane and painted-lane rails are not drawn, trails, paths and alleys are not drawn at all, and a stretch marked Avoid shows only AVOID (near-black on coral). The route line is cut by the same bands (the API's `stress_spans[].rpm`, a Mass Ride's only), the legend and panel say riders per minute in place of the LTS breakdown (the narrowest point, the typical figure and each band's share), and the description opens with a sentence of them. The red and green are told apart under colour-vision simulation by width and dash (the table is in docs/DEVELOPMENT.md). Not built: part 2 (the route chart, grade adjustment, corkers, the elevation chart it needs) and part 3 (rider-marked hazards, which wait for the peer-review backend; `hazardLayers()` in `frontend/src/massStyle.js` is the seam and draws nothing). Differs from the plan: the model's speed term is the plan's measured compressed pace (4.3 mph) and the label says "at 6-8 mph" as decision 326 words it; parking lanes are not added to the usable width (a proposal); and no road on the live extract comes out under 60 riders a minute, so the red band shows on no road until part 2 reduces capacity on grade, surface and turns.
 - **FOLLOWUP-ISECT-AVOID** (307-310, 335). "we should also have an avoid rating for intersections. There's some that are just way too problematic. Would only be added through community (or my) input." Queued after the release, alongside STRESS-SUGGEST.
 - **FOLLOWUP-WORKZONES** (341-349). "We should separate construction into 2 parts: where the road is rideable but would have rough surfaces or hazards, it should get some penalty, and where the road is closed, route around." Sources approved per 342, 346-349; not built.
 
@@ -1166,14 +1167,14 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - Legend, panel and description follow suit: riders per minute in place of the LTS breakdown; hazards listed in riding order and announced.
   - Federal land (324), stops and groups stay as Mass Ride layers.
 
-  Status: queued, FOLLOWUP-MASSRIDE-MAP (325-334), after the release; not built.
+  Status: queued, FOLLOWUP-MASSRIDE-MAP (325-334); built before the rebuild (387): part 1, the capacity map, is built (the hazard rails, the map half of part 3, are not: they wait for the peer-review backend); the legend, panel and description are in; parts 2 (chart) and 3 follow.
 
 - 326, Owner 2026-10-04, on 325:
   - Flow bands: "4 bands (Recommended)". Under 60 riders/min is a bottleneck, 60-120 tight, 120-200 good, 200+ wide open. More capacity is drawn darker and heavier, with dashes as the non-colour cue.
   - Hazards: "Severity only". Caution and Warning are the same kind of rider report at two severity levels, chosen by the reporter (with a reason); both stay routable, and Avoid removes the stretch.
   - Mock-up: "Yes, add to the canvas". Add a Mass Ride artboard to the sidebar canvas before building.
 
-  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+  Status: part 1 built with FOLLOWUP-MASSRIDE-MAP (the bands and the map); the hazards' severity levels wait for part 3.
 
 - 327, Owner 2026-10-04, amending 326: "Do a spectral color. Red for bottleneck purple for wide open. Line thickness too." The Mass Ride capacity bands use a spectral ramp, and line width rises with capacity:
   - under 60 riders/min: red #d7191c, 4 px, short dash;
@@ -1182,7 +1183,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - 200+: purple #6a3d9a, 8.5 px, solid.
   The red/green pair is separated for colour-blind riders by width and dash, and the implementation must verify it under CVD simulation. To avoid a clash with red bottlenecks, the hazard side rails are near-black (Caution dotted, Warning dash-dot). Avoid keeps its near-black on coral with the AVOID label.
 
-  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+  Status: built in part 1 (the spectral bands, the widths and dashes, the CVD check); the hazard rails wait for part 3.
 
 - 328, Owner 2026-10-04: "On the route visualizer also show estimated riders per minute. Where that slope is steep, we need to adjust." This builds on 147 (the Mass Ride profile with flow, elevation and corker tracks) and 322 (the elevation chart).
   (a) The Mass Ride route chart has elevation with steep sections highlighted, plus a riders-per-minute track along the same distance axis in the 327 spectral bands, in place of the stress strip.
