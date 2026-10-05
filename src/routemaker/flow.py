@@ -42,9 +42,13 @@ chart and its sentence say "Avoid" there, not a number.
 
 The API (docs/DEVELOPMENT.md "The flow API"), for the route chart and the capacity map:
 
-- `usable_width_m(tier, facility, lanes, oneway)`: the PHYSICAL width, metres, or None.
-  `tier` is the router's text key ("1"-"5", "unknown") or the pipeline's int (1-5, None).
-  This is what a per-segment column stores (387 part 1: `segment.mass_usable_width_m`).
+- `usable_width_m(tier, facility, lanes, oneway)`: the PHYSICAL width, metres, or None,
+  ESTIMATED from the classifier's lanes in one direction (406). `tier` is the router's
+  text key ("1"-"5", "unknown") or the pipeline's int (1-5, None). The real figure is the
+  per-segment column `segment.mass_usable_width_m` (387 part 1), which
+  `routemaker.massflow` writes at the rebuild (own side, parked cars out, DC first;
+  404-407); the route chart reads that column where the table has it, so the chart and
+  the capacity map agree, and this estimate only on an older table.
 - `level_riders_per_min(width_m)`: the level figure, a float.
 - `grade_factor(grade, climbed_m)`: the climb or descent factor, 0.3-1 (1 on the level).
 - `riders_at(width_m, grade, climbed_m)`: the level figure times the grade factor, a
@@ -120,22 +124,29 @@ def is_avoid(tier: int | str | None) -> bool:
 def usable_width_m(
     tier: int | str | None, facility: str | None, lanes: int | None, oneway: bool | None
 ) -> float | None:
-    """The physical width a group has on a stretch, metres; None where the stretch is
-    unrated, or marked Avoid (325: no carrying capacity).
+    """The physical width a group has on a stretch, metres, ESTIMATED from the classifier's
+    lanes; None where the stretch is unrated, or marked Avoid (325: no carrying capacity).
+
+    The source of truth is the segment table's `mass_usable_width_m`
+    (`routemaker.massflow.usable_width_m`, written by the rebuild: the ride's own direction,
+    parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404-407), which the capacity
+    map colours by and the route chart reads (`core.routing._flow_stretches`). This estimate
+    stands in only on a table built before that column.
 
     `tier` is the router's text key ("1"-"5", "unknown") or the pipeline's int. A road's
-    travel lanes (both directions of a two-way road: a mass ride takes the street) at
-    `LANE_WIDTH_M`, with `DEFAULT_LANES` a direction where the segment table has none
-    (`lanes` is through lanes a direction). A path is `PATH_WIDTH_M`. Parking and painted
-    bike lanes are not in it (the segment table does not carry them to here, so the
-    figure errs low)."""
+    travel lanes in one direction (OWNER-DECISIONS 406: "We should only plan on our own side
+    of a two way street"; a one-way street's lanes are all one direction) at
+    `LANE_WIDTH_M`, with `DEFAULT_LANES` where the segment table has none (`lanes` is
+    through lanes a direction, so `oneway` does not change it). A path is `PATH_WIDTH_M`.
+    Parking and painted bike lanes are not in it (the segment table does not carry them to
+    here)."""
     number = tier_number(tier)
     if number is None or number == AVOID_TIER:
         return None
     if facility == "path":
         return PATH_WIDTH_M
     through = lanes if lanes else DEFAULT_LANES
-    return through * (1 if oneway else 2) * LANE_WIDTH_M
+    return through * LANE_WIDTH_M
 
 
 def level_riders_per_min(width_m: float) -> float:

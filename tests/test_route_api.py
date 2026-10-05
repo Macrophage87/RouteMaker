@@ -2595,9 +2595,12 @@ class TestMassRideCapacitySections:
     def test_a_piece_class_carries_the_capacity_and_still_pickles(self) -> None:
         import pickle
 
-        again = pickle.loads(pickle.dumps(routing.PieceClass("2", "path", True, 120)))
+        width = 120 / flow.level_riders_per_min(1.0)
+        again = pickle.loads(pickle.dumps(routing.PieceClass("2", "path", True, width_m=width)))
         assert again == ("2", "path") and again.unpaved is True and again.rpm == 120
+        assert again.width_m == pytest.approx(width)
         assert routing.PieceClass("2", "path").rpm is None
+        assert routing.PieceClass("2", "path").width_m is None
 
     def test_classify_reads_the_capacity(self, segments) -> None:
         self.capacities(segments, {101: 50, 202: None})

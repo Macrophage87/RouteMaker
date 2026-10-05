@@ -1256,24 +1256,37 @@ STRETCH_UNTRACED = "untraced"
 
 
 def _flow_stretches(
-    leg_runs: list, pieces: list[Piece], classes: list
+    leg_runs: list, pieces: list[Piece], classes: list, capacity: bool = False
 ) -> list[tuple[float, float | None, str | None]]:
     """(metres, physical usable width, note) along the route in the order ridden, as the
-    stress sections are cut (`stress_spans`): the width a Mass Ride's group has
-    (`routemaker.flow.usable_width_m`), None with `STRETCH_AVOID` on a stretch marked
-    Avoid and with `STRETCH_UNTRACED` on a leg that could not be traced."""
+    stress sections are cut (`stress_spans`): the width a Mass Ride's group has, None with
+    `STRETCH_AVOID` on a stretch marked Avoid and with `STRETCH_UNTRACED` on a leg that
+    could not be traced.
+
+    With `capacity` (the live table has `segment.mass_usable_width_m`) the width is the
+    segment's own, as the capacity map colours it (`PieceClass.width_m`: the ride's own
+    direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404, 406), so the
+    chart and the map always agree; a piece on no segment has none. Without the column (a
+    table built before the rebuild bundle) it is `routemaker.flow.usable_width_m`'s
+    estimate from the classifier's lanes."""
     out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
-                width = flow.usable_width_m(
-                    klass[0],
-                    klass[1],
-                    getattr(klass, "lanes", None),
-                    getattr(klass, "oneway", None),
-                )
-                note = STRETCH_AVOID if flow.is_avoid(klass[0]) else None
+                avoid = flow.is_avoid(klass[0])
+                if avoid:
+                    width = None
+                elif capacity:
+                    width = getattr(klass, "width_m", None)
+                else:
+                    width = flow.usable_width_m(
+                        klass[0],
+                        klass[1],
+                        getattr(klass, "lanes", None),
+                        getattr(klass, "oneway", None),
+                    )
+                note = STRETCH_AVOID if avoid else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -2326,11 +2339,10 @@ def plan(
                 )
             else:
                 stretches.append((run, "unknown", "unknown"))
-        spans = stress_spans(
-            stretches,
-            capacity=preset_name == "mass-ride"
-            and _has_capacity_column(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)),
+        capacity = preset_name == "mass-ride" and _has_capacity_column(
+            validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
         )
+        spans = stress_spans(stretches, capacity=capacity)
         events = None
         if not over_budget:
             events = _events(refine_context, legs, raw_junctions, deadline)
@@ -2351,7 +2363,7 @@ def plan(
         profile = route_profile(
             legs,
             spans,
-            (lambda: _flow_stretches(leg_runs, pieces, classes)) if mass_ride else None,
+            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
             majors if mass_ride else None,
             majors_complete,
         )

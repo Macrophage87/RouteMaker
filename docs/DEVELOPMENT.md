@@ -899,13 +899,14 @@ order), and nothing asks for hazards.
   being zero (405). A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
   width: OSM's, e.g. an untagged residential street, 11 ft (3.35 m), 99. OSM 30 ft curb-to-curb
   with `parking:both=lane`: (30 - 2 x 7.9) / 2 = 7.1 ft (2.17 m), 64.
-* **One model with the elevation chart.** `src/routemaker/flow.py` is copied verbatim from
-  wip/elevation-chart (27cddab; its constants are unchanged in 461c853 and later); `massflow`
-  takes its constants, `level_riders_per_min` and band edges from it. Since 404 the WIDTH is
-  `massflow`'s, not `flow.usable_width_m` (which reads both directions of a two-way road from
-  the classifier's lanes): at integration the elevation chart's riders-a-minute track should read
-  this column (`segment.mass_usable_width_m`) for its stretches' widths, so the chart and the
-  map agree (reports/MASSRIDE-MAP-rev1.md, "Integration").
+* **One model with the elevation chart.** There is one `src/routemaker/flow.py`, the elevation
+  chart's (the rebuild bundle dropped wip/massride-map's verbatim copy); `massflow` takes its
+  constants, `level_riders_per_min` and band edges from it. The WIDTH is `massflow`'s: the
+  column `segment.mass_usable_width_m` is the source of truth. The route chart reads it per
+  piece (`core.routing.PieceClass.width_m`, `_flow_stretches(..., capacity=True)`), the route's
+  coloured sections take their `rpm` from the same width, and the tiles' `rpm` too, so the
+  chart, the route line and the map always agree. `flow.usable_width_m` is now only the
+  estimate for a table built before the column, and reads one direction's lanes (406).
   The column is the flat-ground (level) figure only: the grade adjustment depends on direction
   and on distance into a climb, so the route chart applies it, not the tiles. The legend says
   "on the flat".
@@ -4798,14 +4799,23 @@ measurement.
   open. `flow.BAND_EDGES` and `flow.BAND_WORDS` are the one source: the front end's
   `FLOW_BANDS` is held to them by `tests/test_profile_flow.py`.
 
-**The flow API** (for `wip/massride-map`, which keeps a copy of this module and stores a
-per-segment physical width, `segment.mass_usable_width_m`; adopt this on rebase):
+**The flow API** (one module since the rebuild bundle: `routemaker.flow` is shared by the
+route chart, `routemaker.massflow`, the route's sections and the tiles):
 
-- `usable_width_m(tier, facility, lanes, oneway) -> float | None`: the physical width,
-  metres. `tier` may be the router's text key ("1"-"5", "unknown") or the pipeline's int
-  (1-5, None); tier 5 (Avoid) and unrated give None. `lanes` is through lanes a direction.
-  This is what the column stores; riders are made from it when served, so a change to a
-  constant reaches the map without a rebuild.
+- The width a group has is the segment table's `mass_usable_width_m`
+  (`routemaker.massflow.usable_width_m`, written by the rebuild: the ride's own direction,
+  parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404-407). The route chart reads
+  it per piece (`core.routing.PieceClass.width_m`; `_flow_stretches` with `capacity`, which is
+  true for a Mass Ride on a table that has the column), so the chart and the capacity map
+  always agree. Riders are made from the width when served, so a change to a constant
+  reaches the map and the chart without a rebuild.
+- `usable_width_m(tier, facility, lanes, oneway) -> float | None`: the ESTIMATE, metres,
+  used only on a table without the column. `tier` may be the router's text key ("1"-"5",
+  "unknown") or the pipeline's int (1-5, None); tier 5 (Avoid) and unrated give None.
+  `lanes` is through lanes a direction, and the estimate is that one direction's lanes x
+  11 ft (406: own side only; `oneway` no longer doubles it). Before the bundle it took both
+  directions of a two-way road, so `tests/test_profile_flow.py`'s two-way cases changed
+  from 13.4 m to 6.7 m (2 + 2 lanes) and from 6.7 m to 3.35 m (no lane count).
 - `level_riders_per_min(width_m) -> float`: the level figure (unrounded). The tiles'
   `RPM_PER_METRE_SQL` is `level_riders_per_min(1.0)`, as now.
 - `grade_factor(grade, climbed_m=0) -> float`: `speed_ratio x spacing_ratio`, 0.3 to 1; 1
@@ -4818,10 +4828,8 @@ per-segment physical width, `segment.mass_usable_width_m`; adopt this on rebase)
   per sample, from `(metres, width)` stretches in the order ridden; `stretch_index` and
   `climbed_along` are its parts.
 - `BAND_EDGES`, `BAND_WORDS`, `band_index`, `is_avoid`, `tier_number`.
-- The names massride-map already uses (`DENSITY_PER_M2`, `UTILISATION`, `PACE_MS`,
-  `LANE_WIDTH_M`, `level_riders_per_min`, `usable_width_m("1", "none", ...)`, `BAND_EDGES`,
-  `BAND_WORDS`, `band_index`) are unchanged; what changes is that `usable_width_m` gives
-  None for tier 5 and takes int tiers, and `per_sample` returns unrounded floats.
+- `massflow` uses `UTILISATION`, `PACE_MS`, `LANE_WIDTH_M`, `level_riders_per_min`,
+  `BAND_EDGES` and `BAND_WORDS`; the tiles' SQL uses `level_riders_per_min(1.0)`.
 
 **Major junctions** (333 as 396 redefines it) are
 `routemaker.intersections.major_crossings`: every flagged event (a junction with a stress
