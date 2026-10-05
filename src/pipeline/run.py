@@ -1731,6 +1731,14 @@ def build_handlers(
 
         reference = context.require_reference()
         classify_facilities()
+        dc_rules = massflow.DcRules(
+            wide_lane_ft=_setting("MASS_RIDE_DC_WIDE_LANE_FT"),
+            wide_lane_cap_ft=_setting("MASS_RIDE_DC_WIDE_LANE_CAP_FT"),
+            verified_reversible_blocks=frozenset(
+                _setting("MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS")
+            ),
+            ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
+        )
         rows: list[dict] = []
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
@@ -1767,7 +1775,10 @@ def build_handlers(
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
-                            way.tags, getattr(stress, "lanes", None), dc_blocks_of(way.osm_id)
+                            way.tags,
+                            getattr(stress, "lanes", None),
+                            dc_blocks_of(way.osm_id),
+                            dc_rules,
                         ),
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.

@@ -282,14 +282,19 @@ class TestTheDistrictsWidths:
                 10.0,
                 90,
             ),
-            # Reversible lanes (Connecticut Ave NW: 1 + 1 and 2 reversible, 10 ft): one
-            # each way off the peak.
+            # Reversible lanes count as zero (405): Connecticut Ave NW's ended in 2020,
+            # so 1 + 1 and 2 reversible, 10 ft, is one lane each way.
             (
-                dc_block(lanes={"ib": 1, "ob": 1, "reversible": 2}, way="both", lane_width_ft=10.0),
-                20.0,
-                180,
+                dc_block(
+                    name="CONNECTICUT AVE NW",
+                    lanes={"ib": 1, "ob": 1, "reversible": 2},
+                    way="both",
+                    lane_width_ft=10.0,
+                ),
+                10.0,
+                90,
             ),
-            # One reversible lane gives neither direction a whole lane.
+            # Nor does a block of another street where none is verified.
             (
                 dc_block(lanes={"ib": 2, "ob": 2, "reversible": 1}, way="both", lane_width_ft=10.0),
                 20.0,
@@ -533,3 +538,74 @@ class TestTheRoutesSections:
             [(100.0, "2", "none", None, 90), (100.0, "2", "none", None, None)], capacity=True
         )
         assert [s["rpm"] for s in spans] == [90, None]
+
+
+class TestTheDistrictsAssumptions:
+    """OWNER-DECISIONS 405 (reversible lanes) and 407 (3) (wide lanes with no parking)."""
+
+    OSM = {"highway": "primary"}
+    REVERSIBLE = {"ib": 1, "ob": 1, "reversible": 2}
+
+    def width(self, block, rules=massflow.DC_RULES) -> float:
+        return massflow.usable_width_m(self.OSM, None, [block], rules) / FT
+
+    def test_reversible_lanes_count_as_zero_by_default(self) -> None:
+        block = dc_block(
+            name="CANAL RD NW", lanes=self.REVERSIBLE, way="both", lane_width_ft=10.0, block_key="a"
+        )
+        assert self.width(block) == pytest.approx(10.0, abs=0.01)
+        assert not massflow.DC_RULES.verified_reversible_blocks
+
+    def test_a_verified_block_counts_half_each_way_but_connecticut_never_does(self) -> None:
+        rules = massflow.DcRules(verified_reversible_blocks=frozenset({"a", "c"}))
+        canal = dc_block(
+            name="CANAL RD NW", lanes=self.REVERSIBLE, way="both", lane_width_ft=10.0, block_key="a"
+        )
+        assert self.width(canal, rules) == pytest.approx(20.0, abs=0.01)
+        other = dc_block(
+            name="CANAL RD NW", lanes=self.REVERSIBLE, way="both", lane_width_ft=10.0, block_key="b"
+        )
+        assert self.width(other, rules) == pytest.approx(10.0, abs=0.01)
+        connecticut = dc_block(
+            name="CONNECTICUT AVE NW",
+            lanes=self.REVERSIBLE,
+            way="both",
+            lane_width_ft=10.0,
+            block_key="c",
+        )
+        assert self.width(connecticut, rules) == pytest.approx(10.0, abs=0.01)
+
+    def test_a_block_with_only_reversible_lanes_falls_back_to_osm(self) -> None:
+        block = dc_block(lanes={"ib": 0, "ob": 0, "reversible": 2}, way="both", lane_width_ft=10.0)
+        assert massflow.width_source(self.OSM, [block]) == "osm"
+
+    @pytest.mark.parametrize(
+        ("lane_ft", "parking", "expected_ft"),
+        [
+            (16.0, 0, 11.0),  # at the threshold, no parking lane: capped
+            (18.0, 0, 11.0),
+            (15.9, 0, 15.9),  # under the threshold: as recorded
+            (16.0, 2, 16.0),  # a parking lane is recorded: the width is the lane's
+            (16.0, None, 16.0),  # parking not recorded: as recorded
+            (10.0, 0, 10.0),  # a narrow lane is never widened
+        ],
+    )
+    def test_a_wide_lane_with_no_parking_is_capped(self, lane_ft, parking, expected_ft) -> None:
+        block = dc_block(
+            lanes={"ib": 1, "ob": 1}, way="both", lane_width_ft=lane_ft, parking_lanes=parking
+        )
+        assert self.width(block) == pytest.approx(expected_ft, abs=0.01)
+
+    def test_the_threshold_and_cap_are_settings(self) -> None:
+        block = dc_block(lanes={"ib": 1, "ob": 1}, way="both", lane_width_ft=14.0, parking_lanes=0)
+        rules = massflow.DcRules(wide_lane_ft=13.0, wide_lane_cap_ft=12.0)
+        assert self.width(block, rules) == pytest.approx(12.0, abs=0.01)
+        from config import settings
+
+        assert (settings.MASS_RIDE_DC_WIDE_LANE_FT, settings.MASS_RIDE_DC_WIDE_LANE_CAP_FT) == (
+            massflow.DC_RULES.wide_lane_ft,
+            massflow.DC_RULES.wide_lane_cap_ft,
+        )
+        assert settings.MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS == (
+            massflow.DC_RULES.ended_reversible_streets
+        )

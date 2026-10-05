@@ -869,9 +869,19 @@ order), and nothing asks for hazards.
   times the block's lane width (`TOTALTRAVELLANEWIDTH` / `TOTALTRAVELLANES`, which the parser
   divides), plus the painted bike lanes at their width (5 ft where none), less door zones. DC
   records parking lanes apart from travel lanes, so the parked cars are out of that width by
-  construction (curb to curb less parking). Reversible lanes, which DC counts in neither
-  direction, give half (rounded down) to each direction, as off the peak, when rides run, they
-  serve both (owner-confirmable). Bus lanes are in DC's counts and are counted. A block with no
+  construction (curb to curb less parking). Reversible lanes count as ZERO (405, the safe,
+  narrower reading): DC's `TOTALTRAVELLANESREVERSIBLE` is stale where the lanes were removed
+  (Connecticut Ave NW's ended in 2020; DCist, 2021-12-15, credited in docs/SOURCES.md), so a
+  block's reversible lanes count only where the reviewed allowlist
+  (`settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS`, BLOCKKEYs, empty for now) names it, half
+  (rounded down) to each direction, and never on a street in
+  `MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW). The 57 blocks DC still records
+  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md for the owner to check. A
+  block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
+  (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
+  shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
+  classifier's LTS reading of DC lanes (179) is separate and unchanged. Bus lanes are in DC's
+  counts and are counted. A block with no
   lanes, or a lane width outside 6 to 20 ft, gives nothing and the way falls back to OSM.
   **Elsewhere**, and as that fallback: a mapped `width` (2.4 to 40 m, curb to curb) less the
   parked cars (`parking_width_m`: from `parking:<side>` or `parking:lane:<side>`, 8 ft (2.4 m) a
@@ -885,7 +895,8 @@ order), and nothing asks for hazards.
   sides: 21 ft (6.40 m) a direction, 189. DC one lane each way of 8 ft between parked cars:
   8 ft (2.44 m), 72. DC one-way 3 lanes of 11 ft, no parking: 33 ft (10.06 m), 297. DC 10 ft
   lane and a 5 ft bike lane beside parking, each way: 10 + 5 - 3.5 = 11.5 ft (3.51 m), 103.
-  Connecticut Ave NW (1 + 1 and 2 reversible, 10 ft): 20 ft (6.10 m), 180. A block with no lane
+  Connecticut Ave NW (1 + 1 and 2 reversible, 10 ft): 10 ft (3.05 m), 90, the reversible lanes
+  being zero (405). A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
   width: OSM's, e.g. an untagged residential street, 11 ft (3.35 m), 99. OSM 30 ft curb-to-curb
   with `parking:both=lane`: (30 - 2 x 7.9) / 2 = 7.1 ft (2.17 m), 64.
 * **One model with the elevation chart.** `src/routemaker/flow.py` is copied verbatim from
@@ -965,10 +976,21 @@ order), and nothing asks for hazards.
   (69.1%), 120-200 251.6 mi (21.7%), 200+ 105.8 mi (9.1%); median 90. By DC functional class
   (under 60 / 60-120 / 120-200 / 200+): 1 interstate 0 / 0 / 38 / 62%, 2 freeway 0 / 6 / 23 /
   71%, 3 principal arterial 0 / 9 / 53 / 37%, 4 minor arterial 0 / 54 / 32 / 14%, 5 collector
-  0 / 77 / 18 / 5%, 7 local 0 / 84 / 15 / 1%. Read as the whole street (both directions, the
-  same widths) it would be 0.0 / 9.0 / 58.5 / 32.5%, so the direction rule is what moves most
-  of DC from good to tight; it is for the owner to confirm. The region outside DC is not
+  0 / 77 / 18 / 5%, 7 local 0 / 84 / 15 / 1%. The ride's own direction (406) is what moves most
+  of DC from good to tight, against a reading of the whole street (0.0 / 9.0 / 58.5 / 32.5%) the
+  owner has ruled out. The region outside DC is not
   re-measured here (no live reads): an untagged two-lane street is now 99 (was 198).
+* **Measured, after 405 and 407 (3)** (the same offline method). Reversible lanes at zero and
+  the 16 ft lane capped at 11 ft move 0.0 / 69.2 / 21.7 / 9.1% to 0.0 / 71.6 / 19.3 / 9.1%
+  (under 60 0.1 mi; 60-120 830.6 mi, 120-200 224.1 mi, 200+ 105.0 mi of 1,159.8 mi on DC's width);
+  the cap alone moves 24.5 mi (453 blocks) and the reversible lanes 3.4 mi, in DC's 7.5 mi of
+  them. The median road is unchanged, so the sentinel's 60 to 200 stands. By DC functional class
+  (under 60 / 60-120 / 120-200 / 200+): 1: 0 / 0 / 38 / 62%, 2: 0 / 10 / 19 / 71%, 3: 0 / 12 / 51 /
+  37%, 4: 0 / 54 / 32 / 14%, 5: 0 / 79 / 16 / 5%, 7: 0 / 87 / 12 / 1%.
+* **Provisional (OWNER-DECISIONS 406, 407).** The ride's own direction only (406: the oncoming
+  side is never counted, and no text in the app suggests using it), the 3.5 ft door zone, the 8 ft
+  OSM parking default and the 16 ft to 11 ft cap (407) are provisional: revisit them with
+  FOLLOWUP-FLOW-CALIBRATION.
 * **Why red is all but empty, and why that is not a bug.** The band edge of 60 riders a minute
   is 2.03 m (6.7 ft) of usable width at 29.5 a metre: narrower than any travel lane. Before 404
   it was unreachable by construction for a road: the least a road got was one 11 ft lane (99) or

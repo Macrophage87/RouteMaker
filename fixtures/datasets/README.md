@@ -142,10 +142,16 @@ otherwise rediscover; each is pinned by a test.
   blocks, 220 record no lanes and 220 no lane width, and 11 read a lane of 1 to 4 ft
   (read as errors); those fall back to OSM. The commonest lane is 8 ft (4,660
   blocks, 4,034 of them one lane each way between two parking lanes); 195 two-way
-  blocks of one lane each way read 16 ft lanes and no parking lane.
-* DC's lane totals include bus lanes (`BUSLANE_INBOUND`, `BUSLANE_OUTBOUND`), and
-  reversible lanes are counted as operating in the peak direction; both are the
-  conservative reading (OWNER-DECISIONS 179).
+  blocks of one lane each way read 16 ft lanes and no parking lane. Of all blocks, 453
+  (25.4 mi) read a lane of 16 to 20 ft and no parking lane; the Mass Ride width reads those
+  at 11 ft (OWNER-DECISIONS 407 (3)).
+* DC's reversible-lane count is stale (Connecticut Avenue NW's lanes ended in 2020;
+  DCist, 2021-12-15). 57 blocks (7.5 mi) record some; the Mass Ride width counts them as
+  zero (OWNER-DECISIONS 405) unless a reviewed block is allowlisted.
+* DC's lane totals include bus lanes (`BUSLANE_INBOUND`, `BUSLANE_OUTBOUND`), and the
+  classifier counts reversible lanes as operating in the peak direction; both are the
+  conservative reading for stress (OWNER-DECISIONS 179). The Mass Ride width does not
+  (above).
 * DC's `FHWAFUNCTIONALCLASS` never reaches the classifier: the Furth tables
   take no class, and the classifier's class is OSM's `highway`. The matcher reads
   it once: a freeway-class OSM way takes a block naming a different street only

@@ -48,9 +48,15 @@ width a corked group has in the direction it rides:
   `TOTALTRAVELLANEWIDTH`), so curb to curb less the parked cars is the travel and
   bike lanes. DC's widths are totals over the block's lanes; the parser
   (`agency_roads.parse_dc_roadway_block`) has already divided them per lane.
-  Reversible lanes are in DC's total but in neither direction's count: half of
-  them (rounded down) are given to each direction, as off the peak hours, when
-  rides run, they serve both (an owner-confirmable reading). Bus lanes are in DC's
+  Reversible lanes count as ZERO (OWNER-DECISIONS 405, the safe, narrower reading):
+  the Roadway Block's `TOTALTRAVELLANESREVERSIBLE` is stale where the lanes were
+  removed (Connecticut Ave NW's ended in 2020), so a block's reversible lanes are
+  counted only where a reviewed allowlist (`DcRules.verified_reversible_blocks`,
+  empty for now) names it, and never on a street `DcRules.ended_reversible_streets`
+  names (Connecticut Ave NW). A block with a lane width of `DcRules.wide_lane_ft`
+  (16 ft) or more and no parking lane is read at `DcRules.wide_lane_cap_ft` (11
+  ft) a lane (OWNER-DECISIONS 407 (3): probably shared parking and driving lanes).
+  Both are provisional (407), to revisit with FOLLOWUP-FLOW-CALIBRATION. Bus lanes are in DC's
   counts and are counted (a corked ride uses them). A way along several blocks
   takes the narrowest block's figure.
 - Elsewhere, and in DC where the blocks record no lane count or no plausible lane
@@ -73,6 +79,7 @@ tags again.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from . import flow
 from .agency_roads import BIKE_BUFFERED, BIKE_LANE, DC_AGENCY, DIRECTIONS, METRES_PER_FOOT
@@ -122,6 +129,37 @@ PARKING_ABSENT = frozenset(
 # data error (eleven blocks read 1 to 4 ft), and the way is read from OSM instead.
 DC_MIN_LANE_FT = 6.0
 DC_MAX_LANE_FT = 20.0
+
+
+@dataclass(frozen=True)
+class DcRules:
+    """The reviewed, provisional assumptions about the District's Roadway Block
+    (OWNER-DECISIONS 405, 407; to revisit with FOLLOWUP-FLOW-CALIBRATION). The
+    rebuild builds one from `settings.MASS_RIDE_DC_*`; the defaults are the same.
+
+    - `wide_lane_ft` / `wide_lane_cap_ft`: a block recording a lane width of at
+      least `wide_lane_ft` and no parking lane is read at `wide_lane_cap_ft` a lane
+      (such a "lane" is likely a shared parking and driving lane).
+    - `verified_reversible_blocks`: BLOCKKEYs of blocks verified to still operate
+      reversible lanes. Empty: reversible lanes count as zero.
+    - `ended_reversible_streets`: DC `ROUTENAME`s whose reversible lanes have
+      ended, so the layer's count is stale; never counted, even if allowlisted.
+    """
+
+    wide_lane_ft: float = 16.0
+    wide_lane_cap_ft: float = 11.0
+    verified_reversible_blocks: frozenset = frozenset()
+    ended_reversible_streets: frozenset = frozenset({"CONNECTICUT AVE NW"})
+
+    def reversible_lanes(self, block) -> int:
+        """The block's reversible lanes that count: zero unless verified."""
+        count = block.lanes.get("reversible", 0)
+        if not count or (block.name or "").strip().upper() in self.ended_reversible_streets:
+            return 0
+        return count if block.block_key in self.verified_reversible_blocks else 0
+
+
+DC_RULES = DcRules()
 
 # The carriageway widths a mapped `width` is believed between: narrower is a typo
 # or a lane count, wider a dual carriageway mapped as one way.
@@ -200,7 +238,7 @@ def parking_width_m(tags: Mapping[str, str]) -> dict[str, float]:
     return out
 
 
-def _dc_block_width_m(block) -> float | None:
+def _dc_block_width_m(block, rules: DcRules = DC_RULES) -> float | None:
     """One District block's usable width (the module docstring), metres, or None
     where it records no lanes or no plausible lane width."""
     if getattr(block, "agency", None) != DC_AGENCY:
@@ -208,6 +246,8 @@ def _dc_block_width_m(block) -> float | None:
     lane_ft = block.lane_width_ft
     if not lane_ft or not DC_MIN_LANE_FT <= lane_ft <= DC_MAX_LANE_FT:
         return None
+    if lane_ft >= rules.wide_lane_ft and block.parking_lanes == 0:
+        lane_ft = min(lane_ft, rules.wide_lane_cap_ft)
     lane_m = lane_ft * METRES_PER_FOOT
     bike_m = block.bike_width_ft * METRES_PER_FOOT if block.bike_width_ft else None
 
@@ -222,7 +262,7 @@ def _dc_block_width_m(block) -> float | None:
 
     lanes = block.lanes
     ib, ob = lanes.get("ib", 0), lanes.get("ob", 0)
-    reversible = lanes.get("reversible", 0)
+    reversible = rules.reversible_lanes(block)
     shared = lanes.get("bidirectional", 0)
     total = lanes.get("total", 0)
     one_way = block.way == "one" or (block.way is None and (ib == 0) != (ob == 0))
@@ -328,11 +368,13 @@ def _osm_width_m(tags: Mapping[str, str], per_direction_lanes: int | None) -> fl
     )
 
 
-def _dc_width_m(tags: Mapping[str, str], dc_blocks: Sequence | None) -> float | None:
+def _dc_width_m(
+    tags: Mapping[str, str], dc_blocks: Sequence | None, rules: DcRules = DC_RULES
+) -> float | None:
     """The narrowest District block's figure, or None where no block gives one."""
     if not dc_blocks or tags.get("highway") in DEFAULT_PATH_WIDTH_M:
         return None
-    figures = [f for f in (_dc_block_width_m(block) for block in dc_blocks) if f is not None]
+    figures = [f for f in (_dc_block_width_m(block, rules) for block in dc_blocks) if f is not None]
     return min(figures) if figures else None
 
 
@@ -340,6 +382,7 @@ def usable_width_m(
     tags: Mapping[str, str],
     per_direction_lanes: int | None = None,
     dc_blocks: Sequence | None = None,
+    rules: DcRules = DC_RULES,
 ) -> float | None:
     """The width a corked group has on the way in the direction it rides (the
     narrower direction of a two-way street), metres, or None where the way is not
@@ -351,7 +394,7 @@ def usable_width_m(
     decide it where they record lanes and a lane width (OWNER-DECISIONS 404 (3))."""
     if not tags.get("highway"):
         return None
-    width = _dc_width_m(tags, dc_blocks)
+    width = _dc_width_m(tags, dc_blocks, rules)
     if width is None:
         width = _osm_width_m(tags, per_direction_lanes)
     if width is None:
@@ -359,19 +402,22 @@ def usable_width_m(
     return min(max(width, MIN_USABLE_WIDTH_M), MAX_USABLE_WIDTH_M)
 
 
-def width_source(tags: Mapping[str, str], dc_blocks: Sequence | None = None) -> str:
+def width_source(
+    tags: Mapping[str, str], dc_blocks: Sequence | None = None, rules: DcRules = DC_RULES
+) -> str:
     """Where `usable_width_m` takes a way's width from: "dc" (the Roadway Block) or
     "osm" (OpenStreetMap, or a class default)."""
-    return "dc" if _dc_width_m(tags, dc_blocks) is not None else "osm"
+    return "dc" if _dc_width_m(tags, dc_blocks, rules) is not None else "osm"
 
 
 def usable_width_rounded(
     tags: Mapping[str, str],
     per_direction_lanes: int | None = None,
     dc_blocks: Sequence | None = None,
+    rules: DcRules = DC_RULES,
 ) -> float | None:
     """`usable_width_m` to the centimetre: what the segment table stores."""
-    width = usable_width_m(tags, per_direction_lanes, dc_blocks)
+    width = usable_width_m(tags, per_direction_lanes, dc_blocks, rules)
     return None if width is None else round(width, 2)
 
 
@@ -379,9 +425,10 @@ def capacity_rpm(
     tags: Mapping[str, str],
     per_direction_lanes: int | None = None,
     dc_blocks: Sequence | None = None,
+    rules: DcRules = DC_RULES,
 ) -> int | None:
     """Riders a minute the way carries, flat and straight, or None if unknown."""
-    width = usable_width_m(tags, per_direction_lanes, dc_blocks)
+    width = usable_width_m(tags, per_direction_lanes, dc_blocks, rules)
     return None if width is None else round(flow.level_riders_per_min(width))
 
 

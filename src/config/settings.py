@@ -367,6 +367,18 @@ REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # residential street of 8 ft lanes about 72 (docs/DEVELOPMENT.md, "The Mass Ride
 # capacity map").
 REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (60, 200)
+# The District Roadway Block assumptions behind the Mass Ride width
+# (`routemaker.massflow.DcRules`; OWNER-DECISIONS 405 and 407, provisional until
+# FOLLOWUP-FLOW-CALIBRATION): a block recording a lane width of at least the first
+# figure, feet, and no parking lane is read at the second (a likely shared parking
+# and driving lane). Reversible lanes count as zero (the layer's count is stale:
+# Connecticut Ave NW's ended in 2020, DCist 2021-12-15) except on the BLOCKKEYs
+# of the reviewed allowlist, which is empty until the owner has checked blocks
+# against current conditions; the streets named in the last setting never count.
+MASS_RIDE_DC_WIDE_LANE_FT = 16.0
+MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
+MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()
+MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS = frozenset({"CONNECTICUT AVE NW"})
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

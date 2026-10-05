@@ -759,7 +759,7 @@ came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows
 rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
 `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
 ride its own direction's lanes less parked cars, from DC's Roadway Block in the District: about 90
-on DC's blocks, 99 for an untagged two-lane street). Until a
+on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the median: reversible lanes count as zero and a 16 ft lane with no parking is read at 11 ft, `settings.MASS_RIDE_DC_*`). Until a
 rebuild has promoted the column, nothing changes for a rider: the tiles carry no `rpm`, the Mass
 Ride map keeps its current styling and its legend and panel are the stress ones, with no error and
 nothing to do. FORMAT_VERSION 6 (the tile format after the long trails' 5) must reach the api
