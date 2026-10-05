@@ -891,11 +891,12 @@ def with_majors(built: list[Junction], events: list[Event]) -> RouteEvents:
     """A Mass Ride's events with its major junctions beside them (OWNER-DECISIONS 333,
     396), which take in busy roads the planner does not flag. A failure in finding them
     costs only the chart's extra crossings: the flagged events stand in for them
-    (`majors_of_events`), and the events themselves (the markers, the corker list, the
-    description's junctions) are kept whatever happens (operations review, SHOULD-FIX 1)."""
+    (`majors_of_events`), marked incomplete so the chart says the list may be missing
+    some (correctness re-review R3), and the events themselves (the markers, the corker
+    list, the description's junctions) are kept whatever happens (operations review,
+    SHOULD-FIX 1)."""
     try:
-        majors = major_crossings(built, events)
+        return RouteEvents(events, major_crossings(built, events))
     except Exception:  # noqa: BLE001 - the route's own junction events must survive
         logger.warning("the major junctions could not be found", exc_info=True)
-        majors = majors_of_events(events)
-    return RouteEvents(events, majors)
+        return RouteEvents(events, majors_of_events(events), complete=False)

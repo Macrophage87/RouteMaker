@@ -831,7 +831,9 @@ class ProfileCrossingOut(Schema):
     )
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     lanes: int | None = Field(description="Lanes of the street, both directions, if known.")
-    crossed_tier: int | None
+    crossed_tier: int | None = Field(
+        description="The tier of the road that makes it major: crossed, or joined (`kind`)."
+    )
     kind: Literal["flagged", "crossing", "joining"] = Field(
         default="flagged",
         description=(
@@ -840,12 +842,16 @@ class ProfileCrossingOut(Schema):
         ),
     )
     corkers_needed: bool = Field(
-        description="Corkers hold it (OWNER-DECISIONS 142): the crossed road is LTS 3 or worse."
+        description=(
+            "Corkers hold it (OWNER-DECISIONS 142, 400): the crossed or joined road is LTS 3"
+            " or worse; a left or right turn onto such a road needs them as a crossing does."
+        )
     )
 
 
 class ProfileRangeOut(Schema):
-    """A stretch of the profile, metres along the route from its first sample to its last."""
+    """A stretch of the profile, metres along the route, from where the stretch begins to
+    where it ends (the route's own stretches, not the samples)."""
 
     from_m: int
     to_m: int
@@ -857,10 +863,13 @@ class ProfileOut(Schema):
     the order ridden: the router samples every `interval_m` along each leg, so `m` is the
     leg's start plus that spacing, never past the leg's end (a joint is two samples at one
     place; a leg with no elevation is a null height at each end). A route over about 60 km
-    is thinned to about 2,000 samples (`routemaker.profile.thin`: each window keeps its
-    steepest grade, its lowest riders figure and its gaps), after every figure is worked out
-    on every sample. `elevation_m` is null where the router had none, and `grade_pct` is
-    read across four samples (`routemaker.profile`), signed, positive uphill."""
+    is thinned to close to 2,000 samples (`routemaker.profile.thin`: each window keeps its
+    steepest grade, its highest and lowest heights, its lowest riders figure and its gaps),
+    after every figure is worked out on every sample. On a Mass Ride there are riders
+    samples too at each place the width changes (a pair at one distance, one each side)
+    and along a leg with no elevation (a null height). `elevation_m` is null where the
+    router had none, and `grade_pct` is read across four samples (`routemaker.profile`),
+    signed, positive uphill."""
 
     interval_m: float
     m: list[int]
@@ -881,6 +890,14 @@ class ProfileOut(Schema):
         description=(
             "Mass Ride only: the major junctions, in route order. Null where they were not"
             " checked (the junctions could not be read in time); an empty list is none."
+        ),
+    )
+    crossings_complete: bool | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: false where only the flagged junctions could be read (finding"
+            " the busy-road ones failed), so `crossings` may be incomplete; null with"
+            " `crossings` null."
         ),
     )
     avoid: list[ProfileRangeOut] | None = Field(

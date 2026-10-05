@@ -224,15 +224,19 @@ def per_sample(
     grade_at: Sequence[float | None],
     stretches: Sequence[tuple[float, float | None]],
     runs: Sequence[climbs.Run] | None = None,
+    where: Sequence[int | None] | None = None,
 ) -> tuple[list[float | None], list[float | None]]:
     """(riders a minute, the level figure) at each sample, unrounded floats, None where
     the width is not known (or the stretch is Avoid). `stretches` is (metres, physical
     width) in the order ridden, as the route is cut; `runs` the profile's
-    `climbs.runs`, computed here when not given."""
+    `climbs.runs`, computed here when not given; `where` the stretch each sample is on,
+    where the caller knows it (a pair of samples at a boundary, one on each side), else
+    `stretch_index`."""
     if runs is None:
         runs = climbs.runs(list(samples))
     sample_m = [m for m, _h in samples]
-    where = stretch_index(sample_m, stretches)
+    if where is None:
+        where = stretch_index(sample_m, stretches)
     climbed = climbed_along(sample_m, runs)
     adjusted: list[float | None] = []
     level: list[float | None] = []

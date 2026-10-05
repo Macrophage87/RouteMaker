@@ -928,8 +928,9 @@ def penalty_m(events: list[Event]) -> float:
 # rating (an event the planner flags). There is no lane counting and no "any stop sign"
 # rule. Busy roads the group reading turns into no event are marked all the same: a
 # right turn onto an arterial, or riding along a busy road past a busy cross street.
-# Corkers are needed at the major junctions (142, by the crossed road's tier: LTS 3, 4
-# or Avoid).
+# Corkers are needed at the major junctions (142, by the crossed or joined road's tier:
+# LTS 3, 4 or Avoid; 400: a left or right turn onto such a road needs them as a crossing
+# does).
 MAJOR_TIER = BUSY_TIER
 CORKER_TIER = BUSY_TIER
 
@@ -955,6 +956,10 @@ class Major:
     control: Control
     # The street's lanes in all (both directions), where known: said, not counted.
     lanes: int | None
+    # The tier of the road that makes it major: the road crossed, or for a joining
+    # (`kind`) the road joined. The name is the API's (`crossed_tier`), kept for its
+    # callers; corkers follow it either way (142, 400: a turn onto an LTS 3+ road needs
+    # them as a crossing does).
     crossed_tier: int | None
     kind: str = MAJOR_FLAGGED
 
@@ -973,13 +978,17 @@ class Major:
 
 class RouteEvents(list):
     """The junction events of a Mass Ride route, with its major junctions beside them
-    (`majors`, in route order)."""
+    (`majors`, in route order). `complete` False: the majors are the flagged junctions
+    only, because finding the busy-road ones failed (`core.junctions.with_majors`), so
+    the chart says the list may be incomplete (correctness re-review R3)."""
 
     majors: list[Major]
+    complete: bool
 
-    def __init__(self, events=(), majors=()):
+    def __init__(self, events=(), majors=(), complete: bool = True):
         super().__init__(events)
         self.majors = list(majors)
+        self.complete = complete
 
 
 def majors_of_events(events: Sequence[Event]) -> list[Major]:
@@ -1018,15 +1027,17 @@ def busy_roads_at(junction: Junction) -> list[tuple[Road, str]]:
     return sorted(found, key=lambda pair: -(pair[0].tier or 0))
 
 
-def _counted(majors: Sequence[Major], junction: Junction, road: Road) -> bool:
+def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road) -> bool:
     """Whether a junction's busy road is one already counted: the same node, or the
-    same street (or an unnamed one) within MERGE_WITHIN_M (its other carriageway, a
-    slip lane)."""
-    for major in majors:
-        if major.m == junction.m:
-            return True
-        near = abs(major.m - junction.m) <= MERGE_WITHIN_M
-        if near and (major.names & road.names or not road.names or not major.names):
+    same street within MERGE_WITHIN_M (its other carriageway, a slip lane), or an
+    unnamed road there. An unnamed major (a path crossing, say) does not hide a named
+    busy road beside it (correctness re-review NIT). `majors` is sorted by `m` and `at`
+    is their `m`s, so only the ones within MERGE_WITHIN_M are looked at (operations
+    re-review C)."""
+    lo = bisect.bisect_left(at, junction.m - MERGE_WITHIN_M)
+    hi = bisect.bisect_right(at, junction.m + MERGE_WITHIN_M)
+    for major in majors[lo:hi]:
+        if major.m == junction.m or major.names & road.names or not road.names:
             return True
     return False
 
@@ -1035,12 +1046,16 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
     """A route's major junctions (OWNER-DECISIONS 396), in route order: the flagged
     events, and every other junction that crosses or joins a road of LTS 3 or higher,
     whatever its control. One junction gives one major, for its busiest road."""
-    majors = majors_of_events(events)
+    majors = sorted(majors_of_events(events), key=lambda major: major.m)
+    at = [major.m for major in majors]
     for junction in sorted(share_controls(list(junctions)), key=lambda j: j.m):
         for road, kind in busy_roads_at(junction):
-            if _counted(majors, junction, road):
+            if _counted(majors, at, junction, road):
                 break
-            majors.append(
+            place = bisect.bisect_right(at, junction.m)
+            at.insert(place, junction.m)
+            majors.insert(
+                place,
                 Major(
                     junction.m,
                     junction.lon,
@@ -1052,7 +1067,7 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     _lanes_total(road),
                     road.tier,
                     kind,
-                )
+                ),
             )
             break
-    return sorted(majors, key=lambda major: major.m)
+    return majors

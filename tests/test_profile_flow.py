@@ -333,6 +333,54 @@ class TestThin:
         assert keep[0] == 0 and keep[-1] == n - 1
         assert {777, 4321, 6001, 8000} <= set(keep)
 
+    @staticmethod
+    def peaked(n=6001, peak=3000):
+        """A 180 km route of rolling hills with one sharp 150 m peak and a 2 m valley floor:
+        the summit and the floor are where the grade is near 0."""
+        heights = [60.0 + 15.0 * math.sin(i / 35.0) for i in range(n)]
+        for k in range(-12, 13):
+            heights[peak + k] = 150.0 - abs(k) * 7.0
+        heights[1500] = 2.0
+        return heights
+
+    @pytest.mark.parametrize("mass", [False, True])
+    def test_thinning_keeps_the_summit_and_the_valley_floor(self, mass):
+        """Correctness re-review R2: the steepest sample a window keeps is never its
+        summit; the summary's elevation range and the drawn peak need it."""
+        heights = self.peaked()
+        grade_at = profile.grades(along(heights))
+        riders = [190.0] * len(heights) if mass else None
+        keep = profile.thin(heights, grade_at, riders)
+        kept = [heights[i] for i in keep]
+        assert max(kept) == 150.0
+        assert min(kept) == 2.0
+
+    @pytest.mark.parametrize("mass", [False, True])
+    def test_thinning_sends_close_to_the_limit_and_never_far_past_it(self, mass):
+        """Operations re-review A and correctness R2: the window is sized from the picks
+        made, so a long route sends close to the limit (it sent about half), and never
+        more than one window's picks over it."""
+        heights = self.peaked()
+        grade_at = profile.grades(along(heights))
+        riders = [190.0 - (i % 7) for i in range(len(heights))] if mass else None
+        keep = profile.thin(heights, grade_at, riders)
+        most = profile.WINDOW_PICKS_MASS if mass else profile.WINDOW_PICKS
+        assert profile.MAX_SAMPLES * 0.85 <= len(keep) <= profile.MAX_SAMPLES + most + 2
+
+    def test_a_window_full_of_picks_stays_within_a_windows_picks_of_the_limit(self):
+        """Every pick in every window: a gap, an unknown riders figure, distinct steepest,
+        highest, lowest and lowest-riders samples."""
+        n = 9000
+        heights: list[float | None] = [float((i * 37) % 101) for i in range(n)]
+        for i in range(0, n, 11):
+            heights[i] = None
+        grade_at: list[float | None] = [((i * 53) % 17) / 100 for i in range(n)]
+        riders: list[float | None] = [float((i * 29) % 97) + 1 for i in range(n)]
+        for i in range(5, n, 13):
+            riders[i] = None
+        keep = profile.thin(heights, grade_at, riders)
+        assert len(keep) <= profile.MAX_SAMPLES + profile.WINDOW_PICKS_MASS + 2
+
 
 class TestRouteProfile:
     def leg(self, heights, length_m=None):
@@ -410,11 +458,14 @@ class TestRouteProfile:
         ]
 
     def test_the_typical_figure_is_the_median(self):
-        # Three samples a stretch: 99, 99, 99 | 198, 198 | 297, 297 (by width): median 198.
+        # The samples on the grid: 99, 99, 99 | 198, 198 | 297, 297 (by width): median 198.
+        # A pair at each boundary (75 m, 135 m), one each side, does not weigh in it.
         heights = [10.0] * 7
         stretches = [(75.0, 3.35, None), (60.0, 6.7, None), (100.0, 10.05, None)]
         body = self.mass(heights, stretches)
-        assert body["riders_per_min"] == [99, 99, 99, 198, 198, 297, 297]
+        assert body["m"] == [0, 30, 60, 75, 75, 90, 120, 135, 135, 150, 180]
+        assert body["riders_per_min"] == [99, 99, 99, 99, 198, 198, 198, 198, 297, 297, 297]
+        assert body["elevation_m"] == [10.0] * 11
         assert body["flow"]["typical_riders_per_min"] == 198
         assert body["flow"]["narrowest_riders_per_min"] == 99
         assert body["flow"]["narrowest_m"] == 0
@@ -433,17 +484,90 @@ class TestRouteProfile:
         heights = [10.0] * 7
         stretches = [(75.0, 6.7, None), (60.0, None, routing.STRETCH_AVOID), (100.0, 6.7, None)]
         body = self.mass(heights, stretches)
-        assert body["riders_per_min"][3:5] == [None, None]
-        assert body["avoid"] == [{"from_m": 90, "to_m": 120}]
+        assert body["m"][3:9] == [75, 75, 90, 120, 135, 135]
+        assert body["riders_per_min"][3:9] == [198, None, None, None, None, 198]
+        # The stretch's own ends, not its first and last samples (correctness re-review R1).
+        assert body["avoid"] == [{"from_m": 75, "to_m": 135}]
         assert body["unchecked"] == []
         assert body["flow"]["narrowest_riders_per_min"] == 198
+
+    def test_an_avoid_stretch_between_two_samples_keeps_its_range(self):
+        """Correctness re-review R1: a 20 m Avoid from 105 m to 125 m lies between the
+        samples at 90 m and 120 m; it gave `avoid` 120-120, and one shorter still none."""
+        heights = [10.0] * 7
+        stretches = [
+            (105.0, 6.7, None),
+            (20.0, None, routing.STRETCH_AVOID),
+            (110.0, 6.7, None),
+        ]
+        body = self.mass(heights, stretches)
+        assert body["avoid"] == [{"from_m": 105, "to_m": 125}]
+        at = body["m"].index(105)
+        assert body["m"][at : at + 5] == [105, 105, 120, 125, 125]
+        assert body["riders_per_min"][at : at + 5] == [198, None, None, None, 198]
+
+    def test_a_short_bottleneck_between_two_samples_is_the_narrowest_point(self):
+        heights = [10.0] * 7
+        stretches = [(100.0, 6.7, None), (15.0, 1.5, None), (120.0, 6.7, None)]
+        body = self.mass(heights, stretches)
+        assert body["flow"]["narrowest_riders_per_min"] == round(flow.level_riders_per_min(1.5))
+        assert body["flow"]["narrowest_m"] == 100
+        assert body["flow"]["typical_riders_per_min"] == 198
+
+    def test_a_leg_with_no_elevation_keeps_its_avoid_and_its_riders(self):
+        """Correctness re-review R1: a 2 km leg with no heights holding a 200 m Avoid and a
+        900 m stretch at 59 riders a minute gave `avoid: []` and a line drawn straight
+        from 207 to 59 across it."""
+        narrow = 59 / flow.level_riders_per_min(1.0)
+        legs = [self.leg([10.0] * 5), self.leg([], 2000.0), self.leg([10.0] * 5)]
+        stretches = [
+            (420.0, 6.7, None),
+            (200.0, None, routing.STRETCH_AVOID),
+            (900.0, narrow, None),
+            (720.0, 6.7, None),
+        ]
+        body = routing.route_profile(legs, [], stretches, [])
+        assert body["avoid"] == [{"from_m": 420, "to_m": 620}]
+        assert body["flow"]["narrowest_riders_per_min"] == 59
+        assert body["flow"]["narrowest_m"] == 620
+        by_m = dict(zip(body["m"], body["riders_per_min"], strict=True))
+        # A riders sample every 30 m along the leg, with no height.
+        inside = [x for x in body["m"] if 120 < x < 2120]
+        assert len(inside) >= 2000 // 30
+        assert by_m[1020] == 59 and by_m[510] is None and by_m[300] == 198
+        at = body["m"].index(1020)
+        assert body["elevation_m"][at] is None
+        assert body["climbs"] == []
 
     def test_an_untraced_leg_is_unchecked(self):
         heights = [10.0] * 7
         stretches = [(75.0, 6.7, None), (200.0, None, routing.STRETCH_UNTRACED)]
         body = self.mass(heights, stretches, [])
-        assert body["unchecked"] == [{"from_m": 90, "to_m": 180}]
+        # From the stretch's start, clipped to the profile's end.
+        assert body["unchecked"] == [{"from_m": 75, "to_m": 180}]
         assert body["avoid"] == []
+
+    def test_a_partial_list_of_majors_is_sent_as_incomplete(self):
+        """Correctness re-review R3: the flagged junctions standing in for the majors are
+        not shown as the full set."""
+        heights = [10.0] * 5
+        stretch = [(200.0, 6.7, None)]
+        leg = [self.leg(heights)]
+        assert routing.route_profile(leg, [], stretch, [], True)["crossings_complete"] is True
+        assert routing.route_profile(leg, [], stretch, [], False)["crossings_complete"] is False
+        assert routing.route_profile(leg, [], stretch, None, False)["crossings_complete"] is None
+        assert routing.route_profile(leg, [])["crossings_complete"] is None
+
+    def test_the_stretches_may_be_made_inside_the_profiles_guard(self):
+        """Operations re-review B: a failure making the stretches costs only the chart."""
+
+        def broken():
+            raise RuntimeError("boom")
+
+        heights = [10.0] * 5
+        assert routing.route_profile([self.leg(heights)], [], broken, []) is None
+        made = routing.route_profile([self.leg(heights)], [], lambda: [(200.0, 6.7, None)], [])
+        assert made["riders_per_min"] == [198] * 5
 
     def test_a_long_route_is_thinned_after_its_figures_are_worked_out(self):
         n = 7001  # 210 km
@@ -702,3 +826,33 @@ class TestMajorJunctions:
         assert list(got) == events
         assert got.majors == m.majors_of_events(events)
         assert len(got.majors) == 1
+        # Correctness re-review R3: marked incomplete, so the chart says so.
+        assert got.complete is False
+        assert core_junctions.with_majors(built, events).complete is False
+        monkeypatch.undo()
+        assert core_junctions.with_majors(built, events).complete is True
+
+    def test_an_unnamed_major_does_not_hide_a_named_busy_road_beside_it(self):
+        """Correctness re-review NIT: an unnamed flagged junction (a path crossing) within
+        45 m hid any busy road beside it, whatever its name."""
+        unnamed = m.Major(100.0, -77.0, 38.9, frozenset(), (), "orange", Control.SIGNAL, None, 3)
+        named = m.Major(
+            100.0,
+            -77.0,
+            38.9,
+            frozenset({"wisconsin avenue"}),
+            ("Wisconsin Avenue",),
+            None,
+            Control.SIGNAL,
+            None,
+            4,
+        )
+        beside = junction(130.0, [road("Wisconsin Avenue", tier=4)])
+        busy = road("Wisconsin Avenue", tier=4)
+        assert m._counted([unnamed], [100.0], beside, busy) is False
+        assert m._counted([named], [100.0], beside, busy) is True
+        # An unnamed busy road beside a major is still its other carriageway.
+        assert m._counted([named], [100.0], beside, road("", tier=4)) is True
+        # Past 45 m nothing is counted twice by name.
+        far = junction(150.0, [busy])
+        assert m._counted([named], [100.0], far, busy) is False

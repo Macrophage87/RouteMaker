@@ -175,33 +175,28 @@ def climb_list(
 
 
 # The most samples a route answer carries (operations review, SHOULD-FIX 3): every
-# sample up to about 60 km (37 mi) at 30 m, and on a longer route about this many. The
+# sample up to about 60 km (37 mi) at 30 m, and on a longer route close to this many
+# (never more than a window's picks over it: `thin`). The
 # chart is 300-700 px wide, so more would be many samples to a pixel.
 MAX_SAMPLES = 2000
 
 
-def thin(
+def _window_picks(
     heights: Sequence[float | None],
     grade_at: Sequence[float | None],
-    riders: Sequence[float | None] | None = None,
-    limit: int = MAX_SAMPLES,
-) -> list[int]:
-    """The indices of the samples to send, in order: all of them up to `limit`, and on
-    a longer route about `limit`, window by window. Each window keeps its steepest
-    grade (so the grade bands survive), on a Mass Ride its lowest riders figure (so a
-    bottleneck does), and its first gap in the heights or the riders (so a gap stays a
-    gap); the route's first and last samples are always kept. The grades, climbs and
-    riders are worked out on every sample before this, so no figure changes."""
+    riders: Sequence[float | None] | None,
+    window: int,
+) -> set[int]:
     n = len(heights)
-    if n <= limit:
-        return list(range(n))
-    picks = 3 if riders is not None else 2
-    window = math.ceil(n * picks / limit)
     keep = {0, n - 1}
     for start in range(0, n, window):
         part = range(start, min(start + window, n))
         graded = [i for i in part if grade_at[i] is not None]
         keep.add(max(graded, key=lambda i: abs(grade_at[i])) if graded else part[0])
+        known = [i for i in part if heights[i] is not None]
+        if known:
+            keep.add(max(known, key=lambda i: heights[i]))
+            keep.add(min(known, key=lambda i: heights[i]))
         gaps = [i for i in part if heights[i] is None]
         if gaps:
             keep.add(gaps[0])
@@ -212,4 +207,49 @@ def thin(
             unknown = [i for i in part if riders[i] is None]
             if unknown:
                 keep.add(unknown[0])
+    return keep
+
+
+# The most picks one window makes: its steepest grade, its highest and lowest heights and
+# its first gap; on a Mass Ride its lowest riders figure and its first unknown one too.
+WINDOW_PICKS = 4
+WINDOW_PICKS_MASS = 6
+
+
+def thin(
+    heights: Sequence[float | None],
+    grade_at: Sequence[float | None],
+    riders: Sequence[float | None] | None = None,
+    limit: int = MAX_SAMPLES,
+) -> list[int]:
+    """The indices of the samples to send, in order: all of them up to `limit`, and on
+    a longer route close to `limit`, window by window. Each window keeps its steepest
+    grade (so the grade bands survive), its highest and lowest heights (so a summit and
+    a valley floor do, where the grade is near 0: correctness re-review R2), on a Mass
+    Ride its lowest riders figure (so a bottleneck does), and its first gap in the
+    heights or the riders (so a gap stays a gap); the route's first and last samples are
+    always kept. The grades, climbs and riders are worked out on every sample before
+    this, so no figure changes.
+
+    The window is first sized for the most picks a window can make, which keeps the
+    answer within `limit` (and a window's picks over it at most). Most windows make
+    fewer (the steepest sample is often the highest or lowest too, and gaps are rare),
+    so the window is then narrowed to the narrowest that keeps the picks actually made
+    within `limit` (operations re-review A)."""
+    n = len(heights)
+    if n <= limit:
+        return list(range(n))
+    most = WINDOW_PICKS_MASS if riders is not None else WINDOW_PICKS
+    window = math.ceil(n * most / limit)
+    keep = _window_picks(heights, grade_at, riders, window)
+    # The narrowest window that stays within `limit`, by bisection (a few passes, each one
+    # pass over the samples): no narrower than one pick a window could fit.
+    lo, hi = math.ceil(n / limit), window
+    while lo < hi:
+        mid = (lo + hi) // 2
+        again = _window_picks(heights, grade_at, riders, mid)
+        if len(again) <= limit:
+            hi, keep = mid, again
+        else:
+            lo = mid + 1
     return sorted(keep)
