@@ -3408,3 +3408,47 @@ read, which needs the owner's approval as a fetch.
 **The gate.** VALIDATE reads back up to 8 ways of each new reason from every
 graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
 does the same after the swap and now reads the off-road router too.
+
+## The rebuild bundle (wip/rebuild-bundle)
+
+One deploy and one rebuild carry NO-BIKE-PATHS and the singletrack fix, the arterial
+calibration, main's front end and log changes, the route chart, the z12-13 ride layer
+(calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
+and Connecticut Ave NW changes (OWNER-DECISIONS 391, 394-410; reports/REBUILD-BUNDLE-integration.md).
+Nothing in it is live until the rebuild promotes the new table.
+
+**Images, all under one TAG.** api (also the worker's and migrate's image), pipeline (the
+`rebuild` service), and the front end. `docker compose build api rebuild` (or `docker
+compose build`), never `build api` alone: tile format 7 must reach the api and the pipeline
+together, or the weekly pre-draw evicts the api's cache every week (above, "The stress
+tiles"). The front end (`ship-data.sh` / docs/DEPLOYMENT.md) goes last.
+
+**Migration.** core 0010 (`segment.mtb_only`, `walk_bike`) is state only: the segment table
+is unmanaged and created whole by each rebuild. `migrate` records it and runs no SQL. The
+new columns `calm_run_m`, `roadside`, `stress_unsmoothed_tier` and `mass_usable_width_m`
+need no migration, as `facility` and the trail columns did not: the rebuild's DDL creates
+them (`pipeline.schema.SEGMENT_DDL`) and the writer fills all 37 columns. The api reads
+each one only where the live table has it, so the new api is safe on the old table.
+
+**The order.**
+
+1. Pre-flight as in the last runbook (reports/REBUILD-RUNBOOK.md 0.x): memory, `docker ps`,
+   `/tmp`, the extract's age, the window.
+2. Build the api and pipeline images under the new TAG; recreate `migrate` (it applies
+   0010), then `api worker rebuild` with `--no-deps --no-build`. Never a plain `up -d`; the
+   off-road router stays off (compose profile `offroad`).
+3. Run the rebuild. VALIDATE now also refuses: under 98% of road or path rows with a Mass
+   Ride width, or a median road outside 60-200 riders a minute; the calm-run floors
+   (Elmer School Road at 2 mi); Connecticut Ave NW under 60% LTS 4, or under 95% north of
+   R St NW; and, as before, the long trails and the closure probes on all five graphs.
+4. After the swap: restart the four routers (and `--profile offroad` the fifth only where
+   there is memory), run the pre-draw (every tile is new at format 7), then the post-swap
+   probes (`scripts/probe_bicycle_closures.py`, which reads the off-road router too).
+5. Ship the front end.
+6. Check: an ETag ending `-v7"` (`+kcfrmwoesbtl-v7"` with every optional column); a z12
+   tile with no LTS 3+ road; a Mass Ride's route sections carrying `rpm`; the logs'
+   "CONNECTICUT AVE NW: N% LTS 4" line and "named corridors" summary (two corridors).
+
+**Rollback** is the usual one ("Rolling back a rebuild"): the old table has none of the new
+columns, and the new api and front end fall back on it (no ride layer at z12-13, no
+capacity colours, no roadside look, the old route chart width estimate).

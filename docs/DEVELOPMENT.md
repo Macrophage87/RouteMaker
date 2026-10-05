@@ -4653,6 +4653,45 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
 
+## Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409)
+
+**One reversible-lane rule.** `routemaker.agency_roads.counted_reversible(facts)` gives the
+reversible lanes of a District block that count: none unless the block's BLOCKKEY is on
+`VERIFIED_REVERSIBLE_BLOCKS` (empty), and none on a street in `ENDED_REVERSIBLE_STREETS`
+(Connecticut Ave NW, whose reversible operation ended in 2020; DCist 2021-12-15) even then.
+The classifier's `lanes_per_direction` and the per-direction counts add only those (179
+added every block's in the peak direction), and `massflow.DcRules.reversible_lanes`
+delegates to it. `settings.MASS_RIDE_DC_*` must equal the module's lists
+(`test_agency_roads.test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists`).
+A block with only reversible lanes, none counted, gives no count, and OSM's stands.
+
+Effect on the 2026-10-03 inputs: Connecticut Ave NW north of Calvert St (1 + 1 lanes, 2
+reversible) reads one lane a direction, not three; at 30 mph and 17,000 to 28,000 vehicles
+a day the single-lane row plus the volume bump is still LTS 4. The segment table's
+`road_lanes` follows, so the junction model prices crossing it as one lane a direction.
+
+**Connecticut Ave NW, R St to Calvert St (409).** Rated LTS 3 because DC posts it 25 mph:
+`stress.urban_two_way_floor` steps a two-way city street of two lanes a direction to LTS 4
+only from 30 mph. The owner's "LTS4 north of R" is a named corridor
+(`fixtures/corridors/2026-10-05-owner-connecticut-north-of-r.json`): the axis is DC's
+centre line of blocks dc-4632193-0 to dc-4634051-0 extended 60 m past each end, the through
+lanes within 10 m (the divided part's carriageways are up to about 8 m out), `along_m`
+60 to 1,432. `tests/data/connecticut_ways.json` is the 2026-10-03 extract's ways there;
+`test_corridors.test_connecticut_is_lts4_from_r_st_to_calvert_st_and_nowhere_else` holds
+the 22 ways it lifts. Direction on a hill is FOLLOWUP-GRADE-STRESS, not here.
+
+**The sentinel (408).** `pipeline.lts_sentinels`: the street's blocks by the agency's name
+(`settings.REBUILD_SENTINEL_LTS4_STREET`, "CONNECTICUT AVE NW"), its segment rows by
+`attr_sources->'blocks'` (the classifier records up to 12 matched blocks a way), lengths by
+row (both carriageways of a divided stretch), a row's latitude at its middle, LTS 4 meaning
+tier 4 or Avoid. VALIDATE (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
+overall or under 95% north of 38.9126 N (R St NW). Skipped, with a warning, when no agency
+street layer is installed; refused when the layer has no block of that name; off with an
+empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 build: 49%
+overall (6.62 mi of rows, K St to Dupont Circle posted 20 and 25 mph is LTS 3) and 72% north
+of R St; with the corridor about 67% and 99%. Tests: `tests/test_lts_sentinels.py`, and the
+end-to-end pass, refuse and missing-street cases in `tests/test_pipeline_end_to_end.py`.
+
 ## Arterial calibration and the override re-match (2026-10-04)
 
 OWNER-DECISIONS 282, 284-286, 294-296 and 303. Three pieces, each in its own
