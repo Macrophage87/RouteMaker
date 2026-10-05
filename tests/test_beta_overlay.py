@@ -684,7 +684,7 @@ def test_every_http_level_name_is_prefixed_so_it_cannot_collide_with_the_hosts_o
     None
 ):
     full = stage("full")
-    names = re.findall(r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+))", full, re.M)
+    names = re.findall(r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+)|log_format\s+(\S+))", full, re.M)
     flat = [n for pair in names for n in pair if n]
     assert flat and all(n.lstrip("$").startswith("rmbeta_") for n in flat), flat
     assert (
@@ -692,6 +692,73 @@ def test_every_http_level_name_is_prefixed_so_it_cannot_collide_with_the_hosts_o
         and "ssl_session_cache" not in full
         and "ssl_dhparam" not in full
     )
+
+
+def test_the_access_log_never_records_a_query_string() -> None:
+    """A reverse look-up or a search carries a location in its query (OWNER-DECISIONS 395)."""
+    full = stage("full")
+    fmt = re.search(r"^log_format\s+rmbeta_noquery\s+(.*?);$", full, re.M | re.S)
+    assert fmt, "the rmbeta_noquery log format"
+    body = fmt.group(1)
+    assert "$uri" in body
+    # an allowlist, not a denylist: any other variable (a trailing $request, the Authorization
+    # header, a cookie, the request body, another way to print the client address) is a leak
+    assert set(re.findall(r"\$\w+", body)) == {
+        "$time_local",
+        "$request_method",
+        "$uri",
+        "$server_protocol",
+        "$status",
+        "$body_bytes_sent",
+        "$request_time",
+    }, body
+    leaks = ("$request ", '$request"', "$request_uri", "$args", "$query_string", "$http_referer")
+    for leak in leaks:
+        assert leak not in body, leak
+    assert not re.search(r"\$arg_", body)
+    # nor who asked: no client address, no tester name, no forwarded address
+    for who in ("$remote_addr", "$binary_remote_addr", "$remote_user", "$http_x_forwarded_for"):
+        assert who not in body, who
+    # no http-level access_log either: another site on the host would inherit it
+    before_servers = re.split(r"^server \{", full, flags=re.M)[0]
+    assert "access_log" not in re.sub(r"^\s*#.*$", "", before_servers, flags=re.M)
+    servers = re.split(r"^server \{", full, flags=re.M)[1:]
+    assert len(servers) == 2
+    for server in servers:
+        logs = re.findall(r"^\s*access_log\s+(.*?);", server, re.M)
+        assert logs == ["/var/log/nginx/rmbeta-access.log rmbeta_noquery"], logs
+
+
+def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings() -> None:
+    """An upstream error line records the request with its query (OWNER-DECISIONS 395)."""
+    full = stage("full")
+    found = dict(locations(full))
+    body = found["~ ^/api/(reverse|geocode)/?$"]
+    assert re.findall(r"^\s*error_log\s+(.*?);", body, re.M) == [
+        "/var/log/nginx/rmbeta-error.log crit"
+    ]
+
+    # the regex wins over the prefix location /, and must proxy exactly as it does
+    def proxy_lines(text: str) -> list[str]:
+        return [ln.strip() for ln in text.splitlines() if ln.strip().startswith("proxy_")]
+
+    assert proxy_lines(body) == proxy_lines(found["/"])
+    assert proxy_lines(body)
+    # only error_log and proxy_* directives here: no add_header (the server's noindex and HSTS
+    # headers must still apply), and nothing that changes who may call it (auth_basic, satisfy,
+    # allow, deny) or what is logged (access_log)
+    directives = re.findall(r"^\s*([a-z_0-9]+)\b", re.sub(r"^\s*#.*$", "", body, flags=re.M), re.M)
+    assert directives
+    assert all(d == "error_log" or d.startswith("proxy_") for d in directives), directives
+    # every api path the front end sends a query string to is covered by it
+    sources = [
+        f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
+    ]
+    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z]+)\?", text)}
+    assert queried == {"/api/reverse", "/api/geocode"}, queried
+    for path in queried:
+        assert re.fullmatch(r"/api/(reverse|geocode)/?", path), path
+    assert not re.fullmatch(r"/api/(reverse|geocode)/?", "/api/route")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:

@@ -8,6 +8,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { accuracyRing } from "./lib/geolocation.ts";
 import {
   BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
@@ -118,6 +119,8 @@ interface Props {
   onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
+  /** The accuracy circle of the rider's location while its point is in the plan (OWNER-DECISIONS 395), or null. */
+  accuracy: { centre: LonLat; radiusM: number } | null;
   /** The junction the route summary's list asked the map to show (nonce: again), or null. */
   junctionFocus: { index: number; nonce: number } | null;
   /** The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null: a ringed marker, not in the tab order. */
@@ -155,6 +158,7 @@ const ROUTE_SOURCE = "route";
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
+const ACCURACY_SOURCE = "location-accuracy";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 const TOUCH_HIT_PX = 18;
@@ -196,6 +200,22 @@ function routeInView(map: MapLibreMap, coordinates: LonLat[], padding: Frame): b
   });
 }
 
+
+function accuracyData(accuracy: { centre: LonLat; radiusM: number } | null) {
+  return {
+    type: "FeatureCollection" as const,
+    features:
+      accuracy && accuracy.radiusM > 0
+        ? [
+            {
+              type: "Feature" as const,
+              properties: {},
+              geometry: { type: "Polygon" as const, coordinates: [accuracyRing(accuracy.centre, accuracy.radiusM)] },
+            },
+          ]
+        : [],
+  };
+}
 
 export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -629,6 +649,20 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
+      // Under the route (before its casing), so the circle's tint never covers the line.
+      map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
+      map.addLayer({
+        id: "location-accuracy-fill",
+        type: "fill",
+        source: ACCURACY_SOURCE,
+        paint: { "fill-color": "#1d4ed8", "fill-opacity": 0.12 },
+      }, "route-casing");
+      map.addLayer({
+        id: "location-accuracy-line",
+        type: "line",
+        source: ACCURACY_SOURCE,
+        paint: { "line-color": "#1d4ed8", "line-width": 1.5, "line-opacity": 0.6 },
+      }, "route-casing");
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -911,6 +945,13 @@ export function MapView(props: Props) {
     // hovering the line would otherwise leave it).
     map.getCanvas().style.cursor = "";
   }, [props.lineEdit]);
+
+  // The accuracy circle of "Use my location" (drawn only; the marker is the point).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(ACCURACY_SOURCE) as GeoJSONSource | undefined)?.setData(accuracyData(props.accuracy));
+  }, [props.accuracy?.centre, props.accuracy?.radiusM]);
 
   // The overlay toggle.
   useEffect(() => {

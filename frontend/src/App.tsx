@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -11,7 +11,7 @@ import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
-import { planToOpen, rememberPlan } from "./lib/signIn.ts";
+import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
@@ -25,7 +25,7 @@ import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
+import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   addedSaid,
   editingTips,
@@ -54,11 +54,24 @@ import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/fed
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
-import { planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
+import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
+import {
+  FINDING_LOCATION,
+  approximateHint,
+  browserEnv,
+  linkLocationNote,
+  locate,
+  locateSupport,
+  maxPointsNotice,
+  locateGate,
+  movedFromHere,
+  placeFix,
+  type Fix,
+} from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { GpxPanel, downloadGpx } from "./GpxPanel.tsx";
@@ -81,9 +94,11 @@ import {
   SHEET_TITLES,
   chartFoldOpen,
   copyText,
+  PLANNER_TITLE,
   focusOnViewChange,
   foldTitle,
   linkSaidFor,
+  linkSpokenFor,
   linkToCopy,
   noticeSaidElsewhere,
   rescueCompactFocus,
@@ -147,6 +162,9 @@ function useNarrow(): boolean {
   }, []);
   return narrow;
 }
+
+/** The points notice for a point outside the map, from a click, a station, or the rider's location. */
+const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -221,9 +239,12 @@ export function App() {
   const layersHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
+  const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
-  // What "Copy link" answered: said politely, and again for a second press.
+  // What "Copy link" answered: said politely, and again for a second press. The spoken one adds the
+  // location note when the link includes the rider's location (OWNER-DECISIONS 395).
   const [linkSaid, setLinkSaid] = useState("");
+  const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -243,6 +264,24 @@ export function App() {
   // What an edit on the map did, for a screen reader: the map itself says
   // nothing. The count makes the same sentence twice a new announcement.
   const [said, setSaid] = useState({ text: "", count: 0 });
+  // "Use my location" (OWNER-DECISIONS 395). The fix's accuracy and the flag that a point came from the
+  // location are kept in memory only: never in storage, the link, a GPX file or a log. The point itself is
+  // in the plan like any clicked point, so it is in the address bar and the link at full precision, by
+  // design (and in this tab's sessionStorage for a sign-in round trip only: lib/signIn.ts). Whether a
+  // point came from the location is whether its object is in `fromHere` (linkLocationNote); a drag of
+  // such a point adds the moved one too (movedFromHere), so the note stays.
+  const [here, setHere] = useState<Fix | null>(null);
+  // Every point that came from a look-up, or a drag of one, for the link note (the start may be an earlier
+  // one than `here`). Not capped: a few points of memory, and a cap could drop a start still in the plan.
+  const [fromHere, setFromHere] = useState<LonLat[]>([]);
+  const [locating, setLocating] = useState(false);
+  // One look-up at a time, set before the await, so a second call in the same tick is refused too.
+  const gate = useRef(locateGate()).current;
+  // The 150 ms re-set of a look-up's notice; a map edit in that window cancels it (the correctness review's N2).
+  const locateNoticeTimer = useRef<number | undefined>(undefined);
+  const cancelLocateNotice = () => window.clearTimeout(locateNoticeTimer.current);
+  const geoEnv = useMemo(() => browserEnv(), []);
+  const locateReady = locateSupport(geoEnv);
   // The GPX file opened last (GpxPanel), until the plan is cleared.
   const [imported, setImported] = useState<ImportedPlan | null>(null);
   // The ride type, the sliders and the opened file as they are now, for the
@@ -305,6 +344,7 @@ export function App() {
     // "Link copied." was about the link before this change (the correctness review's N4).
     linkPresses.current += 1;
     setLinkSaid("");
+    setLinkSpoken("");
   }, [points, preset, dials]);
 
   // A link pasted into this tab, or the back button, changes the fragment
@@ -366,6 +406,11 @@ export function App() {
     if (target.kind === "bar") barButtons.current[target.id]?.focus();
     else if (target.kind === "error") errorRef.current?.focus();
     else if (target.kind === "plan") planButtonRef.current?.focus();
+    else if (target.kind === "planner") {
+      // The Plan button (OWNER-DECISIONS 392): the planner's heading, at the top of the panel.
+      plannerHeadingRef.current?.focus();
+      panelBodyRef.current?.scrollTo?.({ top: 0 });
+    }
     else {
       const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef }[target.view];
       heading.current?.focus();
@@ -479,12 +524,13 @@ export function App() {
   }, [undo, redo]);
 
   const place = useCallback((point: LonLat) => {
+    cancelLocateNotice();
     if (!insideCoverage(point)) {
-      setNotice("That point is outside the area this map covers (the DC region to Baltimore).");
+      setNotice(OUTSIDE_NOTICE);
       return;
     }
     if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(`A route can have at most ${MAX_POINTS} points.`);
+      setNotice(maxPointsNotice());
       return;
     }
     setNotice(null);
@@ -493,14 +539,57 @@ export function App() {
     announce(addedSaid(next.indexOf(point), next.length, loopVias));
   }, [commit, announce, loopVias]);
 
+  // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
+  // the map click's path; from the "Your location" choice, the search's Start / Destination / Stop choice.
+  // A failure is the Points notice (a status, said once; through the app region only while the planner is
+  // hidden). It is cleared and set again a moment later, so a second press with the same answer is said again.
+  const useMyLocation = useCallback(async (choice?: PlaceChoice) => {
+    const press = gate.begin();
+    if (press === null) {
+      // A press while one is under way still gets an answer.
+      announce(FINDING_LOCATION);
+      return;
+    }
+    setLocating(true);
+    cancelLocateNotice();
+    setNotice(null);
+    announce(FINDING_LOCATION);
+    const result = await locate(geoEnv);
+    if (!gate.finish(press)) return;
+    setLocating(false);
+    // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
+    const ride = rideRef.current;
+    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
+    if ("refuse" in placed) {
+      setNotice(null);
+      locateNoticeTimer.current = window.setTimeout(() => {
+        if (gate.latest(press)) setNotice(placed.refuse);
+      }, 150);
+      return;
+    }
+    setNotice(null);
+    commit(placed.next);
+    announce(placed.said);
+    if (result.ok) setHere(result.fix);
+    setFromHere((prior) => [...prior, placed.point]);
+    mapRef.current?.flyTo({ center: placed.point, zoom: Math.max(mapRef.current.getZoom(), 14) });
+  }, [gate, geoEnv, announce, commit]);
+  const hereInPlan = here !== null && points.includes(here.point);
+
   const move = useCallback((index: number, point: LonLat) => {
+    cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice("That point is outside the area this map covers; it was put back.");
       setMarkerReset((n) => n + 1);
       return;
     }
     setNotice(null);
-    commit(pointsRef.current.map((p, i) => (i === index ? point : p)));
+    // A dragged location point keeps the Copy link note: the moved point is still the rider's spot. The old
+    // point is read now, not inside the updater: React may run the updater after commit() has replaced
+    // pointsRef.current (when an update, such as the setNotice above, is already pending; correctness R1).
+    const before = pointsRef.current[index];
+    setFromHere((prior) => movedFromHere(prior, before, point));
+    commit(movePoint(pointsRef.current, index, point));
   }, [commit]);
 
   // The route line dragged (or clicked) at `point` from leg `leg`: a via in
@@ -547,6 +636,7 @@ export function App() {
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
+    cancelLocateNotice();
     const point = pickIntoPlan(found, choice, {
       current: () => pointsRef.current,
       commit,
@@ -666,7 +756,24 @@ export function App() {
 
   // The bottom bar: a sheet opens in the panel body (Legend opens Map layers at its legend), and
   // Back, or Escape, closes it and gives the focus back to the button that opened it.
+  // The Plan button: the planner's view, and the focus on its heading (OWNER-DECISIONS 392). The phone
+  // header's "Show planner" also shows the planner but leaves the focus on the toggle (cause panelToggle). From a sheet the view changes and focusOnViewChange (cause planButton) does it;
+  // already on the planner nothing changes, so the heading is focused and the panel scrolled to the top here.
+  const showPlanner = (focusHeading = true) => {
+    viewCause.current = focusHeading ? "planButton" : "panelToggle";
+    setLegendTarget(false);
+    if (viewNow.current === "planner") {
+      if (focusHeading) {
+        plannerHeadingRef.current?.focus();
+        panelBodyRef.current?.scrollTo?.({ top: 0 });
+      }
+    } else setView("planner");
+  };
   const openSheet = (item: BarItem) => {
+    if (item.opens === "planner") {
+      showPlanner();
+      return;
+    }
     openedBy.current = item.id;
     viewCause.current = "bar";
     setLegendTarget(item.toLegend === true);
@@ -681,9 +788,12 @@ export function App() {
   const copyLink = async () => {
     const press = ++linkPresses.current;
     setLinkSaid("");
+    setLinkSpoken("");
+    const note = linkNote;
     const done = await copyText(linkToCopy(window.location, points, preset, dials), navigator.clipboard, selectionCopy);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
+      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
 
@@ -696,6 +806,9 @@ export function App() {
     }
     return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
   }, []);
+
+  // Copy link keeps full precision; when the rider's location is in the plan it says so, in one line.
+  const linkNote = linkLocationNote(points, fromHere);
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
@@ -794,6 +907,8 @@ export function App() {
       headingId="federal-points-planner-heading"
     />
   );
+  const loop = loopView(preset, dials.loop, points);
+  const loopHintId = useId();
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
@@ -812,8 +927,38 @@ export function App() {
           gate={geoGate}
           bias={searchBias}
           onPick={pickPlace}
+          locate={{
+            support: locateReady,
+            busy: locating,
+            note: hereInPlan && here ? approximateHint(here.accuracyM) : "",
+            onLocate: (choice) => void useMyLocation(choice),
+          }}
         />
       </div>
+      {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
+          with no point placed too, and not on Mass Ride. Outside the hidden parts, so it stays when the points compact. */}
+      {loop && (
+        <div className="dial loop-toggle">
+          <label className="toggle">
+            {/* aria-disabled, not disabled, when the ride is a loop already: it stays in the Tab order
+                with its reason as its description (the a11y review's N6), and a press changes nothing. */}
+            <input
+              type="checkbox"
+              checked={loop.checked}
+              aria-disabled={loop.implied || undefined}
+              aria-describedby={loopHintId}
+              onChange={(event) => {
+                if (loop.implied) return;
+                commitDials(withLoop(dials, event.target.checked));
+              }}
+            />
+            {loop.label}
+          </label>
+          <p className="hint" id={loopHintId}>
+            {loop.hint}
+          </p>
+        </div>
+      )}
       {points.length === 0 ? (
         <p className="hint">{searchLede(loopVias)}</p>
       ) : (
@@ -890,11 +1035,11 @@ export function App() {
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
       </MoreTips>
       </div>
-      {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      )}
+      {/* Always rendered, empty when there is no notice: a live region that is created already holding
+          its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}
+      <p className={notice ? "notice" : "notice notice-empty"} role="status">
+        {notice ?? ""}
+      </p>
     </section>
   );
   const routeSection = (
@@ -991,7 +1136,6 @@ export function App() {
               setWeight(null);
             },
           }}
-          points={points}
           resolvedWhen={route?.dials?.when ?? null}
         />
       </RideSettings>
@@ -1022,6 +1166,7 @@ export function App() {
         onLineDrop={insertOnLine}
         onRemovePoint={removeFromMap}
         markerReset={markerReset}
+        accuracy={hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
         onReady={(map) => {
@@ -1078,7 +1223,9 @@ export function App() {
       >
         <header className="panel-header">
           <div>
-            <h1>RouteMaker</h1>
+            <h1 ref={plannerHeadingRef} tabIndex={-1}>
+              {PLANNER_TITLE}
+            </h1>
             <p className="tagline">Bike routes for the DC region and Baltimore. No sign-in needed.</p>
           </div>
           <button
@@ -1086,9 +1233,18 @@ export function App() {
             className="panel-toggle"
             aria-expanded={panelOpen}
             aria-controls="panel-body"
-            onClick={() => setPanelOpen((open) => !open)}
+            onClick={() => {
+              // Hiding the panel only hides it; showing it always shows the planner, even if a sheet was
+              // open when it was hidden (OWNER-DECISIONS 392).
+              if (panelOpen) setPanelOpen(false);
+              else {
+                setPanelOpen(true);
+                // The focus stays on this toggle; the heading focus is the Plan button's.
+                showPlanner(false);
+              }
+            }}
           >
-            {panelOpen ? "Hide" : "Plan"}
+            {panelOpen ? "Hide planner" : "Show planner"}
           </button>
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
@@ -1216,7 +1372,7 @@ export function App() {
                 <p className="hint">
                   Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
                   reopens it. Saving routes and peer review are coming for riders who{" "}
-                  <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
+                  <a href="/auth/login" onClick={() => rememberPlanForSignIn(session(), window.location.hash, linkNote !== "")}>
                     sign in with Discord
                   </a>
                   ; your current plan is kept across the sign-in.
@@ -1231,16 +1387,21 @@ export function App() {
               <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop)}>
                 Download GPX
               </button>
-              <button type="button" className="secondary" onClick={copyLink}>
+              <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
                 {COPY_LINK}
               </button>
               <span role="status" className="visually-hidden">
-                {linkSaid}
+                {linkSpoken}
               </span>
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}
                 </span>
+              )}
+              {linkNote && (
+                <p id="link-note" className="hint link-note">
+                  {linkNote}
+                </p>
               )}
             </div>
           )}

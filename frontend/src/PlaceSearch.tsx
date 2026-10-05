@@ -15,6 +15,7 @@ import {
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
   comboboxKey,
+  pickTarget,
   placeEffectHint,
   placeType,
   searchSender,
@@ -25,9 +26,28 @@ import {
   type PlaceChoice,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
+import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
+
+/** "Use my location" (OWNER-DECISIONS 395): the button beside the search and the "Your location" choice. */
+export interface LocateControl {
+  support: { available: true } | { available: false; reason: string };
+  /** A look-up is under way. */
+  busy: boolean;
+  /** What the app adds under the button once a point is the rider's location (approximate). */
+  note: string;
+  /**
+   * A look-up: from the button with no choice (it goes in like a map click), or
+   * from the "Your location" choice in the list with the Start / Destination /
+   * Stop choice in force (it goes in like a picked place).
+   */
+  onLocate: (choice?: PlaceChoice) => void;
+}
+
+/** The "Your location" choice in the list, ahead of the places found. */
+const HERE = "here" as const;
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
@@ -49,7 +69,10 @@ export function PlaceSearch({
   bias,
   onPick,
   loop = false,
+  locate,
 }: {
+  /** Absent: no "Use my location" (a test or a build without it). */
+  locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
   loop?: boolean;
   pointCount: number;
@@ -85,7 +108,7 @@ export function PlaceSearch({
   }
   useEffect(() => () => runner.current?.clear(), []);
 
-  const { places, expanded, answeredNow, searching, choices, choice, effect } = searchView({
+  const { places, answeredNow, searching, choices, choice, effect } = searchView({
     query,
     answered,
     result,
@@ -95,6 +118,10 @@ export function PlaceSearch({
     chosen,
     loop,
   });
+  // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
+  const showHere = locate?.support.available === true && locationMatches(query);
+  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...places] : places;
+  const expanded = open && items.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
 
@@ -118,10 +145,19 @@ export function PlaceSearch({
     runner.current?.clear();
   };
 
+  const pickHere = () => {
+    setQuery("");
+    setResult(null);
+    setOpen(false);
+    setActive(-1);
+    runner.current?.clear();
+    locate?.onLocate(choice);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const action = comboboxKey(event.key, {
       active,
-      count: places.length,
+      count: items.length,
       expanded,
       hasQuery: query !== "",
     });
@@ -131,7 +167,10 @@ export function PlaceSearch({
       setOpen(true);
       setActive(action.active);
     } else if (action.kind === "pick") {
-      pick(places[action.index]);
+      // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
+      const item = pickTarget(active, action.index, items, places);
+      if (item === HERE) pickHere();
+      else if (item) pick(item);
     } else if (action.kind === "close") {
       setOpen(false);
       setActive(-1);
@@ -145,6 +184,7 @@ export function PlaceSearch({
       <label htmlFor={`${id}-input`} className="place-search-label">
         Find a place
       </label>
+      <div className={locate ? "place-search-row" : undefined}>
       <input
         id={`${id}-input`}
         type="search"
@@ -172,26 +212,69 @@ export function PlaceSearch({
           if (window.matchMedia(PHONE).matches) event.currentTarget.scrollIntoView({ block: "start" });
         }}
       />
+      {locate && (
+        <button
+          type="button"
+          className="secondary locate-button"
+          // aria-disabled, not disabled: it stays in the Tab order with its reason as its description,
+          // and a press changes nothing while it cannot work. While a look-up is under way a press starts
+          // no second one; the app says "Finding your location…" again, so the press gets an answer.
+          aria-disabled={!locate.support.available || locate.busy || undefined}
+          aria-describedby={!locate.support.available ? `${id}-locate-why` : locate.busy ? `${id}-locate-busy` : undefined}
+          onClick={() => {
+            if (locate.support.available) locate.onLocate();
+          }}
+        >
+          Use my location
+        </button>
+      )}
+      </div>
+      {locate && !locate.support.available && (
+        <p id={`${id}-locate-why`} className="hint">
+          {locate.support.reason}
+        </p>
+      )}
+      {locate && locate.busy && (
+        <p id={`${id}-locate-busy`} className="hint">
+          {FINDING_LOCATION}
+        </p>
+      )}
+      {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
-        {places.map((place, i) => (
-          <li
-            key={`${place.lon},${place.lat},${place.label}`}
-            id={optionId(i)}
-            role="option"
-            aria-selected={i === active}
-            className={i === active ? "active" : undefined}
-            // Before the input's blur, which would close the list first.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => pick(place)}
-          >
-            <span className="place-name">
-              {place.name} <span className="place-type">{placeType(place)}</span>
-            </span>
-            {place.label !== place.name && <span className="place-label">{place.label}</span>}
-          </li>
-        ))}
+        {items.map((item, i) =>
+          item === HERE ? (
+            <li
+              key="your-location"
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? "active" : undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={pickHere}
+            >
+              <span className="place-name">Your location</span>
+              <span className="place-label">{hereEffectLine(effect, loop)}</span>
+            </li>
+          ) : (
+            <li
+              key={`${item.lon},${item.lat},${item.label}`}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? "active" : undefined}
+              // Before the input's blur, which would close the list first.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(item)}
+            >
+              <span className="place-name">
+                {item.name} <span className="place-type">{placeType(item)}</span>
+              </span>
+              {item.label !== item.name && <span className="place-label">{item.label}</span>}
+            </li>
+          ),
+        )}
       </ul>
-      {expanded && (
+      {expanded && places.length > 0 && (
         <p className="place-credit">
           Only places in this map's area.
           {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
@@ -219,7 +302,7 @@ export function PlaceSearch({
         {full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatus(result, answered) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">Searching…</p>}
       {answeredNow && result && (!result.ok || result.places.length === 0) && (

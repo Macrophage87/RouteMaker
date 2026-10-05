@@ -65,6 +65,15 @@ export function planEdits<P, R>(deps: PlanEditDeps<P, R>): PlanEdits<P, R> {
   };
 }
 
+/**
+ * The points after a marker drag: a new array with a new point object at
+ * `index`, never the old one changed in place. The undo history keeps the old
+ * objects, and the "Use my location" link note follows point identity.
+ */
+export function movePoint<P>(points: readonly P[], index: number, point: P): P[] {
+  return points.map((p, i) => (i === index ? point : p));
+}
+
 /** What a screen reader hears after an undo or a redo. */
 export function travelSaid(direction: Direction, pointCount: number): string {
   const count = `${pointCount} ${pointCount === 1 ? "point" : "points"}`;

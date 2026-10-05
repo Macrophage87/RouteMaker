@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PLAN_KEY, planToOpen, rememberPlan, type StorageLike } from "./signIn.ts";
+import {
+  PLAN_KEY,
+  SKIP_SIGN_IN_PLAN_WITH_LOCATION,
+  planToOpen,
+  rememberPlan,
+  rememberPlanForSignIn,
+  type StorageLike,
+} from "./signIn.ts";
 
 function memory(): StorageLike & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -66,4 +73,18 @@ test("storage that refuses is not an error", () => {
   rememberPlan(refusing, PLAN);
   assert.equal(planToOpen(refusing, ""), "");
   assert.equal(planToOpen(null, PLAN), PLAN);
+});
+
+test("a plan holding the rider's location is kept for the round trip for now, and the switch skips it", () => {
+  // OWNER-DECISIONS 395, owner decision pending: kept in this tab's sessionStorage, read once.
+  assert.equal(SKIP_SIGN_IN_PLAN_WITH_LOCATION, false);
+  const kept = memory();
+  rememberPlanForSignIn(kept, PLAN, true);
+  assert.equal(planToOpen(kept, ""), PLAN);
+  assert.equal(kept.data.size, 0, "read once and removed");
+  const skipped = memory();
+  rememberPlanForSignIn(skipped, PLAN, true, true);
+  assert.equal(skipped.data.size, 0, "with the switch on, a plan with a location is not kept");
+  rememberPlanForSignIn(skipped, PLAN, false, true);
+  assert.equal(planToOpen(skipped, ""), PLAN, "a plan without one still is");
 });

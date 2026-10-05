@@ -6,7 +6,7 @@
  * every later one a stop, and there is no end. Mass Ride has no loop, so its
  * hints never mention the toggle.
  */
-import { LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
+import { LOOP_FIRST_HINT, LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
@@ -90,33 +90,42 @@ export interface LoopRide {
   dials: { loop?: boolean };
 }
 
+/** The loop checked before any point is placed: what the box now does, and what to place first (OWNER-DECISIONS 389). */
+export const LOOP_FIRST_SAID = `Loop on. ${LOOP_FIRST_HINT}`;
+
+/** The loop turned off with no point placed: nothing is renamed, so only the state is said. */
+export const LOOP_OFF_EMPTY_SAID = "Loop off.";
+
 /**
  * What to say when a change of the ride renames the points, or null when it
  * does not: the loop toggle, a ride type into or out of Mass Ride (which has
- * no loop), or an undo or redo that brings another loop state back. Nothing
- * to say with no points, or when the names stay as they were.
+ * no loop), or an undo or redo that brings another loop state back. With no
+ * points nothing is renamed, so only the state is said: the loop coming on, with
+ * what to place first (OWNER-DECISIONS 389), or going off ("Loop off."); nothing
+ * when the loop state stays as it was.
  */
 export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number): string | null {
   const was = loopStops(before.preset, before.dials.loop);
   const now = loopStops(after.preset, after.dials.loop);
-  if (was === now || count < 1) return null;
+  if (was === now) return null;
+  if (count < 1) return now ? LOOP_FIRST_SAID : LOOP_OFF_EMPTY_SAID;
   return loopToggledSaid(now, count);
 }
 
-/** Where to find the toggle, said only where the ride type has one. */
-const TOGGLE_PLACE = "in the ride settings (the Ride line's Edit button)";
+/** Where to find the toggle, said only where the ride type has one: under the search (OWNER-DECISIONS 388). */
+const TOGGLE_PLACE = "under the search";
 
 /** The hint before any point is placed. */
 export function emptyPlanHint(preset: PresetId, loop: boolean): string {
   const first = loop
     ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
     : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
-  // After Clear the toggle stays on but is hidden until there is a start, so say how to get a one-way ride.
+  // The toggle is under the search with or without a start (OWNER-DECISIONS 388, 389).
   const toggle = loop
-    ? ` The "${LOOP_LABEL}" toggle is on; once the start is placed, you can turn it off ${TOGGLE_PLACE}.`
+    ? ` "${LOOP_LABEL}" is checked, ${TOGGLE_PLACE}; uncheck it for a ride that ends somewhere else.`
     : preset === "mass-ride"
       ? ""
-      : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE};` +
+      : ` To finish back at the start, check "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
         " then each click after the start is a stop.";
   return `${first}${toggle} ${editingTips()}`;
 }
@@ -142,6 +151,6 @@ export function loneStartHint(preset: PresetId, loop: boolean): string {
   if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
   return (
     `Now click the map where you want to finish, ${keys}. To finish back at the start instead,` +
-    ` turn on ${LOOP_LABEL} ${TOGGLE_PLACE}.`
+    ` check "${LOOP_LABEL}" ${TOGGLE_PLACE}.`
   );
 }
