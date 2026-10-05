@@ -772,7 +772,7 @@ const federalFetched = (p) =>
   check("chart: an \"Elevation and stress\" fold with its own heading, open beside the map", fold.heading && fold.details === "DETAILS" && fold.open === true && fold.summary === "Elevation and stress", JSON.stringify(fold));
   const first = await axNode(p, ".pc-plot");
   check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence", first?.role === "slider" && first.name === "Elevation and stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, LTS 1\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
-  check("chart: its description is the summary and the keys, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(127 m\)\./.test(first?.description ?? "") && /arrow keys move along the route/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 160));
+  check("chart: its description is the summary and the keys, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(first?.description ?? "") && /arrow keys move along the route/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 160));
   check("chart: no colour-only cue: the grade bands are named and the 8% band is hatched in a pattern", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.some((t) => /Grade 5-8%/.test(t)) && l.some((t) => /Grade 8% or more/.test(t)) && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
@@ -795,6 +795,7 @@ const federalFetched = (p) =>
   await p.key("ArrowLeft", "ArrowLeft", 37);
   check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   await p.tab();
+  await sleep(250);
   check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   // The mouse: hovering moves the same marker.
   const box = await p.eval("(() => { const r = document.querySelector('.pc-svg').getBoundingClientRect(); return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.3 }; })()");
