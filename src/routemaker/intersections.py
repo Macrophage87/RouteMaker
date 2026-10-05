@@ -917,3 +917,113 @@ def assess_route(
 def penalty_m(events: list[Event]) -> float:
     """The events' total cost as metres of quiet-street riding."""
     return sum(event.cost_ft for event in events) / FEET_PER_METRE
+
+
+# --- Major junctions, for the Mass Ride route chart ----------------------------
+
+# OWNER-DECISIONS 333: "Put the major intersections on it as well." Major means a
+# signalised or stop-controlled crossing of a street of 2 or more lanes, or any
+# junction with a stress rating (one the planner flags). A flagged junction needs
+# corkers where its crossed road is LTS 3 or worse (item 142: "only crossings of LTS 3,
+# LTS 4 or Avoid roads"); a street that is only wide and controlled does not.
+MAJOR_LANES = 2
+MAJOR_CONTROLS = frozenset({Control.SIGNAL, Control.STOP, Control.ALL_STOP, Control.CROSS_STOP})
+CORKER_TIER = BUSY_TIER
+
+
+@dataclass(frozen=True)
+class Major:
+    """A major junction of a route: where, which street, how it is controlled."""
+
+    m: float
+    lon: float
+    lat: float
+    # The crossed street's names, as `Event.road_names` and `Event.road_display`.
+    names: frozenset[str]
+    display: tuple[str, ...]
+    # The planner's own marker where the junction is flagged: orange or red; None where
+    # the crossing is only wide and controlled.
+    severity: str | None
+    control: Control
+    lanes: int | None
+    crossed_tier: int | None
+
+    @property
+    def road_names(self) -> frozenset[str]:
+        return self.names
+
+    @property
+    def road_display(self) -> tuple[str, ...]:
+        return self.display
+
+    @property
+    def corkers_needed(self) -> bool:
+        return (self.crossed_tier or 0) >= CORKER_TIER
+
+
+class RouteEvents(list):
+    """The junction events of a Mass Ride route, with its major junctions beside them
+    (`majors`, in route order)."""
+
+    majors: list[Major]
+
+    def __init__(self, events=(), majors=()):
+        super().__init__(events)
+        self.majors = list(majors)
+
+
+def majors_of_events(events: Sequence[Event]) -> list[Major]:
+    """The major junctions that are flagged ones: each junction with a stress rating."""
+    return [
+        Major(
+            e.m,
+            e.lon,
+            e.lat,
+            e.road_names,
+            e.road_display,
+            e.severity,
+            e.control,
+            None,
+            e.crossed_tier,
+        )
+        for e in events
+        if e.flagged
+    ]
+
+
+def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> list[Major]:
+    """A route's major junctions, in route order: the flagged events, and every other
+    signalised or stop-controlled junction whose crossed (or entered) street has
+    `MAJOR_LANES` or more lanes. One street within MERGE_WITHIN_M of one already
+    counted is the same junction (its other carriageway, a slip lane)."""
+    majors = majors_of_events(events)
+    for junction in sorted(share_controls(list(junctions)), key=lambda j: j.m):
+        if junction.control not in MAJOR_CONTROLS:
+            continue
+        roads = list(junction.crossed)
+        if junction.movement is not Movement.STRAIGHT and not junction.continues:
+            roads.append(junction.outgoing)
+        for road in roads:
+            lanes = _lanes_total(road)
+            if lanes is None or lanes < MAJOR_LANES or road.busy:
+                continue
+            if any(
+                abs(m.m - junction.m) <= MERGE_WITHIN_M and (m.names & road.names or not road.names)
+                for m in majors
+            ):
+                continue
+            majors.append(
+                Major(
+                    junction.m,
+                    junction.lon,
+                    junction.lat,
+                    road.names,
+                    road.display,
+                    None,
+                    junction.control,
+                    lanes,
+                    road.tier,
+                )
+            )
+            break
+    return sorted(majors, key=lambda major: major.m)

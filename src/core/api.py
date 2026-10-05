@@ -792,6 +792,74 @@ class DescriptionEntryOut(Schema):
     )
 
 
+class ProfileClimbOut(Schema):
+    """One sustained climb of the profile, for the chart's climbs table
+    (OWNER-DECISIONS 322; on a Mass Ride also 328(c): the capacity it costs)."""
+
+    from_m: int = Field(description="Metres along the route where it starts.")
+    to_m: int
+    gain_m: float
+    avg_grade_pct: float
+    max_grade_pct: float
+    tier: int | None = Field(description="The highest LTS tier (1-5) of the sections it rides.")
+    capacity_drop_pct: int | None = Field(
+        default=None,
+        description="Mass Ride only: the most the climb takes off a stretch's riders a minute.",
+    )
+    min_riders_per_min: int | None = Field(
+        default=None, description="Mass Ride only: the least the climb carries."
+    )
+
+
+class ProfileFlowOut(Schema):
+    narrowest_riders_per_min: int | None
+    narrowest_m: int | None = Field(description="Metres along the route to the narrowest sample.")
+    typical_riders_per_min: int | None = Field(description="The median over the route.")
+
+
+class ProfileCrossingOut(Schema):
+    """A Mass Ride's major junction (OWNER-DECISIONS 333): a signalized or stop-controlled
+    crossing of a street of 2 or more lanes, or any junction with a stress rating."""
+
+    m: int
+    street: str | None = Field(description="The cross street as mapped; null if unnamed.")
+    severity: Literal["orange", "red"] | None = Field(
+        description="The planner's junction marker (triangle, diamond); null: none."
+    )
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
+    lanes: int | None = Field(description="Lanes of the street, both directions, if known.")
+    crossed_tier: int | None
+    corkers_needed: bool = Field(
+        description="Corkers hold it (OWNER-DECISIONS 142): the crossed road is LTS 3 or worse."
+    )
+
+
+class ProfileOut(Schema):
+    """The route's elevation along its distance, for the route chart (OWNER-DECISIONS
+    322, 323; Mass Ride 328, 332, 333). Parallel arrays, one entry a router sample, in the
+    order ridden: the router samples every `interval_m` along each leg, so `m` is the leg's
+    start plus that spacing, never past the leg's end (a joint is two samples at one
+    place). `elevation_m` is null where the router had none, and `grade_pct` is read across
+    four samples (`routemaker.profile`), signed, positive uphill."""
+
+    interval_m: float
+    m: list[int]
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+    climbs: list[ProfileClimbOut]
+    riders_per_min: list[int | None] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the grade-adjusted riders a minute at each sample"
+            " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown."
+        ),
+    )
+    flow: ProfileFlowOut | None = None
+    crossings: list[ProfileCrossingOut] | None = Field(
+        default=None, description="Mass Ride only: the major junctions, in route order."
+    )
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
@@ -804,6 +872,10 @@ class RouteBody(Schema):
     facility_m: FacilityOut
     stress_adjustments: list[StressAdjustmentOut]
     stress_spans: list[StressSpanOut]
+    # The elevation along the route for the route chart (OWNER-DECISIONS 322, 323), and on
+    # a Mass Ride its riders a minute and major junctions (328, 333). Additive: null where
+    # no leg had elevation.
+    profile: ProfileOut | None = None
     dials: DialsOut
     hills_seek: HillsSeekOut | None
     hills_avoid: HillsAvoidOut | None

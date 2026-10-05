@@ -55,6 +55,9 @@ CONTRACT_KEYS = {
     "leg_ends",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
+    # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
+    # profile, and on a Mass Ride its riders a minute and major junctions.
+    "profile",
     # Additive, FOLLOWUP-INTERSECTIONS (OWNER-DECISIONS items 163-172):
     # the stressful junctions, the calm search and the detour.
     "intersections",
@@ -278,6 +281,54 @@ class TestAnswer:
         body = post(client, good_body()).json()
         assert body["climb_m"] == pytest.approx(25.0)
         assert body["descent_m"] == pytest.approx(5.0)
+
+    def test_the_profile_is_the_routers_elevation_samples_with_grades_and_no_riders(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 322, 323: the chart's data is the router's per-leg elevation
+        (every ELEVATION_INTERVAL_M), where each sample is along the route, and the
+        grade there. Off a Mass Ride there are no riders a minute or crossings."""
+        router(standard_router())
+        profile = post(client, good_body()).json()["profile"]
+        assert profile["interval_m"] == routing.ELEVATION_INTERVAL_M
+        assert profile["m"] == [0, 30, 60, 90]
+        assert profile["elevation_m"] == [10.0, 20.0, 15.0, 30.0]
+        assert len(profile["grade_pct"]) == 4
+        # Read across the samples either side (here all four, 90 m): (30 - 10) / 90.
+        assert profile["grade_pct"][1] == pytest.approx((30.0 - 10.0) / 90 * 100, abs=0.1)
+        assert profile["riders_per_min"] is None
+        assert profile["flow"] is None and profile["crossings"] is None
+
+    def test_a_route_with_no_elevation_has_a_null_profile(self, client, segments, router) -> None:
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, [])])
+        router(answers)
+        response = post(client, good_body())
+        assert response.status_code == 200
+        assert response.json()["profile"] is None
+
+    def test_a_mass_ride_has_riders_a_minute_that_a_climb_lowers(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a two-lane street
+        (the segment table has no lanes here: one a direction) carries about 198 riders a
+        minute; a 6% climb of 300 m carries fewer, and the climb's row says by how much."""
+        heights = [10.0] * 6 + [10.0 + 1.8 * i for i in range(1, 11)] + [28.0] * 4
+        answers = standard_router()
+        answers.answers["route"] = route_answer([(VERTICES, 2.2, heights)])
+        router(answers)
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        assert len(profile["riders_per_min"]) == len(profile["m"]) == len(heights)
+        assert profile["riders_per_min"][0] == 198
+        known = [r for r in profile["riders_per_min"] if r is not None]
+        assert min(known) < 198
+        assert profile["flow"]["narrowest_riders_per_min"] == min(known)
+        assert profile["flow"]["typical_riders_per_min"] == 198
+        assert profile["climbs"] and profile["climbs"][0]["capacity_drop_pct"] > 20
+        assert profile["climbs"][0]["min_riders_per_min"] == min(known)
+        assert isinstance(profile["crossings"], list)
 
     def test_nothing_about_the_request_needs_or_makes_a_session(
         self, client, segments, router

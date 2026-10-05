@@ -371,6 +371,11 @@ def _event_name(event) -> str | None:
     return readable(label) if label else None
 
 
+def street_name_of(event) -> str | None:
+    """The street an event or a major junction is about, as mapped; None where unnamed."""
+    return _event_name(event)
+
+
 def _crossed(tier: int | None) -> str:
     return {3: " (LTS 3)", 4: " (LTS 4)", 5: " (Avoid)"}.get(tier or 0, "")
 

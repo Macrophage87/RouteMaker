@@ -67,7 +67,9 @@ from routemaker.intersections import (
     Junction,
     Movement,
     Road,
+    RouteEvents,
     assess_route,
+    major_crossings,
 )
 from routemaker.trace_junctions import (
     APPROACH_M,
@@ -877,4 +879,10 @@ def events_of(
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
-    return assess_route(build_junctions(raws, nodes, roads), group)
+    built = build_junctions(raws, nodes, roads)
+    events = assess_route(built, group)
+    if not group:
+        return events
+    # A Mass Ride's route chart marks its major junctions (OWNER-DECISIONS 333), which
+    # take in crossings the planner does not flag: carried beside the events.
+    return RouteEvents(events, major_crossings(built, events))
