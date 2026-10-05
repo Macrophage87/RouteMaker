@@ -527,6 +527,25 @@ details.how summary {
   display: block;
 }
 
+/* The Mass Ride map's riders-per-minute legend and the route's list of them
+   (lib/massLegend.ts; OWNER-DECISIONS 325-327). A swatch is the band's own line:
+   its width, dash and halo, as the map draws it. */
+.mass-legend li {
+  grid-template-columns: 60px 1fr;
+}
+
+.mass-swatch {
+  display: block;
+}
+
+.capacity .stress-list li {
+  grid-template-columns: 60px 1fr auto auto;
+}
+
+.capacity-lead {
+  margin: 0 0 6px;
+}
+
 /* The Mass Ride map's federal-land legend and popup (lib/federalLegend.ts,
    federalInteraction.ts). The popup shares the rail cards' look. */
 .federal-legend li {

@@ -37,7 +37,9 @@ CEILING_RPM = round(40 * RPM_PER_METRE)
 # enough that a rebuild of the regional extract is never refused for being a
 # little different, narrow enough to catch a model that came out in the wrong
 # units (a factor of 60) or a constant of zero. Measured on the live table's
-# widths and lanes before the first rebuild (docs/DEVELOPMENT.md).
+# widths and lanes before the first rebuild (docs/DEVELOPMENT.md). Overridable by
+# `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`, which the tests' toy extracts set
+# wide: no fixture extract has a region's mix of roads.
 MEDIAN_RANGE_RPM = (90, 260)
 
 
@@ -74,7 +76,11 @@ def capacity_summary(schema: str) -> CapacitySummary:
         return CapacitySummary(*cursor.fetchone())
 
 
-def problems(summary: CapacitySummary, min_share: float = MIN_SHARE) -> list[str]:
+def problems(
+    summary: CapacitySummary,
+    min_share: float = MIN_SHARE,
+    median_range: tuple[float, float] = MEDIAN_RANGE_RPM,
+) -> list[str]:
     """Why the column is not fit to promote; empty when it is."""
     found = []
     for name, rows, have in (
@@ -92,7 +98,7 @@ def problems(summary: CapacitySummary, min_share: float = MIN_SHARE) -> list[str
                 f"road capacities run {summary.road_min} to {summary.road_max} riders a minute, "
                 f"outside the plausible {FLOOR_RPM} to {CEILING_RPM}"
             )
-        low, high = MEDIAN_RANGE_RPM
+        low, high = median_range
         if not low <= summary.road_median <= high:
             found.append(
                 f"the median road carries {summary.road_median:.0f} riders a minute, outside "

@@ -12,24 +12,45 @@
  * Plain functions of the route, so a test runs them without a map or a browser, and every
  * figure has words (nothing is colour alone).
  */
-import { MASS_BANDS, MASS_AVOID, bandIndex } from "../massStyle.js";
+import { MASS_BANDS, bandIndex } from "../massStyle.js";
 import type { RouteResponse, StressSpan } from "./api.ts";
-import { formatDistance } from "./format.ts";
+import { formatDistance, formatSpeedRange } from "./format.ts";
+import { STRESS_ZOOMS } from "./mapStyle.ts";
 import { wholePercents } from "./stressBar.ts";
 
 /** The ride type this is the capacity map of. */
 export const isMassRide = (preset: string | null | undefined): boolean => preset === "mass-ride";
 
 /** The legend's title: the unit and the speed the figure is for (the approved mock-up's). */
-export const CAPACITY_LEGEND_TITLE = "Riders per minute (at 6-8 mph)";
+export const CAPACITY_SPEED = formatSpeedRange(6, 8);
+export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
 
 /** The route panel's title for the same figures. */
 export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
 
+/** The route view's fold for the same figures, in place of "Stress and facilities" (OWNER-DECISIONS 312, 325). */
+export const CAPACITY_FOLD_TITLE = "Riders per minute";
+
 /** What the figure is, said once in plain words (the stress legend's LTS_MEANS, for this map). */
 export const CAPACITY_MEANS =
-  "Riders per minute is how many riders a road lets through each minute on the flat at 6 to 8 mph, from its usable width. " +
+  `Riders per minute is how many riders a road lets through each minute on the flat at ${CAPACITY_SPEED}, from its usable width. ` +
   "A ride flows at its narrowest point. Trails and bike lanes are not drawn here.";
+
+/**
+ * What the Mass Ride map draws at the zoom it is at, in words (the tiles' levels, core/stress_tiles.py): no
+ * roads below z12, the busier (wider) roads from z12, every street from z14. Null when there is nothing to say.
+ */
+export function massZoomNotice(zoom: number | null, shown: boolean): string | null {
+  if (zoom === null || !shown) return null;
+  if (zoom < STRESS_ZOOMS.busy) return "Zoom in to see roads and how many riders per minute they carry.";
+  if (zoom < STRESS_ZOOMS.quiet) return `Zoom in to see every street. Only the busier roads are drawn until zoom ${STRESS_ZOOMS.quiet}.`;
+  return null;
+}
+
+/** The standing note under the legend: where roads come in, and what this map leaves out. */
+export const MASS_ZOOM_HINT =
+  `Roads show from zoom ${STRESS_ZOOMS.busy}: the busier ones first, every street from zoom ${STRESS_ZOOMS.quiet}. ` +
+  "Trails, paths and bike lanes are not drawn on this map, and nor are alleys.";
 
 /** The legend row for a band: "Under 60: bottleneck". */
 export function bandLegendText(index: number): string {
@@ -64,11 +85,11 @@ export interface CapacitySummary {
 
 /**
  * The route's capacity, from its sections; null where the route is not a Mass Ride's
- * (no section carries `rpm`: another ride type, an older API, or a table built before
+ * (no section carries a figure: another ride type, an older API, or a table built before
  * the capacity column), so the panel keeps the stress breakdown.
  */
 export function capacitySummary(spans: readonly StressSpan[] | null | undefined): CapacitySummary | null {
-  if (!spans || spans.length === 0 || !spans.some((s) => s.rpm !== undefined)) return null;
+  if (!spans || spans.length === 0 || !spans.some((s) => typeof s.rpm === "number")) return null;
   const bandM = MASS_BANDS.map(() => 0);
   let avoidM = 0;
   let unknownM = 0;
@@ -147,7 +168,7 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
     metres: summary.bandM[i],
     band: i,
   }));
-  rows.push({ key: "avoid", text: `Avoid: ${MASS_AVOID.label.charAt(0)}${MASS_AVOID.label.slice(1).toLowerCase()}`, percent: summary.percents[4], metres: summary.avoidM, band: null });
+  rows.push({ key: "avoid", text: "Avoid: no capacity given", percent: summary.percents[4], metres: summary.avoidM, band: null });
   rows.push({ key: "none", text: "No capacity figure", percent: summary.percents[5], metres: summary.unknownM, band: null });
   return rows.filter((row) => row.metres > 0);
 }
@@ -155,7 +176,7 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
 /** The route description's lead sentence and the bar's name: the narrowest point, then each band's share. */
 export function capacityDescription(summary: CapacitySummary): string {
   const shares = capacityRows(summary)
-    .map((row) => `${row.percent}% ${row.band === null ? row.text.toLowerCase() : row.text.toLowerCase()}`)
+    .map((row) => `${row.percent}% ${row.text.toLowerCase()}`)
     .join("; ");
   return `Carrying capacity: narrowest point ${narrowestText(summary)}. By distance: ${shares}.`;
 }

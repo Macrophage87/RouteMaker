@@ -4229,3 +4229,46 @@ def test_a_rebuild_that_loses_the_long_trails_is_refused(
         run_pipeline(source, tmp_path)
     assert caught.value.stage is Stage.VALIDATE
     assert f"sentinel way {ALPHA_WEST_ID}" in str(caught.value.cause)
+
+
+def test_the_mass_ride_capacity_reaches_the_segment_table(workspace, states) -> None:
+    """The writer's wiring through the real stages (OWNER-DECISIONS 325-327, 387): every
+    row carries the flat-ground riders a minute `routemaker.massflow` gives its way's
+    tags and the classifier's lanes, and VALIDATE read the column back."""
+    from routemaker import massflow
+
+    source, root = workspace
+    context, report = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert report.completed
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT osm_way_id, mass_capacity_rpm FROM {context.staging_schema}.segment"
+        )
+        stored = dict(cursor.fetchall())
+    assert stored and all(rpm is not None for rpm in stored.values())
+    for way in context.ways:
+        if way.osm_id in stored:
+            lanes = getattr(context.stress_by_way[way.osm_id], "lanes", None)
+            assert stored[way.osm_id] == massflow.capacity_rpm(way.tags, lanes), way.osm_id
+
+
+def test_a_rebuild_that_loses_the_capacity_is_refused(workspace, states, monkeypatch) -> None:
+    """The sentinel (as the long trails' is): a pass that wrote no capacity would promote
+    the old Mass Ride map unannounced, since the tiles fall back without the column."""
+    from routemaker import massflow
+
+    monkeypatch.setattr(massflow, "capacity_rpm", lambda *args, **kwargs: None)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root)
+    assert caught.value.stage is Stage.VALIDATE
+    assert "carry a capacity" in str(caught.value.cause)
+
+
+def test_a_rebuild_whose_median_road_is_implausible_is_refused(workspace, states, settings) -> None:
+    settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (5000, 6000)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root)
+    assert caught.value.stage is Stage.VALIDATE
+    assert "units or constants" in str(caught.value.cause)

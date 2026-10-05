@@ -196,10 +196,14 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
  * traffic-free path at LTS 1's when it has no tier; else traffic-free before its
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
-export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm">>): RouteClass {
-  // A Mass Ride's section (the API gave it a capacity, `rpm`, even if null): by capacity band, or Avoid
-  // alone for a stretch marked Avoid; a section with no capacity is the unknown grey (OWNER-DECISIONS 325, 327).
-  if (span.rpm !== undefined) {
+export function spanClass(
+  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm">>,
+  capacity = false,
+): RouteClass {
+  // A Mass Ride's section (`capacity`: the route's sections carry riders per minute, usesCapacity): by
+  // capacity band, or Avoid alone for a stretch marked Avoid; a section with no capacity is the unknown
+  // grey (OWNER-DECISIONS 325, 327).
+  if (capacity) {
     if (span.tier === 5) return classByKey("mavoid") as RouteClass;
     const band = bandIndex(span.rpm);
     return (band !== null ? classByKey(`m${band}` as RouteClassKey) : classByKey("unknown")) as RouteClass;
@@ -224,6 +228,11 @@ export interface RouteSection {
   ringWidth?: number;
   dash?: readonly number[];
   coordinates: LonLat[];
+}
+
+/** Whether a route's sections are drawn by capacity: any carries a figure (a Mass Ride on a table that has the column). */
+export function usesCapacity(spans: readonly StressSpan[] | undefined): boolean {
+  return !!spans && spans.some((span) => typeof span.rpm === "number");
 }
 
 function usableSpans(spans: readonly StressSpan[] | undefined): spans is readonly StressSpan[] {
@@ -260,6 +269,7 @@ export function routeSections(
   const drawn = along[along.length - 1];
   if (!(drawn > 0)) return null;
   const scale = drawn / spans[spans.length - 1].to_m;
+  const capacity = usesCapacity(spans);
 
   const sections: RouteSection[] = [];
   let vertex = 1; // the next vertex not yet passed
@@ -283,7 +293,7 @@ export function routeSections(
       points.push(finish);
     }
     start = finish;
-    const cls = spanClass(span);
+    const cls = spanClass(span, capacity);
     const previous = sections[sections.length - 1];
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
@@ -326,8 +336,9 @@ export interface RouteLegendRow extends RouteClass {
 export function routeLegend(spans: readonly StressSpan[] | undefined): RouteLegendRow[] {
   if (!usableSpans(spans)) return [];
   const metres = new Map<RouteClassKey, number>();
+  const capacity = usesCapacity(spans);
   for (const span of spans) {
-    const key = spanClass(span).key;
+    const key = spanClass(span, capacity).key;
     metres.set(key, (metres.get(key) ?? 0) + (span.to_m - span.from_m));
   }
   return routeClasses().filter((c) => metres.has(c.key)).map((c) => ({ ...c, metres: metres.get(c.key) ?? 0 }));

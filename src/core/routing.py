@@ -70,12 +70,13 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import validate_schema_name
+from pipeline.schema import MASS_CAPACITY_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import climbs, describe, intersections, ridetime, trace_junctions
 from routemaker import detour as detour_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
+from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
 from . import presets
@@ -319,7 +320,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved
+SELECT {tier}, {facility}, seg.is_unpaved{capacity_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -331,6 +332,27 @@ LEFT JOIN LATERAL (
 ) AS seg ON true
 ORDER BY p.ordinality
 """
+
+# Whether the live segment table has the Mass Ride capacity column
+# (`pipeline.schema.MASS_CAPACITY_COLUMN`): written by the first rebuild after the
+# capacity map shipped. Without it a Mass Ride's sections carry no capacity and
+# the map draws them by stress, as it did. Remembered once seen, as above.
+_capacity_column_seen = False
+
+
+def _has_capacity_column(schema: str) -> bool:
+    global _capacity_column_seen
+    if _capacity_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, MASS_CAPACITY_COLUMN],
+        )
+        _capacity_column_seen = cursor.fetchone()[0] == 1
+    return _capacity_column_seen
+
 
 # A road closed to motor traffic only at set times is a path for a ride inside
 # the closure, and the road it is otherwise for any other (routemaker.facility).
@@ -374,14 +396,18 @@ class PieceClass(tuple):
     reader that unpacks (tier, facility) is unchanged."""
 
     unpaved: bool | None
+    # The segment's Mass Ride capacity, riders a minute on the flat, or None where
+    # the table has none (`pipeline.schema.MASS_CAPACITY_COLUMN`).
+    rpm: int | None
 
-    def __new__(cls, tier: str, facility: str, unpaved: bool | None = None):
+    def __new__(cls, tier: str, facility: str, unpaved: bool | None = None, rpm: int | None = None):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
+        pair.rpm = rpm
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved)
+        return (self[0], self[1], self.unpaved, self.rpm)
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -396,11 +422,14 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     with_facility = _has_facility_columns(schema)
+    with_capacity = _has_capacity_column(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
-        columns="s.facility, s.car_free_when" if with_facility else "NULL",
+        columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
+        + (f", s.{MASS_CAPACITY_COLUMN}" if with_capacity else ""),
+        capacity_out=f", seg.{MASS_CAPACITY_COLUMN}" if with_capacity else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     classes = []
@@ -409,6 +438,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
+            rpm = row[3] if with_capacity and len(row) > 3 else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -416,6 +446,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
                     kind if kind in FACILITY_KEYS else "unknown",
                     unpaved,
+                    rpm if isinstance(rpm, int) else None,
                 )
             )
     return classes
@@ -451,32 +482,44 @@ def totals(classified) -> tuple[dict[str, float], dict[str, float]]:
 MIN_SPAN_M = 10.0
 
 
-def stress_spans(stretches: list[tuple]) -> list[dict]:
+def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved]) in the order
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm]]) in the order
     ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
     unpaved section in the brown ramp, so a section ends where the surface changes).
+
+    With `capacity` (a Mass Ride on a table that has the capacity column; OWNER-DECISIONS
+    325-327) a section also ends where the capacity changes band, and carries `rpm`: the
+    lowest capacity along it, riders a minute, or null where the segments have none. A
+    stretch marked Avoid (tier 5) is one section whatever its capacity: it shows only
+    "Avoid" (325). A section folded into its neighbour does not lower the neighbour's
+    `rpm`, so a section's figure always lies in the band its colour says.
     """
     # Pieces are cut at every shape vertex, so a long stretch of one class
     # arrives as many short pieces: they are joined before anything is judged
     # too short to show.
-    spans: list[list] = []  # [length, tier, facility, unpaved]
+    spans: list[list] = []  # [length, tier, facility, unpaved, band, lowest rpm]
     for stretch in stretches:
         metres, tier, kind = stretch[:3]
         unpaved = stretch[3] if len(stretch) > 3 else None
-        if spans and spans[-1][1:] == [tier, kind, unpaved]:
+        rpm = stretch[4] if capacity and len(stretch) > 4 else None
+        band = band_of(rpm) if capacity and rpm is not None and tier != "5" else None
+        if spans and spans[-1][1:5] == [tier, kind, unpaved, band]:
             spans[-1][0] += metres
+            spans[-1][5] = _lowest(spans[-1][5], rpm)
         else:
-            spans.append([metres, tier, kind, unpaved])
+            spans.append([metres, tier, kind, unpaved, band, rpm])
     folded: list[list] = []
     for span in spans:
-        if folded and (span[0] < MIN_SPAN_M or folded[-1][1:] == span[1:]):
+        if folded and (span[0] < MIN_SPAN_M or folded[-1][1:5] == span[1:5]):
             folded[-1][0] += span[0]
+            if folded[-1][1:5] == span[1:5]:
+                folded[-1][5] = _lowest(folded[-1][5], span[5])
         elif folded and folded[-1][0] < MIN_SPAN_M:
             # The first section was the short one: it takes this one's class.
             folded[-1] = [folded[-1][0] + span[0], *span[1:]]
@@ -484,21 +527,27 @@ def stress_spans(stretches: list[tuple]) -> list[dict]:
             folded.append(list(span))
     out = []
     at = 0.0
-    for length, tier, kind, unpaved in folded:
+    for length, tier, kind, unpaved, _band, rpm in folded:
         start, at = at, at + length
         if out and out[-1]["to_m"] == round(at):
             out[-1]["to_m"] = round(at)
             continue
-        out.append(
-            {
-                "from_m": round(start),
-                "to_m": round(at),
-                "tier": int(tier) if tier != "unknown" else None,
-                "facility": kind if kind != "unknown" else None,
-                "unpaved": unpaved,
-            }
-        )
+        entry = {
+            "from_m": round(start),
+            "to_m": round(at),
+            "tier": int(tier) if tier != "unknown" else None,
+            "facility": kind if kind != "unknown" else None,
+            "unpaved": unpaved,
+        }
+        if capacity:
+            entry["rpm"] = None if tier == "5" else rpm
+        out.append(entry)
     return out
+
+
+def _lowest(a: int | None, b: int | None) -> int | None:
+    """The lower of two capacities, ignoring a missing one."""
+    return b if a is None else a if b is None else min(a, b)
 
 
 _ADJUSTMENT_JOIN = """
@@ -1817,12 +1866,21 @@ def plan(
         for run in leg_runs:
             if isinstance(run, tuple):
                 stretches.extend(
-                    (pieces[i].metres, *classes[i], getattr(classes[i], "unpaved", None))
+                    (
+                        pieces[i].metres,
+                        *classes[i],
+                        getattr(classes[i], "unpaved", None),
+                        getattr(classes[i], "rpm", None),
+                    )
                     for i in range(run[0], run[1])
                 )
             else:
                 stretches.append((run, "unknown", "unknown"))
-        spans = stress_spans(stretches)
+        spans = stress_spans(
+            stretches,
+            capacity=preset_name == "mass-ride"
+            and _has_capacity_column(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)),
+        )
         events = None
         if not over_budget:
             events = _events(refine_context, legs, raw_junctions, deadline)

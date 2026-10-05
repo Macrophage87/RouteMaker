@@ -372,6 +372,17 @@ class StressSpanOut(Schema):
             " line draws it in the brown ramp); null: not known."
         ),
     )
+    rpm: int | None = Field(
+        default=None,
+        description=(
+            "A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the lowest carrying capacity "
+            "along the section, in riders per minute on the flat at 6-8 mph, from the segment "
+            "table's mass_capacity_rpm. Sections of a Mass Ride end where the capacity changes "
+            "band (under 60, 60-120, 120-200, 200 and up), and a stretch marked Avoid is one "
+            "section with null. Null on every section of any other ride type, and of a Mass "
+            "Ride on a table built before the column, which the map then draws by stress."
+        ),
+    )
 
 
 class DialsOut(Schema):

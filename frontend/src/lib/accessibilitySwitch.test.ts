@@ -654,7 +654,18 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
   );
   assert.deepEqual(
     paint.map(([id, name]) => `${id} ${name}`),
-    ["route-line line-opacity", "route-stress line-opacity", "route-halo line-opacity", "route-ring line-opacity", "route-casing line-color", "route-unpaved line-opacity"],
+    [
+      "route-line line-opacity",
+      "route-stress line-opacity",
+      "route-halo line-opacity",
+      "route-ring line-opacity",
+      "route-casing line-color",
+      "route-unpaved line-opacity",
+      // A Mass Ride's dashed sections (OWNER-DECISIONS 327), one layer a dashed class.
+      "route-dash-m0 line-opacity",
+      "route-dash-m1 line-opacity",
+      "route-dash-mavoid line-opacity",
+    ],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
   assert.equal(paint[2][2], 1, "and so are their halos");
@@ -663,11 +674,12 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
   assert.equal(paint[0][2], 0, "and the one-colour line is hidden");
   assert.equal(paint[5][2], 1, "the unpaved sections' dots with them");
   setRouteSections(map as never, ROUTE, true);
-  assert.equal(paint[7][2], 0.45, "a stale route is still dimmed after a flip");
-  assert.equal(paint[8][2], 0.45, "its halos too");
-  assert.equal(paint[9][2], 0.45, "and its rings");
-  assert.equal(paint[10][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
-  assert.equal(paint[11][2], 0.45, "and the unpaved dots");
+  const second = paint.length / 2;
+  assert.equal(paint[second + 1][2], 0.45, "a stale route is still dimmed after a flip");
+  assert.equal(paint[second + 2][2], 0.45, "its halos too");
+  assert.equal(paint[second + 3][2], 0.45, "and its rings");
+  assert.equal(paint[second + 4][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
+  assert.equal(paint[second + 5][2], 0.45, "and the unpaved dots");
 });
 
 test("repaint wiring: no route puts no sections in, and does not throw", () => {

@@ -360,6 +360,12 @@ REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341
 # what that extract gives (12,503 and 4,402 rows, measured on a full-size copy).
 REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 10595312)
 REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
+# The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
+# `pipeline.run.assert_mass_capacity`): VALIDATE reads it back, and the median road
+# (riders a minute) must lie in this range - a two-lane street is about 200, a one-way
+# street about 100. Measured on the live table before the first rebuild that writes it
+# (docs/DEVELOPMENT.md, "The Mass Ride capacity map").
+REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (90, 260)
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

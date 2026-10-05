@@ -13,7 +13,8 @@
  *   120 to 200: green  #1a9850, 7 px,   solid        (good)
  *   200 and up: purple #6a3d9a, 8.5 px, solid        (wide open)
  *
- * Colour is never the only cue: the red and the green, which a red-green colour-blind
+ * Each band is outlined by a halo 3:1 from it (dark under the red, orange and green, white under the
+ * purple), which also shows in the gaps of the dashes. Colour is never the only cue: the red and the green, which a red-green colour-blind
  * rider sees as one, differ in width (4 against 7 px) and in dash, and every band
  * differs from its neighbour in width and the lower two in dash (massStyle.test.ts
  * measures the pairs under simulated colour vision; docs/DEVELOPMENT.md has the table).
@@ -37,9 +38,9 @@
 
 /** The bands, lowest first. `min` inclusive, `max` exclusive (the last has none). */
 export const MASS_BANDS = [
-  { key: "bottleneck", name: "bottleneck", short: "Under 60", min: 0, max: 60, color: "#d7191c", halo: "#ffffff", width: 4, dashPx: [6, 4] },
+  { key: "bottleneck", name: "bottleneck", short: "Under 60", min: 0, max: 60, color: "#d7191c", halo: "#1c1917", width: 4, dashPx: [6, 4] },
   { key: "tight", name: "tight", short: "60 to 120", min: 60, max: 120, color: "#f28e2b", halo: "#1c1917", width: 5.5, dashPx: [14, 4] },
-  { key: "good", name: "good", short: "120 to 200", min: 120, max: 200, color: "#1a9850", halo: "#ffffff", width: 7, dashPx: null },
+  { key: "good", name: "good", short: "120 to 200", min: 120, max: 200, color: "#1a9850", halo: "#1c1917", width: 7, dashPx: null },
   { key: "wide", name: "wide open", short: "200 and up", min: 200, max: null, color: "#6a3d9a", halo: "#ffffff", width: 8.5, dashPx: null },
 ];
 

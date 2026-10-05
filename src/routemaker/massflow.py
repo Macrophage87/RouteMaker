@@ -110,9 +110,7 @@ def _lanes_total(tags: Mapping[str, str], per_direction: int | None, oneway: boo
     return None
 
 
-def usable_width_m(
-    tags: Mapping[str, str], per_direction_lanes: int | None = None
-) -> float | None:
+def usable_width_m(tags: Mapping[str, str], per_direction_lanes: int | None = None) -> float | None:
     """The width a pack can use, in metres, or None where the way is not one a
     width can be read for (no `highway`)."""
     highway = tags.get("highway")

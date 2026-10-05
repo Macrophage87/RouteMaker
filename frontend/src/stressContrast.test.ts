@@ -28,6 +28,7 @@ import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
 import { ROUTE_BLUE, ROUTE_CASING_CVD, ROUTE_CASING_WIDTH, ROUTE_HALO_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeClasses } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
+import { MASS_AVOID } from "./massStyle.js";
 import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 
 /** The default (two-tone, OWNER-DECISIONS 351) is held here to everything but the 3:1 breaks the owner's colours make, which defaultPalette.test.ts holds exactly. */
@@ -266,7 +267,11 @@ for (const { name, on } of REACHABLE) {
   test(`${name}${on ? " (accessibility on)" : ""}: every route class is at least 3:1 from the halo under it`, () => {
     withSwitch(on, () => {
       const classes = routeClasses();
-      assert.equal(classes.length, 12, "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302) and the unrated");
+      assert.equal(
+        classes.length,
+        17,
+        "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
+      );
       const failures: string[] = [];
       for (const c of classes) {
         const ratio = contrastRatio(c.color, c.halo);
@@ -312,6 +317,12 @@ test("a halo is dark under the light classes and white under the dark ones (neve
         // palette's Avoid keeps the dark-or-light rule (review SF4).
         if (c.key === "5" && name === "blended") {
           assert.equal(c.halo, PALETTES.blended[5].casing, "the exemption is for the palette's own Avoid casing only");
+          assert.ok(contrastRatio(c.color, c.halo) >= 3, `${c.short}: ${c.color} on ${c.halo}`);
+          continue;
+        }
+        // The Mass Ride's Avoid is near-black on its own coral (OWNER-DECISIONS 327), as the blended palette's is.
+        if (c.key === "mavoid") {
+          assert.equal(c.halo, MASS_AVOID.casing);
           assert.ok(contrastRatio(c.color, c.halo) >= 3, `${c.short}: ${c.color} on ${c.halo}`);
           continue;
         }

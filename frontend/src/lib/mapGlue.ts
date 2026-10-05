@@ -518,6 +518,26 @@ export function watchForFacilities(map: FacilityMap, seen: (kinds: ReadonlySet<s
   map.on("idle", check);
 }
 
+/**
+ * Whether the stress tiles on screen carry the Mass Ride capacity (`rpm`; core/stress_tiles.py).
+ * A table promoted before the capacity column has none, and the Mass Ride map is then the stress
+ * map as it was: its legend and panel say so by this.
+ */
+export function capacityOnMap(map: FacilityMap): boolean {
+  if (!map.getSource(STRESS_SOURCE_ID)) return false;
+  return map.querySourceFeatures(STRESS_SOURCE_ID, { sourceLayer: STRESS_TILE_LAYER, filter: ["has", "rpm"] }).length > 0;
+}
+
+/** Report once the map has drawn a feature with a capacity (remembered: it is a property of the table, not the view). */
+export function watchForCapacity(map: FacilityMap, seen: () => void): void {
+  const check = () => {
+    if (!capacityOnMap(map)) return;
+    map.off("idle", check);
+    seen();
+  };
+  map.on("idle", check);
+}
+
 /** The parts of a MapLibre map the zoom watch uses. */
 export interface ZoomMap {
   getZoom(): number;

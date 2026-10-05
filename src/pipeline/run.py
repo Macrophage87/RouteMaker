@@ -800,13 +800,17 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
         )
 
 
-def assert_mass_capacity(summary, min_share: float | None = None) -> None:
+def assert_mass_capacity(
+    summary, min_share: float | None = None, median_range: Sequence[float] | None = None
+) -> None:
     """The Mass Ride capacity column came out of the rebuild (OWNER-DECISIONS 325-327,
     387): present on nearly every road and path row, in a plausible range
     (`pipeline.mass_capacity`). The map colours by it and falls back silently
     without it, so a pass that lost it would promote the old map unannounced."""
     found = mass_capacity.problems(
-        summary, mass_capacity.MIN_SHARE if min_share is None else min_share
+        summary,
+        mass_capacity.MIN_SHARE if min_share is None else min_share,
+        tuple(mass_capacity.MEDIAN_RANGE_RPM if median_range is None else median_range),
     )
     if found:
         raise ValidationFailed("; ".join(found))
@@ -1801,7 +1805,10 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
-        assert_mass_capacity(mass_capacity.capacity_summary(context.staging_schema))
+        assert_mass_capacity(
+            mass_capacity.capacity_summary(context.staging_schema),
+            median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
+        )
         sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
         assert_long_trails(
             trail_routes.long_trail_summary(

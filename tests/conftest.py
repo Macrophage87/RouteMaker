@@ -36,6 +36,9 @@ def _no_long_trail_sentinels(settings):
     no bridge is left unjudged runs in every rebuild either way."""
     settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = ()
     settings.REBUILD_LONG_TRAIL_FLOORS = (0, 0)
+    # And the Mass Ride capacity's median road is a region's, not a toy extract's
+    # (the share and the plausible range of a road's figure are still checked).
+    settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (0, 5000)
 
 
 @pytest.fixture
