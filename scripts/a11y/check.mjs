@@ -482,7 +482,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   await p.key(" ", "Space", 32);
   await sleep(1200);
   const after = await p.eval("({ checked: document.querySelector('.loop-toggle input').checked, attr: document.querySelector('.loop-toggle input').getAttribute('aria-disabled'), disabled: document.querySelector('.loop-toggle input').disabled })");
-  check("loop: when implied it keeps the focus, and Space neither unticks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
+  check("loop: when implied it keeps the focus, and Space neither unchecks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
   const size = await p.eval("(() => { const r = document.querySelector('.loop-toggle .toggle').getBoundingClientRect(); return Math.round(r.height); })()");
   check("loop: its row is a 44 px target (2.5.8, and the owner's 44 px rule)", size >= 44, `${size} px`);
   await p.close();
@@ -768,7 +768,7 @@ const federalFetched = (p) =>
 // ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 {
-  // An empty planner: the box is there with no point, says what to place when ticked, and says it once.
+  // An empty planner: the box is there with no point, says what to place when checked, and says it once.
   const p = await newPage(b, { width: 1280, height: 900 });
   await mock(p, S_DEFAULT, {});
   await media(p, {});
@@ -776,7 +776,7 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   await p.waitFor("!!document.querySelector('.loop-toggle input')", 40000);
   await sleep(800);
   const box = await axNode(p, ".loop-toggle input");
-  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", unticked", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === false, JSON.stringify(box));
+  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", unchecked", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === false, JSON.stringify(box));
   const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!(document.querySelector('#points-search').compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.querySelector('.toggle').getBoundingClientRect().height) }; })()");
   check("loop first: it is in the Points section, after the search, and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
   check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
@@ -785,12 +785,12 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   await p.key(" ", "Space", 32);
   await sleep(700);
   const on = await axNode(p, ".loop-toggle input");
-  const hint = await p.eval("(() => { const h = document.getElementById('loop-hint'); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height > 0 && getComputedStyle(h).visibility !== 'hidden' }; })()");
-  check("loop first: ticked with no point, the hint is visible text, \"Place the starting point, then a stop or two along the way.\"", on?.checked === true && hint.visible && hint.text === FIRST_HINT, JSON.stringify(hint));
+  const hint = await p.eval("(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height > 0 && getComputedStyle(h).visibility !== 'hidden' }; })()");
+  check("loop first: checked with no point, the hint is visible text, \"Place the starting point, then a stop or two along the way.\"", on?.checked === true && hint.visible && hint.text === FIRST_HINT, JSON.stringify(hint));
   check("loop first: the box is described by it", on?.description === FIRST_HINT, JSON.stringify(on?.description));
   const said = await p.eval("window.__said");
-  check("loop first: it is announced once when the box is ticked", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.length === 1, JSON.stringify(said));
-  check("loop first: ticking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
+  check("loop first: it is announced once when the box is checked", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.length === 1, JSON.stringify(said));
+  check("loop first: checking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
   check("loop first: the empty-plan words do not send the rider to the Ride line", !/Edit button|ride settings/.test(await p.eval("document.querySelector('.tips-body').textContent")), "");
   await p.close();
 }
@@ -813,8 +813,15 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   // The Plan button: first in the bar, current on the planner, returns from a sheet to the planner's heading.
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => ({ text: x.querySelector('span').textContent, current: x.getAttribute('aria-current') }))");
   check("plan: five buttons, Plan first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Plan" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
-  const planAx = await axNode(p, ".bar-button");
-  check("plan: it is a button named Plan (its hidden hint is in its content, as for the other bar buttons), described by where it goes", planAx?.role === "button" && /^Plan /.test(planAx?.name ?? "") && /^Back to the planner/.test(planAx?.description ?? ""), JSON.stringify(planAx));
+  // Exact names: the hint is a sibling of each button, not part of its name, and is the description (said once).
+  const names = [];
+  for (const id of ["plan", "layers", "legend", "gpx", "settings"]) {
+    const ax = await axNode(p, `#bar-${id}`);
+    names.push([ax?.role, ax?.name]);
+  }
+  check("plan: the five bar buttons are named exactly Plan, Map layers, Legend, GPX, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Map layers"], ["button", "Legend"], ["button", "GPX"], ["button", "Settings"]]), JSON.stringify(names));
+  const planAx = await axNode(p, "#bar-plan");
+  check("plan: its description says where it goes, in the Back label's words", /^Shows the planner: /.test(planAx?.description ?? ""), JSON.stringify(planAx?.description));
   await openSheet(p, "GPX");
   const during = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.getAttribute('aria-current'))");
   check("plan: on a sheet the Plan button is not current and that sheet's is", during[0] === null && during[3] === "true", JSON.stringify(during));
@@ -845,11 +852,46 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 
+{
+  // Large text at 320 px: the five buttons wrap onto a second row rather than clip.
+  const p = await open({ width: 320, height: 700, mobile: true, ride: false });
+  await p.eval("document.documentElement.style.fontSize = '24px'; true");
+  await sleep(300);
+  const fit = await p.eval(`(() => {
+    const buttons = [...document.querySelectorAll('.bar-button')].map((x) => { const r = x.getBoundingClientRect(); return { top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), clipped: x.scrollWidth > x.clientWidth + 1, inside: r.left >= -0.5 && r.right <= innerWidth + 0.5 }; });
+    return { rows: new Set(buttons.map((x) => x.top)).size, scroll: document.documentElement.scrollWidth, buttons }; })()`);
+  check("plan at 320 px with 24 px text: five buttons, 44 px or more each way, inside the screen, nothing clipped, a second row where needed", fit.buttons.length === 5 && fit.buttons.every((x) => x.w >= 44 && x.h >= 44 && x.inside && !x.clipped) && fit.scroll <= 320 && fit.rows >= 2, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/bar_320_text24.png`);
+  await p.close();
+}
+{
+  // The phone header's toggle, and Plan on a scrolled planner.
+  const p = await open({ width: 375, height: 812, mobile: true, ride: false });
+  const first = await p.eval("(() => { const t = document.querySelector('.panel-toggle'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), controls: t.getAttribute('aria-controls') }; })()");
+  check("toggle: the phone header's button reads Hide planner, with aria-expanded and aria-controls", first.text === "Hide planner" && first.expanded === "true" && first.controls === "panel-body", JSON.stringify(first));
+  await openSheet(p, "GPX");
+  await p.eval("document.querySelector('.panel-toggle').click(); true");
+  await sleep(200);
+  const hidden = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), hidden: document.getElementById('panel-body').hidden })");
+  await p.eval("document.querySelector('.panel-toggle').click(); true");
+  await sleep(300);
+  const shown = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), planner: !document.querySelector('.planner-view').hidden, gpx: document.getElementById('sheet-gpx').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
+  check("toggle: hiding says Show planner; showing it again returns to the planner (not the sheet that was open) with the focus on its heading", hidden.text === "Show planner" && hidden.expanded === "false" && hidden.hidden && shown.text === "Hide planner" && shown.expanded === "true" && shown.planner && shown.gpx && shown.focus === "H1:RouteMaker", JSON.stringify({ hidden, shown }));
+  await p.eval("document.querySelector('.panel-scroll').scrollTop = 150; true");
+  await sleep(100);
+  const before = await p.eval("document.querySelector('.panel-scroll').scrollTop");
+  await p.eval("document.querySelector('#bar-plan').click(); true");
+  await sleep(300);
+  const after = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, focus: document.activeElement?.tagName })");
+  check("plan: pressed on a scrolled planner it scrolls to the top and focuses the heading", before > 0 && after.top === 0 && after.focus === "H1", JSON.stringify({ before, after }));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 176;
+const EXPECTED = 181;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

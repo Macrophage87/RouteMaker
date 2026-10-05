@@ -90,21 +90,25 @@ export interface LoopRide {
   dials: { loop?: boolean };
 }
 
-/** The loop ticked before any point is placed: what the box now does, and what to place first (OWNER-DECISIONS 389). */
+/** The loop checked before any point is placed: what the box now does, and what to place first (OWNER-DECISIONS 389). */
 export const LOOP_FIRST_SAID = `Loop on. ${LOOP_FIRST_HINT}`;
+
+/** The loop turned off with no point placed: nothing is renamed, so only the state is said. */
+export const LOOP_OFF_EMPTY_SAID = "Loop off.";
 
 /**
  * What to say when a change of the ride renames the points, or null when it
  * does not: the loop toggle, a ride type into or out of Mass Ride (which has
  * no loop), or an undo or redo that brings another loop state back. With no
- * points nothing is renamed, so only the loop coming on is said, with what to
- * place first (OWNER-DECISIONS 389); nothing when the names stay as they were.
+ * points nothing is renamed, so only the state is said: the loop coming on, with
+ * what to place first (OWNER-DECISIONS 389), or going off ("Loop off."); nothing
+ * when the loop state stays as it was.
  */
 export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number): string | null {
   const was = loopStops(before.preset, before.dials.loop);
   const now = loopStops(after.preset, after.dials.loop);
   if (was === now) return null;
-  if (count < 1) return now ? LOOP_FIRST_SAID : null;
+  if (count < 1) return now ? LOOP_FIRST_SAID : LOOP_OFF_EMPTY_SAID;
   return loopToggledSaid(now, count);
 }
 
@@ -118,10 +122,10 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
     : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
   // The toggle is under the search with or without a start (OWNER-DECISIONS 388, 389).
   const toggle = loop
-    ? ` "${LOOP_LABEL}" is ticked, ${TOGGLE_PLACE}; untick it for a ride that ends somewhere else.`
+    ? ` "${LOOP_LABEL}" is checked, ${TOGGLE_PLACE}; uncheck it for a ride that ends somewhere else.`
     : preset === "mass-ride"
       ? ""
-      : ` To finish back at the start, tick "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
+      : ` To finish back at the start, check "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
         " then each click after the start is a stop.";
   return `${first}${toggle} ${editingTips()}`;
 }
@@ -147,6 +151,6 @@ export function loneStartHint(preset: PresetId, loop: boolean): string {
   if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
   return (
     `Now click the map where you want to finish, ${keys}. To finish back at the start instead,` +
-    ` tick "${LOOP_LABEL}" ${TOGGLE_PLACE}.`
+    ` check "${LOOP_LABEL}" ${TOGGLE_PLACE}.`
   );
 }

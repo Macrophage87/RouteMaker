@@ -3417,7 +3417,8 @@ Tests: `lib/sidebar.test.ts`.
 - **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
   to its heading (the legend's, for Legend); Back or Escape returns it to the bar
   button that opened the sheet; the Plan button takes it to the planner's heading, the
-  `h1` (cause `plan`, `{ kind: "planner" }`); an error that brings the planner back takes it to the
+  `h1` (cause `planButton`, `{ kind: "planner" }`; on the planner already, App focuses the
+  heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
   dialog or on the place search's list (`sheetEscape`). When a route arrives and the
   points compact, a focus in the search, Add point at map center or the tools goes to
@@ -3463,15 +3464,20 @@ Tests: `lib/sidebar.test.ts`.
 - **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
   Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
   `aria-current` while the planner shows and no other button then). It returns from any
-  sheet; on the planner it moves nothing. The sheets' Back button reads "Back to planner"
+  sheet; on the planner it focuses the heading and scrolls to the top. The focus differs on
+  purpose (the reading of 392): Plan goes to the planner as a whole, so to its `h1`; Back and
+  Escape undo the opening of a sheet, so they return to the bar button that opened it. The
+  hint of each bar button is a sibling `visually-hidden` span (`aria-describedby`), so a
+  button's name is its label alone. The phone header's toggle reads "Hide planner" / "Show
+  planner" (`aria-expanded`, `aria-controls`), and Show always shows the planner. The sheets' Back button reads "Back to planner"
   in visible words (`BACK_LABEL`, no `aria-label`, so its name is its label); it and Escape
   still return the focus to the bar button that opened the sheet. There is no title link.
-  The bar is five columns; at 720 px and below each button is the icon over its words,
-  which wrap ("Map layers" on two lines), 48 px high, so five fit 320 px (64 px each) with
-  44 px targets; the Back button is 44 px high. The phone panel's own "Plan"/"Hide" toggle
-  in the header is a different control, left alone.
+  The bar is a grid of tracks at least 3.5rem wide (five across at 320 px, a second row
+  under large text); at 720 px and below each button is the icon over its words, which wrap
+  ("Map layers" on two lines), 48 px high, with 44 px targets; the Back button is 44 px high
+  and the sheet header wraps.
 - **Settings, High contrast (OWNER-DECISIONS 384).** The fifth bar button is Settings
-  (`BAR_ITEMS`, id `settings`; it was About): its sheet holds a "Display" group with the
+  (`BAR_ITEMS`, id `settings`; it was About; since 392/393 it is the fifth of five, Plan first): its sheet holds a "Display" group with the
   High contrast switch, then a "Signing in" section with the sign-in note. No other settings are listed. The switch
   is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
   `routemaker.accessibility` storage key, the `a11y` root class and the `palette=` link
@@ -3487,7 +3493,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 176 checks, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 181 checks, section 17 for the loop box
   and the Plan button) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
@@ -3823,12 +3829,12 @@ counts both halves.
 section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),
 not behind the Ride line's Edit; it is outside the part that hides while the points are
 compact, so a route being shown does not take it away. It shows with no point placed, and
-never on Mass Ride (`loopView` returns null there). Ticked before any point, its visible hint,
+never on Mass Ride (`loopView` returns null there). Checked before any point, its visible hint,
 also its description, is `LOOP_FIRST_HINT` ("Place the starting point, then a stop or two
 along the way."), and "Loop on." plus those words are said once (`LOOP_FIRST_SAID`, from
 `loopChangeSaid`, the one function the toggle, a ride-type change and undo or redo call; with
-no points only the loop coming on is said). `emptyPlanHint` and `loneStartHint` say "tick
-Make it a loop under the search". `DialsPanel` no longer has the toggle or a `points` prop.
+no points the state alone is said: the loop on with what to place, or "Loop off."). Its hint id is
+a `useId()`. `emptyPlanHint` and `loneStartHint` say "check Make it a loop under the search". `DialsPanel` no longer has the toggle or a `points` prop.
 
 **Stops in a loop (OWNER-DECISIONS 374).** With "Make it a loop" on, the page treats the ride as a
 cycle that starts and finishes at the first point, so no second point has to be stacked on the

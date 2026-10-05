@@ -42,7 +42,7 @@ export interface BarItem {
  * High contrast switch; nothing else is there, so no fake settings.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
-  { id: "plan", label: "Plan", opens: "planner", description: "Back to the planner: the points, the ride settings and the route." },
+  { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
   { id: "legend", label: "Legend", opens: "layers", toLegend: true, description: "Opens the map legend, in the map layers." },
   { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
@@ -186,8 +186,11 @@ export const ROUTE_FOLDS = {
 
 // ---- Where the focus goes ---------------------------------------------------------
 
-/** Why the panel changed view: a bar button, Back (or Escape), or a question or error that needs the planner. */
-export type ViewCause = "bar" | "back" | "error" | "confirm" | "plan";
+/**
+ * Why the panel changed view: a bar button, Back (or Escape), the Plan button (or the phone header's
+ * "Show planner"), or a question or error that needs the planner.
+ */
+export type ViewCause = "bar" | "back" | "error" | "confirm" | "planButton";
 
 /** What takes the focus after the panel changes view. */
 export type FocusTarget =
@@ -218,7 +221,7 @@ export function focusOnViewChange(change: {
   if (view !== "planner") return { kind: "heading", view, legend: view === "layers" && legendTarget };
   if (cause === "error") return { kind: "error" };
   if (cause === "confirm") return { kind: "plan" };
-  if (cause === "plan") return { kind: "planner" };
+  if (cause === "planButton") return { kind: "planner" };
   return { kind: "bar", id: openedBy };
 }
 

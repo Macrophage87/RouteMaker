@@ -183,7 +183,6 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
-
 export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);

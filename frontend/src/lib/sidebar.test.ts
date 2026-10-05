@@ -165,7 +165,8 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     "the search, then the loop box, then the points and Add point at map center",
   );
   assert.ok(inPoints("{loop && (") > points.indexOf("</div>", inPoints('id="points-search"')), "outside the part that hides while the points compact");
-  assert.match(points, /aria-describedby="loop-hint"/);
+  assert.match(points, /aria-describedby=\{loopHintId\}/);
+  assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
   // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
@@ -516,7 +517,11 @@ test("the bottom bar is Plan, Map layers, Legend, GPX and Settings: real buttons
   assert.equal(BAR_ITEMS[4].description, "Opens the settings: display options and signing in.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
-  assert.match(sidebar, /<button\s+key=\{item\.id\}\s+type="button"/);
+  assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
+  // The hint is a sibling of the button, not inside it: the name is the label alone, the hint the description once.
+  assert.match(sidebar, /<\/button>\s*\{\/\*[\s\S]*?\*\/\}\s*<span id=\{`bar-\$\{item\.id\}-hint`\} className="visually-hidden">\s*\{item\.description\}\s*<\/span>\s*<\/Fragment>/);
+  assert.match(sidebar, /aria-describedby=\{`bar-\$\{item\.id\}-hint`\}/);
+  assert.equal(BAR_ITEMS[0].description, "Shows the planner: the points, the ride settings and the route.");
   assert.match(sidebar, /<span>\{item\.label\}<\/span>/);
   assert.match(sidebar, /<svg[^>]*aria-hidden="true">\s*\{ICONS\[item\.id\]\}/);
   assert.doesNotMatch(sidebar, /<a /, "no link where a button is meant");
@@ -540,7 +545,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
   const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
-  const causes: ViewCause[] = ["bar", "back", "error", "confirm", "plan"];
+  const causes: ViewCause[] = ["bar", "back", "error", "confirm", "planButton"];
   const ids: BarItem["id"][] = ["layers", "legend", "gpx", "settings"];
   for (const was of views)
     for (const view of views)
@@ -553,7 +558,7 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
             else if (view !== "planner") assert.deepEqual(got, { kind: "heading", view, legend: view === "layers" && legendTarget }, at);
             else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
             else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
-            else if (cause === "plan") assert.deepEqual(got, { kind: "planner" }, at);
+            else if (cause === "planButton") assert.deepEqual(got, { kind: "planner" }, at);
             else assert.deepEqual(got, { kind: "bar", id: openedBy }, at);
           }
   // The cases a rider meets, spelled out.
@@ -566,10 +571,15 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.deepEqual(go("layers", "planner", true, "legend", "back"), { kind: "bar", id: "legend" });
   assert.deepEqual(go("gpx", "planner", false, "gpx", "error"), { kind: "error" });
   assert.deepEqual(go("layers", "planner", false, "layers", "confirm"), { kind: "plan" });
-  // The Plan button (OWNER-DECISIONS 392): the planner's heading, from any sheet; nothing when it is already showing.
-  for (const sheet of ["layers", "gpx", "settings"] as const) assert.deepEqual(go(sheet, "planner", false, sheet, "plan"), { kind: "planner" });
-  assert.equal(go("planner", "planner", false, "layers", "plan"), null);
-  assert.match(app, /if \(item\.opens === "planner"\) \{[^}]*viewCause\.current = "plan";[^}]*setView\("planner"\);\s*return;/);
+  // The Plan button (OWNER-DECISIONS 392): the planner's heading, from any sheet; nothing from the pure decision when it is already showing (App handles that case).
+  for (const sheet of ["layers", "gpx", "settings"] as const) assert.deepEqual(go(sheet, "planner", false, sheet, "planButton"), { kind: "planner" });
+  assert.equal(go("planner", "planner", false, "layers", "planButton"), null);
+  assert.match(app, /if \(item\.opens === "planner"\) \{\s*showPlanner\(\);\s*return;/);
+  // From a sheet the view changes and the focus decision does it; on the planner already, the heading is focused and the panel scrolled to the top.
+  assert.match(app, /const showPlanner = \(\) => \{\s*viewCause\.current = "planButton";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\} else setView\("planner"\);/);
+  // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden.
+  assert.match(app, /\{panelOpen \? "Hide planner" : "Show planner"\}/);
+  assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);\s*showPlanner\(\);/);
   assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
   assert.match(app, /<h1 ref=\{plannerHeadingRef\} tabIndex=\{-1\}>\s*\{PLANNER_TITLE\}\s*<\/h1>/);
   assert.equal(PLANNER_TITLE, "RouteMaker");  // App records why: a bar button, Back, or the status that brought the planner back.
@@ -711,10 +721,11 @@ test("the sidebar's own buttons and summaries are 44 px high at least", () => {
   assert.match(css, /\.panel button,\s*\.panel summary \{\s*min-height: 44px;/);
   assert.match(css, /\.panel \.bar-button \{[^}]*min-height: 56px/);
   // Five buttons (OWNER-DECISIONS 392): five columns; at a phone's width the words wrap, 48 px high, and the Back button is 44 px.
-  assert.match(css, /\.bottom-bar \{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
-  assert.match(css, /@media \(max-width: 720px\) \{[\s\S]*?\.panel \.bar-button \{[^}]*min-height: 48px;[^}]*overflow-wrap: anywhere/);
+  assert.match(css, /\.bottom-bar \{[^}]*grid-template-columns: repeat\(auto-fit, minmax\(3\.5rem, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 720px\) \{[\s\S]*?\.panel \.bar-button \{[^}]*min-height: 48px;[^}]*overflow-wrap: break-word/);
   assert.doesNotMatch(css, /@media \(max-width: 720px\) \{[\s\S]*?\.panel \.bar-button \{[^}]*flex-direction: row/, "icon over words, not beside them, at five across");
   assert.match(css, /\.sheet-back \{[^}]*min-width: 44px;[^}]*min-height: 44px/);
+  assert.match(css, /\.sheet-header \{[^}]*flex-wrap: wrap/);
   assert.match(css, /\.ride-line-button \{[^}]*min-height: 56px/);
   assert.match(css, /\.sheet-back \{[^}]*min-width: 44px/);
 });

@@ -65,8 +65,8 @@ export function loopStops(preset: PresetId, loop: boolean | undefined): boolean 
 }
 
 /**
- * What to do first when the loop is ticked before any point is placed (OWNER-DECISIONS 389). It is the
- * toggle's visible hint then, and what is said once when the box is ticked (pointText.ts).
+ * What to do first when the loop is checked before any point is placed (OWNER-DECISIONS 389). It is the
+ * toggle's visible hint then, and what is said once when the box is checked (pointText.ts).
  */
 export const LOOP_FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 

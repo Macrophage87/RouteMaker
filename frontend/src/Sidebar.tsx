@@ -10,7 +10,7 @@
  * depends on colour. A sheet takes the focus to its heading when it opens, and
  * the Back button (or Escape) takes it back to the bar button that opened it.
  */
-import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { Fragment, useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { BACK_LABEL, BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
 
@@ -84,8 +84,9 @@ export function BottomBar({
       {BAR_ITEMS.map((item) => {
         const current = barCurrent(item, view, legend);
         return (
+          <Fragment key={item.id}>
           <button
-            key={item.id}
+            id={`bar-${item.id}`}
             type="button"
             ref={(button) => buttonRef(item.id, button)}
             className="bar-button"
@@ -97,10 +98,13 @@ export function BottomBar({
               {ICONS[item.id]}
             </svg>
             <span>{item.label}</span>
-            <span id={`bar-${item.id}-hint`} className="visually-hidden">
-              {item.description}
-            </span>
           </button>
+          {/* The hint is a sibling, not part of the button, so the name is the label alone and the hint is
+              heard once, as the description. */}
+          <span id={`bar-${item.id}-hint`} className="visually-hidden">
+            {item.description}
+          </span>
+          </Fragment>
         );
       })}
     </nav>

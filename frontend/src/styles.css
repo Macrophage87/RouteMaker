@@ -1837,8 +1837,9 @@ details.zoom-notes {
 /* The bottom bar */
 .bottom-bar {
   display: grid;
-  /* Plan, Map layers, Legend, GPX, Settings (OWNER-DECISIONS 392). */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* Plan, Map layers, Legend, GPX, Settings (OWNER-DECISIONS 392): five across, and under large text a
+     second row rather than clipped words (each track is at least 3.5rem, so it grows with the text). */
+  grid-template-columns: repeat(auto-fit, minmax(3.5rem, 1fr));
   border-top: 1px solid var(--border);
 }
 
@@ -1877,6 +1878,7 @@ details.zoom-notes {
 
 .sheet-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 4px 0 0;
@@ -1915,7 +1917,7 @@ details.zoom-notes {
     font-size: 0.75rem;
     line-height: 1.15;
     text-align: center;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   .bar-button svg {

@@ -35,7 +35,7 @@ test("the toggle is off on a point-to-point ride, on and fixed on a round trip, 
   assert.equal(loopView("mass-ride", true, [A, B]), null);
   // With the start alone it can be chosen (OWNER-DECISIONS 374).
   assert.deepEqual([loopView("default", undefined, [A])!.checked, loopView("default", true, [A])!.checked], [false, true]);
-  // It shows with no point placed too (OWNER-DECISIONS 389), and says what to place when ticked.
+  // It shows with no point placed too (OWNER-DECISIONS 389), and says what to place when checked.
   const empty = loopView("default", true, [])!;
   assert.deepEqual([empty.checked, empty.implied], [true, false]);
   assert.equal(empty.hint, "Place the starting point, then a stop or two along the way.");

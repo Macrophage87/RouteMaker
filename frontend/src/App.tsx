@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -668,12 +668,20 @@ export function App() {
 
   // The bottom bar: a sheet opens in the panel body (Legend opens Map layers at its legend), and
   // Back, or Escape, closes it and gives the focus back to the button that opened it.
+  // The Plan button, and the phone header's "Show planner": the planner's view, and the focus on its heading
+  // (OWNER-DECISIONS 392). From a sheet the view changes and focusOnViewChange (cause planButton) does it;
+  // already on the planner nothing changes, so the heading is focused and the panel scrolled to the top here.
+  const showPlanner = () => {
+    viewCause.current = "planButton";
+    setLegendTarget(false);
+    if (viewNow.current === "planner") {
+      plannerHeadingRef.current?.focus();
+      panelBodyRef.current?.scrollTo?.({ top: 0 });
+    } else setView("planner");
+  };
   const openSheet = (item: BarItem) => {
     if (item.opens === "planner") {
-      // Plan: back to the planner from a sheet, and the focus to the planner's heading (OWNER-DECISIONS 392).
-      viewCause.current = "plan";
-      setLegendTarget(false);
-      setView("planner");
+      showPlanner();
       return;
     }
     openedBy.current = item.id;
@@ -804,6 +812,7 @@ export function App() {
     />
   );
   const loop = loopView(preset, dials.loop, points);
+  const loopHintId = useId();
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
@@ -835,7 +844,7 @@ export function App() {
               type="checkbox"
               checked={loop.checked}
               aria-disabled={loop.implied || undefined}
-              aria-describedby="loop-hint"
+              aria-describedby={loopHintId}
               onChange={(event) => {
                 if (loop.implied) return;
                 commitDials(withLoop(dials, event.target.checked));
@@ -843,7 +852,7 @@ export function App() {
             />
             {loop.label}
           </label>
-          <p className="hint" id="loop-hint">
+          <p className="hint" id={loopHintId}>
             {loop.hint}
           </p>
         </div>
@@ -1119,9 +1128,17 @@ export function App() {
             className="panel-toggle"
             aria-expanded={panelOpen}
             aria-controls="panel-body"
-            onClick={() => setPanelOpen((open) => !open)}
+            onClick={() => {
+              // Hiding the panel only hides it; showing it always shows the planner, even if a sheet was
+              // open when it was hidden (OWNER-DECISIONS 392).
+              if (panelOpen) setPanelOpen(false);
+              else {
+                setPanelOpen(true);
+                showPlanner();
+              }
+            }}
           >
-            {panelOpen ? "Hide" : "Plan"}
+            {panelOpen ? "Hide planner" : "Show planner"}
           </button>
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
