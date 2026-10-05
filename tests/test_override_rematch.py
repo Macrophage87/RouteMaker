@@ -424,7 +424,8 @@ def fixture_documents():
 def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     """Stored with each override so a re-match is possible later (decision 282b)."""
     documents = fixture_documents()
-    assert sum(len(d["rows"]) for d in documents.values()) == 1785
+    # 1,785, and the Dupont Circle underpass's 10 access and 10 stress rows (decision 416).
+    assert sum(len(d["rows"]) for d in documents.values()) == 1785 + 20
     for name, document in documents.items():
         for row in document["rows"]:
             assert rematch.fingerprint_problem(row.get("fingerprint")) is None, (
@@ -435,9 +436,10 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
 
 def test_the_override_counts_the_owner_asked_about() -> None:
     kinds = [row["kind"] for d in fixture_documents().values() for row in d["rows"]]
-    assert kinds.count("access") == 232
-    # 1,551 stress rows, and decision 282a turned one into three.
-    assert kinds.count("stress") == 1551 - 1 + 3
+    # 232 access rows, and the Dupont underpass's 10 (decision 416).
+    assert kinds.count("access") == 232 + 10
+    # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
+    assert kinds.count("stress") == 1551 - 1 + 3 + 10
 
 
 def test_the_harford_road_row_is_repointed_at_the_three_ways() -> None:
@@ -476,7 +478,7 @@ def test_the_harford_ways_lie_along_open_baltimore_record_634() -> None:
 
 def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     found = rematch.load_fingerprints()
-    assert len(found) == 1785 + 1
+    assert len(found) == 1785 + 20 + 1
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
 
