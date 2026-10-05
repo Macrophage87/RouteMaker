@@ -459,7 +459,7 @@ export function ElevationChart({
       )}
       <p className="hint pc-source">
         {kind === "mass"
-          ? "Elevation: USGS 3DEP. Riders per minute: estimated from OpenStreetMap lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
+          ? "Elevation: USGS 3DEP. Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
           : "Elevation: USGS 3DEP."}
       </p>
       <details className="pc-table-fold">

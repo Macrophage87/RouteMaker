@@ -20,13 +20,15 @@ separate bikeway, a path-class facility, or a trail class is exempt (decision 29
 entry that matches no way is warned about in the rebuild log.
 
 This is not a generic underpass or speed rule (decision 294): the circle underpasses, K Street's
-surface lanes and Virginia Avenue stay as the base classifier rates them. The at-grade
+surface lanes and Virginia Avenue stay as the base classifier rates them. Dupont Circle's
+Connecticut Avenue underpass is not a corridor: its access and LTS 4 are override rows
+(`fixtures/overrides/2026-10-05-owner-dupont-underpass.json`, decision 416). The at-grade
 parts of a named street keep their current rating (decision 296).
 
 | File | Decision |
 |---|---|
 | `2026-10-04-owner-north-capitol-underpasses.json` | North Capitol Street NW/NE (decisions 284, 286, 295, 296). First underpass, M St to about P St: through lanes Avoid (the study's northern 100 m trimmed), surface side lanes and the pickup LTS 4. Second underpass, Rhode Island Ave, T St to V St: underpass lanes LTS 4, the narrower side lanes LTS 3. Way 468472149, tagged lanes=2, is a side lane (LTS 4), and so is 930215092 on the east side, which the study had as Avoid. |
-| `2026-10-05-owner-connecticut-north-of-r.json` | Connecticut Avenue NW (decisions 408, 409): "I'd say it's LTS4 north of R." R St NW to Calvert St NW, about 0.85 mi (1.37 km): both carriageways of the divided part and the two-way part over the Taft Bridge, LTS 4 (posted 25 mph, so the classifier gives LTS 3); north of Calvert St the classifier's own 30 mph LTS 4 stands. Through lanes within 10 m of DC's centre line (the carriageways are up to about 8 m out); no side entry. The hill (409's "I'd definitely ride down it, but not so much up") is backlog FOLLOWUP-GRADE-STRESS. `tests/data/connecticut_ways.json` holds the extract's ways for its test. |
+| `2026-10-05-owner-connecticut-north-of-r.json` | Connecticut Avenue NW (decisions 408, 409; kept by 411, from R St north by 413): "I'd say it's LTS4 north of R." R St NW to Calvert St NW, about 0.85 mi (1.37 km): both carriageways of the divided part and the two-way part over the Taft Bridge, LTS 4 (posted 25 mph, so the classifier gives LTS 3); north of Calvert St the classifier's own 30 mph LTS 4 stands. Through lanes within 10 m of DC's centre line (the carriageways are up to about 8 m out); no side entry. The hill (409's "I'd definitely ride down it, but not so much up") is backlog FOLLOWUP-GRADE-STRESS. `tests/data/connecticut_ways.json` holds the extract's ways for its test. |
 
 `scripts/analysis/arterial_verify.py` classifies the live extract read-only and tabulates
 every way of the corridor against the owner's targets.
