@@ -628,11 +628,39 @@ export function crossingRows(profile: RouteProfile): CrossingRow[] {
 
 // ---- Thinning the junction labels (333) ----------------------------------------------------------
 
+/** The abbreviations a street name is written in on the chart ("15th Street Northwest" is "15th St NW"); the tables and the sentence say it in full. */
+const ABBREVIATIONS: Readonly<Record<string, string>> = {
+  Street: "St",
+  Avenue: "Ave",
+  Boulevard: "Blvd",
+  Road: "Rd",
+  Drive: "Dr",
+  Place: "Pl",
+  Court: "Ct",
+  Lane: "Ln",
+  Parkway: "Pkwy",
+  Northwest: "NW",
+  Northeast: "NE",
+  Southwest: "SW",
+  Southeast: "SE",
+};
+
+export function shortStreet(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((word) => ABBREVIATIONS[word] ?? word)
+    .join(" ");
+}
+
 export interface PlacedCrossing {
   crossing: ProfileCrossing;
   x: number;
   /** Whether its street name is written (a tick and a marker are always drawn). */
   labelled: boolean;
+  /** The line the name is on: 0, or 1 under it where the first line was taken. */
+  row: 0 | 1;
+  /** What is written: the street, abbreviated. */
+  label: string;
   /** Where the text hangs from: centred, or kept inside the plot at its edges. */
   anchor: "start" | "middle" | "end";
 }
@@ -647,17 +675,24 @@ const SEVERITY_RANK: Record<string, number> = { red: 2, orange: 1 };
 /**
  * Which junction names fit (OWNER-DECISIONS 333: "Thin out the labels when they would collide").
  * Every junction keeps its tick and marker. Names are placed in order of importance (very high
- * stress, higher stress, then the rest, and by route order within each), and a name is dropped when
- * it would touch one already placed; the table lists every one.
+ * stress, higher stress, then the rest, and by route order within each), each on the first of two
+ * lines where it clears what is there, and dropped when it clears neither; the table lists every one.
  */
 export function placeCrossings(crossings: readonly ProfileCrossing[], x: (m: number) => number, left: number, right: number): PlacedCrossing[] {
-  const placed: PlacedCrossing[] = crossings.map((crossing) => ({ crossing, x: x(crossing.m), labelled: false, anchor: "middle" }));
+  const placed: PlacedCrossing[] = crossings.map((crossing) => ({
+    crossing,
+    x: x(crossing.m),
+    labelled: false,
+    row: 0,
+    label: shortStreet(crossingName(crossing)),
+    anchor: "middle",
+  }));
   const order = placed
     .map((p, i) => ({ p, i }))
     .sort((a, b) => (SEVERITY_RANK[b.p.crossing.severity ?? ""] ?? 0) - (SEVERITY_RANK[a.p.crossing.severity ?? ""] ?? 0) || a.i - b.i);
-  const taken: [number, number][] = [];
+  const taken: [number, number][][] = [[], []];
   for (const { p } of order) {
-    const w = labelWidth(crossingName(p.crossing));
+    const w = labelWidth(p.label);
     let from = p.x - w / 2;
     let to = p.x + w / 2;
     if (from < left) {
@@ -669,9 +704,11 @@ export function placeCrossings(crossings: readonly ProfileCrossing[], x: (m: num
       from = right - w;
       p.anchor = "end";
     }
-    if (taken.some(([a, b]) => from < b + 4 && to > a - 4)) continue;
-    taken.push([from, to]);
+    const row = taken.findIndex((line) => !line.some(([a, b]) => from < b + 4 && to > a - 4));
+    if (row < 0) continue;
+    taken[row].push([from, to]);
     p.labelled = true;
+    p.row = row === 1 ? 1 : 0;
   }
   return placed;
 }

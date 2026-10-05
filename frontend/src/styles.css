@@ -2017,6 +2017,14 @@ details.zoom-notes {
   fill: var(--text);
 }
 
+/* The guides' labels sit over the filled area: a halo in the panel's colour keeps them readable. */
+.pc-guide-text {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 .pc-axis {
   stroke: var(--swatch-border);
   stroke-width: 1;
@@ -2112,8 +2120,8 @@ details.zoom-notes {
   color: var(--accent);
 }
 
+/* No scroll box of its own: a scrolling region would need a tab stop, so the cells wrap instead. */
 .pc-table-wrap {
-  overflow-x: auto;
   margin: 4px 0 8px;
 }
 
@@ -2135,6 +2143,7 @@ details.zoom-notes {
   padding: 4px 6px;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .pc-table thead th {

@@ -57,7 +57,7 @@ const RIGHT = WIDTH - 8;
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
   stress: { height: 150, elevTop: 10, elevBottom: 98, stripTop: 108, stripBottom: 120, axisY: 138 },
-  mass: { height: 196, elevTop: 12, elevBottom: 66, markerY: 79, flowTop: 94, flowBottom: 150, labelY: 162, axisY: 188 },
+  mass: { height: 208, elevTop: 12, elevBottom: 66, markerY: 79, flowTop: 94, flowBottom: 150, labelY: 162, axisY: 200 },
 } as const;
 
 /** The patterns' ink: translucent so it shows on every band colour. */
@@ -271,13 +271,13 @@ export function ElevationChart({
                   </text>
                 </g>
               ))}
-              {placed.map(({ crossing, x: cx, labelled, anchor }, i) => (
+              {placed.map(({ crossing, x: cx, labelled, anchor, row, label }, i) => (
                 <g key={i}>
                   <line className="pc-tick" x1={cx} y1={mass.markerY + 5} x2={cx} y2={mass.flowBottom} />
                   <CrossingMarker severity={crossing.severity} x={cx} y={mass.markerY} />
                   {labelled && (
-                    <text className="pc-cross-text" x={cx} y={mass.labelY} textAnchor={anchor}>
-                      {crossing.street && crossing.street.trim() ? crossing.street : "Unnamed"}
+                    <text className="pc-cross-text" x={cx} y={mass.labelY + row * 10} textAnchor={anchor}>
+                      {label}
                     </text>
                   )}
                 </g>
@@ -488,4 +488,3 @@ function Tables({ profile, kind }: { profile: RouteProfile; kind: ChartKind }) {
     </div>
   );
 }
-

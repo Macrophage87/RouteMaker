@@ -772,8 +772,8 @@ const federalFetched = (p) =>
   check("chart: an \"Elevation and stress\" fold with its own heading, open beside the map", fold.heading && fold.details === "DETAILS" && fold.open === true && fold.summary === "Elevation and stress", JSON.stringify(fold));
   const first = await axNode(p, ".pc-plot");
   check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence", first?.role === "slider" && first.name === "Elevation and stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, LTS 1\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
-  check("chart: its description is the summary and the keys, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 399 ft \(122 m\)\./.test(first?.description ?? "") && /arrow keys move along the route/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 160));
-  check("chart: no colour-only cue: the grade bands are named and the 8% band is hatched in a pattern", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.some((t) => /Grade 5-8%/.test(t)) && l.some((t) => /Grade 8% or more/.test(t)) && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && document.querySelectorAll('.pc-svg path[fill^="url(#"]').length >= 1; })()`));
+  check("chart: its description is the summary and the keys, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(127 m\)\./.test(first?.description ?? "") && /arrow keys move along the route/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 160));
+  check("chart: no colour-only cue: the grade bands are named and the 8% band is hatched in a pattern", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.some((t) => /Grade 5-8%/.test(t)) && l.some((t) => /Grade 8% or more/.test(t)) && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
@@ -807,7 +807,7 @@ const federalFetched = (p) =>
   await sleep(150);
   check("chart: the climbs table is behind a closed \"Climbs as a table\"", table.was === false && table.summary === "Climbs as a table", JSON.stringify(table));
   check("chart: it has a caption and column headers: start, length, gain, average, maximum, stress", table.caption === "Climbs, in the order ridden" && JSON.stringify(table.heads) === JSON.stringify(["Start", "Length", "Gain", "Average grade", "Maximum grade", "Stress"]), JSON.stringify(table));
-  check("chart: the climb's row, in feet first", JSON.stringify(table.row) === JSON.stringify(["Mile 1.1", "0.2 mi (0.3 km)", "59 ft (18 m)", "6%", "6%", "LTS 2"]) && table.rowHead === "TH", JSON.stringify(table.row));
+  check("chart: the climb's row, in feet first", JSON.stringify(table.row) === JSON.stringify(["Mile 1.1", "0.2 mi (0.3 km)", "68 ft (21 m)", "7%", "9%", "LTS 2"]) && table.rowHead === "TH", JSON.stringify(table.row));
   const ax = await axNode(p, ".pc-table");
   check("chart: the table is a table to a screen reader, named by its caption", ax?.role === "table" && ax.name === "Climbs, in the order ridden", JSON.stringify(ax));
   check("chart: the stress strip is drawn, a section for each stress section, with a frame", await p.eval("document.querySelectorAll('.pc-svg g > rect[fill]').length >= 2 && !!document.querySelector('.pc-strip-frame')"));
@@ -824,6 +824,8 @@ const federalFetched = (p) =>
   await sleep(300);
   const fit = await p.eval("(() => { const s = document.querySelector('.pc-svg').getBoundingClientRect(); return { w: Math.round(s.width), page: document.documentElement.scrollWidth, win: window.innerWidth, readable: parseFloat(getComputedStyle(document.querySelector('.pc-axis-text')).fontSize) * (s.width / 360) }; })()");
   check("chart at 375 px: opened, it fits the screen and its type stays 8 px or more", fit.page <= fit.win && fit.w <= fit.win && fit.readable >= 8, JSON.stringify(fit));
+  await p.eval("document.querySelector('.elevation-chart').scrollIntoView({ block: 'center' }); true");
+  await sleep(200);
   await p.shot(`${SHOTS}/chart_stress_375.png`);
   await p.close();
 }
@@ -843,7 +845,7 @@ const federalFetched = (p) =>
   }))()`);
   check("mass chart: no stress strip; the riders area is filled in the band colours, each with its own pattern", !shape.strip && JSON.stringify(shape.patterns) === JSON.stringify(["crosshatch", "diagonal", "dots", "horizontal"]) && shape.fills.every((f) => ["#d7191c", "#f28e2b", "#1a9850", "#6a3d9a"].includes(f)) && shape.fills.length >= 3, JSON.stringify(shape));
   check("mass chart: the dotted guides are labelled 60, 120 and 200", JSON.stringify(shape.guides) === JSON.stringify(["60", "120", "200"]), JSON.stringify(shape.guides));
-  check("mass chart: every major intersection has a tick, and the names that would collide are thinned", shape.ticks === 7 && shape.names.length >= 2 && shape.names.length < 7, JSON.stringify({ ticks: shape.ticks, names: shape.names }));
+  check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
   check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
@@ -857,6 +859,17 @@ const federalFetched = (p) =>
   const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), rows: ts[1] ? [...ts[1].querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : [] }; })()`);
   check("mass chart: the climbs table lists the capacity drop, and a second table every intersection with its marker and corkers", tables.summary === "Climbs and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed" && tables.rows[5] === "Mile 2.1 | Pierce Street | Major crossing, stop sign (dot) | No corkers needed", JSON.stringify(tables));
   await p.close();
+}
+{
+  // For the eye only: both charts in the dark theme, scrolled into view and with the scrub at the climb (no checks).
+  for (const [route, preset, name] of [[S_DEFAULT, "default", "stress"], [S_MASS, "mass-ride", "mass"]]) {
+    const p = await open({ route, hash: hashFor(preset, 70), scheme: "dark", junctions: false });
+    await p.eval("(() => { const c = document.querySelector('.elevation-chart'); c.scrollIntoView({ block: 'center' }); const t = c.querySelector('.pc-plot'); t.focus(); return true; })()");
+    for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
+    await sleep(300);
+    await p.shot(`${SHOTS}/chart_${name}_dark.png`);
+    await p.close();
+  }
 }
 
 b.close();

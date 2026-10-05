@@ -4276,3 +4276,98 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   link or a GPX file, the saved number in no markup), the a11y harness's section 15 (focus
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
+
+## The route chart (OWNER-DECISIONS 322, 323, 328-333, 387)
+
+The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
+riders per minute". Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
+the rider-marked hazards (part 3) are not part of it.
+
+**The API contract.** `RouteBody.profile` (`core.api.ProfileOut`, additive, null where no
+leg had any elevation), built by `core.routing.route_profile`:
+
+- Parallel arrays, one entry a router sample: `m` (metres along the route), `elevation_m`,
+  `grade_pct` (signed, positive uphill), and `climbs`. The samples are the router's own
+  per-leg `elevation`, every `routing.ELEVATION_INTERVAL_M` (30 m: 3DEP at 1 arc-second is
+  about that on the ground, so a finer interval would read one cell twice). A leg's sample
+  `i` is at the leg's start plus `i x 30`, never past the leg's end; the first sample of
+  the next leg is at the same distance, so a joint is two samples at one place. The legs'
+  starts are the sums of the legs' summary lengths, which is the router's length, not the
+  traced pieces' (`stress_spans` use the traced pieces; the two differ by metres).
+- `grade_pct` is the rise over the window of two samples either side (`routemaker.profile`
+  `GRADE_SPAN_SAMPLES`, four samples, 120 m). The grade between two neighbours is mostly
+  noise (3 m over 30 m is 10%), so a one-cell blip is smoothed and a real 5% hill is not.
+- `climbs` are `routemaker.climbs.runs` (the sustained climbs the hills slider prices, with
+  its dip and flat tolerances) kept where they average 3% or reach 5%: `from_m`, `to_m`,
+  `gain_m`, `avg_grade_pct`, `max_grade_pct`, and `tier` (the highest LTS of the stress
+  sections they ride).
+- On a Mass Ride only: `riders_per_min` (one per sample, null where the width is not
+  known: an untraced leg, or an unrated segment), `flow` (`narrowest_riders_per_min`,
+  `narrowest_m`, `typical_riders_per_min`, the median), each climb's `capacity_drop_pct`
+  (the most it takes off a stretch) and `min_riders_per_min`, and `crossings`.
+
+**The flow model** is `routemaker.flow`; there was no flow code before it, only PLAN's
+"The headline number: modelled throughput". Every constant is named there and owner
+confirmable (indicative, good to about +-25%, item 175).
+
+- Level capacity: `60 x 0.37 riders/m2 x 0.7 utilisation x usable width x 1.9 m/s`, about
+  99 riders a minute for an 11 ft (3.35 m) lane.
+- Usable width: the segment's through lanes a direction (`road_lanes`, one where the table
+  has none) times 1 for a one-way street or 2 for a two-way, times 3.35 m; 3.0 m for a
+  path; unknown for an unrated segment. `classify` now reads `road_lanes` and `road_oneway`
+  into `PieceClass.lanes` and `.oneway` (NULL columns where the live schema predates the
+  trait columns, as `core.junctions.has_trait_columns` says). Parking and painted bike
+  lanes are not in the width, so the figure errs low.
+- Grade (328(b)): the climbing pace is `1 / (1 + 12 x (grade - 1%))` of the level pace
+  (63% at 6%, 54% at 8%, never under 30%), taking `KICK_M` (150 m, the climbs module's
+  free stretch) of climbing to set in, so a short ramp costs little and a long climb the
+  whole figure; a descent past 4% spaces the group, the density falling to
+  `1 / (1 + 5 x (grade - 4%))` (83% at 8%, never under 60%). The pace is not raised.
+- Bands (326, 327): under 60 bottleneck, 60-120 tight, 120-200 good, 200 and up wide open.
+
+**Major junctions** (333) are `routemaker.intersections.major_crossings`: every flagged event
+(any junction with a stress rating), and every other signalized or stop-controlled junction
+(signal, stop, all-way stop, or cross traffic stopped) whose crossed or entered street has 2
+or more lanes in all (unknown lanes do not count), merged with a junction of the same street
+within `MERGE_WITHIN_M`. `corkers_needed` is true where the crossed road is LTS 3 or worse
+(item 142). They ride beside the events as `RouteEvents.majors` (`core.junctions.events_of`,
+Mass Ride only); where the events were merged into a plain list (a long plan's reads) the
+flagged ones alone are used. They are not extra events: the description, the refine search
+and the junction list never see them.
+
+**The front end.**
+
+- `lib/profileChart.ts` holds every decision, tested without a browser
+  (`lib/profileChart.test.ts`): the chart kind, the grade bands, the riders bands (colours,
+  words, patterns), the scales, the shapes (elevation line and area, band polygons, the
+  riders area cut where it crosses 60/120/200), the stress strip's sections, the nearest
+  sample, the arrow keys' step, the point on the map, the sentence at a position
+  (`readingAt`), the summary, the climbs and intersections tables' rows, and the
+  thinning of junction names (`placeCrossings`). Units come from `format.ts`
+  (`formatAxisDistance` was added there: nothing else writes a unit).
+- `ElevationChart.tsx` draws it. The picture is one `role="slider"` with `aria-valuetext` the
+  spoken sentence and `aria-describedby` the summary and the key hint; its SVG is
+  `aria-hidden` (a slider's children are presentational anyway). The visible readout under it
+  is `aria-hidden` too: a live region beside the slider would say everything twice.
+  Left/Down and Right/Up step, Page keys step five, Home and End go to the ends; hovering
+  or touching reads the same, a click or a touch pins the position; focus puts the marker at
+  the start and leaving takes it away. The tables are behind a closed "Climbs as a table"
+  (on a Mass Ride "Climbs and intersections as tables"), with captions and header cells.
+- `App.tsx` puts the fold first in the route summary (`ROUTE_FOLDS.elevation`; "Stress and
+  facilities" stays after it), open beside the map and closed on a small screen. `scrubPoint`
+  goes to `MapView`, which draws the `.scrub-marker` (a ring with a cross, dark outside and
+  white inside: a shape, not a colour; `aria-hidden`; not in the tab order) and eases the map
+  to it if it leaves the screen.
+- Colour is never the only cue: the 5-8% band is solid amber and the 8%-or-more band is
+  hatched; the strip's tiers carry the stress bar's patterns; each riders band has a
+  pattern of its own (cross-hatch, diagonal, dots, horizontal lines); junction markers are
+  a triangle, a diamond and a dot, each named in the key and the table.
+
+**Tests.** `tests/test_profile_flow.py` (profile, grades, climbs, the flow model, the route
+profile builder, the major junctions), `tests/test_route_api.py` (the contract key, the
+answer's profile, a Mass Ride's riders), `lib/profileChart.test.ts`, the sidebar tests (the
+new fold), and section 17 of the a11y check (30 checks: the fold, the slider's role, name,
+description and value text, the arrow, Home and End keys, the map marker, the hover, the
+tables and their names, a phone's collapsed fold and fit, and the Mass Ride chart's area,
+patterns, guides, thinned names, sentence and tables). `scripts/a11y/cdp.mjs` mocks a
+profile on every route and riders and crossings on the Mass Ride.

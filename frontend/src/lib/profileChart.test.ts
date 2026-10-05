@@ -26,6 +26,7 @@ import {
   nearestIndex,
   nextCrossing,
   placeCrossings,
+  shortStreet,
   positionAfterKey,
   readingAt,
   ridersTop,
@@ -311,18 +312,37 @@ function crossing(m: number, street: string, severity: ProfileCrossing["severity
   return { m, street, severity, control: "signal", lanes: 4, crossed_tier: severity ? 3 : 2, corkers_needed: severity !== null };
 }
 
-test("labels that would collide are thinned, the more stressful kept first, and every junction keeps its marker", () => {
+test("street names are abbreviated on the chart only", () => {
+  assert.equal(shortStreet("15th Street Northwest"), "15th St NW");
+  assert.equal(shortStreet("Pennsylvania Avenue Southeast"), "Pennsylvania Ave SE");
+  assert.equal(shortStreet("Mass Ave"), "Mass Ave");
+  assert.equal(shortStreet("Pierce Street"), "Pierce St");
+});
+
+test("labels that would collide go on a second line, or are thinned, the more stressful kept first, and every junction keeps its marker", () => {
   const x = linear(0, 1000, 46, 352);
   const list = [crossing(100, "Mass Avenue", null), crossing(120, "7th Street Northwest", "red"), crossing(140, "8th Street", null), crossing(600, "14th Street", "orange")];
   const placed = placeCrossings(list, x, 46, 352);
   assert.equal(placed.length, 4);
+  // 7th St NW (very high stress) takes the first line, Mass Ave goes under it, and 8th St, which clears neither, is dropped.
   assert.deepEqual(
-    placed.map((p) => p.labelled),
-    [false, true, false, true],
+    placed.map((p) => [p.labelled, p.row]),
+    [
+      [true, 1],
+      [true, 0],
+      [false, 0],
+      [true, 0],
+    ],
   );
-  // Nothing written overlaps.
-  const written = placed.filter((p) => p.labelled);
-  assert.ok(written[0].x < written[1].x);
+  assert.deepEqual(
+    placed.map((p) => p.label),
+    ["Mass Ave", "7th St NW", "8th St", "14th St"],
+  );
+  // Nothing written on one line overlaps another there.
+  for (const row of [0, 1]) {
+    const line = placed.filter((p) => p.labelled && p.row === row).sort((a, b) => a.x - b.x);
+    for (let i = 1; i < line.length; i += 1) assert.ok(line[i].x - line[i - 1].x > 30);
+  }
 });
 
 test("a label at the edge of the plot is kept inside it", () => {

@@ -255,14 +255,14 @@ const coords = [];
 for (let i = 0; i <= 40; i++) coords.push([-77.04 + i * 0.00075, 38.91 - i * 0.0005]);
 /**
  * The route chart's profile (core.api.ProfileOut; OWNER-DECISIONS 322, 323, 328, 333) for a route of `distance`
- * metres: a gentle rise, a 6% climb from 1,800 m to 2,100 m, a plateau, then a 4% descent. With `mass`, the riders
+ * metres: a gentle rise, a climb from 1,800 m to 2,100 m (6%, with a 9% pitch in its last 90 m), a plateau, then a 4% descent. With `mass`, the riders
  * a minute (a pinch at the start, 90 on the climb, 190 elsewhere) and seven major intersections.
  */
 const profileFor = (distance, mass = false) => {
   const n = Math.floor(distance / 30) + 1;
   const m = Array.from({ length: n }, (_, i) => i * 30);
-  const height = (d) => (d < 1800 ? 100 + 0.002 * d : d < 2100 ? 103.6 + 0.06 * (d - 1800) : d < 3200 ? 121.6 : d < 3500 ? 121.6 - 0.04 * (d - 3200) : 109.6);
-  const grade = (d) => (d < 1800 ? 0.2 : d <= 2100 ? 6 : d < 3200 ? 0 : d <= 3500 ? -4 : 0);
+  const height = (d) => (d < 1800 ? 100 + 0.002 * d : d < 2010 ? 103.6 + 0.06 * (d - 1800) : d < 2100 ? 116.2 + 0.09 * (d - 2010) : d < 3200 ? 124.3 : d < 3500 ? 124.3 - 0.04 * (d - 3200) : 112.3);
+  const grade = (d) => (d < 1800 ? 0.2 : d <= 2010 ? 6 : d <= 2100 ? 9 : d < 3200 ? 0 : d <= 3500 ? -4 : 0);
   const riders = (d) => (d < 200 ? 55 : d >= 1800 && d <= 2100 ? 90 : 190);
   const crossing = (at, street, severity, control, tier, corkers) => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, corkers_needed: corkers });
   return {
@@ -270,7 +270,7 @@ const profileFor = (distance, mass = false) => {
     m,
     elevation_m: m.map((d) => Math.round(height(d) * 10) / 10),
     grade_pct: m.map(grade),
-    climbs: [{ from_m: 1800, to_m: 2100, gain_m: 18, avg_grade_pct: 6, max_grade_pct: 6.4, tier: 2, ...(mass ? { capacity_drop_pct: 53, min_riders_per_min: 90 } : {}) }],
+    climbs: [{ from_m: 1800, to_m: 2100, gain_m: 20.7, avg_grade_pct: 6.9, max_grade_pct: 9, tier: 2, ...(mass ? { capacity_drop_pct: 53, min_riders_per_min: 90 } : {}) }],
     riders_per_min: mass ? m.map(riders) : null,
     flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190 } : null,
     crossings: mass
