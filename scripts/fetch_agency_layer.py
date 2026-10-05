@@ -15,7 +15,7 @@ the file. The item *metadata* is read once for the licence; it is not data.
     python scripts/fetch_agency_layer.py \
         --slug dc-roadway-block --item 6fcba8618ae744949630da3ea12d90eb \
         --layer https://maps2.dcgis.dc.gov/.../MapServer/163 \
-        --out-dir /home/steph/rmdata/datasets --credit "DDOT / DC GIS"
+        --out-dir ~/rmdata/datasets --credit "DDOT / DC GIS"
 
 Standard library only, so it runs on the host without the virtualenv.
 """

@@ -1229,7 +1229,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "",
         LC,
     ),
-    # --- review r0's 32 (FOLLOWUP-DEDODGE review, /home/steph/rmdata/dedodge-rev/mut.py), on
+    # --- review r0's 32 (FOLLOWUP-DEDODGE review, ~/rmdata/dedodge-rev/mut.py), on
     # the r1 text; "candidates not dedodged" is r1's design and is turned round ----------------
     (
         "r0 review: same-name rejoin ignored (line only)",

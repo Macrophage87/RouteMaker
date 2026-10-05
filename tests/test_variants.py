@@ -1399,7 +1399,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
 #
 # Every bridge way at the crossing, and the Anacostia's centreline where it
 # passes under them, typed in by hand from the real extract
-# (/home/steph/routemaker-data/extracts/source.osm.pbf, the Geofabrik DC+MD+VA
+# ($DATA_ROOT/extracts/source.osm.pbf, the Geofabrik DC+MD+VA
 # extract of 2026-09-24): ids, the tags that decide the question, and node
 # coordinates to 1e-6 degrees. The river line is waterway=river "Anacostia
 # River", ways 1211474183 and 1211474184, which meet at (-76.990043, 38.871519).
