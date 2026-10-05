@@ -31,6 +31,9 @@ from procrastinate import RetryStrategy
 from procrastinate.contrib.django import app
 from procrastinate.exceptions import JobAborted
 
+# Standard library only (no ORM), so safe at app-ready time, unlike the lazy imports below.
+from pipeline.variants import RESTART_OFFROAD_ROUTER, RESTART_ROUTERS
+
 # Cron schedules. The rebuild runs in a low-traffic window because it takes half
 # the host's cores and widens the latency alerts while it does.
 WEEKLY_REBUILD_CRON = "0 8 * * 2"  # Tuesday 08:00 UTC, early morning local
@@ -134,9 +137,9 @@ class RebuildAbandoned(RuntimeError):
 # concluded there was nothing to do and left three routers serving last week's
 # graph against this week's segment rows.
 ROUTER_RESTART_NOTICE = (
-    "The routers serve the previous build until they are restarted: "
-    "`docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
-    "valhalla-weekend valhalla-offroad`."
+    f"The routers serve the previous build until they are restarted: `{RESTART_ROUTERS}`; "
+    "where the off-road router runs (compose profile `offroad`), also "
+    f"`{RESTART_OFFROAD_ROUTER}`."
 )
 
 

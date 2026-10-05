@@ -35,6 +35,7 @@ import csv
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -50,6 +51,7 @@ ROUTERS = {
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
     "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
 }
+OFFROAD = "offroad"
 # The off-road graph reopens the mountain-bike class on purpose.
 OFFROAD_KEEPS = ("mtb",)
 MAX_PROBES = 200
@@ -85,8 +87,18 @@ def locate(args: argparse.Namespace) -> int:
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        held = [p for p in probes if not (name == "offroad" and p.reason in OFFROAD_KEEPS)]
-        answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
+        held = [p for p in probes if not (name == OFFROAD and p.reason in OFFROAD_KEEPS)]
+        try:
+            answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
+        except urllib.error.URLError as error:
+            # The off-road router is behind the compose profile `offroad` and off on
+            # the small host and the beta: no container, so no name or no listener.
+            # That alone is skipped (REBUILD-BUNDLE operations review, S6); an HTTP
+            # error from a running router, or any other router unreachable, still fails.
+            if name != OFFROAD or isinstance(error, urllib.error.HTTPError):
+                raise
+            print(f"{name}: not running, skipped ({error.reason})")
+            continue
         readback = tiles.closure_readback(held, answer)
         verdict = "ok"
         if readback.open_to_bicycles:

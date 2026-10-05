@@ -374,6 +374,33 @@ def test_the_post_swap_probe_passes_when_every_router_holds(
     assert "no-trail: 3 probed, 0 found, ok" in capsys.readouterr().out
 
 
+def test_the_post_swap_probe_skips_an_off_road_router_that_is_not_running(
+    probe_script, monkeypatch, tmp_path, capsys
+) -> None:
+    """Operations review S6: with the profile-gated off-road router off (the
+    default), the probe printed four "ok" lines and then a URLError traceback."""
+    import urllib.error
+
+    def post(url, body, headers=None):
+        if "offroad" in url:
+            raise urllib.error.URLError("Name or service not known")
+        found = "no-trail" not in url
+        return [{"edges": [_edge(p.way_id, False)] if found else None} for p in PROBES]
+
+    monkeypatch.setattr(probe_script, "_post", post)
+    assert probe_script.main(["locate", "--probes", str(_probes_file(tmp_path))]) == 0
+    assert "offroad: not running, skipped" in capsys.readouterr().out
+
+    def down(url, body, headers=None):
+        if "weekend" in url:
+            raise urllib.error.URLError("Connection refused")
+        return post(url, body, headers)
+
+    monkeypatch.setattr(probe_script, "_post", down)
+    with pytest.raises(urllib.error.URLError):
+        probe_script.main(["locate", "--probes", str(_probes_file(tmp_path))])
+
+
 def test_the_post_swap_probe_fails_a_router_that_found_nothing(
     probe_script, monkeypatch, tmp_path
 ) -> None:

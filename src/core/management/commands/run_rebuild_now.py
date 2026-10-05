@@ -42,12 +42,12 @@ from django.core.management.base import BaseCommand, CommandError
 from procrastinate.exceptions import AlreadyEnqueued
 
 from config.procrastinate import WEEKLY_REBUILD_CRON
+from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS
 
 RESTART_HINT = (
     "When it finishes, restart the routers so they load the promoted build - "
     "`valhalla_service` reads its tiles once at start and does not reload them: "
-    "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
-    "valhalla-weekend valhalla-offroad"
+    f"{RESTART_ROUTERS}; {RESTART_OFFROAD_WHERE_IT_RUNS}"
 )
 
 IN_FLIGHT_REFUSAL = (

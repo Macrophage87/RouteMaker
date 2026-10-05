@@ -47,6 +47,11 @@ ROUTERS = (
     "valhalla-weekend",
     "valhalla-offroad",
 )
+# The routers a plain `up -d` runs and every restart names. The off-road router is
+# behind the compose profile `offroad`, off on the small host, and a `restart`
+# naming a service with no container fails and restarts nothing (REBUILD-BUNDLE
+# operations review, S1), so it is restarted only where it runs.
+DEFAULT_ROUTERS = tuple(r for r in ROUTERS if r != "valhalla-offroad")
 VARIANTS = ("standard", "no-trail", "ebike", "weekend")
 # Every upstream the api repoints, the off-road router (compose profile `offroad`) included.
 ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in (*VARIANTS, "offroad")}
@@ -437,7 +442,7 @@ def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> N
     if ctx.args.dry_run:
         _print_install_instructions(ctx)
         ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False)
-        ctx.compose("restart", *ROUTERS)
+        ctx.compose("restart", *DEFAULT_ROUTERS)
         for variant in VARIANTS:
             _canary(ctx, variant)
         ctx.exec_in("worker", "./manage.py", "check_operations", check=False)
@@ -477,7 +482,7 @@ def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> N
             raise Fail(f"{current} does not point at a build carrying tiles.tar")
         builds[variant] = target.name
     out.append("current → " + ", ".join(f"{v}={b}" for v, b in builds.items()))
-    ctx.compose("restart", *ROUTERS, timeout=300)
+    ctx.compose("restart", *DEFAULT_ROUTERS, timeout=300)
     time.sleep(10)
     for variant in VARIANTS:
         _canary(ctx, variant)
@@ -666,7 +671,7 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
             ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False)
             ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", check=False)
             ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", "--confirm", check=False)
-            ctx.compose("restart", *ROUTERS)
+            ctx.compose("restart", *DEFAULT_ROUTERS)
         raise Skip("needs two promoted builds; run with --second-rebuild (another full rebuild)")
     a4_first_rebuild(ctx, out, second=True)
     dry = ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", check=False, timeout=120)
@@ -683,7 +688,7 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
         out.append("--confirm-rollback not given; the live rollback was not run")
         return
     ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", "--confirm", timeout=600)
-    ctx.compose("restart", *ROUTERS, timeout=300)
+    ctx.compose("restart", *DEFAULT_ROUTERS, timeout=300)
     time.sleep(10)
     for variant in VARIANTS:
         current = (ctx.data_root / "tiles" / variant / "current").resolve().name

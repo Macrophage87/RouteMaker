@@ -71,6 +71,22 @@ class Variant(Enum):
     OFFROAD = "offroad"
 
 
+# The routers a plain `docker compose up -d` runs, and the restart that makes
+# them load a promoted (or rolled-back) build: `valhalla_service` reads its tiles
+# once at start. The off-road router is behind the compose profile `offroad` and
+# is off on the 10 GB host and the beta, and `docker compose restart` of a
+# service with no container fails ("no such service") and restarts nothing else
+# on the line (REBUILD-BUNDLE operations review, S1), so it has a line of its
+# own, for where it runs. Every printed restart is built from these.
+OFFROAD_ROUTER = f"valhalla-{Variant.OFFROAD.value}"
+DEFAULT_ROUTERS = tuple(f"valhalla-{v.value}" for v in Variant if v is not Variant.OFFROAD)
+RESTART_ROUTERS = "docker compose restart " + " ".join(DEFAULT_ROUTERS)
+RESTART_OFFROAD_ROUTER = f"docker compose --profile offroad restart {OFFROAD_ROUTER}"
+RESTART_OFFROAD_WHERE_IT_RUNS = (
+    f"where the off-road router runs (compose profile `offroad`), also {RESTART_OFFROAD_ROUTER}"
+)
+
+
 def is_trail_class(
     tags: dict[str, str],
     osm_id: int | None = None,
