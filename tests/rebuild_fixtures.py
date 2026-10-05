@@ -111,6 +111,82 @@ def build_toy_extract(path: Path, *, changed: bool = False) -> None:
         writer.close()
 
 
+# The long trails' extract (OWNER-DECISIONS 375, 378; mutation review SF1 of
+# ZOOMED-TRAILS): a named pair with a wooden bridge between them, a way on a
+# regional bicycle route that names it, a trail in a mountain-bike route, and a
+# named street.
+ALPHA_WEST_ID = 2100
+ALPHA_EAST_ID = 2101
+ALPHA_BRIDGE_ID = 2102
+REGIONAL_ROUTE_ID = 2200
+MOUNTAIN_BIKE_ID = 2300
+NAMED_STREET_ID = 2400
+
+
+def build_long_trails_extract(path: Path) -> None:
+    """Every way inside the District's toy polygon. The regional route zigzags
+    for 13.8 km (8.6 mi), so it is a long run as well as a long route."""
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            # Alpha Trail, west and east, and the 40 m bridge between them.
+            11: (-77.080, 38.930),
+            12: (-77.070, 38.930),
+            13: (-77.0695381, 38.930),
+            14: (-77.060, 38.930),
+            # The regional route: three legs across the polygon.
+            21: (-77.090, 38.860),
+            22: (-77.010, 38.860),
+            23: (-77.090, 38.870),
+            # The mountain-bike trail, and the street.
+            31: (-77.050, 38.900),
+            32: (-77.040, 38.900),
+            41: (-77.050, 38.890),
+            42: (-77.040, 38.890),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        path_tags = {"highway": "cycleway", "surface": "asphalt"}
+        ways = [
+            (ALPHA_WEST_ID, [11, 12], {**path_tags, "name": "Alpha Trail"}),
+            (
+                ALPHA_BRIDGE_ID,
+                [12, 13],
+                {**path_tags, "name": "Alpha Trail", "bridge": "yes", "surface": "wood"},
+            ),
+            (ALPHA_EAST_ID, [13, 14], {**path_tags, "name": "alpha trail"}),
+            (REGIONAL_ROUTE_ID, [21, 22, 23], dict(path_tags)),
+            (
+                MOUNTAIN_BIKE_ID,
+                [31, 32],
+                {"highway": "path", "bicycle": "yes", "surface": "dirt", "name": "Rocky Loop"},
+            ),
+            (NAMED_STREET_ID, [41, 42], {"highway": "residential", "name": "Gamma Street"}),
+        ]
+        # osmium reads a file whose ways are in id order.
+        for way_id, way_nodes, tags in sorted(ways, key=lambda way: way[0]):
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=way_nodes, version=1, tags=tags))
+        relations = [
+            (
+                {"type": "route", "route": "bicycle", "network": "rcn", "name": "Beta Route"},
+                [("w", REGIONAL_ROUTE_ID, ""), ("w", MOUNTAIN_BIKE_ID, "")],
+            ),
+            (
+                {"type": "route", "route": "mtb", "name": "Rocky Loop MTB"},
+                [("w", MOUNTAIN_BIKE_ID, "")],
+            ),
+        ]
+        for relation_id, (tags, members) in enumerate(relations, start=1):
+            writer.add_relation(
+                osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
+            )
+    finally:
+        writer.close()
+
+
 def box(west: float, east: float, south: float = 38.85, north: float = 38.95) -> MultiPolygon:
     return MultiPolygon(
         Polygon(((west, south), (east, south), (east, north), (west, north), (west, south)))

@@ -188,12 +188,13 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return trails
 
 
-# THE LONG TRAILS (OWNER-DECISIONS 375, 377 and 378, 2026-10-04): "Also zoomed out, can we
-# stick to mostly the longer trails, it's getting messy." At z10-11 Columbia's
-# pathways and Patapsco Valley State Park's singletrack tangles merged into
-# solid blobs, so the zoomed-out tiles keep a path or trail only when it is
-# part of something long. Two facts about a way say so, both written by the
-# rebuild (`pipeline.trail_routes`) and read from OSM:
+# THE LONG TRAILS (OWNER-DECISIONS 375, 377, 378, 380 and 381, 2026-10-04):
+# "Also zoomed out, can we stick to mostly the longer trails, it's getting
+# messy." At z10-11 Columbia's pathways and Patapsco Valley State Park's
+# singletrack tangles merged into solid blobs, so the zoomed-out tiles keep a
+# path or trail only when it is part of something long. Two facts about a way
+# say so, both written by the rebuild (`pipeline.trail_routes`) and read from
+# OSM:
 #
 # - `trail_route`: the way is a member of an OSM route relation. 0 none; 1 a
 #   bicycle route at a local network, or none (recorded, but it qualifies
@@ -215,12 +216,15 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 # bicycle route (lcn) does not keep a way at z10 or z11 by itself; a regional,
 # national or international one does. And "Car free roads stay. The point at
 # this zoom is to see what would be a great long distance trip.": a road closed
-# to cars at set times is kept whatever its length (long_trails_predicate).
+# to cars at set times is kept whatever its length (long_trails_predicate). A road
+# closed to cars for good is not exempt: it is a path, judged like any trail by
+# its route and its named run, and otherwise shown from z12 (OWNER-DECISIONS 381,
+# "I think off is fine here. Nobody routes around the tiny roads.").
 #
 # A way is kept at a level when its route level is at least the bar for its
 # surface, or its run is at least that level's length. An unpaved way must clear
-# a higher bar, which is what drops the Patapsco tangles and keeps the Grist
-# Mill and Torrey C. Brown trails. An unpaved way needs a long bicycle route at
+# a higher bar, which is what drops the Patapsco tangles; the C&O towpath stays,
+# on a national bicycle route. An unpaved way needs a long bicycle route at
 # either zoom: a walking route is mostly a park's own trail, and the Patapsco
 # Traverse, a regional walking route, "appears to be a mountain bike trail"
 # (OWNER-DECISIONS 378). An unknown surface is read as paved, as the map reads it.
@@ -228,15 +232,18 @@ TRAIL_NAME_COLUMN = "trail_name"
 TRAIL_ROUTE_COLUMN = "trail_route"
 TRAIL_RUN_COLUMN = "trail_run_m"
 # A short bridge inside a kept trail is kept with it, whatever its surface
-# (OWNER-DECISIONS 375; the orchestrator's decision after the Grist Mill Trail's
-# two wooden bridges, `surface=wood`, left holes in a paved trail at z11). A way
-# tagged bridge=* (not "no") no longer than TRAIL_BRIDGE_MAX_M, with a trail way at
-# each end, takes the lower route level and run of the two and is judged on their
-# surface: `trail_bridge` 1 for a bridge between paved trail ways, 2 where either
-# is unpaved, 0 for every other way, and 3 only transiently, a candidate the rebuild
-# has not yet judged (`pipeline.trail_routes.derive_trail_runs`). It keeps no bridge
-# on its own (both ends must be trail ways) and extends no trail (it is kept only
-# if both of them are).
+# (OWNER-DECISIONS 375; the orchestrator's decision, not the owner's, after the
+# Grist Mill Trail's two wooden bridges, `surface=wood`, left holes in a paved
+# trail at z11). A drawn trail way tagged bridge=* (not "no") is a candidate.
+# Candidates whose ends meet (a bridge and its boardwalk, or one bridge OSM
+# splits in two) are one chain, judged as one: no longer than TRAIL_BRIDGE_MAX_M
+# (330 ft) in all, with a trail way at each of its outer ends. Each way of the
+# chain takes the greater of its own route level and run and the lower of its
+# ends' (an end on a route that keeps its trail sets no bar on the run), and is
+# judged on its trail's surface: `trail_bridge` 1 between paved trail ways, 2
+# where an end is unpaved, 0 for every other way, and 3 only transiently, a
+# candidate the rebuild has not yet judged (`pipeline.trail_routes.judge_bridges`).
+# It keeps no bridge on its own (every end must be a trail way) and lowers none.
 TRAIL_BRIDGE_COLUMN = "trail_bridge"
 TRAIL_BRIDGE_MAX_M = 100
 ROUTE_ANY_BICYCLE = 1
@@ -245,7 +252,7 @@ ROUTE_LONG_BICYCLE = 3
 # The route level a paved way needs, at every zoom (OWNER-DECISIONS 375, 377:
 # a long walking route or a regional-or-larger bicycle route, not a local one).
 PAVED_ROUTE_MIN = ROUTE_LONG_WALK
-# Same-named ways within this many metres chain into one run.
+# Same-named ways within this many metres (1,300 ft) chain into one run.
 TRAIL_RUN_GAP_M = 400
 METRES_PER_MILE = 1609.344
 # A run the length of these, by surface, keeps a way that is not on a route
@@ -276,12 +283,13 @@ Z10_LONG_TRAILS = LongTrails(Z10_PAVED_RUN_MI, Z10_UNPAVED_RUN_MI, Z10_UNPAVED_R
 
 
 def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
-    """The long trails' condition, on a table with the route and run columns:
-    a way on a route of a high enough level for its surface, or in a named run
-    long enough for it; with `car_free`, also any road closed to cars at set
-    times (OWNER-DECISIONS 377). Written for the tile query alone; the overview
-    index is built on the plain trails' predicate, which this implies when
-    ANDed."""
+    """The long trails' condition, on a table with the route, run and bridge
+    columns (`core.stress_tiles.LONG_TRAIL_COLUMNS`): a way on a route of a high
+    enough level for its surface, or in a named run long enough for it; with
+    `car_free`, also any road closed to cars at set times (OWNER-DECISIONS 377),
+    but not one closed for good, which is judged like any trail (381). Written
+    for the tile query alone; the overview index is built on the plain trails'
+    predicate, which this implies when ANDed."""
     paved_m = round(rule.paved_run_mi * METRES_PER_MILE)
     unpaved_m = round(rule.unpaved_run_mi * METRES_PER_MILE)
     run = f"COALESCE({TRAIL_RUN_COLUMN}, 0)"
@@ -461,17 +469,19 @@ CREATE TABLE {schema}.segment (
     -- nothing said and the classifier assumed. Null on a way no layer reached,
     -- which reads as `stress_assumed` already does.
     attr_sources    jsonb,
-    -- The long trails (`trail_route`, `trail_run_m`; OWNER-DECISIONS 375, 377,
-    -- 378): what the zoomed-out tiles keep a path for. `trail_name` is the way's
-    -- OSM name, `trail_route` the level of the route relation it is in (0-3) and
-    -- `trail_run_m` the length of its named run, set after the rows are
-    -- written (`pipeline.trail_routes.derive_trail_runs`). A mountain-bike way
-    -- is written with no name and route 0, so it can never qualify.
+    -- The long trails (`trail_route`, `trail_run_m`, `trail_bridge`;
+    -- OWNER-DECISIONS 375, 377, 378, 380, 381): what the zoomed-out tiles keep a
+    -- path for. `trail_name` is the OSM name of a way the zoomed-out map draws
+    -- (or of its long route), `trail_route` the level of the route relation it
+    -- is in (0-3) and `trail_run_m` the length of its named run, set after the
+    -- rows are written (`pipeline.trail_routes.derive_trail_runs`). A
+    -- mountain-bike way is written with no name and route 0, so it can never
+    -- qualify.
     trail_name      text,
     trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 3),
     trail_run_m     integer,
     -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
-    -- ways, 2 where either is unpaved, 0 otherwise.
+    -- ways, 2 where an end is unpaved, 0 otherwise (3 only during the rebuild).
     trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );

@@ -65,6 +65,7 @@ from . import (
     writers,
 )
 from .rebuild import RebuildTimedOut, Stage
+from .schema import METRES_PER_MILE, ROUTE_LONG_BICYCLE, Z10_UNPAVED_RUN_MI, Z11_PAVED_RUN_MI
 
 logger = logging.getLogger(__name__)
 
@@ -749,6 +750,51 @@ def assert_derived_tags_reached_the_tiles(sentinel_value: str | None, expected: 
         raise ValidationFailed(
             f"a known edge reports {sentinel_value!r} for its derived value, not "
             f"{expected!r}; the transform loaded but produced nothing usable"
+        )
+
+
+# The long trails' sentinel (operations review SF-1 of ZOOMED-TRAILS): each way in
+# `settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS` must come out on a long bicycle route
+# in a named run of at least this much (8 mi, the z10 unpaved bar), and the table
+# must hold at least `settings.REBUILD_LONG_TRAIL_FLOORS` rows on a long route and
+# in a run of LONG_TRAIL_FLOOR_RUN_M (the z11 paved bar, 2.5 mi).
+LONG_TRAIL_SENTINEL_ROUTE = ROUTE_LONG_BICYCLE
+LONG_TRAIL_SENTINEL_RUN_M = round(Z10_UNPAVED_RUN_MI * METRES_PER_MILE)
+LONG_TRAIL_FLOOR_RUN_M = round(Z11_PAVED_RUN_MI * METRES_PER_MILE)
+
+
+def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[int]) -> None:
+    """The zoomed-out map's long trails came out of the rebuild (OWNER-DECISIONS
+    375): the columns are written by this rebuild alone and the tiles filter on
+    them silently, so a pass that lost the route relations or the names would
+    promote a z10-11 map holding little but the car-free roads."""
+    if summary.unjudged_bridges:
+        raise ValidationFailed(
+            f"{summary.unjudged_bridges} bridge candidates are still at trail_bridge 3: "
+            "the bridge judging did not run to the end"
+        )
+    for way in sentinel_ways:
+        if way not in summary.sentinels:
+            raise ValidationFailed(
+                f"the long-trail sentinel way {way} is not in the segment table; if the "
+                "extract split or replaced it, move the sentinel "
+                "(settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS), don't drop it"
+            )
+        route, run = summary.sentinels[way]
+        if route < LONG_TRAIL_SENTINEL_ROUTE or run < LONG_TRAIL_SENTINEL_RUN_M:
+            raise ValidationFailed(
+                f"the long-trail sentinel way {way} came out at route level {route} and a "
+                f"run of {run} m, not a long bicycle route ({LONG_TRAIL_SENTINEL_ROUTE}) in a "
+                f"run of {LONG_TRAIL_SENTINEL_RUN_M} m or more: the route relations or the "
+                "names were lost, and z10-11 would drop the long trails"
+            )
+    route_floor, run_floor = floors
+    if summary.on_long_route < route_floor or summary.in_long_run < run_floor:
+        raise ValidationFailed(
+            f"{summary.on_long_route} rows are on a long route and {summary.in_long_run} in "
+            f"a run of {LONG_TRAIL_FLOOR_RUN_M} m or more, under the floors of {route_floor} "
+            f"and {run_floor} (settings.REBUILD_LONG_TRAIL_FLOORS): the long trails did not "
+            "come out of the rebuild"
         )
 
 
@@ -1669,6 +1715,13 @@ def build_handlers(
                 way.osm_id in context.mountain_bike_ways
                 or trail_routes.is_mountain_bike_way(way.tags)
             )
+            way_facility = context.facility_by_way.get(way.osm_id, "none")
+            car_free_when = sorted(context.car_free_by_way.get(way.osm_id, ()))
+            # Only a way the zoomed-out map draws is named for a run or judged as
+            # a bridge (operations review N-2: a street's name is never read).
+            long_trail = not mountain_bike and trail_routes.is_zoomed_out_trail(
+                way_facility, trail, car_free_when
+            )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
                     writers.segment_row(
@@ -1681,8 +1734,8 @@ def build_handlers(
                         is_unpaved=is_unpaved(way.tags),
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
-                        facility=context.facility_by_way.get(way.osm_id, "none"),
-                        car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
+                        facility=way_facility,
+                        car_free_when=car_free_when,
                         map_class=map_class_of(way.osm_id, way.tags).value,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
@@ -1690,12 +1743,14 @@ def build_handlers(
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
-                        trail_name=None
-                        if mountain_bike
-                        else trail_routes.way_name(way.tags, context.route_names.get(way.osm_id)),
+                        trail_name=trail_routes.way_name(
+                            way.tags, context.route_names.get(way.osm_id)
+                        )
+                        if long_trail
+                        else None,
                         trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
                         trail_bridge=3
-                        if trail_routes.is_bridge_way(way.tags) and not mountain_bike
+                        if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
                     )
                 )
@@ -1729,6 +1784,14 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
+        assert_long_trails(
+            trail_routes.long_trail_summary(
+                context.staging_schema, sentinel_ways, LONG_TRAIL_FLOOR_RUN_M
+            ),
+            sentinel_ways,
+            _setting("REBUILD_LONG_TRAIL_FLOORS"),
+        )
 
     def swap() -> None:
         context.swap_outcome = promotion.perform_swap(

@@ -2,12 +2,15 @@
 
 The zoomed-out stress tiles keep only the long trails (OWNER-DECISIONS 375;
 `pipeline.schema.long_trails_predicate` says what is kept). This module
-writes the two facts that rule reads, beside the rest of a segment's row:
+writes what that rule reads, beside the rest of a segment's row:
 
-- `route_level`, from the OSM route relations a way is a member of, read from
-  the source extract (`read_routes`); and
-- the length of the way's named run, derived in the staging schema once the
-  rows are written (`derive_trail_runs`).
+- `trail_name`, the way's OSM name (or its route's, `way_name`);
+- `trail_route`, the level of the OSM route relations a way is a member of,
+  read from the source extract (`read_routes`);
+- `trail_run_m`, the length of the way's named run, derived in the staging
+  schema once the rows are written (`derive_trail_runs`); and
+- `trail_bridge`, how a short bridge inside a trail is judged
+  (`judge_bridges`).
 
 The relations are OSM's, cited as the rest of the map's data is.
 """
@@ -21,15 +24,20 @@ import osmium
 from routemaker.singletrack import SCALE_KEYS, grade, is_paved
 
 from .schema import (
+    PAVED_ROUTE_MIN,
+    ROADSIDE_TRAIL_FACILITY,
     ROUTE_ANY_BICYCLE,
     ROUTE_LONG_BICYCLE,
     ROUTE_LONG_WALK,
     TRAIL_BRIDGE_COLUMN,
     TRAIL_BRIDGE_MAX_M,
+    TRAIL_FACILITY,
     TRAIL_NAME_COLUMN,
     TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
     TRAIL_RUN_GAP_M,
+    Z10_UNPAVED_ROUTE_MIN,
+    Z11_UNPAVED_ROUTE_MIN,
     trails_predicate,
     validate_schema_name,
 )
@@ -48,17 +56,41 @@ WALKING_ROUTES = frozenset({"hiking", "foot"})
 # gap is a distance on the ground.
 RUN_PROJECTION_SRID = 32618
 
+# How close, in degrees, a way must come to a bridge's end to be what the bridge
+# meets: about 2 m (1.7 m of longitude and 2.2 m of latitude at 39 N). OSM joins
+# the two at a shared node, so this only absorbs rounding.
+BRIDGE_END_TOLERANCE_DEG = 0.00002
+
+# The route level a bridge's end needs to keep its trail by route alone, by the
+# surface the bridge is judged on; a run is then not needed of it.
+_UNPAVED_ROUTE_MIN = min(Z10_UNPAVED_ROUTE_MIN, Z11_UNPAVED_ROUTE_MIN)
+
 
 def route_level(route: str | None, network: str | None) -> int:
     """The level a route relation gives its member ways: 0 none, 1 a bicycle
     route at a local or no network (which qualifies nothing, OWNER-DECISIONS 377),
     2 a long walking route (a paved way only, 378), 3 a bicycle route at a long
-    network. A mountain-bike route gives nothing, and its ways never qualify (378)."""
-    if route == "bicycle":
-        return ROUTE_LONG_BICYCLE if network in LONG_BICYCLE_NETWORKS else ROUTE_ANY_BICYCLE
-    if route in WALKING_ROUTES and network in LONG_WALKING_NETWORKS:
-        return ROUTE_LONG_WALK
-    return 0
+    network. A mountain-bike route gives nothing, and its ways never qualify (378).
+    A `route` of several values (`bicycle;hiking`) is the highest of them."""
+    routes = route_routes(route)
+    if "mtb" in routes:
+        return 0
+    level = 0
+    for each in routes:
+        if each == "bicycle":
+            level = max(
+                level,
+                ROUTE_LONG_BICYCLE if network in LONG_BICYCLE_NETWORKS else ROUTE_ANY_BICYCLE,
+            )
+        elif each in WALKING_ROUTES and network in LONG_WALKING_NETWORKS:
+            level = max(level, ROUTE_LONG_WALK)
+    return level
+
+
+def route_routes(route: str | None) -> frozenset[str]:
+    """The values of a relation's `route` tag, which OSM separates by `;`
+    (`hiking;mtb` is a mountain-bike route as well as a walking one)."""
+    return frozenset(part.strip() for part in (route or "").split(";") if part.strip())
 
 
 def is_mountain_bike_way(tags: dict[str, str]) -> bool:
@@ -76,6 +108,17 @@ def is_mountain_bike_way(tags: dict[str, str]) -> bool:
     return tags.get("mtb") == "designated" or bool(tags.get("mtb:type"))
 
 
+def is_zoomed_out_trail(facility: str, is_trail_class: bool, car_free_when) -> bool:
+    """Whether the zoomed-out map draws the way at all: the rows
+    `pipeline.schema.trails_predicate` selects on a table with the facility and
+    car-free columns. Only these are named for a run or judged as a bridge."""
+    return (
+        facility == TRAIL_FACILITY
+        or (facility == ROADSIDE_TRAIL_FACILITY and is_trail_class)
+        or bool(car_free_when)
+    )
+
+
 class Routes(NamedTuple):
     """What the extract's route relations say of its ways."""
 
@@ -83,8 +126,9 @@ class Routes(NamedTuple):
     levels: dict[int, int]
     # Ways in a route=mtb relation: mountain-bike trails, which never qualify.
     mountain_bike: set[int]
-    # {way id: the name of the route relation it is in}, the highest level's: what
-    # a way with no name of its own is chained by (`way_name`).
+    # {way id: the name of the long route relation it is in}, the highest level's:
+    # what a way with no name of its own is chained by (`way_name`). A local route's
+    # name is not used, so a local route cannot keep a way through it (377).
     names: dict[int, str]
 
 
@@ -102,13 +146,15 @@ class RouteMembers(osmium.SimpleHandler):
     def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
         if r.tags.get("type") != "route":
             return
-        if r.tags.get("route") == "mtb":
+        if "mtb" in route_routes(r.tags.get("route")):
             self.mountain_bike.update(m.ref for m in r.members if m.type == "w")
             return
         level = route_level(r.tags.get("route"), r.tags.get("network"))
         if not level:
             return
-        name = r.tags.get("name", "").strip()
+        # OWNER-DECISIONS 377, "Local trails only at higher zooms.": a local
+        # route's name would let its unnamed ways join a named run.
+        name = r.tags.get("name", "").strip() if level >= ROUTE_LONG_WALK else ""
         for member in r.members:
             if member.type != "w":
                 continue
@@ -128,23 +174,24 @@ def read_routes(path) -> Routes:
 
 def is_bridge_way(tags: dict[str, str]) -> bool:
     """Whether the way is a bridge candidate (bridge=yes, boardwalk, viaduct...:
-    anything but "no"); `derive_trail_runs` judges it by its length and its ends."""
+    anything but "no"); `judge_bridges` judges it by its length and its ends."""
     return tags.get("bridge", "no") not in ("", "no")
 
 
 def way_name(tags: dict[str, str], route_name: str | None = None) -> str | None:
-    """The way's OSM name, else the name of the route relation it is in (a way
-    that is part of "Grist Mill Trail" and says nothing itself is still one of its
-    ways), or None when neither has one."""
+    """The way's OSM name, else the name of the long route relation it is in (a
+    way that is part of "Gwynns Falls Trail" and says nothing itself is still one
+    of its ways), or None when neither has one."""
     name = tags.get("name", "").strip() or (route_name or "").strip()
     return name or None
 
 
 # What two ways must share to be one trail: the name, lower case, without a
-# trailing parenthetical ("(white)", "(Extension)") and without a trailing
-# Extension or Connector, since OSM names an extension or a connector of a trail
-# after it ("Rock Creek Trail Connector"). Stored names are as OSM has them; this
-# is applied only to chain a run. POSIX classes keep the backslashes out of it.
+# trailing parenthetical or bracket ("(white)", "(Extension)", "[north]") and
+# without a trailing Extension, Extn, Connector or Connection, since OSM names an
+# extension or a connector of a trail after it ("Rock Creek Trail Connector").
+# Stored names are as OSM has them; this is applied only to chain a run. POSIX
+# classes keep the backslashes out of it.
 NAME_KEY = (
     "NULLIF(trim(regexp_replace(regexp_replace(regexp_replace(lower({name}), "
     "'[[:space:]]*[([].*$', ''), "
@@ -175,55 +222,120 @@ WHERE s.id = runs.id
 """
 
 
-# A bridge candidate (trail_bridge 3) no longer than the cap, with a drawn trail way
-# at each end (within about 2 m of its first and last point, one of the same name
-# first), takes the lower route and run of the two and their surface. Run after
-# the runs are known. A candidate that qualifies is 1 or 2; the rest go to 0.
-_BRIDGE_END = """
-JOIN LATERAL (
-    SELECT n.{route} AS route, COALESCE(n.{run}, 0) AS run, n.is_unpaved IS TRUE AS unpaved
-    FROM {schema}.segment AS n
-    WHERE n.id <> c.id AND n.{bridge} = 0 AND n.map_class = 'road' AND {trails}
-      AND ST_DWithin(n.geometry, {point}, 0.00002)
-    ORDER BY ({key_n} IS NOT DISTINCT FROM {key_c}) DESC, ST_Distance(n.geometry, {point})
-    LIMIT 1
-) AS {alias} ON true
+# The short bridges (`judge_bridges`). A candidate (trail_bridge 3) is a drawn
+# trail way tagged bridge=*. Candidates whose ends meet are one chain (a bridge
+# and its boardwalk, or a bridge OSM splits in two), judged as one: the chain is
+# no longer than TRAIL_BRIDGE_MAX_M in all, and each of its outer ends (an end no
+# other way of the chain meets) must meet a drawn trail way that is not a
+# candidate: the same-named one first, then the one on the highest route, with
+# the longest run, nearest. The chain is judged on its trail's surface (unpaved
+# if any end is) and takes, way by way, the greater of its own route and run and
+# the lower of its ends'. An end that keeps its trail by its route alone sets no
+# bar on the run, so a bridge where a trail leaves its route is judged by the
+# other end's run. A chain that is too long or misses a trail at an end is left
+# to its own deck (0).
+_JUDGE_BRIDGES = """
+WITH c AS (
+    SELECT id, geometry, {key_c} AS name_key, ST_Length(geometry::geography) AS length_m,
+           ST_ClusterDBSCAN(
+               ST_Collect(ST_StartPoint(geometry), ST_EndPoint(geometry)),
+               eps := {tolerance}, minpoints := 1
+           ) OVER () AS chain
+    FROM {schema}.segment
+    WHERE {bridge} = 3 AND map_class = 'road' AND {trails}
+),
+chains AS (
+    SELECT chain FROM c GROUP BY chain HAVING sum(length_m) <= {cap}
+),
+ends AS (
+    SELECT c.chain, c.name_key, p.point
+    FROM c
+    JOIN chains USING (chain)
+    CROSS JOIN LATERAL (
+        VALUES (ST_StartPoint(c.geometry)), (ST_EndPoint(c.geometry))
+    ) AS p (point)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM c AS o
+        WHERE o.chain = c.chain AND o.id <> c.id
+          AND ST_DWithin(o.geometry, p.point, {tolerance})
+    )
+),
+met AS (
+    SELECT e.chain, n.route, n.run, n.unpaved
+    FROM ends AS e
+    LEFT JOIN LATERAL (
+        SELECT t.{route} AS route, COALESCE(t.{run}, 0) AS run,
+               t.is_unpaved IS TRUE AS unpaved
+        FROM {schema}.segment AS t
+        WHERE t.{bridge} = 0 AND t.map_class = 'road' AND {trails}
+          AND ST_DWithin(t.geometry, e.point, {tolerance})
+        ORDER BY (e.name_key IS NOT NULL AND {key_t} = e.name_key) DESC,
+                 t.{route} DESC, COALESCE(t.{run}, 0) DESC,
+                 ST_Distance(t.geometry, e.point)
+        LIMIT 1
+    ) AS n ON true
+),
+surfaced AS (
+    SELECT met.*, bool_or(met.unpaved) OVER (PARTITION BY met.chain) AS chain_unpaved
+    FROM met
+),
+verdict AS (
+    SELECT chain, chain_unpaved AS unpaved, min(route) AS route,
+           min(run) FILTER (
+               WHERE route < CASE WHEN chain_unpaved THEN {unpaved_route} ELSE {paved_route} END
+           ) AS run
+    FROM surfaced
+    GROUP BY chain, chain_unpaved
+    HAVING count(*) >= 2 AND count(route) = count(*)
+)
+UPDATE {schema}.segment AS b
+SET {route} = GREATEST(b.{route}, v.route),
+    {run} = GREATEST(b.{run}, v.run),
+    {bridge} = CASE WHEN v.unpaved THEN 2 ELSE 1 END
+FROM c
+JOIN verdict AS v USING (chain)
+WHERE b.id = c.id
 """
 
 
+def runs_sql(schema: str) -> str:
+    """The UPDATE that sets every named trail way's run (`derive_trail_runs`)."""
+    validate_schema_name(schema)
+    return _DERIVE_RUNS.format(
+        schema=schema,
+        run=TRAIL_RUN_COLUMN,
+        key=NAME_KEY.format(name=TRAIL_NAME_COLUMN),
+        srid=RUN_PROJECTION_SRID,
+        gap=TRAIL_RUN_GAP_M,
+        trails=trails_predicate(True, True),
+    )
+
+
+def bridges_sql(schema: str) -> str:
+    """The UPDATE that judges the short bridges (`judge_bridges`)."""
+    validate_schema_name(schema)
+    return _JUDGE_BRIDGES.format(
+        schema=schema,
+        bridge=TRAIL_BRIDGE_COLUMN,
+        route=TRAIL_ROUTE_COLUMN,
+        run=TRAIL_RUN_COLUMN,
+        trails=trails_predicate(True, True),
+        key_c=NAME_KEY.format(name=TRAIL_NAME_COLUMN),
+        key_t=NAME_KEY.format(name="t." + TRAIL_NAME_COLUMN),
+        tolerance=BRIDGE_END_TOLERANCE_DEG,
+        cap=TRAIL_BRIDGE_MAX_M,
+        paved_route=PAVED_ROUTE_MIN,
+        unpaved_route=_UNPAVED_ROUTE_MIN,
+    )
+
+
 def judge_bridges(schema: str) -> None:
-    """Set `trail_bridge` on the staging schema's bridge candidates."""
+    """Set `trail_bridge` on the staging schema's bridge candidates: 1 or 2 on
+    the chains judged as their trail, 0 on the rest, so none is left at 3."""
     from django.db import connection
 
-    validate_schema_name(schema)
-    parts = {
-        "schema": schema,
-        "bridge": TRAIL_BRIDGE_COLUMN,
-        "route": TRAIL_ROUTE_COLUMN,
-        "run": TRAIL_RUN_COLUMN,
-        "trails": trails_predicate(True, True),
-        "key_n": NAME_KEY.format(name="n." + TRAIL_NAME_COLUMN),
-        "key_c": NAME_KEY.format(name="c." + TRAIL_NAME_COLUMN),
-    }
-    first = _BRIDGE_END.format(point="ST_StartPoint(c.geometry)", alias="a", **parts)
-    last = _BRIDGE_END.format(point="ST_EndPoint(c.geometry)", alias="z", **parts)
     with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            UPDATE {schema}.segment AS b
-            SET {TRAIL_ROUTE_COLUMN} = LEAST(e.ra, e.rz),
-                {TRAIL_RUN_COLUMN} = LEAST(e.na, e.nz),
-                {TRAIL_BRIDGE_COLUMN} = CASE WHEN e.ua OR e.uz THEN 2 ELSE 1 END
-            FROM (SELECT c.id, a.route AS ra, z.route AS rz, a.run AS na, z.run AS nz,
-                         a.unpaved AS ua, z.unpaved AS uz
-                  FROM {schema}.segment AS c
-                  {first}
-                  {last}
-                  WHERE c.{TRAIL_BRIDGE_COLUMN} = 3 AND c.map_class = 'road'
-                    AND ST_Length(c.geometry::geography) <= {TRAIL_BRIDGE_MAX_M}) AS e
-            WHERE b.id = e.id
-            """
-        )
+        cursor.execute(bridges_sql(schema))
         cursor.execute(
             f"UPDATE {schema}.segment SET {TRAIL_BRIDGE_COLUMN} = 0 WHERE {TRAIL_BRIDGE_COLUMN} = 3"
         )
@@ -233,21 +345,53 @@ def derive_trail_runs(schema: str) -> int:
     """Set `trail_run_m` on every named trail way of the staging schema: the
     length of the run of same-named trail ways it chains into. Returns the
     number of ways set; then the short bridges between trail ways are judged
-    (`judge_bridges`). Run after `write_segments`, which writes the names."""
+    (`judge_bridges`). Run after `write_segments`, which writes the names.
+
+    The table was bulk-loaded moments before, so it is analyzed first: the
+    bridge ends are found through the geometry index, and a plan made without
+    statistics could scan the whole table for each of them."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(f"ANALYZE {schema}.segment")
+        cursor.execute(runs_sql(schema))
+        set_runs = cursor.rowcount
+    judge_bridges(schema)
+    return set_runs
+
+
+class LongTrailSummary(NamedTuple):
+    """What VALIDATE reads of the long-trail columns before a promotion."""
+
+    # Rows on a long walking or long bicycle route (trail_route >= 2).
+    on_long_route: int
+    # Rows in a named run of at least `run_floor_m`.
+    in_long_run: int
+    # Bridge candidates left unjudged (trail_bridge 3): always 0 after the derive.
+    unjudged_bridges: int
+    # {sentinel way id: (its highest route level, its longest run)}; a way the
+    # table does not hold is absent.
+    sentinels: dict[int, tuple[int, int]]
+
+
+def long_trail_summary(schema: str, sentinel_ways, run_floor_m: int) -> LongTrailSummary:
+    """Count the staging schema's long-trail rows and read the sentinel ways."""
     from django.db import connection
 
     validate_schema_name(schema)
     with connection.cursor() as cursor:
         cursor.execute(
-            _DERIVE_RUNS.format(
-                schema=schema,
-                run=TRAIL_RUN_COLUMN,
-                key=NAME_KEY.format(name=TRAIL_NAME_COLUMN),
-                srid=RUN_PROJECTION_SRID,
-                gap=TRAIL_RUN_GAP_M,
-                trails=trails_predicate(True, True),
-            )
+            f"SELECT count(*) FILTER (WHERE {TRAIL_ROUTE_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE {TRAIL_RUN_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE {TRAIL_BRIDGE_COLUMN} = 3) FROM {schema}.segment",
+            [PAVED_ROUTE_MIN, run_floor_m],
         )
-        set_runs = cursor.rowcount
-    judge_bridges(schema)
-    return set_runs
+        on_route, in_run, unjudged = cursor.fetchone()
+        cursor.execute(
+            f"SELECT osm_way_id, max({TRAIL_ROUTE_COLUMN}), COALESCE(max({TRAIL_RUN_COLUMN}), 0) "
+            f"FROM {schema}.segment WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id",
+            [list(sentinel_ways)],
+        )
+        sentinels = {way: (route, run) for way, route, run in cursor.fetchall()}
+    return LongTrailSummary(on_route, in_run, unjudged, sentinels)

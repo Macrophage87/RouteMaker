@@ -350,6 +350,16 @@ REBUILD_SENTINEL_DERIVED_EDGE = ((-77.076431, 38.892187), (-77.076530, 38.893129
 # graph (OPS review, 2026-09-28, on box builds). A weekend graph that came out
 # a copy of the standard one reads "none".
 REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341))
+# The long trails (OWNER-DECISIONS 375; `pipeline.run.assert_long_trails`): ways
+# VALIDATE reads back from the staging table, each of which must be on a long
+# bicycle route in a named run of 8 mi or more. Washington & Old Dominion Trail,
+# OSM way 8810729 (rcn), and the Chesapeake and Ohio Canal Trail, OSM way
+# 10595312 (ncn, USBR 50), both so in the 2026-10-03 extract (ZOOMED-TRAILS
+# revision). And the floors: at least this many rows on a long route
+# (trail_route 2 or more) and in a named run of 2.5 mi or more, about half of
+# what that extract gives (12,503 and 4,402 rows, measured on a full-size copy).
+REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 10595312)
+REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

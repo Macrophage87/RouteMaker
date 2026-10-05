@@ -27,6 +27,17 @@ def pytest_configure() -> None:
     django.setup()
 
 
+@pytest.fixture(autouse=True)
+def _no_long_trail_sentinels(settings):
+    """The rebuild's long-trail sentinels name real W&OD and C&O ways and
+    region-sized floors (`settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS`,
+    `REBUILD_LONG_TRAIL_FLOORS`), which no fixture extract holds. A test that is
+    about them sets its own (tests/test_pipeline_end_to_end.py); the check that
+    no bridge is left unjudged runs in every rebuild either way."""
+    settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = ()
+    settings.REBUILD_LONG_TRAIL_FLOORS = (0, 0)
+
+
 @pytest.fixture
 def segment_schemas():
     """A live/staging schema pair, torn down afterwards however the test ends.

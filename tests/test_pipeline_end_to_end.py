@@ -29,6 +29,9 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
+    ALPHA_BRIDGE_ID,
+    ALPHA_EAST_ID,
+    ALPHA_WEST_ID,
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
@@ -39,8 +42,11 @@ from rebuild_fixtures import (
     DIVIDED_SOUTH_ID,
     GIB,
     LUA_LOADED_LOG,
+    MOUNTAIN_BIKE_ID,
+    NAMED_STREET_ID,
     ONE_WAY_ID,
     PARALLEL_COUNT,
+    REGIONAL_ROUTE_ID,
     REPO,
     SEPARATE_ROAD_ID,
     SINGLETRACK_ID,
@@ -51,6 +57,7 @@ from rebuild_fixtures import (
     box,
     build_contraflow_extract,
     build_dials_extract,
+    build_long_trails_extract,
     build_named_bridge_extract,
     build_parallel_extract,
     build_toy_extract,
@@ -4164,3 +4171,61 @@ def test_a_car_free_agency_way_keeps_its_provenance_and_every_block_to_the_cap(s
     assert stored["maxspeed"] == "dc-roadway-block"
     assert stored["blocks"] == list(facts.blocks[:MAX_RECORDED_BLOCKS])
     assert len(stored["blocks"]) == MAX_RECORDED_BLOCKS
+
+
+# --- The long trails (OWNER-DECISIONS 375, 377, 378) -----------------------------
+
+
+def long_trail_rows(schema: str) -> dict[int, tuple]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT osm_way_id, trail_name, trail_route, trail_run_m, trail_bridge "
+            f"FROM {schema}.segment ORDER BY osm_way_id, ordinal"
+        )
+        return {way: (name, route, run, bridge) for way, name, route, run, bridge in cursor}
+
+
+def test_the_rebuild_writes_the_long_trail_columns(
+    tmp_path, segment_schemas, states, settings
+) -> None:
+    """The writer's wiring, through the real stages (mutation review SF1 of
+    ZOOMED-TRAILS): a mountain-bike way has no name and no route, a way on a
+    regional route is level 3 and takes the route's name, a named pair chains
+    into one run with its bridge judged as it, and a street is never named.
+    The sentinel and the floors are set to this extract's, so VALIDATE reads
+    them back and passes."""
+    settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = (REGIONAL_ROUTE_ID,)
+    settings.REBUILD_LONG_TRAIL_FLOORS = (1, 1)
+    source = install_source_extract(tmp_path, build=build_long_trails_extract)
+    _context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+    assert report.completed
+    rows = long_trail_rows(settings.SEGMENT_SCHEMA_STAGING)
+
+    name, route, run, bridge = rows[MOUNTAIN_BIKE_ID]
+    assert (name, route) == (None, 0), "a mountain-bike trail never qualifies (378)"
+    assert run is None and bridge == 0
+
+    name, route, run, bridge = rows[REGIONAL_ROUTE_ID]
+    assert (name, route) == ("Beta Route", 3), "the route's level, and its name"
+    assert run == pytest.approx(13_800, rel=0.02)
+
+    west, east, deck = rows[ALPHA_WEST_ID], rows[ALPHA_EAST_ID], rows[ALPHA_BRIDGE_ID]
+    assert west[0] == "Alpha Trail" and east[0] == "alpha trail"
+    assert west[2] == east[2] == deck[2], "one run, the bridge's deck in it"
+    assert west[2] == pytest.approx(1730, rel=0.02)
+    assert (west[3], east[3], deck[3]) == (0, 0, 1), "the wooden bridge is judged paved"
+
+    assert rows[NAMED_STREET_ID][0] is None, "a street's name is never written"
+
+
+def test_a_rebuild_that_loses_the_long_trails_is_refused(
+    tmp_path, segment_schemas, states, settings
+) -> None:
+    """A sentinel way that comes out off its route, or short of its run, stops
+    the build before the swap (operations review SF-1 of ZOOMED-TRAILS)."""
+    settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = (ALPHA_WEST_ID,)
+    source = install_source_extract(tmp_path, build=build_long_trails_extract)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, tmp_path)
+    assert caught.value.stage is Stage.VALIDATE
+    assert f"sentinel way {ALPHA_WEST_ID}" in str(caught.value.cause)
