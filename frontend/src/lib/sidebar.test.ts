@@ -449,6 +449,19 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);
 });
 
+test("the Points notice is a live region that is always there, empty when there is no notice (395, a11y S2)", () => {
+  // Created already holding its text, a live region is often not spoken (VoiceOver with Safari, NVDA with
+  // Firefox), so it is rendered empty first and filled later (the mutation re-review's N1).
+  assert.match(app, /<p className=\{notice \? "notice" : "notice notice-empty"\} role="status">\s*\{notice \?\? ""\}\s*<\/p>/);
+  assert.doesNotMatch(app, /\{notice && \(?\s*<p className="notice"/);
+  // The empty one stays in the accessibility tree: no rule takes it out (N3).
+  const rules = [...css.matchAll(/([^{}]*\.notice-empty[^{}]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length >= 1, "the .notice-empty rule");
+  for (const [, selector, declarations] of rules) {
+    assert.doesNotMatch(declarations, /display:\s*none|visibility:\s*hidden|content-visibility:\s*hidden/, selector.trim());
+  }
+});
+
 test("GPX and Copy link are pinned under the scrolling part, outside it", () => {
   assert.equal(COPY_LINK, "Copy link");
   const scrollEnd = app.indexOf("</div>\n\n          {/* Pinned under");
