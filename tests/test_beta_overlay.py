@@ -684,7 +684,7 @@ def test_every_http_level_name_is_prefixed_so_it_cannot_collide_with_the_hosts_o
     None
 ):
     full = stage("full")
-    names = re.findall(r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+))", full, re.M)
+    names = re.findall(r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+)|log_format\s+(\S+))", full, re.M)
     flat = [n for pair in names for n in pair if n]
     assert flat and all(n.lstrip("$").startswith("rmbeta_") for n in flat), flat
     assert (
@@ -692,6 +692,24 @@ def test_every_http_level_name_is_prefixed_so_it_cannot_collide_with_the_hosts_o
         and "ssl_session_cache" not in full
         and "ssl_dhparam" not in full
     )
+
+
+def test_the_access_log_never_records_a_query_string() -> None:
+    """A reverse look-up or a search carries a location in its query (OWNER-DECISIONS 395)."""
+    full = stage("full")
+    fmt = re.search(r"^log_format\s+rmbeta_noquery\s+(.*?);$", full, re.M | re.S)
+    assert fmt, "the rmbeta_noquery log format"
+    body = fmt.group(1)
+    assert "$uri" in body
+    leaks = ("$request ", '$request"', "$request_uri", "$args", "$query_string", "$http_referer")
+    for leak in leaks:
+        assert leak not in body, leak
+    assert not re.search(r"\$arg_", body)
+    servers = re.split(r"^server \{", full, flags=re.M)[1:]
+    assert len(servers) == 2
+    for server in servers:
+        logs = re.findall(r"^\s*access_log\s+(.*?);", server, re.M)
+        assert logs == ["/var/log/nginx/rmbeta-access.log rmbeta_noquery"], logs
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
