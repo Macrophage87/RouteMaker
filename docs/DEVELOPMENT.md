@@ -3493,11 +3493,44 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 187 checks, section 17 for the loop box
-  and the Plan button) opens the Ride settings and the "Junctions to watch" fold on every page it
+- **The browser check** (scripts/a11y/check.mjs, 203 checks, section 17 for the loop box
+  and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.
+
+### Use my location (OWNER-DECISIONS 395)
+
+Front end only. A "Use my location" button sits beside the search box (`.place-search-row`, in
+`PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
+empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
+never takes it (a look-up asks the browser's permission); an arrow key and Enter, or a click, does.
+
+- **The look-up** is `lib/geolocation.ts`, behind `GeoEnv` (`isSecureContext` and a `getCurrentPosition`
+  that tests stub; `browserEnv()` is the only reader of `window`). One `getCurrentPosition` per press, with
+  `enableHighAccuracy`, a 10 s timeout and a 30 s `maximumAge`. No `watchPosition`, no tracking. `locate`
+  never rejects: every outcome is a `LocateResult` (`denied`, `unavailable`, `timeout`, `unsupported`,
+  `insecure`), each with a plain sentence in `LOCATE_MESSAGES`.
+- **The result** goes in by the map click's path in `App.tsx` (`useMyLocation`: `addPoint`, loop-aware,
+  one undo step): the start of an empty plan, else the next point. It is announced once through the app
+  region ("Start set to your location, accurate to about 49 ft (15 m).", US units first, from
+  `formatDistance`), after "Finding your location..." (also said through that region, shown beside the
+  button as plain text). The hint says it is approximate and that the marker can be dragged. The map flies
+  there and draws an accuracy circle (`MapView.tsx`, `location-accuracy` source) while the point is in the plan.
+- **Failures** are the Points notice (a `role="status"` line, said once; through the app region only
+  while the planner is hidden, as the other notices). Outside coverage and "25 points" reuse the click's
+  texts. The notice is cleared and set again 150 ms later, so a second press with the same answer is
+  said again. On an insecure page or without geolocation the button stays in the Tab order,
+  `aria-disabled`, with the reason as its description and in plain text beside it.
+- **Privacy.** Links and GPX keep full precision (the feature is for navigating on the go). The fix and the
+  list of points that came from a look-up (`here`, `fromHere` in `App.tsx`) are React state only: never
+  in `localStorage`, the link hash, GPX metadata or a log (a test reads the sources for that). Copy link
+  shows one line, "This link includes your location as the start." (`linkLocationNote`; "as a point on
+  the route" when only a later point is a fix), decided by point object identity, so dragging the marker
+  (a new point) clears it, and an undo that brings the same point back restores it.
+- **Tests:** `lib/geolocation.test.ts`; the browser check uses CDP's `Emulation.setGeolocationOverride`
+  and `Browser.setPermission` (granted, denied, no position) and a script that makes `isSecureContext`
+  false. A timeout is covered by the unit test only (CDP cannot make one).
 
 ### Groups at stops and in full detail (items 247, 248)
 

@@ -1476,3 +1476,9 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - The bar's hints are a sibling `hidden` span of each button, kept as its `aria-describedby`, so the name is exactly the label and the hint is heard once. The Plan hint reads "Shows the planner: ..." (consistent with "Back to planner").
   - The sheets' Back button shows "Back to planner" (`BACK_LABEL`) beside the arrow, in visible words; its `aria-label` is gone, so the name and the label are one.
   - At a phone's width the five buttons share the bar with the icon over the words, which wrap ("Map layers" on two lines); each is 48 px high and 64 px wide at 320 px. The Back button is 44 px high. Checked at 320 and 375 px in scripts/a11y/check.mjs.
+- 395, Owner 2026-10-05, "Use my location" as a starting point (FOLLOWUP-CURRENT-LOCATION, front end only): a button beside the search and a "Your location" choice; one look-up per press; set as the start or the next point, announced, approximate and draggable; plain messages for each failure; links keep full precision with a one-line note; HTTPS only; screen readers first; US units.
+
+  Implemented as (wip/current-location, on wip/loop-plan; docs/DEVELOPMENT.md "Use my location"):
+  - `lib/geolocation.ts` (injectable `GeoEnv`, one `getCurrentPosition` with high accuracy, 10 s, 30 s; no `watchPosition`), `PlaceSearch.tsx` (the button, the list entry), `App.tsx` (`useMyLocation`, the notices, the link note), `MapView.tsx` (the accuracy circle).
+  - Insecure context or no geolocation: the button is `aria-disabled` with its reason as description and visible text, not removed.
+  - The "start came from location" flag is memory only and is the point object itself, so moving the marker clears it. Copy link says "This link includes your location as the start."
