@@ -25,7 +25,7 @@ import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
+import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   addedSaid,
   editingTips,
@@ -78,6 +78,7 @@ import {
   ROUTE_FOLDS,
   SHEET_TITLES,
   copyText,
+  PLANNER_TITLE,
   focusOnViewChange,
   foldTitle,
   linkSaidFor,
@@ -218,6 +219,7 @@ export function App() {
   const layersHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
+  const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
   // What "Copy link" answered: said politely, and again for a second press.
   const [linkSaid, setLinkSaid] = useState("");
@@ -361,6 +363,11 @@ export function App() {
     if (target.kind === "bar") barButtons.current[target.id]?.focus();
     else if (target.kind === "error") errorRef.current?.focus();
     else if (target.kind === "plan") planButtonRef.current?.focus();
+    else if (target.kind === "planner") {
+      // The Plan button (OWNER-DECISIONS 392): the planner's heading, at the top of the panel.
+      plannerHeadingRef.current?.focus();
+      panelBodyRef.current?.scrollTo?.({ top: 0 });
+    }
     else {
       const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef }[target.view];
       heading.current?.focus();
@@ -662,6 +669,13 @@ export function App() {
   // The bottom bar: a sheet opens in the panel body (Legend opens Map layers at its legend), and
   // Back, or Escape, closes it and gives the focus back to the button that opened it.
   const openSheet = (item: BarItem) => {
+    if (item.opens === "planner") {
+      // Plan: back to the planner from a sheet, and the focus to the planner's heading (OWNER-DECISIONS 392).
+      viewCause.current = "plan";
+      setLegendTarget(false);
+      setView("planner");
+      return;
+    }
     openedBy.current = item.id;
     viewCause.current = "bar";
     setLegendTarget(item.toLegend === true);
@@ -789,6 +803,7 @@ export function App() {
       headingId="federal-points-planner-heading"
     />
   );
+  const loop = loopView(preset, dials.loop, points);
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
@@ -809,6 +824,30 @@ export function App() {
           onPick={pickPlace}
         />
       </div>
+      {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
+          with no point placed too, and not on Mass Ride. Outside the hidden parts, so it stays when the points compact. */}
+      {loop && (
+        <div className="dial loop-toggle">
+          <label className="toggle">
+            {/* aria-disabled, not disabled, when the ride is a loop already: it stays in the Tab order
+                with its reason as its description (the a11y review's N6), and a press changes nothing. */}
+            <input
+              type="checkbox"
+              checked={loop.checked}
+              aria-disabled={loop.implied || undefined}
+              aria-describedby="loop-hint"
+              onChange={(event) => {
+                if (loop.implied) return;
+                commitDials(withLoop(dials, event.target.checked));
+              }}
+            />
+            {loop.label}
+          </label>
+          <p className="hint" id="loop-hint">
+            {loop.hint}
+          </p>
+        </div>
+      )}
       {points.length === 0 ? (
         <p className="hint">{searchLede(loopVias)}</p>
       ) : (
@@ -985,7 +1024,6 @@ export function App() {
               setWeight(null);
             },
           }}
-          points={points}
           resolvedWhen={route?.dials?.when ?? null}
         />
       </RideSettings>
@@ -1071,7 +1109,9 @@ export function App() {
       >
         <header className="panel-header">
           <div>
-            <h1>RouteMaker</h1>
+            <h1 ref={plannerHeadingRef} tabIndex={-1}>
+              {PLANNER_TITLE}
+            </h1>
             <p className="tagline">Bike routes for the DC region and Baltimore. No sign-in needed.</p>
           </div>
           <button

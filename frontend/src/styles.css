@@ -668,6 +668,15 @@ details.how summary {
   min-height: 24px;
 }
 
+/* "Make it a loop" by the search (OWNER-DECISIONS 388): a 44 px row, its hint under it. */
+.loop-toggle {
+  margin: 8px 0;
+}
+
+.loop-toggle .toggle {
+  min-height: 44px;
+}
+
 /* The loop toggle when the ride is a loop already: in the Tab order, but not changeable. */
 .toggle input[aria-disabled="true"] {
   opacity: 0.6;
@@ -1828,7 +1837,8 @@ details.zoom-notes {
 /* The bottom bar */
 .bottom-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Plan, Map layers, Legend, GPX, Settings (OWNER-DECISIONS 392). */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-top: 1px solid var(--border);
 }
 
@@ -1879,7 +1889,9 @@ details.zoom-notes {
 
 .sheet-back {
   min-width: 44px;
-  padding: 0;
+  min-height: 44px;
+  padding: 0 12px 0 6px;
+  gap: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1894,10 +1906,16 @@ details.zoom-notes {
     padding: 6px 14px;
   }
 
+  /* Five buttons share a 320 px bar (OWNER-DECISIONS 392): the icon over the words, which wrap ("Map
+     layers" on two lines) rather than overflow; every one is 48 px high and 64 px wide at least. */
   .panel .bar-button {
     min-height: 48px;
-    flex-direction: row;
-    gap: 6px;
+    gap: 2px;
+    padding: 4px 1px;
+    font-size: 0.75rem;
+    line-height: 1.15;
+    text-align: center;
+    overflow-wrap: anywhere;
   }
 
   .bar-button svg {

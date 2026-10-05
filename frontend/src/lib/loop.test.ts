@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RouteResponse } from "./api.ts";
 import { dialFields, fitDials, startDials } from "./dials.ts";
-import { LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopView } from "./loop.ts";
+import { LOOP_FIRST_HINT, LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopView } from "./loop.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { announceRoute } from "./summary.ts";
 import { panelView } from "./dialsPanel.ts";
@@ -35,7 +35,16 @@ test("the toggle is off on a point-to-point ride, on and fixed on a round trip, 
   assert.equal(loopView("mass-ride", true, [A, B]), null);
   // With the start alone it can be chosen (OWNER-DECISIONS 374).
   assert.deepEqual([loopView("default", undefined, [A])!.checked, loopView("default", true, [A])!.checked], [false, true]);
-  assert.equal(loopView("default", true, []), null);
+  // It shows with no point placed too (OWNER-DECISIONS 389), and says what to place when ticked.
+  const empty = loopView("default", true, [])!;
+  assert.deepEqual([empty.checked, empty.implied], [true, false]);
+  assert.equal(empty.hint, "Place the starting point, then a stop or two along the way.");
+  assert.equal(empty.hint, LOOP_FIRST_HINT);
+  const emptyOff = loopView("default", undefined, [])!;
+  assert.deepEqual([emptyOff.checked, emptyOff.implied], [false, false]);
+  assert.match(emptyOff.hint, /^Turn on to finish back at the start/);
+  assert.equal(loopView("mass-ride", true, []), null, "never on Mass Ride");
+  assert.equal(loopView("mass-ride", undefined, []), null);
 });
 
 test("the request and the link carry it when on, and only then", () => {

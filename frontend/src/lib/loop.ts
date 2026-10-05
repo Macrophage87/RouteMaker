@@ -5,6 +5,7 @@
  * point is a stop (OWNER-DECISIONS 374): no second point is stacked on the start.
  */
 import type { RouteResponse } from "./api.ts";
+import type { Dials } from "./dials.ts";
 import type { PresetId } from "./presets.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -64,24 +65,42 @@ export function loopStops(preset: PresetId, loop: boolean | undefined): boolean 
 }
 
 /**
- * The toggle, or null where it does not apply (Mass Ride; no points yet). With a
- * start alone it can be chosen, and the next click is then a stop (OWNER-DECISIONS 374).
+ * What to do first when the loop is ticked before any point is placed (OWNER-DECISIONS 389). It is the
+ * toggle's visible hint then, and what is said once when the box is ticked (pointText.ts).
+ */
+export const LOOP_FIRST_HINT = "Place the starting point, then a stop or two along the way.";
+
+/** The toggle's hint: what it does now, in the state the points are in. */
+function loopHint(loop: boolean | undefined, implied: boolean, count: number): string {
+  if (implied) {
+    return "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.";
+  }
+  if (loop === true) {
+    return count === 0
+      ? LOOP_FIRST_HINT
+      : "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.";
+  }
+  if (count < 2) return "Turn on to finish back at the start. Each point you add is then a stop.";
+  return "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.";
+}
+
+/**
+ * The toggle, or null where it does not apply (Mass Ride). It shows with no points placed too
+ * (OWNER-DECISIONS 389); with a start alone it can be chosen, and the next click is then a stop
+ * (OWNER-DECISIONS 374).
  */
 export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[]): LoopView | null {
-  if (preset === "mass-ride" || points.length < 1) return null;
+  if (preset === "mass-ride") return null;
   const implied = isRoundTrip(points);
-  return {
-    label: LOOP_LABEL,
-    checked: implied || loop === true,
-    implied,
-    hint: implied
-      ? "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way."
-      : loop === true
-        ? "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way."
-        : points.length === 1
-          ? "Turn on to finish back at the start. Each point you add is then a stop."
-          : "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.",
-  };
+  return { label: LOOP_LABEL, checked: implied || loop === true, implied, hint: loopHint(loop, implied, points.length) };
+}
+
+/** The dials with the loop on, or off (taken off the object). */
+export function withLoop(dials: Dials, on: boolean): Dials {
+  const next: Dials = { ...dials };
+  if (on) next.loop = true;
+  else delete next.loop;
+  return next;
 }
 
 /** What the route summary says of a loop's way back, or null where the route is not a loop. */

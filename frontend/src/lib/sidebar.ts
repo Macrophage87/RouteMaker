@@ -13,6 +13,9 @@ import type { PresetId } from "./presets.ts";
 /** The views the panel body shows: the planner, or one of the bottom bar's sheets. */
 export type PanelView = "planner" | "layers" | "gpx" | "settings";
 
+/** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
+export const PLANNER_TITLE = "RouteMaker";
+
 /** The sheets, and where each one's heading is (the focus goes to it on open). */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   layers: "Map layers",
@@ -22,11 +25,11 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
-  id: "layers" | "legend" | "gpx" | "settings";
+  id: "plan" | "layers" | "legend" | "gpx" | "settings";
   /** Its text, always shown beside the icon. */
   label: string;
-  /** The sheet it opens. */
-  opens: Exclude<PanelView, "planner">;
+  /** The view it opens: a sheet, or the planner (Plan). */
+  opens: PanelView;
   /** Whether the sheet opens scrolled to the legend. */
   toLegend?: boolean;
   /** What a screen reader hears besides the label. */
@@ -34,11 +37,12 @@ export interface BarItem {
 }
 
 /**
- * Map layers, Legend, GPX and Settings (OWNER-DECISIONS 384; it was "About" until
- * then). The Settings sheet holds the sign-in note and a Display group with the
+ * Plan, Map layers, Legend, GPX and Settings (OWNER-DECISIONS 392, 393: Plan is first, the way back to
+ * the planner from any sheet; 384: Settings was "About" until then). The Settings sheet holds the sign-in note and a Display group with the
  * High contrast switch; nothing else is there, so no fake settings.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
+  { id: "plan", label: "Plan", opens: "planner", description: "Back to the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
   { id: "legend", label: "Legend", opens: "layers", toLegend: true, description: "Opens the map legend, in the map layers." },
   { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
@@ -53,6 +57,9 @@ export const BAR_ITEMS: readonly BarItem[] = [
 export function barCurrent(item: Pick<BarItem, "id" | "opens">, view: PanelView, legend: boolean): boolean {
   return view === item.opens && (item.id !== "layers" || !legend) && (item.id !== "legend" || legend);
 }
+
+/** The sheets' Back button, in words, not only an arrow (OWNER-DECISIONS 393). */
+export const BACK_LABEL = "Back to planner";
 
 /** The bottom bar's landmark name: the pages of the panel it switches between. */
 export const BAR_NAME = "Panel pages";
@@ -180,7 +187,7 @@ export const ROUTE_FOLDS = {
 // ---- Where the focus goes ---------------------------------------------------------
 
 /** Why the panel changed view: a bar button, Back (or Escape), or a question or error that needs the planner. */
-export type ViewCause = "bar" | "back" | "error" | "confirm";
+export type ViewCause = "bar" | "back" | "error" | "confirm" | "plan";
 
 /** What takes the focus after the panel changes view. */
 export type FocusTarget =
@@ -188,12 +195,14 @@ export type FocusTarget =
   | { kind: "bar"; id: BarItem["id"] }
   | { kind: "error" }
   | { kind: "plan" }
+  | { kind: "planner" }
   | null;
 
 /**
  * Where the focus goes when the panel body changes view (App.tsx). A sheet takes
  * it to its heading (the legend's, when Legend opened it). Back takes it to the
- * bar button that opened the sheet. An error that brought the planner back takes
+ * bar button that opened the sheet; the Plan button takes it to the planner's heading
+ * (OWNER-DECISIONS 392). An error that brought the planner back takes
  * it to the error, and the long-ride question to its "Plan it" button. No change
  * of view moves nothing.
  */
@@ -209,6 +218,7 @@ export function focusOnViewChange(change: {
   if (view !== "planner") return { kind: "heading", view, legend: view === "layers" && legendTarget };
   if (cause === "error") return { kind: "error" };
   if (cause === "confirm") return { kind: "plan" };
+  if (cause === "plan") return { kind: "planner" };
   return { kind: "bar", id: openedBy };
 }
 

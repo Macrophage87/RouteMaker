@@ -11,7 +11,7 @@
  * the Back button (or Escape) takes it back to the bar button that opened it.
  */
 import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import { BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
+import { BACK_LABEL, BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
 
 // The parts a test renders are written with createElement in lib/sidebarParts.ts (node's test runner
@@ -49,6 +49,7 @@ export function QuickFigures({ figures }: { figures: readonly QuickFigure[] }) {
 }
 
 const ICONS: Record<BarItem["id"], ReactNode> = {
+  plan: <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" />,
   layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5" />,
   legend: (
     <>
@@ -133,10 +134,11 @@ export function SheetFrame({
   return (
     <section id={id} className="sheet" aria-labelledby={`${id}-title`} hidden={!open} onKeyDown={onKeyDown}>
       <header className="sheet-header">
-        <button type="button" className="sheet-back" aria-label="Back to the planner" onClick={onBack}>
+        <button type="button" className="sheet-back" onClick={onBack}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M15 18l-6-6 6-6" />
           </svg>
+          {BACK_LABEL}
         </button>
         <h2 id={`${id}-title`} ref={headingRef} tabIndex={-1}>
           {title}

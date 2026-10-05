@@ -12,6 +12,7 @@ import { startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
 import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
 import {
+  BACK_LABEL,
   BAR_ITEMS,
   BAR_NAME,
   barCurrent,
@@ -22,6 +23,7 @@ import {
   MORE_TIPS,
   FEWER_TIPS,
   PLANNER_EXTRAS,
+  PLANNER_TITLE,
   RIDE_ACTION_SPOKEN,
   ROUTE_FOLDS,
   SHEET_TITLES,
@@ -146,10 +148,26 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     "<legend>When</legend>",
     "{view.target && (",
     "<WeightSetting",
-    "{loop && (",
     "Avoid gravel",
   ].map(at);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, weight, loop, gravel");
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, weight, gravel");
+  // "Make it a loop" is no longer behind the Edit button (OWNER-DECISIONS 388): it is by the search, in the Points section.
+  assert.doesNotMatch(dials, /loopView|withLoop|type="checkbox"\s+checked=\{loop/, "the dials panel has no loop toggle");
+  const points = app.slice(app.indexOf("const pointsSection ="), app.indexOf("const routeSection ="));
+  const inPoints = (text: string) => {
+    const i = points.indexOf(text);
+    assert.ok(i > 0, text);
+    return i;
+  };
+  assert.deepEqual(
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", "Add point at map center"].map(inPoints),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", "Add point at map center"].map(inPoints).sort((a, b) => a - b),
+    "the search, then the loop box, then the points and Add point at map center",
+  );
+  assert.ok(inPoints("{loop && (") > points.indexOf("</div>", inPoints('id="points-search"')), "outside the part that hides while the points compact");
+  assert.match(points, /aria-describedby="loop-hint"/);
+  assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
+  assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
   // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
   assert.match(dials, /import \{ WeightSetting \} from "\.\/lib\/weightDialog\.ts";/);
 });
@@ -489,12 +507,13 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Map layers, Legend, GPX and Settings: real buttons, each with words", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Map layers", "Legend", "GPX", "Settings"]);
-  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["layers", "layers", "gpx", "settings"]);
+test("the bottom bar is Plan, Map layers, Legend, GPX and Settings: real buttons, each with words", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Map layers", "Legend", "GPX", "Settings"]);
+  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "layers", "gpx", "settings"]);
+  assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.equal(BAR_ITEMS.filter((i) => i.toLegend).length, 1, "only Legend opens at the legend");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[3].description, "Opens the settings: display options and signing in.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display options and signing in.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<button\s+key=\{item\.id\}\s+type="button"/);
@@ -505,8 +524,10 @@ test("the bottom bar is Map layers, Legend, GPX and Settings: real buttons, each
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
   assert.deepEqual(Object.values(SHEET_TITLES), ["Map layers", "GPX file", "Settings"]);
-  assert.match(sidebar, /aria-label="Back to the planner"/);
-  assert.match(sidebar, /<button type="button" className="sheet-back" aria-label="Back to the planner" onClick=\{onBack\}>/, "Back goes back (NIT A)");
+  // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
+  assert.equal(BACK_LABEL, "Back to planner");
+  assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
+  assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{BACK_LABEL\}\s*<\/button>/, "Back goes back (NIT A)");
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
@@ -519,7 +540,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
   const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
-  const causes: ViewCause[] = ["bar", "back", "error", "confirm"];
+  const causes: ViewCause[] = ["bar", "back", "error", "confirm", "plan"];
   const ids: BarItem["id"][] = ["layers", "legend", "gpx", "settings"];
   for (const was of views)
     for (const view of views)
@@ -532,6 +553,7 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
             else if (view !== "planner") assert.deepEqual(got, { kind: "heading", view, legend: view === "layers" && legendTarget }, at);
             else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
             else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
+            else if (cause === "plan") assert.deepEqual(got, { kind: "planner" }, at);
             else assert.deepEqual(got, { kind: "bar", id: openedBy }, at);
           }
   // The cases a rider meets, spelled out.
@@ -544,7 +566,13 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.deepEqual(go("layers", "planner", true, "legend", "back"), { kind: "bar", id: "legend" });
   assert.deepEqual(go("gpx", "planner", false, "gpx", "error"), { kind: "error" });
   assert.deepEqual(go("layers", "planner", false, "layers", "confirm"), { kind: "plan" });
-  // App records why: a bar button, Back, or the status that brought the planner back.
+  // The Plan button (OWNER-DECISIONS 392): the planner's heading, from any sheet; nothing when it is already showing.
+  for (const sheet of ["layers", "gpx", "settings"] as const) assert.deepEqual(go(sheet, "planner", false, sheet, "plan"), { kind: "planner" });
+  assert.equal(go("planner", "planner", false, "layers", "plan"), null);
+  assert.match(app, /if \(item\.opens === "planner"\) \{[^}]*viewCause\.current = "plan";[^}]*setView\("planner"\);\s*return;/);
+  assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
+  assert.match(app, /<h1 ref=\{plannerHeadingRef\} tabIndex=\{-1\}>\s*\{PLANNER_TITLE\}\s*<\/h1>/);
+  assert.equal(PLANNER_TITLE, "RouteMaker");  // App records why: a bar button, Back, or the status that brought the planner back.
   assert.match(app, /openedBy\.current = item\.id;\s*viewCause\.current = "bar";/);
   assert.match(app, /viewCause\.current = "back";\s*setView\("planner"\);/);
   assert.match(app, /viewCause\.current = status\.kind === "confirm" \? "confirm" : "error";\s*setView\("planner"\);/);
@@ -682,6 +710,11 @@ test("Atkinson Hyperlegible: fonts/fonts.css, relative url()s for Vite's /assets
 test("the sidebar's own buttons and summaries are 44 px high at least", () => {
   assert.match(css, /\.panel button,\s*\.panel summary \{\s*min-height: 44px;/);
   assert.match(css, /\.panel \.bar-button \{[^}]*min-height: 56px/);
+  // Five buttons (OWNER-DECISIONS 392): five columns; at a phone's width the words wrap, 48 px high, and the Back button is 44 px.
+  assert.match(css, /\.bottom-bar \{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 720px\) \{[\s\S]*?\.panel \.bar-button \{[^}]*min-height: 48px;[^}]*overflow-wrap: anywhere/);
+  assert.doesNotMatch(css, /@media \(max-width: 720px\) \{[\s\S]*?\.panel \.bar-button \{[^}]*flex-direction: row/, "icon over words, not beside them, at five across");
+  assert.match(css, /\.sheet-back \{[^}]*min-width: 44px;[^}]*min-height: 44px/);
   assert.match(css, /\.ride-line-button \{[^}]*min-height: 56px/);
   assert.match(css, /\.sheet-back \{[^}]*min-width: 44px/);
 });
@@ -770,6 +803,13 @@ test("the bar's current button: the sheet showing, and of Map layers and Legend 
         const want = view === item.opens && (item.id === "legend" ? legend : item.id === "layers" ? !legend : true);
         assert.equal(barCurrent(item, view, legend), want, `${view} legend=${legend} ${item.id}`);
       }
+  // Plan (OWNER-DECISIONS 392) is the current one while the planner shows, and only then.
+  const plan = BAR_ITEMS[0];
+  for (const legend of [false, true]) {
+    assert.equal(barCurrent(plan, "planner", legend), true);
+    for (const view of ["layers", "gpx", "settings"] as const) assert.equal(barCurrent(plan, view, legend), false);
+    for (const item of BAR_ITEMS.slice(1)) assert.equal(barCurrent(item, "planner", legend), false, `${item.id} is not current on the planner`);
+  }
   assert.match(sidebar, /const current = barCurrent\(item, view, legend\);/);
   assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
 });

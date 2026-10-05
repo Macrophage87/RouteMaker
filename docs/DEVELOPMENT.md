@@ -3409,13 +3409,15 @@ the two parts for open questions, written with createElement so a test renders t
 Tests: `lib/sidebar.test.ts`.
 
 - **Views, not modals.** The panel body shows the planner or one of the bar's sheets
-  (Map layers, which Legend opens at its legend; GPX; Settings). Each is in the page all
+  (Map layers, which Legend opens at its legend; GPX; Settings); the bar's first button,
+  Plan, is the way back (below). Each is in the page all
   the time, `hidden` when not shown, so the search, the opened GPX file, the slider
   drafts and the switches keep their state, and a GPX import keeps fitting while
   another view shows.
 - **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
   to its heading (the legend's, for Legend); Back or Escape returns it to the bar
-  button that opened the sheet; an error that brings the planner back takes it to the
+  button that opened the sheet; the Plan button takes it to the planner's heading, the
+  `h1` (cause `plan`, `{ kind: "planner" }`); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
   dialog or on the place search's list (`sheetEscape`). When a route arrives and the
   points compact, a focus in the search, Add point at map center or the tools goes to
@@ -3458,7 +3460,17 @@ Tests: `lib/sidebar.test.ts`.
   `licenses.txt` (which the map's "Software licences" link opens), not a data credit. The sidebar test fails if the import and the
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
-- **Settings, High contrast (OWNER-DECISIONS 384).** The fourth bar button is Settings
+- **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
+  Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
+  `aria-current` while the planner shows and no other button then). It returns from any
+  sheet; on the planner it moves nothing. The sheets' Back button reads "Back to planner"
+  in visible words (`BACK_LABEL`, no `aria-label`, so its name is its label); it and Escape
+  still return the focus to the bar button that opened the sheet. There is no title link.
+  The bar is five columns; at 720 px and below each button is the icon over its words,
+  which wrap ("Map layers" on two lines), 48 px high, so five fit 320 px (64 px each) with
+  44 px targets; the Back button is 44 px high. The phone panel's own "Plan"/"Hide" toggle
+  in the header is a different control, left alone.
+- **Settings, High contrast (OWNER-DECISIONS 384).** The fifth bar button is Settings
   (`BAR_ITEMS`, id `settings`; it was About): its sheet holds a "Display" group with the
   High contrast switch, then a "Signing in" section with the sign-in note. No other settings are listed. The switch
   is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
@@ -3475,8 +3487,8 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 156 checks, all passing on the
-  sidebar) opens the Ride settings and the "Junctions to watch" fold on every page it
+- **The browser check** (scripts/a11y/check.mjs, 176 checks, section 17 for the loop box
+  and the Plan button) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.
@@ -3806,6 +3818,17 @@ calm plan** (`routing.plan`: `long_calm` is false for a loop), so a long Trailma
 calm search at all. The span is `straight_span_m` over the loop's points, the way back included, so
 a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
 counts both halves.
+
+**Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
+section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),
+not behind the Ride line's Edit; it is outside the part that hides while the points are
+compact, so a route being shown does not take it away. It shows with no point placed, and
+never on Mass Ride (`loopView` returns null there). Ticked before any point, its visible hint,
+also its description, is `LOOP_FIRST_HINT` ("Place the starting point, then a stop or two
+along the way."), and "Loop on." plus those words are said once (`LOOP_FIRST_SAID`, from
+`loopChangeSaid`, the one function the toggle, a ride-type change and undo or redo call; with
+no points only the loop coming on is said). `emptyPlanHint` and `loneStartHint` say "tick
+Make it a loop under the search". `DialsPanel` no longer has the toggle or a `points` prop.
 
 **Stops in a loop (OWNER-DECISIONS 374).** With "Make it a loop" on, the page treats the ride as a
 cycle that starts and finishes at the first point, so no second point has to be stacked on the
