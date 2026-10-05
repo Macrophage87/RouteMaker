@@ -579,8 +579,11 @@ export function App() {
       return;
     }
     setNotice(null);
-    // A dragged location point keeps the Copy link note: the moved point is still the rider's spot.
-    setFromHere((prior) => movedFromHere(prior, pointsRef.current[index], point));
+    // A dragged location point keeps the Copy link note: the moved point is still the rider's spot. The old
+    // point is read now, not inside the updater: React may run the updater after commit() has replaced
+    // pointsRef.current (when an update, such as the setNotice above, is already pending; correctness R1).
+    const before = pointsRef.current[index];
+    setFromHere((prior) => movedFromHere(prior, before, point));
     commit(movePoint(pointsRef.current, index, point));
   }, [commit]);
 

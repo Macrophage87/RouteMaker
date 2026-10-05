@@ -28,6 +28,13 @@ export const RETRY_OPTIONS = { enableHighAccuracy: false, timeout: 10_000, maxim
 export const LOCATE_WATCHDOG_MS = LOCATE_OPTIONS.timeout + 20_000;
 /** The retry runs only after permission was given, so its limit is close to its timeout. */
 export const RETRY_WATCHDOG_MS = RETRY_OPTIONS.timeout + 5_000;
+/**
+ * While the browser's permission prompt is open (the Permissions API says "prompt"), the first
+ * look-up's limit instead: reading the prompt is the rider's time, not the GPS's (the correctness
+ * re-review's W1). Once the prompt is answered, LOCATE_WATCHDOG_MS starts again from then. A
+ * browser without the Permissions API keeps LOCATE_WATCHDOG_MS from the press.
+ */
+export const PROMPT_WATCHDOG_MS = 60_000;
 
 /** The part of the browser's Geolocation the page uses. */
 export interface GeoApi {
@@ -38,10 +45,19 @@ export interface GeoApi {
   ): void;
 }
 
+/** The part of a PermissionStatus the watchdog reads: whether the prompt is open, and when that changes. */
+export interface PermissionLike {
+  readonly state: string;
+  addEventListener(type: "change", listener: () => void): void;
+  removeEventListener(type: "change", listener: () => void): void;
+}
+
 export interface GeoEnv {
   /** window.isSecureContext: HTTPS, localhost, and the beta are all secure. */
   isSecureContext: boolean;
   geolocation: GeoApi | undefined;
+  /** navigator.permissions.query for geolocation, when the browser has it; undefined on any failure. */
+  permission?: () => Promise<PermissionLike | undefined>;
 }
 
 export type LocateFailure = "denied" | "unavailable" | "timeout" | "unsupported" | "insecure";
@@ -58,7 +74,14 @@ export type LocateResult = { ok: true; fix: Fix } | { ok: false; reason: LocateF
 export function browserEnv(): GeoEnv {
   const secure = typeof window !== "undefined" && window.isSecureContext === true;
   const geolocation = typeof navigator !== "undefined" && "geolocation" in navigator ? navigator.geolocation : undefined;
-  return { isSecureContext: secure, geolocation };
+  const permissions = typeof navigator !== "undefined" ? navigator.permissions : undefined;
+  if (typeof permissions?.query !== "function") return { isSecureContext: secure, geolocation };
+  const permission = (): Promise<PermissionLike | undefined> =>
+    permissions.query({ name: "geolocation" }).then(
+      (status) => status,
+      () => undefined,
+    );
+  return { isSecureContext: secure, geolocation, permission };
 }
 
 export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
@@ -97,21 +120,47 @@ export function cleanAccuracy(accuracy: number): number {
   return Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : 0;
 }
 
-/** One call of getCurrentPosition, settled once: by the browser, or by the watchdog if the browser never answers. */
+/**
+ * One call of getCurrentPosition, settled once: by the browser, or by the watchdog if the browser never answers.
+ * With `prompt` (the first call only), a permission prompt still open gets `prompt.ms` instead, and when it is
+ * answered the watchdog starts again from then. The call itself is never delayed by the permission query.
+ */
 function attempt(
   api: GeoApi,
   options: typeof LOCATE_OPTIONS | typeof RETRY_OPTIONS,
   watchdogMs: number,
+  prompt?: { status: Promise<PermissionLike | undefined>; ms: number },
 ): Promise<{ result: LocateResult; watchdog: boolean }> {
   return new Promise((resolve) => {
     let settled = false;
+    let status: PermissionLike | undefined;
+    const fire = () => settle({ ok: false, reason: "timeout" }, true);
+    let timer = setTimeout(fire, watchdogMs);
+    const restart = (ms: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(fire, ms);
+    };
+    const answered = () => {
+      if (settled || !status || status.state === "prompt") return;
+      status.removeEventListener("change", answered);
+      restart(watchdogMs);
+    };
     const settle = (result: LocateResult, watchdog = false) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      status?.removeEventListener("change", answered);
       resolve({ result, watchdog });
     };
-    const timer = setTimeout(() => settle({ ok: false, reason: "timeout" }, true), watchdogMs);
+    prompt?.status.then(
+      (found) => {
+        if (settled || !found || found.state !== "prompt") return;
+        status = found;
+        restart(prompt.ms);
+        found.addEventListener("change", answered);
+      },
+      () => undefined,
+    );
     try {
       api.getCurrentPosition(
         ({ coords }) => {
@@ -130,20 +179,33 @@ function attempt(
   });
 }
 
+/** The permission state, if the browser can say; a query that throws or rejects is no answer. */
+function permissionOf(env: GeoEnv): Promise<PermissionLike | undefined> | undefined {
+  if (!env.permission) return undefined;
+  try {
+    return env.permission().catch(() => undefined);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * One look-up. Never rejects: every outcome is a result. A browser timeout is
  * tried once more without high accuracy; a look-up the browser never answers
  * (a dismissed prompt) ends as a timeout when the watchdog fires, with no retry,
- * and any later answer is ignored.
+ * and any later answer is ignored. While the permission prompt is open the first
+ * watchdog allows `promptMs`, then restarts when the prompt is answered.
  */
 export async function locate(
   env: GeoEnv,
   watchdog: { first: number; retry: number } = { first: LOCATE_WATCHDOG_MS, retry: RETRY_WATCHDOG_MS },
+  promptMs: number = PROMPT_WATCHDOG_MS,
 ): Promise<LocateResult> {
   if (!env.isSecureContext) return { ok: false, reason: "insecure" };
   const api = env.geolocation;
   if (!api) return { ok: false, reason: "unsupported" };
-  const first = await attempt(api, LOCATE_OPTIONS, watchdog.first);
+  const status = permissionOf(env);
+  const first = await attempt(api, LOCATE_OPTIONS, watchdog.first, status && { status, ms: promptMs });
   if (first.result.ok || first.result.reason !== "timeout" || first.watchdog) return first.result;
   return (await attempt(api, RETRY_OPTIONS, watchdog.retry)).result;
 }

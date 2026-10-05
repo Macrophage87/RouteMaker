@@ -30,8 +30,16 @@ export function rememberPlan(storage: StorageLike | null, hash: string): void {
  * a plan is kept like any other, in this tab's sessionStorage only for the
  * round trip, and read once (and removed) on the next load; nothing is sent to
  * the server. This is the one documented place a location-derived point is
- * stored. Owner decision pending: set this to true to skip it instead (the
- * rider then comes back from sign-in to an empty plan).
+ * stored: the owner's accepted exception to "never stored" (OWNER-DECISIONS
+ * 398, "yes, keep location"), so it stays false.
+ *
+ * Flipping it to true (the rider then comes back from sign-in to an empty plan)
+ * also needs: the Settings sheet's sign-in sentence in App.tsx ("your current
+ * plan is kept across the sign-in.") made true for a plan with a location, and
+ * the two tests that pin false (signIn.test.ts and geolocation.test.ts's
+ * never-stored test) changed with it. After a reload the in-memory flag is
+ * gone, so a later sign-in keeps that plan even then; its hash is already in
+ * the address bar by that point.
  */
 export const SKIP_SIGN_IN_PLAN_WITH_LOCATION = false;
 

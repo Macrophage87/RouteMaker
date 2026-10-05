@@ -1,5 +1,5 @@
 // "Use my location" (OWNER-DECISIONS 395): the injectable geolocation, its messages, and the privacy rules.
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
@@ -11,6 +11,8 @@ import {
   LOCATE_MESSAGES,
   LOCATE_OPTIONS,
   LOCATE_WATCHDOG_MS,
+  PROMPT_WATCHDOG_MS,
+  RETRY_WATCHDOG_MS,
   LOCATION_OUTSIDE,
   RETRY_OPTIONS,
   ROUGH_SAID,
@@ -36,6 +38,7 @@ import {
   type GeoEnv,
   type LocateFailure,
   type LocateResult,
+  type PermissionLike,
 } from "./geolocation.ts";
 
 const ok = (latitude: number, longitude: number, accuracy: number): GeoApi => ({
@@ -128,6 +131,153 @@ test("a look-up the browser never answers (a dismissed prompt) ends as a timeout
   assert.equal(tries, 2);
 });
 
+// Fake timers (node:test's mock.timers) for the real limits: a promise's state after the clock moves.
+const flush = async () => {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+};
+const watch = <T,>(promise: Promise<T>) => {
+  const seen: { done: boolean; value?: T } = { done: false };
+  void promise.then((value) => {
+    seen.done = true;
+    seen.value = value;
+  });
+  return seen;
+};
+const TIMEOUT: LocateResult = { ok: false, reason: "timeout" };
+
+test("the real watchdog limits: the first is the browser's timeout + 20 s, the retry's is past its own timeout", async () => {
+  // Without the Permissions API the prompt's time counts against the first watchdog, so its margin is the
+  // point (the mutation re-review's W2); the retry runs after permission and must outlast its own 10 s (W3).
+  assert.equal(LOCATE_WATCHDOG_MS, LOCATE_OPTIONS.timeout + 20_000);
+  assert.ok(RETRY_WATCHDOG_MS > RETRY_OPTIONS.timeout, "the retry's watchdog is past its browser timeout");
+  assert.ok(RETRY_WATCHDOG_MS < LOCATE_WATCHDOG_MS, "and shorter than the first's (not swapped)");
+  assert.ok(PROMPT_WATCHDOG_MS > LOCATE_WATCHDOG_MS, "an open prompt gets longer");
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    // locate with its defaults, as App calls it (W8): a browser that never answers ends at 30 s, not before.
+    const silent: GeoApi = { getCurrentPosition: () => undefined };
+    const first = watch(locate(env(silent)));
+    await flush();
+    mock.timers.tick(29_999);
+    await flush();
+    assert.equal(first.done, false, "still looking at 29.999 s");
+    mock.timers.tick(1);
+    await flush();
+    assert.deepEqual(first.value, TIMEOUT);
+    // A browser timeout, then a retry that never answers: its own 15 s watchdog, not the first's 30 s.
+    let tries = 0;
+    const coldThenSilent: GeoApi = {
+      getCurrentPosition: (_s, fail) => {
+        tries += 1;
+        if (tries === 1) fail({ code: 3 });
+      },
+    };
+    const retry = watch(locate(env(coldThenSilent)));
+    await flush();
+    assert.equal(tries, 2);
+    mock.timers.tick(14_999);
+    await flush();
+    assert.equal(retry.done, false, "the retry outlasts its 10 s browser timeout");
+    mock.timers.tick(1);
+    await flush();
+    assert.deepEqual(retry.value, TIMEOUT);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+/** A PermissionStatus stand-in: its state, and the change listeners the watchdog adds and removes. */
+function permissionStatus(initial: string) {
+  const listeners = new Set<() => void>();
+  const status = {
+    state: initial,
+    listeners,
+    addEventListener: (_type: "change", listener: () => void) => void listeners.add(listener),
+    removeEventListener: (_type: "change", listener: () => void) => void listeners.delete(listener),
+    answer(next: string) {
+      status.state = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+  const typed: PermissionLike = status;
+  void typed;
+  return status;
+}
+
+test("an open permission prompt does not count against the first watchdog; its clock starts at the answer (W1)", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    let answer: (() => void) | undefined;
+    let calls = 0;
+    const slowGps: GeoApi = {
+      getCurrentPosition: (success) => {
+        calls += 1;
+        answer = () => success({ coords: { latitude: 38.9, longitude: -77.04, accuracy: 5 } });
+      },
+    };
+    // The rider reads the prompt for 25 s, grants it, and the cold GPS answers 20 s later: placed.
+    const status = permissionStatus("prompt");
+    const granted = watch(locate({ ...env(slowGps), permission: async () => status }));
+    await flush();
+    assert.equal(calls, 1, "the look-up is not held back by the permission query");
+    mock.timers.tick(25_000);
+    await flush();
+    assert.equal(granted.done, false, "the prompt's time is the rider's");
+    status.answer("granted");
+    mock.timers.tick(20_000);
+    await flush();
+    assert.equal(granted.done, false, "45 s from the press, 20 s from the answer");
+    answer?.();
+    await flush();
+    assert.equal(granted.value?.ok, true);
+    assert.equal(status.listeners.size, 0, "the change listener is removed once settled");
+    // Granted, then the browser never answers: the first watchdog, counted from the answer.
+    const quiet = permissionStatus("prompt");
+    const silent: GeoApi = { getCurrentPosition: () => undefined };
+    const after = watch(locate({ ...env(silent), permission: async () => quiet }));
+    await flush();
+    mock.timers.tick(10_000);
+    quiet.answer("granted");
+    mock.timers.tick(29_999);
+    await flush();
+    assert.equal(after.done, false);
+    mock.timers.tick(1);
+    await flush();
+    assert.deepEqual(after.value, TIMEOUT);
+    assert.equal(quiet.listeners.size, 0);
+    // A prompt never answered (a browser that drops a dismissed prompt): the prompt's own limit, then a timeout.
+    const ignored = watch(locate({ ...env(silent), permission: async () => permissionStatus("prompt") }));
+    await flush();
+    mock.timers.tick(PROMPT_WATCHDOG_MS - 1);
+    await flush();
+    assert.equal(ignored.done, false);
+    mock.timers.tick(1);
+    await flush();
+    assert.deepEqual(ignored.value, TIMEOUT);
+    // Already granted, or a query that fails: the plain first watchdog from the press.
+    const plainCases: (() => Promise<PermissionLike | undefined>)[] = [
+      async () => permissionStatus("granted"),
+      () => Promise.reject(new Error("no")),
+      () => {
+        throw new Error("no");
+      },
+      async () => undefined,
+    ];
+    for (const permission of plainCases) {
+      const plain = watch(locate({ ...env(silent), permission }));
+      await flush();
+      mock.timers.tick(LOCATE_WATCHDOG_MS - 1);
+      await flush();
+      assert.equal(plain.done, false);
+      mock.timers.tick(1);
+      await flush();
+      assert.deepEqual(plain.value, TIMEOUT);
+    }
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test("an insecure page or a browser without geolocation is refused with a reason, and never asks", async () => {
   let asked = 0;
   const api: GeoApi = { getCurrentPosition: () => void (asked += 1) };
@@ -142,7 +292,7 @@ test("an insecure page or a browser without geolocation is refused with a reason
   assert.deepEqual(await locate(env(undefined, false)), { ok: false, reason: "insecure" });
 });
 
-test("browserEnv reads the secure flag and the API from window and navigator", () => {
+test("browserEnv reads the secure flag and the API from window and navigator", async () => {
   const g = globalThis as Record<string, unknown>;
   const saved = {
     window: Object.getOwnPropertyDescriptor(globalThis, "window"),
@@ -161,6 +311,20 @@ test("browserEnv reads the secure flag and the API from window and navigator", (
     assert.equal(browserEnv().isSecureContext, false, "only a true secure flag counts");
     set("navigator", {});
     assert.equal(browserEnv().geolocation, undefined, "a navigator without the API");
+    // The Permissions API, when there is one: the geolocation state; a failed query is no answer.
+    const status = permissionStatus("prompt");
+    let asked: unknown;
+    const query = async (descriptor: unknown) => {
+      asked = descriptor;
+      return status;
+    };
+    set("navigator", { geolocation: api, permissions: { query } });
+    assert.equal(await browserEnv().permission?.(), status);
+    assert.deepEqual(asked, { name: "geolocation" });
+    set("navigator", { geolocation: api, permissions: { query: () => Promise.reject(new Error("no")) } });
+    assert.equal(await browserEnv().permission?.(), undefined);
+    set("navigator", { geolocation: api, permissions: {} });
+    assert.equal("permission" in browserEnv(), false);
     set("window", undefined);
     set("navigator", undefined);
     assert.deepEqual(browserEnv(), { isSecureContext: false, geolocation: undefined });
@@ -197,6 +361,9 @@ test("the accuracy is a friendly figure, US units first", () => {
   assert.equal(accuracyText(2), "about 10 ft (2 m)");
   assert.equal(accuracyText(0.4), "about 10 ft (1 m)");
   assert.equal(accuracyText(100), "about 330 ft (100 m)");
+  assert.equal(accuracyText(123), "about 400 ft (120 m)", "over 100 m the metric figure is to 10 m too");
+  assert.match(accuracyText(160), / ft \(160 m\)$/, "feet below a tenth of a mile");
+  assert.match(accuracyText(500), /^about 0\.3 mi \(0\.5 km\)$/, "miles from a tenth of a mile, not from 1 km");
   assert.equal(accuracyText(0), "");
   assert.match(accuracyText(2000), /^about 1\.2 mi \(2\.0 km\)$/);
 });
@@ -206,6 +373,7 @@ test("the announcement and the hint give US units first, and a coarse fix is cal
   assert.equal(locationSaid(0, 1, true, 0), "Start and finish set to your location.");
   assert.equal(locationSaid(1, 2, false, 15), "End set to your location, accurate to about 50 ft (15 m).");
   assert.equal(locationSaid(0, 1, false, 100), "Start set to your location, accurate to about 330 ft (100 m).");
+  assert.ok(locationSaid(0, 1, false, 101).endsWith(ROUGH_SAID), "rough from just over 100 m");
   assert.equal(
     locationSaid(0, 1, false, 150),
     `Start set to your location, accurate to about 490 ft (150 m). ${ROUGH_SAID}`,
@@ -411,6 +579,9 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   const end = app.indexOf("}, [gate, geoEnv", start);
   assert.ok(start > 0 && end > start, "the useMyLocation body is found");
   assert.doesNotMatch(app.slice(start, end), LEAKS);
+  // The whole of App, not only that body (A28, A29): no log, send or other channel anywhere in it.
+  // Storage is the one term left out: session() is the sign-in round trip's, on purpose (signIn.ts).
+  assert.doesNotMatch(app, new RegExp(LEAKS.source.replace("Storage|", "")));
   assert.doesNotMatch(app, /watchPosition/);
   assert.equal((app.match(/locate\(/g) ?? []).length, 1, "one look-up path");
   for (const file of ["../PlaceSearch.tsx", "../MapView.tsx"]) assert.doesNotMatch(code(read(file)), LEAKS, file);
@@ -419,7 +590,10 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
 test("privacy: the location state reaches only the note, the hint and the circle", () => {
   const app = code(read("../App.tsx"));
   // The identifiers, not the word in a sentence ("shows here when").
-  const lines = app.split("\n").filter((line) => /\bhere(\.|(?= !==| \?|,|\]|\)))|\bfromHere\b/.test(line));
+  // An alias counts too: "= here", "here;", "(here)" (the mutation re-review's A28).
+  const lines = app
+    .split("\n")
+    .filter((line) => /\bhere(\.|(?= !==| \?|,|\]|\)|;|\s*$))|[=(]\s*here\b|\bfromHere\b/.test(line));
   const allowed = [
     /const \[here, setHere\] = useState<Fix \| null>\(null\);/,
     /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
@@ -437,6 +611,67 @@ test("privacy: the location state reaches only the note, the hint and the circle
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");
+});
+
+// The wiring between the pure functions and the components (the mutation re-review's S-1, S-2): App and
+// PlaceSearch are not rendered by a test, so their handoffs are pinned in the source.
+const body = (text: string, from: string, to: string) => {
+  const start = text.indexOf(from);
+  const end = text.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `${from} ... ${to}`);
+  return text.slice(start, end);
+};
+
+test("App: the look-up's answer is placed with the ride read after the wait and the list's choice", () => {
+  const app = code(read("../App.tsx"));
+  const useMy = body(app, "const useMyLocation", "}, [gate, geoEnv");
+  const waited = useMy.indexOf("await locate(geoEnv)");
+  const ride = useMy.indexOf("const ride = rideRef.current;");
+  assert.ok(waited > 0 && ride > waited, "the ride is read after the wait (S2, AW2)");
+  assert.match(
+    useMy,
+    /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice \}\)/,
+    "the fresh points, the fresh loop flag and the choice (S3, AW3)",
+  );
+  assert.match(app, /onLocate: \(choice\) => void useMyLocation\(choice\),/, "App passes the list's choice on (P6)");
+  // A press while busy is answered (AW8); a refusal is cleared and set again, so a repeat is said again (N4).
+  assert.match(useMy, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
+  assert.match(
+    useMy,
+    /if \("refuse" in placed\) \{\s*setNotice\(null\);\s*locateNoticeTimer\.current = window\.setTimeout\(\(\) => \{\s*if \(gate\.latest\(press\)\) setNotice\(placed\.refuse\);\s*\}, 150\);\s*return;/,
+  );
+  // The spoken Copy link text goes with the plan it was about (L4).
+  assert.match(app, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);\s*setLinkSpoken\(""\);\s*\}, \[points, preset, dials\]\);/);
+});
+
+test("App: a drag reads the old point before the commit, and moves by movePoint (R1, A15b)", () => {
+  const app = code(read("../App.tsx"));
+  const move = body(app, "const move = useCallback(", "}, [commit]);");
+  assert.match(move, /^const move = useCallback\(\(index: number, point: LonLat\) => \{\s*cancelLocateNotice\(\);/, "a drag cancels a pending notice (N6)");
+  const before = move.indexOf("const before = pointsRef.current[index];");
+  const updater = move.indexOf("setFromHere((prior) => movedFromHere(prior, before, point));");
+  const commit = move.indexOf("commit(movePoint(pointsRef.current, index, point));");
+  assert.ok(before > 0 && updater > before && commit > updater, "captured, then the updater, then the commit");
+  // React may run an updater after commit() has replaced pointsRef.current: the updater never reads it.
+  assert.doesNotMatch(move, /setFromHere\([^;]*pointsRef/);
+});
+
+test("PlaceSearch: Enter goes through pickTarget, and the list option passes the choice on (P1, P5)", () => {
+  const search = code(read("../PlaceSearch.tsx"));
+  assert.match(
+    search,
+    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, places\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item\) pick\(item\);/,
+  );
+  assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(choice\);\s*$/);
+  // The details (P2, P3, P4, P4b, P8, P9).
+  assert.match(search, /const showHere = locate\?\.support\.available === true && locationMatches\(query\);/);
+  assert.match(search, /onClick=\{\(\) => \{\s*if \(locate\.support\.available\) locate\.onLocate\(\);\s*\}\}/);
+  assert.match(
+    search,
+    /aria-describedby=\{!locate\.support\.available \? `\$\{id\}-locate-why` : locate\.busy \? `\$\{id\}-locate-busy` : undefined\}/,
+  );
+  assert.match(search, /\{hereEffectLine\(effect, loop\)\}/);
+  assert.match(search, /searchStatusWithHere\(searchStatus\(result, answered\), expanded && showHere\)/);
 });
 
 test("privacy: the one documented stored path is the sign-in round trip, in signIn.ts", () => {
