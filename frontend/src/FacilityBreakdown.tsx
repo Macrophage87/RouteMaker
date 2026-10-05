@@ -5,7 +5,7 @@
  */
 import { useId } from "react";
 import { formatDistance } from "./lib/format.ts";
-import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
+import { avoidMetres, breakdownParts, facilityRows, type BreakdownPart } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
@@ -24,9 +24,8 @@ const PAUSE = <span className="visually-hidden">, </span>;
  * warning, the roads best avoided, what the hills search found) stay in view, and the figures (the route
  * colors and the bike facilities) sit in the "Stress and facilities" fold. The default is all of it.
  */
-export function FacilityBreakdown({ route, part = "all" }: { route: RouteResponse; part?: "all" | "notices" | "figures" }) {
-  const figures = part !== "notices";
-  const notices = part !== "figures";
+export function FacilityBreakdown({ route, part = "all" }: { route: RouteResponse; part?: BreakdownPart }) {
+  const { figures, notices } = breakdownParts(part);
   const id = useId();
   useStressStyle(); // the route colours below follow the accessibility switch
   const showHighLanes = useHighStressLanes(); // painted lanes on LTS 4 and Avoid count as no facility unless the switch is on

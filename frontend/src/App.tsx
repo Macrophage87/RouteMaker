@@ -28,6 +28,7 @@ import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts"
 import { canReverse, loopNote, loopStops, reversedPoints } from "./lib/loop.ts";
 import {
   addedSaid,
+  editingTips,
   emptyPlanHint,
   insertedSaid,
   loneStartHint,
@@ -47,7 +48,7 @@ import { stationEdit, type RailVisibility, type StationRole } from "./lib/railSt
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
-import { FederalLandFor, type FederalStatus } from "./lib/federalLegend.ts";
+import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
@@ -59,19 +60,34 @@ import { PlaceSearch } from "./PlaceSearch.tsx";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { GpxPanel, downloadGpx } from "./GpxPanel.tsx";
-import { BottomBar, Fold, MoreTips, QuickFigures, RideSettings, SheetFrame } from "./Sidebar.tsx";
+import {
+  AccessibilityShortcut,
+  BottomBar,
+  Fold,
+  JunctionLegend,
+  MoreTips,
+  PlannerZoomNotice,
+  QuickFigures,
+  RideSettings,
+  SheetFrame,
+} from "./Sidebar.tsx";
 import {
   COPY_LINK,
-  COPY_LINK_DONE,
-  COPY_LINK_FAILED,
+  MASS_RIDE_LAYERS_NOTE,
+  PLANNER_EXTRAS,
+  ROUTE_FOLDS,
   SHEET_TITLES,
   copyText,
+  focusOnViewChange,
   foldTitle,
+  linkSaidFor,
   linkToCopy,
+  rescueCompactFocus,
   searchLede,
   selectionCopy,
   type BarItem,
   type PanelView,
+  type ViewCause,
 } from "./lib/sidebar.ts";
 import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
@@ -190,6 +206,14 @@ export function App() {
   const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
   const openedBy = useRef<BarItem["id"]>("layers");
   const prevView = useRef<PanelView>("planner");
+  // Why the view last changed (lib/sidebar.ts focusOnViewChange): a bar button, Back, or an error or
+  // the long-ride question bringing the planner back.
+  const viewCause = useRef<ViewCause>("bar");
+  const errorRef = useRef<HTMLDivElement>(null);
+  const pointsSearchRef = useRef<HTMLDivElement>(null);
+  const pointsEditRef = useRef<HTMLDivElement>(null);
+  const editPointsRef = useRef<HTMLButtonElement>(null);
+  const wasCompact = useRef(false);
   const layersHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -266,11 +290,15 @@ export function App() {
     if (search !== null) window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
   }, []);
 
-  // Keep the link in step with the plan, without adding history entries.
+  // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
+  // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
     const hash = encodePlan(points, preset, dials);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
+    // "Link copied." was about the link before this change (the correctness review's N4).
+    linkPresses.current += 1;
+    setLinkSaid("");
   }, [points, preset, dials]);
 
   // A link pasted into this tab, or the back button, changes the fragment
@@ -285,6 +313,8 @@ export function App() {
       setCan({ undo: false, redo: false });
       rideRef.current = { preset: plan.preset, dials: plan.dials, imported: null };
       setImported(null);
+      // Another plan's route opens compact, as a first route does.
+      setEditPoints(false);
       setPoints(plan.points);
       setPreset(plan.preset);
       setDials(plan.dials);
@@ -299,6 +329,8 @@ export function App() {
       scheduler.current?.clear();
       setRoute(null);
       setStatus({ kind: "idle" });
+      // The next route opens compact again (the correctness review's N1).
+      setEditPoints(false);
       return;
     }
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
@@ -310,33 +342,41 @@ export function App() {
   useEffect(() => {
     if (opensSheet(status.kind)) {
       setPanelOpen(true);
-      // The question and the errors are in the planner, not in a bar sheet.
+      // The question and the errors are in the planner, not in a bar sheet; if a sheet was open, the
+      // focus goes to the error or the question, not back to the bar button.
+      viewCause.current = status.kind === "confirm" ? "confirm" : "error";
       setView("planner");
     }
   }, [status]);
 
-  // A bar sheet takes the focus to its heading when it opens (the legend's, for Legend), and the
-  // way back takes it to the bar button that opened it. Before the long-ride question's effect
-  // below, which takes the focus after it when both happen at once.
+  // Where the focus goes when the view changes (lib/sidebar.ts focusOnViewChange, where every
+  // transition is tested): a sheet's heading (the legend's, for Legend), the bar button that
+  // opened it on the way back, or the error or the long-ride question that brought the planner back.
   useEffect(() => {
     const was = prevView.current;
     prevView.current = view;
-    if (view === "planner") {
-      if (was !== "planner") barButtons.current[openedBy.current]?.focus();
-      return;
+    const target = focusOnViewChange({ was, view, legendTarget, openedBy: openedBy.current, cause: viewCause.current });
+    if (target === null) return;
+    if (target.kind === "bar") barButtons.current[target.id]?.focus();
+    else if (target.kind === "error") errorRef.current?.focus();
+    else if (target.kind === "plan") planButtonRef.current?.focus();
+    else {
+      const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, about: aboutHeadingRef }[target.view];
+      heading.current?.focus();
+      heading.current?.scrollIntoView?.({ block: "start" });
     }
-    const heading = { layers: layersHeadingRef, gpx: gpxHeadingRef, about: aboutHeadingRef }[view];
-    const target = view === "layers" && legendTarget ? legendHeadingRef : heading;
-    target.current?.focus();
-    target.current?.scrollIntoView?.({ block: "start" });
   }, [view, legendTarget]);
 
-  // The long-ride question takes the focus, so a keyboard rider lands on it
-  // (once the sheet is open: a hidden button cannot take it).
+  // The long-ride question takes the focus when it comes, so a keyboard rider lands on it (once the
+  // sheet is open: a hidden button cannot take it). Not again on the way back from a bar sheet while
+  // it is pending: Back goes to the bar button (the correctness review's N8); a question that came
+  // while a sheet was open takes the focus through the effect above.
   const focusPlan = focusesPlanButton(status.kind, panelOpen);
+  const viewNow = useRef(view);
+  viewNow.current = view;
   useEffect(() => {
-    if (focusPlan && view === "planner") planButtonRef.current?.focus();
-  }, [focusPlan, view]);
+    if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
+  }, [focusPlan]);
 
   // After Remove, the focus goes to the next Remove button, or to Add.
   useEffect(() => {
@@ -543,6 +583,7 @@ export function App() {
   };
   const clearAll = () => {
     setConfirmedKm(null);
+    setEditPoints(false);
     // Clearing an opened file's plan puts the file away too; undo brings both back.
     const ride = rideRef.current;
     commit([], ride.imported ? { ...ride, imported: null } : undefined);
@@ -612,18 +653,22 @@ export function App() {
   // Back, or Escape, closes it and gives the focus back to the button that opened it.
   const openSheet = (item: BarItem) => {
     openedBy.current = item.id;
+    viewCause.current = "bar";
     setLegendTarget(item.toLegend === true);
     setView(item.opens);
   };
-  const backToPlanner = () => setView("planner");
-  // "Copy link": the address, which carries the plan and never the weight (OWNER-DECISIONS 313).
-  // Cleared first and set again a moment later, so a second press is said again.
+  const backToPlanner = () => {
+    viewCause.current = "back";
+    setView("planner");
+  };
+  // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
+  // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
   const copyLink = async () => {
     const press = ++linkPresses.current;
     setLinkSaid("");
-    const done = await copyText(linkToCopy(window.location), navigator.clipboard, selectionCopy);
+    const done = await copyText(linkToCopy(window.location, points, preset, dials), navigator.clipboard, selectionCopy);
     window.setTimeout(() => {
-      if (press === linkPresses.current) setLinkSaid(done ? COPY_LINK_DONE : COPY_LINK_FAILED);
+      if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
     }, 150);
   };
 
@@ -663,6 +708,11 @@ export function App() {
   // the sheet was scrolled to for the question or error before it.
   const focusBeforeRender = useRef<Element | null>(null);
   focusBeforeRender.current = document.activeElement;
+  // What scrolls is .panel-scroll, or on a short or zoomed screen the whole panel (styles.css).
+  const scrollPanelToTop = () => {
+    panelBodyRef.current?.scrollTo({ top: 0 });
+    panelRef.current?.scrollTo?.({ top: 0 });
+  };
   useLayoutEffect(() => {
     const before = focusBeforeRender.current;
     if (
@@ -673,7 +723,7 @@ export function App() {
     ) {
       before.focus({ preventScroll: true });
     }
-    if (routeFirst) panelBodyRef.current?.scrollTo({ top: 0 });
+    if (routeFirst) scrollPanelToTop();
   }, [routeFirst]);
 
   // Each new question or error is shown from the top of the sheet, where the
@@ -681,7 +731,7 @@ export function App() {
   // open with the reason it opened out of sight.
   const attention = opensSheet(status.kind) ? status : null;
   useLayoutEffect(() => {
-    if (attention && routeFirst) panelBodyRef.current?.scrollTo({ top: 0 });
+    if (attention && routeFirst) scrollPanelToTop();
   }, [attention]);
 
   const announcement =
@@ -705,13 +755,39 @@ export function App() {
   // A route is on screen: the points are compact unless the rider is editing them.
   const routeShownForPoints = shown !== null;
   const compactPoints = routeShownForPoints && points.length >= 2 && !editPoints;
+  // A route arriving while the focus is in the search, Add point at map center or the tools hides
+  // them: the focus goes to "Edit points" rather than dropping to the page (lib/sidebar.ts
+  // rescueCompactFocus; the review's B1). After the sheet-order effect above, which may put the
+  // focus back on the element it had.
+  useLayoutEffect(() => {
+    rescueCompactFocus({
+      wasCompact: wasCompact.current,
+      compact: compactPoints,
+      before: focusBeforeRender.current,
+      hidden: [pointsSearchRef.current, pointsEditRef.current],
+      editPoints: editPointsRef.current,
+    });
+    wasCompact.current = compactPoints;
+  }, [compactPoints]);
+  const federalPlanner = federalShown(preset, true) && (
+    // Mass Ride's points on federal land, in words, in the planner as well as the Map layers
+    // sheet: the text the map's permit shading stands for (the correctness review's S3).
+    <FederalPointsList
+      found={federalData ? federalPoints(points, federalData) : null}
+      count={points.length}
+      nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
+      headingId="federal-points-planner-heading"
+    />
+  );
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
         Points
       </h2>
+      {PLANNER_EXTRAS.zoomNotice && <PlannerZoomNotice zoom={zoom} shown={stressVisible && stress === "available"} />}
+      {PLANNER_EXTRAS.accessibilityShortcut && <AccessibilityShortcut on={accessibilityOn()} onChange={(on) => setAccessibility(on)} />}
       {/* The controls stay in the page while the points are compact (hidden), so the search keeps its state. */}
-      <div className="points-controls" hidden={compactPoints}>
+      <div id="points-search" ref={pointsSearchRef} className="points-controls" hidden={compactPoints}>
         <PlaceSearch
           pointCount={points.length}
           loop={loopVias}
@@ -722,7 +798,7 @@ export function App() {
         />
       </div>
       {points.length === 0 ? (
-        <p className="hint">{searchLede(preset, loopVias)}</p>
+        <p className="hint">{searchLede(loopVias)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, namer, loopVias)}
@@ -736,15 +812,17 @@ export function App() {
       {routeShownForPoints && points.length >= 2 && (
         <button
           type="button"
+          ref={editPointsRef}
           className="secondary edit-points"
           aria-expanded={!compactPoints}
-          aria-controls="points-edit"
+          aria-controls="points-search points-edit"
           onClick={() => setEditPoints((on) => !on)}
         >
           {compactPoints ? "Edit points" : "Done editing points"}
         </button>
       )}
-      <div id="points-edit" hidden={compactPoints}>
+      {federalPlanner}
+      <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       <div className="actions point-add">
         <button
           type="button"
@@ -790,7 +868,8 @@ export function App() {
       {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
       {/* The how-to, collapsed (the mockup's "More tips"). */}
       <MoreTips>
-        <p className="hint">{emptyPlanHint(preset, loopVias)}</p>
+        {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
+        {points.length > 0 ? <p className="hint">{editingTips()}</p> : <p className="hint">{emptyPlanHint(preset, loopVias)}</p>}
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
       </MoreTips>
       </div>
@@ -808,10 +887,11 @@ export function App() {
       </h2>
       {status.kind === "loading" && <p className="loading">{announcement}</p>}
       {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}
-      <div role="status" aria-live="polite" className="status-line">
+      {/* What the route's live region says (routeStatus, outside the panel), shown here; a screen
+          reader hears it there, so it is not read twice. */}
+      <div className="status-shown" aria-hidden="true">
         {status.kind === "loading" && slow && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
-        {status.kind === "ok" && routeSaid && <p className="visually-hidden">{routeSaid}</p>}
         {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
       </div>
       {status.kind === "confirm" && (
@@ -842,7 +922,7 @@ export function App() {
         </div>
       )}
       {status.kind === "error" && (
-        <div className={`error error-${status.error.kind}`} role="alert">
+        <div ref={errorRef} tabIndex={-1} className={`error error-${status.error.kind}`} role="alert">
           <p>
             <strong>{status.error.title}.</strong> {status.error.message}
           </p>
@@ -961,6 +1041,14 @@ export function App() {
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
       </p>
+      {/* The route's live region: outside the panel, so it is heard while a bar sheet is open or the
+          phone's sheet is hidden (a region in a hidden part of the page says nothing; the reviews' S1, S2). */}
+      <div role="status" aria-live="polite" className="status-line visually-hidden">
+        {status.kind === "loading" && slow && <p>{stillPlanningSaid(preset, dials)}</p>}
+        {status.kind === "waiting" && <p>{announcement}</p>}
+        {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
+        {status.kind === "idle" && points.length < 2 && <p>No route yet.</p>}
+      </div>
       <aside
         ref={panelRef}
         id="route-planner"
@@ -1002,20 +1090,14 @@ export function App() {
               onBack={backToPlanner}
               headingRef={layersHeadingRef}
             >
+              {/* In 312's order: traffic stress, high-stress lanes, accessibility colors, federal land
+                  (Mass Ride's alone), rail stations; then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">Traffic stress</h3>
-                <AccessibilitySwitch
-                  on={accessibilityOn()}
-                  source={accessibilitySource()}
-                  paletteFromAddress={paletteSetByAddress()}
-                  onChange={(on) => setAccessibility(on)}
-                />
-                {/* Shown with or without the stress map: it also changes the route's facility totals
-                    and description (the a11y review's SF4). */}
-                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
                 {stress === "available" && (
                   <label className="toggle">
                     <input
+                      id="show-stress"
                       type="checkbox"
                       checked={stressVisible}
                       onChange={(event) => setStressVisible(event.target.checked)}
@@ -1029,9 +1111,16 @@ export function App() {
                     Stress map unavailable for now. Routes still show how much of each ride is on each stress level.
                   </p>
                 )}
+                {/* Shown with or without the stress map: it also changes the route's facility totals
+                    and description (the a11y review's SF4). */}
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
+                <AccessibilitySwitch
+                  on={accessibilityOn()}
+                  source={accessibilitySource()}
+                  paletteFromAddress={paletteSetByAddress()}
+                  onChange={(on) => setAccessibility(on)}
+                />
               </section>
-
-              {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
               {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
               <FederalLandFor
@@ -1044,6 +1133,11 @@ export function App() {
                 nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
               />
 
+              {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+              {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
+              {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
+
               <section aria-labelledby="legend-heading">
                 <h3 id="legend-heading" ref={legendHeadingRef} tabIndex={-1}>
                   Legend
@@ -1053,6 +1147,8 @@ export function App() {
                 ) : (
                   <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
                 )}
+                {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
+                <JunctionLegend />
               </section>
             </SheetFrame>
 
@@ -1188,6 +1284,8 @@ function RouteSummary({
           {loopSaid}
         </p>
       )}
+      {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}
+      <h3 className="visually-hidden">Totals</h3>
       <dl className="stats totals">
         <div className="stat-distance">
           <dt>Distance</dt>
@@ -1230,7 +1328,7 @@ function RouteSummary({
       )}
       <QuickFigures figures={quickFigures(route)} />
       <FacilityBreakdown route={route} part="notices" />
-      <Fold title="Stress and facilities">
+      <Fold title={ROUTE_FOLDS.facilities.title} heading={ROUTE_FOLDS.facilities.title} open={ROUTE_FOLDS.facilities.open}>
         {segments.length > 0 && (
           <figure className="stress" aria-labelledby="stress-detail-caption">
             <figcaption id="stress-detail-caption">Traffic stress, stretch by stretch</figcaption>
@@ -1252,12 +1350,12 @@ function RouteSummary({
       </Fold>
       <RouteDescription route={route} fold />
       {junctions !== null && (
-        <Fold title={foldTitle("Junctions to watch", junctions)}>
+        <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
           <IntersectionList route={route} onSelect={onSelectJunction} />
         </Fold>
       )}
       {picker && (
-        <Fold title={foldTitle("Routes to choose from", pickerCount)} open>
+        <Fold title={foldTitle(ROUTE_FOLDS.choices.title, pickerCount)} heading={ROUTE_FOLDS.choices.title} open={ROUTE_FOLDS.choices.open}>
           {picker}
         </Fold>
       )}

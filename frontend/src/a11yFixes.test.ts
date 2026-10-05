@@ -172,13 +172,15 @@ test("App: the skip link comes before the map, and the planner can take its focu
 });
 
 test("App: 'Planning...' is shown but not said, and the route is said once it settles, with its warnings", () => {
-  const region = app.slice(app.indexOf('<div role="status" aria-live="polite" className="status-line">'));
+  // The live region is outside the panel since the sidebar (312), so a bar sheet does not silence it.
+  const region = app.slice(app.indexOf('<div role="status" aria-live="polite" className="status-line visually-hidden">'));
   const end = region.indexOf("</div>");
   const live = region.slice(0, end);
-  assert.doesNotMatch(live, /\{announcement\}<\/p>\}[\s\S]*status\.kind === "loading"|status\.kind === "loading" && <p className="loading">\{announcement\}/, "'Planning...' is not in the live region");
-  assert.match(app, /\{status\.kind === "loading" && <p className="loading">\{announcement\}<\/p>\}\s*\{status\.kind === "loading" && <progress className="planning" aria-label="Planning the route" \/>\}\s*<div role="status"/, "shown, with a labelled progress bar, before the live region");
+  assert.ok(live.length > 0);
+  assert.doesNotMatch(live, /\{announcement\}<\/p>\}[\s\S]*status\.kind === "loading"|status\.kind === "loading" && <p[^>]*>\{announcement\}/, "'Planning...' is not in the live region");
+  assert.match(app, /\{status\.kind === "loading" && <p className="loading">\{announcement\}<\/p>\}\s*\{status\.kind === "loading" && <progress className="planning" aria-label="Planning the route" \/>\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<div className="status-shown" aria-hidden="true">/, "shown, with a labelled progress bar, before the shown copy of the live region");
   // Only a slow plan is said, once (the a11y review's SF1).
-  assert.match(live, /\{status\.kind === "loading" && slow && <p className="loading">\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
+  assert.match(live, /\{status\.kind === "loading" && slow && <p>\{stillPlanningSaid\(preset, dials\)\}<\/p>\}/);
   assert.match(app, /const slow = useLongerThan\(status\.kind === "loading", STILL_PLANNING_AFTER_MS\)/);
   assert.match(live, /routeSaid/);
   assert.match(app, /useSettled\(status\.kind === "ok" \? announcement : "", ANNOUNCE_SETTLE_MS\)/);

@@ -2,8 +2,12 @@
  * The sidebar redesign's decisions (OWNER-DECISIONS 312, mockup v3), kept out of
  * App.tsx so they are tested without a browser: what the bottom bar offers, what
  * each of its sheets is called, the one-line lede over the points, the tips'
- * toggle words, and "Copy link".
+ * toggle words, "Copy link", and where the focus goes when the panel changes
+ * view or the points compact.
  */
+import { encodePlan } from "./planHash.ts";
+import type { Dials } from "./dials.ts";
+import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
 /** The views the panel body shows: the planner, or one of the bottom bar's sheets. */
@@ -33,7 +37,8 @@ export interface BarItem {
  * Map layers, Legend, GPX and About. The mockup's fourth button is Settings,
  * but the app has no settings page: what a settings page would hold lives in
  * the ride settings (the Ride line's Edit) and the Map layers sheet, so the
- * fourth button is the page's one remaining piece, About and sign-in.
+ * fourth button is the page's one remaining piece, About and sign-in. (An open
+ * owner question: a Settings sheet replaces this item, with About inside it.)
  */
 export const BAR_ITEMS: readonly BarItem[] = [
   { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
@@ -42,33 +47,66 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "about", label: "About", opens: "about", description: "Opens notes on planning without signing in, and sign in." },
 ];
 
+/** The bottom bar's landmark name: the pages of the panel it switches between. */
+export const BAR_NAME = "Panel pages";
+
+/**
+ * Parts the owner has not decided on (SIDEBAR-dev open questions), built and
+ * ready to place: flip a flag to show them in the planner.
+ * - `zoomNotice`: the one-line zoom notice ("Zoom in to see traffic stress on
+ *   roads...") over the points, as well as in the Map layers sheet.
+ * - `accessibilityShortcut`: the Accessibility colors on/off in the planner, as
+ *   well as the switch in the Map layers sheet.
+ */
+export const PLANNER_EXTRAS = { zoomNotice: false, accessibilityShortcut: false } as const;
+
+/** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
+export const MASS_RIDE_LAYERS_NOTE = "Mass Ride has its own layers, such as federal land.";
+
 export const MORE_TIPS = "More tips";
 export const FEWER_TIPS = "Fewer tips";
 
-/** The one line over the points, until there is a start; the full how-to is behind "More tips" (emptyPlanHint). */
-export function searchLede(preset: PresetId, loop: boolean): string {
-  void preset;
+/**
+ * The one line over the points, until there is a start; the full how-to is behind "More tips" (emptyPlanHint).
+ * The keyboard's way in is said here too, as loneStartHint says it (the a11y review's S6).
+ */
+export function searchLede(loop: boolean): string {
   return loop
-    ? "Search, or click the map: start, then stops. The ride comes back to the start."
-    : "Search, or click the map: start, then end. Later clicks add stops.";
+    ? "Search, click the map, or use Add point at map center: start, then stops. The ride comes back to the start."
+    : "Search, click the map, or use Add point at map center: start, then end. Later clicks add stops.";
 }
 
-/** The Ride line's action: Edit while closed, Done while open. */
+/** The Ride line's visible action: Edit while closed, Done while open. Its state is read from aria-expanded. */
 export function rideActionLabel(open: boolean): string {
   return open ? "Done" : "Edit";
 }
+
+/** The Ride line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
+export const RIDE_ACTION_SPOKEN = "Edit";
 
 export const COPY_LINK = "Copy link";
 export const COPY_LINK_DONE = "Link copied.";
 export const COPY_LINK_FAILED = "Could not copy. Copy the address from the browser's address bar.";
 
+/** What "Copy link" said after a press: done or not. */
+export function linkSaidFor(done: boolean): string {
+  return done ? COPY_LINK_DONE : COPY_LINK_FAILED;
+}
+
 /**
- * What "Copy link" copies: the address as it stands. The plan lives in the
- * fragment (planHash.ts), which carries the points, the ride type and the
- * sliders and never the rider and bike weight (OWNER-DECISIONS 313).
+ * What "Copy link" copies: this page's address with the plan built afresh by
+ * encodePlan (planHash.ts), the same fragment App writes to the address bar.
+ * It carries the points, the ride type and the sliders, and never the rider and
+ * bike weight (OWNER-DECISIONS 313): the weight is kept apart from `dials`, and
+ * nothing here reads where it is stored.
  */
-export function linkToCopy(location: { href: string }): string {
-  return location.href;
+export function linkToCopy(
+  location: { origin: string; pathname: string; search: string },
+  points: readonly LonLat[],
+  preset: PresetId,
+  dials: Dials,
+): string {
+  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials)}`;
 }
 
 /** The surface "Copy link" uses: the async clipboard where there is one, else the selection method. */
@@ -117,4 +155,101 @@ export function foldTitle(title: string, count: string | number | null): string 
 
 export function stepsCount(n: number): string {
   return n === 1 ? "1 step" : `${n} steps`;
+}
+
+/**
+ * The route summary's folds: each one's heading (an h3, for a screen reader's
+ * heading list: the a11y review's S5) and whether it starts open. "Routes to
+ * choose from" is open, because it changes which route is shown; the others
+ * are closed (Directions remembers its own state).
+ */
+export const ROUTE_FOLDS = {
+  facilities: { title: "Stress and facilities", open: false },
+  directions: { title: "Directions", open: false },
+  junctions: { title: "Junctions to watch", open: false },
+  choices: { title: "Routes to choose from", open: true },
+} as const;
+
+// ---- Where the focus goes ---------------------------------------------------------
+
+/** Why the panel changed view: a bar button, Back (or Escape), or a question or error that needs the planner. */
+export type ViewCause = "bar" | "back" | "error" | "confirm";
+
+/** What takes the focus after the panel changes view. */
+export type FocusTarget =
+  | { kind: "heading"; view: Exclude<PanelView, "planner">; legend: boolean }
+  | { kind: "bar"; id: BarItem["id"] }
+  | { kind: "error" }
+  | { kind: "plan" }
+  | null;
+
+/**
+ * Where the focus goes when the panel body changes view (App.tsx). A sheet takes
+ * it to its heading (the legend's, when Legend opened it). Back takes it to the
+ * bar button that opened the sheet. An error that brought the planner back takes
+ * it to the error, and the long-ride question to its "Plan it" button. No change
+ * of view moves nothing.
+ */
+export function focusOnViewChange(change: {
+  was: PanelView;
+  view: PanelView;
+  legendTarget: boolean;
+  openedBy: BarItem["id"];
+  cause: ViewCause;
+}): FocusTarget {
+  const { was, view, legendTarget, openedBy, cause } = change;
+  if (was === view) return null;
+  if (view !== "planner") return { kind: "heading", view, legend: view === "layers" && legendTarget };
+  if (cause === "error") return { kind: "error" };
+  if (cause === "confirm") return { kind: "plan" };
+  return { kind: "bar", id: openedBy };
+}
+
+/** The parts of a key event the sheet's Escape handler reads. */
+export interface SheetKeyEvent {
+  key: string;
+  defaultPrevented: boolean;
+  target: { closest(selector: string): unknown; getAttribute(name: string): string | null } | null;
+  preventDefault(): void;
+}
+
+/**
+ * A sheet's Escape: back to the planner, unless it was already handled, or it
+ * came from a nested dialog (the weight dialog) or the place search's list,
+ * whose own Escape it is. True when it went back.
+ */
+export function sheetEscape(event: SheetKeyEvent, onBack: () => void): boolean {
+  if (event.key !== "Escape" || event.defaultPrevented) return false;
+  const target = event.target;
+  if (target && (target.closest("dialog") || target.getAttribute("role") === "combobox")) return false;
+  event.preventDefault();
+  onBack();
+  return true;
+}
+
+/** The parts of an element the compact points' focus rescue reads. */
+export interface FocusContainer {
+  contains(node: unknown): boolean;
+}
+
+/**
+ * When a route arrives the points compact, hiding the search, Add point at map
+ * center and the tools. If the focus was in them, it would drop to the page
+ * (a hidden element cannot hold it): it goes to "Edit points" instead, which
+ * opens them again (the review's B1). True when it moved the focus.
+ */
+export function rescueCompactFocus(state: {
+  wasCompact: boolean;
+  compact: boolean;
+  /** What had the focus before the render that compacted the points. */
+  before: unknown;
+  /** The parts that are hidden while compact. */
+  hidden: ReadonlyArray<FocusContainer | null>;
+  editPoints: { focus(): void } | null;
+}): boolean {
+  const { wasCompact, compact, before, hidden, editPoints } = state;
+  if (!compact || wasCompact || before === null || editPoints === null) return false;
+  if (!hidden.some((part) => part !== null && part.contains(before))) return false;
+  editPoints.focus();
+  return true;
 }

@@ -10,6 +10,7 @@
  */
 import { formatDistance } from "./format.ts";
 import { junctionCounts } from "./intersectionMarkers.ts";
+import { wholePercents } from "./stressBar.ts";
 import type { RouteResponse } from "./api.ts";
 
 export interface QuickFigure {
@@ -25,11 +26,18 @@ function metres(by: Record<string, number | undefined> | undefined, key: string)
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-/** The share of the route (whole percent) on LTS 1 and 2, or null with no stress figures. */
+const STRESS_KEYS = ["1", "2", "3", "4", "5", "unknown"] as const;
+
+/**
+ * The share of the route (whole percent) on LTS 1 and 2, or null with no stress figures. Rounded as the
+ * stress bar's key is (wholePercents, the same keys), so the figure is always that key's LTS 1 plus LTS 2.
+ */
 export function calmPercent(stress: RouteResponse["stress_m"] | undefined): number | null {
-  const all = ["1", "2", "3", "4", "5", "unknown"].reduce((sum, key) => sum + metres(stress, key), 0);
+  const each = STRESS_KEYS.map((key) => metres(stress, key));
+  const all = each.reduce((sum, m) => sum + m, 0);
   if (!(all > 0)) return null;
-  return Math.round(((metres(stress, "1") + metres(stress, "2")) / all) * 100);
+  const percents = wholePercents(each.map((m) => m / all));
+  return percents[0] + percents[1];
 }
 
 /** The metres on LTS 4 and on roads marked legal but best avoided. */
@@ -68,16 +76,28 @@ export function quickFigures(route: Pick<RouteResponse, "stress_m" | "facility_m
   ];
 }
 
-/** The stress bar's name for a screen reader: each tier's name and its share, in words. */
-export function stressBarLabel(segments: ReadonlyArray<{ short: string; percent: number }>): string {
-  const parts = segments.filter((s) => s.percent > 0).map((s) => `${s.short} ${s.percent} percent`);
-  return `Traffic stress along the route: ${parts.join(", ")}`;
+/** One share as a screen reader hears it: "LTS 1, comfortable for most people: 61 percent". */
+function spokenShare(s: { short: string; label?: string; percent: number }): string {
+  const meaning = s.label ? `, ${s.label.charAt(0).toLowerCase()}${s.label.slice(1)}` : "";
+  return `${s.short}${meaning}: ${s.percent} percent`;
 }
 
-/** The same shares as one line of text under the bar, so the bar never relies on colour alone. */
+/**
+ * The stress bar's name for a screen reader: each tier's name, what it means and its share, in words
+ * (the a11y review's S2: "LTS 1 61 percent" was heard as one number). The figure around it is named by
+ * its caption, so this does not repeat "Traffic stress along the route".
+ */
+export function stressBarLabel(segments: ReadonlyArray<{ short: string; label?: string; percent: number }>): string {
+  return segments
+    .filter((s) => s.percent > 0)
+    .map(spokenShare)
+    .join("; ");
+}
+
+/** The same shares as one line of text under the bar, so the bar never relies on colour alone: "LTS 1: 61%, LTS 2: 30%". */
 export function stressBarKey(segments: ReadonlyArray<{ short: string; percent: number }>): string {
   return segments
     .filter((s) => s.percent > 0)
-    .map((s) => `${s.short} ${s.percent}%`)
-    .join(" · ");
+    .map((s) => `${s.short}: ${s.percent}%`)
+    .join(", ");
 }

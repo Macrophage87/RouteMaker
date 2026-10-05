@@ -1,29 +1,53 @@
 // The sidebar redesign (OWNER-DECISIONS 312, mockup v3): the Ride line's words, the quick figures,
-// the bottom bar, the folds and the font. App.tsx and the components are not rendered by a test (no
-// DOM here), so where they place things is read as source, as the other panels' wiring is.
+// the bottom bar, the folds and the font. App.tsx and the .tsx components are not rendered by a test
+// (no DOM here, and node reads no JSX), so where they place things is read as source, as the other
+// panels' wiring is; the decisions they make (the focus, the copied link, the breakdown's split) are
+// pure functions, tested here, and the parts in lib/sidebarParts.ts are rendered.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { startDials, type Dials } from "./dials.ts";
-import { hillsShort, rideSummary, rideSummarySpoken, trafficShort, whenShort } from "./rideSummary.ts";
+import { hillsShort, rideSummary, rideSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
 import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
 import {
   BAR_ITEMS,
+  BAR_NAME,
   COPY_LINK,
+  COPY_LINK_DONE,
+  COPY_LINK_FAILED,
+  MASS_RIDE_LAYERS_NOTE,
   MORE_TIPS,
   FEWER_TIPS,
+  PLANNER_EXTRAS,
+  RIDE_ACTION_SPOKEN,
+  ROUTE_FOLDS,
   SHEET_TITLES,
   copyText,
+  focusOnViewChange,
   foldTitle,
+  linkSaidFor,
   linkToCopy,
+  rescueCompactFocus,
   rideActionLabel,
   searchLede,
+  sheetEscape,
   stepsCount,
+  type BarItem,
+  type PanelView,
+  type SheetKeyEvent,
+  type ViewCause,
 } from "./sidebar.ts";
+import { encodePlan } from "./planHash.ts";
+import { WEIGHT_STORAGE_KEY } from "./weight.ts";
+import { stressSegments } from "./stressBar.ts";
 import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE } from "./stressLegend.ts";
 import { sheetOrder } from "./sheet.ts";
+import { FederalPointsList } from "./federalLegend.ts";
+import { breakdownParts } from "./facilityBar.ts";
+// The rendered parts are createElement modules: node's test runner reads .ts, not .tsx.
+import { AccessibilityShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const app = src("../App.tsx");
@@ -51,11 +75,31 @@ test("the Ride line follows the sliders, the ride time, the loop and gravel; and
 test("every slider position has words, and Mass Ride's locked slider says what it is", () => {
   for (let stress = 0; stress <= 100; stress += 5) assert.ok(trafficShort(stress).length > 0);
   for (let hills = -100; hills <= 100; hills += 5) assert.ok(hillsShort(hills).length > 0);
+  // The words change where stressWords and hillsWords change (mutation NIT 1: each edge, both sides).
+  const traffic: Array<[number, string]> = [
+    [10, "traffic tolerant"], [11, "direct"], [29, "direct"], [30, "balanced traffic"], [50, "balanced traffic"],
+    [51, "quiet streets"], [74, "quiet streets"], [75, "low stress"], [80, "low stress"], [81, "calm"], [94, "calm"], [95, "calmest"],
+  ];
+  for (const [stress, words] of traffic) assert.equal(trafficShort(stress), words, `traffic ${stress}`);
+  const hills: Array<[number, string]> = [
+    [-80, "avoids hills"], [-79, "gentler hills"], [-11, "gentler hills"], [-10, "balanced hills"], [10, "balanced hills"],
+    [11, "some climbing"], [79, "some climbing"], [80, "seeks hills"],
+  ];
+  for (const [value, words] of hills) assert.equal(hillsShort(value), words, `hills ${value}`);
+  assert.match(rideSummary("default", { ...startDials("default"), assist: true }), /^Default, electric assist · /);
   assert.match(rideSummary("mass-ride", startDials("mass-ride")), /^Mass Ride · most direct roadway · avoids hills · now$/);
   // A loop set on a Mass Ride is hidden there (374): the summary does not say it.
   assert.doesNotMatch(rideSummary("mass-ride", { ...startDials("mass-ride"), loop: true }), /loop/);
   // Cargo says its load.
   assert.match(rideSummary("cargo", startDials("cargo", "people")), /^Cargo Bike, cargo with passengers · /);
+});
+
+test("the Ride line says a set target distance, miles first, after when (312's order)", () => {
+  assert.equal(targetShort(undefined), null);
+  assert.equal(targetShort(32187), "about 20.0 mi (32.2 km)");
+  const dials: Dials = { ...startDials("default"), targetDistanceM: 32187, loop: true };
+  assert.equal(rideSummary("default", dials), "Default · quiet streets · balanced hills · now · about 20.0 mi (32.2 km) · loop");
+  assert.equal(rideSummarySpoken("default", dials), "Default, quiet streets, balanced hills, now, about 20.0 mi (32.2 km), loop");
 });
 
 test("the Ride line never carries the rider and bike weight (313-314): not a figure, not the dial", () => {
@@ -66,13 +110,22 @@ test("the Ride line never carries the rider and bike weight (313-314): not a fig
 });
 
 test("the Ride line is a heading holding a button with aria-expanded, whose words are read with commas", () => {
-  assert.match(sidebar, /<h2 id="ride-settings-heading" className="ride-line">\s*<button type="button" className="ride-line-button" aria-expanded=\{open\} aria-controls=\{bodyId\}/);
-  assert.match(sidebar, /<span className="ride-line-summary" aria-hidden="true">/);
-  assert.match(sidebar, /<span className="visually-hidden">: \{spoken\}\.<\/span>/);
+  const html = renderToStaticMarkup(
+    createElement(RideSettings, { summary: "Default · now", spoken: "Default, now", children: createElement("p", null, "controls") }),
+  );
+  // The region is named "Ride" alone, not by the whole button (the a11y review's N4).
+  assert.match(
+    html,
+    /^<section class="ride-settings" aria-label="Ride"><h2 id="ride-settings-heading" class="ride-line"><button type="button" class="ride-line-button" aria-expanded="false" aria-controls="[^"]+">/,
+  );
+  assert.match(html, /<span class="ride-line-summary" aria-hidden="true">Default · now<\/span><span class="visually-hidden">: Default, now\.<\/span>/);
+  // Shown Edit or Done, heard Edit whatever the state: aria-expanded says it (no "Done, expanded": N8).
+  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Edit<\/span><span class="visually-hidden"> Edit<\/span>/);
   assert.equal(rideActionLabel(false), "Edit");
   assert.equal(rideActionLabel(true), "Done");
+  assert.equal(RIDE_ACTION_SPOKEN, "Edit");
   // The controls stay in the page while closed, so nothing they hold is lost.
-  assert.match(sidebar, /<div id=\{bodyId\} className="ride-settings-body" hidden=\{!open\}>/);
+  assert.match(html, /<div id="[^"]+" class="ride-settings-body" hidden=""><p>controls<\/p><\/div>/);
 });
 
 test("App puts the ride type and every dial behind the Ride line, in the mockup's order", () => {
@@ -102,9 +155,14 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
 test("the points come first, the how-to is behind More tips, and Reverse, Undo and Clear share a row", () => {
   assert.equal(MORE_TIPS, "More tips");
   assert.equal(FEWER_TIPS, "Fewer tips");
-  assert.match(searchLede("default", false), /^Search, or click the map: start, then end\./);
-  assert.match(searchLede("default", true), /come[s]? back to the start/);
-  assert.match(app, /<MoreTips>\s*<p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>/);
+  // The keyboard's way in stays in view (the a11y review's S6).
+  assert.equal(searchLede(false), "Search, click the map, or use Add point at map center: start, then end. Later clicks add stops.");
+  assert.equal(searchLede(true), "Search, click the map, or use Add point at map center: start, then stops. The ride comes back to the start.");
+  // The start-up how-to only before any point; with points, how to change them (the correctness review's N5).
+  assert.match(
+    app,
+    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>\}/,
+  );
   assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
   // Add point at map center first, then the compact row; every existing button is still there.
   const labels = ["Add point at map center", "Reverse", "Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-add"')));
@@ -113,6 +171,87 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.match(app, /ref=\{addRef\}/);
   assert.match(app, /aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/);
   assert.match(app, /<p className="hint" id="reverse-hint">/);
+});
+
+test("with a route shown the points are compact, behind 'Edit points', and the controls stay in the page", () => {
+  assert.match(app, /const compactPoints = routeShownForPoints && points\.length >= 2 && !editPoints;/);
+  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
+  // Edit points controls both parts it hides (the correctness review's N6).
+  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-search points-edit"/);
+  assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
+  // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
+  assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
+  assert.match(app, /setEditPoints\(false\);\s*setPoints\(plan\.points\);/);
+  assert.match(app, /setStatus\(\{ kind: "idle" \}\);\s*\/\/ The next route opens compact again[^\n]*\n\s*setEditPoints\(false\);/);
+});
+
+test("the points compacting never leaves the focus in a hidden part: it goes to Edit points (the review's B1)", () => {
+  // A stand-in for the page: the two parts that hide, what had the focus, and Edit points.
+  const part = () => {
+    const kids = new Set<unknown>();
+    return { kids, contains: (node: unknown) => kids.has(node) };
+  };
+  const make = () => {
+    const search = part();
+    const tools = part();
+    const combobox = { name: "combobox" };
+    const addButton = { name: "add" };
+    const removeButton = { name: "remove" };
+    search.kids.add(combobox);
+    tools.kids.add(addButton);
+    let focused: unknown = null;
+    const editPoints = {
+      focus() {
+        focused = editPoints;
+      },
+    };
+    return { search, tools, combobox, addButton, removeButton, editPoints, focused: () => focused };
+  };
+  type Before = "combobox" | "addButton" | "removeButton" | null;
+  const cases: Array<{ name: string; before: Before; wasCompact: boolean; compact: boolean; moves: boolean }> = [
+    { name: "a route arrives with the focus in the search", before: "combobox", wasCompact: false, compact: true, moves: true },
+    { name: "a route arrives with the focus on Add point at map center", before: "addButton", wasCompact: false, compact: true, moves: true },
+    { name: "a route arrives with the focus on a point's Remove (still shown)", before: "removeButton", wasCompact: false, compact: true, moves: false },
+    { name: "a route arrives with the focus on the page", before: null, wasCompact: false, compact: true, moves: false },
+    { name: "already compact", before: "combobox", wasCompact: true, compact: true, moves: false },
+    { name: "opening the points again", before: "addButton", wasCompact: true, compact: false, moves: false },
+    { name: "no route", before: "addButton", wasCompact: false, compact: false, moves: false },
+  ];
+  for (const c of cases) {
+    const page = make();
+    const before = c.before === null ? null : page[c.before];
+    const moved = rescueCompactFocus({ wasCompact: c.wasCompact, compact: c.compact, before, hidden: [page.search, page.tools], editPoints: page.editPoints });
+    assert.equal(moved, c.moves, c.name);
+    assert.equal(page.focused(), c.moves ? page.editPoints : null, c.name);
+  }
+  // No Edit points button, or the parts not in the page yet: nothing to do, and no error.
+  const page = make();
+  assert.equal(rescueCompactFocus({ wasCompact: false, compact: true, before: page.combobox, hidden: [null, null], editPoints: page.editPoints }), false);
+  assert.equal(rescueCompactFocus({ wasCompact: false, compact: true, before: page.combobox, hidden: [page.search], editPoints: null }), false);
+  // App runs it in a layout effect on compactPoints, with what had the focus before that render.
+  assert.match(
+    app,
+    /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsSearchRef\.current, pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
+  );
+  assert.match(app, /ref=\{editPointsRef\}\s+className="secondary edit-points"/);
+  // After the sheet-order effect, which may first put the focus back on the (now hidden) element.
+  assert.ok(app.indexOf("rescueCompactFocus({") > app.indexOf("}, [routeFirst]);"));
+});
+
+test("Mass Ride's points on federal land are listed in the planner too, with their own heading id", () => {
+  const points = app.slice(app.indexOf("const federalPlanner"), app.indexOf("const routeSection"));
+  assert.match(points, /federalShown\(preset, true\) && \(/);
+  assert.match(points, /<FederalPointsList[\s\S]*headingId="federal-points-planner-heading"/);
+  assert.match(points, /\{federalPlanner\}/);
+  const html = renderToStaticMarkup(
+    createElement(FederalPointsList, {
+      found: [{ index: 0, name: "National Mall", manager: "NPS" }] as never,
+      count: 2,
+      nameOf: () => "Start",
+      headingId: "x-heading",
+    }),
+  );
+  assert.match(html, /<p id="x-heading">[^<]+<\/p><ul aria-labelledby="x-heading"><li>Start – National Mall \(NPS\)<\/li><\/ul>/);
 });
 
 // ---- the route view ---------------------------------------------------------
@@ -136,6 +275,15 @@ test("the four quick figures: share on paths and quiet streets, heavy traffic, j
   assert.deepEqual([path.label, path.value], ["Off-road path", "2.4 mi (3.9 km)"]);
 });
 
+test("the paths-and-quiet-streets figure is always the bar key's LTS 1 plus LTS 2 (the correctness review's N3)", () => {
+  // Rounded on their own, the sum and the two shares in the key could differ by one.
+  for (const stress of [{ "1": 6060, "2": 3040, "3": 900 }, { "1": 6049, "2": 3049, "3": 902 }, { "1": 333, "2": 333, "3": 334 }]) {
+    const keyed = stressSegments(stress);
+    const sum = keyed.filter((s) => s.key === "1" || s.key === "2").reduce((n, s) => n + s.percent, 0);
+    assert.equal(calmPercent(stress), sum, JSON.stringify(stress));
+  }
+});
+
 test("a figure the planner did not send is said so, not guessed; none is 'None'", () => {
   const bare = quickFigures({} as never);
   assert.deepEqual(bare.map((f) => f.value), [NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE]);
@@ -149,13 +297,19 @@ test("a figure the planner did not send is said so, not guessed; none is 'None'"
 
 test("the stress bar is one image with each share in its name, and a line of text says the same", () => {
   const segments = [
-    { short: "LTS 1", percent: 61 },
-    { short: "LTS 2", percent: 30 },
-    { short: "LTS 3", percent: 0 },
-    { short: "LTS 4", percent: 9 },
+    { short: "LTS 1", label: "Comfortable for most people", percent: 61 },
+    { short: "LTS 2", label: "Comfortable for most adults", percent: 30 },
+    { short: "LTS 3", label: "For confident riders", percent: 0 },
+    { short: "LTS 4", label: "Heavy or fast traffic", percent: 9 },
   ];
-  assert.equal(stressBarLabel(segments), "Traffic stress along the route: LTS 1 61 percent, LTS 2 30 percent, LTS 4 9 percent");
-  assert.equal(stressBarKey(segments), "LTS 1 61% · LTS 2 30% · LTS 4 9%");
+  // The tier, what it means, then its share, so "LTS 1" and "61" are never heard as one number; and no
+  // "Traffic stress along the route" again, which the figure's caption already names (the a11y review's S2).
+  assert.equal(
+    stressBarLabel(segments),
+    "LTS 1, comfortable for most people: 61 percent; LTS 2, comfortable for most adults: 30 percent; LTS 4, heavy or fast traffic: 9 percent",
+  );
+  assert.equal(stressBarKey(segments), "LTS 1: 61%, LTS 2: 30%, LTS 4: 9%");
+  assert.match(app, /<figure className="stress stress-main" aria-labelledby="stress-figure-caption">/);
   assert.match(app, /<div className="stress-bar" role="img" aria-label=\{stressBarLabel\(segments\)\}>/);
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
 });
@@ -170,25 +324,127 @@ test("the route's folds: Stress and facilities, Directions, Junctions to watch, 
     assert.ok(i > 0, text);
     return i;
   };
-  const order = ['<Fold title="Stress and facilities">', "<RouteDescription route={route} fold />", 'foldTitle("Junctions to watch", junctions)', 'foldTitle("Routes to choose from", pickerCount)'].map(at);
+  const order = [
+    "<Fold title={ROUTE_FOLDS.facilities.title}",
+    "<RouteDescription route={route} fold />",
+    "foldTitle(ROUTE_FOLDS.junctions.title, junctions)",
+    "foldTitle(ROUTE_FOLDS.choices.title, pickerCount)",
+  ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.doesNotMatch(app, /Elevation and stress/, "the elevation chart is not in the app (322), so there is no section for it");
-  assert.match(sidebar, /<details className=\{className \? `fold \$\{className\}` : "fold"\} open=\{open\}>\s*<summary>\{title\}<\/summary>/);
+  // Each fold is reached from a heading list: a hidden h3 before it (the a11y review's S5).
+  for (const key of ["facilities", "junctions", "choices"] as const) {
+    assert.ok(app.includes(`heading={ROUTE_FOLDS.${key}.title} open={ROUTE_FOLDS.${key}.open}`), key);
+  }
+  assert.match(app, /<h3 className="visually-hidden">Totals<\/h3>\s*<dl className="stats totals">/);
   // The notices stay in view; only the figures are folded.
   assert.match(app, /<FacilityBreakdown route=\{route\} part="notices" \/>/);
   assert.match(app, /<FacilityBreakdown route=\{route\} part="figures" \/>/);
 });
 
+test("a Fold: closed unless open, 'Routes to choose from' open by default, and its hidden h3 first", () => {
+  assert.deepEqual(Object.fromEntries(Object.entries(ROUTE_FOLDS).map(([k, v]) => [k, v.open])), {
+    facilities: false,
+    directions: false,
+    junctions: false,
+    choices: true,
+  });
+  const closed = renderToStaticMarkup(createElement(Fold, { title: "Junctions to watch (4)", heading: "Junctions to watch", children: "x" }));
+  assert.equal(
+    closed,
+    '<h3 class="visually-hidden">Junctions to watch</h3><details class="fold"><summary>Junctions to watch (4)</summary><div class="fold-body">x</div></details>',
+  );
+  const open = renderToStaticMarkup(createElement(Fold, { title: "Routes to choose from (3)", open: ROUTE_FOLDS.choices.open, children: "x" }));
+  assert.match(open, /^<details class="fold" open="">/);
+});
+
+test("FacilityBreakdown's parts: the notices only in 'notices', the figures only in 'figures', both in 'all' (mutation SF3)", () => {
+  assert.deepEqual(breakdownParts("notices"), { notices: true, figures: false });
+  assert.deepEqual(breakdownParts("figures"), { notices: false, figures: true });
+  assert.deepEqual(breakdownParts("all"), { notices: true, figures: true });
+  // Every block of the component is gated by the flag for its half: two figures, three notices.
+  const breakdown = src("../FacilityBreakdown.tsx");
+  assert.match(breakdown, /const \{ figures, notices \} = breakdownParts\(part\);/);
+  const gates = [...breakdown.matchAll(/\{(figures|notices) && ([^&]+?) && \(\s*<(figure|p) className="([^"]+)"/g)].map((m) => `${m[1]}:${m[4]}`);
+  assert.deepEqual(gates, [
+    "figures:stress route-colours",
+    "notices:notice traffic-tolerant",
+    "notices:notice avoid",
+    "figures:stress facility",
+    "notices:hint seek",
+  ]);
+});
+
+test("Directions as a fold: an h3 first, a closed details named with its steps, no fold for no steps (mutation SF3)", () => {
+  const html = renderToStaticMarkup(
+    createElement(Fold, {
+      title: foldTitle(ROUTE_FOLDS.directions.title, stepsCount(2)),
+      heading: ROUTE_FOLDS.directions.title,
+      headingId: "route-description-heading",
+      open: false,
+      className: "route-description",
+      children: createElement("ol", { className: "description-list" }),
+    }),
+  );
+  assert.equal(
+    html,
+    '<h3 id="route-description-heading" class="visually-hidden">Directions</h3><details class="fold route-description"><summary>Directions (2 steps)</summary><div class="fold-body"><ol class="description-list"></ol></div></details>',
+  );
+  const component = src("../RouteDescription.tsx");
+  const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));
+  assert.match(fold, /if \(entries\.length === 0\) return null;/, "no \"Directions (0 steps)\"");
+  assert.match(fold, /<Fold\s+title=\{foldTitle\(ROUTE_FOLDS\.directions\.title, stepsCount\(entries\.length\)\)\}\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
+  // The rider's open or closed is remembered (writeOpen), once per change.
+  assert.match(fold, /onToggle=\{\(now\) => \{\s*if \(now !== open\) \{\s*setOpen\(now\);\s*writeOpen\(now\);/);
+  assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);
+});
+
 test("GPX and Copy link are pinned under the scrolling part, outside it", () => {
   assert.equal(COPY_LINK, "Copy link");
-  assert.equal(linkToCopy({ href: "https://x.test/#plan" }), "https://x.test/#plan");
   const scrollEnd = app.indexOf("</div>\n\n          {/* Pinned under");
   const pinned = app.indexOf('<div className="route-actions">');
   assert.ok(scrollEnd > 0 && pinned > scrollEnd, "outside .panel-scroll");
   assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop\)\}>\s*Download GPX/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSaid\}/);
-  // The link is the address, which carries the plan and never the weight (313).
-  assert.match(app, /copyText\(linkToCopy\(window\.location\), navigator\.clipboard, selectionCopy\)/);
+  // The link is this page and encodePlan's fragment, which never carries the weight (313).
+  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
+  assert.equal(linkSaidFor(true), COPY_LINK_DONE);
+  assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
+  assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);
+  // Cleared first, so a second press is said again.
+  assert.match(app, /const press = \+\+linkPresses\.current;\s*setLinkSaid\(""\);/);
+});
+
+test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
+  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials]);"));
+  assert.match(writer, /const hash = encodePlan\(points, preset, dials\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
+  assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
+  assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
+  // planDials (the dials with the weight) never reaches the address bar.
+  assert.doesNotMatch(writer.replace(/\/\/[^\n]*/g, ""), /planDials|weight/i);
+});
+
+test("the copied link is encodePlan's, and never holds the weight, even with one stored and one in the dials", () => {
+  const was = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const stored = new Map([[WEIGHT_STORAGE_KEY, JSON.stringify({ kg: 97.5, at: 1 })]]);
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: { getItem: (k: string) => stored.get(k) ?? null, setItem: () => {}, removeItem: () => {} },
+  });
+  try {
+    const points: Array<[number, number]> = [
+      [-77.03, 38.9],
+      [-77.05, 38.92],
+    ];
+    const dials: Dials = { ...startDials("default"), systemWeightKg: 123 };
+    const where = { origin: "https://x.test", pathname: "/", search: "?palette=cool" };
+    const link = linkToCopy(where, points, "default", dials);
+    assert.equal(link, `https://x.test/?palette=cool${encodePlan(points, "default", dials)}`);
+    assert.doesNotMatch(link, /weight|sysweight|97|123|kg|lb/i);
+  } finally {
+    if (was) Object.defineProperty(globalThis, "localStorage", was);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });
 
 test("copyText uses the clipboard, falls back to the selection method, and says false when both fail", async () => {
@@ -208,7 +464,8 @@ test("the bottom bar is Map layers, Legend, GPX and About: real buttons, each wi
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["layers", "layers", "gpx", "about"]);
   assert.equal(BAR_ITEMS.filter((i) => i.toLegend).length, 1, "only Legend opens at the legend");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.match(sidebar, /<nav aria-label="More" className="bottom-bar">/);
+  assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
+  assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<button\s+key=\{item\.id\}\s+type="button"/);
   assert.match(sidebar, /<span>\{item\.label\}<\/span>/);
   assert.match(sidebar, /<svg[^>]*aria-hidden="true">\s*\{ICONS\[item\.id\]\}/);
@@ -219,19 +476,115 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
   assert.deepEqual(Object.values(SHEET_TITLES), ["Map layers", "GPX file", "About RouteMaker"]);
   assert.match(sidebar, /aria-label="Back to the planner"/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
-  assert.match(sidebar, /event\.key !== "Escape"/);
-  assert.match(app, /barButtons\.current\[openedBy\.current\]\?\.focus\(\)/);
-  assert.match(app, /target\.current\?\.focus\(\)/);
+  assert.match(
+    sidebar,
+    /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack\)/,
+  );
+  // The legend's heading and the error can take the focus (focus() on an element without tabIndex does nothing).
+  assert.match(app, /<h3 id="legend-heading" ref=\{legendHeadingRef\} tabIndex=\{-1\}>/);
+  assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{status\.error\.kind\}`\} role="alert">/);
 });
 
-test("the Map layers sheet holds the switches, the rail stations, federal land and the full legend", () => {
+test("where the focus goes on every change of view (mutation SF1)", () => {
+  const views: PanelView[] = ["planner", "layers", "gpx", "about"];
+  const causes: ViewCause[] = ["bar", "back", "error", "confirm"];
+  const ids: BarItem["id"][] = ["layers", "legend", "gpx", "about"];
+  for (const was of views)
+    for (const view of views)
+      for (const legendTarget of [false, true])
+        for (const openedBy of ids)
+          for (const cause of causes) {
+            const got = focusOnViewChange({ was, view, legendTarget, openedBy, cause });
+            const at = `${was}->${view} legend=${legendTarget} by=${openedBy} ${cause}`;
+            if (was === view) assert.equal(got, null, at);
+            else if (view !== "planner") assert.deepEqual(got, { kind: "heading", view, legend: view === "layers" && legendTarget }, at);
+            else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
+            else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
+            else assert.deepEqual(got, { kind: "bar", id: openedBy }, at);
+          }
+  // The cases a rider meets, spelled out.
+  const go = (was: PanelView, view: PanelView, legendTarget: boolean, openedBy: BarItem["id"], cause: ViewCause) =>
+    focusOnViewChange({ was, view, legendTarget, openedBy, cause });
+  assert.deepEqual(go("planner", "layers", true, "legend", "bar"), { kind: "heading", view: "layers", legend: true });
+  assert.deepEqual(go("planner", "layers", false, "layers", "bar"), { kind: "heading", view: "layers", legend: false });
+  assert.deepEqual(go("planner", "gpx", true, "gpx", "bar"), { kind: "heading", view: "gpx", legend: false }, "only the layers sheet has a legend");
+  assert.deepEqual(go("gpx", "planner", false, "gpx", "back"), { kind: "bar", id: "gpx" });
+  assert.deepEqual(go("layers", "planner", true, "legend", "back"), { kind: "bar", id: "legend" });
+  assert.deepEqual(go("gpx", "planner", false, "gpx", "error"), { kind: "error" });
+  assert.deepEqual(go("layers", "planner", false, "layers", "confirm"), { kind: "plan" });
+  // App records why: a bar button, Back, or the status that brought the planner back.
+  assert.match(app, /openedBy\.current = item\.id;\s*viewCause\.current = "bar";/);
+  assert.match(app, /viewCause\.current = "back";\s*setView\("planner"\);/);
+  assert.match(app, /viewCause\.current = status\.kind === "confirm" \? "confirm" : "error";\s*setView\("planner"\);/);
+  assert.match(app, /focusOnViewChange\(\{ was, view, legendTarget, openedBy: openedBy\.current, cause: viewCause\.current \}\)/);
+  assert.match(app, /prevView\.current = view;/);
+  // The long-ride question takes the focus when it comes, not again on the way back from a sheet (N8).
+  assert.match(app, /if \(focusPlan && viewNow\.current === "planner"\) planButtonRef\.current\?\.focus\(\);\s*\}, \[focusPlan\]\);/);
+});
+
+test("a sheet's Escape: back, except in a dialog, on the place search, or when already handled", () => {
+  type Fake = SheetKeyEvent & { prevented: boolean };
+  const event = (key: string, opts: { prevented?: boolean; inDialog?: boolean; role?: string; noTarget?: boolean } = {}): Fake => {
+    const e: Fake = {
+      key,
+      defaultPrevented: opts.prevented ?? false,
+      prevented: false,
+      target: opts.noTarget
+        ? null
+        : {
+            closest: (selector: string) => (selector === "dialog" && opts.inDialog ? {} : null),
+            getAttribute: (name: string) => (name === "role" ? (opts.role ?? null) : null),
+          },
+      preventDefault() {
+        e.prevented = true;
+      },
+    };
+    return e;
+  };
+  const run = (e: Fake) => {
+    let back = 0;
+    const went = sheetEscape(e, () => back++);
+    return { went, back, prevented: e.prevented };
+  };
+  const goes = { went: true, back: 1, prevented: true };
+  const stays = { went: false, back: 0, prevented: false };
+  assert.deepEqual(run(event("Escape")), goes);
+  assert.deepEqual(run(event("Escape", { noTarget: true })), goes);
+  assert.deepEqual(run(event("Escape", { role: "button" })), goes);
+  assert.deepEqual(run(event("Enter")), stays);
+  assert.deepEqual(run(event("Escape", { prevented: true })), stays, "already handled");
+  assert.deepEqual(run(event("Escape", { inDialog: true })), stays, "the weight dialog's own Escape");
+  assert.deepEqual(run(event("Escape", { role: "combobox" })), stays, "the place search's list");
+});
+
+test("the Map layers sheet holds the switches in 312's order, then the full legend with its junctions", () => {
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  for (const part of ["<AccessibilitySwitch", "<HighStressLanesSwitch", "Show traffic stress on the map", "<RailStationsSection", "<FederalLandFor", "<StressLegend"]) {
-    assert.ok(sheet.includes(part), part);
-  }
+  // Traffic stress, high-stress lanes, accessibility colors, federal land, rail stations (OWNER-DECISIONS 312).
+  const parts = [
+    "Show traffic stress on the map",
+    "<HighStressLanesSwitch",
+    "<AccessibilitySwitch",
+    "<FederalLandFor",
+    "<RailStationsSection",
+    "<StressLegend",
+    "<JunctionLegend />",
+  ];
+  const at = parts.map((part) => sheet.indexOf(part));
+  assert.ok(at.every((i) => i > 0), JSON.stringify(at));
+  assert.deepEqual(at, [...at].sort((a, b) => a - b));
+  assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
+  assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");
   assert.match(sheet, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(app, /id="sheet-gpx"[\s\S]*<GpxPanel/);
   assert.match(app, /federalVisible=\{federalShown\(preset, federalOn\)\}/, "federal land stays Mass Ride's (324)");
+});
+
+test("the legend's Junctions: the markers' own triangle and diamond, each with its words", () => {
+  const html = renderToStaticMarkup(createElement(JunctionLegend));
+  assert.match(html, /<h4 id="junction-legend-heading">Junctions<\/h4><ul class="junction-legend-list" aria-labelledby="junction-legend-heading">/);
+  assert.match(html, /M12 2\.5 22\.5 20\.5H1\.5Z" fill="#f59e0b"[\s\S]*?Higher stress<span class="hint"> \(triangle\)/);
+  assert.match(html, /M12 1\.5 22\.5 12 12 22\.5 1\.5 12Z" fill="#dc2626"[\s\S]*?Very high stress<span class="hint"> \(diamond\)/);
+  assert.equal((html.match(/<span class="junction-icon" aria-hidden="true">/g) ?? []).length, 2, "the icons are decoration; the words carry it");
 });
 
 test("the zoom explanations are behind 'What each zoom level shows'; the zoom notice stays in view", () => {
@@ -244,18 +597,41 @@ test("the zoom explanations are behind 'What each zoom level shows'; the zoom no
   assert.doesNotMatch(renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11, shown: true })), /<details/);
 });
 
+test("the parts the owner has not decided are built, and off: the zoom notice and the Accessibility shortcut in the planner", () => {
+  assert.deepEqual(PLANNER_EXTRAS, { zoomNotice: false, accessibilityShortcut: false });
+  assert.match(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })), /^<p class="notice planner-zoom">Zoom in to see traffic stress on roads/);
+  assert.equal(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 16, shown: true })), "");
+  const shortcut = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: true, onChange: () => {} }));
+  assert.equal(shortcut, '<button type="button" class="secondary accessibility-shortcut" aria-pressed="true">Accessibility<span aria-hidden="true">: On</span></button>');
+  assert.match(app, /\{PLANNER_EXTRAS\.zoomNotice && <PlannerZoomNotice/);
+  assert.match(app, /\{PLANNER_EXTRAS\.accessibilityShortcut && <AccessibilityShortcut/);
+});
+
 // ---- the font and the stylesheet ------------------------------------------------
 
-test("Atkinson Hyperlegible is self-hosted from /fonts/, with the old system stack as the fallback", () => {
-  const faces = [...css.matchAll(/@font-face \{([^}]*)\}/g)].map((m) => m[1]);
+test("Atkinson Hyperlegible: fonts/fonts.css, relative url()s for Vite's /assets/, imported only once the files are there", () => {
+  const fonts = src("../fonts/fonts.css");
+  const faces = [...fonts.matchAll(/@font-face \{([^}]*)\}/g)].map((m) => m[1]);
   assert.equal(faces.length, 2);
   const urls = faces.flatMap((face) => [...face.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]));
-  assert.deepEqual(urls.sort(), ["/fonts/atkinson-hyperlegible-bold.woff2", "/fonts/atkinson-hyperlegible-regular.woff2"]);
-  for (const face of faces) assert.match(face, /font-display: swap/);
+  // Relative, so Vite fingerprints them into /assets/, which both edges serve (operations SF1); never /fonts/.
+  assert.deepEqual(urls.sort(), ["./atkinson-hyperlegible-bold.woff2", "./atkinson-hyperlegible-regular.woff2"]);
+  for (const face of faces) {
+    assert.match(face, /font-display: swap/);
+    assert.match(face, /src:\s*local\(/, "an installed font first: nothing to download");
+  }
+  assert.doesNotMatch(css, /@font-face|url\("?\/fonts\//, "styles.css asks for no font file");
+  // The switch: main.tsx imports fonts.css exactly when both files are in src/fonts/ (no request, no 404, today).
+  const main = src("../main.tsx");
+  const files = ["regular", "bold"].map((w) => existsSync(new URL(`../fonts/atkinson-hyperlegible-${w}.woff2`, import.meta.url)));
+  const imported = /^import "\.\/fonts\/fonts\.css";$/m.test(main);
+  assert.equal(files[0], files[1], "both font files, or neither");
+  assert.equal(imported, files[0], imported ? "fonts.css is imported but the font files are missing" : "the font files are there but fonts.css is not imported");
+  if (imported) assert.ok(existsSync(new URL("../fonts/OFL.txt", import.meta.url)), "the SIL Open Font License ships with the files");
   assert.match(css, /--font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;/);
   assert.match(css, /font-family: var\(--font\);/);
-  // font-src 'self': no font service, no external URL anywhere in the stylesheet or the page.
-  assert.doesNotMatch(css, /fonts\.googleapis|fonts\.gstatic|https?:\/\/[^"')]*\.(woff2?|ttf|otf)/);
+  // font-src 'self': no font service, no external URL anywhere in the stylesheets or the page.
+  for (const sheet of [css, fonts]) assert.doesNotMatch(sheet, /fonts\.googleapis|fonts\.gstatic|https?:\/\/[^"')]*\.(woff2?|ttf|otf)/);
   assert.doesNotMatch(src("../../index.html"), /googleapis|gstatic|<link[^>]*font/i);
 });
 
@@ -264,6 +640,30 @@ test("the sidebar's own buttons and summaries are 44 px high at least", () => {
   assert.match(css, /\.panel \.bar-button \{[^}]*min-height: 56px/);
   assert.match(css, /\.ride-line-button \{[^}]*min-height: 56px/);
   assert.match(css, /\.sheet-back \{[^}]*min-width: 44px/);
+});
+
+test("the folds show open or closed, the plain buttons have a 3:1 edge, and focus rings are not clipped", () => {
+  assert.match(css, /details\.fold > summary::before \{[^}]*border-right: 2px solid currentColor;[^}]*transform: rotate\(-45deg\);/);
+  assert.match(css, /details\.fold\[open\] > summary::before \{\s*transform: rotate\(45deg\);/);
+  assert.match(css, /button\.secondary,\s*\.route-actions button\.secondary \{[^}]*border-color: var\(--swatch-border\);/);
+  assert.match(css, /\.point-tools button \{[^}]*border-color: var\(--swatch-border\);/);
+  assert.match(css, /\.sheet-back \{[^}]*border-color: var\(--swatch-border\);/);
+  assert.match(css, /\.panel \.ride-line-button:focus-visible,\s*\.panel \.bar-button:focus-visible \{\s*outline-offset: -3px;/);
+  assert.match(css, /@media \(forced-colors: active\) \{\s*\.panel \.bar-button,\s*\.panel \.ride-line-button \{\s*border: 1px solid ButtonText;/);
+});
+
+test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned crowds out the planner or the banner", () => {
+  const start = css.indexOf("@media (max-height: 32.5em), (max-width: 22.5em) {");
+  assert.ok(start > 0, "the rule is there");
+  const rule = css.slice(start, css.indexOf("\n}\n", start));
+  assert.match(rule, /\.panel \{\s*overflow-y: auto;/);
+  assert.match(rule, /\.panel-body,\s*\.panel-scroll \{\s*flex: none;\s*min-height: auto;\s*overflow: visible;/);
+  // The banner stays the first thing, and nothing moves it or hides it (mutation NIT 2).
+  assert.doesNotMatch(css, /\.beta-banner[^{]*\{[^}]*(\border:|display: none)/);
+  assert.doesNotMatch(css, /\.panel-scroll[^{]*\{[^}]*\border:/);
+  assert.doesNotMatch(css, /\.panel-footer/, "the old footer's rules are gone with it");
+  // The scroll to the top reaches whichever scrolls.
+  assert.match(app, /panelBodyRef\.current\?\.scrollTo\(\{ top: 0 \}\);\s*panelRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);/);
 });
 
 test("the beta banner is still the first child of the panel's body, before the scrolling part", () => {
@@ -276,7 +676,13 @@ test("the beta banner is still the first child of the panel's body, before the s
 test("the skip link and its target stay: #route-planner is the aside, and every live region is still in the page", () => {
   assert.match(app, /href="#route-planner"/);
   assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
-  assert.match(app, /<div role="status" aria-live="polite" className="status-line">/);
+  // The route's live region is outside the panel, so a bar sheet or the phone's hidden sheet does not
+  // silence it (the reviews' S1, S2); the visible copy in the planner is hidden from screen readers.
+  const region = app.indexOf('<div role="status" aria-live="polite" className="status-line visually-hidden">');
+  assert.ok(region > 0 && region < app.indexOf("<aside"), "before the panel, outside it");
+  assert.match(app.slice(region, app.indexOf("<aside")), /\{status\.kind === "ok" && routeSaid && <p>\{routeSaid\}<\/p>\}/);
+  assert.match(app, /<div className="status-shown" aria-hidden="true">/);
+  assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
   assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
 });
@@ -286,11 +692,4 @@ test("on a desktop the points come first, then the Ride line, then the route; on
   assert.deepEqual(sheetOrder(false, "ok", true), ["points", "presets", "route"]);
   assert.deepEqual(sheetOrder(true, "ok", true), ["route", "points", "presets"]);
   assert.deepEqual(sheetOrder(true, "idle", false), ["points", "presets", "route"]);
-});
-
-test("with a route shown the points are compact, behind 'Edit points', and the controls stay in the page", () => {
-  assert.match(app, /const compactPoints = routeShownForPoints && points\.length >= 2 && !editPoints;/);
-  assert.match(app, /<div className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
-  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-edit"/);
-  assert.match(app, /<div id="points-edit" hidden=\{compactPoints\}>/);
 });

@@ -2,14 +2,16 @@
  * The one-line summary of the ride settings, for the sidebar's "Ride" button
  * (OWNER-DECISIONS 312, mockup v3): "Default · quiet streets · balanced hills ·
  * now". It names the ride type, what the Traffic and Hills sliders are set to,
- * and when; a loop or "avoid gravel" is added only when it is on. It never
+ * and when; a target distance ("about 20 mi (32.2 km)", miles first), a loop or
+ * "avoid gravel" is added only when it is set. It never
  * says the rider and bike weight, which is private (313-314): that has its own
  * line, status only, in the expanded settings.
  *
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, stressMax, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, fitTarget, stressMax, type Dials } from "./dials.ts";
+import { formatDistance } from "./format.ts";
 import { presetLabel, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
 
@@ -49,14 +51,22 @@ export function rideTypeShort(preset: PresetId, dials: Dials): string {
   );
 }
 
-/** The summary's parts, in order. */
+/** A set target distance, miles first: "about 20.0 mi (32.2 km)"; null with none. */
+export function targetShort(metres: Dials["targetDistanceM"]): string | null {
+  const target = fitTarget(metres);
+  return target === undefined ? null : `about ${formatDistance(target)}`;
+}
+
+/** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, gravel). */
 export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
   const locked = stressMax(preset) === 0;
+  const target = targetShort(dials.targetDistanceM);
   return [
     rideTypeShort(preset, dials),
     locked ? "most direct roadway" : trafficShort(dials.stress),
     hillsShort(dials.hills),
     whenShort(dials.when),
+    ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? ["loop"] : []),
     ...(dials.avoidGravel === true ? ["avoids gravel"] : []),
   ];

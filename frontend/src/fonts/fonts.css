@@ -1,0 +1,40 @@
+/*
+ * Atkinson Hyperlegible (OWNER-DECISIONS 312), self-hosted: the site's CSP is `font-src 'self'`, so
+ * the files are never fetched from a font service. The url()s are relative, so Vite fingerprints the
+ * files into /assets/ (atkinson-hyperlegible-regular-<hash>.woff2), which both edges (Caddy and the
+ * beta nginx) already serve with a year's immutable cache, and which every publish path copies; no
+ * edge or deploy change is needed (the sidebar operations review's SF1).
+ *
+ * NOT IMPORTED YET: the two .woff2 files wait on the owner's approval. Until they are in this folder,
+ * nothing imports this file, so no page asks for a font that is not there (no 404s, no API traffic),
+ * and a build has nothing to resolve. The switch is one commit (docs/DEVELOPMENT.md, "The sidebar
+ * (312)"): add atkinson-hyperlegible-regular.woff2 (400) and atkinson-hyperlegible-bold.woff2 (700)
+ * here with the SIL Open Font License text (OFL.txt) and a credit, then add
+ * `import "./fonts/fonts.css";` to main.tsx after "./styles.css". lib/sidebar.test.ts fails if the
+ * import and the files are not both there or both absent.
+ *
+ * local() comes first, so a rider who has the font installed downloads nothing. font-display: swap
+ * shows the text at once in the system stack (--font in styles.css) and swaps when the file arrives.
+ * Italics are not declared; the browser slants the regular.
+ */
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible"),
+    local("AtkinsonHyperlegible-Regular"),
+    url("./atkinson-hyperlegible-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    local("Atkinson Hyperlegible Bold"),
+    local("AtkinsonHyperlegible-Bold"),
+    url("./atkinson-hyperlegible-bold.woff2") format("woff2");
+}

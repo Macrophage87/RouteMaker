@@ -1,35 +1,9 @@
 /*
- * Atkinson Hyperlegible (OWNER-DECISIONS 312), self-hosted: the site's CSP is
- * `font-src 'self'`, so the files are served from /fonts/ (frontend/public/fonts)
- * and never from a font service. The files are not in the repository until the
- * owner approves the download; until then local() finds the font where it is
- * installed, and otherwise the browser takes the next family in --font, the
- * system stack the panel used before, with no error and no change of layout
- * beyond the letter shapes. font-display: swap shows the text at once.
- * Files: atkinson-hyperlegible-regular.woff2 (400) and
- * atkinson-hyperlegible-bold.woff2 (700).
+ * The font is Atkinson Hyperlegible (OWNER-DECISIONS 312). --font names it first, so a rider who has it
+ * installed sees it now. The self-hosted files and their font-face rules are in fonts/fonts.css, which
+ * main.tsx imports only once the files are in the repository (owner approval pending), so until then
+ * nothing asks for a font file and nothing 404s. See docs/DEVELOPMENT.md, "The sidebar (312)".
  */
-@font-face {
-  font-family: "Atkinson Hyperlegible";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src:
-    local("Atkinson Hyperlegible"),
-    local("AtkinsonHyperlegible-Regular"),
-    url("/fonts/atkinson-hyperlegible-regular.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Atkinson Hyperlegible";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src:
-    local("Atkinson Hyperlegible Bold"),
-    local("AtkinsonHyperlegible-Bold"),
-    url("/fonts/atkinson-hyperlegible-bold.woff2") format("woff2");
-}
 
 /*
  * The planner's chrome. The map is the light Protomaps flavour in both themes;
@@ -735,17 +709,6 @@ details.how summary {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
-}
-
-.panel-footer {
-  border-top: 1px solid var(--border);
-  margin-top: 14px;
-  padding-top: 8px;
-  font-size: 0.88rem;
-}
-
-.panel-footer p {
-  margin: 0;
 }
 
 .visually-hidden {
@@ -1514,10 +1477,12 @@ dialog.weight-dialog h2 {
 }
 
 /* The private-beta notice (lib/betaBanner.ts): only in a build made with
-   VITE_BETA=1. The first thing in the planner's scrolling body, under its header:
-   it never overlays the map or the sheet (final review, accessibility S2), it
-   scrolls and collapses with the planner, so at high zoom it cannot squeeze the
-   body to nothing (re-check S1), and its text follows the rider's font size. */
+   VITE_BETA=1. The first child of the panel's body, under its header, over the
+   scrolling part: it never overlays the map or the sheet (final review,
+   accessibility S2), and its text follows the rider's font size. On a short or
+   zoomed screen the whole panel scrolls as one (the "short screens" rule at the
+   end of the sidebar block), so the banner scrolls with the planner and its
+   Dismiss is never clipped (re-check S1; the sidebar review's S1 and B2). */
 .beta-banner {
   display: flex;
   align-items: center;
@@ -1567,11 +1532,13 @@ dialog.weight-dialog h2 {
   flex: 1 1 auto;
 }
 
+/* A transparent button's edge is --swatch-border, at least 3:1 on the panel in both themes (1.4.11;
+   the a11y review's S4): --border is too faint to mark a control. */
 button.secondary,
 .route-actions button.secondary {
   background: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--swatch-border);
 }
 
 /* Points */
@@ -1586,7 +1553,7 @@ button.secondary,
 .point-tools button {
   background: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--swatch-border);
 }
 
 .points li {
@@ -1779,9 +1746,32 @@ details.fold {
 details.fold > summary {
   display: flex;
   align-items: center;
+  gap: 10px;
   padding: 0 12px;
   font-weight: 700;
   cursor: pointer;
+  list-style: none;
+}
+
+details.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A flex summary loses its marker, so a chevron says open or closed (the a11y review's S3): right while
+   closed, down while open. Drawn with borders in currentColor, so it holds in forced colors. */
+details.fold > summary::before {
+  content: "";
+  flex: none;
+  width: 0.45em;
+  height: 0.45em;
+  margin: 0 0.15em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+details.fold[open] > summary::before {
+  transform: rotate(45deg);
 }
 
 details.fold > .fold-body {
@@ -1857,6 +1847,12 @@ details.zoom-notes {
   font-size: 0.8rem;
 }
 
+/* Full-width rows against the panel's edges: the ring is drawn inside, so no edge clips it (the a11y review's N2). */
+.panel .ride-line-button:focus-visible,
+.panel .bar-button:focus-visible {
+  outline-offset: -3px;
+}
+
 .bar-button[aria-current="true"] {
   color: var(--accent);
   font-weight: 700;
@@ -1889,7 +1885,7 @@ details.zoom-notes {
   justify-content: center;
   background: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--swatch-border);
 }
 
 /* The panel's own scrolling on a phone: the sheet is half the screen, so the pinned parts stay slim. */
@@ -1911,8 +1907,57 @@ details.zoom-notes {
 
 /* Forced colors: the bar's and the Ride line's buttons keep their borders and the system's colors. */
 @media (forced-colors: active) {
-  .bar-button,
-  .ride-line-button {
-    border-color: ButtonText;
+  .panel .bar-button,
+  .panel .ride-line-button {
+    border: 1px solid ButtonText;
+  }
+}
+
+/* The junction markers in the legend (JunctionLegend) */
+.junction-legend h4 {
+  margin: 10px 0 4px;
+  font-size: 0.9rem;
+}
+
+.junction-legend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.junction-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/*
+ * Short or zoomed screens (WCAG 1.4.4, 1.4.10; the sidebar review's B2 and S1): the pinned route actions
+ * and bottom bar would leave the planner almost no room, so the whole panel scrolls as one, header,
+ * banner, planner, actions and bar together. In em, so a larger default text size reaches it sooner:
+ * 32.5em is 520 px and 22.5em 360 px at 16 px text.
+ *   - 400% zoom of 1280x800 is 320x200 CSS px: both match; the phone sheet is 48% (96 px), and all of it
+ *     scrolls, where before the pinned header, actions and bar took it all and the planner got 0 px.
+ *   - 200% zoom of 1280x800 is 640x400: the height matches; 192 px all scroll, where 25 px did.
+ *   - A phone in landscape (667x375, 844x390) matches on height; 320 px wide matches on width.
+ */
+@media (max-height: 32.5em), (max-width: 22.5em) {
+  .panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .panel > *,
+  .panel-body > * {
+    flex: none;
+  }
+
+  .panel-body,
+  .panel-scroll {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
   }
 }

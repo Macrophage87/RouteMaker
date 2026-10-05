@@ -118,10 +118,17 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
       ? ""
       : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE};` +
         " then each click after the start is a stop.";
+  return `${first}${toggle} ${editingTips()}`;
+}
+
+/**
+ * How to change points already placed, from the mouse and the keyboard: the end of the hint before any
+ * point, and the whole of "More tips" once there are points (the correctness review's N5: the start-up
+ * words read wrong with points placed).
+ */
+export function editingTips(): string {
   return (
-    first +
-    toggle +
-    " Drag any marker to move it, or drag the route line to pull it through somewhere else" +
+    "Drag any marker to move it, or drag the route line to pull it through somewhere else" +
     " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
     ' move the map with the arrow keys and use "Add point at map center"; Ctrl+Z undoes the' +
     " last change and Ctrl+Shift+Z redoes it."

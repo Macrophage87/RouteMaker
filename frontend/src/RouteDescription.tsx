@@ -23,7 +23,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import { useHighStressLanes } from "./useStressStyle.ts";
-import { copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
+import { ROUTE_FOLDS, copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
+import { Fold } from "./lib/sidebarParts.ts";
 import {
   DESCRIPTION_HEADING,
   chevron,
@@ -132,31 +133,34 @@ export function RouteDescription({ route, fold = false }: { route: RouteResponse
   );
 
   if (fold) {
+    // No fold for a route with no steps ("Directions (0 steps)": the correctness review's N9). Its h3
+    // comes first, out of sight, so a screen reader still jumps to the directions by heading (the a11y
+    // review's S5); the fold itself is lib/sidebarParts.ts Fold, which a test renders.
+    if (entries.length === 0) return null;
     return (
-      <details
-        className="fold route-description"
+      <Fold
+        title={foldTitle(ROUTE_FOLDS.directions.title, stepsCount(entries.length))}
+        heading={ROUTE_FOLDS.directions.title}
+        headingId="route-description-heading"
         open={open}
-        onToggle={(event) => {
-          const now = (event.currentTarget as HTMLDetailsElement).open;
+        className="route-description"
+        onToggle={(now) => {
           if (now !== open) {
             setOpen(now);
             writeOpen(now);
           }
         }}
       >
-        <summary>{foldTitle("Directions", stepsCount(entries.length))}</summary>
-        <div className="fold-body">
-          {choice ? (
-            <label className="description-view">
-              <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
-              Full detail
-            </label>
-          ) : null}
-          {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
-          <ol className="description-list">{items}</ol>
-          {actions}
-        </div>
-      </details>
+        {choice ? (
+          <label className="description-view">
+            <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
+            Full detail
+          </label>
+        ) : null}
+        {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
+        <ol className="description-list">{items}</ol>
+        {actions}
+      </Fold>
     );
   }
 

@@ -98,3 +98,15 @@ export function avoidMetres(stress: StressMetres | undefined): number {
   const value = stress?.["5"];
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }
+
+/** Which half of the route summary's facility breakdown a FacilityBreakdown draws (OWNER-DECISIONS 312). */
+export type BreakdownPart = "all" | "notices" | "figures";
+
+/**
+ * The split: the notices (the traffic-tolerant warning, the roads best avoided, what the hills search
+ * found) stay in view, and the figures (the route colors and the bike facilities) go in the "Stress and
+ * facilities" fold; "all" is both, once each.
+ */
+export function breakdownParts(part: BreakdownPart): { notices: boolean; figures: boolean } {
+  return { notices: part !== "figures", figures: part !== "notices" };
+}

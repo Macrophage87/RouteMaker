@@ -1,8 +1,9 @@
 /**
  * The sidebar redesign's small parts (OWNER-DECISIONS 312, mockup v3): the
- * "More tips" toggle, the Ride line that opens the ride settings, the folds
- * (native <details>) of the route summary, the quick figures, the bottom bar
- * and the sheet it opens. Kept out of App.tsx, which places them.
+ * "More tips" toggle, the quick figures, the bottom bar and the sheet it opens;
+ * and, from lib/sidebarParts.ts, the Ride line, the folds (native <details>) of
+ * the route summary and the legend's junctions. Kept out of App.tsx, which
+ * places them.
  *
  * Every one is a real button or a real <details>, 44 px high at least, with its
  * state in aria-expanded (or the element's own) and its words in text; none
@@ -10,8 +11,12 @@
  * the Back button (or Escape) takes it back to the bar button that opened it.
  */
 import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import { BAR_ITEMS, FEWER_TIPS, MORE_TIPS, rideActionLabel, type BarItem, type PanelView } from "./lib/sidebar.ts";
+import { BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
+
+// The parts a test renders are written with createElement in lib/sidebarParts.ts (node's test runner
+// reads .ts, not .tsx); App.tsx takes them from here with the rest.
+export { AccessibilityShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./lib/sidebarParts.ts";
 
 /** Help that is not needed every time, behind a toggle (the mockup's "More tips"). */
 export function MoreTips({ children }: { children: ReactNode }) {
@@ -26,46 +31,6 @@ export function MoreTips({ children }: { children: ReactNode }) {
         {children}
       </div>
     </div>
-  );
-}
-
-/**
- * The Ride line: one line saying how the ride is set, and Edit, which opens the
- * controls (`children`). A heading holds the button, so a screen reader can
- * jump to it. The controls stay in the page while closed (hidden), so nothing
- * they hold is lost.
- */
-export function RideSettings({ summary, spoken, children }: { summary: string; spoken: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const bodyId = useId();
-  return (
-    <section className="ride-settings" aria-labelledby="ride-settings-heading">
-      <h2 id="ride-settings-heading" className="ride-line">
-        <button type="button" className="ride-line-button" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
-          <span className="ride-line-text">
-            <span className="ride-line-label">Ride</span>
-            <span className="ride-line-summary" aria-hidden="true">
-              {summary}
-            </span>
-            <span className="visually-hidden">: {spoken}.</span>
-          </span>
-          <span className="ride-line-action">{rideActionLabel(open)}</span>
-        </button>
-      </h2>
-      <div id={bodyId} className="ride-settings-body" hidden={!open}>
-        {children}
-      </div>
-    </section>
-  );
-}
-
-/** A collapsible section of the route summary: a native disclosure, closed unless `open`. */
-export function Fold({ title, open, className, children }: { title: string; open?: boolean; className?: string; children: ReactNode }) {
-  return (
-    <details className={className ? `fold ${className}` : "fold"} open={open}>
-      <summary>{title}</summary>
-      <div className="fold-body">{children}</div>
-    </details>
   );
 }
 
@@ -114,7 +79,7 @@ export function BottomBar({
   buttonRef: (id: BarItem["id"], button: HTMLButtonElement | null) => void;
 }) {
   return (
-    <nav aria-label="More" className="bottom-bar">
+    <nav aria-label={BAR_NAME} className="bottom-bar">
       {BAR_ITEMS.map((item) => {
         const current = view === item.opens && (item.id !== "layers" || !legend) && (item.id !== "legend" || legend);
         return (
@@ -161,13 +126,9 @@ export function SheetFrame({
   headingRef: Ref<HTMLHeadingElement>;
   children: ReactNode;
 }) {
+  // Escape inside a nested dialog or the place search's list is theirs, not the sheet's (lib/sidebar.ts).
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    // Escape inside a nested dialog or the place search's list is theirs, not the sheet's.
-    if (event.key !== "Escape" || event.defaultPrevented) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("dialog") || target.getAttribute("role") === "combobox") return;
-    event.preventDefault();
-    onBack();
+    sheetEscape({ key: event.key, defaultPrevented: event.defaultPrevented, target: event.target as HTMLElement, preventDefault: () => event.preventDefault() }, onBack);
   };
   return (
     <section id={id} className="sheet" aria-labelledby={`${id}-title`} hidden={!open} onKeyDown={onKeyDown}>

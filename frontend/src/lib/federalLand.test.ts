@@ -249,7 +249,7 @@ test("the section: a labelled switch, the legend, the note; the legend goes when
   const render = (on: boolean, status: "loading" | "ready" | "unavailable") =>
     renderToStaticMarkup(createElement(FederalLandSection, { on, onChange: () => {}, status }));
   const shown = render(true, "ready");
-  assert.match(shown, new RegExp(`<h2 id="federal-heading">${FEDERAL_HEADING}</h2>`));
+  assert.match(shown, new RegExp(`<h3 id="federal-heading">${FEDERAL_HEADING}</h3>`));
   assert.match(shown, /Show federal land on the map/);
   assert.match(shown, /checked=""/);
   assert.match(shown, /Federal land - permit rules may differ \(information, not legal advice\)\./);

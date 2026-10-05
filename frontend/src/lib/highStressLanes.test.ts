@@ -345,12 +345,13 @@ test("with no stress map the switch is still there, and its description says wha
   assert.ok(withMap.includes(HIGH_STRESS_LANES_HINT), "with the map, the default");
 });
 
-test("the panel places the switch next after the Accessibility switch, outside the overlay's block, telling it whether the map is there", () => {
+test("the panel places the switch just before the Accessibility switch, outside the overlay's block, telling it whether the map is there", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  // App.tsx is not rendered by a test: where it places the switch is read here.
+  // App.tsx is not rendered by a test: where it places the switch is read here. The sidebar's Map
+  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, high-stress lanes, accessibility colors.
   assert.match(
     app,
-    /<AccessibilitySwitch[\s\S]*?\/>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} \/>\s*\{stress === "available" && \(/,
+    /\{stress === "unavailable" && \([\s\S]*?\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} \/>\s*<AccessibilitySwitch/,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);

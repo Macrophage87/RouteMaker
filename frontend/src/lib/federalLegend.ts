@@ -101,16 +101,27 @@ export function federalPointText(point: FederalPoint, name: string): string {
  * read by a screen reader and a keyboard user without the map. Null until the
  * data has come, or with no points.
  */
-export function FederalPointsList({ found, count, nameOf }: { found: FederalPoint[] | null; count: number; nameOf: (index: number) => string }): ReactElement | null {
+export function FederalPointsList({
+  found,
+  count,
+  nameOf,
+  headingId = "federal-points-heading",
+}: {
+  found: FederalPoint[] | null;
+  count: number;
+  nameOf: (index: number) => string;
+  /** The list's heading id: the planner's copy (App.tsx, Points) and the Map layers sheet's each have their own. */
+  headingId?: string;
+}): ReactElement | null {
   if (found === null || count === 0) return null;
   if (found.length === 0) return h("p", { className: "hint federal-points" }, FEDERAL_POINTS_NONE);
   return h(
     "div",
     { className: "federal-points" },
-    h("p", { id: "federal-points-heading" }, FEDERAL_POINTS_HEADING),
+    h("p", { id: headingId }, FEDERAL_POINTS_HEADING),
     h(
       "ul",
-      { "aria-labelledby": "federal-points-heading" },
+      { "aria-labelledby": headingId },
       ...found.map((point) => h("li", { key: point.index }, federalPointText(point, nameOf(point.index)))),
     ),
   );
@@ -143,7 +154,8 @@ export function FederalLandSection({ on, onChange, status, points = null, pointC
   return h(
     "section",
     { "aria-labelledby": "federal-heading", className: "federal-section" },
-    h("h2", { id: "federal-heading" }, FEDERAL_HEADING),
+    // An h3: the section sits in the Map layers sheet, under its h2 (OWNER-DECISIONS 312).
+    h("h3", { id: "federal-heading" }, FEDERAL_HEADING),
     h(
       "label",
       { className: "toggle" },
