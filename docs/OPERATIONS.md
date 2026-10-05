@@ -751,12 +751,15 @@ relations and names are OSM's, cited with the rest of the map's data.
 
 **The Mass Ride capacity column** (FOLLOWUP-MASSRIDE-MAP part 1, OWNER-DECISIONS 325-327,
 387). `segment.mass_usable_width_m` is the usable width in metres `routemaker.massflow`
-gives each segment from its way's tags and the classifier's lanes; `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
+gives each segment from its way's tags, the classifier's lanes and, in DC, the Roadway Block
+blocks it lies along (the narrower direction, parked cars out; OWNER-DECISIONS 404); `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
 (rounded down to ten; ETag letter `r`), the route's coloured sections carry it for a Mass Ride,
 and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
 came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path
 rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
-`settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (90 to 260; about 198 on the live extract). Until a
+`settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
+ride its own direction's lanes less parked cars, from DC's Roadway Block in the District: about 90
+on DC's blocks, 99 for an untagged two-lane street). Until a
 rebuild has promoted the column, nothing changes for a rider: the tiles carry no `rpm`, the Mass
 Ride map keeps its current styling and its legend and panel are the stress ones, with no error and
 nothing to do. FORMAT_VERSION 6 (the tile format after the long trails' 5) must reach the api
