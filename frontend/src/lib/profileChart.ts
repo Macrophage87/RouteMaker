@@ -102,9 +102,29 @@ export const FLOW_GUIDES: readonly { at: number; color: string; band: 0 | 1 | 2 
   { at: 200, color: FLOW_BANDS[2].color, band: 2 },
 ];
 
-/** The Avoid stretches' fill and ink on the riders track: the map's Avoid style, near-black on coral (325, 327). */
-export const AVOID_FILL = "#f4a6a0";
-export const AVOID_INK = "#1b1e24";
+/**
+ * Avoid on the riders track, and on the route line (OWNER-DECISIONS 397: "Avoid as a single color
+ * should be magenta. It's a very striking danger color. Only do if a route uses it"; it replaces the
+ * coral of 325). The magenta is the route line's (routeColours.ts ROUTE_AVOID_MAGENTA; a test holds
+ * the two equal). Its AVOID word is white, 4.9:1 on it; it is 4.9:1 on the light panel and 3.4:1 on
+ * the dark one. No fill can be 3:1 from every riders band (the bottleneck red is 1.05:1 from it, the
+ * orange 2.0:1, and the bands span too wide a luminance for any one colour), so each Avoid block has
+ * a two-tone frame, near-black outside and white inside: whichever band or panel it touches, one of
+ * the two is 3:1 or more from it (`AVOID_FRAME`, white), and the white is 4.9:1 from the magenta. It
+ * also has a texture of its own (dark chevrons, not the bottleneck's cross-hatch) and its word.
+ */
+export const AVOID_FILL = "#d6008f";
+export const AVOID_INK = "#ffffff";
+export const AVOID_FRAME = "#1b1e24";
+/** An Avoid block is drawn at least this wide (viewBox units), centred on its stretch, so a short one still carries its "A". */
+export const AVOID_MIN_WIDTH = 10;
+/** The width the whole word AVOID needs in the chart's bold 11-unit type; a narrower block says "A". */
+export const AVOID_WORD_WIDTH = 36;
+
+/** The label an Avoid block of this width carries: the word, or its letter on a narrow block, so a short Avoid is never told by colour alone. */
+export function avoidLabel(width: number): string {
+  return width >= AVOID_WORD_WIDTH ? "AVOID" : "A";
+}
 
 export function flowBand(riders: number): FlowBand {
   let found = FLOW_BANDS[0];
@@ -446,9 +466,11 @@ function jump(targets: readonly number[] | undefined, at: number, forward: boole
 /**
  * A position after a key: arrows step, Page keys step five, Home and End go to the ends; C and
  * Shift+C the next and previous climb, I and Shift+I the next and previous major intersection.
- * Null for any other key, or a jump with nowhere to go.
+ * Null for any other key, or a jump with nowhere to go. `shift` is the event's own Shift key, so
+ * Caps Lock does not turn C into "previous" (the a11y re-review's N-f); without it the key's case
+ * is read.
  */
-export function positionAfterKey(key: string, at: number, totalM: number, targets: JumpTargets = {}): number | null {
+export function positionAfterKey(key: string, at: number, totalM: number, targets: JumpTargets = {}, shift?: boolean): number | null {
   const step = stepLength(totalM);
   const clamp = (m: number) => Math.min(Math.max(m, 0), totalM);
   switch (key) {
@@ -456,7 +478,8 @@ export function positionAfterKey(key: string, at: number, totalM: number, target
     case "C":
     case "i":
     case "I": {
-      const to = jump(key.toLowerCase() === "c" ? targets.climbs : targets.crossings, at, key === key.toLowerCase());
+      const forward = shift === undefined ? key === key.toLowerCase() : !shift;
+      const to = jump(key.toLowerCase() === "c" ? targets.climbs : targets.crossings, at, forward);
       return to === null ? null : clamp(to);
     }
     case "ArrowRight":
@@ -556,22 +579,30 @@ export function ridersWords(profile: RouteProfile, riders: number | null, metres
   return `about ${riders} riders per minute (${reasons.join(", ")})`;
 }
 
+/** Whether the major intersections are the flagged ones only (`crossings_complete: false`: finding the busy-road ones failed), so the list may be incomplete (correctness re-review R3). */
+export function crossingsPartial(profile: RouteProfile): boolean {
+  return profile.crossings !== null && profile.crossings !== undefined && profile.crossings_complete === false;
+}
+
 /**
  * The intersections clause (333, 396): the next major intersection and whether corkers are needed;
  * "Intersections not checked." where they were not read (`crossings: null`, correctness S2), and
  * a note where the way ahead runs over a leg that could not be traced. Nothing on a route that has
- * none at all (the summary says so).
+ * none at all (the summary says so). Where only the flagged ones were found, it never says there
+ * are none ahead: it says the list may be incomplete.
  */
 export function crossingClause(profile: RouteProfile, metres: number): string {
   const crossings = profile.crossings;
   if (crossings === null || crossings === undefined) return " Intersections not checked.";
   const next = nextCrossing(crossings, metres);
   const unchecked = profile.unchecked ?? [];
+  const partial = crossingsPartial(profile);
   if (next) {
     const gap = unchecked.some((r) => r.to_m > metres && r.from_m < next.m);
-    return ` Next: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}`;
+    return ` Next${partial ? " flagged" : ""}: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}${partial ? " Busy-road intersections were not checked, so there may be others." : ""}`;
   }
   if (unchecked.some((r) => r.to_m > metres)) return " Part of the way ahead was not checked for intersections.";
+  if (partial) return " No flagged intersections ahead; busy-road intersections were not checked, so there may be others.";
   return crossings.length > 0 ? " No major intersections ahead." : "";
 }
 
@@ -626,17 +657,50 @@ export function busyPlaces(spans: readonly StressSpan[] | undefined, max = 3): {
   return { places: busy.slice(0, max).map((s) => miles(s.from_m)), more: Math.max(0, busy.length - max) };
 }
 
-/** The share of the route on each tier, as words: "61% LTS 1, 30% LTS 2". */
+/** A stress section's place in the key's order (ElevationChart's classesPresent): a path first, then the tiers, each unpaved after its paved tier. */
+function sectionRank(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">>): number {
+  return (span.facility === "path" ? 0 : (span.tier ?? 99)) + (span.unpaved === true ? 0.5 : 0);
+}
+
+/**
+ * The share of the route in each of the map's classes, as the key and the sentence say them
+ * (`sectionWords`; the a11y re-review's S1): "19% traffic-free path, 69% LTS 2, 12% LTS 3", in the
+ * key's order. A traffic-free path is never said as "LTS 1". Unrated sections count in the whole but
+ * are not listed.
+ */
 export function stressShares(spans: readonly StressSpan[] | undefined, length: number): string {
-  const metres = new Map<number | null, number>();
-  for (const s of spans ?? []) metres.set(s.tier, (metres.get(s.tier) ?? 0) + (s.to_m - s.from_m));
-  const total = [...metres.values()].reduce((a, b) => a + b, 0) || length || 1;
-  const parts: string[] = [];
-  for (const tier of [1, 2, 3, 4, 5]) {
-    const share = ((metres.get(tier) ?? 0) / total) * 100;
-    if (share >= 0.5) parts.push(`${Math.round(share)}% ${tierWords(tier)}`);
+  const metres = new Map<string, { m: number; rank: number }>();
+  let total = 0;
+  for (const s of spans ?? []) {
+    const m = s.to_m - s.from_m;
+    total += m;
+    const words = sectionWords(s);
+    if (!words) continue;
+    const seen = metres.get(words);
+    metres.set(words, { m: (seen?.m ?? 0) + m, rank: Math.min(seen?.rank ?? Infinity, sectionRank(s)) });
   }
-  return parts.join(", ");
+  const whole = total || length || 1;
+  return [...metres.entries()]
+    .sort((a, b) => a[1].rank - b[1].rank)
+    .map(([words, { m }]) => ({ words, share: (m / whole) * 100 }))
+    .filter(({ share }) => share >= 0.5)
+    .map(({ words, share }) => `${Math.round(share)}% ${words}`)
+    .join(", ");
+}
+
+/**
+ * A climb's Stress cell, the map's way (the a11y re-review's S1): the most stressful section it rides
+ * over, said as the key says it ("Traffic-free path", "LTS 3", "Unpaved, LTS 2"); a road outranks a
+ * path of the same tier. The API's own tier where the sections are not known.
+ */
+export function climbStress(climb: Pick<ProfileClimb, "from_m" | "to_m" | "tier">, spans?: readonly StressSpan[]): string {
+  const on = (spans ?? []).filter((s) => s.tier !== null && s.from_m < climb.to_m && s.to_m > climb.from_m);
+  const worst = on.reduce<StressSpan | null>((best, s) => {
+    const score = (x: StressSpan) => (x.tier ?? 0) + (x.facility === "path" ? 0 : 0.25);
+    return best === null || score(s) > score(best) ? s : best;
+  }, null);
+  const words = worst ? sectionWords(worst) : tierWords(climb.tier);
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Not rated";
 }
 
 /**
@@ -674,6 +738,16 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
     const crossings = profile.crossings;
     if (crossings === null || crossings === undefined) {
       sentences.push("Major intersections were not checked for this route.");
+    } else if (crossingsPartial(profile)) {
+      const needing = crossings.filter((c) => c.corkers_needed).length;
+      sentences.push(
+        `Only the flagged intersections were checked, so the list may be incomplete: ${
+          crossings.length === 0
+            ? "none found"
+            : `${crossings.length} found, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}`
+        }.`,
+      );
+      if ((profile.unchecked ?? []).length > 0) sentences.push("Part of the route could not be traced, so its width and intersections are not known.");
     } else {
       const needing = crossings.filter((c) => c.corkers_needed).length;
       sentences.push(
@@ -705,15 +779,15 @@ export interface ClimbRow {
   capacity: string | null;
 }
 
-/** The climbs table (OWNER-DECISIONS 322: start mile, length, gain, average and maximum grade, stress; 328(c): the capacity drop). */
-export function climbRows(profile: RouteProfile, kind: ChartKind): ClimbRow[] {
+/** The climbs table (OWNER-DECISIONS 322: start mile, length, gain, average and maximum grade, stress; 328(c): the capacity drop). `spans`: the route's stress sections, so the Stress cell is said the map's way (`climbStress`). */
+export function climbRows(profile: RouteProfile, kind: ChartKind, spans?: readonly StressSpan[]): ClimbRow[] {
   return profile.climbs.map((c: ProfileClimb) => ({
     start: `Mile ${miles(c.from_m)}`,
     length: formatDistance(c.to_m - c.from_m),
     gain: formatClimb(c.gain_m),
     average: `${Math.round(c.avg_grade_pct)}%`,
     maximum: `${Math.round(c.max_grade_pct)}%`,
-    stress: tierWords(c.tier) ?? "Not rated",
+    stress: climbStress(c, spans),
     capacity:
       kind !== "mass"
         ? null
@@ -760,7 +834,9 @@ export interface BottleneckRow {
 /**
  * The stretches under 60 riders a minute (327's bottleneck band), in the order ridden: the riders
  * track as text (the a11y review's N7). Read from the samples, so a stretch is from its first such
- * sample to its last.
+ * sample to its last; the API sends a pair of samples at each place the width changes, so a
+ * stretch's ends are its own. One that is a single sample (a thinned long route, or an older API)
+ * is "under" the sample spacing, never "0 ft" (the re-reviews' nit).
  */
 export function bottleneckRows(profile: RouteProfile): BottleneckRow[] {
   const riders = profile.riders_per_min ?? [];
@@ -770,7 +846,10 @@ export function bottleneckRows(profile: RouteProfile): BottleneckRow[] {
   let to = 0;
   let lowest = Infinity;
   const close = () => {
-    if (from !== null) rows.push({ start: `Mile ${miles(from)}`, length: formatDistance(Math.max(to - from, 0)), lowest: `About ${lowest} a minute` });
+    if (from !== null) {
+      const length = to - from > 0 ? formatDistance(to - from) : `under ${formatDistance(profile.interval_m || 30)}`;
+      rows.push({ start: `Mile ${miles(from)}`, length, lowest: `About ${lowest} a minute` });
+    }
     from = null;
     lowest = Infinity;
   };
@@ -786,6 +865,13 @@ export function bottleneckRows(profile: RouteProfile): BottleneckRow[] {
   });
   close();
   return rows;
+}
+
+/** The intersections table's caption: it says when the list may be incomplete (correctness re-review R3). */
+export function crossingCaption(profile: RouteProfile): string {
+  return crossingsPartial(profile)
+    ? "Major intersections, in the order ridden: only the flagged ones were checked, so the list may be incomplete"
+    : "Major intersections, in the order ridden";
 }
 
 export function crossingRows(profile: RouteProfile): CrossingRow[] {

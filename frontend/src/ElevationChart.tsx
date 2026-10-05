@@ -26,19 +26,24 @@ import type { LonLat } from "./lib/geo.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 import {
   AVOID_FILL,
+  AVOID_FRAME,
   AVOID_INK,
+  AVOID_MIN_WIDTH,
   CHART_TYPE,
   FLOW_BANDS,
   FLOW_GUIDES,
   GRADE_BANDS,
   GRADE_BAND_FILL,
+  avoidLabel,
   axisDistance,
   axisLength,
   bottleneckMark,
   bottleneckRows,
   chartKind,
   climbRows,
+  crossingCaption,
   crossingRows,
+  crossingsPartial,
   elevationArea,
   elevationLine,
   elevationRange,
@@ -140,7 +145,7 @@ export function ElevationChart({
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const next = positionAfterKey(event.key, at ?? 0, total, kind === "mass" ? targets : { climbs: targets.climbs });
+    const next = positionAfterKey(event.key, at ?? 0, total, kind === "mass" ? targets : { climbs: targets.climbs }, event.shiftKey);
     if (next === null) return;
     event.preventDefault();
     setHover(null);
@@ -176,9 +181,9 @@ export function ElevationChart({
           {band.pattern === "horizontal" && <path d="M0 1.5H6M0 4.5H6" stroke={INK} strokeWidth="1" />}
         </pattern>
       ))}
-      {/* Avoid on the riders track: near-black cross-hatch on coral, the map's Avoid style (325, 327). */}
-      <pattern id={`${uid}-avoid`} width="6" height="6" patternUnits="userSpaceOnUse">
-        <path d="M0 0L6 6M6 0L0 6" stroke={AVOID_INK} strokeWidth="1" />
+      {/* Avoid on the riders track (397): dark chevrons on magenta, a texture of its own, not the bottleneck's cross-hatch. */}
+      <pattern id={`${uid}-avoid`} width="8" height="6" patternUnits="userSpaceOnUse">
+        <path d="M0 5L4 1L8 5" stroke={AVOID_FRAME} strokeOpacity="0.7" strokeWidth="1.3" fill="none" />
       </pattern>
       {/* The tier styles' patterns, as the stress bar draws them (styles.css .stress-seg-N). */}
       <pattern id={`${uid}-t2`} width="8" height="12" patternUnits="userSpaceOnUse">
@@ -287,17 +292,21 @@ export function ElevationChart({
                 </g>
               ))}
               {avoid.map((r, i) => {
-                const x0 = x(r.from_m);
-                const w = Math.max(x(r.to_m) - x0, 2);
+                // At least AVOID_MIN_WIDTH wide, centred on the stretch, so a short one keeps its "A" (397, a11y re-review).
+                const real = Math.max(x(r.to_m) - x(r.from_m), 0);
+                const w = Math.max(real, AVOID_MIN_WIDTH);
+                const x0 = Math.min(Math.max(x(r.from_m) - (w - real) / 2, LEFT), RIGHT - w);
+                const h = mass.flowBottom - mass.flowTop;
                 return (
                   <g key={`avoid-${i}`} className="pc-avoid">
-                    <rect x={x0} y={mass.flowTop} width={w} height={mass.flowBottom - mass.flowTop} fill={AVOID_FILL} />
-                    <rect x={x0} y={mass.flowTop} width={w} height={mass.flowBottom - mass.flowTop} fill={`url(#${uid}-avoid)`} stroke={AVOID_INK} strokeWidth="1" />
-                    {w >= 34 && (
-                      <text className="pc-avoid-text" x={x0 + w / 2} y={(mass.flowTop + mass.flowBottom) / 2 + 4} textAnchor="middle">
-                        AVOID
-                      </text>
-                    )}
+                    <rect x={x0} y={mass.flowTop} width={w} height={h} fill={AVOID_FILL} />
+                    <rect x={x0} y={mass.flowTop} width={w} height={h} fill={`url(#${uid}-avoid)`} />
+                    {/* The two-tone frame: near-black outside, white inside, so one of them is 3:1 from whatever it touches. */}
+                    <rect className="pc-avoid-frame" x={x0 - 0.5} y={mass.flowTop - 0.5} width={w + 1} height={h + 1} fill="none" stroke={AVOID_FRAME} strokeWidth="1" />
+                    <rect className="pc-avoid-inner" x={x0 + 0.5} y={mass.flowTop + 0.5} width={Math.max(w - 1, 0)} height={h - 1} fill="none" stroke={AVOID_INK} strokeWidth="1" />
+                    <text className="pc-avoid-text" x={x0 + w / 2} y={(mass.flowTop + mass.flowBottom) / 2 + 4} textAnchor="middle">
+                      {avoidLabel(w)}
+                    </text>
                   </g>
                 );
               })}
@@ -392,9 +401,10 @@ export function ElevationChart({
           <>
             {avoid.length > 0 && (
               <li>
-                <svg width="14" height="10" aria-hidden="true">
+                <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
                   <rect width="14" height="10" fill={AVOID_FILL} />
                   <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
+                  <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                 </svg>
                 Avoid: no carrying capacity
               </li>
@@ -447,12 +457,12 @@ export function ElevationChart({
       )}
       <p className="hint pc-source">
         {kind === "mass"
-          ? "Elevation: USGS 3DEP. Riders per minute: an estimate from lane widths and the Mass Ride flow model, indicative (about ±25%)."
+          ? "Elevation: USGS 3DEP. Riders per minute: estimated from OpenStreetMap lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
           : "Elevation: USGS 3DEP."}
       </p>
       <details className="pc-table-fold">
         <summary>{tableName}</summary>
-        <Tables profile={profile} kind={kind} />
+        <Tables profile={profile} kind={kind} spans={route.stress_spans} />
       </details>
     </div>
   );
@@ -525,8 +535,8 @@ function CrossingMarker({ severity, x, y }: { severity: "orange" | "red" | null;
 }
 
 /** The climbs, and on a Mass Ride the bottlenecks and the intersections, as tables: the picture's text alternative. */
-function Tables({ profile, kind }: { profile: RouteProfile; kind: ChartKind }) {
-  const rows = climbRows(profile, kind);
+function Tables({ profile, kind, spans }: { profile: RouteProfile; kind: ChartKind; spans: RouteResponse["stress_spans"] }) {
+  const rows = climbRows(profile, kind, spans);
   const bottlenecks = kind === "mass" ? bottleneckRows(profile) : [];
   const crossings = kind === "mass" ? crossingRows(profile) : [];
   const checked = profile.crossings !== null && profile.crossings !== undefined;
@@ -576,7 +586,7 @@ function Tables({ profile, kind }: { profile: RouteProfile; kind: ChartKind }) {
                 <tr>
                   <th scope="col">Start</th>
                   <th scope="col">Length</th>
-                  <th scope="col">Lowest</th>
+                  <th scope="col">Lowest riders per minute</th>
                 </tr>
               </thead>
               <tbody>
@@ -595,11 +605,15 @@ function Tables({ profile, kind }: { profile: RouteProfile; kind: ChartKind }) {
         (!checked ? (
           <p className="hint">Major intersections were not checked for this route.</p>
         ) : crossings.length === 0 ? (
-          <p className="hint">No major intersections on this route.</p>
+          <p className="hint">
+            {crossingsPartial(profile)
+              ? "No flagged intersections on this route; busy-road intersections were not checked, so there may be some."
+              : "No major intersections on this route."}
+          </p>
         ) : (
           <div className="pc-table-wrap">
             <table className="pc-table">
-              <caption>Major intersections, in the order ridden</caption>
+              <caption>{crossingCaption(profile)}</caption>
               <thead>
                 <tr>
                   <th scope="col">At</th>

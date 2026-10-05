@@ -5,16 +5,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
+import { contrastRatio } from "../stressStyle.js";
+import { ROUTE_AVOID_MAGENTA } from "./routeColours.ts";
 import {
+  AVOID_FILL,
+  AVOID_FRAME,
+  AVOID_INK,
+  AVOID_WORD_WIDTH,
   FLOW_BANDS,
   FLOW_GUIDES,
   GRADE_BANDS,
+  avoidLabel,
   axisDistance,
   bottleneckMark,
   bottleneckRows,
   chartKind,
   climbRows,
+  climbStress,
   corkerWords,
+  crossingCaption,
   crossingClause,
   crossingMarkerWords,
   crossingRows,
@@ -41,6 +50,7 @@ import {
   sectionWords,
   spanAt,
   stepLength,
+  stressShares,
   stripSections,
   summaryText,
   tierAt,
@@ -296,7 +306,9 @@ test("the summary gives the elevation range, the steepest section, the climbs an
   assert.match(text, /^Over 3\.0 mi \(4\.8 km\), elevation runs from 98 ft \(30 m\) to 177 ft \(54 m\)\./);
   assert.match(text, /The steepest section is 6% uphill at mile 0\.6\./);
   assert.match(text, /1 sustained climb, listed in the table\./);
-  assert.match(text, /Traffic stress along it: .*LTS 1.*LTS 3/);
+  // The map's classes, as the key and the sentence say them (the a11y re-review's S1): the path is never "LTS 1".
+  assert.match(text, /Traffic stress along it: 19% traffic-free path, 69% LTS 2, 12% LTS 3\./);
+  assert.doesNotMatch(text, /LTS 1/);
   assert.match(text, /LTS 3 or worse starts at mile 0\.6\./);
 });
 
@@ -555,6 +567,84 @@ test("the narrowest point is marked on the riders area with its figure, kept ins
   assert.equal(mark.anchor, "middle");
   assert.equal(bottleneckMark({ ...profile, flow: { narrowest_m: 0, narrowest_riders_per_min: 40, typical_riders_per_min: 190 } }, x, y, 46, 352)!.anchor, "start");
   assert.equal(bottleneckMark({ ...profile, flow: null }, x, y, 46, 352), null);
+});
+
+test("a bottleneck one sample long is under the sample spacing, never 0 ft", () => {
+  const m = [0, 30, 60, 90];
+  const profile: RouteProfile = { interval_m: 30, m, elevation_m: m.map(() => 1), grade_pct: m.map(() => 0), climbs: [], riders_per_min: [190, 44, 190, 190] };
+  assert.deepEqual(bottleneckRows(profile), [{ start: "Mile 0.0", length: "under 98 ft (30 m)", lowest: "About 44 a minute" }]);
+  // A pair at each end of a short stretch (the API's boundary samples): its own length.
+  const pair: RouteProfile = { interval_m: 30, m: [0, 100, 100, 115, 115, 150], elevation_m: [1, 1, 1, 1, 1, 1], grade_pct: [0, 0, 0, 0, 0, 0], climbs: [], riders_per_min: [198, 198, 44, 44, 198, 198] };
+  assert.deepEqual(bottleneckRows(pair), [{ start: "Mile 0.1", length: "49 ft (15 m)", lowest: "About 44 a minute" }]);
+});
+
+test("the summary's stress shares group by the map's class, in the key's order", () => {
+  const spans = [
+    { from_m: 0, to_m: 500, tier: 1, facility: "path", unpaved: true },
+    { from_m: 500, to_m: 1000, tier: 2, facility: "none", unpaved: true },
+    { from_m: 1000, to_m: 1500, tier: 1, facility: "path" },
+    { from_m: 1500, to_m: 1800, tier: 1, facility: "none" },
+    { from_m: 1800, to_m: 2000, tier: null, facility: null },
+  ] as unknown as RouteResponse["stress_spans"];
+  assert.equal(stressShares(spans, 2000), "25% traffic-free path, 25% unpaved traffic-free path, 15% LTS 1, 25% unpaved, LTS 2");
+});
+
+test("a climb's Stress cell says the map's class of the most stressful section it rides", () => {
+  const climb = { from_m: 100, to_m: 400, tier: 1 };
+  const path = [{ from_m: 0, to_m: 1000, tier: 1, facility: "path" }] as unknown as RouteResponse["stress_spans"];
+  assert.equal(climbStress(climb, path), "Traffic-free path");
+  const mixed = [
+    { from_m: 0, to_m: 200, tier: 1, facility: "path" },
+    { from_m: 200, to_m: 1000, tier: 1, facility: "none" },
+  ] as unknown as RouteResponse["stress_spans"];
+  assert.equal(climbStress(climb, mixed), "LTS 1", "a road outranks a path of the same tier");
+  assert.equal(climbStress({ ...climb, tier: 3 }), "LTS 3", "the API's tier without the sections");
+  assert.equal(climbStress({ ...climb, tier: null }), "Not rated");
+  const { route, profile } = build();
+  assert.equal(climbRows(profile, "stress", route.stress_spans)[0].stress, "LTS 3");
+  assert.equal(climbRows({ ...profile, climbs: [{ ...profile.climbs[0], from_m: 100, to_m: 800 }] }, "stress", route.stress_spans)[0].stress, "Traffic-free path");
+});
+
+test("C and I follow the Shift key, not the letter's case, so Caps Lock does not reverse them", () => {
+  const total = 3000;
+  const targets = { climbs: [1000, 2000], crossings: [800, 2100] };
+  assert.equal(positionAfterKey("C", 1500, total, targets, false), 2000, "Caps Lock on, no Shift: the next climb");
+  assert.equal(positionAfterKey("c", 1500, total, targets, true), 1000, "Shift with Caps Lock on: the previous one");
+  assert.equal(positionAfterKey("I", 0, total, targets, false), 800);
+  assert.equal(positionAfterKey("I", 2100, total, targets, true), 800);
+  // Without the Shift key the case is read, as before.
+  assert.equal(positionAfterKey("C", 1500, total, targets), 1000);
+});
+
+test("a list of only the flagged intersections is said to be possibly incomplete, never \"none ahead\"", () => {
+  const { route, profile } = build("mass-ride", true);
+  const partial: RouteProfile = { ...profile, crossings_complete: false };
+  assert.equal(crossingClause(partial, 4000), " No flagged intersections ahead; busy-road intersections were not checked, so there may be others.");
+  assert.match(crossingClause(partial, 0), /^ Next flagged: 7th St at mile 0\.5, corkers needed\. Busy-road intersections were not checked, so there may be others\.$/);
+  assert.match(summaryText(route, partial), /Only the flagged intersections were checked, so the list may be incomplete: 2 found, 2 needing corkers\./);
+  assert.doesNotMatch(summaryText(route, partial), /No major intersections/);
+  assert.match(summaryText(route, { ...partial, crossings: [] }), /may be incomplete: none found\./);
+  assert.match(crossingCaption(partial), /may be incomplete/);
+  assert.equal(crossingCaption(profile), "Major intersections, in the order ridden");
+  // Complete, or an older API without the field: as before.
+  assert.equal(crossingClause({ ...profile, crossings_complete: true }, 4000), " No major intersections ahead.");
+  assert.equal(crossingClause(profile, 4000), " No major intersections ahead.");
+});
+
+test("Avoid is one magenta on the chart and the route line, its word legible and its frame 3:1 from every band (397)", () => {
+  assert.equal(AVOID_FILL, ROUTE_AVOID_MAGENTA);
+  assert.ok(contrastRatio(AVOID_INK, AVOID_FILL) >= 4.5, `the word on the magenta: ${contrastRatio(AVOID_INK, AVOID_FILL).toFixed(2)}:1`);
+  assert.ok(contrastRatio(AVOID_INK, AVOID_FILL) >= 3, "the frame's white inside is 3:1 from the magenta");
+  // The panels (styles.css --bg, light and dark) and every band: one of the frame's two tones is 3:1 from each.
+  for (const touching of ["#ffffff", "#1b1e24", ...FLOW_BANDS.map((b) => b.color)]) {
+    const best = Math.max(contrastRatio(AVOID_FRAME, touching), contrastRatio(AVOID_INK, touching));
+    assert.ok(best >= 3, `${touching}: ${best.toFixed(2)}:1`);
+  }
+  // The magenta itself is 3:1 on both panels.
+  assert.ok(contrastRatio(AVOID_FILL, "#ffffff") >= 3 && contrastRatio(AVOID_FILL, "#1b1e24") >= 3);
+  // A narrow block says "A", a wide one the word: never colour alone.
+  assert.equal(avoidLabel(AVOID_WORD_WIDTH), "AVOID");
+  assert.equal(avoidLabel(9), "A");
 });
 
 test("the bottlenecks table lists each stretch under 60 a minute", () => {

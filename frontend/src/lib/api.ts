@@ -97,6 +97,8 @@ export interface RouteProfile {
   } | null;
   /** Mass Ride only: the major junctions; null where they were not checked (never "none"), [] where there are none. */
   crossings?: ProfileCrossing[] | null;
+  /** Mass Ride only: false where only the flagged junctions could be read, so `crossings` may be incomplete; null with `crossings` null. */
+  crossings_complete?: boolean | null;
   /** Mass Ride only: the stretches marked Avoid (325: no carrying capacity). */
   avoid?: ProfileRange[] | null;
   /** Mass Ride only: the stretches of a leg that could not be traced: width and junctions not known. */

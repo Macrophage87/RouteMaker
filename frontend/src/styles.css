@@ -2070,14 +2070,17 @@ details.zoom-notes {
   stroke-width: 1;
 }
 
+/* Avoid's word (397): white on the magenta, 4.9:1, at the chart's 11-unit type (CHART_TYPE; the
+   a11y re-review's N-d), with a magenta halo so the chevrons under it never cut through a letter. */
 .pc-avoid-text {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   font-family: var(--font);
-  fill: #1b1e24;
+  fill: #ffffff;
   paint-order: stroke;
-  stroke: #f4a6a0;
+  stroke: #d6008f;
   stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .pc-axis {
@@ -2262,8 +2265,17 @@ details.zoom-notes {
     stroke: CanvasText;
   }
 
-  .pc-narrowest path {
+  .pc-narrowest path,
+  .pc-narrowest-key,
+  .pc-dot {
     fill: CanvasText;
     stroke: Canvas;
+  }
+
+  /* Avoid keeps its magenta, chevrons and white word (the key's swatch keeps them too, so the two
+     match); its outer frame follows the system's text colour, so the block's edge reads on the
+     system's background. */
+  .pc-avoid-frame {
+    stroke: CanvasText;
   }
 }
