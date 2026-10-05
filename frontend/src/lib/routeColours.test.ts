@@ -78,7 +78,8 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   for (const on of [false, true]) {
     setAccessibility(on, { remember: false });
     try {
-      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
+      // A Mass Ride's Avoid ("mavoid") is the route's Avoid too (397), with the same mark.
+      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" || c.key === "mavoid" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
       const features = sectionFeatures(routeSections(LINE, [span(0, 300, 3), span(300, 600, 5), span(600, 900, 5, "none")].map((s, i) => (i === 2 ? { ...s, unpaved: true } : s)))).features;
       assert.deepEqual(features.map((f) => [f.properties.key, f.properties.avoid, f.properties.unpaved]), [["3", false, false], ["5", true, false], ["u5", false, true]]);
     } finally {

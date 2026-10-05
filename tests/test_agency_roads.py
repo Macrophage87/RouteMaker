@@ -96,20 +96,59 @@ def test_lanes_are_kept_by_direction() -> None:
     assert A.lanes_per_direction(facts) == 3
 
 
-def test_reversible_lanes_are_lanes_in_the_peak_direction() -> None:
-    """Connecticut Avenue NW at Cleveland Park: one lane each way and two that
-    reverse, `TOTALTRAVELLANES` of 4. A rider meets three in the peak direction;
-    reading only the directional counts called it a two-lane street."""
+def test_reversible_lanes_count_only_on_a_verified_block(monkeypatch) -> None:
+    """OWNER-DECISIONS 405, 408: the layer's reversible count is stale where the
+    operation ended, so a block's reversible lanes count as none unless its BLOCKKEY
+    is on the reviewed allowlist (empty). A verified block's serve the peak
+    direction: one lane each way and two that reverse is three, as the classifier
+    read every block before the rebuild bundle (179)."""
     facts = A.parse_dc_roadway_block(
         dc(
             TOTALTRAVELLANES=4,
             TOTALTRAVELLANESINBOUND=1,
             TOTALTRAVELLANESOUTBOUND=1,
             TOTALTRAVELLANESREVERSIBLE=2,
+            BLOCKKEY="verified-block",
+            ROUTENAME="16TH ST NW",
         )
     )
     assert facts.lanes == {"ib": 1, "ob": 1, "reversible": 2}
+    assert not A.VERIFIED_REVERSIBLE_BLOCKS
+    assert A.lanes_per_direction(facts) == 1
+    assert A.counted_reversible(facts) == 0
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({facts.block_key}))
+    assert A.counted_reversible(facts) == 2
     assert A.lanes_per_direction(facts) == 3
+
+
+def test_connecticut_avenue_s_reversible_lanes_never_count(monkeypatch) -> None:
+    """405: "Conneticut Avenue Reversible lanes were removed in 2020." Even an
+    allowlisted Connecticut Avenue NW block counts none."""
+    facts = A.parse_dc_roadway_block(
+        dc(
+            TOTALTRAVELLANESINBOUND=1,
+            TOTALTRAVELLANESOUTBOUND=1,
+            TOTALTRAVELLANESREVERSIBLE=2,
+            BLOCKKEY="ct-block",
+            ROUTENAME="CONNECTICUT AVE NW",
+        )
+    )
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({facts.block_key}))
+    assert "CONNECTICUT AVE NW" in A.ENDED_REVERSIBLE_STREETS
+    assert A.counted_reversible(facts) == 0
+    assert A.lanes_per_direction(facts) == 1
+
+
+def test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists() -> None:
+    """One list for both readings (405): the settings the rebuild builds the Mass Ride
+    rules from equal the classifier's."""
+    from django.conf import settings
+
+    from routemaker import massflow
+
+    assert frozenset(settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS) == A.VERIFIED_REVERSIBLE_BLOCKS
+    assert frozenset(settings.MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS) == A.ENDED_REVERSIBLE_STREETS
+    assert massflow.DC_RULES.ended_reversible_streets == A.ENDED_REVERSIBLE_STREETS
 
 
 def test_a_block_whose_directions_are_all_zero_has_only_its_total() -> None:
@@ -900,7 +939,9 @@ def test_a_block_with_only_reversible_or_only_shared_lanes_keeps_them() -> None:
         )
     )
     assert reversible.lanes == {"ib": 0, "ob": 0, "reversible": 2}
-    assert A.lanes_per_direction(reversible) == 2
+    # Unverified reversible lanes count as none (405, 408), and the block gives no
+    # count, so the way keeps OSM's.
+    assert A.lanes_per_direction(reversible) is None
     shared = A.parse_dc_roadway_block(
         dc(
             TOTALTRAVELLANES=1,
@@ -1006,8 +1047,12 @@ def test_a_carriageway_takes_its_own_direction_s_lanes() -> None:
     )
 
 
-def test_reversible_lanes_count_in_both_directions_of_the_way() -> None:
-    way = A.aggregate([("a", facts(lanes={"ib": 1, "ob": 1, "reversible": 2}), True)])
+def test_verified_reversible_lanes_count_in_both_directions_of_the_way(monkeypatch) -> None:
+    block = facts(lanes={"ib": 1, "ob": 1, "reversible": 2}, block_key="k")
+    way = A.aggregate([("a", block, True)])
+    assert (way.lanes_forward, way.lanes_backward) == (1, 1), "unverified: none (405)"
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({"k"}))
+    way = A.aggregate([("a", block, True)])
     assert (way.lanes_forward, way.lanes_backward) == (3, 3)
 
 

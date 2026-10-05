@@ -1109,6 +1109,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await press(p);
     const pts = await p.eval("!!document.querySelector('.link-note')");
     check("locate: a press on the insecure page asks nothing and adds nothing", pts === false);
+    await p.close();
+  }
+}
+
 // ---- 19. The route chart (OWNER-DECISIONS 322, 323, 328, 332, 333): a slider with the spoken sentence, its tables, the map marker ----
 {
   const p = await open({ junctions: false });

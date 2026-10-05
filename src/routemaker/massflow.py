@@ -82,7 +82,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from . import flow
-from .agency_roads import BIKE_BUFFERED, BIKE_LANE, DC_AGENCY, DIRECTIONS, METRES_PER_FOOT
+from .agency_roads import (
+    BIKE_BUFFERED,
+    BIKE_LANE,
+    DC_AGENCY,
+    DIRECTIONS,
+    ENDED_REVERSIBLE_STREETS,
+    METRES_PER_FOOT,
+    VERIFIED_REVERSIBLE_BLOCKS,
+    counted_reversible,
+)
 from .tags import PAINTED_CYCLEWAY, SIDES, cycleway_sides, is_oneway, parse_int, parse_width_m
 
 # The working model's constants are `routemaker.flow`'s (copied verbatim from the
@@ -148,15 +157,15 @@ class DcRules:
 
     wide_lane_ft: float = 16.0
     wide_lane_cap_ft: float = 11.0
-    verified_reversible_blocks: frozenset = frozenset()
-    ended_reversible_streets: frozenset = frozenset({"CONNECTICUT AVE NW"})
+    verified_reversible_blocks: frozenset = VERIFIED_REVERSIBLE_BLOCKS
+    ended_reversible_streets: frozenset = ENDED_REVERSIBLE_STREETS
 
     def reversible_lanes(self, block) -> int:
-        """The block's reversible lanes that count: zero unless verified."""
-        count = block.lanes.get("reversible", 0)
-        if not count or (block.name or "").strip().upper() in self.ended_reversible_streets:
-            return 0
-        return count if block.block_key in self.verified_reversible_blocks else 0
+        """The block's reversible lanes that count: zero unless verified (the
+        classifier's rule, `agency_roads.counted_reversible`)."""
+        return counted_reversible(
+            block, self.verified_reversible_blocks, self.ended_reversible_streets
+        )
 
 
 DC_RULES = DcRules()
