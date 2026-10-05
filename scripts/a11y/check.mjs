@@ -24,7 +24,11 @@ function check(name, ok, detail = "") {
 
 const b = await connect();
 
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
+// The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
+// switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
+// route is shown (the sliders, the target distance, the loop and the weight live there); openSheet
+// opens a bar sheet, openDirections the Directions fold.
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles });
@@ -33,7 +37,23 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
+  if (ride) {
+    await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+    await sleep(200);
+  }
   return p;
+}
+
+/** Opens a bottom-bar sheet by its button's label ("Map layers", "Legend", "GPX", "About"). */
+async function openSheet(p, label = "Map layers") {
+  await p.eval(`[...document.querySelectorAll('.bar-button')].find((b) => b.textContent.startsWith(${JSON.stringify(label)}))?.click(); true`);
+  await sleep(250);
+}
+
+/** Opens the route summary's Directions fold (a native details). */
+async function openDirections(p) {
+  await p.eval("(() => { const d = document.querySelector('details.route-description'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
+  await sleep(200);
 }
 
 /** What has the focus, in a few words. */
@@ -339,10 +359,11 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
     .map((e) => ({ box: e.className.toString().slice(0, 40) || e.tagName, reachable: e.tabIndex >= 0 || !!e.querySelector(focusable) })); })()`;
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
-  const toggle = await axNode(p, ".description-toggle");
-  check("description: the toggle's name says what it opens", toggle?.role === "button" && toggle?.name === "Route description: 11 steps, overview" && toggle?.expanded === false, JSON.stringify(toggle));
-  await p.eval("document.querySelector('.description-toggle').click(); true");
-  await sleep(200);
+  // Directions is a fold of the route summary (312): a native details, its summary naming the steps.
+  const toggle = await axNode(p, "details.route-description > summary");
+  const shut = await p.eval("!document.querySelector('details.route-description').open");
+  check("description: the fold's summary says what it opens, and it starts closed", toggle?.name === "Directions (11 steps)" && shut, JSON.stringify(toggle));
+  await openDirections(p);
   const list = await p.eval(`(() => { const l = document.querySelector('.description-list'); const s = getComputedStyle(l);
     return { items: l.children.length, overflow: s.overflowY, maxHeight: s.maxHeight, box: l.scrollHeight > l.clientHeight + 1 }; })()`);
   check("description: the list is no scroll box of its own (the panel scrolls)", list.items === 11 && list.overflow === "visible" && list.maxHeight === "none" && !list.box, JSON.stringify(list));
@@ -365,8 +386,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
 }
 {
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
-  await p.eval("document.querySelector('.description-toggle').click(); true");
-  await sleep(200);
+  await openDirections(p);
   const overview = await p.eval("document.querySelectorAll('.description-list .description-crossings').length");
   check("description: the overview keeps one line per group", overview === 0, String(overview));
   await p.eval("document.querySelector('.description-view input').click(); true");
@@ -527,10 +547,11 @@ const federalFetched = (p) =>
   p.eval("performance.getEntriesByType('resource').some((r) => /federal-land[^/?]*\\.json$/.test(r.name))");
 {
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  await openSheet(p);
   await p.eval("document.getElementById('federal-heading')?.scrollIntoView({ block: 'center' }); true");
   const section = await p.eval(`(() => { const s = document.querySelector('.federal-section'); if (!s) return null;
     const items = [...s.querySelectorAll('.federal-legend li')];
-    return { heading: s.querySelector('h2')?.textContent, items: items.length,
+    return { heading: s.querySelector('h3')?.textContent, items: items.length,
       cues: items.map((li) => /shaded with (dots|cross-hatch|rising diagonal stripes|falling diagonal stripes)/.test(li.textContent)),
       swatchesHidden: items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true'),
       note: /Federal land - permit rules may differ \\(information, not legal advice\\)/.test(s.textContent),
@@ -567,6 +588,7 @@ const federalFetched = (p) =>
 }
 {
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await openSheet(p);
   await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
     document.getElementById('federal-heading').scrollIntoView({ block: 'start' }); return true; })()`);
   await sleep(300);
@@ -581,6 +603,7 @@ const federalFetched = (p) =>
 // ---- 12. "Show bike lanes on high-stress roads" (OWNER-DECISIONS 275): a switch a keyboard and a screen reader reach ----
 {
   const p = await open();
+  await openSheet(p);
   const id = "#high-lanes-switch";
   const before = await axNode(p, id);
   check("lanes switch: a switch named for what it does, off by default", before?.role === "switch" && before?.name === "Show bike lanes on high-stress roads" && String(before?.checked) === "false", JSON.stringify(before));
@@ -588,10 +611,11 @@ const federalFetched = (p) =>
   const box = await p.eval(`(() => { const r = document.querySelector('${id}').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()`);
   check("lanes switch: its target is at least 24 px tall (2.5.8)", box.h >= 24 && box.w >= 24, JSON.stringify(box));
   check("lanes switch: its state is also in visible words, not colour", await p.eval(`document.querySelector('${id} .switch-state').textContent === 'Off'`));
-  // The keyboard: Tab to it from the Accessibility switch, Space turns it on, Space again turns it off.
-  await p.eval("document.querySelector('#a11y-switch').focus(); true");
+  // The keyboard: Tab to it from "Show traffic stress on the map" (312's order: traffic stress, high-stress
+  // lanes, accessibility colors), Space turns it on, Space again turns it off.
+  await p.eval("document.querySelector('#show-stress').focus(); true");
   await p.tab();
-  check("lanes switch: the next Tab stop after the Accessibility switch", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
+  check("lanes switch: the next Tab stop after Show traffic stress on the map", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
   await p.key(" ", "Space", 32);
   await sleep(150);
   check("lanes switch: Space turns it on, and it is remembered in this browser", (await axNode(p, id))?.checked !== undefined && (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.highStressLanes')")) === "on");
@@ -663,6 +687,7 @@ const federalFetched = (p) =>
 // ---- 13. The stress map unavailable: the lane switch is still there (the a11y review's SF4) ----
 {
   const p = await open({ stressTiles: false });
+  await openSheet(p);
   await p.waitFor("/Stress map unavailable/.test(document.querySelector('#layers-heading')?.parentElement?.textContent ?? '')", 15000);
   const ax = await axNode(p, "#high-lanes-switch");
   check("lanes switch without the stress map: still a switch, described by what it changes then", ax?.role === "switch" && /hidden in the route's facility totals and description\./.test(ax?.description ?? "") && !/on the map/.test(ax?.description ?? ""), JSON.stringify(ax));
