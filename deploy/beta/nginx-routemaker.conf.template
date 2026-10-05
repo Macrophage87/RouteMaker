@@ -5,7 +5,7 @@
 # TEMPLATE: (Lines starting `# TEMPLATE:` are dropped from the rendered file.)
 # @RENDERED_FROM@
 #
-# Installing it adds ONE file to the host's nginx and changes nothing else:
+# Installing it adds one config file (plus its own two log files, below) to the host's nginx and changes nothing else:
 # no default_server, no edit to nginx.conf, no http-level setting that another
 # site would inherit. Every http-level name it declares (the upstream, the map,
 # the log format) is prefixed `rmbeta_` so it cannot collide with a site that is

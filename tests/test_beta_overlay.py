@@ -701,6 +701,17 @@ def test_the_access_log_never_records_a_query_string() -> None:
     assert fmt, "the rmbeta_noquery log format"
     body = fmt.group(1)
     assert "$uri" in body
+    # an allowlist, not a denylist: any other variable (a trailing $request, the Authorization
+    # header, a cookie, the request body, another way to print the client address) is a leak
+    assert set(re.findall(r"\$\w+", body)) == {
+        "$time_local",
+        "$request_method",
+        "$uri",
+        "$server_protocol",
+        "$status",
+        "$body_bytes_sent",
+        "$request_time",
+    }, body
     leaks = ("$request ", '$request"', "$request_uri", "$args", "$query_string", "$http_referer")
     for leak in leaks:
         assert leak not in body, leak
@@ -708,6 +719,9 @@ def test_the_access_log_never_records_a_query_string() -> None:
     # nor who asked: no client address, no tester name, no forwarded address
     for who in ("$remote_addr", "$binary_remote_addr", "$remote_user", "$http_x_forwarded_for"):
         assert who not in body, who
+    # no http-level access_log either: another site on the host would inherit it
+    before_servers = re.split(r"^server \{", full, flags=re.M)[0]
+    assert "access_log" not in re.sub(r"^\s*#.*$", "", before_servers, flags=re.M)
     servers = re.split(r"^server \{", full, flags=re.M)[1:]
     assert len(servers) == 2
     for server in servers:
@@ -730,13 +744,17 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
 
     assert proxy_lines(body) == proxy_lines(found["/"])
     assert proxy_lines(body)
-    # no add_header here, so the server's noindex and HSTS headers still apply
-    assert "add_header" not in body and "auth_basic" not in body
+    # only error_log and proxy_* directives here: no add_header (the server's noindex and HSTS
+    # headers must still apply), and nothing that changes who may call it (auth_basic, satisfy,
+    # allow, deny) or what is logged (access_log)
+    directives = re.findall(r"^\s*([a-z_0-9]+)\b", re.sub(r"^\s*#.*$", "", body, flags=re.M), re.M)
+    assert directives
+    assert all(d == "error_log" or d.startswith("proxy_") for d in directives), directives
     # every api path the front end sends a query string to is covered by it
     sources = [
         f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
     ]
-    queried = {m for text in sources for m in re.findall(r"[`\"'](/api/[a-z]+)\?", text)}
+    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z]+)\?", text)}
     assert queried == {"/api/reverse", "/api/geocode"}, queried
     for path in queried:
         assert re.fullmatch(r"/api/(reverse|geocode)/?", path), path

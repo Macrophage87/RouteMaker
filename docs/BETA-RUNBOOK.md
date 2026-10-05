@@ -641,8 +641,9 @@ diff <(sed 's/[[:space:]]*$//' "$RM_STATE/nginx-before.txt") <(sed 's/[[:space:]
 while read -r s; do printf '%s %s\n' "$s" "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$s/" || echo fail)"; done < "$RM_STATE/sites-before.txt" | diff - "$RM_STATE/sites-before-status.txt" && echo "other sites unchanged"
 ```
 
-Undo, whenever: `sudo rm "$NGINX_SITE"` (and the `sites-enabled` link if you made one), `sudo nginx -t && sudo nginx -s reload`.
-The site is then gone and the other sites never noticed.
+Undo, whenever: `sudo rm "$NGINX_SITE"` (and the `sites-enabled` link if you made one), `sudo nginx -t && sudo nginx -s reload`,
+then `sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.log* /etc/nginx/routemaker-beta.htpasswd`
+(the two logs and the password file this step created). The site is then gone and the other sites never noticed.
 
 What the site does, so you can explain it to the owner: only `robots.txt` (and the port-80 ACME
 challenge path) is public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
@@ -763,9 +764,14 @@ sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups
 sudo cp -p "$RM_DATA/backups/index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
 scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # recreates only those whose image or command the release changed
+scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # needed if the release changed valhalla/*.json or lua/: the routers read them only at start
 ( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles ; echo "predraw exit $?"' < /dev/null > "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )
 tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: poll for "predraw exit N" as step 8 says
 ```
+
+If the release changed `deploy/beta` (its step 9), also put the old nginx site back (owner steps): render it from
+this checkout, now at the previous sha, with the same command as step 9c of the install, `sudo install -m 644` it
+over `$NGINX_SITE`, then `sudo nginx -t && sudo nginx -s reload`.
 
 If the release also shipped new graphs (its step 7 ran `files`), do **A** as well, before the
 `up -d api worker` line: the restored `live` is the old build's, and `current` would still point at the
@@ -858,8 +864,16 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), the stress-tile pre-draw from
    step 8 if step 7 ran `db --update-data` (or the release changed what the tiles draw), and the smoke tests. Routers and
    Photon restart only if their image or command changed in the release (`beta-compose.sh up -d <name>` recreates
-   exactly the ones that did).
-9. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
+   exactly the ones that did). The four routers also need a restart if `valhalla/*.json` or `lua/` changed, because
+   they read those files only at start and `up -d` sees nothing to recreate:
+   `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
+   (the same line as rollback A). Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
+9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
+   they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
+   over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
+   `sudo nginx -t && sudo nginx -s reload`, and run the 401 `curl` check from step 9c. Without this the beta keeps
+   the old log settings, and any other template change, until it is next installed.
+10. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
 
 **Front end only:** ship with `ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend [--report-url <the same as before>]
 --without tiles --without elevation --without basemap --without photon --without db "$RM_SSH_HOST" /data/routemaker-incoming`,
@@ -922,7 +936,9 @@ app back): `sudo cp -p "$RM_DATA/backups/index.html.pre-frontend-<time>" "$RM_DA
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
   with no query string, no client address and no tester name. Reverse look-ups and searches (`/api/reverse`,
   `/api/geocode`, whose queries hold a location) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
-  a 502 or 504 there leaves no line; read the api's log for its side. Upstream errors on every other path still go to the
+  a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
+  the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
+  request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
   host's own nginx error log, with the request line (those paths carry no location in a query; a tile path does show
   the area viewed, as any map pan does).
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
