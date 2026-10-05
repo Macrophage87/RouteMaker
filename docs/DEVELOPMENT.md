@@ -3493,7 +3493,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 208 checks, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 213 checks, section 17 for the loop box
   and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
@@ -3501,7 +3501,8 @@ Tests: `lib/sidebar.test.ts`.
 
 ### Use my location (OWNER-DECISIONS 395)
 
-Front end only. A "Use my location" button sits beside the search box (`.place-search-row`, in
+Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) are on
+their own branch, wip/privacy-logs (OWNER-DECISIONS 401). A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -3514,7 +3515,10 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
   without high accuracy (`RETRY_OPTIONS`), in the same press. No `watchPosition`, no tracking. Each call
   settles once, and an app-side watchdog (`LOCATE_WATCHDOG_MS`, timeout + 20 s) ends a look-up the browser
   never answers (a dismissed or ignored prompt, which the browser's own timeout does not cover) as a
-  timeout, with no retry. `locate` never rejects: every outcome is a `LocateResult` (`denied`,
+  timeout, with no retry. Where the browser has the Permissions API (`GeoEnv.permission`), a prompt still
+  open gets `PROMPT_WATCHDOG_MS` (60 s) instead, and the first watchdog starts again when it is answered,
+  so a rider who reads the prompt for a while and then grants it is not cut off by a cold GPS; the
+  query never delays the call. `locate` never rejects: every outcome is a `LocateResult` (`denied`,
   `unavailable`, `timeout`, `unsupported`, `insecure`), each with a plain sentence in `LOCATE_MESSAGES`.
   `locateGate` keeps it to one look-up at a time; a press while one runs says "Finding your location..." again.
 - **The result** is decided by `placeFix` (pure, unit-tested; `App.tsx` only calls it), with the loop
@@ -3551,15 +3555,19 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
     the link still holds the location.
   - The sign-in round trip (`lib/signIn.ts`) keeps the plan's hash, location and all, in this tab's
     sessionStorage only for the round trip; it is read once and removed on the next load, and nothing is
-    sent to the server. Owner decision pending: `SKIP_SIGN_IN_PLAN_WITH_LOCATION = true` would skip it
-    for a plan that holds a location (a one-line change).
-  - The beta's nginx logs paths without query strings (`rmbeta_noquery`), since a reverse look-up and a
-    search carry a location in theirs; Valhalla's slow-request log is off (`long_request` far past the
-    30 s timeout, scripts/build_valhalla_configs.py).
+    sent to the server. This is the accepted exception to "never stored" (OWNER-DECISIONS 398, "yes, keep
+    location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
+    sheet's sign-in sentence and two test pins changed (the comment at the switch).
+  - Server logs are not this branch's: wip/privacy-logs (OWNER-DECISIONS 401) keeps the location in a
+    reverse look-up's or a search's query out of the beta nginx logs and turns off Valhalla's slow-request
+    log. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+    viewed, as any map pan does.
 - **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
   button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).
 - **Tests:** `lib/geolocation.test.ts` (look-up, watchdog, retry, `placeFix`, gate, note rules, the
-  never-stored source scan), `planEdits.test.ts` (undo gives back the same point objects; a drag makes a
+  never-stored source scan over all of App, the real watchdog limits and the open prompt under
+  `mock.timers`, and source pins on App's and PlaceSearch's handoffs: the ride read after the wait, the
+  list's choice, Enter through `pickTarget`, the drag's captured point), `planEdits.test.ts` (undo gives back the same point objects; a drag makes a
   new one); the browser check (section 18) uses CDP's `Emulation.setGeolocationOverride` and
   `Browser.setPermission` (granted, denied, no position) and a script that makes `isSecureContext`
   false. A timeout is covered by the unit tests only (CDP cannot make one).
