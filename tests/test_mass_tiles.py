@@ -357,6 +357,18 @@ class TestFocusByZoom:
             assert rpms(features(client, z)) == [(3, 250)], z
         assert (3, 260) in rpms(features(client, 12)) and (3, 270) in rpms(features(client, 12))
 
+    def test_a_bridge_over_a_road_does_not_join_its_run(self, client, segment_schemas):
+        """Two 450 m Wide open roads that cross with no shared node (one bridges the other)
+        are two runs, each under half a mile."""
+        live, _ = segment_schemas
+        west = WHITE_HOUSE
+        road(live, 1, west, east_of(west, 450), rpm=250)
+        middle = east_of(west, 225)
+        road(live, 2, north_of(middle, -225), north_of(middle, 225), rpm=260)
+        for z in (10, 11):
+            assert rpms(features(client, z)) == [], z
+        # Joined at a shared node they would be one run: test_blocks_that_join_make_a_run.
+
     def test_a_tile_edge_does_not_cut_a_run(self, client, segment_schemas):
         """The run is found over the whole District: 433 m each side of a z10 and z11 edge."""
         live, _ = segment_schemas

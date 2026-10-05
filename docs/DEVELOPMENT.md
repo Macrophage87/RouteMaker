@@ -976,9 +976,10 @@ order), and nothing asks for hazards.
   too, `MASS_WIDE_RUN_MI`, `massBandsAt`); `tests/test_mass_tiles.py` holds them equal. **The run
   is computed in the tiles, not the pipeline:** the band is the tiles' own rounded `rpm`
   expression, so the run and the colour can never disagree; the District's Wide open road is
-  small (about 74 mi, 120 km); only the six or so z10-11 tiles over the District need it, and the
+  small (about 74 mi, 120 km); only the ten z10-11 tiles over the District (4 at z10, 6 at z11) need it, and the
   pre-draw draws them; so no column, schema change or rebuild. A run is the total length of the
-  Wide open lines (clipped as drawn) that touch end to end, `ST_ClusterDBSCAN(clipped, 0, 1)`,
+  Wide open lines (clipped as drawn) that share a vertex, `ST_ClusterDBSCAN(ST_Points(clipped), 0, 1)`
+  (so a run goes on through a junction, OWNER-DECISIONS 423, and not across a bridge over a road),
   found over the whole District in each z10-11 tile's query (the `wide`, `clustered` and
   `in_run` CTEs), so a tile's edge never cuts a run. Measured read-only on the live table with a
   stand-in width: z10 0.7-0.8 s warm (5.5 s the very first, cold), z11 0.45-0.6 s, z12 0.26 s.

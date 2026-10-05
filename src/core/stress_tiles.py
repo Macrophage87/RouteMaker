@@ -321,6 +321,11 @@ OPTIONAL_PROPERTIES = {
 RPM_STEP = 10
 # Riders a minute for each metre of usable width, from `routemaker.flow`: the column holds
 # the width, and the tile computes the riders, so tuning the constants needs no rebuild.
+# But neither tile tag carries this figure, so a tuned constant must bump BOTH
+# FORMAT_VERSIONs (this module's and core.mass_tiles'), or the tile cache and the
+# browsers' 304s keep the old `rpm` while the route chart, computed at request time,
+# moves at once (REBUILD-BUNDLE correctness review, nit 3).
+# tests/test_stress_tiles.py holds the figure to the format versions it was drawn at.
 RPM_PER_METRE_SQL = repr(round(flow.level_riders_per_min(1.0), 6))
 
 # How an optional property is drawn from its column, where it is not the

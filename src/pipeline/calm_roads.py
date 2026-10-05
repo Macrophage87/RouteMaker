@@ -58,7 +58,9 @@ from .schema import (
 # How far a run may turn at a junction and still be the same run: along the road of its own
 # name, a right angle and a little (a road that jogs, or turns a corner and keeps its name);
 # along a road of another name, a gentle bend at most. PROPOSALS, measured with the length
-# bar (docs/OPERATIONS.md, "The ride layer (z12-13)").
+# bar (docs/OPERATIONS.md, "The ride layer (z12-13)"). The bearings are on the ground
+# (ST_Azimuth on geography), not in degrees of lon/lat, which at 39 N would put a turn up to
+# about 13 degrees off (REBUILD-BUNDLE correctness review, nit 4).
 SAME_NAME_TURN_DEG = 100.0
 STRAIGHT_ON_DEG = 45.0
 
@@ -117,7 +119,8 @@ kept AS (
        OR EXISTS (SELECT 1 FROM shared AS s WHERE s.kx = a.kx AND s.ky = a.ky)
 )
 SELECT k.id, dense_rank() OVER (ORDER BY k.kx, k.ky) AS node, k.at_m,
-       degrees(ST_Azimuth(k.g, k.prev)) AS back, degrees(ST_Azimuth(k.g, k.next)) AS fwd,
+       degrees(ST_Azimuth(k.g::geography, k.prev::geography)) AS back,
+       degrees(ST_Azimuth(k.g::geography, k.next::geography)) AS fwd,
        k.busy, c.name_id
 FROM kept AS k JOIN cand AS c ON c.id = k.id
 ORDER BY k.id, k.n

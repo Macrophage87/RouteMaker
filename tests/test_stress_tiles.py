@@ -1862,3 +1862,24 @@ class TestMassCapacity:
         assert stress_tiles.ETAG_LETTERS["is_rough"] == "r"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["rpm"] == "mass_usable_width_m"
+
+
+# The riders-a-minute figure each format pair was drawn with. A tuned flow constant
+# (FOLLOWUP-FLOW-CALIBRATION) changes `rpm` in every tile without changing either tile
+# tag, so it has to come with a bump of both FORMAT_VERSIONs and a row here.
+RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526"}
+
+
+def test_a_tuned_flow_constant_bumps_both_tile_formats() -> None:
+    """REBUILD-BUNDLE correctness review, nit 3: neither ETag carries the constant."""
+    from core import mass_tiles, stress_tiles
+
+    formats = (stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)
+    assert formats in RPM_PER_METRE_BY_FORMAT, (
+        f"tile formats {formats} have no recorded riders-a-minute figure: add the row"
+    )
+    assert stress_tiles.RPM_PER_METRE_SQL == RPM_PER_METRE_BY_FORMAT[formats], (
+        f"RPM_PER_METRE_SQL is {stress_tiles.RPM_PER_METRE_SQL}, but formats {formats} were "
+        f"drawn at {RPM_PER_METRE_BY_FORMAT[formats]}: bump both FORMAT_VERSIONs "
+        "(stress_tiles and mass_tiles) so the cache and the browsers drop the old rpm"
+    )

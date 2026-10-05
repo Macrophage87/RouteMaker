@@ -898,6 +898,19 @@ class TestCalmRoads:
         assert got[1] == got[2] == pytest.approx(900, abs=5)
         assert got[3] == pytest.approx(500, abs=5)
 
+    def test_the_turn_is_measured_on_the_ground_not_in_degrees(self, segment_schemas) -> None:
+        # Elm Street runs north and Ash Street bends 40 degrees east on the ground: straight on
+        # (under STRAIGHT_ON_DEG), so the run goes on. In degrees of lon/lat at this latitude the
+        # same bend reads about 47 degrees, which would have broken it (correctness review, nit 4).
+        _live, staging = segment_schemas
+        road(staging, 1, "Elm Street", (0, 0), (0, 500))
+        road(staging, 2, "Ash Street", (0, 500), (321, 883))
+        road(staging, 3, "Fir Street", (0, 500), (-500, 500))  # a third road, so the turn decides
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1000, abs=5)
+        assert got[3] == pytest.approx(500, abs=5)
+
     def test_an_unnamed_road_has_no_run_and_does_not_join_one(self, segment_schemas) -> None:
         _live, staging = segment_schemas
         road(staging, 1, "Birch Road", (0, 0), (500, 0))

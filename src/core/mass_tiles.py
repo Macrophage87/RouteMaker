@@ -212,7 +212,8 @@ SELECT '{table}'::regclass::oid,
 """
 
 # z10-11 (422): the Wide open lines of the whole District, clipped as drawn, joined into
-# runs where they touch, and the ids of those in a run of at least WIDE_RUN_M.
+# runs where they share a vertex (through junctions, 423; not a bridge over a road), and the
+# ids of those in a run of at least WIDE_RUN_M.
 _RUNS = """
 wide AS (
     SELECT s.id, {clipped} AS clipped
@@ -223,7 +224,11 @@ wide AS (
       AND s.stress_tier <> 5
 ),
 clustered AS (
-    SELECT id, clipped, ST_ClusterDBSCAN(clipped, 0, 1) OVER () AS run
+    -- Joined where they share a vertex (OSM's shared node), not wherever they touch: a
+    -- bridge crosses the road under it with no node in common, and the two are not one
+    -- run (REBUILD-BUNDLE correctness review, nit 5). A run goes on through a junction
+    -- (OWNER-DECISIONS 423), which is a shared node.
+    SELECT id, clipped, ST_ClusterDBSCAN(ST_Points(clipped), 0, 1) OVER () AS run
     FROM wide
     WHERE NOT ST_IsEmpty(clipped)
 ),
