@@ -25,6 +25,14 @@ export const isMassRide = (preset: string | null | undefined): boolean => preset
 export const CAPACITY_SPEED = formatSpeedRange(6, 8);
 export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
 
+/**
+ * Where the figures come from, briefly, as every data source is credited (OWNER-DECISIONS 301, 306): the
+ * road widths are OpenStreetMap's lane and width tags, and DC's Roadway Block where it gives the lanes
+ * (both credited with the map); the density and pace are calibrated to counts of DC Bike Party rides.
+ */
+export const CAPACITY_SOURCE =
+  "Modelled from OpenStreetMap and DC Roadway Block lane and width data, calibrated to counts of DC Bike Party rides.";
+
 /** The route panel's title for the same figures. */
 export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
 

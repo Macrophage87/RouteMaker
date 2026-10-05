@@ -146,6 +146,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
     if (url.pathname.startsWith("/tiles/stress/")) {
       status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
+      // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
+      if (stressTiles === "capacity") body = capacityTile();
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
       const n = page.routeRequests;
@@ -167,6 +169,61 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       })
       .catch(() => {});
   });
+}
+
+// ---- A stress tile with the Mass Ride capacity (core/stress_tiles.py, `rpm`) ----
+
+const varint = (n) => {
+  const out = [];
+  let v = n;
+  while (v > 127) {
+    out.push((v & 127) | 128);
+    v = Math.floor(v / 128);
+  }
+  out.push(v);
+  return Buffer.from(out);
+};
+const field = (number, wire, payload) => Buffer.concat([varint(number * 8 + wire), payload]);
+const bytesField = (number, buf) => field(number, 2, Buffer.concat([varint(buf.length), buf]));
+const uint = (number, n) => field(number, 0, varint(n));
+const zigzag = (n) => (n << 1) ^ (n >> 31);
+
+/**
+ * One vector tile with a layer "stress": four roads across it at capacities 40, 90, 150 and 300
+ * riders a minute (one in each band) and one marked Avoid (tier 5), each with a `tier` and an `rpm`.
+ */
+export function capacityTile() {
+  const keys = ["tier", "rpm"];
+  const values = [];
+  const valueIndex = (n) => {
+    let i = values.indexOf(n);
+    if (i < 0) {
+      values.push(n);
+      i = values.length - 1;
+    }
+    return i;
+  };
+  const roads = [
+    { y: 600, tier: 3, rpm: 40 },
+    { y: 1300, tier: 3, rpm: 90 },
+    { y: 2000, tier: 2, rpm: 150 },
+    { y: 2700, tier: 4, rpm: 300 },
+    { y: 3400, tier: 5, rpm: 300 },
+  ];
+  const features = roads.map(({ y, tier, rpm }) => {
+    const geometry = Buffer.concat([varint(9), varint(zigzag(0)), varint(zigzag(y)), varint(10), varint(zigzag(4096)), varint(zigzag(0))]);
+    const tags = Buffer.concat([varint(0), varint(valueIndex(tier)), varint(1), varint(valueIndex(rpm))]);
+    return Buffer.concat([bytesField(2, tags), uint(3, 2), bytesField(4, geometry)]);
+  });
+  const layer = Buffer.concat([
+    uint(15, 2),
+    bytesField(1, Buffer.from("stress")),
+    ...features.map((f) => bytesField(2, f)),
+    ...keys.map((k) => bytesField(3, Buffer.from(k))),
+    ...values.map((v) => bytesField(4, uint(4, v))),
+    uint(5, 4096),
+  ]);
+  return bytesField(3, layer);
 }
 
 export async function axNode(page, selector) {
@@ -407,6 +464,22 @@ export const S_MASS = (() => {
   const tail = [entry("junction", 4000, 4000, "At 2.5 mi (4.0 km): Cross 9th Street Northwest (LTS 4), no signal mapped (Very high stress junction).", { severity: "red" })];
   r.description = [...head, group(true), ...tail];
   r.description_overview = [head[0], head[2], group(false), ...tail];
+  return r;
+})();
+/**
+ * A Mass Ride on a rebuilt table (OWNER-DECISIONS 325-327, 387): its sections carry riders per
+ * minute, one in each band, and a stretch marked Avoid.
+ */
+export const S_MASS_CAPACITY = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS));
+  r.stress_spans = [
+    { from_m: 0, to_m: 300, tier: 2, facility: "none", unpaved: null, rpm: 50 },
+    { from_m: 300, to_m: 1500, tier: 3, facility: "none", unpaved: null, rpm: 90 },
+    { from_m: 1500, to_m: 2700, tier: 3, facility: "none", unpaved: null, rpm: 190 },
+    { from_m: 2700, to_m: 3400, tier: 4, facility: "none", unpaved: null, rpm: 590 },
+    { from_m: 3400, to_m: 3600, tier: 5, facility: "none", unpaved: null, rpm: null },
+    { from_m: 3600, to_m: 4660, tier: 2, facility: "none", unpaved: null, rpm: 150 },
+  ];
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>

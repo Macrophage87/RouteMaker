@@ -135,6 +135,7 @@ test("the legend lists the four bands in order, then Avoid, each with its words"
   for (const band of MASS_BANDS) assert.ok(html.includes(`stroke="${band.color}"`), band.key);
   assert.ok(html.includes('stroke-dasharray="6 4"') && html.includes('stroke-dasharray="14 4"'));
   assert.ok(!/LTS|stress/i.test(html.replace(/<[^>]*>/g, "")), "no LTS or stress words in the Mass Ride legend");
+  assert.ok(html.includes("OpenStreetMap") && html.includes("DC Roadway Block"), "the source is credited, briefly");
 });
 
 test("the route's list says each band's share and length in words, one row each, empty bands left out", () => {
@@ -215,4 +216,21 @@ test("a Mass Ride's adjacent sections of one band are one section", () => {
     { from_m: 100, to_m: 300, tier: 3, facility: "none", rpm: 190 },
   ])!;
   assert.deepEqual(sections.map((s) => s.key), ["m2"]);
+});
+
+// --- Where App and MapView wire it ---------------------------------------------------------
+
+test("the app wires the mode: the map is told the ride type, the legend and the panel follow the tiles, the stress ones stay otherwise", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(app, /massCapacity=\{isMassRide\(preset\)\}/);
+  assert.match(app, /watchForCapacity\(map, \(\) => setCapacityTiles\(true\)\)/);
+  assert.match(app, /const massMap = isMassRide\(preset\) && capacityTiles;/);
+  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<StressLegend/);
+  // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
+  assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
+  assert.match(app, /const segments = capacity \? \[\] : stressSegments\(route\.stress_m\);/);
+  assert.match(view, /setMassMode\(null, callbacks\.current\.massCapacity === true/);
+  assert.match(view, /props\.massCapacity === true/);
 });

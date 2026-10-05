@@ -40,18 +40,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from . import flow
 from .tags import PAINTED_CYCLEWAY, cycleway_sides, is_oneway, parse_int, parse_width_m
 
-# The calibrated constants (see the module docstring).
-SAFE_DENSITY_PER_M2 = 0.37
-UTILISATION = 0.7
-PACE_MS = 1.9
+# The calibrated constants are `routemaker.flow`'s (copied verbatim from the
+# elevation-chart branch, wip/elevation-chart 27cddab: one model, not two).
+SAFE_DENSITY_PER_M2 = flow.DENSITY_PER_M2
+UTILISATION = flow.UTILISATION
+PACE_MS = flow.PACE_MS
 # Riders a minute for each metre of usable width.
-RPM_PER_METRE = 60 * SAFE_DENSITY_PER_M2 * UTILISATION * PACE_MS
+RPM_PER_METRE = flow.level_riders_per_min(1.0)
 
 # One travel lane, 11 ft: the plan's figure, and the width a lane is read at where
 # no width is mapped.
-LANE_WIDTH_M = 3.35
+LANE_WIDTH_M = flow.LANE_WIDTH_M
 # A painted bike lane's width where none is surveyed: 5 ft, the usual minimum
 # beside a curb (`stress.DECENT_LANE_MIN_M`).
 PAINTED_LANE_DEFAULT_M = 1.5
@@ -140,16 +142,16 @@ def usable_width_m(tags: Mapping[str, str], per_direction_lanes: int | None = No
 def capacity_rpm(tags: Mapping[str, str], per_direction_lanes: int | None = None) -> int | None:
     """Riders a minute the way carries, flat and straight, or None if unknown."""
     width = usable_width_m(tags, per_direction_lanes)
-    return None if width is None else round(width * RPM_PER_METRE)
+    return None if width is None else round(flow.level_riders_per_min(width))
 
 
 # The Mass Ride bands, riders a minute (OWNER-DECISIONS 326, 327): the lower
 # bound of each, in order. The front end holds its own copy
 # (`frontend/src/lib/massCapacity.ts`), which a test holds equal.
-BAND_FLOORS = (0, 60, 120, 200)
-BAND_NAMES = ("bottleneck", "tight", "good", "wide open")
+BAND_FLOORS = (0, *flow.BAND_EDGES)
+BAND_NAMES = flow.BAND_WORDS
 
 
 def band_of(rpm: float) -> int:
     """The band, 0 (under 60) to 3 (200 and up), of a riders-a-minute figure."""
-    return sum(1 for floor in BAND_FLOORS[1:] if rpm >= floor)
+    return flow.band_index(rpm)

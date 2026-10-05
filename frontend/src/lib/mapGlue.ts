@@ -16,10 +16,11 @@ import {
   stressOverlayLayers,
   unpavedLayers,
   UNPAVED_DASH,
+  accessibilityOn,
   massRideOn,
   setMassRide,
 } from "../stressStyle.js";
-import { massLayerIds } from "../massStyle.js";
+import { massLayerIds, massLayers } from "../massStyle.js";
 import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import type { RouteResponse } from "./api.ts";
@@ -110,7 +111,9 @@ export function setStressPalette(
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
   const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
-  for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
+  // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
+  const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
+  for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
     map.setPaintProperty(layer.id, "line-width", layer.paint["line-width"]);

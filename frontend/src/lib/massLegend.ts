@@ -14,6 +14,7 @@ import {
   CAPACITY_FIGURE_TITLE,
   CAPACITY_LEGEND_TITLE,
   CAPACITY_MEANS,
+  CAPACITY_SOURCE,
   MASS_ZOOM_HINT,
   bandLegendText,
   massZoomNotice,
@@ -73,6 +74,7 @@ export function MassLegend(): ReactElement {
       ...MASS_BANDS.map((band: Band, i: number) => row(band.key, h(BandSwatch, { band }), bandLegendText(i))),
       row("avoid", h(AvoidSwatch), AVOID_LEGEND_TEXT),
     ),
+    h("p", { className: "hint capacity-source" }, CAPACITY_SOURCE),
   );
 }
 

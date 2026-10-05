@@ -21,6 +21,7 @@ import {
   runHover,
   capacityOnMap,
   setMassMode,
+  setStressPalette,
   setStressVisibility,
   setStressWhen,
   watchForCapacity,
@@ -31,9 +32,9 @@ import {
   type OverlayMap,
 } from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
-import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, massRideOn, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
+import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
-import { massLayerIds } from "../massStyle.js";
+import { massLayerIds, massLayers } from "../massStyle.js";
 
 // The Mass Ride map's layers (massStyle.js) are on the map always and drawn only in that mode.
 const MASS_IDS = new Set<string>(massLayerIds());
@@ -706,4 +707,28 @@ test("the legend and panel know whether the tiles carry the capacity: from the f
   assert.equal(fresh.listeners.size, 0);
   assert.equal(listeners.size, 0);
   assert.equal(capacityOnMap(facilityMap(false, [[{ properties: { rpm: 1 } }]]).map), false, "no overlay, nothing to ask");
+});
+
+test("the accessibility switch repaints the Mass Ride casings in place: a pixel wider each, the lines as they were", () => {
+  const ids = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id);
+  const widths: Record<string, unknown> = {};
+  const map = {
+    getLayer: (id: string) => (ids.includes(id) ? {} : undefined),
+    setFilter: () => {},
+    setPaintProperty: (id: string, name: string, value: unknown) => {
+      if (name === "line-width") widths[id] = value;
+    },
+  } as unknown as OverlayMap;
+  type L = { id: string; type: string; paint: Record<string, unknown> };
+  try {
+    setAccessibility(true, { remember: false });
+    setStressPalette(map);
+    const strong = Object.fromEntries((massLayers(STRESS_SOURCE_ID, "stress", true) as L[]).filter((l) => l.type === "line").map((l) => [l.id, l.paint["line-width"]]));
+    for (const id of massLayerIds().filter((i: string) => i !== "mass-avoid-label")) assert.deepEqual(widths[id], strong[id], id);
+    const plain = Object.fromEntries((massLayers(STRESS_SOURCE_ID, "stress", false) as L[]).filter((l) => l.type === "line").map((l) => [l.id, l.paint["line-width"]]));
+    assert.notDeepEqual(widths["mass-casing-good"], plain["mass-casing-good"]);
+    assert.deepEqual(widths["mass-line-good"], plain["mass-line-good"], "the line's own width is the owner's, switch or not");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
 });
