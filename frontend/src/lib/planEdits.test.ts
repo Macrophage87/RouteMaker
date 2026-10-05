@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EditHistory } from "./editHistory.ts";
-import { planEdits, travelSaid, type Snapshot } from "./planEdits.ts";
+import { movePoint, planEdits, travelSaid, type Snapshot } from "./planEdits.ts";
 
 function wired(start: number[] = [], ride = "default") {
   const history = new EditHistory<Snapshot<number[], string>>();
@@ -58,6 +58,43 @@ test("the history's buttons are told of every change, and of nothing when there 
   assert.equal(p.syncs(), 1);
   p.edits.travel("undo");
   assert.equal(p.syncs(), 2);
+});
+
+test("undo and redo give back the same point objects, and a drag makes a new one (the location note follows identity)", () => {
+  type P = [number, number];
+  const history = new EditHistory<Snapshot<P[], string>>();
+  const a: P = [-77.0, 38.9];
+  const b: P = [-77.1, 38.95];
+  const c: P = [-77.2, 39.0];
+  let points: P[] = [];
+  const edits = planEdits<P[], string>({
+    history,
+    current: () => points,
+    ride: () => "default",
+    set: (next) => {
+      points = next;
+    },
+    applyRide: () => {},
+    sync: () => {},
+  });
+  edits.commit([a, b]);
+  edits.commit([a, c]);
+  const back = edits.travel("undo");
+  assert.ok(back);
+  assert.equal(back[0], a, "the same object, not a copy");
+  assert.equal(back[1], b);
+  const again = edits.travel("redo");
+  assert.ok(again);
+  assert.equal(again[1], c);
+  // A drag: a new array, a new point at the index, the others the same objects.
+  const moved: P = [-77.21, 39.01];
+  const before = points;
+  const after = movePoint(before, 1, moved);
+  assert.notEqual(after, before);
+  assert.equal(after[1], moved);
+  assert.notEqual(after[1], before[1]);
+  assert.equal(after[0], before[0]);
+  assert.deepEqual(before, [a, c], "the old list is not changed in place");
 });
 
 test("what a screen reader hears after undo and redo", () => {

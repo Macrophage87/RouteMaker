@@ -11,7 +11,7 @@ import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
-import { planToOpen, rememberPlan } from "./lib/signIn.ts";
+import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
@@ -52,20 +52,22 @@ import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/fed
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
-import { planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
+import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import {
   FINDING_LOCATION,
-  LOCATE_MESSAGES,
   approximateHint,
   browserEnv,
   linkLocationNote,
   locate,
   locateSupport,
-  locationSaid,
+  maxPointsNotice,
+  locateGate,
+  movedFromHere,
+  placeFix,
   type Fix,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
@@ -93,6 +95,7 @@ import {
   focusOnViewChange,
   foldTitle,
   linkSaidFor,
+  linkSpokenFor,
   linkToCopy,
   noticeSaidElsewhere,
   rescueCompactFocus,
@@ -159,7 +162,6 @@ function useNarrow(): boolean {
 
 /** The points notice for a point outside the map, from a click, a station, or the rider's location. */
 const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
-const maxPointsNotice = () => `A route can have at most ${MAX_POINTS} points.`;
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -236,8 +238,10 @@ export function App() {
   const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
   const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
-  // What "Copy link" answered: said politely, and again for a second press.
+  // What "Copy link" answered: said politely, and again for a second press. The spoken one adds the
+  // location note when the link includes the rider's location (OWNER-DECISIONS 395).
   const [linkSaid, setLinkSaid] = useState("");
+  const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -255,14 +259,22 @@ export function App() {
   // What an edit on the map did, for a screen reader: the map itself says
   // nothing. The count makes the same sentence twice a new announcement.
   const [said, setSaid] = useState({ text: "", count: 0 });
-  // "Use my location" (OWNER-DECISIONS 395). The last fix, kept in memory only: never in localStorage, the
-  // link, a GPX file or a log. Whether the plan's start came from it is whether its point object is
-  // still in the plan (linkLocationNote), so moving the marker, which makes a new point, clears it.
+  // "Use my location" (OWNER-DECISIONS 395). The fix's accuracy and the flag that a point came from the
+  // location are kept in memory only: never in storage, the link, a GPX file or a log. The point itself is
+  // in the plan like any clicked point, so it is in the address bar and the link at full precision, by
+  // design (and in this tab's sessionStorage for a sign-in round trip only: lib/signIn.ts). Whether a
+  // point came from the location is whether its object is in `fromHere` (linkLocationNote); a drag of
+  // such a point adds the moved one too (movedFromHere), so the note stays.
   const [here, setHere] = useState<Fix | null>(null);
-  // Every point that came from a look-up, for the link note (the start may be an earlier one than `here`).
+  // Every point that came from a look-up, or a drag of one, for the link note (the start may be an earlier
+  // one than `here`). Not capped: a few points of memory, and a cap could drop a start still in the plan.
   const [fromHere, setFromHere] = useState<LonLat[]>([]);
   const [locating, setLocating] = useState(false);
-  const locatePress = useRef(0);
+  // One look-up at a time, set before the await, so a second call in the same tick is refused too.
+  const gate = useRef(locateGate()).current;
+  // The 150 ms re-set of a look-up's notice; a map edit in that window cancels it (the correctness review's N2).
+  const locateNoticeTimer = useRef<number | undefined>(undefined);
+  const cancelLocateNotice = () => window.clearTimeout(locateNoticeTimer.current);
   const geoEnv = useMemo(() => browserEnv(), []);
   const locateReady = locateSupport(geoEnv);
   // The GPX file opened last (GpxPanel), until the plan is cleared.
@@ -327,6 +339,7 @@ export function App() {
     // "Link copied." was about the link before this change (the correctness review's N4).
     linkPresses.current += 1;
     setLinkSaid("");
+    setLinkSpoken("");
   }, [points, preset, dials]);
 
   // A link pasted into this tab, or the back button, changes the fragment
@@ -506,6 +519,7 @@ export function App() {
   }, [undo, redo]);
 
   const place = useCallback((point: LonLat) => {
+    cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
       return;
@@ -520,56 +534,54 @@ export function App() {
     announce(addedSaid(next.indexOf(point), next.length, loopVias));
   }, [commit, announce, loopVias]);
 
-  // "Use my location": one look-up per press (lib/geolocation.ts), then the map click's path. A failure is the
-  // Points notice (a status, said once; through the app region only while the planner is hidden). It is
-  // cleared and set again a moment later, so a second press with the same answer is said again.
-  const useMyLocation = useCallback(async () => {
-    if (locating) return;
-    const press = ++locatePress.current;
+  // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
+  // the map click's path; from the "Your location" choice, the search's Start / Destination / Stop choice.
+  // A failure is the Points notice (a status, said once; through the app region only while the planner is
+  // hidden). It is cleared and set again a moment later, so a second press with the same answer is said again.
+  const useMyLocation = useCallback(async (choice?: PlaceChoice) => {
+    const press = gate.begin();
+    if (press === null) {
+      // A press while one is under way still gets an answer.
+      announce(FINDING_LOCATION);
+      return;
+    }
     setLocating(true);
+    cancelLocateNotice();
     setNotice(null);
     announce(FINDING_LOCATION);
     const result = await locate(geoEnv);
-    if (press !== locatePress.current) return;
+    if (!gate.finish(press)) return;
     setLocating(false);
-    const refuse = (text: string) => {
+    // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
+    const ride = rideRef.current;
+    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
+    if ("refuse" in placed) {
       setNotice(null);
-      window.setTimeout(() => {
-        if (press === locatePress.current) setNotice(text);
+      locateNoticeTimer.current = window.setTimeout(() => {
+        if (gate.latest(press)) setNotice(placed.refuse);
       }, 150);
-    };
-    if (!result.ok) {
-      refuse(LOCATE_MESSAGES[result.reason]);
       return;
     }
-    const { point, accuracyM } = result.fix;
-    if (!insideCoverage(point)) {
-      refuse(OUTSIDE_NOTICE);
-      return;
-    }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      refuse(maxPointsNotice());
-      return;
-    }
-    // The same path as a map click: addPoint, loop-aware, one undo step.
     setNotice(null);
-    const next = addPoint(pointsRef.current, point, loopVias);
-    commit(next);
-    announce(locationSaid(next.indexOf(point), next.length, loopVias, accuracyM));
-    setHere(result.fix);
-    setFromHere((prior) => [...prior, point].slice(-MAX_POINTS));
-    mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
-  }, [locating, geoEnv, announce, commit, loopVias]);
+    commit(placed.next);
+    announce(placed.said);
+    if (result.ok) setHere(result.fix);
+    setFromHere((prior) => [...prior, placed.point]);
+    mapRef.current?.flyTo({ center: placed.point, zoom: Math.max(mapRef.current.getZoom(), 14) });
+  }, [gate, geoEnv, announce, commit]);
   const hereInPlan = here !== null && points.includes(here.point);
 
   const move = useCallback((index: number, point: LonLat) => {
+    cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice("That point is outside the area this map covers; it was put back.");
       setMarkerReset((n) => n + 1);
       return;
     }
     setNotice(null);
-    commit(pointsRef.current.map((p, i) => (i === index ? point : p)));
+    // A dragged location point keeps the Copy link note: the moved point is still the rider's spot.
+    setFromHere((prior) => movedFromHere(prior, pointsRef.current[index], point));
+    commit(movePoint(pointsRef.current, index, point));
   }, [commit]);
 
   // The route line dragged (or clicked) at `point` from leg `leg`: a via in
@@ -616,6 +628,7 @@ export function App() {
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
+    cancelLocateNotice();
     const point = pickIntoPlan(found, choice, {
       current: () => pointsRef.current,
       commit,
@@ -767,9 +780,12 @@ export function App() {
   const copyLink = async () => {
     const press = ++linkPresses.current;
     setLinkSaid("");
+    setLinkSpoken("");
+    const note = linkNote;
     const done = await copyText(linkToCopy(window.location, points, preset, dials), navigator.clipboard, selectionCopy);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
+      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
 
@@ -907,7 +923,7 @@ export function App() {
             support: locateReady,
             busy: locating,
             note: hereInPlan && here ? approximateHint(here.accuracyM) : "",
-            onLocate: () => void useMyLocation(),
+            onLocate: (choice) => void useMyLocation(choice),
           }}
         />
       </div>
@@ -1011,11 +1027,11 @@ export function App() {
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
       </MoreTips>
       </div>
-      {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      )}
+      {/* Always rendered, empty when there is no notice: a live region that is created already holding
+          its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}
+      <p className={notice ? "notice" : "notice notice-empty"} role="status">
+        {notice ?? ""}
+      </p>
     </section>
   );
   const routeSection = (
@@ -1346,7 +1362,7 @@ export function App() {
                 <p className="hint">
                   Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
                   reopens it. Saving routes and peer review are coming for riders who{" "}
-                  <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
+                  <a href="/auth/login" onClick={() => rememberPlanForSignIn(session(), window.location.hash, linkNote !== "")}>
                     sign in with Discord
                   </a>
                   ; your current plan is kept across the sign-in.
@@ -1361,18 +1377,22 @@ export function App() {
               <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop)}>
                 Download GPX
               </button>
-              <button type="button" className="secondary" onClick={copyLink}>
+              <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
                 {COPY_LINK}
               </button>
               <span role="status" className="visually-hidden">
-                {linkSaid}
+                {linkSpoken}
               </span>
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}
                 </span>
               )}
-              {linkNote && <p className="hint link-note">{linkNote}</p>}
+              {linkNote && (
+                <p id="link-note" className="hint link-note">
+                  {linkNote}
+                </p>
+              )}
             </div>
           )}
 

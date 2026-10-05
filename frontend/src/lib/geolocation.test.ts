@@ -2,21 +2,40 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { addPoint, insideCoverage, type LonLat } from "./geo.ts";
+import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
+import { pickTarget } from "./geocode.ts";
 import {
+  FINDING_LOCATION,
   LINK_HAS_LOCATION_POINT,
   LINK_HAS_LOCATION_START,
   LOCATE_MESSAGES,
   LOCATE_OPTIONS,
+  LOCATE_WATCHDOG_MS,
+  LOCATION_OUTSIDE,
+  RETRY_OPTIONS,
+  ROUGH_SAID,
   accuracyRing,
+  accuracyText,
   approximateHint,
+  browserEnv,
+  cleanAccuracy,
   failureFor,
+  hereEffectLine,
   linkLocationNote,
   locate,
+  locateGate,
   locateSupport,
+  locationMatches,
   locationSaid,
+  maxPointsNotice,
+  movedFromHere,
+  placeFix,
+  searchStatusWithHere,
+  type FixPlacement,
   type GeoApi,
   type GeoEnv,
+  type LocateFailure,
+  type LocateResult,
 } from "./geolocation.ts";
 
 const ok = (latitude: number, longitude: number, accuracy: number): GeoApi => ({
@@ -40,6 +59,7 @@ test("one look-up with the spec's options; success gives lon/lat and the accurac
   assert.equal(calls, 1);
   assert.deepEqual(seen, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 });
   assert.equal(LOCATE_OPTIONS.timeout, 10_000);
+  assert.ok(LOCATE_WATCHDOG_MS > LOCATE_OPTIONS.timeout, "the app's limit is past the browser's");
 });
 
 test("each error is its own result", async () => {
@@ -54,6 +74,58 @@ test("each error is its own result", async () => {
   };
   assert.deepEqual(await locate(env(throwing)), { ok: false, reason: "unavailable" });
   assert.deepEqual(await locate(env(ok(Number.NaN, -77, 5))), { ok: false, reason: "unavailable" });
+  assert.deepEqual(await locate(env(ok(95, -77, 5))), { ok: false, reason: "unavailable" });
+  assert.deepEqual(await locate(env(ok(38.9, -190, 5))), { ok: false, reason: "unavailable" });
+});
+
+test("a browser timeout is tried once more without high accuracy, in the same look-up", async () => {
+  const seen: unknown[] = [];
+  const api: GeoApi = {
+    getCurrentPosition: (success, fail, options) => {
+      seen.push(options);
+      if (seen.length === 1) fail({ code: 3 });
+      else success({ coords: { latitude: 38.9, longitude: -77.04, accuracy: 40 } });
+    },
+  };
+  assert.deepEqual(await locate(env(api)), { ok: true, fix: { point: [-77.04, 38.9], accuracyM: 40 } });
+  assert.deepEqual(seen, [{ ...LOCATE_OPTIONS }, { ...RETRY_OPTIONS }]);
+  assert.equal(RETRY_OPTIONS.enableHighAccuracy, false);
+  // A denial is not retried.
+  let denials = 0;
+  const denying: GeoApi = {
+    getCurrentPosition: (_s, fail) => {
+      denials += 1;
+      fail({ code: 1 });
+    },
+  };
+  assert.deepEqual(await locate(env(denying)), { ok: false, reason: "denied" });
+  assert.equal(denials, 1);
+});
+
+test("a look-up the browser never answers (a dismissed prompt) ends as a timeout, once, with no retry", async () => {
+  let calls = 0;
+  let answer: (() => void) | undefined;
+  const silent: GeoApi = {
+    getCurrentPosition: (success) => {
+      calls += 1;
+      answer = () => success({ coords: { latitude: 38.9, longitude: -77.04, accuracy: 5 } });
+    },
+  };
+  const result = await locate(env(silent), { first: 20, retry: 20 });
+  assert.deepEqual(result, { ok: false, reason: "timeout" });
+  assert.equal(calls, 1, "the watchdog's timeout is not retried: the prompt may still be open");
+  answer?.(); // a late answer changes nothing (settled once)
+  assert.deepEqual(result, { ok: false, reason: "timeout" });
+  // A retry the browser never answers: still one result, from its own watchdog.
+  let tries = 0;
+  const slowRetry: GeoApi = {
+    getCurrentPosition: (_s, fail) => {
+      tries += 1;
+      if (tries === 1) fail({ code: 3 });
+    },
+  };
+  assert.deepEqual(await locate(env(slowRetry), { first: 20, retry: 20 }), { ok: false, reason: "timeout" });
+  assert.equal(tries, 2);
 });
 
 test("an insecure page or a browser without geolocation is refused with a reason, and never asks", async () => {
@@ -65,43 +137,252 @@ test("an insecure page or a browser without geolocation is refused with a reason
   assert.deepEqual(locateSupport(env(api, false)), { available: false, reason: LOCATE_MESSAGES.insecure });
   assert.deepEqual(locateSupport(env(undefined)), { available: false, reason: LOCATE_MESSAGES.unsupported });
   assert.deepEqual(locateSupport(env(api)), { available: true });
+  // Insecure and no API: the insecure reason comes first (the fix is HTTPS, not another browser).
+  assert.deepEqual(locateSupport(env(undefined, false)), { available: false, reason: LOCATE_MESSAGES.insecure });
+  assert.deepEqual(await locate(env(undefined, false)), { ok: false, reason: "insecure" });
 });
 
-test("messages are plain, US English, and never name a disability", () => {
-  for (const text of Object.values(LOCATE_MESSAGES)) {
-    assert.ok(text.endsWith("."));
-    assert.doesNotMatch(text, /blind|disab|handicap|colour|neighbour/i);
+test("browserEnv reads the secure flag and the API from window and navigator", () => {
+  const g = globalThis as Record<string, unknown>;
+  const saved = {
+    window: Object.getOwnPropertyDescriptor(globalThis, "window"),
+    navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  };
+  const set = (name: "window" | "navigator", value: unknown) =>
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  const api = ok(38.9, -77, 5);
+  try {
+    set("window", { isSecureContext: true });
+    set("navigator", { geolocation: api });
+    assert.deepEqual(browserEnv(), { isSecureContext: true, geolocation: api });
+    set("window", { isSecureContext: false });
+    assert.equal(browserEnv().isSecureContext, false);
+    set("window", { isSecureContext: "yes" });
+    assert.equal(browserEnv().isSecureContext, false, "only a true secure flag counts");
+    set("navigator", {});
+    assert.equal(browserEnv().geolocation, undefined, "a navigator without the API");
+    set("window", undefined);
+    set("navigator", undefined);
+    assert.deepEqual(browserEnv(), { isSecureContext: false, geolocation: undefined });
+  } finally {
+    for (const name of ["window", "navigator"] as const) {
+      const descriptor = saved[name];
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete g[name];
+    }
   }
 });
 
-test("the announcement and the hint give US units first", () => {
-  assert.equal(locationSaid(0, 0, false, 15), "Start set to your location, accurate to about 49 ft (15 m).");
+test("accuracy is sanitised: missing, infinite, NaN or negative is 0 (no circle and no figure)", async () => {
+  for (const bad of [Number.POSITIVE_INFINITY, Number.NaN, -5]) {
+    assert.equal(cleanAccuracy(bad), 0);
+    assert.deepEqual(await locate(env(ok(38.9, -77.04, bad))), { ok: true, fix: { point: [-77.04, 38.9], accuracyM: 0 } });
+  }
+  assert.equal(cleanAccuracy(0), 0);
+  assert.equal(cleanAccuracy(12.5), 12.5);
+  assert.equal(locationSaid(0, 1, false, 0), "Start set to your location.");
+});
+
+test("messages are plain, US English, and never name a disability", () => {
+  for (const text of [...Object.values(LOCATE_MESSAGES), LOCATION_OUTSIDE, ROUGH_SAID, maxPointsNotice()]) {
+    assert.ok(text.endsWith("."));
+    assert.doesNotMatch(text, /blind|disab|handicap|impair|colour|neighbour/i);
+  }
+  assert.equal(LOCATION_OUTSIDE, "Your location is outside the area this map covers (the DC region to Baltimore).");
+});
+
+test("the accuracy is a friendly figure, US units first", () => {
+  assert.equal(accuracyText(15), "about 50 ft (15 m)");
+  assert.equal(accuracyText(14.9), "about 50 ft (15 m)");
+  assert.equal(accuracyText(2), "about 10 ft (2 m)");
+  assert.equal(accuracyText(0.4), "about 10 ft (1 m)");
+  assert.equal(accuracyText(100), "about 330 ft (100 m)");
+  assert.equal(accuracyText(0), "");
+  assert.match(accuracyText(2000), /^about 1\.2 mi \(2\.0 km\)$/);
+});
+
+test("the announcement and the hint give US units first, and a coarse fix is called rough", () => {
+  assert.equal(locationSaid(0, 0, false, 15), "Start set to your location, accurate to about 50 ft (15 m).");
   assert.equal(locationSaid(0, 1, true, 0), "Start and finish set to your location.");
-  assert.equal(locationSaid(1, 2, false, 15), "End set to your location, accurate to about 49 ft (15 m).");
-  assert.match(approximateHint(15), /approximate, to about 49 ft \(15 m\)\. Drag its marker/);
-  assert.match(approximateHint(0), /^Your location is approximate\. Drag/);
+  assert.equal(locationSaid(1, 2, false, 15), "End set to your location, accurate to about 50 ft (15 m).");
+  assert.equal(locationSaid(0, 1, false, 100), "Start set to your location, accurate to about 330 ft (100 m).");
+  assert.equal(
+    locationSaid(0, 1, false, 150),
+    `Start set to your location, accurate to about 490 ft (150 m). ${ROUGH_SAID}`,
+  );
+  assert.equal(
+    approximateHint(15),
+    "Your location is approximate, to about 50 ft (15 m). Drag its marker, or search for the exact place, to adjust it.",
+  );
+  assert.equal(approximateHint(0), "Your location is approximate. Drag its marker, or search for the exact place, to adjust it.");
+  assert.equal(FINDING_LOCATION, "Finding your location…");
 });
 
-test("the position goes in like a map click: the start first, then addPoint, loop-aware, full precision", () => {
-  const fix: LonLat = [-77.123456789, 38.987654321];
-  assert.deepEqual(addPoint([], fix), [fix]);
-  const start: LonLat = [-77.0, 38.9];
-  const next = addPoint([start], fix, true);
-  assert.equal(next[1], fix, "the same object, so the flag can follow it");
-  assert.equal(next[1][0], -77.123456789, "no rounding");
-  assert.equal(insideCoverage([-77, 41]), false, "outside coverage is refused by the same check as a click");
+test("which text in the search box offers Your location", () => {
+  const table: [string, boolean][] = [
+    ["", true],
+    ["   ", true],
+    ["y", false],
+    ["yo", true],
+    ["my loc", true],
+    ["current", true],
+    ["Current Location ", true],
+    ["your location", true],
+    ["your locations", false],
+    ["union station", false],
+    ["location", false],
+  ];
+  for (const [query, expected] of table) assert.equal(locationMatches(query), expected, JSON.stringify(query));
 });
 
-test("the link note follows the point object: the start, a later point, or a moved marker", () => {
+test("Enter with nothing highlighted never picks Your location", () => {
+  const HERE = "here";
+  const a = { name: "A" };
+  const items = [HERE, a];
+  assert.equal(pickTarget(-1, 0, items, [a]), a, "the first place, not the leading option");
+  assert.equal(pickTarget(-1, 0, [HERE], []), undefined, "only Your location listed: nothing");
+  assert.equal(pickTarget(0, 0, items, [a]), HERE, "a deliberate highlight picks it");
+  assert.equal(pickTarget(1, 1, items, [a]), a);
+});
+
+test("the Your location choice says what it will do, by the choice in force", () => {
+  assert.equal(hereEffectLine("start"), "Sets the start.");
+  assert.equal(hereEffectLine("start", true), "Sets the start and finish.");
+  assert.equal(hereEffectLine("replace-start"), "Replaces the start.");
+  assert.equal(hereEffectLine("replace-start", true), "Replaces the start and finish.");
+  assert.equal(hereEffectLine("end"), "Adds it as the destination.");
+  assert.equal(hereEffectLine("replace-end"), "Replaces the destination.");
+  assert.equal(hereEffectLine("via"), "Adds it as a stop.");
+});
+
+test("the spoken count includes the Your location option", () => {
+  assert.equal(searchStatusWithHere("3 places found.", true), "3 places found, plus Your location.");
+  assert.equal(searchStatusWithHere("1 place found.", true), "1 place found, plus Your location.");
+  assert.equal(searchStatusWithHere("3 places found.", false), "3 places found.");
+  assert.equal(searchStatusWithHere("", true), "");
+  assert.equal(
+    searchStatusWithHere("Place search is not available right now.", true),
+    "Place search is not available right now. Your location is also listed.",
+  );
+});
+
+// The decision after a look-up (placeFix), which App only calls.
+const at = (lon: number, lat: number): LonLat => [lon, lat];
+const fixAt = (point: LonLat, accuracyM = 15): LocateResult => ({ ok: true, fix: { point, accuracyM } });
+const placed = (p: FixPlacement) => {
+  if ("refuse" in p) throw new Error(`refused: ${p.refuse}`);
+  return p;
+};
+const fullPlan = () => Array.from({ length: MAX_POINTS }, (_, i) => at(-77 + i * 0.001, 38.9));
+
+test("placeFix: the start of an empty plan, then the next point like a map click, the fix's own object", () => {
+  const here = at(-77.04, 38.9);
+  const first = placed(placeFix(fixAt(here), [], { loop: false }));
+  assert.deepEqual(first.next, [here]);
+  assert.equal(first.next[0], here, "the same object, so the note can follow it");
+  assert.equal(first.point, here);
+  assert.equal(first.said, "Start set to your location, accurate to about 50 ft (15 m).");
+  const start = at(-77.0, 38.95);
+  const second = placed(placeFix(fixAt(here), [start], { loop: false }));
+  assert.deepEqual(second.next, [start, here]);
+  assert.equal(second.said, "End set to your location, accurate to about 50 ft (15 m).");
+  // Two points: the cheapest insertion, as a click; said by where it went.
+  const end = at(-76.9, 39.0);
+  const mid = at(-76.95, 38.97);
+  const third = placed(placeFix(fixAt(mid), [start, end], { loop: false }));
+  assert.deepEqual(third.next, addPoint([start, end], mid));
+  assert.equal(third.next[1], mid);
+  assert.equal(third.said, "Stop 1 set to your location, accurate to about 50 ft (15 m).");
+  assert.equal(placed(placeFix(fixAt(here, 0), [], { loop: false })).said, "Start set to your location.");
+  const precise = placed(placeFix(fixAt(at(-77.123456789, 38.987654321)), [], { loop: false }));
+  assert.equal(precise.next[0][0], -77.123456789, "no rounding");
+});
+
+test("placeFix: a loop names and places the point by the loop's rule", () => {
+  const start = at(-77.0, 38.95);
+  const here = at(-77.04, 38.9);
+  const loop = placed(placeFix(fixAt(here), [start], { loop: true }));
+  assert.deepEqual(loop.next, addPoint([start], here, true));
+  assert.equal(loop.said, "Stop 1 set to your location, accurate to about 50 ft (15 m).");
+  assert.equal(
+    placed(placeFix(fixAt(here), [], { loop: true })).said,
+    "Start and finish set to your location, accurate to about 50 ft (15 m).",
+  );
+  // The same plan without the loop: the end, not a stop (the loop flag is the one read after the wait).
+  assert.match(placed(placeFix(fixAt(here), [start], { loop: false })).said, /^End /);
+  const two = [start, at(-76.9, 39.0)];
+  assert.deepEqual(placed(placeFix(fixAt(here), two, { loop: true })).next, addPoint(two, here, true));
+});
+
+test("placeFix: the Your location choice follows the Start / Destination / Stop choice, like a picked place", () => {
+  const a = at(-77.0, 38.95);
+  const b = at(-76.9, 39.0);
+  const here = at(-77.04, 38.9);
+  const asStart = placed(placeFix(fixAt(here), [a, b], { loop: false, choice: "start" }));
+  assert.deepEqual(asStart.next, [here, b]);
+  assert.equal(asStart.next[0], here);
+  assert.equal(asStart.said, "Start set to your location, accurate to about 50 ft (15 m).");
+  const asEnd = placed(placeFix(fixAt(here), [a, b], { loop: false, choice: "end" }));
+  assert.deepEqual(asEnd.next, [a, here]);
+  assert.match(asEnd.said, /^End set/);
+  const asStop = placed(placeFix(fixAt(here), [a, b], { loop: false, choice: "via" }));
+  assert.deepEqual(asStop.next, [a, here, b]);
+  assert.match(asStop.said, /^Stop 1 set/);
+  assert.deepEqual(placed(placeFix(fixAt(here), [], { loop: false, choice: "start" })).next, [here]);
+  // A full plan can still have its start replaced from the location.
+  const replaced = placed(placeFix(fixAt(here), fullPlan(), { loop: false, choice: "start" }));
+  assert.equal(replaced.next.length, MAX_POINTS);
+  assert.equal(replaced.next[0], here);
+});
+
+test("placeFix: outside the map, no room, and each failure are refused with their notice", () => {
+  assert.deepEqual(placeFix(fixAt(at(-74.006, 40.7128)), [], { loop: false }), { refuse: LOCATION_OUTSIDE });
+  assert.equal(insideCoverage([-74.006, 40.7128]), false);
+  assert.deepEqual(placeFix(fixAt(at(-77.04, 38.9)), fullPlan(), { loop: false }), { refuse: maxPointsNotice() });
+  assert.deepEqual(placeFix(fixAt(at(-77.04, 38.9)), fullPlan(), { loop: true }), { refuse: maxPointsNotice() });
+  assert.equal(maxPointsNotice(), `A route can have at most ${MAX_POINTS} points.`);
+  const reasons: LocateFailure[] = ["denied", "unavailable", "timeout", "unsupported", "insecure"];
+  for (const reason of reasons) {
+    assert.deepEqual(placeFix({ ok: false, reason }, [], { loop: false }), { refuse: LOCATE_MESSAGES[reason] });
+  }
+  assert.match(LOCATE_MESSAGES.denied, /blocked for this site/);
+  assert.match(LOCATE_MESSAGES.timeout, /took too long/);
+  assert.match(LOCATE_MESSAGES.unavailable, /could not be found/);
+});
+
+test("one look-up at a time: a press while busy is refused, and a newer press replaces an older one", () => {
+  const gate = locateGate();
+  assert.equal(gate.begin(), 1);
+  assert.equal(gate.busy, true);
+  assert.equal(gate.begin(), null, "busy: the second press gets no second look-up");
+  assert.equal(gate.finish(1), true, "its answer is the latest");
+  assert.equal(gate.busy, false);
+  assert.equal(gate.begin(), 2);
+  assert.equal(gate.latest(1), false, "an old press's notice is not shown");
+  assert.equal(gate.finish(2), true);
+});
+
+test("the link note follows the point object: the start, a later point, a drag of it, or another point", () => {
   const here: LonLat = [-77.04, 38.9];
   const other: LonLat = [-77.0, 38.95];
   assert.equal(linkLocationNote([here, other], [here]), LINK_HAS_LOCATION_START);
   assert.equal(linkLocationNote([other, here], [here]), LINK_HAS_LOCATION_POINT);
-  assert.equal(linkLocationNote([[...here] as LonLat, other], [here]), "", "moving the start clears it");
+  assert.equal(linkLocationNote([[...here] as LonLat, other], [here]), "", "an equal copy is not the location");
   const later: LonLat = [-77.01, 38.91];
   assert.equal(linkLocationNote([here, later], [here, later]), LINK_HAS_LOCATION_START, "the start wins over a later fix");
   assert.equal(linkLocationNote([here], []), "");
   assert.equal(LINK_HAS_LOCATION_START, "This link includes your location as the start.");
+  assert.equal(LINK_HAS_LOCATION_POINT, "This link includes your location as a point on the route.");
+  // A drag of a location point keeps the note: the moved point joins the list, and the old one stays for undo.
+  const moved: LonLat = [-77.041, 38.901];
+  const after = movedFromHere([here], here, moved);
+  assert.deepEqual(after, [here, moved]);
+  assert.equal(after[1], moved);
+  assert.equal(linkLocationNote([moved, other], after), LINK_HAS_LOCATION_START);
+  assert.equal(linkLocationNote([here, other], after), LINK_HAS_LOCATION_START, "undo of the drag");
+  // A drag of any other point adds nothing.
+  assert.deepEqual(movedFromHere([here], other, moved), [here]);
+  assert.deepEqual(movedFromHere([here], undefined, moved), [here]);
 });
 
 test("the accuracy circle is closed and about the radius", () => {
@@ -112,14 +393,55 @@ test("the accuracy circle is closed and about the radius", () => {
   assert.ok(Math.abs(lat - 38.9) < 1e-9);
 });
 
-test("privacy: the module and App keep the position out of storage, the hash, GPX and logs", () => {
-  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-  const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+// The never-stored rule, by reading the code (comments stripped).
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const code = (text: string) =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/\s\/\/ .*$/gm, "");
+const LEAKS = /Storage|console\.|fetch\(|indexedDB|globalThis|sendBeacon|XMLHttpRequest|WebSocket|postMessage|document\.cookie/;
+
+test("privacy: nothing in the feature's code stores, logs or sends the position", () => {
   const lib = code(read("./geolocation.ts"));
-  assert.doesNotMatch(lib, /localStorage|sessionStorage|console\.|watchPosition|fetch\(/);
+  assert.doesNotMatch(lib, LEAKS);
+  assert.doesNotMatch(lib, /watchPosition/);
   const app = code(read("../App.tsx"));
+  const start = app.indexOf("const useMyLocation");
+  const end = app.indexOf("}, [gate, geoEnv", start);
+  assert.ok(start > 0 && end > start, "the useMyLocation body is found");
+  assert.doesNotMatch(app.slice(start, end), LEAKS);
   assert.doesNotMatch(app, /watchPosition/);
-  assert.doesNotMatch(app, /localStorage[^\n]*(here|locat)/i);
   assert.equal((app.match(/locate\(/g) ?? []).length, 1, "one look-up path");
-  for (const file of ["./planHash.ts", "./gpx.ts"]) assert.doesNotMatch(read(file), /geolocation|locationFrom/i);
+  for (const file of ["../PlaceSearch.tsx", "../MapView.tsx"]) assert.doesNotMatch(code(read(file)), LEAKS, file);
+});
+
+test("privacy: the location state reaches only the note, the hint and the circle", () => {
+  const app = code(read("../App.tsx"));
+  // The identifiers, not the word in a sentence ("shows here when").
+  const lines = app.split("\n").filter((line) => /\bhere(\.|(?= !==| \?|,|\]|\)))|\bfromHere\b/.test(line));
+  const allowed = [
+    /const \[here, setHere\] = useState<Fix \| null>\(null\);/,
+    /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
+    /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
+    /const linkNote = linkLocationNote\(points, fromHere\);/,
+    /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
+    /accuracy=\{hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null\}/,
+  ];
+  assert.ok(lines.length >= allowed.length);
+  for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
+  // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
+  const noteUse =
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|rememberPlanForSignIn\(session\(\), window\.location\.hash, linkNote !== ""\)/;
+  for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
+  assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
+  assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
+  assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");
+});
+
+test("privacy: the one documented stored path is the sign-in round trip, in signIn.ts", () => {
+  const signIn = code(read("./signIn.ts"));
+  assert.match(signIn, /export const SKIP_SIGN_IN_PLAN_WITH_LOCATION = false;/);
+  assert.equal((signIn.match(/\.setItem\(/g) ?? []).length, 1, "one write, in rememberPlan");
+  for (const file of ["./planHash.ts", "./gpx.ts"]) assert.doesNotMatch(read(file), /geolocation|locationFrom|fromHere/i);
 });

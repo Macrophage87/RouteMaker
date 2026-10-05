@@ -15,6 +15,7 @@ import {
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
   comboboxKey,
+  pickTarget,
   placeEffectHint,
   placeType,
   searchSender,
@@ -25,7 +26,7 @@ import {
   type PlaceChoice,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
-import { FINDING_LOCATION, locationMatches } from "./lib/geolocation.ts";
+import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
@@ -37,7 +38,12 @@ export interface LocateControl {
   busy: boolean;
   /** What the app adds under the button once a point is the rider's location (approximate). */
   note: string;
-  onLocate: () => void;
+  /**
+   * A look-up: from the button with no choice (it goes in like a map click), or
+   * from the "Your location" choice in the list with the Start / Destination /
+   * Stop choice in force (it goes in like a picked place).
+   */
+  onLocate: (choice?: PlaceChoice) => void;
 }
 
 /** The "Your location" choice in the list, ahead of the places found. */
@@ -145,7 +151,7 @@ export function PlaceSearch({
     setOpen(false);
     setActive(-1);
     runner.current?.clear();
-    locate?.onLocate();
+    locate?.onLocate(choice);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -162,7 +168,7 @@ export function PlaceSearch({
       setActive(action.active);
     } else if (action.kind === "pick") {
       // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
-      const item = active < 0 ? places[0] : items[action.index];
+      const item = pickTarget(active, action.index, items, places);
       if (item === HERE) pickHere();
       else if (item) pick(item);
     } else if (action.kind === "close") {
@@ -213,7 +219,7 @@ export function PlaceSearch({
           // aria-disabled, not disabled: it stays in the Tab order with its reason as its description,
           // and a press changes nothing while it cannot work or a look-up is under way.
           aria-disabled={!locate.support.available || locate.busy || undefined}
-          aria-describedby={locate.support.available ? undefined : `${id}-locate-why`}
+          aria-describedby={!locate.support.available ? `${id}-locate-why` : locate.busy ? `${id}-locate-busy` : undefined}
           onClick={() => {
             if (locate.support.available && !locate.busy) locate.onLocate();
           }}
@@ -227,7 +233,11 @@ export function PlaceSearch({
           {locate.support.reason}
         </p>
       )}
-      {locate && locate.busy && <p className="hint">{FINDING_LOCATION}</p>}
+      {locate && locate.busy && (
+        <p id={`${id}-locate-busy`} className="hint">
+          {FINDING_LOCATION}
+        </p>
+      )}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
@@ -241,10 +251,8 @@ export function PlaceSearch({
               onMouseDown={(event) => event.preventDefault()}
               onClick={pickHere}
             >
-              <span className="place-name">
-                Your location <span className="place-type">this device</span>
-              </span>
-              <span className="place-label">Sets the start, or adds the next point.</span>
+              <span className="place-name">Your location</span>
+              <span className="place-label">{hereEffectLine(effect, loop)}</span>
             </li>
           ) : (
             <li
@@ -293,7 +301,7 @@ export function PlaceSearch({
         {full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatus(result, answered) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">Searching…</p>}
       {answeredNow && result && (!result.ok || result.places.length === 0) && (

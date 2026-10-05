@@ -644,19 +644,20 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
+      // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
       map.addLayer({
         id: "location-accuracy-fill",
         type: "fill",
         source: ACCURACY_SOURCE,
         paint: { "fill-color": "#1d4ed8", "fill-opacity": 0.12 },
-      });
+      }, "route-casing");
       map.addLayer({
         id: "location-accuracy-line",
         type: "line",
         source: ACCURACY_SOURCE,
         paint: { "line-color": "#1d4ed8", "line-width": 1.5, "line-opacity": 0.6 },
-      });
+      }, "route-casing");
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",

@@ -108,6 +108,16 @@ export function linkSaidFor(done: boolean): string {
 }
 
 /**
+ * What a screen reader hears after a press: the same, and when the link
+ * includes the rider's location (OWNER-DECISIONS 395) that one line too, said
+ * at the moment of sharing: "Link copied. This link includes your location as
+ * the start." The visible text stays the first sentence; the note shows below.
+ */
+export function linkSpokenFor(done: boolean, note: string): string {
+  return done && note ? `${COPY_LINK_DONE} ${note}` : linkSaidFor(done);
+}
+
+/**
  * What "Copy link" copies: this page's address with the plan built afresh by
  * encodePlan (planHash.ts), the same fragment App writes to the address bar.
  * It carries the points, the ride type and the sliders, and never the rider and

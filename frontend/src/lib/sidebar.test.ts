@@ -31,6 +31,7 @@ import {
   focusOnViewChange,
   foldTitle,
   linkSaidFor,
+  linkSpokenFor,
   linkToCopy,
   noticeSaidElsewhere,
   rescueCompactFocus,
@@ -454,7 +455,17 @@ test("GPX and Copy link are pinned under the scrolling part, outside it", () => 
   const pinned = app.indexOf('<div className="route-actions">');
   assert.ok(scrollEnd > 0 && pinned > scrollEnd, "outside .panel-scroll");
   assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop\)\}>\s*Download GPX/);
-  assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSaid\}/);
+  assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSpoken\}/);
+  // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
+  assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
+  assert.equal(
+    linkSpokenFor(true, "This link includes your location as the start."),
+    "Link copied. This link includes your location as the start.",
+  );
+  assert.equal(linkSpokenFor(false, "This link includes your location as the start."), COPY_LINK_FAILED);
+  assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\)\);/);
+  assert.match(app, /onClick=\{copyLink\} aria-describedby=\{linkNote \? "link-note" : undefined\}/);
+  assert.match(app, /<p id="link-note" className="hint link-note">/);
   // Unpinned while a sheet is open (the mutation re-check's NIT D): only the planner view shows the actions.
   assert.match(app, /\{view === "planner" && shown && \(\s*<div className="route-actions">/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
@@ -838,7 +849,7 @@ test("the Settings sheet (384): a Display group with the High contrast switch, t
   assert.ok(sheet.indexOf("settings-display-heading") < sheet.indexOf("settings-signin-heading"));
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
-  assert.match(sheet, /rememberPlan\(session\(\), window\.location\.hash\)/);
+  assert.match(sheet, /rememberPlanForSignIn\(session\(\), window\.location\.hash, linkNote !== ""\)/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
   // Both copies read the one module state, so a flip in either shows in both; their ids differ.
   const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));

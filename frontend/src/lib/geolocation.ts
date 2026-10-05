@@ -4,16 +4,30 @@
  * so tests stub success, each error and the insecure context; `browserEnv`
  * is the one place that reads `window`.
  *
- * No watchPosition and no tracking: `locate` asks once. The position is not
- * stored or logged here. Whether the plan's start came from it is kept in
- * memory only, by App (never in localStorage, the link hash or a GPX file).
+ * No watchPosition and no tracking: `locate` asks once (and once more, less
+ * precisely, after a timeout). Nothing here stores or logs the position. The
+ * point itself goes into the plan like any clicked point, so it is in the
+ * address bar, the copied link and a GPX file at full precision, by design.
+ * What is never in the link, a GPX file, storage or a log is the flag that a
+ * point came from the location, and its accuracy: App keeps those in memory.
  */
-import { formatDistance } from "./format.ts";
+import { formatRadius } from "./format.ts";
 import { pointName } from "./summary.ts";
-import type { LonLat } from "./geo.ts";
+import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
+import { applyPlace, placeEffect, type PlaceChoice, type PlaceEffect } from "./geocode.ts";
 
 /** A high-accuracy look-up, given 10 seconds, that may reuse a fix up to 30 seconds old. */
 export const LOCATE_OPTIONS = { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 } as const;
+/** After a timeout, one more try without high accuracy (a phone's GPS is often cold at first); the same press. */
+export const RETRY_OPTIONS = { enableHighAccuracy: false, timeout: 10_000, maximumAge: 30_000 } as const;
+/**
+ * The app's own limit on one look-up. The browser's `timeout` only runs once
+ * permission is given, and some browsers never answer a prompt that was
+ * dismissed or ignored; without this the button would stay busy for the visit.
+ */
+export const LOCATE_WATCHDOG_MS = LOCATE_OPTIONS.timeout + 20_000;
+/** The retry runs only after permission was given, so its limit is close to its timeout. */
+export const RETRY_WATCHDOG_MS = RETRY_OPTIONS.timeout + 5_000;
 
 /** The part of the browser's Geolocation the page uses. */
 export interface GeoApi {
@@ -55,6 +69,11 @@ export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
   insecure: "Your location can only be used on a secure (HTTPS) page. Search for a place instead.",
 };
 
+/** The notice when the fix is outside the map (the correctness review's N1: said as the rider's location). */
+export const LOCATION_OUTSIDE = "Your location is outside the area this map covers (the DC region to Baltimore).";
+/** The notice when the plan has no room for another point (the same words as a map click's). */
+export const maxPointsNotice = (): string => `A route can have at most ${MAX_POINTS} points.`;
+
 /** Whether the button can work here, and if not, why (shown as its reason). */
 export function locateSupport(env: GeoEnv): { available: true } | { available: false; reason: string } {
   if (!env.isSecureContext) return { available: false, reason: LOCATE_MESSAGES.insecure };
@@ -73,35 +92,73 @@ function usable(lat: number, lon: number): boolean {
   return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
 }
 
-/** One look-up. Never rejects: every outcome is a result. */
-export function locate(env: GeoEnv): Promise<LocateResult> {
-  if (!env.isSecureContext) return Promise.resolve({ ok: false, reason: "insecure" });
-  const api = env.geolocation;
-  if (!api) return Promise.resolve({ ok: false, reason: "unsupported" });
+/** The browser's accuracy as a usable radius: a missing, infinite, NaN or negative one is 0 (no circle, no figure). */
+export function cleanAccuracy(accuracy: number): number {
+  return Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : 0;
+}
+
+/** One call of getCurrentPosition, settled once: by the browser, or by the watchdog if the browser never answers. */
+function attempt(
+  api: GeoApi,
+  options: typeof LOCATE_OPTIONS | typeof RETRY_OPTIONS,
+  watchdogMs: number,
+): Promise<{ result: LocateResult; watchdog: boolean }> {
   return new Promise((resolve) => {
+    let settled = false;
+    const settle = (result: LocateResult, watchdog = false) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ result, watchdog });
+    };
+    const timer = setTimeout(() => settle({ ok: false, reason: "timeout" }, true), watchdogMs);
     try {
       api.getCurrentPosition(
         ({ coords }) => {
           if (!usable(coords.latitude, coords.longitude)) {
-            resolve({ ok: false, reason: "unavailable" });
+            settle({ ok: false, reason: "unavailable" });
             return;
           }
-          const accuracy = Number.isFinite(coords.accuracy) && coords.accuracy >= 0 ? coords.accuracy : 0;
-          resolve({ ok: true, fix: { point: [coords.longitude, coords.latitude], accuracyM: accuracy } });
+          settle({ ok: true, fix: { point: [coords.longitude, coords.latitude], accuracyM: cleanAccuracy(coords.accuracy) } });
         },
-        (error) => resolve({ ok: false, reason: failureFor(error.code) }),
-        { ...LOCATE_OPTIONS },
+        (error) => settle({ ok: false, reason: failureFor(error.code) }),
+        { ...options },
       );
     } catch {
-      resolve({ ok: false, reason: "unavailable" });
+      settle({ ok: false, reason: "unavailable" });
     }
   });
 }
 
-/** "about 50 ft (15 m)", or "" when the browser gave no accuracy. */
-export function accuracyText(accuracyM: number): string {
-  return accuracyM > 0 ? `about ${formatDistance(accuracyM)}` : "";
+/**
+ * One look-up. Never rejects: every outcome is a result. A browser timeout is
+ * tried once more without high accuracy; a look-up the browser never answers
+ * (a dismissed prompt) ends as a timeout when the watchdog fires, with no retry,
+ * and any later answer is ignored.
+ */
+export async function locate(
+  env: GeoEnv,
+  watchdog: { first: number; retry: number } = { first: LOCATE_WATCHDOG_MS, retry: RETRY_WATCHDOG_MS },
+): Promise<LocateResult> {
+  if (!env.isSecureContext) return { ok: false, reason: "insecure" };
+  const api = env.geolocation;
+  if (!api) return { ok: false, reason: "unsupported" };
+  const first = await attempt(api, LOCATE_OPTIONS, watchdog.first);
+  if (first.result.ok || first.result.reason !== "timeout" || first.watchdog) return first.result;
+  return (await attempt(api, RETRY_OPTIONS, watchdog.retry)).result;
 }
+
+/**
+ * "about 50 ft (15 m)", or "" when the browser gave no accuracy: a friendly
+ * figure (formatRadius), so 15 m is "about 50 ft", not a falsely precise "49 ft".
+ */
+export function accuracyText(accuracyM: number): string {
+  return accuracyM > 0 ? `about ${formatRadius(accuracyM)}` : "";
+}
+
+/** Coarser than this (about 330 ft), the announcement warns that the point is rough (a laptop's Wi-Fi fix). */
+export const ROUGH_ACCURACY_M = 100;
+export const ROUGH_SAID = "That is rough; search for the exact place if you can.";
 
 /** Whether the search box's text asks for the rider's location: empty, or the start of a phrase for it (two letters or more). */
 export function locationMatches(query: string): boolean {
@@ -114,27 +171,122 @@ export const FINDING_LOCATION = "Finding your location…";
 
 /**
  * What is said when the position became point `index` of a plan of `count`:
- * "Start set to your location, accurate to about 49 ft (15 m)."
+ * "Start set to your location, accurate to about 50 ft (15 m)." A coarse fix
+ * (over about 330 ft (100 m)) adds a warning, since the circle is not heard.
  */
 export function locationSaid(index: number, count: number, loop: boolean, accuracyM: number): string {
   const accuracy = accuracyText(accuracyM);
-  return `${pointName(index, count, loop)} set to your location${accuracy ? `, accurate to ${accuracy}` : ""}.`;
+  const rough = accuracyM > ROUGH_ACCURACY_M ? ` ${ROUGH_SAID}` : "";
+  return `${pointName(index, count, loop)} set to your location${accuracy ? `, accurate to ${accuracy}` : ""}.${rough}`;
 }
 
-/** The note under the search once a point is the rider's location: approximate, and still movable. */
+/** The note under the search once a point is the rider's location: approximate, and how to adjust it without a pointer too. */
 export function approximateHint(accuracyM: number): string {
   const accuracy = accuracyText(accuracyM);
-  return `Your location is approximate${accuracy ? `, to ${accuracy}` : ""}. Drag its marker to adjust it.`;
+  return `Your location is approximate${accuracy ? `, to ${accuracy}` : ""}. Drag its marker, or search for the exact place, to adjust it.`;
 }
 
-/** Copy link's one-line note (OWNER-DECISIONS 395); a location that is not the start is said as a point. */
+/** The "Your location" choice's second line: what it will do, by the Start / Destination / Stop choice in force. */
+export function hereEffectLine(effect: PlaceEffect, loop = false): string {
+  switch (effect) {
+    case "start":
+      return loop ? "Sets the start and finish." : "Sets the start.";
+    case "replace-start":
+      return loop ? "Replaces the start and finish." : "Replaces the start.";
+    case "end":
+      return "Adds it as the destination.";
+    case "replace-end":
+      return "Replaces the destination.";
+    case "via":
+      return "Adds it as a stop.";
+  }
+}
+
+/**
+ * The search's spoken result count when the list also holds "Your location",
+ * so the count heard matches the options ("3 places found, plus Your location.",
+ * then "1 of 4"); the accessibility review's N5.
+ */
+export function searchStatusWithHere(status: string, here: boolean): string {
+  if (!here || status === "") return status;
+  if (/places? found\.$/.test(status)) return status.replace(/\.$/, ", plus Your location.");
+  return `${status} Your location is also listed.`;
+}
+
+/**
+ * One look-up at a time, and which press is the latest: `begin` refuses while
+ * one is under way (a second press from the list and the button in the same
+ * tick too), and `latest` tells a press's answer or notice whether a newer
+ * press has replaced it. Plain state, so it is set before any await.
+ */
+export function locateGate() {
+  let busy = false;
+  let presses = 0;
+  return {
+    /** A new press: its number, or null while a look-up is under way. */
+    begin(): number | null {
+      if (busy) return null;
+      busy = true;
+      presses += 1;
+      return presses;
+    },
+    /** The look-up of `press` answered: no longer busy; whether it is still the latest press. */
+    finish(press: number): boolean {
+      busy = false;
+      return press === presses;
+    },
+    latest(press: number): boolean {
+      return press === presses;
+    },
+    get busy(): boolean {
+      return busy;
+    },
+  };
+}
+
+/** What the plan does with a fix: refuse it with a notice, or the new points and what is said. */
+export type FixPlacement = { refuse: string } | { next: LonLat[]; point: LonLat; said: string };
+
+/**
+ * The decision after a look-up, App's only logic for it: a failure's message;
+ * outside the map; no room for another point; or the plan with the fix in it.
+ * With no `choice` (the button) the fix goes in like a map click (addPoint,
+ * loop-aware); with one (the "Your location" choice in the search list) it goes
+ * in like a place picked from search, as Start, Destination or Stop. The point
+ * is the fix's own object, so the link note can follow it by identity.
+ */
+export function placeFix(
+  result: LocateResult,
+  points: readonly LonLat[],
+  options: { loop: boolean; choice?: PlaceChoice },
+): FixPlacement {
+  if (!result.ok) return { refuse: LOCATE_MESSAGES[result.reason] };
+  const { point, accuracyM } = result.fix;
+  if (!insideCoverage(point)) return { refuse: LOCATION_OUTSIDE };
+  const { loop, choice } = options;
+  const adds = choice === undefined || !placeEffect(points.length, choice, loop).startsWith("replace");
+  if (adds && points.length >= MAX_POINTS) return { refuse: maxPointsNotice() };
+  const next = choice === undefined ? addPoint(points, point, loop) : applyPlace(points, point, choice, loop);
+  return { next, point, said: locationSaid(next.indexOf(point), next.length, loop, accuracyM) };
+}
+
+/**
+ * The location-derived points after a marker drag: a point that came from the
+ * location keeps the Copy link note when moved (erring toward telling the
+ * rider), so the moved point joins the list. The old one stays, for undo.
+ */
+export function movedFromHere(fromHere: readonly LonLat[], before: LonLat | undefined, after: LonLat): LonLat[] {
+  return before !== undefined && fromHere.includes(before) ? [...fromHere, after] : [...fromHere];
+}
+
+/** Copy link's one-line note (OWNER-DECISIONS 395); a location that is not the start is said as a point (a dev extension of 395). */
 export const LINK_HAS_LOCATION_START = "This link includes your location as the start.";
 export const LINK_HAS_LOCATION_POINT = "This link includes your location as a point on the route.";
 
 /**
  * The note for a link of `points`, given the position point objects (kept in
  * memory by App; empty if none). Identity, not equality: a moved marker is a new
- * array, so moving the start clears the note with no flag to forget.
+ * array, and only a drag of a location point adds it to the list (movedFromHere).
  */
 export function linkLocationNote(points: readonly LonLat[], from: readonly LonLat[]): string {
   if (points.length > 0 && from.includes(points[0])) return LINK_HAS_LOCATION_START;

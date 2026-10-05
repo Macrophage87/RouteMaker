@@ -64,6 +64,18 @@ export function formatDistance(metres: number): string {
   return `${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
 }
 
+/**
+ * A radius said aloud as a friendly figure ("Use my location", OWNER-DECISIONS
+ * 395): below a tenth of a mile, the nearest 10 ft (at least 10), so 15 m is
+ * "50 ft (15 m)" and not a falsely precise "49 ft"; miles from there on.
+ */
+export function formatRadius(metres: number): string {
+  if (!usable(metres) || metres >= FEET_BELOW_M) return formatDistance(metres);
+  const feet = Math.max(10, Math.round((metres * FEET_PER_METRE) / 10) * 10);
+  const metric = metres >= 100 ? Math.round(metres / 10) * 10 : Math.max(1, Math.round(metres));
+  return `${feet} ft (${metric} m)`;
+}
+
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
 export function formatExtra(metres: number): string {
   if (!usable(metres)) return DASH;
