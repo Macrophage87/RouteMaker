@@ -94,8 +94,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     words with OpenStreetMap beside it. `fixtures/datasets/README.md`. The block's
     reversible-lane count is NOT trusted for the Mass Ride width (OWNER-DECISIONS
     405): the District ended Connecticut Avenue NW's reversible lanes in 2020, so the
-    layer's count is stale there, and reversible lanes count as zero everywhere
-    unless a reviewed block is allowlisted. The reason, and the owner's source for
+    layer's count is stale there, and reversible lanes count as zero for the width
+    everywhere unless a reviewed block is allowlisted. The LTS classifier and the
+    crossing stress do count them, in each direction (OWNER-DECISIONS 425: "These tend
+    to be high stress commuter roads"), except on Connecticut Avenue NW. The reason, and the owner's source for
     it: DCist, "Say goodbye to reversible lanes on Connecticut Avenue and hello to a
     bike-friendly redesign", 2021-12-15 (dcist.com), credited here. Connecticut Avenue
     NW north of Calvert St is then given three travel lanes each way by the owner's own

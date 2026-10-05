@@ -823,9 +823,8 @@ middle is in two runs and keeps the longer. On a copy of the 2026-10-03 build it
 
 **The thresholds** are named constants in `pipeline.schema`, tunable and held by
 tests: `RIDE_PATH_RUN_MI` 0.25 mi (1,320 ft, 0.4 km), the owner's own figure for a
-stub, and `RIDE_ROAD_RUN_MI` 2 mi (3.2 km), the owner's proposed bar for a calm road
-(402a: "2 mi (3.2 km) continuous as proposed, not yet confirmed"), the one setting to
-move if the owner picks another. Measured read-only: the live table's 1,359,547
+stub, and `RIDE_ROAD_RUN_MI` 2 mi (3.2 km), the owner's bar for a calm road (402a,
+confirmed by 410: "Let's do 2 mi"), the one setting to move if the owner changes it. Measured read-only: the live table's 1,359,547
 segments copied with a read-only `COPY` into a private database, names read from the
 2026-10-03 source extract, the areas being OpenStreetMap's boundaries of the District
 (relation 162069), Montgomery County (936970) and Baltimore City (133345), a segment
@@ -906,18 +905,17 @@ below say). The ride layer has its own partial index,
 `segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
 (a test); the busy-road layer keeps the overview index.
 
-**Integration note: FORMAT_VERSION 6 and the ETag letters.** wip/massride-map also moves
-`FORMAT_VERSION` to 6 and gives its Mass Ride width column (`MASS_WIDTH_COLUMN`) the
-ETag letter `r`, which this branch gives `is_rough` (with `k` for `calm_run_m` and `e`
-for `roadside`). Not resolved here: when the two branches meet, the letters must stay
-one per column (a test holds them distinct) and the format must move past both (7),
-so neither branch's cached tiles are taken for the other's.
+**FORMAT_VERSION 7 and the ETag letters** (resolved in the rebuild bundle). wip/massride-map
+and this branch each moved `FORMAT_VERSION` to 6 and each took the letter `r`. In the bundle
+the format is 7, past both, so neither branch's cached tiles are taken for the other's; `r` is
+`is_rough`'s, the Mass Ride width column (`MASS_WIDTH_COLUMN`) is `w`, `k` is `calm_run_m`'s
+and `e` is `roadside`'s, one letter per column (a test holds them distinct).
 
 **Decision 390 at z12-13.** "Solid is probably fine" for LTS 3 and 4 below zoom
 14 is moot where no busy road is drawn there. On a live table without
-`calm_run_m` the busy roads still draw at z12-13 and are still faint, as they did:
-the solid-below-14 change is its own front-end change (390) and this branch does not
-carry it, so where it lands it must apply to that fallback only.
+`calm_run_m` the busy roads still draw at z12-13 and are still faint, as they did. The
+solid-below-14 change (390, `SOLID_MIN_ZOOM` 14) is in the rebuild bundle with this, and
+applies to that fallback only.
 
 **What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
 `mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
@@ -2712,7 +2710,7 @@ failure to write one is a warning in the log and never fails the rebuild.
   the window (ways and length), whether a volume gate lay between them, and the
   link's tier against the tier on the agency's count. The log line is "AADT
   smoothing (400 m, ...): N of M counts replaced".
-- `named-corridors.md` (284-286, 294-296): every way an entry of
+- `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's
   geometry moved, or the file is wrong).

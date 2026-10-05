@@ -79,10 +79,12 @@ def test_nothing_else_is_touched(overrides, lat, name) -> None:
     assert L.apply(original, line(lat), overrides) is original
 
 
-def test_other_reversible_blocks_still_count_as_zero(overrides) -> None:
+def test_other_reversible_blocks_count_for_the_classifier_and_zero_for_the_width(overrides) -> None:
+    # 425: the classifier counts another street's reversible lanes in each direction; the
+    # Mass Ride width keeps 405's zero; the override touches Connecticut alone.
     other = block(name="16TH ST NW")
     assert A.counted_reversible(other) == 0
-    assert A.lanes_per_direction(L.apply(other, line(38.95), overrides)) == 1
+    assert A.lanes_per_direction(L.apply(other, line(38.95), overrides)) == 3
 
 
 def test_the_classifier_reads_three_lanes_and_stays_lts4(overrides) -> None:

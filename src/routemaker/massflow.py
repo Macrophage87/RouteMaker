@@ -161,8 +161,9 @@ class DcRules:
     ended_reversible_streets: frozenset = ENDED_REVERSIBLE_STREETS
 
     def reversible_lanes(self, block) -> int:
-        """The block's reversible lanes that count: zero unless verified (the
-        classifier's rule, `agency_roads.counted_reversible`)."""
+        """The block's reversible lanes that count for the width: zero unless verified
+        (`agency_roads.counted_reversible`, 405). The classifier counts them in each
+        direction (`classifier_reversible`, 425)."""
         return counted_reversible(
             block, self.verified_reversible_blocks, self.ended_reversible_streets
         )

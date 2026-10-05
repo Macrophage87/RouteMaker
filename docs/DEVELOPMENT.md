@@ -880,7 +880,10 @@ order), and nothing asks for hazards.
   block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
   (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
   shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
-  classifier's LTS reading of DC lanes (179) is separate and unchanged. Bus lanes are in DC's
+  classifier's LTS reading of DC lanes (179) counts reversible lanes in each direction
+  (OWNER-DECISIONS 425, `agency_roads.classifier_reversible`), except on Connecticut Ave NW,
+  whose lanes 412's override sets; the width keeps 405's zero. See "Reversible lanes and the
+  reference LTS 4 road". Bus lanes are in DC's
   counts and are counted. A block with no
   lanes, or a lane width outside 6 to 20 ft, gives nothing and the way falls back to OSM.
   **Elsewhere**, and as that fallback: a mapped `width` (2.4 to 40 m, curb to curb) less the
@@ -1049,7 +1052,7 @@ order), and nothing asks for hazards.
   OSM-only rule): roads median 198; band shares of road length 0.0% under 60, 25.5% 60-120,
   69.6% 120-200, 4.9% 200+; three quarters of road rows took a class default. Superseded.
 * **Measured, after 404** (offline, from the installed Roadway Block,
-  `/home/steph/routemaker-data/reference/roadway.json`, 13,833 DC blocks, 1,179.5 mi, weighted by
+  `$DATA_ROOT/reference/roadway.json`, 13,833 DC blocks, 1,179.5 mi, weighted by
   block length; no database). 1,158.5 mi take the District's width and 21.0 mi fall back to OSM.
   Bands (riders a minute, as the tiles round them): under 60 0.1 mi (0.0%), 60-120 801.0 mi
   (69.1%), 120-200 251.6 mi (21.7%), 200+ 105.8 mi (9.1%); median 90. By DC functional class
@@ -1084,7 +1087,9 @@ order), and nothing asks for hazards.
   `tests/test_stress_tiles.py::TestMassCapacity` (the tile property, the fallback, the ETag),
   `tests/test_route_api.py::TestMassRideCapacitySections`, `tests/test_pipeline_end_to_end.py` (the
   column written, and a build that loses it refused), and on the front end
-  `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`.
+  `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`; for the
+  Mass Ride map's own tiles, the DC mask and the zoom focus (415-422), `tests/test_mass_tiles.py`
+  and `src/lib/dcBoundary.test.ts`; in the browser, section 20 of scripts/a11y/check.mjs.
 
 ## What migrations do and do not create
 
@@ -3795,16 +3800,20 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 258 checks with the route chart, section 17 for the loop box
-  and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
+- **The browser check** (scripts/a11y/check.mjs, 279 checks with the route chart, section 17 for the loop box
+  and the Plan button, section 18 for Use my location, and section 20 for the Mass Ride capacity map: its
+  legend, bands by zoom and their status line, the DC-only words and mask, the outside-DC notice, both
+  narrowest figures, and a table without the capacity column keeping the stress map; 325-327, 387, 417,
+  417a, 418, 418a, 421, 422, 424) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.
 
 ### Use my location (OWNER-DECISIONS 395)
 
-Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) are on
-their own branch, wip/privacy-logs (OWNER-DECISIONS 401). A "Use my location" button sits beside the search box (`.place-search-row`, in
+Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) were on
+their own branch, wip/privacy-logs (OWNER-DECISIONS 401), which the rebuild bundle has merged; there the
+fifth (off-road) router carries the same `long_request` (31fd734). A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -4731,17 +4740,23 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
 
-## Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409)
+## Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409, 411-414, 416, 419, 425)
 
-**One reversible-lane rule.** `routemaker.agency_roads.counted_reversible(facts)` gives the
-reversible lanes of a District block that count: none unless the block's BLOCKKEY is on
-`VERIFIED_REVERSIBLE_BLOCKS` (empty), and none on a street in `ENDED_REVERSIBLE_STREETS`
-(Connecticut Ave NW, whose reversible operation ended in 2020; DCist 2021-12-15) even then.
-The classifier's `lanes_per_direction` and the per-direction counts add only those (179
-added every block's in the peak direction), and `massflow.DcRules.reversible_lanes`
-delegates to it. `settings.MASS_RIDE_DC_*` must equal the module's lists
+**Two reversible-lane rules, one list** (425 split them). For the Mass Ride width,
+`routemaker.agency_roads.counted_reversible(facts)` gives the reversible lanes of a District
+block that count: none unless the block's BLOCKKEY is on `VERIFIED_REVERSIBLE_BLOCKS` (empty),
+and none on a street in `ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW, whose reversible
+operation ended in 2020; DCist 2021-12-15) even then; `massflow.DcRules.reversible_lanes`
+delegates to it (405: zero is the narrow, safe reading). For the LTS classifier and the
+crossing stress, `classifier_reversible(facts)` counts every block's reversible lanes in each
+direction, except on a street in `ENDED_REVERSIBLE_STREETS` (OWNER-DECISIONS 425: "Keep
+counting them, probably in each direction in most cases. These tend to be high stress commuter
+roads."; 16th St NW, Canal Rd, Clara Barton Pkwy, Chain Bridge Rd, Independence Ave). So one
+lane each way and two reversible is three each way; a block with only reversible lanes gives
+that count. Between 408 and 425 the classifier used the width's rule, which lowered lanes, and
+the junction crossing cost, on roads whose reversible lanes still run. `settings.MASS_RIDE_DC_*`
+must equal the module's lists
 (`test_agency_roads.test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists`).
-A block with only reversible lanes, none counted, gives no count, and OSM's stands.
 
 Effect on the 2026-10-03 inputs, before the lane override below: Connecticut Ave NW north
 of Calvert St (1 + 1 lanes, 2 reversible) read one lane a direction, not three; at 30 mph
@@ -4764,7 +4779,7 @@ lane, 9 ft, 81, under 405's zero). Double and triple parking is a known hazard, 
 modelled. It covers 44 of the layer's 61 Connecticut Ave NW blocks (the 2026-10-03 data):
 those recording reversible lanes, and those north of Calvert St recording 2 + 2 or 3 + 2
 (the far north, past 38.9625 N, reads 2 + 2 in the layer and now 3 + 3 by the owner's
-"north of Calvert St"; revisit if the owner knows otherwise). Blocks south of Calvert St, including R St to Calvert St and the Dupont
+"north of Calvert St", confirmed by 419: "The 3 conneticut lanes end at chevy chase circle"). Blocks south of Calvert St, including R St to Calvert St and the Dupont
 underpass, are untouched. 413: K St to Dupont Circle stays LTS 3; the 411 corridor runs
 from R St north.
 
@@ -5077,7 +5092,7 @@ tiers and Avoid, the band parity with the front end, the thinning, the route pro
 builder with Avoid, untraced and unchecked, and the 396 major junctions and the fallback),
 `tests/test_route_api.py` (the contract key, the answer's profile, a Mass Ride's riders,
 and a 2-lane one-way's width end to end), `lib/profileChart.test.ts`, the sidebar tests
-(`chartFoldOpen`), and section 19 of the a11y check (43 checks: the fold, the slider's
+(`chartFoldOpen`), and section 19 of the a11y check (45 checks: the fold, the slider's
 role, name, key-hint description and value text, the summary, the patterns and the strip's
 path, the arrow, C, Home and End keys, a hover leaving the spoken value alone, the map
 marker, the position kept, the tables and their names, a phone's collapsed fold and fit,
