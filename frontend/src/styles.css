@@ -461,10 +461,11 @@ details.how summary {
   background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
 }
 
-/* Avoid (OWNER-DECISIONS 274): a cross-hatch in the tier's casing colour (set
-   as --seg-accent: red on the near-black, white on the colour-blind-friendly
-   blue-black), a pattern no other tier has, so the bar and the swatch tell it
-   from LTS 4 without colour. */
+/* Avoid (OWNER-DECISIONS 274): a cross-hatch in --seg-accent, a pattern no
+   other tier has, so the bar and the swatch tell it from LTS 4 without colour.
+   The route panel's bar and the route chart's strip draw the route's Avoid
+   magenta with a near-black hatch (397, stressBar.ts); the map legend's swatch
+   keeps the palette's Avoid and its casing. */
 .stress-seg-5 {
   background-image:
     repeating-linear-gradient(45deg, var(--seg-accent, #ee3b2c) 0 2px, transparent 2px 6px),
@@ -2274,8 +2275,14 @@ details.zoom-notes {
 
   /* Avoid keeps its magenta, chevrons and white word (the key's swatch keeps them too, so the two
      match); its outer frame follows the system's text colour, so the block's edge reads on the
-     system's background. */
+     system's background, and its inner frame the system's background, so the pair stays one light
+     and one dark in either theme: in a dark theme both were white, with no 3:1 edge beside the
+     orange band (r3 accessibility, N3). */
   .pc-avoid-frame {
     stroke: CanvasText;
+  }
+
+  .pc-avoid-inner {
+    stroke: Canvas;
   }
 }

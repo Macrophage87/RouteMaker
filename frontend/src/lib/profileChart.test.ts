@@ -665,16 +665,23 @@ test("C and I follow the Shift key, not the letter's case, so Caps Lock does not
 test("a list of only the flagged intersections is said to be possibly incomplete, never \"none ahead\"", () => {
   const { route, profile } = build("mass-ride", true);
   const partial: RouteProfile = { ...profile, crossings_complete: false };
-  assert.equal(crossingClause(partial, 4000), " No flagged intersections ahead; busy-road intersections were not checked, so there may be others.");
-  assert.match(crossingClause(partial, 0), /^ Next flagged: 7th St at mile 0\.5, corkers needed\. Busy-road intersections were not checked, so there may be others\.$/);
-  assert.match(summaryText(route, partial), /Only the flagged intersections were checked, so the list may be incomplete: 2 found, 2 needing corkers\./);
-  assert.doesNotMatch(summaryText(route, partial), /No major intersections/);
+  // In the key's words, and the caveat said once (summary, caption), not on every arrow press (r3 a11y N2).
+  assert.equal(crossingClause(partial, 4000), " No higher or very high stress junctions ahead.");
+  assert.equal(crossingClause(partial, 0), " Next higher or very high stress junction: 7th St at mile 0.5, corkers needed.");
+  for (const at of [0, 4000]) assert.doesNotMatch(crossingClause(partial, at), /flagged|may be|there may/);
+  assert.match(summaryText(route, partial), /Only the higher or very high stress junctions were found, so the list may be incomplete: 2 found, 2 needing corkers\./);
+  assert.doesNotMatch(summaryText(route, partial), /No major intersections|flagged/);
   assert.match(summaryText(route, { ...partial, crossings: [] }), /may be incomplete: none found\./);
-  assert.match(crossingCaption(partial), /may be incomplete/);
+  assert.match(crossingCaption(partial), /only the higher or very high stress junctions were found, so the list may be incomplete/);
   assert.equal(crossingCaption(profile), "Major intersections, in the order ridden");
   // Complete, or an older API without the field: as before.
   assert.equal(crossingClause({ ...profile, crossings_complete: true }, 4000), " No major intersections ahead.");
   assert.equal(crossingClause(profile, 4000), " No major intersections ahead.");
+  // An untraced stretch ahead as well: it keeps the partial list's words (r3 correctness).
+  const total = profile.m[profile.m.length - 1];
+  const gappy: RouteProfile = { ...partial, unchecked: [{ from_m: 4100, to_m: total }] };
+  assert.equal(crossingClause(gappy, 4000), " No higher or very high stress junctions ahead; part of the way ahead was not checked for intersections.");
+  assert.equal(crossingClause({ ...gappy, crossings_complete: true }, 4000), " Part of the way ahead was not checked for intersections.");
 });
 
 test("Avoid is one magenta on the chart and the route line, its word legible and its frame 3:1 from every band (397)", () => {

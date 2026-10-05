@@ -4314,7 +4314,10 @@ leg had any elevation), built by `core.routing.route_profile`:
   `crossings` is null where the junctions were not read (over budget, a deadline, a
   failed read): the chart says "not checked", never "none", which is `[]`.
   `crossings_complete` is false where only the flagged junctions could be read (finding
-  the busy-road ones failed): the chart says the list may be incomplete.
+  the busy-road ones failed): the summary and the table caption say once that only the
+  higher or very high stress junctions were found, so the list may be incomplete; the
+  scrub's sentence names them so ("Next higher or very high stress junction: ...") without
+  repeating the caveat at every arrow press.
 - A Mass Ride's riders are read at more places than the heights (`routing._flow_samples`):
   a pair of samples at each place the width or the note changes (the end of one stretch
   and the start of the next, at one distance), so a one-block bottleneck is never stepped
@@ -4328,9 +4331,12 @@ leg had any elevation), built by `core.routing.route_profile`:
   `profile.MAX_SAMPLES` (2,000, about 60 km or 37 mi) is thinned to close to that many
   (`profile.thin`: each window keeps its steepest grade, its highest and lowest heights,
   its lowest riders figure and its first gap), so the grade bands, the summits and valley
-  floors, the bottlenecks and the gaps survive. The window is first sized for the most
-  picks a window can make (4, or 6 on a Mass Ride), then narrowed by bisection to the
-  narrowest that keeps the picks actually made within the limit.
+  floors, the bottlenecks and the gaps survive. On a Mass Ride the first and last sample
+  of every run under 60 riders a minute are kept as well (`profile._bottleneck_ends`, at
+  most a quarter of the limit, else none), so the bottlenecks table's lengths are the
+  unthinned ones on a long route. The window is first sized for the most picks a window
+  can make (4, or 6 on a Mass Ride) in what those ends leave, then narrowed by bisection
+  to the narrowest that keeps the picks actually made within the limit.
 
 **The flow model** is `routemaker.flow`; there was no flow code before it, only PLAN's
 "The headline number: modelled throughput". It is accepted as the working model
@@ -4446,13 +4452,17 @@ and the junction list never see them.
   lines); Avoid (397) is magenta #d6008f, the route line's own Avoid, with dark chevrons,
   a two-tone frame (near-black outside, white inside: one tone is 3:1 from any band or
   panel, which no single fill can be) and a white AVOID at the 11-unit type (4.9:1), or
-  "A" on a block under 36 units (drawn at least 10 wide), listed in the key only when the
-  route has some; the
+  "A" on a block under 36 units (drawn at least 10 wide), listed in the key ("Avoid (A
+  where narrow)") only when the route has some; the route panel's stress bar draws it in
+  the same magenta with its near-black cross-hatch, and the route line's paved Avoid has a
+  white dash-dot down its middle (`routeColours.ROUTE_AVOID_MARK`, the route-avoid layer),
+  so it is not told from LTS 3 by colour alone in the high contrast palette; the
   narrowest point is a downward triangle with its figure; junction markers are a triangle,
   a diamond and a dot, each named in the key and the table. The guides' figures are in the
   text colour beside a band-colour swatch; their lines are 3:1 on the panel (the light
   theme's orange is #b45309). In forced colours the chart and its key keep their colours,
-  the key's swatches framed in CanvasText, and the chart's words and line are CanvasText.
+  the key's swatches framed in CanvasText, and the chart's words and line are CanvasText;
+  the Avoid block's outer frame is CanvasText and its inner frame Canvas.
   The chart's type is 11 viewBox units.
 
 **Deploying it.** Code only: no migration, no data rebuild, no new setting.

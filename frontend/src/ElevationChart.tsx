@@ -34,6 +34,7 @@ import {
   FLOW_GUIDES,
   GRADE_BANDS,
   GRADE_BAND_FILL,
+  PARTIAL_JUNCTIONS,
   avoidLabel,
   axisDistance,
   axisLength,
@@ -406,7 +407,7 @@ export function ElevationChart({
                   <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
                   <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                 </svg>
-                Avoid: no carrying capacity
+                Avoid (A where narrow): no carrying capacity
               </li>
             )}
             {narrowest && (
@@ -445,7 +446,7 @@ export function ElevationChart({
             return (
               <li key={cls.key}>
                 <span
-                  className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
+                  className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.tier === 5 ? "stress-seg-5" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
                   style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
                   aria-hidden="true"
                 />
@@ -479,7 +480,7 @@ function classesPresent(sections: StripSection[]): StripSection[] {
     const key = spanClass(s).key;
     if (!seen.has(key)) seen.set(key, s);
   }
-  const rank = (s: StripSection) => (s.facility === "path" ? 0 : (s.tier ?? 99)) + (s.unpaved ? 0.5 : 0);
+  const rank = (s: StripSection) => (s.facility === "path" && s.tier !== 5 ? 0 : (s.tier ?? 99)) + (s.unpaved ? 0.5 : 0);
   return [...seen.values()].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -489,6 +490,8 @@ function StripRect({ section: s, x0, w, uid }: { section: StripSection; x0: numb
   const y = LAYOUT.stress.stripTop;
   const h = LAYOUT.stress.stripBottom - LAYOUT.stress.stripTop;
   const plain = s.facility !== "path" && !s.unpaved;
+  // Avoid keeps its cross-hatch on a path too: spanClass draws a path rated Avoid in the magenta (r3 N3).
+  const avoid = !s.unpaved && s.tier === 5;
   return (
     <g>
       <rect x={x0} y={y} width={w} height={h} fill={cls.color} />
@@ -496,7 +499,7 @@ function StripRect({ section: s, x0, w, uid }: { section: StripSection; x0: numb
       {plain && s.tier === 2 && <rect x={x0} y={y} width={w} height={h} fill={`url(#${uid}-t2)`} />}
       {plain && s.tier === 3 && <rect x={x0} y={y} width={w} height={h} fill={`url(#${uid}-t3)`} />}
       {plain && s.tier === 4 && <rect x={x0} y={y} width={w} height={h} fill={`url(#${uid}-t4)`} />}
-      {plain && s.tier === 5 && w > 0 && <path d={crossHatch(x0, y, w, h)} stroke={cls.halo} strokeWidth="1.6" fill="none" />}
+      {avoid && w > 0 && <path d={crossHatch(x0, y, w, h)} stroke={cls.halo} strokeWidth="1.6" fill="none" />}
     </g>
   );
 }
@@ -607,7 +610,7 @@ function Tables({ profile, kind, spans }: { profile: RouteProfile; kind: ChartKi
         ) : crossings.length === 0 ? (
           <p className="hint">
             {crossingsPartial(profile)
-              ? "No flagged intersections on this route; busy-road intersections were not checked, so there may be some."
+              ? `No ${PARTIAL_JUNCTIONS}s on this route; the other busy-road intersections were not checked, so there may be some.`
               : "No major intersections on this route."}
           </p>
         ) : (

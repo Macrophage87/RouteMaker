@@ -585,11 +585,20 @@ export function crossingsPartial(profile: RouteProfile): boolean {
 }
 
 /**
+ * What the junctions in a partial list are, in the key's words ("Higher stress junction", "Very high
+ * stress junction"), not "flagged" (r3 accessibility, N2).
+ */
+export const PARTIAL_JUNCTIONS = "higher or very high stress junction";
+
+/**
  * The intersections clause (333, 396): the next major intersection and whether corkers are needed;
  * "Intersections not checked." where they were not read (`crossings: null`, correctness S2), and
  * a note where the way ahead runs over a leg that could not be traced. Nothing on a route that has
- * none at all (the summary says so). Where only the flagged ones were found, it never says there
- * are none ahead: it says the list may be incomplete.
+ * none at all (the summary says so). Where only the higher and very high stress junctions were
+ * found, it names them so ("Next higher or very high stress junction: ...") and never says there
+ * are no major intersections ahead. The "may be incomplete" caveat is said once, in the summary and
+ * the table's caption, not on every arrow press (r3 accessibility, N2); with an untraced stretch
+ * also ahead, it says both (r3 correctness).
  */
 export function crossingClause(profile: RouteProfile, metres: number): string {
   const crossings = profile.crossings;
@@ -599,10 +608,11 @@ export function crossingClause(profile: RouteProfile, metres: number): string {
   const partial = crossingsPartial(profile);
   if (next) {
     const gap = unchecked.some((r) => r.to_m > metres && r.from_m < next.m);
-    return ` Next${partial ? " flagged" : ""}: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}${partial ? " Busy-road intersections were not checked, so there may be others." : ""}`;
+    return ` Next${partial ? ` ${PARTIAL_JUNCTIONS}` : ""}: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}`;
   }
-  if (unchecked.some((r) => r.to_m > metres)) return " Part of the way ahead was not checked for intersections.";
-  if (partial) return " No flagged intersections ahead; busy-road intersections were not checked, so there may be others.";
+  const gapAhead = unchecked.some((r) => r.to_m > metres);
+  if (partial) return ` No ${PARTIAL_JUNCTIONS}s ahead${gapAhead ? "; part of the way ahead was not checked for intersections" : ""}.`;
+  if (gapAhead) return " Part of the way ahead was not checked for intersections.";
   return crossings.length > 0 ? " No major intersections ahead." : "";
 }
 
@@ -741,7 +751,7 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
     } else if (crossingsPartial(profile)) {
       const needing = crossings.filter((c) => c.corkers_needed).length;
       sentences.push(
-        `Only the flagged intersections were checked, so the list may be incomplete: ${
+        `Only the ${PARTIAL_JUNCTIONS}s were found, so the list may be incomplete: ${
           crossings.length === 0
             ? "none found"
             : `${crossings.length} found, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}`
@@ -870,7 +880,7 @@ export function bottleneckRows(profile: RouteProfile): BottleneckRow[] {
 /** The intersections table's caption: it says when the list may be incomplete (correctness re-review R3). */
 export function crossingCaption(profile: RouteProfile): string {
   return crossingsPartial(profile)
-    ? "Major intersections, in the order ridden: only the flagged ones were checked, so the list may be incomplete"
+    ? `Major intersections, in the order ridden: only the ${PARTIAL_JUNCTIONS}s were found, so the list may be incomplete`
     : "Major intersections, in the order ridden";
 }
 
