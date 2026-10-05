@@ -785,9 +785,11 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   await p.key(" ", "Space", 32);
   await sleep(700);
   const on = await axNode(p, ".loop-toggle input");
-  const hint = await p.eval("(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height > 0 && getComputedStyle(h).visibility !== 'hidden' }; })()");
+  const hint = await p.eval("(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()");
   check("loop first: checked with no point, the hint is visible text, \"Place the starting point, then a stop or two along the way.\"", on?.checked === true && hint.visible && hint.text === FIRST_HINT, JSON.stringify(hint));
   check("loop first: the box is described by it", on?.description === FIRST_HINT, JSON.stringify(on?.description));
+  const live = await p.eval("document.querySelectorAll('.loop-toggle [role=status], .loop-toggle [role=alert], .loop-toggle [aria-live]').length");
+  check("loop first: the box and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
   const said = await p.eval("window.__said");
   check("loop first: it is announced once when the box is checked", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.length === 1, JSON.stringify(said));
   check("loop first: checking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
@@ -848,6 +850,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     const buttons = [...document.querySelectorAll('.bar-button')].map((x) => { const r = x.getBoundingClientRect(); const label = x.querySelector('span'); return { text: label.textContent, w: Math.round(r.width), h: Math.round(r.height), clipped: x.scrollWidth > x.clientWidth + 1, inside: r.left >= -0.5 && r.right <= innerWidth + 0.5 }; });
     return { scroll: document.documentElement.scrollWidth, buttons }; })()`);
   check(`plan at ${width} px: five buttons, each at least 44 px both ways, inside the screen, nothing clipped`, fit.buttons.length === 5 && fit.buttons.every((x) => x.w >= 44 && x.h >= 44 && x.inside && !x.clipped) && fit.scroll <= width, JSON.stringify(fit));
+  const labels = await p.eval(`[...document.querySelectorAll('.bar-button')].map((x) => ({ px: parseFloat(getComputedStyle(x.querySelector('span')).fontSize), overflow: x.scrollHeight > x.clientHeight }))`);
+  check(`plan at ${width} px: the bar labels are at least 12 px and a two-line label stays inside its button`, labels.every((l) => l.px >= 12 && !l.overflow), JSON.stringify(labels));
   await p.shot(`${SHOTS}/bar_${width}.png`, await p.eval("(() => { const r = document.querySelector('.bottom-bar').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: r.height + 8 }; })()"));
   await openSheet(p, "Map layers");
   const sheet = await p.eval("(() => { const r = document.querySelector('#sheet-layers .sheet-back').getBoundingClientRect(); const h = document.querySelector('#sheet-layers-title').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), inside: r.right <= innerWidth && h.right <= innerWidth + 0.5 }; })()");
@@ -888,6 +892,23 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const after = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, focus: document.activeElement?.tagName })");
   check("plan: pressed on a scrolled planner it scrolls to the top and focuses the heading", before > 0 && after.top === 0 && after.focus === "H1", JSON.stringify({ before, after }));
+  // From a scrolled sheet: Plan shows the planner at its top.
+  await openSheet(p, "Map layers");
+  await p.eval("document.querySelector('.panel-scroll').scrollTop = 200; true");
+  await sleep(100);
+  const sheetTop = await p.eval("document.querySelector('.panel-scroll').scrollTop");
+  await p.eval("document.querySelector('#bar-plan').click(); true");
+  await sleep(300);
+  const planned = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName })");
+  check("plan: pressed on a scrolled sheet it shows the planner at its top and focuses the heading", sheetTop > 0 && planned.top === 0 && planned.planner && planned.focus === "H1", JSON.stringify({ sheetTop, planned }));
+  // Show planner from the Legend sheet too.
+  await openSheet(p, "Legend");
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
+  await sleep(300);
+  const fromLegend = await p.eval("({ planner: !document.querySelector('.planner-view').hidden, layers: document.getElementById('sheet-layers').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
+  check("toggle: Show planner from the Legend sheet also returns to the planner, the focus on the toggle", fromLegend.planner && fromLegend.layers && fromLegend.focus === "BUTTON:Hide planner", JSON.stringify(fromLegend));
   await p.close();
 }
 
@@ -895,7 +916,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 182;
+const EXPECTED = 187;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

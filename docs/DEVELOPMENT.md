@@ -512,7 +512,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 156` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs`.
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -3493,7 +3493,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 182 checks, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 187 checks, section 17 for the loop box
   and the Plan button) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses

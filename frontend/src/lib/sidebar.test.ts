@@ -167,6 +167,8 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
   assert.ok(inPoints("{loop && (") > points.indexOf("</div>", inPoints('id="points-search"')), "outside the part that hides while the points compact");
   assert.match(points, /aria-describedby=\{loopHintId\}/);
   assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
+  // The hint is plain visible text: a paragraph with the id the box points at, and no live region or hidden class on it.
+  assert.match(points, /<p className="hint" id=\{loopHintId\}>\s*\{loop\.hint\}\s*<\/p>/);
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
   // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
