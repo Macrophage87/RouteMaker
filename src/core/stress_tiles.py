@@ -89,6 +89,7 @@ from pipeline.schema import (
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
+    MASS_CAPACITY_COLUMN,
     MOTOR_ONLY_RULE,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_BRIDGE_COLUMN,
@@ -136,8 +137,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
 # does not change. 4: the busy roads at z12-13 and the quiet streets from z14
 # (73), with the expressway and separate-bikeway properties. 5: z10-11 keep
-# only the long trails (375).
-FORMAT_VERSION = 5
+# only the long trails (375). 6: the Mass Ride capacity, `rpm`, on a table that
+# has the column (OWNER-DECISIONS 325-327, 387).
+FORMAT_VERSION = 6
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -260,7 +262,11 @@ OPTIONAL_PROPERTIES = {
     "car_free": CAR_FREE_COLUMN,
     "map_class": MAP_CLASS_COLUMN,
     "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
+    "rpm": MASS_CAPACITY_COLUMN,
 }
+
+# The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
+RPM_STEP = 10
 
 # How an optional property is drawn from its column, where it is not the
 # column as it is. `car_free`: the ride times a road closed to motor traffic
@@ -274,6 +280,12 @@ OPTIONAL_PROPERTIES = {
 OPTIONAL_EXPRESSIONS = {
     "car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')",
     "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
+    # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
+    # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
+    # feature never moves band; and the zoomed-out levels, which collect every
+    # segment of one value into one feature, are not split into a feature per
+    # distinct figure (one per integer would be about 400 values a class).
+    "rpm": f"(floor(s.{MASS_CAPACITY_COLUMN} / {RPM_STEP}.0) * {RPM_STEP})::int",
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -459,6 +471,7 @@ ETAG_LETTERS = {
     TRAIL_BRIDGE_COLUMN: "b",
     TRAIL_ROUTE_COLUMN: "t",
     TRAIL_RUN_COLUMN: "l",
+    MASS_CAPACITY_COLUMN: "r",
 }
 
 
@@ -470,7 +483,7 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all seven (`+cfmsbtl`, about 33 characters), in the order of
+    # key with all eight (`+cfmrsbtl`, about 34 characters), in the order of
     # the column names: the car-free times, the facility, the map class, the
     # separate bikeway, and the long trails' bridge, route and run.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))

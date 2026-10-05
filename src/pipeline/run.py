@@ -38,6 +38,7 @@ from routemaker import (
     cbd,
     divided,
     facility,
+    massflow,
     ridetime,
     singletrack,
     speed_corrections,
@@ -52,6 +53,7 @@ from . import (
     discrepancies,
     elevation,
     extract,
+    mass_capacity,
     overrides,
     promotion,
     reconcile,
@@ -796,6 +798,18 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
             f"and {run_floor} (settings.REBUILD_LONG_TRAIL_FLOORS): the long trails did not "
             "come out of the rebuild"
         )
+
+
+def assert_mass_capacity(summary, min_share: float | None = None) -> None:
+    """The Mass Ride capacity column came out of the rebuild (OWNER-DECISIONS 325-327,
+    387): present on nearly every road and path row, in a plausible range
+    (`pipeline.mass_capacity`). The map colours by it and falls back silently
+    without it, so a pass that lost it would promote the old map unannounced."""
+    found = mass_capacity.problems(
+        summary, mass_capacity.MIN_SHARE if min_share is None else min_share
+    )
+    if found:
+        raise ValidationFailed("; ".join(found))
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -1740,6 +1754,9 @@ def build_handlers(
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
+                        mass_capacity_rpm=massflow.capacity_rpm(
+                            way.tags, getattr(stress, "lanes", None)
+                        ),
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
@@ -1784,6 +1801,7 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        assert_mass_capacity(mass_capacity.capacity_summary(context.staging_schema))
         sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
         assert_long_trails(
             trail_routes.long_trail_summary(

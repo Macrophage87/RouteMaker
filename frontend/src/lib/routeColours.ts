@@ -11,11 +11,18 @@
  * a change to the map's palette reaches the route too.
  */
 import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleKey } from "../stressStyle.js";
+import { MASS_AVOID, MASS_BANDS, bandIndex, dashInWidths } from "../massStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
 
-export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown";
+export type MassClassKey = "m0" | "m1" | "m2" | "m3" | "mavoid";
+export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown" | MassClassKey;
+
+/** A Mass Ride's classes (massStyle.js): the capacity bands, and a stretch marked Avoid with no capacity colour. */
+export const MASS_CLASS_KEYS: readonly MassClassKey[] = ["m0", "m1", "m2", "m3", "mavoid"];
+
+export const isMassClass = (key: RouteClassKey): key is MassClassKey => (MASS_CLASS_KEYS as readonly string[]).includes(key);
 
 /** Whether a class is one of the unpaved browns. */
 export const isUnpavedClass = (key: RouteClassKey): boolean => key.startsWith("u") && key !== "unknown";
@@ -38,6 +45,8 @@ export interface RouteClass {
   ring?: string;
   /** Its width: a pixel wider each side than `haloWidth`. */
   ringWidth?: number;
+  /** A Mass Ride class's dash, in line widths (the cue besides colour); absent for a solid line. */
+  dash?: readonly number[];
 }
 
 /**
@@ -62,6 +71,12 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   u4: 5.5,
   u5: 6,
   unknown: 5,
+  // A Mass Ride's: the capacity bands' own widths, rising with the capacity (OWNER-DECISIONS 327).
+  m0: MASS_BANDS[0].width,
+  m1: MASS_BANDS[1].width,
+  m2: MASS_BANDS[2].width,
+  m3: MASS_BANDS[3].width,
+  mavoid: MASS_AVOID.width,
 };
 
 /** The halo under the unrated grey: a near-black neutral, 6.0:1 from #9aa0a6 and 6.2:1 from the cvd grey. */
@@ -130,6 +145,27 @@ export function routeClasses(): readonly RouteClass[] {
       width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
+    // A Mass Ride's classes: the capacity bands and Avoid (massStyle.js). Drawn when the API's spans carry `rpm`.
+    ...MASS_BANDS.map((band: (typeof MASS_BANDS)[number], i: number) => ({
+      key: `m${i}` as RouteClassKey,
+      short: band.short,
+      label: `${band.name.charAt(0).toUpperCase()}${band.name.slice(1)}: ${band.short.toLowerCase()} riders per minute`,
+      color: band.color,
+      halo: band.halo,
+      width: band.width,
+      haloWidth: band.width + ROUTE_HALO_EXTRA,
+      ...(band.dashPx ? { dash: dashInWidths(band) as number[] } : {}),
+    })),
+    {
+      key: "mavoid" as RouteClassKey,
+      short: "Avoid",
+      label: "Marked Avoid: no capacity is given",
+      color: MASS_AVOID.color,
+      halo: MASS_AVOID.casing,
+      width: MASS_AVOID.width,
+      haloWidth: MASS_AVOID.width + ROUTE_HALO_EXTRA,
+      dash: [...MASS_AVOID.dash],
+    },
     // The unrated grey is a mid colour: a dark neutral halo of its own stands under it. It was LTS 1's
     // casing, until 357 softened that to a green the grey is not 3:1 on (2.86:1).
     {
@@ -160,7 +196,14 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
  * traffic-free path at LTS 1's when it has no tier; else traffic-free before its
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
-export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">>): RouteClass {
+export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm">>): RouteClass {
+  // A Mass Ride's section (the API gave it a capacity, `rpm`, even if null): by capacity band, or Avoid
+  // alone for a stretch marked Avoid; a section with no capacity is the unknown grey (OWNER-DECISIONS 325, 327).
+  if (span.rpm !== undefined) {
+    if (span.tier === 5) return classByKey("mavoid") as RouteClass;
+    const band = bandIndex(span.rpm);
+    return (band !== null ? classByKey(`m${band}` as RouteClassKey) : classByKey("unknown")) as RouteClass;
+  }
   if (span.unpaved === true) {
     const tier = span.tier ?? (span.facility === "path" ? 1 : null);
     const brown = tier !== null ? classByKey(`u${tier}` as RouteClassKey) : undefined;
@@ -179,6 +222,7 @@ export interface RouteSection {
   haloWidth: number;
   ring?: string;
   ringWidth?: number;
+  dash?: readonly number[];
   coordinates: LonLat[];
 }
 
@@ -244,7 +288,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.dash ? { dash: cls.dash } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;

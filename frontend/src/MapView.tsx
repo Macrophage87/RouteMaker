@@ -40,6 +40,9 @@ import {
   setStressWhen,
   onLaneSwitch,
   routeUnpavedLayer,
+  routeDashLayers,
+  solidRouteFilter,
+  setMassMode,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -123,6 +126,11 @@ interface Props {
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
   rail: RailVisibility;
+  /**
+   * The ride type is Mass Ride: the map is coloured by carrying capacity, riders per minute, not by
+   * traffic stress (OWNER-DECISIONS 325-327; massStyle.js). Ignored where the tiles carry no capacity.
+   */
+  massCapacity?: boolean;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
   /** Whether to load the federal-land data even with the shading off: a Mass Ride's planner lists the points on it. */
@@ -559,7 +567,11 @@ export function MapView(props: Props) {
 
     // Under the base map's labels and the route, over its roads, in the
     // order stressOverlayLayers gives: every casing under every tier.
-    const addStress = () => addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+    const addStress = () => {
+      // The mode before the layers, so they are added drawn for it (stressStyle.js, massRide).
+      setMassMode(null, callbacks.current.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible);
+      return addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+    };
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
     // one bad minute does not take the overlay away for the whole visit
@@ -612,8 +624,11 @@ export function MapView(props: Props) {
         type: "line",
         source: ROUTE_STRESS_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
+        filter: solidRouteFilter() as never,
         paint: { "line-color": ["get", "color"], "line-width": ["coalesce", ["get", "width"], ROUTE_LINE_WIDTH] },
       });
+      // A Mass Ride's dashed sections (the cue besides colour, OWNER-DECISIONS 327).
+      for (const layer of routeDashLayers()) map.addLayer(layer as never);
       // The dotted mark over an unpaved section, in its halo colour (OWNER-DECISIONS 302):
       // brown is not the only thing that says unpaved.
       map.addLayer(routeUnpavedLayer(ROUTE_STRESS_SOURCE) as never);
@@ -802,6 +817,11 @@ export function MapView(props: Props) {
       }),
     [],
   );
+
+  // Mass Ride: the map is coloured by capacity, and the stress colours and rails give way (OWNER-DECISIONS 325).
+  useEffect(() => {
+    setMassMode(loaded.current ? mapRef.current : null, props.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible);
+  }, [props.massCapacity]);
 
   // The "Show bike lanes on high-stress roads" switch (OWNER-DECISIONS 275):
   // the rails' filters are set again in place, from the same tiles.

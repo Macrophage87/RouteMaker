@@ -1025,10 +1025,10 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_long_trails_are_format_5(self) -> None:
+    def test_the_mass_ride_capacity_is_format_6(self) -> None:
         # A forgotten bump would serve the old z10-11 tiles as current (mutation
         # review NIT 7 of ZOOMED-TRAILS).
-        assert stress_tiles.FORMAT_VERSION == 5
+        assert stress_tiles.FORMAT_VERSION == 6
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1228,7 +1228,7 @@ class TestCarFree:
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfmsbtl-v" in etag
+        assert "+cfmrsbtl-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1487,12 +1487,12 @@ class TestLongTrails:
         for z in (10, 11):
             response = client.get(url(*tile_of(*CENTRE, z)))
             assert lines_in(response.content) == 1
-            assert "+cfmsbtl-v" not in response["ETag"]
+            assert "+cfmrsbtl-v" not in response["ETag"]
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, True, 3, None)
-        assert "+cfmsbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+        assert "+cfmrsbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
         optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})
@@ -1521,3 +1521,60 @@ class TestLongTrails:
             LongTrails(5.0, 8.0, 3), True
         )
         assert "trail_bridge = 1 THEN false WHEN trail_bridge = 2 THEN true" in sql
+
+
+@db
+class TestMassCapacity:
+    """The Mass Ride map's per-segment capacity, `rpm` (OWNER-DECISIONS 325-327, 387),
+    carried exactly as the other optional columns are: only from a table that has
+    the column, rounded so the zoomed-out levels still merge, and named in the ETag."""
+
+    @staticmethod
+    def insert_roads(schema, capacities) -> None:
+        with connection.cursor() as cursor:
+            for i, rpm in enumerate(capacities):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.00025
+                cursor.execute(
+                    f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, mass_capacity_rpm) VALUES (%s, 0, ST_MakeLine("
+                    "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 3, 'x', %s)",
+                    [2000 + i, lon, lat, lon + 0.002, lat, rpm],
+                )
+
+    @staticmethod
+    def rpms(client, z) -> list:
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        return sorted(f.properties.get("rpm", -1) for f in layer.features)
+
+    def test_the_tile_carries_the_capacity_rounded_down_to_ten(self, client, segment_schemas):
+        live, _ = segment_schemas
+        self.insert_roads(live, [44, 99, 119, 120, 198, 199, 200, 593])
+        assert self.rpms(client, 14) == [40, 90, 110, 120, 190, 190, 200, 590]
+
+    def test_a_band_edge_never_moves_band_in_the_tile(self) -> None:
+        """The bands are 60, 120 and 200 (OWNER-DECISIONS 327): multiples of the step."""
+        assert all(edge % stress_tiles.RPM_STEP == 0 for edge in (60, 120, 200))
+
+    def test_the_busy_level_merges_by_the_rounded_figure(self, client, segment_schemas):
+        live, _ = segment_schemas
+        self.insert_roads(live, [191, 195, 199, 205])
+        assert self.rpms(client, 12) == [190, 200]
+
+    def test_a_table_without_the_column_carries_nothing_and_says_so(
+        self, client, segment_schemas
+    ) -> None:
+        """Until a rebuild writes the column the tiles are as they were, and the
+        Mass Ride map keeps its current styling (the front end sees no `rpm`)."""
+        live, _ = segment_schemas
+        self.insert_roads(live, [99])
+        before = client.get(url(*tile_of(*CENTRE, 14)))
+        assert "+cfmrsbtl-v" in before["ETag"]
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN mass_capacity_rpm")
+        after = client.get(url(*tile_of(*CENTRE, 14)))
+        assert self.rpms(client, 14) == [-1]
+        assert "+cfmsbtl-v" in after["ETag"]
+
+    def test_the_etag_letter_and_the_property_come_from_the_column(self) -> None:
+        assert stress_tiles.ETAG_LETTERS["mass_capacity_rpm"] == "r"
+        assert stress_tiles.OPTIONAL_PROPERTIES["rpm"] == "mass_capacity_rpm"

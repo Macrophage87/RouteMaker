@@ -28,6 +28,14 @@ export interface StressSpan {
    * drawn as paved. Spans split where the surface changes.
    */
   unpaved?: boolean | null;
+  /**
+   * A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the section's capacity in riders per
+   * minute on the flat, the lowest along it (its narrowest point), or null where the table has
+   * none for it. Absent on every other ride type, and from an older API or a table built before
+   * the capacity column: the route is then drawn by stress, as it was. A Mass Ride's spans split
+   * where the capacity changes band, so a section is one colour.
+   */
+  rpm?: number | null;
 }
 
 /**
