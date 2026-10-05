@@ -26,6 +26,7 @@ from django.db import connection
 from django.test import override_settings
 from test_ratelimit import in_one_window
 
+from core import junctions as core_junctions
 from core import presets, routing
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -364,6 +365,27 @@ class TestAnswer:
         original = routing._events
         monkeypatch.setattr(routing, "_events", lambda *args: list(original(*args) or []))
         profile = post(client, good_body("mass-ride")).json()["profile"]
+        assert isinstance(profile["crossings"], list)
+        assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
+        assert profile["crossings_complete"] is False
+
+    def test_a_mass_ride_whose_majors_could_not_be_found_says_its_list_may_be_incomplete(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Mutation r4 SHOULD-FIX 1 (CC02): `major_crossings` failing inside `plan()` keeps
+        the flagged junctions, sent as `crossings_complete: false`, so the chart never says
+        "No major intersections ahead" from a flagged-only list."""
+        router(standard_router())
+        full = post(client, good_body("mass-ride")).json()["profile"]
+        assert full["crossings_complete"] is True
+
+        def broken(*_args):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(core_junctions, "major_crossings", broken)
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
         assert isinstance(profile["crossings"], list)
         assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
         assert profile["crossings_complete"] is False

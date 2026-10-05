@@ -14,7 +14,7 @@ import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleK
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
-import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK } from "./avoidColour.ts";
+import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
 export { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
@@ -25,6 +25,13 @@ export const isUnpavedClass = (key: RouteClassKey): boolean => key.startsWith("u
 
 /** The dotted mark over an unpaved section: a little under half its width, at least 1.5 px (as the map's, stressStyle.js unpavedWidth). */
 export const routeMarkWidth = (width: number): number => Math.max(1.5, width * 0.4);
+
+/**
+ * Avoid's dash-dot as an SVG `stroke-dasharray` for a line `width` wide (the route legend's swatch,
+ * FacilityBreakdown): the map layer's `line-dasharray` is in mark widths, so this is the same
+ * pattern, scaled by the mark's width (OWNER-DECISIONS 397).
+ */
+export const routeMarkDash = (width: number): string => ROUTE_AVOID_MARK_DASH.map((d) => d * routeMarkWidth(width)).join(" ");
 
 export interface RouteClass {
   key: RouteClassKey;

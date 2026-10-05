@@ -6,6 +6,9 @@
  * line and the route chart (OWNER-DECISIONS 397), with its cross-hatch in the
  * near-black the route chart's strip uses (styles.css .stress-seg-5): this bar shows
  * the route, beside its line, so one Avoid stretch has one colour (r3 spec, SF-1).
+ * The magenta is only for a route that uses Avoid ("Only do if a route uses it"): the
+ * fold's list shows every tier, so a route with no Avoid lists "Avoid 0%" in the
+ * palette's own Avoid colour, not the magenta (r4 spec, S-SF1).
  */
 import { ACCESSIBILITY_PALETTE, currentPalette, currentTiers } from "../stressStyle.js";
 import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA } from "./avoidColour.ts";
@@ -65,12 +68,13 @@ export function wholePercents(fractions: number[]): number[] {
 }
 
 export function stressSegments(stress: StressMetres): StressSegment[] {
+  const usesAvoid = metresOf(stress, "5") > 0;
   const rows = [
     ...currentTiers().map((t: { tier: number; short: string; label: string; color: string; casing: string }) => ({
       key: String(t.tier) as StressKey,
       short: t.short,
       label: t.label,
-      ...(t.tier === 5 ? { color: ROUTE_AVOID_MAGENTA, casing: ROUTE_AVOID_HALO } : { color: t.color, casing: t.casing }),
+      ...(t.tier === 5 && usesAvoid ? { color: ROUTE_AVOID_MAGENTA, casing: ROUTE_AVOID_HALO } : { color: t.color, casing: t.casing }),
     })),
     { key: "unknown" as StressKey, ...unrated(), casing: unrated().color },
   ].map((row) => ({ ...row, metres: metresOf(stress, row.key) }));

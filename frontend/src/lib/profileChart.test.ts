@@ -51,6 +51,7 @@ import {
   spanAt,
   stepLength,
   stressShares,
+  stripKey,
   stripSections,
   summaryText,
   tierAt,
@@ -486,6 +487,11 @@ test("the stress said at a spot: tiers, Avoid, a path and an unpaved stretch as 
   assert.equal(sectionWords({ tier: 1, facility: "path", unpaved: true }), "unpaved traffic-free path");
   assert.equal(sectionWords({ tier: 3, facility: "lane", unpaved: false }), "LTS 3");
   assert.equal(sectionWords(null), null);
+  // A path rated Avoid is said as it is drawn (routeColours.ts spanClass): Avoid (r4 a11y A-SF1).
+  assert.equal(sectionWords({ tier: 5, facility: "path" }), "Avoid");
+  assert.equal(sectionWords({ tier: 5, facility: "path", unpaved: true }), "unpaved, Avoid");
+  assert.equal(sectionWords({ tier: 5, facility: "lane" }), "Avoid");
+  assert.equal(sectionWords({ tier: null, facility: "path" }), "traffic-free path");
   const { route, profile } = build();
   assert.match(readingAt(route, profile, 300).text, /, traffic-free path\.$/);
   // A section's end is the next one's start; past the end is the last, before the start the first.
@@ -716,4 +722,47 @@ test("a dot says why the junction is major: a busy road crossed or joined, and i
   assert.equal(crossingMarkerWords({ ...base, kind: "crossing", control: "none", crossed_tier: 3 }), "Crosses a busy road (LTS 3), no signal or sign (dot)");
   assert.equal(crossingMarkerWords({ ...base, kind: undefined, control: "all_stop" }), "Crosses a busy road (LTS 4), all-way stop (dot)");
   assert.equal(crossingMarkerWords({ ...base, severity: "red" }), "Very high stress (red diamond)");
+});
+
+test("a path rated Avoid is Avoid in the strip key, the shares and the slider, beside an ordinary path (r4 a11y A-SF1)", () => {
+  const sections = [
+    { from_m: 0, to_m: 400, tier: 1, facility: "path" as const, unpaved: false },
+    { from_m: 400, to_m: 500, tier: 5, facility: "path" as const, unpaved: false },
+    { from_m: 500, to_m: 1000, tier: 2, facility: "none" as const, unpaved: false },
+  ];
+  const key = stripKey(sections);
+  assert.deepEqual(key.map((s) => sectionWords(s)), ["traffic-free path", "LTS 2", "Avoid"]);
+  // In the key's order: Avoid ranks as tier 5, not as a path.
+  assert.deepEqual(stripKey([sections[1], sections[2], sections[0]]).map((s) => sectionWords(s)), ["traffic-free path", "LTS 2", "Avoid"]);
+  assert.equal(stressShares(sections, 1000), "40% traffic-free path, 50% LTS 2, 10% Avoid");
+  const { route, profile } = build();
+  const avoided = { ...route, stress_spans: sections.map((s) => ({ ...s })) };
+  assert.match(readingAt(avoided, profile, 450).text, /, Avoid\.$/);
+  assert.doesNotMatch(readingAt(avoided, profile, 450).text, /traffic-free/);
+});
+
+test("a partial list's summary counts only the crossings needing corkers, and says an untraced stretch (r4 mutation NITs 1-3)", () => {
+  const { route, profile } = build("mass-ride", true);
+  const crossings = [...(profile.crossings ?? [])];
+  crossings[0] = { ...crossings[0], crossed_tier: 2, corkers_needed: false };
+  const partial: RouteProfile = { ...profile, crossings, crossings_complete: false };
+  assert.match(summaryText(route, partial), /may be incomplete: 2 found, 1 needing corkers\./);
+  const none: RouteProfile = { ...partial, crossings: crossings.map((c) => ({ ...c, corkers_needed: false })) };
+  assert.match(summaryText(route, none), /may be incomplete: 2 found, none needing corkers\./);
+  assert.doesNotMatch(summaryText(route, none), /0 needing/);
+  const untraced = "Part of the route could not be traced, so its width and intersections are not known.";
+  assert.ok(summaryText(route, { ...partial, unchecked: [{ from_m: 3000, to_m: 4000 }] }).includes(untraced));
+  assert.ok(!summaryText(route, partial).includes(untraced));
+  // One major intersection, said in the singular.
+  const one: RouteProfile = { ...profile, crossings: crossings.slice(1) };
+  assert.match(summaryText(route, one), /1 major intersection, 1 needing corkers\./);
+  assert.doesNotMatch(summaryText(route, one), /1 major intersections/);
+});
+
+test("the block width the word AVOID needs: a narrower block says A", () => {
+  // The word in the chart's bold 11-unit type is about 36 units wide (r4 mutation NIT 4).
+  assert.equal(AVOID_WORD_WIDTH, 36);
+  assert.equal(avoidLabel(36), "AVOID");
+  assert.equal(avoidLabel(35.9), "A");
+  assert.equal(avoidLabel(30), "A");
 });

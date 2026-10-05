@@ -394,6 +394,46 @@ class TestThin:
         keep = profile.thin(heights, grade_at, riders)
         assert len(keep) <= profile.MAX_SAMPLES + profile.WINDOW_PICKS_MASS + 2
 
+    @staticmethod
+    def runs_of_riders(n, runs):
+        """`n` riders figures at 200 with `runs` bottlenecks of four samples each, every
+        one lowest in its middle (so a window's lowest pick is never a run's end)."""
+        riders: list[float | None] = [200.0] * n
+        for k in range(runs):
+            start = 10 + 20 * k
+            riders[start : start + 4] = [50.0, 20.0, 30.0, 55.0]
+        return riders
+
+    def test_the_bottleneck_ends_are_kept_up_to_a_quarter_of_the_limit(self, monkeypatch):
+        """Mutation r4 NIT 6 (T09-T11): 10 run ends at a limit of 40 (a quarter) are all
+        kept; 12 are more than a quarter, and none is."""
+        monkeypatch.setattr(profile, "_window_picks", lambda h, *_a: {0, len(h) - 1})
+        n = 400
+        heights = [10.0] * n
+        grades = [0.0] * n
+        five = self.runs_of_riders(n, 5)
+        ends = profile._bottleneck_ends(five)
+        assert len(ends) == 10 == 40 // profile.BOTTLENECK_END_SHARE
+        assert set(profile.thin(heights, grades, five, limit=40)) == ends | {0, n - 1}
+        six = self.runs_of_riders(n, 6)
+        assert len(profile._bottleneck_ends(six)) == 12
+        assert profile.thin(heights, grades, six, limit=40) == [0, n - 1]
+
+    def test_the_bottleneck_ends_are_kept_when_no_narrower_window_fits(self, monkeypatch):
+        """Mutation r4 NIT 6 (T13): the first pass keeps the run ends too, for when the
+        bisection accepts no narrower window."""
+        first = {}
+
+        def picks(h, _g, _r, window):
+            first.setdefault("window", window)
+            return {0, len(h) - 1} if window >= first["window"] else set(range(len(h)))
+
+        monkeypatch.setattr(profile, "_window_picks", picks)
+        n = 400
+        riders = self.runs_of_riders(n, 5)
+        keep = profile.thin([10.0] * n, [0.0] * n, riders, limit=40)
+        assert set(keep) == profile._bottleneck_ends(riders) | {0, n - 1}
+
 
 class TestRouteProfile:
     def leg(self, heights, length_m=None):
@@ -512,6 +552,75 @@ class TestRouteProfile:
         assert body["flow"]["typical_riders_per_min"] == 198
         assert body["flow"]["narrowest_riders_per_min"] == 99
         assert body["flow"]["narrowest_m"] == 0
+
+    def test_the_typical_figure_leaves_out_the_boundary_pairs(self):
+        """Mutation r4 SHOULD-FIX 2 (F11, F16): a pair at each boundary would move the
+        median. The grid: 297 at 0 to 90 m and 99 at 120 to 180 m (4 of 7): median 297.
+        The boundary into the 99 at 100 m and a 10 m stretch of 198 at 130 m add their
+        pairs; counted, either whole or by their later halves, the median would be 198."""
+        heights = [10.0] * 7
+        stretches = [
+            (100.0, 10.05, None),
+            (30.0, 3.35, None),
+            (10.0, 6.7, None),
+            (100.0, 3.35, None),
+        ]
+        body = self.mass(heights, stretches)
+        assert body["m"] == [0, 30, 60, 90, 100, 100, 120, 130, 130, 140, 140, 150, 180]
+        assert body["riders_per_min"] == [297] * 5 + [99, 99, 99, 198, 198] + [99] * 3
+        assert body["flow"]["typical_riders_per_min"] == 297
+
+    def test_the_typical_figure_counts_a_leg_with_no_heights(self):
+        """Mutation r4 SHOULD-FIX 2 (F21): the samples every 30 m along a leg with no
+        heights are on the grid, so its riders weigh in the typical figure: about 66 of
+        them at 99 beside ten at 297."""
+        legs = [self.leg([10.0] * 5), self.leg([], 2000.0), self.leg([10.0] * 5)]
+        stretches = [(120.0, 10.05, None), (2000.0, 3.35, None), (120.0, 10.05, None)]
+        body = routing.route_profile(legs, [], stretches, [])
+        assert body["flow"]["typical_riders_per_min"] == 99
+        assert body["flow"]["narrowest_riders_per_min"] == 99
+
+    def test_a_boundary_between_samples_is_drawn_on_the_line_between_them(self):
+        """Mutation r4 SHOULD-FIX 3 (F17-F20): a riders pair between two samples takes the
+        height on the line between them and the nearer sample's grade; one on a sample
+        takes that sample's; none beside a gap or off the ends."""
+        samples = along([10.0, 11.8, 13.6, None, 17.2])
+        grade_at = [0.01, 0.02, 0.03, 0.04, 0.05]
+        sample_m = [m for m, _h in samples]
+
+        def at(x):
+            return routing._height_between(samples, grade_at, sample_m, x)
+
+        height, grade = at(40.0)
+        assert height == pytest.approx(12.4) and grade == 0.02
+        height, grade = at(50.0)
+        assert height == pytest.approx(13.0) and grade == 0.03
+        assert at(30.0) == (11.8, 0.02)
+        assert at(60.0) == (13.6, 0.03)
+        assert at(0.0) == (10.0, 0.01)
+        assert at(70.0) == (None, None)
+        assert at(100.0) == (None, None)
+        assert at(130.0) == (None, None)
+        assert at(-5.0) == (None, None)
+
+    def test_a_boundary_on_a_slope_carries_the_interpolated_height(self):
+        """The same, end to end: a 6% ramp, a width change at 40 m."""
+        heights = ramp(0.06, 7)
+        body = self.mass(heights, [(40.0, 6.7, None), (140.0, 10.05, None)])
+        at = body["m"].index(40)
+        assert body["m"][at : at + 2] == [40, 40]
+        assert body["elevation_m"][at : at + 2] == [pytest.approx(12.4)] * 2
+        assert body["riders_per_min"][at + 1] > body["riders_per_min"][at]
+
+    def test_a_range_starting_past_the_profiles_end_is_dropped(self):
+        """Mutation r4 NIT 5 (S04): the traced metres may run past the samples; a range
+        starting there is not sent as one that ends before it starts."""
+        stretches = [(100.0, 6.7, None), (50.0, None, routing.STRETCH_AVOID)]
+        assert routing._stretch_ranges(stretches, routing.STRETCH_AVOID, 80.0) == []
+        assert routing._stretch_ranges(stretches, routing.STRETCH_AVOID, 120.0) == [
+            {"from_m": 100, "to_m": 120}
+        ]
+        assert routing._stretch_ranges(stretches, routing.STRETCH_AVOID, 100.0) == []
 
     def test_intersections_not_read_are_null_and_none_found_is_an_empty_list(self):
         """Correctness S2, spec SHOULD-FIX 2: "not checked" is never sent as "none"."""
@@ -934,6 +1043,47 @@ class TestMajorJunctions:
         assert [(x.kind, x.crossed_tier, x.corkers_needed) for x in majors] == [
             (m.MAJOR_JOINING, 3, True)
         ]
+
+    def test_a_flagged_junction_just_ahead_on_the_same_street_hides_a_busy_crossing(self):
+        """Mutation r4 SHOULD-FIX 4 (K02, K06): the 45 m window looks ahead as well as
+        behind, and no further. Riding along Connecticut Avenue, a busy crossing of Mass
+        Avenue at 100 m and a flagged junction on Mass Avenue 30 m ahead are one major;
+        with the flagged one a kilometre on, they are two."""
+        avenue = road("Connecticut Avenue", tier=4)
+
+        def crossing():
+            return junction(
+                100.0,
+                [road("Mass Avenue", tier=3)],
+                Control.CROSS_STOP,
+                incoming=avenue,
+                outgoing=avenue,
+            )
+
+        near = self.run(crossing(), junction(130.0, [road("Mass Avenue", tier=4)]))
+        assert [(x.m, x.kind) for x in near] == [(130.0, m.MAJOR_FLAGGED)]
+        far = self.run(crossing(), junction(1000.0, [road("Mass Avenue", tier=4)]))
+        assert [(x.m, x.kind) for x in far] == [
+            (100.0, m.MAJOR_CROSSING),
+            (1000.0, m.MAJOR_FLAGGED),
+        ]
+
+    def test_the_45_m_window_includes_both_its_ends(self):
+        """Mutation r4 NIT 10 (K02-K04, K06): a major exactly MERGE_WITHIN_M behind or
+        ahead counts; one just past either end, or far ahead, does not."""
+        busy = road("Mass Avenue", tier=4)
+        here = junction(100.0, [busy])
+
+        def major(at):
+            return m.Major(
+                at, -77.0, 38.9, busy.names, ("Mass Avenue",), "orange", Control.SIGNAL, None, 4
+            )
+
+        within = m.MERGE_WITHIN_M
+        for at in (100.0 - within, 100.0 + within, 130.0, 70.0):
+            assert m._counted([major(at)], [at], here, busy) is True, at
+        for at in (100.0 - within - 0.5, 100.0 + within + 0.5, 1000.0):
+            assert m._counted([major(at)], [at], here, busy) is False, at
 
     def test_results_are_in_route_order(self):
         majors = self.run(

@@ -12,6 +12,7 @@
 import type { ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { spanClass } from "./routeColours.ts";
 
 // ---- The two charts ------------------------------------------------------------------------------
 
@@ -181,13 +182,15 @@ export function tierAt(spans: readonly StressSpan[] | undefined, metres: number)
 }
 
 /**
- * A stress section as it is said, the map's way (routeColours.ts spanClass: unpaved first, then a
- * path, then the tier; the a11y review's S7): "traffic-free path", "unpaved, LTS 2", "unpaved
- * traffic-free path", "LTS 3", "Avoid"; null where not rated.
+ * A stress section as it is said, the map's way (routeColours.ts spanClass: unpaved first, then
+ * Avoid, then a path, then the tier; the a11y review's S7): "traffic-free path", "unpaved, LTS 2",
+ * "unpaved traffic-free path", "LTS 3", "Avoid", "unpaved, Avoid"; null where not rated. A path
+ * rated Avoid (only an access override makes one) is said "Avoid", as it is drawn, never
+ * "traffic-free path" (r4 accessibility, A-SF1).
  */
 export function sectionWords(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">> | null | undefined): string | null {
   if (!span) return null;
-  const path = span.facility === "path";
+  const path = span.facility === "path" && span.tier !== 5;
   if (span.unpaved === true) {
     if (path) return "unpaved traffic-free path";
     const tier = tierWords(span.tier);
@@ -420,6 +423,16 @@ export function stripSections(spans: readonly StressSpan[] | undefined, length: 
   return spans
     .filter((s) => s.to_m > s.from_m && s.from_m < length)
     .map((s) => ({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m), tier: s.tier, facility: s.facility ?? null, unpaved: s.unpaved ?? null }));
+}
+
+/** The strip key's entries: the first section of each of the map's classes the strip shows (routeColours.ts spanClass), in the key's order (`sectionRank`). */
+export function stripKey(sections: readonly StripSection[]): StripSection[] {
+  const seen = new Map<string, StripSection>();
+  for (const s of sections) {
+    const key = spanClass(s).key;
+    if (!seen.has(key)) seen.set(key, s);
+  }
+  return [...seen.values()].sort((a, b) => sectionRank(a) - sectionRank(b));
 }
 
 // ---- The scrub: positions, steps, the map marker -------------------------------------------------
@@ -667,9 +680,9 @@ export function busyPlaces(spans: readonly StressSpan[] | undefined, max = 3): {
   return { places: busy.slice(0, max).map((s) => miles(s.from_m)), more: Math.max(0, busy.length - max) };
 }
 
-/** A stress section's place in the key's order (ElevationChart's classesPresent): a path first, then the tiers, each unpaved after its paved tier. */
+/** A stress section's place in the key's order (`stripKey`): a path first, then the tiers, each unpaved after its paved tier; a path rated Avoid is Avoid. */
 function sectionRank(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">>): number {
-  return (span.facility === "path" ? 0 : (span.tier ?? 99)) + (span.unpaved === true ? 0.5 : 0);
+  return (span.facility === "path" && span.tier !== 5 ? 0 : (span.tier ?? 99)) + (span.unpaved === true ? 0.5 : 0);
 }
 
 /**
