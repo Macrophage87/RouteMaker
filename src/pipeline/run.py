@@ -2148,7 +2148,6 @@ def build_handlers(
             _setting("REBUILD_LONG_TRAIL_FLOORS"),
         )
 
-
         assert_bicycle_closures_reached_the_tiles(sample_closures())
 
     def swap() -> None:
