@@ -45,7 +45,7 @@ import {
   tiersFor,
 } from "../stressStyle.js";
 import { ROUTE_STRESS_SOURCE_ID, setRouteSections, setStressPalette } from "./mapGlue.ts";
-import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses, routeLegend, routePaint, spanClass } from "./routeColours.ts";
+import { ROUTE_AVOID_MAGENTA, ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses, routeLegend, routePaint, spanClass } from "./routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, stressSegments, unrated } from "./stressBar.ts";
 import {
   ACCESSIBILITY_ADDRESS_NOTE,
@@ -421,7 +421,9 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
     );
     // The route's classes and spans.
     assert.equal(spanClass({ tier: 3, facility: "none" }).color, PALETTES.cvd[3].color);
-    assert.deepEqual(routeClasses().filter((c) => /^[1-5]$/.test(c.key)).map((c) => c.color), colours("cvd"));
+    // LTS 1 to 4 in the palette's colours; Avoid on the route is one magenta in every palette (OWNER-DECISIONS 397).
+    assert.deepEqual(routeClasses().filter((c) => /^[1-4]$/.test(c.key)).map((c) => c.color), colours("cvd").slice(0, 4));
+    assert.equal(routeClasses().find((c) => c.key === "5")?.color, ROUTE_AVOID_MAGENTA);
     const spans = [{ from_m: 0, to_m: 100, tier: 4, facility: "none" }] as unknown as Parameters<typeof routeLegend>[0];
     assert.equal(routeLegend(spans)[0].color, PALETTES.cvd[4].color);
     // The legend and the stress bar.

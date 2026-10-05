@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FACILITIES, currentTiers } from "../stressStyle.js";
+import { FACILITIES, contrastRatio, currentTiers, setAccessibility } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
+  ROUTE_AVOID_HALO,
+  ROUTE_AVOID_MAGENTA,
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
   routeClasses,
@@ -26,12 +28,36 @@ function span(from_m: number, to_m: number, tier: number | null, facility: Stres
 test("each class is drawn in the stress map's own colour, from the shared tokens", () => {
   // OWNER-DECISIONS item 81; the tiles lane owns the palette (item 74).
   for (const tier of currentTiers()) {
+    if (tier.tier === 5) continue;
     assert.equal(spanClass({ tier: tier.tier, facility: "none" }).color, tier.color, `LTS ${tier.tier}`);
   }
+  // Avoid on the route is one magenta (OWNER-DECISIONS 397), paved or unpaved.
+  assert.equal(spanClass({ tier: 5, facility: "none" }).color, ROUTE_AVOID_MAGENTA);
+  assert.equal(spanClass({ tier: 5, facility: "none", unpaved: true }).color, ROUTE_AVOID_MAGENTA);
   const path = FACILITIES.find((f) => f.facility === "path");
   assert.equal(spanClass({ tier: 2, facility: "path" }).color, path?.color);
   assert.equal(spanClass({ tier: null, facility: null }).color, UNRATED.color);
   assert.equal(spanClass({ tier: 9, facility: "lane" }).key, "unknown", "a tier the style does not know");
+});
+
+test("Avoid is magenta on the route in every palette, over a near-black halo 3:1 from it, and only where the route rides it (397)", () => {
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      for (const key of ["5", "u5"]) {
+        const c = routeClasses().find((x) => x.key === key)!;
+        assert.equal(c.color, ROUTE_AVOID_MAGENTA, `${key}${on ? " (high contrast)" : ""}`);
+        assert.equal(c.halo, ROUTE_AVOID_HALO);
+        assert.ok(contrastRatio(c.color, c.halo) >= 3, `${contrastRatio(c.color, c.halo).toFixed(2)}:1`);
+      }
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+  // The map's own Avoid roads keep the palette's colour: only the route is repainted.
+  assert.notEqual(currentTiers().find((t) => t.tier === 5)?.color, ROUTE_AVOID_MAGENTA);
+  assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 3)]).some((r) => r.key === "5"), false, "no Avoid entry on a route without Avoid");
+  assert.equal(routeLegend([span(0, 100, 2), span(100, 200, 5)]).find((r) => r.key === "5")?.color, ROUTE_AVOID_MAGENTA);
 });
 
 test("traffic-free comes before the tier, and a lane is its tier", () => {
@@ -105,7 +131,8 @@ test("one section covers the whole line", () => {
 test("the sections become one GeoJSON feature each, coloured", () => {
   const collection = sectionFeatures(routeSections(LINE, [span(0, 500, 1), span(500, 1000, 5)]));
   assert.equal(collection.features.length, 2);
-  assert.equal(collection.features[1].properties.color, currentTiers()[4].color);
+  assert.equal(collection.features[1].properties.color, ROUTE_AVOID_MAGENTA, "Avoid on the route is magenta (397)");
+  assert.equal(collection.features[0].properties.color, currentTiers()[0].color);
   assert.equal(collection.features[1].properties.key, "5");
   assert.deepEqual(sectionFeatures(null), { type: "FeatureCollection", features: [] });
 });

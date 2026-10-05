@@ -88,6 +88,21 @@ export const ROUTE_HALO_PATH = "#ffffff";
 const PATH = FACILITIES.find((facility) => facility.facility === "path");
 
 /**
+ * Avoid on the planned route (OWNER-DECISIONS 397: "Avoid as a single color should be magenta. It's
+ * a very striking danger color. Only do if a route uses it"): one magenta in every palette, paved or
+ * unpaved (an unpaved one keeps its dotted mark), in place of the palette's Avoid. Only the route's
+ * own sections: the map's general Avoid roads keep the palette's Avoid (stressStyle.js), and the
+ * legend lists Avoid only when the route rides some (`routeLegend`). The route chart's Avoid is the
+ * same magenta (profileChart.ts AVOID_FILL). Its halo is near-black, 4.1:1 from it (the halo rule:
+ * dark under a class lighter than 0.14 luminance; the magenta is 0.16).
+ */
+export const ROUTE_AVOID_MAGENTA = "#d6008f";
+export const ROUTE_AVOID_HALO = "#14040a";
+
+const avoidOnTheRoute = (c: RouteClass): RouteClass =>
+  c.key === "5" || c.key === "u5" ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO } : c;
+
+/**
  * The classes a section is drawn in, in the legend's order: traffic-free
  * first (a path, or a road closed to cars at the ride's time, whatever its
  * tier), then the stress tiers, then what no segment rated. Read from the
@@ -98,7 +113,7 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
 export function routeClasses(): readonly RouteClass[] {
   const none = unrated();
   const tiers = currentTiers();
-  return [
+  const drawn: RouteClass[] = [
     {
       key: "path",
       short: "Traffic-free",
@@ -142,6 +157,7 @@ export function routeClasses(): readonly RouteClass[] {
       haloWidth: ROUTE_SECTION_WIDTHS.unknown + ROUTE_HALO_EXTRA,
     },
   ];
+  return drawn.map(avoidOnTheRoute);
 }
 
 /** The classes by key, built once per look of the tiers (styleKey) rather than once per section. */

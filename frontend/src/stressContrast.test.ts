@@ -307,14 +307,8 @@ test("a halo is dark under the light classes and white under the dark ones (neve
   for (const { name, on } of REACHABLE) {
     withSwitch(on, () => {
       for (const c of routeClasses()) {
-        // Only the default palette's Avoid is exempt: its halo is its own red casing, a colour of its own
-        // (OWNER-DECISIONS 274), neither dark nor light, and 3:1 from the near-black line. Every other
-        // palette's Avoid keeps the dark-or-light rule (review SF4).
-        if (c.key === "5" && name === "blended") {
-          assert.equal(c.halo, PALETTES.blended[5].casing, "the exemption is for the palette's own Avoid casing only");
-          assert.ok(contrastRatio(c.color, c.halo) >= 3, `${c.short}: ${c.color} on ${c.halo}`);
-          continue;
-        }
+        // No exemption now: the route's Avoid is one magenta in every palette over a near-black halo
+        // (OWNER-DECISIONS 397, which replaced the default palette's near-black on its own red casing).
         assert.equal(relativeLuminance(c.halo) < 0.5, relativeLuminance(c.color) > 0.14, `${c.short}: ${c.color} on ${c.halo}`);
         assert.notEqual(c.halo, ROUTE_BLUE);
       }
