@@ -21,11 +21,20 @@
  *
  * The capacity is the `rpm` of the Mass Ride's own tiles (core/mass_tiles.py, source
  * MASS_SOURCE_ID), rounded down to ten, so the band edges (multiples of ten) never move.
- * Those tiles draw every road with a capacity at every zoom the map asks for, z10-14
+ * Those tiles draw the roads with a capacity at every zoom the map asks for, z10-14
  * (OWNER-DECISIONS 415: the busy roads too at z12-13, where the stress tiles are the ride
- * layer), and only inside the District of Columbia (418), clipped to its boundary. A table
- * without the column (promoted before the rebuild that writes it) gives empty tiles, and
- * nothing here draws.
+ * layer), and only inside the District of Columbia (418), clipped to its boundary; the
+ * border roads count as inside (420). A table without the column (promoted before the
+ * rebuild that writes it) gives empty tiles, and nothing here draws.
+ *
+ * Focus by zoom (421, 422: "Maybe focus on higher capacity roads at large zooms", "The focus
+ * option sounds good."): each band has a first zoom, `minzoom`. Zoom 10-11 draws only Wide
+ * open, and only where it runs MASS_WIDE_RUN_MI or more (the tiles drop the isolated
+ * blocks: an island of 200 on a turn lane would read as a speck); zoom 12-13 Good and Wide
+ * open; zoom 14 on, every band. The tiles hold the same bands (core/mass_tiles.py,
+ * `min_rpm_for`; tests/test_mass_tiles.py holds the two equal), the layers carry the
+ * `minzoom` too, and the legend says in words which bands show at the zoom the map is at
+ * (lib/massCapacity.ts, `massBandsSaid`). Avoid shows at every zoom: it is a warning, not a band.
  *
  * Hidden in this mode, at every zoom: every stress-map layer - the LTS colours, the
  * facility rails (path, protected and painted lane), the trails and paths, the zoomed-out
@@ -44,13 +53,32 @@
 /** The Mass Ride tiles' source (lib/mapStyle.ts, massSource; core/mass_tiles.py). */
 export const MASS_SOURCE_ID = "mass";
 
-/** The bands, lowest first. `min` inclusive, `max` exclusive (the last has none). */
+/**
+ * The bands, lowest first. `min` inclusive, `max` exclusive (the last has none). `minzoom`:
+ * the first zoom the band is drawn at (421).
+ */
 export const MASS_BANDS = [
-  { key: "bottleneck", name: "bottleneck", short: "Under 60", min: 0, max: 60, color: "#d7191c", halo: "#1c1917", width: 4, dashPx: [6, 4] },
-  { key: "tight", name: "tight", short: "60 to 120", min: 60, max: 120, color: "#f28e2b", halo: "#1c1917", width: 5.5, dashPx: [14, 4] },
-  { key: "good", name: "good", short: "120 to 200", min: 120, max: 200, color: "#1a9850", halo: "#1c1917", width: 7, dashPx: null },
-  { key: "wide", name: "wide open", short: "200 and up", min: 200, max: null, color: "#6a3d9a", halo: "#ffffff", width: 8.5, dashPx: null },
+  { key: "bottleneck", name: "bottleneck", short: "Under 60", min: 0, max: 60, minzoom: 14, color: "#d7191c", halo: "#1c1917", width: 4, dashPx: [6, 4] },
+  { key: "tight", name: "tight", short: "60 to 120", min: 60, max: 120, minzoom: 14, color: "#f28e2b", halo: "#1c1917", width: 5.5, dashPx: [14, 4] },
+  { key: "good", name: "good", short: "120 to 200", min: 120, max: 200, minzoom: 12, color: "#1a9850", halo: "#1c1917", width: 7, dashPx: null },
+  { key: "wide", name: "wide open", short: "200 and up", min: 200, max: null, minzoom: 10, color: "#6a3d9a", halo: "#ffffff", width: 8.5, dashPx: null },
 ];
+
+/**
+ * Below the Good band's first zoom a Wide open block is drawn only as part of this many miles
+ * of continuous Wide open road (422, provisional; core/mass_tiles.py WIDE_RUN_MI).
+ */
+export const MASS_WIDE_RUN_MI = 0.5;
+
+/**
+ * The bands (indices into MASS_BANDS, lowest first) the map draws at `zoom`: the tiles' own
+ * zoom, so a map at 11.6 draws z11's. None below the first band's zoom.
+ */
+export function massBandsAt(zoom) {
+  if (typeof zoom !== "number" || !Number.isFinite(zoom)) return [];
+  const z = Math.floor(zoom);
+  return MASS_BANDS.flatMap((band, i) => (band.minzoom <= z ? [i] : []));
+}
 
 /** The band's dash in line widths (MapLibre's unit), or null for a solid line. */
 export function dashInWidths(band) {
@@ -163,6 +191,7 @@ export function massLayers(sourceId = MASS_SOURCE_ID, sourceLayer = "stress", st
   const casings = MASS_BANDS.map((band, i) => ({
     ...base,
     id: MASS_LAYER_IDS.casing[i],
+    minzoom: band.minzoom,
     filter: filters[MASS_LAYER_IDS.casing[i]],
     paint: { "line-color": band.halo, "line-width": byZoom(band.width + extra) },
   }));
@@ -171,6 +200,7 @@ export function massLayers(sourceId = MASS_SOURCE_ID, sourceLayer = "stress", st
     return {
       ...base,
       id: MASS_LAYER_IDS.line[i],
+      minzoom: band.minzoom,
       filter: filters[MASS_LAYER_IDS.line[i]],
       paint: { "line-color": band.color, "line-width": byZoom(band.width), ...(dash ? { "line-dasharray": dash } : {}) },
     };

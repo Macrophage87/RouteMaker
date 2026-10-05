@@ -7,6 +7,12 @@
  * in words, and a route that leaves the District gets a notice, shown and said
  * (`outsideDcNote`).
  *
+ * Border roads are inside (420: "Border roads are inside DC"): a route along Western,
+ * Eastern or Southern Ave gets no notice. The boundary is simplified to about 30 ft, so a
+ * point within DC_EDGE_TOLERANCE_M of it (the simplification's error plus a road's
+ * half-width) counts as inside (`nearDc`); the drawn edge does not move. The tiles use the
+ * same tolerance (core/mass_tiles.py; tests/test_mass_tiles.py holds the two equal).
+ *
  * The boundary is OpenStreetMap's (the admin_level=4 US-DC relation in the rebuild's
  * extract), written by scripts/build_dc_boundary.py: the same bytes as
  * src/core/geodata/dc-boundary.geojson, which tests/test_dc_boundary.py holds equal.
@@ -54,15 +60,53 @@ export function inDc([lon, lat]: LonLat): boolean {
 }
 
 /**
+ * How near the boundary a point may lie and still count as inside (420), in metres: the
+ * simplification's 0.0001 degree (up to 11.1 m, 36 ft) and the 1e-5 degree grid (0.6 m), and
+ * 10 m (33 ft), half a four-lane road with parking. Every vertex of Western, Eastern and
+ * Southern Ave outside the simplified boundary is within 19.5 m (64 ft) of it (2026-10-03 build).
+ */
+export const DC_EDGE_TOLERANCE_M = 22;
+
+const M_PER_DEG_LAT = 110_950;
+const M_PER_DEG_LON = 111_320 * Math.cos((38.9 * Math.PI) / 180);
+
+/** The distance in metres from a point to the District's edge (flat, which is close enough at this size). */
+export function metresToDcEdge([lon, lat]: LonLat): number {
+  let best = Infinity;
+  for (const polygon of POLYGONS) {
+    for (const ring of polygon) {
+      for (let i = 1; i < ring.length; i++) {
+        const ax = (ring[i - 1][0] - lon) * M_PER_DEG_LON;
+        const ay = (ring[i - 1][1] - lat) * M_PER_DEG_LAT;
+        const bx = (ring[i][0] - lon) * M_PER_DEG_LON;
+        const by = (ring[i][1] - lat) * M_PER_DEG_LAT;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+        best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+      }
+    }
+  }
+  return best;
+}
+
+/** Whether a point counts as inside for Mass Ride planning: in the District, or on a border road (420). */
+export function nearDc(point: LonLat): boolean {
+  return inDc(point) || metresToDcEdge(point) <= DC_EDGE_TOLERANCE_M;
+}
+
+/**
  * Whether any part of a line is outside the District: any vertex, or the middle of any
- * stretch between two (a straight stretch can cut across a bend in the boundary).
+ * stretch between two (a straight stretch can cut across a bend in the boundary), further
+ * than the border tolerance from it (420).
  */
 export function leavesDc(line: readonly LonLat[]): boolean {
   for (let i = 0; i < line.length; i++) {
-    if (!inDc(line[i])) return true;
+    if (!nearDc(line[i])) return true;
     if (i > 0) {
       const mid: LonLat = [(line[i - 1][0] + line[i][0]) / 2, (line[i - 1][1] + line[i][1]) / 2];
-      if (!inDc(mid)) return true;
+      if (!nearDc(mid)) return true;
     }
   }
   return false;

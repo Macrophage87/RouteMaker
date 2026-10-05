@@ -12,9 +12,9 @@
  * Plain functions of the route, so a test runs them without a map or a browser, and every
  * figure has words (nothing is colour alone).
  */
-import { MASS_BANDS, bandIndex } from "../massStyle.js";
+import { MASS_BANDS, MASS_WIDE_RUN_MI, bandIndex, massBandsAt } from "../massStyle.js";
 import type { RouteResponse, StressSpan } from "./api.ts";
-import { formatDistance, formatSpeedRange } from "./format.ts";
+import { formatDistance, formatRunMiles, formatSpeedRange } from "./format.ts";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
 import { wholePercents } from "./stressBar.ts";
 
@@ -50,20 +50,70 @@ export const CAPACITY_MEANS =
   "has in its own direction, after parked cars. " +
   "A ride flows at its narrowest point. Trails, protected bike lanes and bike lanes are not drawn here.";
 
+/** Below the map's first zoom: nothing is drawn yet. */
+export const MASS_ZOOM_IN = "Zoom in to see roads and how many riders per minute they carry.";
+
 /**
- * What the Mass Ride map draws at the zoom it is at, in words. Its own tiles (core/mass_tiles.py) draw
- * every road with a capacity from the stress tiles' first zoom (OWNER-DECISIONS 415: the busy roads too,
- * at z12-13), so the only thing to say is below it. Null when there is nothing to say.
+ * What the Mass Ride map draws at the zoom it is at, below its first zoom only (the bands it shows
+ * from there are `massBandsSaid`'s). Null when there is nothing to say.
  */
 export function massZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
-  if (zoom < STRESS_ZOOMS.min) return "Zoom in to see roads and how many riders per minute they carry.";
+  if (zoom < STRESS_ZOOMS.min) return MASS_ZOOM_IN;
   return null;
 }
 
-/** The standing note under the legend: where roads come in, and what this map leaves out (417, 417a). */
+const bandList = (names: string[]): string =>
+  names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/** The zoom below which the Wide open run applies: the next band's first zoom (422). */
+const RUN_BELOW_ZOOM = Math.min(...MASS_BANDS.filter((band) => band.minzoom > MASS_BANDS[MASS_BANDS.length - 1].minzoom).map((b) => b.minzoom));
+
+/**
+ * Which bands the Mass Ride map shows at `zoom`, in words (OWNER-DECISIONS 421, 422): "At this zoom
+ * the map shows only wide open roads (200 and up riders per minute) ...". The words change only when
+ * the set of bands does, so the legend's status line, which says it, is not read again at every zoom
+ * step. Null with no zoom yet or the colours switched off.
+ */
+export function massBandsSaid(zoom: number | null, shown = true): string | null {
+  if (zoom === null || !shown || !Number.isFinite(zoom)) return null;
+  const at = massBandsAt(zoom) as number[];
+  if (at.length === 0) return MASS_ZOOM_IN;
+  if (at.length === MASS_BANDS.length) {
+    return `At this zoom the map shows every road: ${bandList([...MASS_BANDS].reverse().map((band) => band.name))}.`;
+  }
+  const shownBands = at.map((i) => MASS_BANDS[i]).reverse();
+  const lowest = shownBands[shownBands.length - 1];
+  const run =
+    Math.floor(zoom) < RUN_BELOW_ZOOM ? `, and only where they run for ${formatRunMiles(MASS_WIDE_RUN_MI)} or more` : "";
+  const later = new Map<number, string[]>();
+  MASS_BANDS.forEach((band, i) => {
+    if (!at.includes(i)) later.set(band.minzoom, [band.name, ...(later.get(band.minzoom) ?? [])]);
+  });
+  const zoomIn = [...later.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([z, names]) => `${bandList(names)} roads from zoom ${z}`);
+  return (
+    `At this zoom the map shows ${shownBands.length === 1 ? "only " : ""}${bandList(shownBands.map((band) => band.name))} roads ` +
+    `(${lowest.min} and up riders per minute)${run}. Zoom in for ${zoomIn.join(", and ")}.`
+  );
+}
+
+/**
+ * What the app-level live region says when the bands change (421): only a change from one set to
+ * another (not the first words, when the rider has just come to the Mass Ride map or switched the
+ * colours on), and only while the legend, whose own status line says it, is not on screen.
+ */
+export function massBandsChangeSaid(before: string | null, now: string | null, legendShown: boolean): string | null {
+  if (before === null || now === null || before === now || legendShown) return null;
+  return now;
+}
+
+/** The standing note under the legend: where roads come in, and what this map leaves out (417, 417a, 421, 422). */
 export const MASS_ZOOM_HINT =
-  `Every road in DC shows its riders per minute from zoom ${STRESS_ZOOMS.min}, busy roads included. ` +
+  `Roads in DC show their riders per minute from zoom ${STRESS_ZOOMS.min}, busy roads included: ` +
+  `at zoom 10 and 11 only wide open roads that run ${formatRunMiles(MASS_WIDE_RUN_MI)} or more, at zoom 12 and 13 good roads too, ` +
+  "and every road from zoom 14. Stretches marked Avoid show at every zoom. " +
   "Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom, and nor are alleys.";
 
 /** The legend row for a band: "Under 60: bottleneck". */

@@ -10,11 +10,14 @@ import {
   DC_MASK_LAYER_IDS,
   DC_MASK_SOURCE_ID,
   MASS_DC_ONLY,
+  DC_EDGE_TOLERANCE_M,
   MASS_OUTSIDE_DC_NOTICE,
   addDcMask,
   dcMask,
   inDc,
   leavesDc,
+  metresToDcEdge,
+  nearDc,
   outsideDcNote,
   setDcMaskVisibility,
 } from "./dcBoundary.ts";
@@ -135,4 +138,51 @@ test("the mask goes over the base map, under the overlays and labels, once, show
   }
   setDcMaskVisibility(map, true);
   for (const id of DC_MASK_LAYER_IDS) assert.equal(layout[id], "visible");
+});
+
+// --- Border roads (OWNER-DECISIONS 420) ---------------------------------------------------------
+
+// Real stretches from the 2026-10-03 build (live.segment, read-only), as tests/test_mass_tiles.py's:
+// Western Ave lies just inside the simplified boundary; Eastern and Southern Ave have vertices 9.4 m
+// and 19.5 m outside it, the farthest of each road.
+const WESTERN_AVE: LonLat[] = [
+  [-77.084214, 38.961965], [-77.083929, 38.962188], [-77.083631, 38.96242],
+  [-77.082658, 38.963182], [-77.082163, 38.963568], [-77.080491, 38.964888], [-77.080377, 38.964977],
+];
+const EASTERN_AVE: LonLat[] = [
+  [-77.007528, 38.969892], [-77.008622, 38.970748], [-77.008838, 38.970918], [-77.010836, 38.972481],
+];
+const SOUTHERN_AVE: LonLat[] = [
+  [-76.94002, 38.868768], [-76.939425, 38.86923], [-76.938852, 38.86968],
+  [-76.938585, 38.869881], [-76.938382, 38.870041], [-76.938249, 38.870143],
+];
+
+test("the border tolerance is the simplification's error and half a road (420)", () => {
+  assert.equal(DC_EDGE_TOLERANCE_M, 22);
+  assert.ok(metresToDcEdge(WHITE_HOUSE) > 2000);
+  const outside = (line: LonLat[]) => Math.max(...line.map((p) => (inDc(p) ? 0 : metresToDcEdge(p))));
+  assert.equal(outside(WESTERN_AVE), 0);
+  assert.ok(outside(EASTERN_AVE) > 5 && outside(EASTERN_AVE) < DC_EDGE_TOLERANCE_M, String(outside(EASTERN_AVE)));
+  assert.ok(outside(SOUTHERN_AVE) > 15 && outside(SOUTHERN_AVE) < DC_EDGE_TOLERANCE_M, String(outside(SOUTHERN_AVE)));
+});
+
+for (const [name, road] of [["Western Ave", WESTERN_AVE], ["Eastern Ave", EASTERN_AVE], ["Southern Ave", SOUTHERN_AVE]] as const) {
+  test(`a Mass Ride along ${name} counts as inside DC: no notice (420)`, () => {
+    // Into DC, along the border road and back: the whole route.
+    assert.equal(leavesDc(road), false);
+    assert.ok(road.every((p) => nearDc(p)));
+    const route = { preset: "mass-ride", geometry: { type: "LineString", coordinates: [WHITE_HOUSE, ...road, WHITE_HOUSE] } } as unknown as RouteResponse;
+    assert.equal(outsideDcNote(route), null);
+  });
+}
+
+test("a route clearly outside DC still gets the notice: 60 m over the line, and into Maryland", () => {
+  // Straight out from Western Ave's edge, past the tolerance.
+  const [lon, lat] = WESTERN_AVE[3];
+  const out: LonLat = [lon - 0.0006, lat + 0.0006]; // north-west, into Maryland
+  assert.ok(!inDc(out) && metresToDcEdge(out) > 40, String(metresToDcEdge(out)));
+  assert.equal(leavesDc([WESTERN_AVE[3], out]), true);
+  assert.equal(nearDc(BETHESDA), false);
+  const route = { preset: "mass-ride", geometry: { type: "LineString", coordinates: [WHITE_HOUSE, BETHESDA] } } as unknown as RouteResponse;
+  assert.equal(outsideDcNote(route), MASS_OUTSIDE_DC_NOTICE);
 });

@@ -4,18 +4,23 @@ Against a real live segment table, as tests/test_stress_tiles.py, decoded with `
 What is held here: every road with a capacity at z12-13 (busy ones too, where the stress tiles
 are the ride layer), no trail, nothing outside the District (each line clipped to its
 boundary), the cache shared with the stress tiles without either evicting the other, and the
-pre-draw drawing the District's tiles.
+pre-draw drawing the District's tiles. Then the bands each zoom holds (421, 422: Wide open
+only at z10-11, and only in a run of half a mile; Good and up at z12-13; every band from
+z14) and the border roads drawn as inside (420).
 """
 
 from __future__ import annotations
 
 import math
+import re
+from pathlib import Path
 
 import pytest
 from django.db import connection
 from django.test import override_settings
 from mvt import decode
-from shapely.geometry import Point, shape
+from shapely.geometry import MultiLineString, Point, shape
+from shapely.ops import nearest_points
 
 from core import mass_tiles, stress_tiles, tile_cache
 from routemaker import flow
@@ -41,15 +46,21 @@ def url(z: int, x: int, y: int, kind: str = "mass") -> str:
     return f"/tiles/{kind}/{z}/{x}/{y}.pbf"
 
 
-def road(schema, way, start, end, tier=3, rpm=150.0, trail=False, facility="none") -> None:
+def road(
+    schema, way, start, end, tier=3, rpm=150.0, trail=False, facility="none", ordinal=0
+) -> None:
+    line(schema, way, [start, end], tier, rpm, trail, facility, ordinal)
+
+
+def line(schema, way, points, tier=3, rpm=150.0, trail=False, facility="none", ordinal=0) -> None:
     width = None if rpm is None else rpm / flow.level_riders_per_min(1.0)
+    wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in points) + ")"
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
             "stress_rule, is_trail_class, facility, mass_usable_width_m, calm_run_m) VALUES "
-            "(%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), %s, 'x', %s, %s, "
-            "%s, 0)",
-            [way, *start, *end, tier, trail, facility, width],
+            "(%s, %s, ST_GeomFromText(%s, 4326), %s, 'x', %s, %s, %s, 0)",
+            [way, ordinal, wkt, tier, trail, facility, width],
         )
 
 
@@ -119,9 +130,10 @@ class TestTiles:
 
     def test_every_zoom_the_map_asks_for_draws_and_deeper_is_empty(self, client, segment_schemas):
         live, _ = segment_schemas
-        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE), tier=2, rpm=90)
+        # Wide open and a kilometre long: every zoom holds it (421, 422).
+        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE, 1000), tier=2, rpm=250)
         for z in range(mass_tiles.MIN_ZOOM, mass_tiles.MAX_ZOOM + 1):
-            assert [f.properties["rpm"] for f in features(client, z).features] == [90], z
+            assert [f.properties["rpm"] for f in features(client, z).features] == [250], z
         assert client.get(url(*tile_of(*WHITE_HOUSE, 15))).content == b""
         assert mass_tiles.MAX_ZOOM == 14 == tile_cache.PREDRAW_MAX_ZOOM
 
@@ -257,3 +269,223 @@ class TestCaching:
         by_zoom = {z: sum(1 for t in tiles if t[0] == z) for z in range(10, 15)}
         assert sum(by_zoom.values()) == len(set(tiles)) < 300
         assert all(not mass_tiles.outside_dc(*t) for t in tiles)
+
+
+def rpms(layer) -> list[tuple[int, int]]:
+    return sorted(
+        (f.properties["tier"], f.properties["rpm"]) for f in (layer.features if layer else [])
+    )
+
+
+def north_of(point, metres):
+    return (point[0], point[1] + metres / 111_000)
+
+
+@db
+class TestFocusByZoom:
+    """421, 422: z10-11 Wide open only, in a run of at least half a mile; z12-13 Good and
+    Wide open; z14 every band. Avoid at every zoom."""
+
+    def test_the_settings(self) -> None:
+        assert mass_tiles.WIDE_OPEN_RPM == 200 and mass_tiles.GOOD_RPM == 120
+        assert mass_tiles.WIDE_RUN_MI == 0.5 and mass_tiles.WIDE_RUN_M == 805
+        assert [mass_tiles.min_rpm_for(z) for z in range(10, 17)] == [
+            200,
+            200,
+            120,
+            120,
+            None,
+            None,
+            None,
+        ]
+
+    def test_the_map_style_and_legend_say_the_same(self) -> None:
+        """massStyle.js's band edges and first zooms, and the run the legend says."""
+        front = Path(__file__).resolve().parents[1] / "frontend/src"
+        style = (front / "massStyle.js").read_text()
+        bands = {
+            key: (int(low), int(zoom))
+            for key, low, zoom in re.findall(r'key: "(\w+)".*?min: (\d+),.*?minzoom: (\d+)', style)
+        }
+        assert bands == {
+            "bottleneck": (0, mass_tiles.EVERY_BAND_MIN_ZOOM),
+            "tight": (60, mass_tiles.EVERY_BAND_MIN_ZOOM),
+            "good": (mass_tiles.GOOD_RPM, mass_tiles.GOOD_MIN_ZOOM),
+            "wide": (mass_tiles.WIDE_OPEN_RPM, mass_tiles.MIN_ZOOM),
+        }
+        run = re.search(r"export const MASS_WIDE_RUN_MI = ([\d.]+);", style)
+        assert run and float(run.group(1)) == mass_tiles.WIDE_RUN_MI
+
+    def test_each_zoom_holds_its_bands(self, client, segment_schemas):
+        live, _ = segment_schemas
+        rows = [(1, 3, 250), (2, 3, 150), (3, 3, 90), (4, 3, 40), (5, 5, 90)]
+        for i, (way, tier, rpm) in enumerate(rows):
+            start = north_of(WHITE_HOUSE, 60 * i)
+            road(live, way, start, east_of(start, 1000), tier=tier, rpm=rpm)
+        avoid = (5, 90)
+        for z in (10, 11):
+            assert rpms(features(client, z)) == [(3, 250), avoid], z
+        for z in (12, 13):
+            assert rpms(features(client, z)) == [(3, 150), (3, 250), avoid], z
+        assert rpms(features(client, 14)) == [(3, 40), (3, 90), (3, 150), (3, 250), avoid]
+
+    def test_an_isolated_wide_open_block_is_no_speck(self, client, segment_schemas):
+        """422: a short Wide open block on its own shows from z12, not at z10-11."""
+        live, _ = segment_schemas
+        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE, 300), rpm=250)
+        for z in (10, 11):
+            assert rpms(features(client, z)) == [], z
+        assert rpms(features(client, 12)) == [(3, 250)]
+
+    def test_blocks_that_join_make_a_run(self, client, segment_schemas):
+        """Three 300 m blocks end to end (900 m) are a run; two 350 m blocks (700 m) are not."""
+        live, _ = segment_schemas
+        west = WHITE_HOUSE
+        for i in range(3):
+            road(live, 1, east_of(west, 300 * i), east_of(west, 300 * (i + 1)), rpm=250, ordinal=i)
+        short = north_of(WHITE_HOUSE, 200)
+        for i in range(2):
+            road(
+                live, 2, east_of(short, 350 * i), east_of(short, 350 * (i + 1)), rpm=260, ordinal=i
+            )
+        # A Good block between two Wide open ones breaks the run.
+        broken = north_of(WHITE_HOUSE, 400)
+        road(live, 3, broken, east_of(broken, 450), rpm=270)
+        road(live, 3, east_of(broken, 450), east_of(broken, 500), rpm=150, ordinal=1)
+        road(live, 3, east_of(broken, 500), east_of(broken, 950), rpm=270, ordinal=2)
+        for z in (10, 11):
+            assert rpms(features(client, z)) == [(3, 250)], z
+        assert (3, 260) in rpms(features(client, 12)) and (3, 270) in rpms(features(client, 12))
+
+    def test_a_tile_edge_does_not_cut_a_run(self, client, segment_schemas):
+        """The run is found over the whole District: 433 m each side of a z10 and z11 edge."""
+        live, _ = segment_schemas
+        edge = -180 + 360 * 586 / 2**11  # -76.992, east of the Capitol, inside DC
+        assert edge == -180 + 360 * 293 / 2**10
+        lat = 38.8900
+        road(live, 1, (edge - 0.005, lat), (edge, lat), rpm=250)
+        road(live, 1, (edge, lat), (edge + 0.005, lat), rpm=250, ordinal=1)
+        for z in (10, 11):
+            west = features(client, z, at=(edge - 0.003, lat))
+            east = features(client, z, at=(edge + 0.003, lat))
+            assert rpms(west) and rpms(east), z
+
+
+# Real stretches of the border roads, from the 2026-10-03 build (live.segment, read-only):
+# the Western Ave one lies just inside the simplified boundary; the Eastern and Southern Ave
+# ones have vertices 9.4 m and 19.5 m outside it, the farthest of each road.
+WESTERN_AVE = [
+    (-77.084214, 38.961965),
+    (-77.083929, 38.962188),
+    (-77.083631, 38.96242),
+    (-77.082658, 38.963182),
+    (-77.082163, 38.963568),
+    (-77.080491, 38.964888),
+    (-77.080377, 38.964977),
+]
+EASTERN_AVE = [
+    (-77.007528, 38.969892),
+    (-77.008622, 38.970748),
+    (-77.008838, 38.970918),
+    (-77.010836, 38.972481),
+]
+SOUTHERN_AVE = [
+    (-76.94002, 38.868768),
+    (-76.939425, 38.86923),
+    (-76.938852, 38.86968),
+    (-76.938585, 38.869881),
+    (-76.938382, 38.870041),
+    (-76.938249, 38.870143),
+]
+BORDER_ROADS = {
+    "Western Ave": WESTERN_AVE,
+    "Eastern Ave": EASTERN_AVE,
+    "Southern Ave": SOUTHERN_AVE,
+}
+
+
+def drawn_points(client, z, at):
+    _, x, y = tile_of(*at, z)
+    layer = features(client, z, at=at)
+    return [
+        lonlat(z, x, y, px, py)
+        for f in (layer.features if layer else [])
+        for part in f.lines
+        for px, py in part
+    ]
+
+
+def drawn_lines(client, z, at):
+    _, x, y = tile_of(*at, z)
+    layer = features(client, z, at=at)
+    return MultiLineString(
+        [
+            [lonlat(z, x, y, px, py) for px, py in part]
+            for f in (layer.features if layer else [])
+            for part in f.lines
+        ]
+    )
+
+
+def outward(at, distance):
+    """The point `distance` metres outside the District, straight out from its edge nearest `at`."""
+    q = nearest_points(DC.boundary, Point(at))[0]
+    k = math.cos(math.radians(38.9))
+    dx, dy = (q.x - at[0]) * 111_320 * k, (q.y - at[1]) * 110_950
+    if not DC.contains(Point(at)):
+        dx, dy = -dx, -dy
+    n = math.hypot(dx, dy)
+    return (q.x + dx / n * distance / (111_320 * k), q.y + dy / n * distance / 110_950), (
+        dx / n,
+        dy / n,
+    )
+
+
+@db
+class TestBorderRoads:
+    """420: "Border roads are inside DC". A line wholly within the tolerance is drawn whole."""
+
+    def test_the_tolerance_is_the_simplification_and_a_half_road(self) -> None:
+        assert mass_tiles.DC_EDGE_TOLERANCE_M == 22
+        front = Path(__file__).resolve().parents[1] / "frontend/src/lib/dcBoundary.ts"
+        said = re.search(r"export const DC_EDGE_TOLERANCE_M = (\d+);", front.read_text())
+        assert said and int(said.group(1)) == mass_tiles.DC_EDGE_TOLERANCE_M
+
+    def test_the_samples_are_where_they_say(self) -> None:
+        def out_m(p):
+            return 0.0 if DC.contains(Point(p)) else DC.boundary.distance(Point(p)) * 86_700
+
+        assert max(out_m(p) for p in WESTERN_AVE) == 0
+        assert 5 < max(out_m(p) for p in EASTERN_AVE) < mass_tiles.DC_EDGE_TOLERANCE_M
+        assert 15 < max(out_m(p) for p in SOUTHERN_AVE) < mass_tiles.DC_EDGE_TOLERANCE_M
+
+    @pytest.mark.parametrize("name", list(BORDER_ROADS))
+    def test_a_border_road_is_drawn_whole(self, client, segment_schemas, name):
+        live, _ = segment_schemas
+        points = BORDER_ROADS[name]
+        line(live, 1, points, rpm=150)
+        for z in (12, 14):
+            drawn = drawn_lines(client, z, points[len(points) // 2])
+            assert not drawn.is_empty, (name, z)
+            # Every vertex, the ones outside the simplified boundary too, is on the drawn line
+            # (a tile unit at z12 is about 2.4 m; a degree is at most 111 km).
+            for p in points:
+                assert drawn.distance(Point(p)) * 111_000 < 5, (name, z, p)
+
+    def test_a_street_leaving_the_district_is_cut_at_the_line(self, client, segment_schemas):
+        """A Maryland street off Western Ave gets no stub past the boundary."""
+        live, _ = segment_schemas
+        inside = WESTERN_AVE[3]
+        far, _ = outward(inside, 200)
+        road(live, 1, inside, far, rpm=150)
+        drawn = drawn_points(client, 14, inside)
+        assert drawn
+        assert all(DC.buffer(0.00004).contains(Point(p)) for p in drawn)
+
+    def test_a_road_clearly_outside_is_not_drawn(self, client, segment_schemas):
+        live, _ = segment_schemas
+        centre, (nx, ny) = outward(WESTERN_AVE[3], 100)
+        k = math.cos(math.radians(38.9))
+        tx, ty = -ny * 150 / (111_320 * k), nx * 150 / 110_950
+        road(live, 1, (centre[0] - tx, centre[1] - ty), (centre[0] + tx, centre[1] + ty), rpm=150)
+        assert drawn_points(client, 14, centre) == []

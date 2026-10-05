@@ -52,7 +52,14 @@ import { RAIL_STATIONS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
-import { CAPACITY_FOLD_TITLE, CAPACITY_LEGEND_TITLE, capacitySummary, isMassRide } from "./lib/massCapacity.ts";
+import {
+  CAPACITY_FOLD_TITLE,
+  CAPACITY_LEGEND_TITLE,
+  capacitySummary,
+  isMassRide,
+  massBandsChangeSaid,
+  massBandsSaid,
+} from "./lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
 import { MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
@@ -459,6 +466,19 @@ export function App() {
   useEffect(() => {
     if (noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
   }, [notice, announce]);
+
+  // Which bands the Mass Ride map shows changes with the zoom (OWNER-DECISIONS 421). The legend's status
+  // line says it; while the Map layers sheet is not on screen it is said through the app-level region
+  // instead, and only when the set of bands changes (not at every zoom step, nor on coming to the map).
+  const massBands = massMap && stressVisible ? massBandsSaid(zoom) : null;
+  const massBandsBefore = useRef<string | null>(null);
+  const layersShownNow = useRef(false);
+  layersShownNow.current = view === "layers" && panelOpen;
+  useEffect(() => {
+    const said = massBandsChangeSaid(massBandsBefore.current, massBands, layersShownNow.current);
+    massBandsBefore.current = massBands;
+    if (said) announce(said);
+  }, [massBands, announce]);
 
   const syncHistory = useCallback(
     () => setCan({ undo: history.current.canUndo, redo: history.current.canRedo }),

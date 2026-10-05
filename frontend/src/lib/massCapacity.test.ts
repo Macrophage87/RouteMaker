@@ -1,5 +1,6 @@
 // What a Mass Ride says about riders per minute (OWNER-DECISIONS 325-327, 387): the route's
 // narrowest point and band shares, the legend, the route line's classes and the description.
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -15,6 +16,8 @@ import {
   capacityRows,
   capacitySummary,
   isMassRide,
+  massBandsChangeSaid,
+  massBandsSaid,
   massZoomNotice,
   narrowestText,
   ridersPerMinute,
@@ -163,15 +166,61 @@ test("the route view's figures: the narrowest point and the typical, each a term
 });
 
 test("the zoom note says where roads come in, and what this map leaves out", () => {
-  // The Mass Ride tiles draw every road from z10, busy ones too (OWNER-DECISIONS 415).
+  // The Mass Ride tiles draw roads from z10, busy ones too (OWNER-DECISIONS 415), by band (421, 422).
   assert.equal(massZoomNotice(null, true), null);
   assert.equal(massZoomNotice(9, false), null);
   assert.match(massZoomNotice(9, true)!, /Zoom in to see roads/);
   for (const z of [10, 11, 12, 13, 14, 16]) assert.equal(massZoomNotice(z, true), null, `z${z}`);
   const html = renderToStaticMarkup(createElement(MassZoomNotes, { zoom: 11, shown: true }));
-  assert.match(html, /Every road in DC shows its riders per minute from zoom 10, busy roads included/);
+  assert.match(html, /Roads in DC show their riders per minute from zoom 10, busy roads included: at zoom 10 and 11 only wide open roads that run 0\.5 mi \(0\.8 km\) or more, at zoom 12 and 13 good roads too, and every road from zoom 14\./);
+  assert.match(html, /Stretches marked Avoid show at every zoom\./);
   assert.match(html, /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/);
   assert.doesNotMatch(html, /long calm roads/);
+});
+
+test("the legend says in words which bands show at the zoom the map is at (421, 422)", () => {
+  const wide =
+    "At this zoom the map shows only wide open roads (200 and up riders per minute), and only where they run for 0.5 mi (0.8 km) or more. " +
+    "Zoom in for good roads from zoom 12, and tight and bottleneck roads from zoom 14.";
+  const good = "At this zoom the map shows wide open and good roads (120 and up riders per minute). Zoom in for tight and bottleneck roads from zoom 14.";
+  const every = "At this zoom the map shows every road: wide open, good, tight and bottleneck.";
+  assert.equal(massBandsSaid(10), wide);
+  assert.equal(massBandsSaid(11.9), wide, "a map at 11.9 draws z11's tiles");
+  assert.equal(massBandsSaid(12), good);
+  assert.equal(massBandsSaid(13.5), good);
+  assert.equal(massBandsSaid(14), every);
+  assert.equal(massBandsSaid(17), every);
+  assert.match(massBandsSaid(9.5)!, /^Zoom in to see roads/);
+  assert.equal(massBandsSaid(null), null);
+  assert.equal(massBandsSaid(12, false), null, "the colours switched off: nothing to say");
+  // In the legend: one persistent status line, there with no words too.
+  const at = (zoom: number | null, shown = true) => renderToStaticMarkup(createElement(MassZoomNotes, { zoom, shown }));
+  assert.match(at(10), /<p class="notice mass-bands" role="status">At this zoom the map shows only wide open roads/);
+  assert.match(at(12), /role="status">At this zoom the map shows wide open and good roads/);
+  assert.match(at(14), /role="status">At this zoom the map shows every road/);
+  assert.match(at(12, false), /<p class="notice notice-empty mass-bands" role="status"><\/p>/);
+});
+
+test("the words change only when the set of bands does, so zooming within a level says nothing", () => {
+  const words = [10, 10.4, 11, 11.99].map((z) => massBandsSaid(z));
+  assert.equal(new Set(words).size, 1);
+  assert.equal(new Set([12, 12.5, 13.9].map((z) => massBandsSaid(z))).size, 1);
+  assert.equal(new Set([14, 15, 16.2].map((z) => massBandsSaid(z))).size, 1);
+});
+
+test("the app-level region says a change of bands only while the legend is off screen, and not on arriving", () => {
+  const z11 = massBandsSaid(11);
+  const z12 = massBandsSaid(12);
+  assert.equal(massBandsChangeSaid(z11, z12, false), z12);
+  assert.equal(massBandsChangeSaid(z11, z12, true), null, "the legend's own status line says it");
+  assert.equal(massBandsChangeSaid(z12, z12, false), null, "the same bands: nothing");
+  assert.equal(massBandsChangeSaid(null, z12, false), null, "coming to the Mass Ride map, or switching the colours on");
+  assert.equal(massBandsChangeSaid(z12, null, false), null);
+  // App.tsx wires it so.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const massBands = massMap && stressVisible \? massBandsSaid\(zoom\) : null;/);
+  assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, layersShownNow\.current\)/);
+  assert.match(app, /layersShownNow\.current = view === "layers" && panelOpen;/);
 });
 
 // --- The route line -----------------------------------------------------------------------

@@ -7,12 +7,14 @@ import {
   MASS_AVOID,
   MASS_BANDS,
   MASS_LAYER_IDS,
+  MASS_WIDE_RUN_MI,
   bandIndex,
   dashInWidths,
   hazardLayers,
   massFilters,
   massHides,
   massLayerIds,
+  massBandsAt,
   massLayers,
 } from "./massStyle.js";
 import { setMassRide, stressFilters, stressOverlayLayers } from "./stressStyle.js";
@@ -48,6 +50,31 @@ test("the four bands are the owner's: colours, widths and dashes (OWNER-DECISION
   );
   // The dashes are short and long, then solid.
   assert.ok(MASS_BANDS[0].dashPx[0] < MASS_BANDS[1].dashPx[0]);
+});
+
+test("each band has its first zoom: Wide open from 10, Good from 12, the rest from 14 (421)", () => {
+  assert.deepEqual(
+    MASS_BANDS.map((band) => [band.key, band.minzoom]),
+    [["bottleneck", 14], ["tight", 14], ["good", 12], ["wide", 10]],
+  );
+  assert.deepEqual(massBandsAt(9.9), []);
+  assert.deepEqual(massBandsAt(10), [3]);
+  assert.deepEqual(massBandsAt(11.7), [3]);
+  assert.deepEqual(massBandsAt(12), [2, 3]);
+  assert.deepEqual(massBandsAt(13.99), [2, 3]);
+  assert.deepEqual(massBandsAt(14), [0, 1, 2, 3]);
+  assert.deepEqual(massBandsAt(null), []);
+  assert.equal(MASS_WIDE_RUN_MI, 0.5);
+  // The layers carry it: every band's casing and line from its own zoom; Avoid from the first.
+  const layers = massLayers();
+  MASS_BANDS.forEach((band, i) => {
+    for (const id of [MASS_LAYER_IDS.casing[i], MASS_LAYER_IDS.line[i]]) {
+      assert.equal(layers.find((layer) => layer.id === id)?.minzoom, band.minzoom, id);
+    }
+  });
+  for (const id of [MASS_LAYER_IDS.avoidCasing, MASS_LAYER_IDS.avoid]) {
+    assert.equal(layers.find((layer) => layer.id === id)?.minzoom, undefined, `${id}: Avoid shows at every zoom`);
+  }
 });
 
 test("a figure falls in its band at the edges: 60, 120 and 200 start the next", () => {

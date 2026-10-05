@@ -1323,6 +1323,28 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.key("Escape", "Escape", 27);
   await sleep(400);
   await p.shot(`${SHOTS}/capacity_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
+  // OWNER-DECISIONS 421, 422: which bands show at the zoom the map is at, in words, in one status line in the legend
+  // whose words change only when the set of bands does; with the legend off screen, said through the app's region.
+  const bandsLine = "#sheet-layers .mass-bands";
+  const bands = await p.eval(`(() => { const e = document.querySelector('${bandsLine}'); if (!e) return null; e.dataset.a11yMark = '1';
+    return { role: e.getAttribute('role'), text: e.textContent }; })()`);
+  check("capacity: the legend says in words which bands show at this zoom, in a status line",
+    bands?.role === "status" && /^At this zoom the map shows (only wide open roads|wide open and good roads|every road)/.test(bands.text), JSON.stringify(bands));
+  // The legend off screen: the sheet closed by its Back button (Escape closes it only from inside).
+  await p.eval("(() => { const s = document.querySelector('#sheet-layers'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
+  await sleep(250);
+  for (let i = 0; i < 6; i++) {
+    if (/only wide open/.test(await p.eval(`document.querySelector('${bandsLine}')?.textContent ?? ''`))) break;
+    await p.eval("document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); true");
+    await sleep(800);
+  }
+  const zoomedOut = await p.eval(`(() => { const e = document.querySelector('${bandsLine}');
+    const app = [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent).find((t) => /only wide open roads/.test(t)) ?? '';
+    return { same: e?.dataset.a11yMark === '1', text: e?.textContent ?? '', app: app.trim() }; })()`);
+  check("capacity: zoomed out to 10-11 the same status line says Wide open only, where it runs half a mile, and how to see the rest",
+    zoomedOut.same && /^At this zoom the map shows only wide open roads \(200 and up riders per minute\), and only where they run for 0\.5 mi \(0\.8 km\) or more\. Zoom in for good roads from zoom 12, and tight and bottleneck roads from zoom 14\.$/.test(zoomedOut.text), JSON.stringify(zoomedOut));
+  check("capacity: with the legend off screen, the change of bands is said through the app's polite region",
+    zoomedOut.app === zoomedOut.text && zoomedOut.app !== "", JSON.stringify(zoomedOut));
   await p.close();
 }
 {
@@ -1358,7 +1380,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 275;
+const EXPECTED = 278;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

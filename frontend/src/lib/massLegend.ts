@@ -18,7 +18,7 @@ import {
   CAPACITY_SOURCE,
   MASS_ZOOM_HINT,
   bandLegendText,
-  massZoomNotice,
+  massBandsSaid,
   capacityRows,
   capacitySummary,
   narrowestText,
@@ -54,10 +54,20 @@ export function AvoidSwatch(): ReactElement {
 const row = (key: string, swatch: ReactElement, text: string) =>
   h("li", { key }, swatch, h("span", { className: "stress-label" }, text));
 
-/** The notice for the zoom the map is at, and the standing note, under the legend. */
+/**
+ * The bands the map shows at the zoom it is at, in words (OWNER-DECISIONS 421), then the standing
+ * note, under the legend. The status line is one persistent role="status" element whose words change
+ * (as the federal-land section's: a live region inserted with its text is often not read), and its
+ * words change only when the set of bands does, so zooming within a level says nothing.
+ */
 export function MassZoomNotes({ zoom, shown }: { zoom: number | null; shown: boolean }): ReactElement {
-  const notice = massZoomNotice(zoom, shown);
-  return h(Fragment, null, notice && h("p", { className: "notice", role: "status" }, notice), h("p", { className: "hint" }, MASS_ZOOM_HINT));
+  const said = massBandsSaid(zoom, shown);
+  return h(
+    Fragment,
+    null,
+    h("p", { className: said ? "notice mass-bands" : "notice notice-empty mass-bands", role: "status" }, said ?? ""),
+    h("p", { className: "hint" }, MASS_ZOOM_HINT),
+  );
 }
 
 /**

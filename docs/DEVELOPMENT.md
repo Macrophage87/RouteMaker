@@ -966,6 +966,39 @@ order), and nothing asks for hazards.
   not `path`). z10-13 merged by (tier, rpm) and simplified, as the stress tiles' zoomed-out
   levels; z14 one feature per segment, buffer 64; past z14 empty (the map draws z15-16 from z14).
   The stress tiles and their ride layer are unchanged, and so is their FORMAT_VERSION (7).
+* **Focus by zoom** (421, 422: "Maybe focus on higher capacity roads at large zooms", "The focus
+  option sounds good.", "Looks like a good start!"). z10-11: only Wide open (200 and up), and only
+  a block in at least 0.5 mi (0.8 km) of continuous Wide open road, so the isolated blocks that
+  pass 200 on a turn lane or a wide approach are not specks; z12-13: Good and Wide open (120 and
+  up); z14 on: every band; Avoid at every zoom. The settings are `core.mass_tiles`
+  (`WIDE_OPEN_RPM`, `GOOD_RPM`, `GOOD_MIN_ZOOM`, `EVERY_BAND_MIN_ZOOM`, `WIDE_RUN_MI`,
+  `min_rpm_for`), mirrored by `massStyle.js` (`MASS_BANDS[].minzoom`, which the band layers carry
+  too, `MASS_WIDE_RUN_MI`, `massBandsAt`); `tests/test_mass_tiles.py` holds them equal. **The run
+  is computed in the tiles, not the pipeline:** the band is the tiles' own rounded `rpm`
+  expression, so the run and the colour can never disagree; the District's Wide open road is
+  small (about 74 mi, 120 km); only the six or so z10-11 tiles over the District need it, and the
+  pre-draw draws them; so no column, schema change or rebuild. A run is the total length of the
+  Wide open lines (clipped as drawn) that touch end to end, `ST_ClusterDBSCAN(clipped, 0, 1)`,
+  found over the whole District in each z10-11 tile's query (the `wide`, `clustered` and
+  `in_run` CTEs), so a tile's edge never cuts a run. Measured read-only on the live table with a
+  stand-in width: z10 0.7-0.8 s warm (5.5 s the very first, cold), z11 0.45-0.6 s, z12 0.26 s.
+  **In words** (`lib/massCapacity.ts` `massBandsSaid`): the legend has one persistent
+  `role="status"` line (`.mass-bands`, as the federal-land section's status) whose words name
+  the bands shown, the floor and the run, and what zooming in adds; they change only when the
+  set of bands changes, so zooming within a level says nothing. With the Map layers sheet off
+  screen, a change of bands is said through the app's polite region instead (`App.tsx`,
+  `massBandsChangeSaid`), and never on arriving at the map or switching the colours on.
+* **Border roads** (420: "Border roads are inside DC"). Western, Eastern and Southern Ave run
+  along the line, and the boundary is simplified to about 30 ft, so a point within
+  `DC_EDGE_TOLERANCE_M`, 22 m (72 ft), of the District counts as inside: the simplification's
+  error (0.0001 degree, up to 11.1 m, and the 1e-5 degree grid) plus 10 m, half a four-lane road
+  with parking (every vertex of the three roads outside the simplified boundary is within 19.5 m
+  of it on the 2026-10-03 build). The tiles keep a line whole when it is wholly within the
+  tolerance (a buffer of the boundary in UTM 18N, EPSG:26918) and cut every other line at the
+  boundary itself, so a Maryland or Virginia street that meets the line gets no stub; the
+  District's box grows by the tolerance for the empty-tile test and the pre-draw. The planner's
+  notice uses the same tolerance (`lib/dcBoundary.ts` `nearDc`, `metresToDcEdge`). The grey
+  mask and its dashed edge stay on the boundary.
 * **DC only** (418, 418a: "Grey out everywhere outside DC on that map too as we don't support it
   yet."; "Yes" to a warning). The District's boundary is OpenStreetMap's admin_level=4 US-DC
   relation, written by `scripts/build_dc_boundary.py` (with the rebuild's `pipeline.states` ring
@@ -980,11 +1013,13 @@ order), and nothing asks for hazards.
   planner say "Mass Ride planning covers DC only for now. Outside the District of Columbia the
   map is grayed out and no riders-per-minute figures are drawn." (`MASS_DC_ONLY`). A Mass Ride
   route with any vertex, or any stretch's middle, outside the boundary gets "Part of this route
-  is outside the area Mass Ride planning covers (DC only for now)." (`outsideDcNote`): shown in
+  is outside the area Mass Ride planning covers (DC only for now)." (`outsideDcNote`; a point
+  within the border tolerance counts as inside, below): shown in
   the route view (`.mass-outside-dc`, role note) and said with the route's sentence in the
   route's polite live region (`summary.ts` `announceRoute`). Other ride types never get it.
-* **Zooms in Mass Ride mode.** Every road in DC shows its riders per minute from zoom 10, busy
-  roads included (`MASS_ZOOM_HINT`); below zoom 10 the legend says to zoom in. The legend keeps
+* **Zooms in Mass Ride mode.** Roads in DC show their riders per minute from zoom 10, busy
+  roads included, by band (focus by zoom, above; `MASS_ZOOM_HINT`); below zoom 10 the legend
+  says to zoom in. The legend keeps
   "6-8 mph" (404). Trails, paths, protected bike lanes, bike lanes and alleys are never drawn in
   this mode.
 * **Colours** (327): red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7
