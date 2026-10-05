@@ -636,7 +636,7 @@ alone. Shape comes first and colour second:
   2 are only about 5 to 6 CIEDE2000 from the paved green LTS 1 and 2; the
   dotted mark tells them apart there. Each `stress_spans` entry of a route
   says `unpaved` (true, false or null), and a section ends where the surface
-  changes. The preview is /home/steph/rmdata/demo/stress-salience-preview.html
+  changes. The preview is ~/rmdata/demo/stress-salience-preview.html
   (r1's is kept as stress-salience-preview-r1.html).
 
 ### The default palette (351), LTS 2's blue edge (356, 357) and the unpaved ramps (350)
@@ -2566,7 +2566,7 @@ Mass Ride, 4 to 14 ms for 10 to 13 mi), about 0.2% of a plan's 1.5 to 7 s; a
 benchmark of 1,200 pieces is 0.3 ms with a few long stretches and 3.7 ms in a
 worst case that changes tier every 7 pieces. The answer grows by about 370
 bytes an entry (9 to 20 kB for 10 to 13 mi, 17 to 50 entries), which gzip takes
-to a tenth. `/home/steph/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md` has the plans.
+to a tenth. `~/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md` has the plans.
 
 Tests: `tests/test_describe.py` (merging, tiny stretches, wording, turns,
 junctions, vias, totals), `tests/test_route_description.py` (through the view:
