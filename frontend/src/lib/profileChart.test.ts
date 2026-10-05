@@ -334,7 +334,7 @@ test("424: the chart summary gives the narrowest on the flat and with the hills,
   ]);
   const one = capacitySentences(capacityPair(flat, { narrowest_riders_per_min: 50, narrowest_m: 100, typical_riders_per_min: 150 }));
   assert.deepEqual(one, [
-    "Narrowest on the flat and with the hills: about 50 riders per minute (bottleneck), at mile 0.1, marked on the chart.",
+    "Narrowest on the flat and with the hills: about 50 riders per minute (bottleneck), at mile 0.0, marked on the chart.",
     "Typical on the flat and with the hills: about 150 riders per minute.",
   ]);
 });

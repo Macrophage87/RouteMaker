@@ -546,6 +546,8 @@ export const S_MASS_OUTSIDE_DC = (() => {
   // 427: the API gives the part outside DC no figure, and says where it is.
   r.stress_spans[0] = { ...r.stress_spans[0], rpm: null, outside_dc: true };
   r.profile.outside_dc = [{ from_m: 0, to_m: 300 }];
+  // The API never puts a narrowest point (either figure) in the outside part: with the hills it is in DC too.
+  r.profile.flow = { ...r.profile.flow, narrowest_m: 600 };
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>

@@ -3668,10 +3668,18 @@ route chart width estimate).
   Keep `WEEKLY_REBUILD_PAUSED=1`, or the next tick promotes the bundle again. The
   rollback target lasts only until the next swap, so no second rebuild runs before the
   decision.
-- **The code at fault:** the front end first (`index.html` from C), then the images (the
-  `pre-bundle-<sha>` tags from C, then `up -d --no-deps --no-build --force-recreate api
-  worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the same for
-  `rebuild`). Roll the data back first if it is also going back. The old images have the
+- **The code at fault:** the front end first (`index.html` from C, copied back as the front
+  end's owner, 10001:10001, as in "Rollback, front end first" above; set `D` and `L` again,
+  since C's shell is gone):
+
+  ```sh
+  D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(cat ~/rmdata/pre-bundle-commit.txt)
+  docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out     docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662     sh -c "cp /bk/frontend-index-pre-bundle.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
+  ```
+
+  then the images (the `pre-bundle-$L` tags from C, then `up -d --no-deps --no-build
+  --force-recreate api worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the
+  same for `rebuild`). Roll the data back first if it is also going back. The old images have the
   pause (355 is on main). Migration 0010 stays applied, which is harmless. The Dupont rows
   (ids above the saved max id) stay until the owner deletes them in the admin. The old api
   ignores an `offroad` row in `valhalla_upstream`.

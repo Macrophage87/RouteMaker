@@ -755,7 +755,7 @@ export function capacitySentences(pair: CapacityPair): string[] {
       Math.round(flat.rpm) === Math.round(hills.rpm)
         ? aboutFigure(flat.rpm)
         : `${aboutFigure(flat.rpm)} on the flat, ${aboutFigure(hills.rpm)} with the hills`;
-    out.push(`${capitalise(NARROWEST_BOTH)}: ${figures}, at mile ${miles(hills.atM)}, marked on the chart.`);
+    out.push(`${capitalise(NARROWEST_BOTH)}: ${figures}, at mile ${miles(flat.atM)}, marked on the chart.`);
   } else {
     if (flat) out.push(`${capitalise(NARROWEST_FLAT)}: ${aboutFigure(flat.rpm)}, at mile ${miles(flat.atM)}.`);
     if (hills) out.push(`${capitalise(NARROWEST_HILLS)}: ${aboutFigure(hills.rpm)}, at mile ${miles(hills.atM)}, marked on the chart.`);

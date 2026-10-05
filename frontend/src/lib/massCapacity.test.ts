@@ -108,7 +108,7 @@ test("figures read in words: unit spelled out, one rider singular, the band name
 test("the description's lead says the narrowest point and every share, in words", () => {
   const lead = capacityLead({ stress_spans: SPANS });
   assert.ok(lead);
-  assert.match(lead, /^Carrying capacity: narrowest on the flat 50 riders per minute \(bottleneck\), at the start\./);
+  assert.match(lead, /^Carrying capacity: narrowest on the flat: 50 riders per minute \(bottleneck\), at the start\./);
   for (const part of ["under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open", "avoid"]) {
     assert.ok(lead.toLowerCase().includes(part), part);
   }
@@ -189,9 +189,9 @@ test("424: two places, two figures, each labelled, in the card, the directions a
   assert.match(card, /<dt>Narrowest with the hills<\/dt><dd>35 riders per minute \(bottleneck\), at 1\.2 mi \(2\.0 km\) along<\/dd>/);
   assert.match(card, /<dt>Typical on the flat<\/dt><dd>190 riders per minute<\/dd>.*<dt>Typical with the hills<\/dt><dd>120 riders per minute<\/dd>/);
   const lead = capacityLead(route)!;
-  assert.match(lead, /^Carrying capacity: narrowest on the flat 50 riders per minute \(bottleneck\), at the start; narrowest with the hills 35 riders per minute \(bottleneck\), at 1\.2 mi \(2\.0 km\) along\. By distance: /);
+  assert.match(lead, /^Carrying capacity: narrowest on the flat: 50 riders per minute \(bottleneck\), at the start; narrowest with the hills: 35 riders per minute \(bottleneck\), at 1\.2 mi \(2\.0 km\) along\. By distance: /);
   const fold = renderToStaticMarkup(createElement(CapacityFigures, { route }));
-  assert.ok(fold.includes("Narrowest on the flat 50 riders per minute (bottleneck), at the start; narrowest with the hills 35 riders per minute"), fold);
+  assert.ok(fold.includes("Narrowest on the flat: 50 riders per minute (bottleneck), at the start; narrowest with the hills: 35 riders per minute"), fold);
 });
 
 test("424: the same spot is said once, with both figures where the hills lower it, and one figure where they agree", () => {
@@ -374,4 +374,10 @@ test("427: the parts of a Mass Ride outside DC carry no figure, keep their stres
   const fold = renderToStaticMarkup(createElement(CapacityFigures, { route: { stress_spans: spans } }));
   for (const html of [card, fold]) assert.ok(html.includes(OUTSIDE_DC_FIGURES.replace(/'/g, "&#x27;")), html);
   assert.ok(!renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: SPANS } })).includes("outside DC"));
+  // The directions keep "DC" and "Avoid" capitalised (a screen reader says "DC" as letters).
+  const lead = capacityLead({ stress_spans: spans })!;
+  assert.ok(lead.includes("20% Outside DC: no figures yet"), lead);
+  assert.ok(!lead.includes("outside dc"), lead);
+  const withAvoid = capacityLead({ stress_spans: SPANS })!;
+  assert.ok(withAvoid.includes("Marked Avoid: no capacity given") && withAvoid.includes("no capacity figure"), withAvoid);
 });

@@ -1287,12 +1287,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       avoidMark: !!avoidRow?.querySelector('svg .route-avoid-mark'), said: d?.querySelector('.capacity-narrowest-said')?.textContent ?? '' }; })()`);
   check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches (Avoid's the route's own) hidden from a screen reader, and both narrowest figures",
     fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Marked Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list) &&
-      fold.avoidMark && fold.said === "Narrowest on the flat and with the hills 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start.", JSON.stringify(fold));
+      fold.avoidMark && fold.said === "Narrowest on the flat and with the hills: 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start.", JSON.stringify(fold));
   const lead = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
   await p.eval("document.querySelector('.route-description summary')?.click(); true");
   await sleep(200);
   const lead2 = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
-  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest on the flat and with the hills 50 riders per minute \(bottleneck\) on the flat, 55 riders per minute \(bottleneck\) with the hills, at the start\. By distance: /.test(lead || lead2), lead || lead2);
+  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest on the flat and with the hills: 50 riders per minute \(bottleneck\) on the flat, 55 riders per minute \(bottleneck\) with the hills, at the start\. By distance: /.test(lead || lead2), lead || lead2);
   await openSheet(p);
   await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
   // The map has drawn a road with a capacity: the legend is riders per minute.
@@ -1395,8 +1395,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   // 427: no figures for the parts outside DC, said in words in the route view; nothing greyed.
   const words = await p.eval(`(() => { const s = document.querySelector('.summary'); return { said: s?.querySelector('.capacity-stats ~ .capacity-outside-dc, .capacity-outside-dc')?.textContent ?? '',
     narrowest: [...(s?.querySelectorAll('.capacity-narrowest dd') ?? [])].map((d) => d.textContent) }; })()`);
-  check("outside DC: the route view says Mass Ride figures are not supported outside DC, and its narrowest figure is DC's",
-    /^Mass Ride figures are not supported outside DC yet/.test(words.said) && words.narrowest.length > 0 && !words.narrowest.some((t) => /^50 riders/.test(t)), JSON.stringify(words));
+  check("outside DC: the route view says Mass Ride figures are not supported outside DC, and its narrowest figures are DC's (none at the start, none of 50)",
+    /^Mass Ride figures are not supported outside DC yet/.test(words.said) && words.narrowest.length > 0 && !words.narrowest.some((t) => /^50 riders|the start/.test(t)), JSON.stringify(words));
   await p.close();
 }
 b.close();

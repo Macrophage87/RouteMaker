@@ -1089,7 +1089,9 @@ order), and nothing asks for hazards.
   column written, and a build that loses it refused), and on the front end
   `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`; for the
   Mass Ride map's own tiles, the DC mask and the zoom focus (415-422), `tests/test_mass_tiles.py`
-  and `src/lib/dcBoundary.test.ts`; in the browser, section 20 of scripts/a11y/check.mjs.
+  and `src/lib/dcBoundary.test.ts`; for both narrowest figures (424) the "424" tests in
+  `src/lib/massCapacity.test.ts` and `src/lib/profileChart.test.ts`, and for the parts outside DC (427) the "427"
+  test in `src/lib/massCapacity.test.ts`, `tests/test_profile_flow.py` and `tests/test_mass_capacity.py`; in the browser, section 20 of scripts/a11y/check.mjs.
 
 ## What migrations do and do not create
 
@@ -3803,8 +3805,8 @@ Tests: `lib/sidebar.test.ts`.
 - **The browser check** (scripts/a11y/check.mjs, 280 checks with the route chart, section 17 for the loop box
   and the Plan button, section 18 for Use my location, and section 20 for the Mass Ride capacity map: its
   legend, bands by zoom and their status line, the DC-only words and mask, the outside-DC notice, both
-  narrowest figures, and a table without the capacity column keeping the stress map; 325-327, 387, 417,
-  417a, 418, 418a, 421, 422, 424) opens the Ride settings and the "Junctions to watch" fold on every page it
+  narrowest figures, the outside-DC words, and a table without the capacity column keeping the stress map; 325-327, 387, 417,
+  417a, 418, 418a, 421, 422, 424, 427) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.

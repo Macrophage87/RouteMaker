@@ -336,10 +336,10 @@ export function typicalLines(pair: CapacityPair): CapacityLine[] {
 /** "Narrowest on the flat": a label at the start of a card's term or a sentence. */
 export const capitalise = (label: string): string => label.charAt(0).toUpperCase() + label.slice(1);
 
-/** The narrowest lines as one clause: "narrowest on the flat 55 riders ...; narrowest with the hills 40 riders ...". */
+/** The narrowest lines as one clause: "narrowest on the flat: 55 riders ...; narrowest with the hills: 40 riders ...". */
 export function narrowestClause(pair: CapacityPair): string {
   const lines = narrowestLines(pair);
-  return lines.length === 0 ? "no capacity figure for this route" : lines.map((l) => `${l.label} ${l.text}`).join("; ");
+  return lines.length === 0 ? "no capacity figure for this route" : lines.map((l) => `${l.label}: ${l.text}`).join("; ");
 }
 
 /** The route list's row for the parts outside DC (OWNER-DECISIONS 427). */
@@ -380,12 +380,20 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
 }
 
 /**
+ * A row's words in the middle of a sentence: the band rows and "No capacity figure" start with a lower-case
+ * letter; "Marked Avoid" and "Outside DC" keep their capitals (a screen reader says "DC" as letters).
+ */
+function inSentence(row: CapacityRow): string {
+  return row.band !== null || row.key === "none" ? row.text.charAt(0).toLowerCase() + row.text.slice(1) : row.text;
+}
+
+/**
  * The route description's lead sentence and the bar's name: the narrowest points, on the flat and with
  * the hills (424; once where they are the same spot), then each band's share.
  */
 export function capacityDescription(summary: CapacitySummary, flow?: HillsFlow): string {
   const shares = capacityRows(summary)
-    .map((row) => `${row.percent}% ${row.text.toLowerCase()}`)
+    .map((row) => `${row.percent}% ${inSentence(row)}`)
     .join("; ");
   return `Carrying capacity: ${narrowestClause(capacityPair(summary, flow))}. By distance: ${shares}.`;
 }
