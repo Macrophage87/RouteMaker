@@ -1658,4 +1658,5 @@ class TestStressSpansThroughThePlan:
             "tier": None,
             "facility": None,
             "unpaved": None,
+            "rpm": None,
         }
