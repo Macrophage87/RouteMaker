@@ -494,6 +494,7 @@ test("the bottom bar is Map layers, Legend, GPX and Settings: real buttons, each
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["layers", "layers", "gpx", "settings"]);
   assert.equal(BAR_ITEMS.filter((i) => i.toLegend).length, 1, "only Legend opens at the legend");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
+  assert.equal(BAR_ITEMS[3].description, "Opens the settings: display options and signing in.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<button\s+key=\{item\.id\}\s+type="button"/);
@@ -703,7 +704,12 @@ test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned
   assert.match(rule, /\.panel-body,\s*\.panel-scroll \{\s*flex: none;\s*min-height: auto;\s*overflow: visible;/);
   // The banner stays the first thing, and nothing moves it or hides it (mutation NIT 2).
   // Not moved, not hidden: display, visibility and opacity too (the mutation re-check's NIT C).
-  assert.doesNotMatch(css, /\.beta-banner[^{]*\{[^}]*(\border:|display: none|visibility: hidden|opacity: 0(?![.\d]))/);
+  // Whitespace-tolerant, and any opacity under 1 counts.
+  for (const rule of css.matchAll(/\.beta-banner[^{]*\{([^}]*)\}/g)) {
+    const body = rule[1];
+    assert.doesNotMatch(body, /(^|[\s;])order\s*:|display\s*:\s*none|visibility\s*:\s*(hidden|collapse)/, rule[0]);
+    for (const o of body.matchAll(/opacity\s*:\s*([\d.]+)/g)) assert.ok(parseFloat(o[1]) >= 1, `opacity ${o[1]} in ${rule[0]}`);
+  }
   assert.doesNotMatch(css, /\.panel-scroll[^{]*\{[^}]*\border:/);
   assert.doesNotMatch(css, /\.panel-footer/, "the old footer's rules are gone with it");
   // The scroll to the top reaches whichever scrolls.
@@ -770,8 +776,11 @@ test("the bar's current button: the sheet showing, and of Map layers and Legend 
 
 test("the Settings sheet (384): a Display group with the High contrast switch, then the sign-in note; one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("{/* Pinned under"));
-  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{view === "settings"\}/);
-  assert.match(sheet, /<h3 id="settings-display-heading">Display<\/h3>/);
+  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{view === "settings"\}\s+onBack=\{backToPlanner\}\s+headingRef=\{settingsHeadingRef\}/);
+  assert.match(sheet, /<section aria-labelledby="settings-display-heading">\s*<h3 id="settings-display-heading">Display<\/h3>/);
+  // The sign-in note has its own heading, so heading navigation does not file it under Display.
+  assert.match(sheet, /<section aria-labelledby="settings-signin-heading">\s*<h3 id="settings-signin-heading">Signing in<\/h3>\s*<p className="hint">/);
+  assert.ok(sheet.indexOf("settings-display-heading") < sheet.indexOf("settings-signin-heading"));
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /rememberPlan\(session\(\), window\.location\.hash\)/);
@@ -791,7 +800,7 @@ test("the Settings sheet (384): a Display group with the High contrast switch, t
 
 test("High contrast (384): the words say what it does and name no disability; the identifiers and the link are as they were", () => {
   assert.equal(ACCESSIBILITY_LABEL, "High contrast");
-  assert.equal(ACCESSIBILITY_HINT, "Bolder lines, stronger borders and colors that don't rely on red and green. Kept in this browser.");
+  assert.equal(ACCESSIBILITY_HINT, "Bolder lines, stronger borders and text, and colors that don't rely on red and green. Kept in this browser.");
   for (const text of [ACCESSIBILITY_LABEL, ACCESSIBILITY_HINT, ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_CONTRAST_NOTE, BAR_ITEMS.map((i) => i.description).join(" ")])
     assert.doesNotMatch(text, /accessib|colou?r.?blind|disab|impair|blind/i, text);
   // No visible word anywhere in the app's text still says "Accessibility" for the switch.

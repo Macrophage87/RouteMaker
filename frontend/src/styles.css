@@ -1,8 +1,8 @@
 /*
  * The font is Atkinson Hyperlegible (OWNER-DECISIONS 312). --font names it first, so a rider who has it
- * installed sees it now. The self-hosted files and their font-face rules are in fonts/fonts.css, which
- * main.tsx imports only once the files are in the repository (owner approval pending), so until then
- * nothing asks for a font file and nothing 404s. See docs/DEVELOPMENT.md, "The sidebar (312)".
+ * installed sees it first. The self-hosted files and their font-face rules are in fonts/fonts.css,
+ * which main.tsx imports after this file (OWNER-DECISIONS 384), and Vite serves the files as hashed
+ * /assets/ files. See docs/DEVELOPMENT.md, "The sidebar (312)".
  */
 
 /*

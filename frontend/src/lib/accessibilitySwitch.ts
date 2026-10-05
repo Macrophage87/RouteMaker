@@ -14,7 +14,7 @@ import { accessibilityOn, subscribePalette } from "../stressStyle.js";
 export const ACCESSIBILITY_LABEL = "High contrast";
 
 export const ACCESSIBILITY_HINT =
-  "Bolder lines, stronger borders and colors that don't rely on red and green. Kept in this browser.";
+  "Bolder lines, stronger borders and text, and colors that don't rely on red and green. Kept in this browser.";
 
 export const ACCESSIBILITY_ADDRESS_NOTE = "The address (palette= in the link) chooses the stress colors; the rest still applies.";
 

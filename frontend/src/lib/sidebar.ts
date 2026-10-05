@@ -42,7 +42,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
   { id: "legend", label: "Legend", opens: "layers", toLegend: true, description: "Opens the map legend, in the map layers." },
   { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display options, and sign in." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display options and signing in." },
 ];
 
 /**

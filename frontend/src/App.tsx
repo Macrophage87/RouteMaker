@@ -1204,14 +1204,17 @@ export function App() {
                   onChange={(on) => setAccessibility(on)}
                 />
               </section>
-              <p className="hint">
-                Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
-                reopens it. Saving routes and peer review are coming for riders who{" "}
-                <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
-                  sign in with Discord
-                </a>
-                ; your current plan is kept across the sign-in.
-              </p>
+              <section aria-labelledby="settings-signin-heading">
+                <h3 id="settings-signin-heading">Signing in</h3>
+                <p className="hint">
+                  Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
+                  reopens it. Saving routes and peer review are coming for riders who{" "}
+                  <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
+                    sign in with Discord
+                  </a>
+                  ; your current plan is kept across the sign-in.
+                </p>
+              </section>
             </SheetFrame>
           </div>
 

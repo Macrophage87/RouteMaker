@@ -739,12 +739,23 @@ const federalFetched = (p) =>
   // The Map layers sheet is hidden now, so it is not in the accessibility tree: its name is read from the
   // label the switch points at.
   const inLayers = await p.eval("(() => { const s = document.querySelector('#a11y-switch'); const l = document.getElementById(s.getAttribute('aria-labelledby')); return { role: s.getAttribute('role'), name: l?.textContent }; })()");
-  check("settings: the switch there is named \"High contrast\", off, described in neutral words", inSettings?.role === "switch" && inSettings?.name === "High contrast" && String(inSettings?.checked) === "false" && /^Bolder lines, stronger borders and colors that don't rely on red and green\./.test(inSettings?.description ?? "") && !/blind|accessib|disab/i.test(inSettings?.description ?? ""), JSON.stringify(inSettings));
+  check("settings: the switch there is named \"High contrast\", off, described in neutral words", inSettings?.role === "switch" && inSettings?.name === "High contrast" && String(inSettings?.checked) === "false" && /^Bolder lines, stronger borders and text, and colors that don't rely on red and green\./.test(inSettings?.description ?? "") && !/blind|accessib|disab/i.test(inSettings?.description ?? ""), JSON.stringify(inSettings));
   check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
+  const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
+  check("settings: the sheet's headings are Display and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads) === JSON.stringify(["Display", "Signing in"]), JSON.stringify(heads));
+  const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
+  check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
+  check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
+  const target = await p.eval("(() => { const r = document.querySelector('#settings-contrast-switch').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()");
+  check("settings: the switch's target is at least 24 px (2.5.8)", target.w >= 24 && target.h >= 24, JSON.stringify(target));
   await p.eval("document.querySelector('#settings-contrast-switch').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(200);
+  check("settings: after Space the focus stays on the switch, which reports checked and reads \"On\"", (await p.eval("document.activeElement?.id")) === "settings-contrast-switch" && String((await axNode(p, "#settings-contrast-switch"))?.checked) === "true" && (await p.eval("document.querySelector('#settings-contrast-switch .switch-state').textContent")) === "On", await focused(p));
+  const font = await p.eval("(async () => { const faces = await document.fonts.load('400 16px \"Atkinson Hyperlegible\"'); return { faces: faces.length, loaded: document.fonts.check('400 16px \"Atkinson Hyperlegible\"'), family: getComputedStyle(document.body).fontFamily }; })()");
+  check("font: Atkinson Hyperlegible loads (a face is found and loaded)", font.faces > 0 && font.loaded, JSON.stringify(font));
+  check("font: the page is set in it first", font.family.replace(/\"/g, "").startsWith("Atkinson Hyperlegible"), font.family);
   const both = await p.eval("[document.querySelector('#settings-contrast-switch'), document.querySelector('#a11y-switch')].map((e) => e.getAttribute('aria-checked'))");
   check("settings: one state: flipping it here turns the Map layers copy on, and the page root takes the class", JSON.stringify(both) === JSON.stringify(["true", "true"]) && (await p.eval("document.documentElement.classList.contains('a11y')")), JSON.stringify(both));
   await p.eval("localStorage.removeItem('routemaker.accessibility'); true");
@@ -758,7 +769,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 149;
+const EXPECTED = 156;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

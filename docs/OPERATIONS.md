@@ -852,7 +852,7 @@ which needs no address parameter. `blended`, the default before (LTS 3 amber,
 #bf730b, over a dark amber-brown casing, #45290a; LTS 4 a saturated red,
 #c80018, over white; Avoid a near-black, #14040a, over a coral-red casing,
 #ee3b2c, since item 274), is still there as `?palette=warm`, and the
-Accessibility switch's palette is still `cvd` (`?palette=cool`). The two-tone
+High contrast switch's palette (formerly "Accessibility") is still `cvd` (`?palette=cool`). The two-tone
 LTS 3 and LTS 4 reach 3:1 on the base map by their ring; the greyscale order is lost; the
 owner's colours are kept and the breaks reported (docs/DEVELOPMENT.md, "The
 default palette (351)"). The blended palette keeps every tier 3:1 on the base map

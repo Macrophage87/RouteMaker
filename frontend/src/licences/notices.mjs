@@ -94,6 +94,11 @@ export const BUNDLED_FONTS = [
   { name: "Atkinson Hyperlegible", version: "2020", license: "OFL-1.1", file: "src/fonts/OFL.txt" },
 ];
 
+/** Each bundled font with its licence file's text read from `root` (frontend/), or null when the file is missing. */
+export function fontTexts(root, fonts = BUNDLED_FONTS) {
+  return fonts.map((f) => ({ ...f, text: existsSync(join(root, f.file)) ? readFileSync(join(root, f.file), "utf8") : null }));
+}
+
 /**
  * The notices with the bundled fonts' credit and licence text added under a heading of their own.
  * `fonts` is [{name, version, license, text}]; throws when one has no text, as a package without
@@ -137,7 +142,7 @@ export function licenceNotices(root, fileName = "licenses.txt") {
           return { name, version: pkg.version, license: pkg.license, text: licenceFile(dir) ?? committed(name) };
         });
         if (!existsSync(file)) throw new Error(`${fileName} was not written by build.license`);
-        const fonts = BUNDLED_FONTS.map((f) => ({ ...f, text: existsSync(join(root, f.file)) ? readFileSync(join(root, f.file), "utf8") : null }));
+        const fonts = fontTexts(root);
         writeFileSync(file, withFontNotices(completeLicences(readFileSync(file, "utf8"), { fill: committed, inlined }), fonts));
       },
     },

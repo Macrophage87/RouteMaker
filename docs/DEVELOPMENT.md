@@ -512,7 +512,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 149` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 156` in `scripts/a11y/check.mjs`.
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -3454,18 +3454,18 @@ Tests: `lib/sidebar.test.ts`.
   The credit: the `licenceNotices` plugin (`src/licences/notices.mjs`, `BUNDLED_FONTS`,
   `withFontNotices`) appends "Atkinson Hyperlegible - 2020 (OFL-1.1)" and the full OFL
   text to the built `licenses.txt`, and fails the build if the licence file is missing;
-  `src/lib/credits.json` gives the map's credits "Atkinson Hyperlegible (SIL OFL)", with
-  its `Credit:` line in docs/SOURCES.md. The sidebar test fails if the import and the
+  docs/SOURCES.md records it with no `Credit:` line: it is a bundled asset, credited in
+  `licenses.txt` (which the map's "Software licences" link opens), not a data credit. The sidebar test fails if the import and the
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
 - **Settings, High contrast (OWNER-DECISIONS 384).** The fourth bar button is Settings
   (`BAR_ITEMS`, id `settings`; it was About): its sheet holds a "Display" group with the
-  High contrast switch, then the sign-in note. No other settings are listed. The switch
+  High contrast switch, then a "Signing in" section with the sign-in note. No other settings are listed. The switch
   is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
   `routemaker.accessibility` storage key, the `a11y` root class and the `palette=` link
   value (`cool` and the older `cvd`) are unchanged, so existing share links decode the
-  same. Its hint is "Bolder lines, stronger borders and colors that don't rely on red and
-  green." (no disability word). It is one state (`stressStyle.js`) shown twice, in Map
+  same. Its hint is "Bolder lines, stronger borders and text, and colors that don't rely on
+  red and green." (no disability word). It is one state (`stressStyle.js`) shown twice, in Map
   layers (ids `a11y-switch`, `a11y-label`, `a11y-hint`) and in Settings (ids
   `settings-contrast-*`, from the component's `idBase`), because both sheets are in the
   page at once. `barCurrent` (`lib/sidebar.ts`) decides which bar button is current.
@@ -3475,7 +3475,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 149 checks, all passing on the
+- **The browser check** (scripts/a11y/check.mjs, 156 checks, all passing on the
   sidebar) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses

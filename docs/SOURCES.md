@@ -178,15 +178,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Apache 2.0 (the software); the places are OpenStreetMap's, ODbL.
 - Records: docs/DEPLOYMENT.md, "Photon".
 
-## Atkinson Hyperlegible (the panel's font)
+## Atkinson Hyperlegible (the panel's font; not a map credit)
 
-- Credit: `Atkinson Hyperlegible`
+This is a bundled asset, like maplibre-gl and Noto Sans, not a data source: it has no
+`Credit:` line and is not in the map's credits (301 is about data sources;
+`tests/test_credits.py` needs every `Credit:` line to be displayed). It is credited in
+the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
+"credited in licenses.txt").
+
 - What it is: the typeface the panel is set in (OWNER-DECISIONS 312, 384), self-hosted as
   `frontend/src/fonts/atkinson-hyperlegible-regular.woff2` (400) and
-  `atkinson-hyperlegible-bold.woff2` (700), which the build serves as hashed
-  `/assets/*.woff2` files. The credit is shown with the map's other credits because the
-  owner has the app credit everything it ships (a licence-asked notice is the full text
-  in `licenses.txt`).
+  `atkinson-hyperlegible-bold.woff2` (700), served as hashed `/assets/*.woff2` files.
 - Publisher: Braille Institute of America, Inc. (copyright 2020).
 - Licence: SIL Open Font License 1.1, the full text in `frontend/src/fonts/OFL.txt`
   (sha256 `f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143`) and, with the

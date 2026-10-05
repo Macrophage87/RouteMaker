@@ -73,7 +73,7 @@ needed; reload the page to get the box back.
   that routes may still use some paths where bikes are not allowed until the next map update.
   Dismiss hides it until your next visit and puts you back at the planner.
 - The "High contrast" switch is in two places: the "Map layers" page (a button in the bar at
-  the bottom of the planner) and the "Settings" page next to it. It makes the lines bolder
+  the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
   and the borders and text stronger, and changes the stress colors to ones that do not rely
   on red and green. Both switches are the same setting.
 

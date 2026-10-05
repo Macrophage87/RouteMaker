@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { BUNDLED_FONTS, COMMITTED_NOTICES, completeLicences, inlinedPackages, licenceFile, packageOf, withFontNotices } from "./notices.mjs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { BUNDLED_FONTS, COMMITTED_NOTICES, completeLicences, fontTexts, inlinedPackages, licenceFile, packageOf, withFontNotices } from "./notices.mjs";
 
 const FRONTEND = new URL("../../", import.meta.url);
 
@@ -120,7 +124,11 @@ test("the notices cover every package inlined in the maplibre-gl this lockfile i
 test("the self-hosted font's credit and the full SIL Open Font License are added under a heading of its own (384)", () => {
   assert.deepEqual(BUNDLED_FONTS.map((f) => f.name), ["Atkinson Hyperlegible"]);
   const fonts = BUNDLED_FONTS.map((f) => ({ ...f, text: readFileSync(new URL(f.file, FRONTEND), "utf8") }));
-  const text = withFontNotices(completeLicences(VITE, { fill: () => "text" }), fonts);
+  const base = completeLicences(VITE, { fill: () => "text" });
+  const text = withFontNotices(base, fonts);
+  // Every earlier notice is still there, ahead of the font's, unchanged.
+  assert.ok(text.startsWith(base.trimEnd()), "the package notices are kept in full");
+  assert.ok(text.indexOf("## pmtiles") >= 0 && text.indexOf("## fflate") >= 0);
   assert.match(text, /^## Atkinson Hyperlegible - 2020 \(OFL-1\.1\)$/m);
   assert.match(text, /Copyright 2020 Braille Institute of America, Inc\./);
   assert.match(text, /SIL OPEN FONT LICENSE Version 1\.1 - 26 February 2007/);
@@ -133,9 +141,34 @@ test("the self-hosted font's credit and the full SIL Open Font License are added
   assert.equal(withFontNotices(VITE, []), VITE);
 });
 
+test("fontTexts reads each licence file, and gives null for a missing one, which fails the build", () => {
+  const real = fontTexts(fileURLToPath(FRONTEND));
+  assert.equal(real.length, BUNDLED_FONTS.length);
+  assert.match(real[0].text, /SIL OPEN FONT LICENSE Version 1\.1/);
+  const empty = mkdtempSync(join(tmpdir(), "notices-"));
+  mkdirSync(join(empty, "src/fonts"), { recursive: true });
+  const missing = fontTexts(empty);
+  assert.equal(missing[0].text, null);
+  assert.throws(() => withFontNotices("x", missing), /no licence text for bundled font\(s\): Atkinson Hyperlegible/);
+});
+
+test("the font files are the ones the owner approved: sha256 and the wOF2 magic bytes", () => {
+  const sha = {
+    "atkinson-hyperlegible-regular.woff2": "d64ba838ef5472bba248620ec4fd8b5aa7cf0db2908e0bb230600caf279ba7bc",
+    "atkinson-hyperlegible-bold.woff2": "140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0",
+    "OFL.txt": "f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143",
+  };
+  for (const [name, hash] of Object.entries(sha)) {
+    const bytes = readFileSync(new URL(`src/fonts/${name}`, FRONTEND));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), hash, name);
+    if (name.endsWith(".woff2")) assert.equal(bytes.subarray(0, 4).toString("latin1"), "wOF2", name);
+  }
+});
+
 test("the font files, the licence and the plugin's wiring are in place", () => {
   for (const name of ["atkinson-hyperlegible-regular.woff2", "atkinson-hyperlegible-bold.woff2", "OFL.txt"])
     assert.ok(existsSync(new URL(`src/fonts/${name}`, FRONTEND)), name);
   const plugin = readFileSync(new URL("src/licences/notices.mjs", FRONTEND), "utf8");
+  assert.match(plugin, /const fonts = fontTexts\(root\);/);
   assert.match(plugin, /withFontNotices\(completeLicences\(readFileSync\(file, "utf8"\), \{ fill: committed, inlined \}\), fonts\)/);
 });

@@ -36,9 +36,11 @@ export const OPENING_ZOOM = 11.2;
  *   that name);
  * - USGS 3DEP elevation, for the climb and the Hills slider; the U.S. Census
  *   Bureau's TIGER urban areas, which the stress tiers read; and Photon, the
- *   place search;
- * - Atkinson Hyperlegible, the panel's font (SIL OFL 1.1; OWNER-DECISIONS 384), whose
- *   full licence text is in the shipped licenses.txt.
+ *   place search.
+ *
+ * The panel's font, Atkinson Hyperlegible, is a bundled asset like maplibre-gl: it is
+ * credited in the shipped licenses.txt (the "Software licences" link below), not here
+ * (OWNER-DECISIONS 384: "credited in licenses.txt").
  *
  * Comparison data used only inside the project is not shown anywhere
  * (credits.test.ts holds it absent).
