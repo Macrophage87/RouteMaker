@@ -14,9 +14,18 @@ from django.db import connection
 from core import routing
 from pipeline import mass_capacity
 from pipeline.schema import MASS_WIDTH_COLUMN, SEGMENT_DDL
-from routemaker import massflow
+from routemaker import agency_roads, massflow
+from routemaker.agency_roads import DC_AGENCY, RoadFacts
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+FT = 0.3048
+
+
+def dc_block(**facts) -> RoadFacts:
+    """A District Roadway Block record, as the parser gives it (widths per lane)."""
+    return RoadFacts(agency=DC_AGENCY, **facts)
 
 
 class TestTheModel:
@@ -34,35 +43,44 @@ class TestTheModel:
             1.9,
         )
         assert massflow.RPM_PER_METRE == pytest.approx(29.5, abs=0.05)
-        assert massflow.LANE_WIDTH_M == pytest.approx(11 * 0.3048, abs=0.01)
+        assert massflow.LANE_WIDTH_M == pytest.approx(11 * FT, abs=0.01)
+        assert massflow.DOOR_ZONE_M == pytest.approx(3.5 * FT, abs=0.001)
 
-    def test_the_plans_worked_example_is_about_200_on_22_ft(self) -> None:
-        """A two-lane road of about 22 ft (6.7 m) usable: about 200 a minute."""
-        assert massflow.capacity_rpm({"highway": "tertiary", "width": "22'"}) == 198
-        assert massflow.capacity_rpm({"highway": "residential"}) == 198
+    def test_a_two_lane_street_gives_the_ride_its_own_lane(self) -> None:
+        """OWNER-DECISIONS 404: a corked ride holds the cross streets, not the oncoming
+        lanes, so a plain two-lane street is one 11 ft lane, about 99 a minute."""
+        assert massflow.capacity_rpm({"highway": "residential"}) == 99
+        assert massflow.capacity_rpm({"highway": "tertiary", "width": "22'"}) == 99
 
     @pytest.mark.parametrize(
         ("tags", "lanes", "expected"),
         [
-            # Tagged lanes count across both directions.
-            ({"highway": "primary", "lanes": "4"}, None, 396),
-            ({"highway": "primary", "lanes": "6"}, None, 593),
+            # Two-way: the narrower direction's lanes.
+            ({"highway": "primary", "lanes": "4"}, None, 198),
+            ({"highway": "primary", "lanes": "6"}, None, 297),
             (
-                {"highway": "primary", "lanes": "2", "lanes:forward": "2", "lanes:backward": "3"},
+                {"highway": "primary", "lanes": "5", "lanes:forward": "2", "lanes:backward": "3"},
                 None,
-                495,
+                198,
             ),
+            ({"highway": "primary", "lanes": "5", "lanes:forward": "3"}, None, 198),
+            # A two-way street of one shared lane: the ride has the lane.
+            ({"highway": "residential", "lanes": "1"}, None, 99),
             # The classifier's through lanes a direction, where no `lanes` is tagged.
-            ({"highway": "secondary"}, 2, 396),
+            ({"highway": "secondary"}, 2, 198),
             ({"highway": "secondary", "oneway": "yes"}, 2, 198),
+            # One-way: every lane.
+            ({"highway": "primary", "oneway": "yes", "lanes": "3"}, None, 297),
             # The class default: a one-way street is one lane, an alley one lane.
             ({"highway": "residential", "oneway": "yes"}, None, 99),
             ({"highway": "service"}, None, 99),
-            ({"highway": "primary"}, None, 396),
-            # A mapped carriageway width stands for the lanes and the paint.
-            ({"highway": "primary", "width": "12", "lanes": "4"}, None, 354),
-            ({"highway": "primary", "width": "garbage", "lanes": "2"}, None, 198),
-            ({"highway": "primary", "width": "300", "lanes": "2"}, None, 198),
+            ({"highway": "primary"}, None, 198),
+            # A mapped carriageway width stands for the lanes and the paint, halved on a
+            # two-way way.
+            ({"highway": "primary", "width": "12", "lanes": "4"}, None, 177),
+            ({"highway": "primary", "oneway": "yes", "width": "12"}, None, 354),
+            ({"highway": "primary", "width": "garbage", "lanes": "2"}, None, 99),
+            ({"highway": "primary", "width": "300", "lanes": "2"}, None, 99),
         ],
     )
     def test_usable_width_comes_from_the_tags(self, tags, lanes, expected) -> None:
@@ -79,9 +97,25 @@ class TestTheModel:
         protected = massflow.capacity_rpm(
             {"highway": "secondary", "lanes": "2", "cycleway:both": "track"}
         )
-        assert painted - plain == pytest.approx(2 * 1.5 * massflow.RPM_PER_METRE, abs=1)
-        assert one_side - plain == pytest.approx(1.5 * massflow.RPM_PER_METRE, abs=1)
+        # Each direction has its side's lane; one side only leaves the other narrower.
+        assert painted - plain == pytest.approx(1.5 * massflow.RPM_PER_METRE, abs=1)
+        assert one_side == plain, "the direction without the lane is the narrower"
         assert protected == plain, "a protected lane is not usable width (127)"
+
+    def test_a_one_way_street_counts_each_lane_with_it_and_no_contraflow(self) -> None:
+        base = {"highway": "secondary", "oneway": "yes", "lanes": "2"}
+        plain = massflow.capacity_rpm(base)
+        assert plain == 198
+        both = massflow.capacity_rpm({**base, "cycleway:both": "lane"})
+        assert both - plain == pytest.approx(3.0 * massflow.RPM_PER_METRE, abs=1)
+        bare = massflow.capacity_rpm({**base, "cycleway": "lane"})
+        assert bare - plain == pytest.approx(1.5 * massflow.RPM_PER_METRE, abs=1)
+        contraflow = massflow.capacity_rpm({**base, "cycleway:left": "opposite_lane"})
+        assert contraflow == plain
+        signed = massflow.capacity_rpm(
+            {**base, "cycleway:left": "lane", "cycleway:left:oneway": "-1"}
+        )
+        assert signed == plain
 
     def test_a_surveyed_painted_lane_width_is_used(self) -> None:
         wide = massflow.capacity_rpm(
@@ -93,14 +127,45 @@ class TestTheModel:
             }
         )
         plain = massflow.capacity_rpm({"highway": "secondary", "lanes": "2"})
-        assert wide - plain == pytest.approx(2 * 2 * massflow.RPM_PER_METRE, abs=1)
+        assert wide - plain == pytest.approx(2 * massflow.RPM_PER_METRE, abs=1)
 
-    def test_parking_is_not_added(self) -> None:
-        """Parked cars are in the lane; a pack cannot count on the space (a proposal)."""
+    def test_parked_cars_come_out_of_a_mapped_width(self) -> None:
+        """OWNER-DECISIONS 404 (1). A 30 ft (9.14 m) curb-to-curb street with parking
+        both sides: 30 - 2 x 8 ft = 14 ft, 7 ft (2.17 m) a direction, 64 a minute."""
+        base = {"highway": "residential", "width": "30'"}
+        assert massflow.usable_width_m(base) == pytest.approx(15 * FT, abs=0.01)
+        parked = {**base, "parking:both": "lane"}
+        assert massflow.usable_width_m(parked) == pytest.approx((30 * FT - 4.8) / 2, abs=0.01)
+        assert massflow.capacity_rpm(parked) == 64
+        # The older scheme, one side, and the values that put no car on the road.
+        one_side = {**base, "parking:lane:right": "parallel"}
+        assert massflow.usable_width_m(one_side) == pytest.approx((30 * FT - 2.4) / 2, abs=0.01)
+        for value in ("no", "separate", "no_stopping", "on_kerb", "street_side"):
+            assert massflow.usable_width_m({**base, "parking:both": value}) == pytest.approx(
+                15 * FT, abs=0.01
+            ), value
+        angled = {
+            **base,
+            "oneway": "yes",
+            "parking:right": "lane",
+            "parking:right:orientation": "diagonal",
+        }
+        assert massflow.usable_width_m(angled) == pytest.approx(30 * FT - 4.5, abs=0.01)
+        half = {**base, "oneway": "yes", "parking:right": "half_on_kerb"}
+        assert massflow.usable_width_m(half) == pytest.approx(30 * FT - 1.2, abs=0.01)
+
+    def test_parking_is_not_taken_from_travel_lanes(self) -> None:
+        """Lanes are travel lanes: the parked cars are beside them, not in them."""
         base = {"highway": "residential", "lanes": "2"}
         assert massflow.capacity_rpm({**base, "parking:both": "lane"}) == massflow.capacity_rpm(
             base
         )
+
+    def test_a_painted_lane_beside_parking_keeps_a_door_zone_out(self) -> None:
+        base = {"highway": "secondary", "lanes": "2", "cycleway:both": "lane"}
+        open_kerb = massflow.usable_width_m(base)
+        beside = massflow.usable_width_m({**base, "parking:both": "lane"})
+        assert open_kerb - beside == pytest.approx(massflow.DOOR_ZONE_M, abs=0.001)
 
     def test_paths_have_a_width_of_their_own(self) -> None:
         assert massflow.capacity_rpm({"highway": "cycleway"}) == 89
@@ -114,18 +179,181 @@ class TestTheModel:
         assert massflow.capacity_rpm({"highway": "proposed"}) is None
 
     def test_the_figure_stays_in_the_plausible_range(self) -> None:
-        widest = massflow.capacity_rpm({"highway": "primary", "width": "39"})
+        widest = massflow.capacity_rpm({"highway": "primary", "oneway": "yes", "width": "39"})
         assert massflow.capacity_rpm({"highway": "steps"}) >= mass_capacity.FLOOR_RPM
         assert widest <= mass_capacity.CEILING_RPM
         assert (
-            massflow.capacity_rpm({"highway": "primary", "lanes": "12"})
+            massflow.capacity_rpm({"highway": "primary", "oneway": "yes", "lanes": "14"})
             <= mass_capacity.CEILING_RPM
         )
+        tiny = {"highway": "residential", "width": "3", "parking:both": "lane"}
+        assert massflow.usable_width_m(tiny) == massflow.MIN_USABLE_WIDTH_M
 
     def test_the_bands(self) -> None:
         cases = [(0, 0), (59, 0), (60, 1), (119, 1), (120, 2), (199, 2), (200, 3), (593, 3)]
         for rpm, band in cases:
             assert massflow.band_of(rpm) == band, rpm
+
+
+class TestTheDistrictsWidths:
+    """OWNER-DECISIONS 404 (3): in DC the Roadway Block's lanes and widths decide the
+    width; OSM is the fallback. The worked examples of reports/MASSRIDE-MAP-rev1.md."""
+
+    OSM = {"highway": "secondary", "lanes": "4"}
+
+    @pytest.mark.parametrize(
+        ("block", "feet", "rpm"),
+        [
+            # Two-way, 2 + 2 lanes of 10.5 ft, parking both sides (8 ft): the parked cars
+            # are recorded apart from the travel lanes, so a direction is 2 x 10.5 ft.
+            (
+                dc_block(
+                    lanes={"ib": 2, "ob": 2},
+                    way="both",
+                    lane_width_ft=10.5,
+                    parking_lanes=2,
+                    parking_width_ft=8.0,
+                ),
+                21.0,
+                189,
+            ),
+            # A DC residential street: 1 + 1 lanes of 8 ft between parked cars.
+            (
+                dc_block(
+                    lanes={"ib": 1, "ob": 1},
+                    way="both",
+                    lane_width_ft=8.0,
+                    parking_lanes=2,
+                    parking_width_ft=8.0,
+                ),
+                8.0,
+                72,
+            ),
+            # An uneven two-way block (K St NW, 2 + 3 lanes of 13 ft): the narrower.
+            (dc_block(lanes={"ib": 2, "ob": 3}, way="both", lane_width_ft=13.0), 26.0, 234),
+            # One-way, 3 lanes of 11 ft, no parking: every lane.
+            (
+                dc_block(
+                    lanes={"ib": 0, "ob": 3},
+                    way="one",
+                    oneway_with=True,
+                    lane_width_ft=11.0,
+                    parking_lanes=0,
+                ),
+                33.0,
+                297,
+            ),
+            # A bike lane (5 ft) beside parking each way: 10 ft lane + 5 - 3.5 ft.
+            (
+                dc_block(
+                    lanes={"ib": 1, "ob": 1},
+                    way="both",
+                    lane_width_ft=10.0,
+                    bike={"ib": 1, "ob": 1},
+                    bike_width_ft=5.0,
+                    bike_beside_parking=("ib", "ob"),
+                    parking_lanes=2,
+                    parking_width_ft=8.0,
+                ),
+                11.5,
+                103,
+            ),
+            # The same lane at an open kerb: all 5 ft.
+            (
+                dc_block(
+                    lanes={"ib": 1, "ob": 1},
+                    way="both",
+                    lane_width_ft=10.0,
+                    bike={"ib": 1, "ob": 1},
+                    bike_width_ft=5.0,
+                ),
+                15.0,
+                135,
+            ),
+            # A protected lane is not usable (127).
+            (
+                dc_block(
+                    lanes={"ib": 1, "ob": 1},
+                    way="both",
+                    lane_width_ft=10.0,
+                    bike={"ib": 3, "ob": 3},
+                    bike_width_ft=6.0,
+                ),
+                10.0,
+                90,
+            ),
+            # Reversible lanes (Connecticut Ave NW: 1 + 1 and 2 reversible, 10 ft): one
+            # each way off the peak.
+            (
+                dc_block(lanes={"ib": 1, "ob": 1, "reversible": 2}, way="both", lane_width_ft=10.0),
+                20.0,
+                180,
+            ),
+            # One reversible lane gives neither direction a whole lane.
+            (
+                dc_block(lanes={"ib": 2, "ob": 2, "reversible": 1}, way="both", lane_width_ft=10.0),
+                20.0,
+                180,
+            ),
+            # One shared lane (DC's "bidirectional"): the ride has it.
+            (dc_block(lanes={"bidirectional": 1}, way="both", lane_width_ft=16.0), 16.0, 144),
+            # A one-way block with a contraflow lane: the lane against the ride is out.
+            (
+                dc_block(
+                    lanes={"ib": 1, "ob": 0},
+                    way="one",
+                    lane_width_ft=12.0,
+                    bike={"ib": 1, "ob": 1},
+                    bike_width_ft=5.0,
+                    contraflow=True,
+                ),
+                17.0,
+                153,
+            ),
+        ],
+    )
+    def test_the_table(self, block, feet, rpm) -> None:
+        width = massflow.usable_width_m(self.OSM, None, [block])
+        assert width == pytest.approx(feet * FT, abs=0.005)
+        assert massflow.capacity_rpm(self.OSM, None, [block]) == rpm
+        assert massflow.width_source(self.OSM, [block]) == "dc"
+
+    def test_a_block_without_a_width_falls_back_to_osm(self) -> None:
+        for block in (
+            dc_block(lanes={"ib": 1, "ob": 1}, way="both"),
+            dc_block(lanes={"ib": 1, "ob": 1}, way="both", lane_width_ft=1.0),
+            dc_block(lanes={}, way="both", lane_width_ft=10.0),
+        ):
+            assert massflow.usable_width_m(self.OSM, None, [block]) == pytest.approx(
+                massflow.usable_width_m(self.OSM)
+            )
+            assert massflow.width_source(self.OSM, [block]) == "osm"
+        assert massflow.capacity_rpm(self.OSM, None, []) == 198
+
+    def test_the_narrowest_block_decides_and_another_agency_does_not(self) -> None:
+        wide = dc_block(lanes={"ib": 2, "ob": 2}, way="both", lane_width_ft=11.0)
+        narrow = dc_block(lanes={"ib": 1, "ob": 1}, way="both", lane_width_ft=10.0)
+        unknown = dc_block(lanes={"ib": 1, "ob": 1}, way="both")
+        assert massflow.usable_width_m(self.OSM, None, [wide, unknown, narrow]) == pytest.approx(
+            10 * FT
+        )
+        baltimore = RoadFacts(agency="baltimore-centerline", lanes={"total": 2}, lane_width_ft=8.0)
+        assert massflow.width_source(self.OSM, [baltimore]) == "osm"
+
+    def test_a_path_is_never_read_from_a_block(self) -> None:
+        block = dc_block(lanes={"ib": 2, "ob": 2}, way="both", lane_width_ft=11.0)
+        assert massflow.capacity_rpm({"highway": "cycleway"}, None, [block]) == 89
+
+    def test_the_way_facts_carry_their_blocks(self) -> None:
+        """The rebuild hands the blocks over through `WayFacts.block_facts`, which is
+        not part of the facts' identity."""
+        block = dc_block(lanes={"ib": 1, "ob": 1}, way="both", lane_width_ft=9.0)
+        facts = agency_roads.aggregate([("dc-1", block, True)])
+        assert facts.block_facts == (block,)
+        assert facts == agency_roads.aggregate([("dc-1", block, True)])
+        assert massflow.usable_width_m({"highway": "residential"}, None, facts.block_facts) == (
+            pytest.approx(9 * FT)
+        )
 
 
 def test_the_bands_are_the_front_ends() -> None:

@@ -33,15 +33,17 @@ MIN_SHARE = 0.98
 FLOOR_RPM = round(MIN_USABLE_WIDTH_M * RPM_PER_METRE)
 CEILING_RPM = round(40 * RPM_PER_METRE)
 
-# The median road, riders a minute: a two-lane street is about 200 and a one-way
-# street or alley about 100, and most of the region is residential. Wide
+# The median road, riders a minute: a corked ride has its own direction's lanes
+# (OWNER-DECISIONS 404), so a plain two-lane street, a one-way street and an alley
+# are about 99 (one 11 ft lane), a District residential street of 8 ft lanes
+# between parked cars about 72, and most of the region is residential. Wide
 # enough that a rebuild of the regional extract is never refused for being a
 # little different, narrow enough to catch a model that came out in the wrong
-# units (a factor of 60) or a constant of zero. Measured on the live table's
-# widths and lanes before the first rebuild (docs/DEVELOPMENT.md). Overridable by
-# `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`, which the tests' toy extracts set
-# wide: no fixture extract has a region's mix of roads.
-MEDIAN_RANGE_RPM = (90, 260)
+# units (a factor of 60) or a constant of zero. Measured offline on DC's Roadway
+# Block before the first rebuild (median 90 by length; docs/DEVELOPMENT.md).
+# Overridable by `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`, which the tests'
+# toy extracts set wide: no fixture extract has a region's mix of roads.
+MEDIAN_RANGE_RPM = (60, 200)
 
 
 class CapacitySummary(NamedTuple):

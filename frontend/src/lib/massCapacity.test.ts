@@ -135,7 +135,14 @@ test("the legend lists the four bands in order, then Avoid, each with its words"
   for (const band of MASS_BANDS) assert.ok(html.includes(`stroke="${band.color}"`), band.key);
   assert.ok(html.includes('stroke-dasharray="6 4"') && html.includes('stroke-dasharray="14 4"'));
   assert.ok(!/LTS|stress/i.test(html.replace(/<[^>]*>/g, "")), "no LTS or stress words in the Mass Ride legend");
-  assert.ok(html.includes("OpenStreetMap") && html.includes("DC Roadway Block"), "the source is credited, briefly");
+  // Both width sources are credited (OWNER-DECISIONS 404; docs/SOURCES.md's credit lines), and the
+  // working model is never called calibrated (394).
+  assert.ok(html.includes("OpenStreetMap contributors"), "OSM is credited");
+  assert.ok(
+    html.includes("Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0"),
+    "the District's Roadway Block is credited",
+  );
+  assert.ok(!/calibrat/i.test(html), "the model is not called calibrated");
 });
 
 test("the route's list says each band's share and length in words, one row each, empty bands left out", () => {

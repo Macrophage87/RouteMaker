@@ -4233,9 +4233,11 @@ def test_a_rebuild_that_loses_the_long_trails_is_refused(
 
 def test_the_mass_ride_capacity_reaches_the_segment_table(workspace, states) -> None:
     """The writer's wiring through the real stages (OWNER-DECISIONS 325-327, 387): every
-    row carries the flat-ground riders a minute `routemaker.massflow` gives its way's
-    tags and the classifier's lanes, and VALIDATE read the column back."""
+    row carries the usable width `routemaker.massflow` gives its way's tags, the
+    classifier's lanes and its District blocks (OWNER-DECISIONS 404), and VALIDATE read
+    the column back."""
     from routemaker import massflow
+    from routemaker.agency_roads import DC_AGENCY
 
     source, root = workspace
     context, report = run_pipeline(source, root, skip=NOT_SWAPPED)
@@ -4249,8 +4251,10 @@ def test_the_mass_ride_capacity_reaches_the_segment_table(workspace, states) -> 
     for way in context.ways:
         if way.osm_id in stored:
             lanes = getattr(context.stress_by_way[way.osm_id], "lanes", None)
+            facts = context.road_facts_by_way.get(way.osm_id)
+            blocks = facts.block_facts if facts and facts.agency == DC_AGENCY else ()
             assert stored[way.osm_id] == pytest.approx(
-                massflow.usable_width_rounded(way.tags, lanes), abs=0.01
+                massflow.usable_width_rounded(way.tags, lanes, blocks), abs=0.01
             ), way.osm_id
 
 
@@ -4274,3 +4278,39 @@ def test_a_rebuild_whose_median_road_is_implausible_is_refused(workspace, states
         run_pipeline(source, root)
     assert caught.value.stage is Stage.VALIDATE
     assert "units or constants" in str(caught.value.cause)
+
+
+def test_the_districts_lane_widths_reach_the_mass_ride_column(workspace, states) -> None:
+    """OWNER-DECISIONS 404 (3): way 100 lies along a District block of one 10 ft lane
+    each way with a 5 ft bike lane beside parking each way, so its Mass Ride width is
+    the block's, 10 ft + 5 ft - the 3.5 ft door zone = 11.5 ft (3.51 m), not OSM's."""
+    from routemaker import massflow
+
+    source, root = workspace
+    block = street_block(
+        "dc-1",
+        {
+            "speed_mph": {"ob": 25},
+            "lanes": {"ib": 1, "ob": 1},
+            "way": "both",
+            "lane_width_ft": 10.0,
+            "bike": {"ib": 1, "ob": 1},
+            "bike_width_ft": 5.0,
+            "bike_beside_parking": ["ib", "ob"],
+            "parking_lanes": 2,
+            "parking_width_ft": 8.0,
+        },
+    )
+    context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    assert context.road_facts_by_way[100].block_facts
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT mass_usable_width_m FROM {context.staging_schema}.segment "
+            "WHERE osm_way_id = 100"
+        )
+        widths = [row[0] for row in cursor.fetchall()]
+    assert widths == [pytest.approx(11.5 * 0.3048, abs=0.01)]
+    osm_only = massflow.usable_width_rounded(
+        next(way.tags for way in context.ways if way.osm_id == 100)
+    )
+    assert osm_only != pytest.approx(widths[0], abs=0.01)

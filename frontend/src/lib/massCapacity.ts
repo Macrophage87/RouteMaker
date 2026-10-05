@@ -26,13 +26,17 @@ export const CAPACITY_SPEED = formatSpeedRange(6, 8);
 export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
 
 /**
- * Where the figures come from, briefly, as every data source is credited (OWNER-DECISIONS 301, 306): the
- * road widths are OpenStreetMap's lane and width tags, and DC's Roadway Block where it gives the lanes
- * (both credited with the map); the density and pace are calibrated to counts of DC Bike Party rides.
+ * Where the figures come from, as every data source is credited (OWNER-DECISIONS 301, 306; the
+ * credit lines of docs/SOURCES.md): in DC the lane, bike-lane and parking widths are the District's
+ * own Roadway Block (404: "Absolutely. That's why I focused on DC."), elsewhere OpenStreetMap's lane
+ * and width tags. The flow model is the working model (394), from counts of DC Bike Party rides, and
+ * is not called calibrated.
  */
 export const CAPACITY_SOURCE =
-  "An estimate, on the flat: modelled from OpenStreetMap and DC Roadway Block lane and width data, with a typical width " +
-  "for its kind of road where those are not mapped, calibrated to counts of DC Bike Party rides.";
+  "An estimate, on the flat, for the narrower direction of the road, less parked cars. Widths in DC: " +
+  "Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0; " +
+  "elsewhere, and where DC has none: © OpenStreetMap contributors, with a typical width for its kind of road " +
+  "where none is mapped. The riders-per-minute model is a working model based on counts of DC Bike Party rides.";
 
 /** The route panel's title for the same figures. */
 export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
@@ -42,7 +46,8 @@ export const CAPACITY_FOLD_TITLE = "Riders per minute";
 
 /** What the figure is, said once in plain words (the stress legend's LTS_MEANS, for this map). */
 export const CAPACITY_MEANS =
-  `Riders per minute is how many riders a road lets through each minute on the flat at ${CAPACITY_SPEED}, from its usable width. ` +
+  `Riders per minute is how many riders a road lets through each minute on the flat at ${CAPACITY_SPEED}, from the width a ride ` +
+  "has in its own direction, after parked cars. " +
   "A ride flows at its narrowest point. Trails and bike lanes are not drawn here.";
 
 /**

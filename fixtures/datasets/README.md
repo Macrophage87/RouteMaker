@@ -21,7 +21,7 @@ to run again where its output exists.
 
 | Layer | Used for | May it reach published output? |
 | --- | --- | --- |
-| DC Roadway Block | posted speed, lanes by direction, one-way, bike-lane type and width, parking, AADT, conflated onto DC's OSM ways at classification (`pipeline.conflation.road_facts_by_way`, `routemaker.agency_roads`) | yes: CC BY 4.0, credited |
+| DC Roadway Block | posted speed, lanes by direction, one-way, bike-lane type and width, parking, AADT, conflated onto DC's OSM ways at classification (`pipeline.conflation.road_facts_by_way`, `routemaker.agency_roads`); the travel-lane, bike-lane and parking widths and lanes by direction also give the Mass Ride usable width (`routemaker.massflow`, OWNER-DECISIONS 404) | yes: CC BY 4.0, credited |
 | Montgomery Planning Bicycle LTS | a comparison and calibration set; its LTS 5 roads are **loaded as Avoid** (OWNER-DECISIONS 181), `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json` | yes with attribution (open licence; the ODbL gate below), credited |
 | Baltimore street centerline | posted speed (the city's `speed` field, **only where OSM has no `maxspeed`**, OWNER-DECISIONS 184) and one-way, conflated onto Baltimore's OSM ways | yes: open licence by city code, credited |
 | Baltimore bike facilities and multiuse trails | a candidate list of facilities OSM lacks, and **loaded** override rows (OWNER-DECISIONS 182), `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` | yes (as above), credited |
@@ -134,6 +134,15 @@ otherwise rediscover; each is pinned by a test.
 * DC's `BIKELANE_PARKINGLANE_ADJACENT` (`IB`, `OB` or `BD`, on 925 blocks) says
   which direction's bike lane runs beside a parking lane; only there is the
   parking lane's width added to the lane's for Furth's reach.
+* For the Mass Ride width (OWNER-DECISIONS 404, `routemaker.massflow`): the
+  travel-lane width (`TOTALTRAVELLANEWIDTH`, per lane after the parser) is read as
+  excluding the parking lanes, which DC records apart (`TOTALPARKINGLANEWIDTH`): an
+  8 ft lane each way between two 8 ft parking lanes is the usual 32 ft DC street.
+  So curb to curb less the parked cars is the travel and bike lanes. Of the 13,833
+  blocks, 220 record no lanes and 220 no lane width, and 11 read a lane of 1 to 4 ft
+  (read as errors); those fall back to OSM. The commonest lane is 8 ft (4,660
+  blocks, 4,034 of them one lane each way between two parking lanes); 195 two-way
+  blocks of one lane each way read 16 ft lanes and no parking lane.
 * DC's lane totals include bus lanes (`BUSLANE_INBOUND`, `BUSLANE_OUTBOUND`), and
   reversible lanes are counted as operating in the peak direction; both are the
   conservative reading (OWNER-DECISIONS 179).

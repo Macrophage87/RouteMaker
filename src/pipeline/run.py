@@ -1712,6 +1712,14 @@ def build_handlers(
             return facility.MapClass.HIDDEN
         return facility.map_class(tags)
 
+    def dc_blocks_of(osm_id: int) -> tuple:
+        """The District Roadway Block records a way lies along, for its Mass Ride
+        width (OWNER-DECISIONS 404); none outside DC or where no block reached it."""
+        facts = context.road_facts_by_way.get(osm_id)
+        if facts is None or facts.agency != agency_roads.DC_AGENCY:
+            return ()
+        return facts.block_facts
+
     def write_segments() -> None:
         from .schema import schema_exists
 
@@ -1759,7 +1767,7 @@ def build_handlers(
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
-                            way.tags, getattr(stress, "lanes", None)
+                            way.tags, getattr(stress, "lanes", None), dc_blocks_of(way.osm_id)
                         ),
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
