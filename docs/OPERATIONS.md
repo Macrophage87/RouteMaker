@@ -3099,10 +3099,24 @@ weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
 291(2)). It has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
-first rebuild that builds it: `docker compose up -d --no-deps --no-build
-valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
+first rebuild that builds it: `docker compose --profile offroad up -d --no-deps
+--no-build valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
 Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
 32G the compose check allows.
+
+**The off-road router is behind the compose profile `offroad`.** A plain
+`docker compose up -d` (and the force-recreate lists above, which name services
+explicitly) does not start it, so a small host, such as the 10 GB WSL machine,
+runs four routers as before. The rebuild builds and promotes `tiles/offroad`
+whether or not the router runs (the tiles are built in the rebuild container, from
+the same extract, and the graph is validated there), and the planner answers
+Gravel and Mountain Goat on the standard graph, `variant: "standard"`, while the
+router is not answering: no 500, no change in the request. The planner remembers a
+failure for `WEEKEND_FAILURE_TTL_S` and tries again after. Where there is memory
+for it (1536M of limit; the standard router sits at about 450 MB resident here, over 1.1 GB of tiles), start it with the
+command above after the swap, and `restart` it after later rebuilds as the others.
+`docker compose restart valhalla-offroad` with the profile off does nothing, so
+add `--profile offroad`.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written

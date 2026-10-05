@@ -651,8 +651,18 @@ services:
   # resident. 2G would take the swap-time peak to 33.0G, over the 32G check
   # (scripts/check_compose_limits.py); 1536M keeps it at 31.5G. 1.1 GB of tiles
   # on disk.
+  #
+  # Behind the profile `offroad`, so a plain `docker compose up -d` never starts
+  # it: on a small host (the 10 GB WSL box) a fifth router does not fit beside the
+  # four others, the rebuild and the database. The rebuild still builds and
+  # promotes the off-road tiles (the rebuild container builds them, not this
+  # router), and the planner answers Gravel and Mountain Goat on the standard
+  # graph while this router is not running (core.routing: the twin-variant
+  # fallback). Start it where there is room:
+  #   docker compose --profile offroad up -d valhalla-offroad
   valhalla-offroad:
     <<: [*restart, *logging]
+    profiles: ["offroad"]
     image: ghcr.io/valhalla/valhalla:3.5.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
