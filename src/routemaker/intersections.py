@@ -931,7 +931,6 @@ def penalty_m(events: list[Event]) -> float:
 # Corkers are needed at the major junctions (142, by the crossed or joined road's tier:
 # LTS 3, 4 or Avoid; 400: a left or right turn onto such a road needs them as a crossing
 # does).
-MAJOR_TIER = BUSY_TIER
 CORKER_TIER = BUSY_TIER
 
 # What made a junction major: a flagged event, a busy road crossed, or one joined.

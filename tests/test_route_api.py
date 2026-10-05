@@ -330,6 +330,44 @@ class TestAnswer:
         assert profile["climbs"][0]["min_riders_per_min"] == min(known)
         assert isinstance(profile["crossings"], list)
 
+    def test_a_mass_ride_whose_junctions_were_not_read_says_not_checked_end_to_end(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Mutation re-review SHOULD-FIX 1: junctions not read (a failed or late read) reach
+        the chart as `crossings: null`, never as `[]` ("none")."""
+        router(standard_router())
+        monkeypatch.setattr(routing, "_events", lambda *_args: None)
+        profile = post(client, good_body("mass-ride")).json()["profile"]
+        assert profile["crossings"] is None
+        assert profile["crossings_complete"] is None
+
+    def test_an_over_budget_mass_ride_says_its_junctions_were_not_checked(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Over budget the joins are skipped: the chart says "not checked"."""
+        router(standard_router())
+        clock = iter(range(0, 10_000, 30))
+        monkeypatch.setattr(routing, "clock", lambda: float(next(clock)))
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        profile = response.json()["profile"]
+        assert profile is not None and profile["crossings"] is None
+
+    def test_a_mass_ride_whose_events_come_as_a_plain_list_lists_its_flagged_junctions(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Events without majors beside them: the flagged ones stand in, said as possibly
+        incomplete (correctness re-review R3, mutation re-review SHOULD-FIX 1)."""
+        router(standard_router())
+        full = post(client, good_body("mass-ride")).json()["profile"]
+        assert full["crossings_complete"] is True
+        original = routing._events
+        monkeypatch.setattr(routing, "_events", lambda *args: list(original(*args) or []))
+        profile = post(client, good_body("mass-ride")).json()["profile"]
+        assert isinstance(profile["crossings"], list)
+        assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
+        assert profile["crossings_complete"] is False
+
     def test_a_mass_rides_width_comes_from_the_segments_lanes_and_one_way(
         self, client, segments, router
     ) -> None:

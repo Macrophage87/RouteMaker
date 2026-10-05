@@ -257,6 +257,19 @@ class TestWidth:
         assert flow.usable_width_m(0, "none", 2, False) is None
         assert flow.usable_width_m(True, "none", 2, False) is None
 
+    def test_a_path_marked_avoid_has_no_width_and_an_unknown_tier_none(self):
+        """Mutation re-review NITs F13, F02, F04."""
+        assert flow.usable_width_m(5, "path", None, None) is None
+        assert flow.usable_width_m("5", "path", None, None) is None
+        assert flow.usable_width_m(6, "none", 2, False) is None
+        assert flow.usable_width_m("9", "none", 2, False) is None
+        assert flow.tier_number(True) is None
+
+    def test_the_grade_factor_starts_at_the_foot_of_the_climb_by_default(self):
+        """Mutation re-review NIT F12."""
+        assert flow.grade_factor(0.06) == flow.speed_ratio(0.06, 0.0) == 1.0
+        assert flow.grade_factor(0.06, flow.KICK_M) < 1.0
+
     def test_an_avoid_stretch_has_no_carrying_capacity(self):
         """OWNER-DECISIONS 325: "just marked avoid with no carrying capacity"."""
         assert flow.usable_width_m(5, "none", 3, False) is None
@@ -434,6 +447,36 @@ class TestRouteProfile:
             4,
             3,
         )
+        # Mutation re-review SHOULD-FIX 3: corkers follow the tier, not the marker. A busy
+        # road crossed with no marker needs them; a flagged junction on an LTS 2 road not.
+        busy = m.Major(
+            500.0,
+            -77.0,
+            38.9,
+            frozenset({"georgia avenue"}),
+            ("Georgia Avenue",),
+            None,
+            Control.CROSS_STOP,
+            2,
+            3,
+            m.MAJOR_CROSSING,
+        )
+        quiet = m.Major(
+            520.0,
+            -77.0,
+            38.9,
+            frozenset({"a street"}),
+            ("A Street",),
+            "orange",
+            Control.SIGNAL,
+            2,
+            2,
+        )
+        body = self.mass(heights, [(total, 6.7, None)], [major, busy, quiet])
+        assert [(c["m"], c["kind"], c["corkers_needed"]) for c in body["crossings"][1:]] == [
+            (500, "crossing", True),
+            (520, "flagged", False),
+        ]
         body = self.mass(heights, [(total, 6.7, None)], [major])
         assert len(body["riders_per_min"]) == len(heights)
         assert all(isinstance(r, int) for r in body["riders_per_min"])
@@ -785,6 +828,57 @@ class TestMajorJunctions:
     def test_a_flagged_junction_is_not_counted_again_for_its_busy_road(self):
         majors = self.run(junction(100.0, [road("Mass Avenue", tier=4)]))
         assert len(majors) == 1 and majors[0].kind == m.MAJOR_FLAGGED
+
+    def test_an_unflagged_busy_crossing_before_a_flagged_one_keeps_route_order(self):
+        """Mutation re-review J24: the C and I keys and the table follow this order."""
+        avenue = road("Connecticut Avenue", tier=4)
+        past = junction(
+            100.0,
+            [road("Albemarle Street", tier=3)],
+            Control.CROSS_STOP,
+            incoming=avenue,
+            outgoing=avenue,
+        )
+        flagged = junction(500.0, [road("Mass Avenue", tier=4)])
+        majors = self.run(flagged, past)
+        assert [(x.m, x.kind) for x in majors] == [
+            (100.0, m.MAJOR_CROSSING),
+            (500.0, m.MAJOR_FLAGGED),
+        ]
+
+    def test_a_second_node_of_one_junction_crossing_another_busy_road_is_not_a_second_major(
+        self,
+    ):
+        """Mutation re-review J18: one junction gives one major (its busiest road counted,
+        the rest of that node's roads are not looked at)."""
+        avenue = road("Main Avenue", tier=4)
+        first = junction(
+            100.0, [road("A Street", tier=3)], Control.CROSS_STOP, incoming=avenue, outgoing=avenue
+        )
+        second = junction(
+            120.0,
+            [road("A Street", tier=3), road("B Street", tier=3)],
+            Control.CROSS_STOP,
+            incoming=avenue,
+            outgoing=avenue,
+        )
+        assert len(self.run(first, second)) == 1
+
+    def test_straight_from_a_quiet_road_into_a_busy_one_under_a_new_name_is_joining(self):
+        """Mutation re-review J11: only straight on from one busy road into the next is
+        not joining."""
+        into = junction(
+            100.0,
+            [],
+            Control.NONE,
+            incoming=road("Quiet Street", tier=2),
+            outgoing=road("New Road", tier=3),
+            continues=False,
+        )
+        majors = self.run(into)
+        assert [(x.kind, x.crossed_tier, x.corkers_needed) for x in majors] == [
+            (m.MAJOR_JOINING, 3, True)
+        ]
 
     def test_results_are_in_route_order(self):
         majors = self.run(

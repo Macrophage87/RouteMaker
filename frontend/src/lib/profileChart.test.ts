@@ -569,6 +569,52 @@ test("the narrowest point is marked on the riders area with its figure, kept ins
   assert.equal(bottleneckMark({ ...profile, flow: null }, x, y, 46, 352), null);
 });
 
+test("corkers: a flagged junction on a quiet road needs none, and the summary and table say so", () => {
+  // Mutation re-review SHOULD-FIX 3 (C05-C07).
+  const { route, profile } = build("mass-ride", true);
+  const crossings = [...(profile.crossings ?? [])];
+  crossings[0] = { ...crossings[0], crossed_tier: 2, corkers_needed: false };
+  const one: RouteProfile = { ...profile, crossings };
+  assert.match(summaryText(route, one), /2 major intersections, 1 needing corkers\./);
+  assert.deepEqual(crossingRows(one).map((r) => r.corkers), ["No corkers needed", "Corkers needed"]);
+  const none: RouteProfile = { ...profile, crossings: crossings.map((c) => ({ ...c, corkers_needed: false })) };
+  assert.match(summaryText(route, none), /2 major intersections, none needing corkers\./);
+  assert.doesNotMatch(summaryText(route, none), /0 needing/);
+});
+
+test("the gap note names only an untraced stretch ahead of the rider and before the next intersection", () => {
+  // Mutation re-review SHOULD-FIX 4 (C01-C03).
+  const { profile } = build("mass-ride", true);
+  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }, 600), " Next: 7th St at mile 0.5, corkers needed.", "past the next intersection");
+  assert.equal(crossingClause({ ...profile, crossings: [], unchecked: [{ from_m: 0, to_m: 300 }] }, 2500), "", "already ridden");
+  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 0, to_m: 300 }] }, 1000), " Next: an unnamed street at mile 1.3, corkers needed.", "behind the rider");
+});
+
+test("a figure of exactly 60 is tight, not a bottleneck", () => {
+  const m = [0, 30, 60];
+  const profile: RouteProfile = { interval_m: 30, m, elevation_m: [1, 1, 1], grade_pct: [0, 0, 0], climbs: [], riders_per_min: [60, 60, 190] };
+  assert.deepEqual(bottleneckRows(profile), []);
+  assert.equal(flowBand(60).word, "tight");
+  assert.equal(flowBand(59).word, "bottleneck");
+});
+
+test("the riders key's words are made of the bands' own edges", () => {
+  // Mutation re-review NIT B04: a recalibrated edge cannot leave the key's words behind.
+  for (const band of FLOW_BANDS) {
+    const range = band.to === null ? `${band.from} and up` : band.from === 0 ? `Under ${band.to}` : `${band.from} to ${band.to}`;
+    assert.equal(band.label, `${range}: ${band.word}`);
+  }
+});
+
+test("the elevation axis is at least 40 ft tall, on whole ten-foot steps rounded outward", () => {
+  // Mutation re-review NITs ES01 and ES02.
+  const flat = (metres: number): RouteProfile => ({ interval_m: 30, m: [0, 30], elevation_m: [metres, metres], grade_pct: [0, 0], climbs: [] });
+  const ft = (r: { lo: number; hi: number }) => [Math.round(r.lo * FT), Math.round(r.hi * FT)];
+  assert.deepEqual(ft(elevationRange(flat(100 / FT))), [80, 120]);
+  const span: RouteProfile = { interval_m: 30, m: [0, 30], elevation_m: [98.4 / FT, 160 / FT], grade_pct: [0, 0], climbs: [] };
+  assert.deepEqual(ft(elevationRange(span)), [90, 160], "the low end floors, 98.4 ft to 90, not rounds to 100");
+});
+
 test("a bottleneck one sample long is under the sample spacing, never 0 ft", () => {
   const m = [0, 30, 60, 90];
   const profile: RouteProfile = { interval_m: 30, m, elevation_m: m.map(() => 1), grade_pct: m.map(() => 0), climbs: [], riders_per_min: [190, 44, 190, 190] };
