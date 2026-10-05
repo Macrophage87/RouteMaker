@@ -113,6 +113,19 @@ def committed_notices() -> dict[str, str]:
     return dict(pairs)
 
 
+def bundled_fonts() -> dict[str, tuple[str, str, str]]:
+    """BUNDLED_FONTS from frontend/src/licences/notices.mjs: font -> (version, licence, file).
+    These are files the app serves, not npm packages (OWNER-DECISIONS 384)."""
+    source = (FRONTEND / "src" / "licences" / "notices.mjs").read_text()
+    block = re.search(r"BUNDLED_FONTS\s*=\s*\[(.*?)\];", source, re.S)
+    assert block, "notices.mjs no longer declares BUNDLED_FONTS"
+    entries = re.findall(
+        r'name:\s*"([^"]+)",\s*version:\s*"([^"]+)",\s*license:\s*"([^"]+)",\s*file:\s*"([^"]+)"', block.group(1)
+    )
+    assert entries, "BUNDLED_FONTS has no entries"
+    return {name: (version, licence, file) for name, version, licence, file in entries}
+
+
 def test_the_built_licence_notices_are_complete_and_each_packages_own() -> None:
     """BSD-3-Clause's second clause asks for the notice to travel with a
     minified copy, and two of the bundled packages ship no LICENSE file
@@ -130,6 +143,15 @@ def test_the_built_licence_notices_are_complete_and_each_packages_own() -> None:
     import json
 
     sections = licence_sections(notices.read_text())
+    # The bundled fonts are not npm packages: each has its own section whose version, licence and
+    # text are the ones notices.mjs declares and the licence file beside the font holds.
+    fonts = bundled_fonts()
+    for name, (version, licence, file) in fonts.items():
+        assert name in sections, f"{name}: no section in licenses.txt"
+        got_version, got_licence, body = sections.pop(name)
+        assert (got_version, got_licence) == (version, licence), name
+        assert body.strip() == (FRONTEND / file).read_text().strip(), f"{name}: the text is not {file}"
+    assert not set(fonts) & set(committed_notices()), "a font is not a package"
     required = {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"}
     assert required <= set(sections), sorted(sections)
 
