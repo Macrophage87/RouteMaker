@@ -10,6 +10,7 @@
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
+import { METRES_PER_MILE, formatDistance } from "./format.ts";
 import {
   ALLEY_MIN_ZOOM,
   BESIDE_ROAD_MIN_ZOOM,
@@ -26,10 +27,28 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
- * it (review of round 1: it had three names for one thing). Roadside trails
- * are in it: the owner, 2026-09-29, "Show roadside trails (Recommended)".
+ * it (review of round 1: it had three names for one thing). Since
+ * OWNER-DECISIONS 375, 377 and 378 that is the long-distance ones only: the
+ * paths on regional or national bike routes, the long named trails, and the
+ * roads closed to cars at set times. It says which, because a rider who cannot
+ * see the map cannot tell a trail left out from a trail that is not there
+ * (accessibility review SF3, spec review SF2 of ZOOMED-TRAILS).
  */
-export const ZOOMED_OUT = "Zoomed out, only the longer traffic-free paths and trails are shown.";
+export const ZOOMED_OUT =
+  "Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, " +
+  "long named trails, and roads closed to cars at set times.";
+
+/**
+ * The run a named paved trail needs to show at z11 and at z10, in miles
+ * (`pipeline.schema.Z11_PAVED_RUN_MI` and `Z10_PAVED_RUN_MI`, OWNER-DECISIONS 375
+ * and 380; tests/test_stress_tiles.py holds them equal).
+ */
+export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
+
+/** Where every other path and trail comes back (STRESS_ZOOMS.busy). */
+export function everyTrailFrom(busy: number): string {
+  return `Every other path and trail, mountain-bike trails and local routes included, shows from zoom ${busy}.`;
+}
 
 /** The bike-facility legend's note on the protected lanes the zoomed-out map leaves out. */
 export const ROADWAY_LANES = "Protected lanes in the roadway show with their street.";
@@ -48,7 +67,7 @@ export const CAR_FREE_NOTE =
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
-  if (zoom < STRESS_ZOOMS.busy) return `Zoom in to see traffic stress on roads. ${ZOOMED_OUT}`;
+  if (zoom < STRESS_ZOOMS.busy) return `Zoom in to see every path and trail, and traffic stress on roads. ${ZOOMED_OUT}`;
   if (zoom < STRESS_ZOOMS.quiet) return `Zoom in to see the quiet streets. Busy roads are drawn faintly until zoom ${SOLID_MIN_ZOOM}.`;
   return null;
 }
@@ -57,8 +76,11 @@ export function stressZoomNotice(zoom: number | null, shown: boolean): string | 
 export function stressZoomHint(zoom: number | null): string {
   const { min, busy, quiet } = STRESS_ZOOMS;
   let text =
-    `${ZOOMED_OUT} Trails beside a road are among them. From zoom ${busy} the busy roads at LTS 3 and above ` +
-    `show, faintly, and from zoom ${quiet} the quiet streets, footways and sidewalks, with every line solid ` +
+    `${ZOOMED_OUT} A named paved trail counts when it runs ${formatDistance(PAVED_RUN_MI[11] * METRES_PER_MILE)} ` +
+    `or more at zoom 11, or ${formatDistance(PAVED_RUN_MI[10] * METRES_PER_MILE)} at zoom 10; an unpaved one ` +
+    `needs a regional bike route or a longer run. Trails beside a road count ` +
+    `the same way. Lines are drawn thinner at zooms 10 and 11. ${everyTrailFrom(busy)} From zoom ${busy} the ` +
+    `busy roads at LTS 3 and above show, faintly, and from zoom ${quiet} the quiet streets, footways and sidewalks, with every line solid ` +
     `from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, military ` +
@@ -176,7 +198,8 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
 /**
  * The panel's stress legend: the tiers, the unpaved mark, what the zoom leaves out,
  * and the bike facilities the map has drawn (`facilities`). Drawn from the tiers in
- * use and legendWidths, so it cannot differ from the map.
+ * use and legendWidths, so it cannot differ from the map from zoom 12; below it the
+ * map draws the same colours thinner (ZOOMED_OUT_SCALE), which the hint says.
  */
 export function StressLegend({
   facilities,

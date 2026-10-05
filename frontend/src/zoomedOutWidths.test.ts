@@ -1,6 +1,6 @@
-// OWNER-DECISIONS 375 (2026-10-04): zoomed out the casings looked very fat and
-// Columbia's pathways merged into blobs. At z10 and z11 the lines, casings and
-// rails are thinned, so a long trail reads as a line; the colours are not.
+// OWNER-DECISIONS 375 (2026-10-04): zoomed out Columbia's pathways merged into
+// blobs. At z10 and z11 the lines and rails are thinned, so a long trail reads as
+// a line; the casing's edge and the colours are not.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
@@ -10,6 +10,8 @@ import {
   FULL_WIDTH_MIN_ZOOM,
   PALETTES,
   UNPAVED_PALETTES,
+  ZOOMED_OUT_MIN_PX,
+  ZOOMED_OUT_NEAR_ZOOM,
   ZOOMED_OUT_SCALE,
   facilityLayers,
   facilityWidthAt,
@@ -19,21 +21,39 @@ import {
   tiersFor,
   unpavedLayers,
   unpavedWidth,
+  zoomedOutLine,
 } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 type Layer = { id: string; paint: Record<string, unknown> };
+type Facility = (typeof FACILITIES)[number];
 
 const PATH = { tier: 1, facility: "path" };
+const ZOOMED_OUT = [10, 11];
 const tiers = (strong = false) => tiersFor("twotone", strong) as Tier[];
 const num = (layer: Layer, name: string, props: Record<string, unknown>, zoom: number) => paintAt(layer, name, props, zoom) as number;
 const lineOf = (layers: unknown, tier: number) => (layers as Layer[]).find((l) => l.id.endsWith(`-${tier}`)) as Layer;
-const rails = (all: Tier[]): Layer => ({ id: "rails", paint: { "line-width": facilityWidthAt(FACILITIES[0], undefined, all) } });
+const rails = (all: Tier[], facility: Facility = FACILITIES[0]): Layer => ({
+  id: "rails",
+  paint: { "line-width": facilityWidthAt(facility, undefined, all) },
+});
+
+/** What a rider sees of LTS 1 at a zoom: the line, the casing's edge a side, a facility's rail a side, the unpaved mark. */
+function seen(strong: boolean, zoom: number, facility: Facility = FACILITIES[0]) {
+  const all = tiers(strong);
+  const props = { tier: 1, facility: facility.facility };
+  const line = num(lineOf(stressLayers("s", undefined, all), 1), "line-width", props, zoom);
+  const casing = num(lineOf(stressCasingLayers("s", undefined, all), 1), "line-width", props, zoom);
+  const outer = num(rails(all, facility), "line-width", props, zoom);
+  const mark = num(lineOf(unpavedLayers("s", undefined, all), 1), "line-width", { tier: 1, unpaved: true }, zoom);
+  return { line, edge: (casing - line) / 2, rail: (outer - casing) / 2, mark, whole: outer };
+}
 
 test("the widths are thinned below the zoom the busy roads come in at, which is the style's", () => {
   assert.equal(FULL_WIDTH_MIN_ZOOM, STRESS_ZOOMS.busy);
-  assert.deepEqual(Object.keys(ZOOMED_OUT_SCALE).map(Number), [10, 11]);
+  assert.equal(ZOOMED_OUT_NEAR_ZOOM, 11, "core.stress_tiles.TRAILS_NEAR_MIN_ZOOM, which tests/test_stress_tiles.py holds");
+  assert.deepEqual(Object.keys(ZOOMED_OUT_SCALE).map(Number), [STRESS_ZOOMS.min, ZOOMED_OUT_NEAR_ZOOM]);
 });
 
 for (const strong of [false, true]) {
@@ -50,32 +70,55 @@ for (const strong of [false, true]) {
       }
       assert.equal(widths(line)[3], tier.width);
       assert.equal(widths(casing)[3], tier.width + (tier.casingExtra ?? CASING_EXTRA_PX));
+      for (const zoom of ZOOMED_OUT) {
+        const edge = (widths(casing)[zoom - 10] - widths(line)[zoom - 10]) / 2;
+        assert.equal(edge, (tier.casingExtra ?? CASING_EXTRA_PX) / 2, `${tier.short} z${zoom}: the edge is not thinned`);
+      }
     }
   });
 }
 
-test("a path reads as a line: 4.5 px or less at z10, 6.5 px or less at z11, and 9.5 px as it was from z12", () => {
+test("a path reads as a line: 5.5 px or less at z10, 7 px or less at z11, and 9.5 px as it was from z12", () => {
   const path = (zoom: number) => num(rails(tiers()), "line-width", PATH, zoom);
-  assert.ok(path(10) <= 4.5, `${path(10)}`);
-  assert.ok(path(11) <= 6.5, `${path(11)}`);
+  assert.ok(path(10) <= 5.5, `${path(10)}`);
+  assert.ok(path(11) <= 7, `${path(11)}`);
   assert.equal(path(12), 9.5);
   assert.ok(path(10) < path(11) && path(11) < path(12));
 });
 
-test("what a low-vision rider sees stays: a line of 1.25 px, an edge of half a pixel, a rail of a pixel", () => {
+test("what a low-vision rider sees stays, at z10 and z11, switch on and off: a line of 1.25 px, an edge, a rail and an unpaved mark of a pixel", () => {
+  assert.equal(ZOOMED_OUT_MIN_PX, 1);
   for (const strong of [false, true]) {
-    const all = tiers(strong);
-    const line = num(lineOf(stressLayers("s", undefined, all), 1), "line-width", PATH, 10);
-    const casing = num(lineOf(stressCasingLayers("s", undefined, all), 1), "line-width", PATH, 10);
-    const outer = num(rails(all), "line-width", PATH, 10);
-    assert.ok(line >= 1.25, `line ${line}`);
-    assert.ok((casing - line) / 2 >= 0.5, `edge ${(casing - line) / 2}`);
-    assert.ok((outer - casing) / 2 >= 1, `rail ${(outer - casing) / 2}`);
+    for (const zoom of ZOOMED_OUT) {
+      const { line, edge, rail, mark } = seen(strong, zoom);
+      const at = `strong=${strong} z${zoom}`;
+      assert.ok(line >= 1.25, `${at}: line ${line}`);
+      assert.ok(edge >= 1, `${at}: edge ${edge}`);
+      assert.ok(rail >= 1, `${at}: rail ${rail}`);
+      assert.ok(mark >= 1, `${at}: unpaved mark ${mark}`);
+      for (const facility of FACILITIES) {
+        const r = seen(strong, zoom, facility).rail;
+        assert.ok(r >= 1, `${at} ${facility.facility}: rail ${r}`);
+      }
+    }
   }
-  for (const zoom of [10, 11]) {
-    const w = (all: Tier[]) => num(lineOf(stressCasingLayers("s", undefined, all), 1), "line-width", PATH, zoom);
-    assert.ok(w(tiers(true)) > w(tiers(false)), "the switch stays stronger when zoomed out");
+});
+
+test("the switch stays wider zoomed out: its line and its edge each, and its rails never narrower", () => {
+  for (const zoom of ZOOMED_OUT) {
+    const plain = seen(false, zoom);
+    const strong = seen(true, zoom);
+    assert.ok(strong.line > plain.line, `z${zoom} line ${strong.line} > ${plain.line}`);
+    assert.ok(strong.edge > plain.edge, `z${zoom} edge ${strong.edge} > ${plain.edge}`);
+    assert.ok(strong.whole > plain.whole, `z${zoom} whole path ${strong.whole} > ${plain.whole}`);
+    assert.ok(strong.mark >= plain.mark, `z${zoom} mark ${strong.mark} >= ${plain.mark}`);
+    for (const facility of FACILITIES) {
+      // The path's rail is the same with the switch, as it is from z12.
+      const [p, s] = [seen(false, zoom, facility).rail, seen(true, zoom, facility).rail];
+      assert.ok(s >= p, `z${zoom} ${facility.facility}: rail ${s} >= ${p}`);
+    }
   }
+  assert.equal(seen(true, 12).rail, seen(false, 12).rail, "from z12 too, the path's rail is the switch's");
 });
 
 test("the colours are the same zoomed out: the two-tone line and casing, and the brown unpaved ramp", () => {
@@ -97,20 +140,27 @@ test("the colours are the same zoomed out: the two-tone line and casing, and the
   }
 });
 
-test("the unpaved mark and LTS 2's gap line are thinned with their line", () => {
-  const all = tiers();
-  for (const zoom of [10, 11]) {
-    const line2 = num(lineOf(stressLayers("s", undefined, all), 2), "line-width", { tier: 2 }, zoom);
-    const gap = num(lineOf(gapLayers("s", undefined, all), 2), "line-width", { tier: 2 }, zoom);
-    assert.equal(gap, line2, "the gap is drawn at the line's width");
-    for (const tier of all.filter((t) => t.tier < 3)) {
-      const mark = num(lineOf(unpavedLayers("s", undefined, all), tier.tier), "line-width", { tier: tier.tier, unpaved: true }, zoom);
-      const own = num(lineOf(stressLayers("s", undefined, all), tier.tier), "line-width", { tier: tier.tier }, zoom);
-      assert.ok(mark < own, `${tier.short} z${zoom}: the mark ${mark} stays inside the line ${own}`);
+test("the unpaved mark is three fifths of its thinned line, a pixel at least, never wider than from z12; LTS 2's gap is its line", () => {
+  for (const strong of [false, true]) {
+    const all = tiers(strong);
+    for (const zoom of ZOOMED_OUT) {
+      const line2 = num(lineOf(stressLayers("s", undefined, all), 2), "line-width", { tier: 2 }, zoom);
+      const gap = num(lineOf(gapLayers("s", undefined, all), 2), "line-width", { tier: 2 }, zoom);
+      assert.equal(gap, line2, "the gap is drawn at the line's width");
+      for (const tier of all.filter((t) => t.tier < 3)) {
+        const mark = num(lineOf(unpavedLayers("s", undefined, all), tier.tier), "line-width", { tier: tier.tier, unpaved: true }, zoom);
+        const own = num(lineOf(stressLayers("s", undefined, all), tier.tier), "line-width", { tier: tier.tier }, zoom);
+        assert.equal(own, zoomedOutLine(tier, zoom));
+        const expected = Math.min(unpavedWidth(tier), Math.max(1, own * 0.6));
+        assert.equal(mark, expected, `${tier.short} z${zoom} strong=${strong}`);
+        assert.ok(mark < own, `${tier.short} z${zoom}: the mark ${mark} stays inside the line ${own}`);
+        const later = num(lineOf(unpavedLayers("s", undefined, all), tier.tier), "line-width", { tier: tier.tier, unpaved: true }, zoom + 1);
+        assert.ok(mark <= later, `${tier.short}: the mark does not shrink as the map zooms in (${mark} > ${later} at z${zoom + 1})`);
+      }
     }
+    const mark1 = lineOf(unpavedLayers("s", undefined, all), 1);
+    assert.equal(num(mark1, "line-width", { tier: 1, unpaved: true }, 14), unpavedWidth(all[0]));
   }
-  const mark1 = lineOf(unpavedLayers("s", undefined, all), 1);
-  assert.equal(num(mark1, "line-width", { tier: 1, unpaved: true }, 14), unpavedWidth(all[0]));
 });
 
 test("the busy roads, which the tiles do not carry zoomed out, are left as they were", () => {
@@ -125,6 +175,6 @@ test("every rail layer carries the thinned grades, in the layers the map is give
   for (const layer of facilityLayers("s")) {
     const width = layer.paint["line-width"] as unknown[];
     assert.equal(width[0], "step");
-    assert.deepEqual([width[3], width[5]], [11, FULL_WIDTH_MIN_ZOOM]);
+    assert.deepEqual([width[3], width[5]], [ZOOMED_OUT_NEAR_ZOOM, FULL_WIDTH_MIN_ZOOM]);
   }
 });

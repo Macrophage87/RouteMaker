@@ -675,25 +675,37 @@ export const BESIDE_ROAD_MIN_ZOOM = 15;
 
 /**
  * THE ZOOMED-OUT WIDTHS (OWNER-DECISIONS 375, 2026-10-04: "Also zoomed out, can we
- * stick to mostly the longer trails, it's getting messy." and, of the line
- * casings, that they look very fat at those zooms). At z10 and z11 a path was
- * drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
+ * stick to mostly the longer trails, it's getting messy."). At z10 and z11 a path
+ * was drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
  * side: 9.5 px a line), which is what turned Columbia's pathways into solid
  * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.busy`, which a test holds
- * equal) every width is scaled: the line, the casing's extra and the rails each
- * by its own factor at z10 and at z11, so a long trail reads as a line and not
- * a ribbon (a path is 4.4 px at z10, 6.4 px at z11). The colours are not
- * touched: the two-tone palette and the brown unpaved ramp keep their line and
- * casing colours, so every line is still 3:1 from its casing and the base map,
- * and the casing and rails (the edge a low-vision rider sees) stay at least
- * half a pixel and a pixel wide. The accessibility switch's extra width is
- * scaled with them, so it stays stronger than the default at every zoom.
+ * equal) the line and the rails are scaled, each by its own factor at z10 and at
+ * z11, so a long trail reads as a line and not a ribbon (a path is 5.4 px at
+ * z10, 6.9 px at z11). The casing's edge is not thinned (scale 1): it is a pixel
+ * a side, a pixel and a half with the accessibility switch, because on a line
+ * with no rails (an unpaved trail, a car-free road) it is the only thing 3:1
+ * against the base map (accessibility review SF2 of ZOOMED-TRAILS; the
+ * orchestrator's call, at a pixel more than the 4.4 px first drawn). The colours
+ * are not touched: the two-tone palette and the brown unpaved ramp keep their
+ * line and casing colours. What a low-vision rider sees stays: a line of 1.25 px
+ * or more, a casing edge and a rail of a pixel or more, and an unpaved mark of a
+ * pixel or more (ZOOMED_OUT_MIN_PX). The accessibility switch's extra width is
+ * scaled with the line, so its line and edge stay wider than the default's at
+ * every zoom. ZOOMED_OUT_NEAR_ZOOM is where the server's z11 level starts
+ * (`core.stress_tiles.TRAILS_NEAR_MIN_ZOOM`, which a test holds equal).
  */
 export const FULL_WIDTH_MIN_ZOOM = 12;
+export const ZOOMED_OUT_NEAR_ZOOM = 11;
 export const ZOOMED_OUT_SCALE = {
-  10: { line: 0.55, casing: 0.5, rail: 0.4 },
-  11: { line: 0.75, casing: 0.75, rail: 0.6 },
+  10: { line: 0.55, casing: 1, rail: 0.4 },
+  [ZOOMED_OUT_NEAR_ZOOM]: { line: 0.75, casing: 1, rail: 0.6 },
 };
+/** The narrowest an edge, a rail or the unpaved mark is drawn zoomed out. */
+export const ZOOMED_OUT_MIN_PX = 1;
+/** The zoom `step` stops for the zoomed-out grades, ahead of the full widths. */
+function zoomedOutStops(at) {
+  return [at(10), ZOOMED_OUT_NEAR_ZOOM, at(ZOOMED_OUT_NEAR_ZOOM), FULL_WIDTH_MIN_ZOOM];
+}
 
 /**
  * `opacity` and `widthScale` keep the line faint, as the owner chose. A faint
@@ -746,7 +758,7 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
   // The zoomed-out grades (ZOOMED_OUT_SCALE): `zoomedOut(zoom)` is the value at
   // z10 or z11, ahead of the full-width steps. Only for a line that is not a
   // busy road, which the tiles do not carry there.
-  const out = zoomedOut && !busy ? [zoomedOut(10), 11, zoomedOut(11), FULL_WIDTH_MIN_ZOOM] : [];
+  const out = zoomedOut && !busy ? zoomedOutStops(zoomedOut) : [];
   return [
     "step",
     ["zoom"],
@@ -836,14 +848,19 @@ export function unpavedWidth(tier) {
   return Math.max(1.5, tier.width * 0.4);
 }
 
-/** The unpaved mark's width at z10 or z11: three fifths of the thinned line, so it stays inside it (ZOOMED_OUT_SCALE). */
+/**
+ * The unpaved mark's width at z10 or z11: three fifths of the thinned line, so it
+ * stays inside it, but never under ZOOMED_OUT_MIN_PX (the mark is the cue that
+ * does not depend on colour: accessibility review SF1 of ZOOMED-TRAILS) and never
+ * wider than it is from z12, so it does not shrink as the map zooms in.
+ */
 export function zoomedOutUnpavedWidth(tier, zoom) {
-  return zoomedOutLine(tier, zoom) * 0.6;
+  return Math.min(unpavedWidth(tier), Math.max(ZOOMED_OUT_MIN_PX, zoomedOutLine(tier, zoom) * 0.6));
 }
 
 /** The mark's width by zoom: thinned below FULL_WIDTH_MIN_ZOOM, `unpavedWidth` from it. */
 function unpavedWidthByZoom(tier) {
-  return ["step", ["zoom"], zoomedOutUnpavedWidth(tier, 10), 11, zoomedOutUnpavedWidth(tier, 11), FULL_WIDTH_MIN_ZOOM, unpavedWidth(tier)];
+  return ["step", ["zoom"], ...zoomedOutStops((zoom) => zoomedOutUnpavedWidth(tier, zoom)), unpavedWidth(tier)];
 }
 
 export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
@@ -1074,12 +1091,17 @@ export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTi
     const byTierOut = tiers.flatMap((tier) => [tier.tier, zoomedOutFacilityWidth(facility, tier, zoom)]);
     return ["match", tierAt(when), ...byTierOut, zoomedOutFacilityWidth(facility, tiers[0], zoom)];
   };
-  return ["step", ["zoom"], thinned(10), 11, thinned(11), FULL_WIDTH_MIN_ZOOM, full];
+  return ["step", ["zoom"], ...zoomedOutStops(thinned), full];
 }
 
-/** A facility's rails at z10 or z11: the thinned casing, and the rail's own thinned width each side (ZOOMED_OUT_SCALE). */
+/**
+ * A facility's rails at z10 or z11: the casing, and the rail's own thinned width
+ * each side (ZOOMED_OUT_SCALE), never under ZOOMED_OUT_MIN_PX (a painted rail would
+ * otherwise be 0.4 px at z10).
+ */
 export function zoomedOutFacilityWidth(facility, tier, zoom) {
-  return zoomedOutCasing(tier, zoom) + 2 * railWidth(facility, tier.strong) * ZOOMED_OUT_SCALE[zoom].rail;
+  const rail = Math.max(ZOOMED_OUT_MIN_PX, railWidth(facility, tier.strong) * ZOOMED_OUT_SCALE[zoom].rail);
+  return zoomedOutCasing(tier, zoom) + 2 * rail;
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   UNPAVED_LEGEND,
   ZOOMED_OUT,
   dashPx,
+  everyTrailFrom,
   facilityLegendHint,
   stressZoomHint,
   stressZoomNotice,
@@ -34,7 +35,8 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
   const out = stressZoomNotice(STRESS_ZOOMS.busy - 0.01, true);
-  assert.equal(out, "Zoom in to see traffic stress on roads. Zoomed out, only the longer traffic-free paths and trails are shown.");
+  assert.equal(out, `Zoom in to see every path and trail, and traffic stress on roads. ${ZOOMED_OUT}`);
+  assert.ok(out!.startsWith("Zoom in to see every path and trail, and traffic stress on roads. Zoomed out, only the long-distance"));
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min, true), out);
 });
 
@@ -57,7 +59,11 @@ test("with the overlay off, or before the map has a zoom, there is no notice", (
 
 test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map is at", () => {
   const hint = stressZoomHint(12.7);
-  assert.ok(hint.startsWith(`${ZOOMED_OUT} Trails beside a road are among them.`));
+  assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10;`));
+  assert.ok(hint.includes("an unpaved one needs a regional bike route or a longer run. Trails beside a road count the same way."));
+  assert.ok(hint.includes("Lines are drawn thinner at zooms 10 and 11."));
+  assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.busy)));
+  assert.equal(everyTrailFrom(12), "Every other path and trail, mountain-bike trails and local routes included, shows from zoom 12.");
   assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.busy} the busy roads at LTS 3 and above show, faintly,`));
   assert.ok(hint.includes(`from zoom ${STRESS_ZOOMS.quiet} the quiet streets, footways and sidewalks, with every line solid from zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
@@ -70,8 +76,8 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
 
 test("rendered: the notice as a status, then the hint", () => {
   const html = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11.2, shown: true }));
-  assert.match(html, /^<p class="notice" role="status">Zoom in to see traffic stress on roads\./);
-  assert.match(html, /<p class="hint">Zoomed out, only the longer traffic-free paths and trails are shown./);
+  assert.match(html, /^<p class="notice" role="status">Zoom in to see every path and trail, and traffic stress on roads\./);
+  assert.match(html, /<p class="hint">Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, long named trails, and roads closed to cars at set times\./);
   // The hint rendered is the one for the map's own zoom (round-1 mutant F08).
   assert.match(html, /The map is at zoom 11\.<\/p><p class="hint">Roads closed to cars/);
   const street = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 14, shown: true }));
@@ -86,7 +92,10 @@ test("App's legend passes the zoom and whether the overlay is on", () => {
 });
 
 test("one phrase for what the map shows zoomed out, wherever the legend says it", () => {
-  assert.equal(ZOOMED_OUT, "Zoomed out, only the longer traffic-free paths and trails are shown.");
+  assert.equal(
+    ZOOMED_OUT,
+    "Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, long named trails, and roads closed to cars at set times.",
+  );
   assert.ok(stressZoomNotice(11, true)!.endsWith(ZOOMED_OUT));
   assert.ok(stressZoomHint(11).startsWith(ZOOMED_OUT));
   assert.equal(ROADWAY_LANES, "Protected lanes in the roadway show with their street.");
