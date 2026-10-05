@@ -26,9 +26,10 @@ const b = await connect();
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
-// route is shown (the sliders, the target distance, the loop and the weight live there); openSheet
-// opens a bar sheet, openDirections the Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true } = {}) {
+// route is shown (the sliders, the target distance, the loop and the weight live there), and
+// `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
+// Directions fold.
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles });
@@ -39,6 +40,12 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   await sleep(800);
   if (ride) {
     await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+    await sleep(200);
+  }
+  // The junction list is in the route summary's "Junctions to watch" fold, closed by default (312):
+  // its rows cannot take the focus until the fold is open, as for a rider.
+  if (junctions) {
+    await p.eval("(() => { const l = document.querySelector('.junction-list'); const d = l?.closest('details'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
     await sleep(200);
   }
   return p;

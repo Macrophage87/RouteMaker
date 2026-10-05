@@ -3458,9 +3458,11 @@ Tests: `lib/sidebar.test.ts`.
   the planner shows) and an Accessibility toggle in the planner (`AccessibilityShortcut`,
   described by the switch's hint and its from-link note, with no ids the switch uses),
   both built and off.
-- **The browser check** (scripts/a11y/check.mjs) opens the Ride settings on every page
-  it checks, and the Map layers sheet or the Directions fold where a section needs
-  them.
+- **The browser check** (scripts/a11y/check.mjs, 142 checks, all passing on the
+  sidebar) opens the Ride settings and the "Junctions to watch" fold on every page it
+  checks, and the Map layers sheet or the Directions fold where a section needs them.
+  A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
+  a junction row must open the fold first.
 
 ### Groups at stops and in full detail (items 247, 248)
 

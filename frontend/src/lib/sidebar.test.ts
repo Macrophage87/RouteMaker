@@ -43,7 +43,7 @@ import {
 import { encodePlan } from "./planHash.ts";
 import { WEIGHT_STORAGE_KEY } from "./weight.ts";
 import { stressSegments } from "./stressBar.ts";
-import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE } from "./stressLegend.ts";
+import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE, stressZoomNotice } from "./stressLegend.ts";
 import { sheetOrder } from "./sheet.ts";
 import { FederalPointsList } from "./federalLegend.ts";
 import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT } from "./accessibilitySwitch.ts";
@@ -609,7 +609,8 @@ test("the legend's Junctions: the markers' own triangle and diamond, each with i
 
 test("the zoom explanations are behind 'What each zoom level shows'; the zoom notice stays in view", () => {
   const folded = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11, shown: true, folded: true }));
-  assert.match(folded, /<p class="notice" role="status">Zoom in to see traffic stress on roads/);
+  // The notice's words are zoomed-trails' (stressZoomNotice); here only where it sits.
+  assert.ok(folded.startsWith(`<p class="notice" role="status">${stressZoomNotice(11, true)}</p>`), folded.slice(0, 120));
   assert.match(folded, new RegExp(`<details class="fold zoom-notes"><summary>${ZOOM_LEVELS_LINK}</summary>`));
   assert.ok(folded.indexOf("<details") < folded.indexOf("The map is at zoom 11."), "the long text is inside the disclosure");
   assert.ok(folded.includes(CAR_FREE_NOTE));
@@ -620,7 +621,10 @@ test("the zoom explanations are behind 'What each zoom level shows'; the zoom no
 test("the parts the owner has not decided are built, and off: the zoom notice and the Accessibility shortcut in the planner", () => {
   assert.deepEqual(PLANNER_EXTRAS, { zoomNotice: false, accessibilityShortcut: false });
   // A live region kept in the page, so a change is said (recheck: the sheet's copy is hidden while the planner shows).
-  assert.match(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })), /^<div class="planner-zoom" role="status"><p class="notice">Zoom in to see traffic stress on roads/);
+  assert.equal(
+    renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 11, shown: true })),
+    `<div class="planner-zoom" role="status"><p class="notice">${stressZoomNotice(11, true)}</p></div>`,
+  );
   assert.equal(renderToStaticMarkup(createElement(PlannerZoomNotice, { zoom: 16, shown: true })), '<div class="planner-zoom" role="status"></div>');
   const shortcut = renderToStaticMarkup(createElement(AccessibilityShortcut, { on: true, onChange: () => {} }));
   const described = /<button type="button" class="secondary accessibility-shortcut" aria-pressed="true" aria-describedby="([^"]+)">Accessibility<span aria-hidden="true">: On<\/span><\/button><span id="([^"]+)" class="visually-hidden">([^<]+)<\/span>/.exec(shortcut);
