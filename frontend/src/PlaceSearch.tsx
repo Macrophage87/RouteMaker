@@ -217,11 +217,12 @@ export function PlaceSearch({
           type="button"
           className="secondary locate-button"
           // aria-disabled, not disabled: it stays in the Tab order with its reason as its description,
-          // and a press changes nothing while it cannot work or a look-up is under way.
+          // and a press changes nothing while it cannot work. While a look-up is under way a press starts
+          // no second one; the app says "Finding your location…" again, so the press gets an answer.
           aria-disabled={!locate.support.available || locate.busy || undefined}
           aria-describedby={!locate.support.available ? `${id}-locate-why` : locate.busy ? `${id}-locate-busy` : undefined}
           onClick={() => {
-            if (locate.support.available && !locate.busy) locate.onLocate();
+            if (locate.support.available) locate.onLocate();
           }}
         >
           Use my location
