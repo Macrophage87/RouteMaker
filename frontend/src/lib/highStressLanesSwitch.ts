@@ -26,15 +26,26 @@ export const HIGH_STRESS_LANES_HINT =
 export const HIGH_STRESS_LANES_NO_MAP_HINT =
   "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden in the route's facility totals and description.";
 
+/**
+ * The description on the Mass Ride map, which draws no lane, protected lane or path at any zoom
+ * (OWNER-DECISIONS 417, 417a): "Protected lanes and paths always show" would be untrue there
+ * (REBUILD-BUNDLE spec review S3), and the switch changes only the route's words.
+ */
+export const HIGH_STRESS_LANES_MASS_HINT =
+  "The Mass Ride map draws no bike lanes. This changes only whether painted lanes on heavy-traffic (LTS 4) and best-avoided roads count in the route's description.";
+
 export function HighStressLanesSwitch({
   on,
   onChange,
   overlay = true,
+  massMap = false,
 }: {
   on: boolean;
   onChange: (on: boolean) => void;
   /** Whether the stress map is on the page (App's `stress === "available"`). */
   overlay?: boolean;
+  /** Whether the map is the Mass Ride's capacity map (App's `massMap`). */
+  massMap?: boolean;
 }): ReactElement {
   return h(
     "div",
@@ -54,6 +65,10 @@ export function HighStressLanesSwitch({
       h("span", { id: "high-lanes-label", className: "switch-label" }, HIGH_STRESS_LANES_LABEL),
       h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
     ),
-    h("p", { className: "hint", id: "high-lanes-hint" }, overlay ? HIGH_STRESS_LANES_HINT : HIGH_STRESS_LANES_NO_MAP_HINT),
+    h(
+      "p",
+      { className: "hint", id: "high-lanes-hint" },
+      massMap ? HIGH_STRESS_LANES_MASS_HINT : overlay ? HIGH_STRESS_LANES_HINT : HIGH_STRESS_LANES_NO_MAP_HINT,
+    ),
   );
 }

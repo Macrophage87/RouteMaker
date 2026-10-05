@@ -1326,8 +1326,9 @@ class TestMapClass:
     def test_a_mountain_bike_trail_carries_mtb_and_rough_and_a_plain_one_neither(
         self, client, ways
     ) -> None:
-        """NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): the map draws `mtb` and
-        `rough` ways faint; each property is true or left out."""
+        """NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): the tiles carry `mtb` and
+        `rough` for the map to draw faint (the front end does not read them
+        yet); each property is true or left out."""
         with connection.cursor() as cursor:
             for way, lat_shift, mtb, rough in (
                 (5101, 0.0021, True, True),

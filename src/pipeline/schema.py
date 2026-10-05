@@ -530,7 +530,8 @@ CREATE TABLE {schema}.segment (
     -- NO-BIKE-PATHS (OWNER-DECISIONS 291): a way the standard graphs close for
     -- being mountain-bike class or rated singletrack
     -- (`routemaker.trailaccess.MTB`, `routemaker.singletrack`), kept for a
-    -- future MTB mode and drawn faint (tile property `mtb`). And a short
+    -- future MTB mode, with tile property `mtb` for the map to draw it faint
+    -- (290(b); not read by the front end yet). And a short
     -- `bicycle=dismount` connector routing keeps, which the route description
     -- flags "walk your bike here" (`walk_bike`).
     mtb_only        boolean     NOT NULL DEFAULT false,

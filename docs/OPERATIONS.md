@@ -3438,7 +3438,10 @@ answer's `moved_points` says so.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
-tile property `mtb` (and `rough`), drawn faint, facility `none`. The segment
+tile property `mtb` (and `rough`), facility `none`. The front end does not yet draw
+`mtb` or `rough` faint (290(b); REBUILD-BUNDLE spec review S1, deferred): such a trail draws as
+any unpaved trail does, with the unpaved mark and no path rail (290(a)), and routing closes it
+for every preset but Gravel and Mountain Goat. The segment
 table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 (core 0010) is state-only.
 

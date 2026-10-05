@@ -351,7 +351,7 @@ test("the panel places the switch just before the High contrast switch, outside 
   // layers sheet has OWNER-DECISIONS 312's order: traffic stress, high-stress lanes, high contrast.
   assert.match(
     app,
-    /\{stress === "unavailable" && \([\s\S]*?\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} \/>\s*<AccessibilitySwitch/,
+    /\{stress === "unavailable" && \([\s\S]*?\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<AccessibilitySwitch/,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);
@@ -387,3 +387,12 @@ test("only an older API, without the field, has the lane words taken out here", 
   assert.ok(!/bike lane/.test(withoutHighStressLane(older).text));
 });
 
+
+test("on the Mass Ride map the switch says the map draws no lanes, not that protected lanes always show (417; spec review S3)", async () => {
+  const { HighStressLanesSwitch, HIGH_STRESS_LANES_MASS_HINT } = await import("./highStressLanesSwitch.ts");
+  const html = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {}, overlay: true, massMap: true }));
+  assert.ok(html.includes(HIGH_STRESS_LANES_MASS_HINT.replace("'", "&#x27;")), html);
+  assert.doesNotMatch(html, /always show/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /<HighStressLanesSwitch [^\n]*massMap=\{massMap\}/);
+});

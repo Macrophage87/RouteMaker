@@ -2163,7 +2163,8 @@ def build_handlers(
             # A trail the NO-BIKE-PATHS rules close (the Zoo's, a hiking path, a
             # private golf-cart path) is not drawn as a bike facility; the base
             # map shows it as it is (OWNER-DECISIONS 278, 290(b)). The
-            # mountain-bike class stays, faint (the tile's `mtb` property).
+            # mountain-bike class stays, with the tile's `mtb` property for the
+            # map to draw it faint (290(b); the front end does not read it yet).
             return facility.MapClass.BARRED
         return base
 

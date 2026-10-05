@@ -12,7 +12,7 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
-import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
+import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
@@ -1327,7 +1327,7 @@ export function App() {
                 )}
                 {/* Shown with or without the stress map: it also changes the route's facility totals
                     and description (the a11y review's SF4). */}
-                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
                 <AccessibilitySwitch
                   on={accessibilityOn()}
                   source={accessibilitySource()}
@@ -1521,6 +1521,8 @@ function RouteSummary({
   // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);
+  // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
+  const moved = movedPointsNote(route, points.length);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
   // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
@@ -1529,6 +1531,11 @@ function RouteSummary({
   const junctions = route.intersections == null ? null : junctionItems(route).length;
   return (
     <div className="summary">
+      {moved && (
+        <p className="notice moved-points" role="note">
+          {moved}
+        </p>
+      )}
       {outsideDc && (
         <p className="notice mass-outside-dc" role="note">
           {outsideDc}
