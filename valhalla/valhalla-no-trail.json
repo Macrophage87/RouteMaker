@@ -23,7 +23,7 @@
     "logging": {
       "color": false,
       "file_name": "path_to_some_file.log",
-      "long_request": 100.0,
+      "long_request": 3600000.0,
       "type": "std_out"
     },
     "service": {
@@ -272,7 +272,7 @@
     "logging": {
       "color": false,
       "file_name": "path_to_some_file.log",
-      "long_request": 110.0,
+      "long_request": 3600000.0,
       "type": "std_out"
     },
     "max_reserved_labels_count_astar": 2000000,
