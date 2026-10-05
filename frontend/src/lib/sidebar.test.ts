@@ -519,7 +519,7 @@ test("the bottom bar is Plan, Map layers, Legend, GPX and Settings: real buttons
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
   // The hint is a sibling of the button, not inside it: the name is the label alone, the hint the description once.
-  assert.match(sidebar, /<\/button>\s*\{\/\*[\s\S]*?\*\/\}\s*<span id=\{`bar-\$\{item\.id\}-hint`\} className="visually-hidden">\s*\{item\.description\}\s*<\/span>\s*<\/Fragment>/);
+  assert.match(sidebar, /<\/button>\s*\{\/\*[\s\S]*?\*\/\}\s*<span id=\{`bar-\$\{item\.id\}-hint`\} hidden>\s*\{item\.description\}\s*<\/span>\s*<\/Fragment>/);
   assert.match(sidebar, /aria-describedby=\{`bar-\$\{item\.id\}-hint`\}/);
   assert.equal(BAR_ITEMS[0].description, "Shows the planner: the points, the ride settings and the route.");
   assert.match(sidebar, /<span>\{item\.label\}<\/span>/);
@@ -545,7 +545,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
   const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
-  const causes: ViewCause[] = ["bar", "back", "error", "confirm", "planButton"];
+  const causes: ViewCause[] = ["bar", "back", "error", "confirm", "planButton", "panelToggle"];
   const ids: BarItem["id"][] = ["layers", "legend", "gpx", "settings"];
   for (const was of views)
     for (const view of views)
@@ -559,6 +559,7 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
             else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
             else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
             else if (cause === "planButton") assert.deepEqual(got, { kind: "planner" }, at);
+            else if (cause === "panelToggle") assert.equal(got, null, at);
             else assert.deepEqual(got, { kind: "bar", id: openedBy }, at);
           }
   // The cases a rider meets, spelled out.
@@ -576,10 +577,11 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.equal(go("planner", "planner", false, "layers", "planButton"), null);
   assert.match(app, /if \(item\.opens === "planner"\) \{\s*showPlanner\(\);\s*return;/);
   // From a sheet the view changes and the focus decision does it; on the planner already, the heading is focused and the panel scrolled to the top.
-  assert.match(app, /const showPlanner = \(\) => \{\s*viewCause\.current = "planButton";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\} else setView\("planner"\);/);
-  // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden.
+  assert.match(app, /const showPlanner = \(focusHeading = true\) => \{\s*viewCause\.current = focusHeading \? "planButton" : "panelToggle";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*if \(focusHeading\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\}\s*\} else setView\("planner"\);/);
+  // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden,
+  // and leaves the focus on the toggle (showPlanner(false)); the heading focus is the Plan button's.
   assert.match(app, /\{panelOpen \? "Hide planner" : "Show planner"\}/);
-  assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);\s*showPlanner\(\);/);
+  assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);[\s\S]*?showPlanner\(false\);/);
   assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
   assert.match(app, /<h1 ref=\{plannerHeadingRef\} tabIndex=\{-1\}>\s*\{PLANNER_TITLE\}\s*<\/h1>/);
   assert.equal(PLANNER_TITLE, "RouteMaker");  // App records why: a bar button, Back, or the status that brought the planner back.

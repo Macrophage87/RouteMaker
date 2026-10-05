@@ -190,7 +190,7 @@ export const ROUTE_FOLDS = {
  * Why the panel changed view: a bar button, Back (or Escape), the Plan button (or the phone header's
  * "Show planner"), or a question or error that needs the planner.
  */
-export type ViewCause = "bar" | "back" | "error" | "confirm" | "planButton";
+export type ViewCause = "bar" | "back" | "error" | "confirm" | "planButton" | "panelToggle";
 
 /** What takes the focus after the panel changes view. */
 export type FocusTarget =
@@ -222,6 +222,8 @@ export function focusOnViewChange(change: {
   if (cause === "error") return { kind: "error" };
   if (cause === "confirm") return { kind: "plan" };
   if (cause === "planButton") return { kind: "planner" };
+  // The phone header's "Show planner" leaves the focus on the toggle that was pressed.
+  if (cause === "panelToggle") return null;
   return { kind: "bar", id: openedBy };
 }
 

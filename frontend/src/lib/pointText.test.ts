@@ -127,8 +127,7 @@ test("a change of the ride says how the points are renamed, and only when they a
   assert.equal(loopChangeSaid(massOn, on, 3), loopToggledSaid(true, 3));
   assert.equal(loopChangeSaid(massOff, massOn, 3), null, "the toggle does nothing on a Mass Ride");
   assert.equal(loopChangeSaid(off, massOn, 3), null);
-  // No points: nothing is renamed.
-  // With no point placed nothing is renamed, so only the loop coming on is said, with what to place first (389).
+  // No points: nothing is renamed, so only the state is said: the loop on, with what to place first (389), or "Loop off.".
   assert.equal(loopChangeSaid(off, on, 0), "Loop on. Place the starting point, then a stop or two along the way.");
   assert.equal(loopChangeSaid(off, on, 0), LOOP_FIRST_SAID);
   assert.equal(loopChangeSaid(on, off, 0), "Loop off.", "off with no point says so, whether pressed or undone");

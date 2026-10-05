@@ -85,25 +85,26 @@ export function BottomBar({
         const current = barCurrent(item, view, legend);
         return (
           <Fragment key={item.id}>
-          <button
-            id={`bar-${item.id}`}
-            type="button"
-            ref={(button) => buttonRef(item.id, button)}
-            className="bar-button"
-            aria-current={current ? "true" : undefined}
-            aria-describedby={`bar-${item.id}-hint`}
-            onClick={() => onOpen(item)}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              {ICONS[item.id]}
-            </svg>
-            <span>{item.label}</span>
-          </button>
-          {/* The hint is a sibling, not part of the button, so the name is the label alone and the hint is
-              heard once, as the description. */}
-          <span id={`bar-${item.id}-hint`} className="visually-hidden">
-            {item.description}
-          </span>
+            <button
+              id={`bar-${item.id}`}
+              type="button"
+              ref={(button) => buttonRef(item.id, button)}
+              className="bar-button"
+              aria-current={current ? "true" : undefined}
+              aria-describedby={`bar-${item.id}-hint`}
+              onClick={() => onOpen(item)}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                {ICONS[item.id]}
+              </svg>
+              <span>{item.label}</span>
+            </button>
+            {/* The hint is a sibling, not part of the button, so the name is the label alone and the hint is
+                heard once, as the description. `hidden` keeps it off the screen and out of the reading order, and
+                aria-describedby still reads it. */}
+            <span id={`bar-${item.id}-hint`} hidden>
+              {item.description}
+            </span>
           </Fragment>
         );
       })}

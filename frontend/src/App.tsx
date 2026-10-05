@@ -671,12 +671,14 @@ export function App() {
   // The Plan button, and the phone header's "Show planner": the planner's view, and the focus on its heading
   // (OWNER-DECISIONS 392). From a sheet the view changes and focusOnViewChange (cause planButton) does it;
   // already on the planner nothing changes, so the heading is focused and the panel scrolled to the top here.
-  const showPlanner = () => {
-    viewCause.current = "planButton";
+  const showPlanner = (focusHeading = true) => {
+    viewCause.current = focusHeading ? "planButton" : "panelToggle";
     setLegendTarget(false);
     if (viewNow.current === "planner") {
-      plannerHeadingRef.current?.focus();
-      panelBodyRef.current?.scrollTo?.({ top: 0 });
+      if (focusHeading) {
+        plannerHeadingRef.current?.focus();
+        panelBodyRef.current?.scrollTo?.({ top: 0 });
+      }
     } else setView("planner");
   };
   const openSheet = (item: BarItem) => {
@@ -1134,7 +1136,8 @@ export function App() {
               if (panelOpen) setPanelOpen(false);
               else {
                 setPanelOpen(true);
-                showPlanner();
+                // The focus stays on this toggle; the heading focus is the Plan button's.
+                showPlanner(false);
               }
             }}
           >

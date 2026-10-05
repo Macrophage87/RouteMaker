@@ -3467,16 +3467,16 @@ Tests: `lib/sidebar.test.ts`.
   sheet; on the planner it focuses the heading and scrolls to the top. The focus differs on
   purpose (the reading of 392): Plan goes to the planner as a whole, so to its `h1`; Back and
   Escape undo the opening of a sheet, so they return to the bar button that opened it. The
-  hint of each bar button is a sibling `visually-hidden` span (`aria-describedby`), so a
+  hint of each bar button is a sibling `hidden` span (`aria-describedby`), so a
   button's name is its label alone. The phone header's toggle reads "Hide planner" / "Show
-  planner" (`aria-expanded`, `aria-controls`), and Show always shows the planner. The sheets' Back button reads "Back to planner"
+  planner" (`aria-expanded`, `aria-controls`), and Show always shows the planner and leaves the focus on the toggle (cause `panelToggle`). The sheets' Back button reads "Back to planner"
   in visible words (`BACK_LABEL`, no `aria-label`, so its name is its label); it and Escape
   still return the focus to the bar button that opened the sheet. There is no title link.
   The bar is a grid of tracks at least 3.5rem wide (five across at 320 px, a second row
   under large text); at 720 px and below each button is the icon over its words, which wrap
   ("Map layers" on two lines), 48 px high, with 44 px targets; the Back button is 44 px high
   and the sheet header wraps.
-- **Settings, High contrast (OWNER-DECISIONS 384).** The fifth bar button is Settings
+- **Settings, High contrast (OWNER-DECISIONS 384).** Settings is a bar button
   (`BAR_ITEMS`, id `settings`; it was About; since 392/393 it is the fifth of five, Plan first): its sheet holds a "Display" group with the
   High contrast switch, then a "Signing in" section with the sign-in note. No other settings are listed. The switch
   is the former Accessibility switch, renamed in words only: `AccessibilitySwitch`, the
@@ -3493,7 +3493,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 181 checks, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 182 checks, section 17 for the loop box
   and the Plan button) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
