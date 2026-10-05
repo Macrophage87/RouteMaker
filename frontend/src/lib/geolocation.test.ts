@@ -245,6 +245,17 @@ test("an open permission prompt does not count against the first watchdog; its c
     await flush();
     assert.deepEqual(after.value, TIMEOUT);
     assert.equal(quiet.listeners.size, 0);
+    // Denied from the prompt: settled by the browser while the prompt's listener is still on; it is removed.
+    const refused = permissionStatus("prompt");
+    let refuse: (() => void) | undefined;
+    const denying: GeoApi = { getCurrentPosition: (_s, fail) => void (refuse = () => fail({ code: 1 })) };
+    const denied = watch(locate({ ...env(denying), permission: async () => refused }));
+    await flush();
+    assert.equal(refused.listeners.size, 1, "listening while the prompt is open");
+    refuse?.();
+    await flush();
+    assert.deepEqual(denied.value, { ok: false, reason: "denied" });
+    assert.equal(refused.listeners.size, 0, "and no longer once settled");
     // A prompt never answered (a browser that drops a dismissed prompt): the prompt's own limit, then a timeout.
     const ignored = watch(locate({ ...env(silent), permission: async () => permissionStatus("prompt") }));
     await flush();

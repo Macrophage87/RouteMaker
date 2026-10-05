@@ -179,11 +179,12 @@ function attempt(
   });
 }
 
-/** The permission state, if the browser can say; a query that throws or rejects is no answer. */
+/** The permission state, if the browser can say. A query that throws is no answer; one that rejects is
+ * handled where it is read (attempt's `then`). */
 function permissionOf(env: GeoEnv): Promise<PermissionLike | undefined> | undefined {
   if (!env.permission) return undefined;
   try {
-    return env.permission().catch(() => undefined);
+    return env.permission();
   } catch {
     return undefined;
   }
