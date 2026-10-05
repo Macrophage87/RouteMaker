@@ -22,6 +22,10 @@ DATA = Path(__file__).parent / "data" / "north_capitol_ways.json"
 # Connecticut Avenue NW from just south of R St to just north of Calvert St, the same
 # extract (OWNER-DECISIONS 408, 409).
 CONNECTICUT = Path(__file__).parent / "data" / "connecticut_ways.json"
+# South Capitol Street, and the streets that meet it, from the divided part north of
+# Martin Luther King Jr Ave SE to south of Mississippi Ave SE (OWNER-DECISIONS 432), the
+# 2026-10-03 extract.
+SOUTH_CAPITOL = Path(__file__).parent / "data" / "south_capitol_ways.json"
 NORTH_CAPITOL_FILE = corridors.CORRIDORS_DIR / "2026-10-04-owner-north-capitol-underpasses.json"
 
 # The owner's targets (see scripts/analysis/arterial_verify.py for how they were derived
@@ -79,7 +83,11 @@ def tiers(stress, ids):
 
 def test_the_fixture_loads_and_every_entry_carries_the_owners_reason() -> None:
     loaded = corridors.load()
-    assert [c.id for c in loaded] == ["north-capitol-st", "connecticut-ave-nw-r-to-calvert"]
+    assert [c.id for c in loaded] == [
+        "north-capitol-st",
+        "connecticut-ave-nw-r-to-calvert",
+        "south-capitol-st-mlk-to-mississippi",
+    ]
     corridor = nc()
     assert corridor.streets == {"north capitol street"}
     assert {e.id for e in corridor.entries} == {
@@ -507,3 +515,51 @@ def test_connecticut_is_lts4_from_r_st_to_calvert_st_and_nowhere_else() -> None:
     stress = classify_all(ways, tier=4)
     corridors.apply([corridor], ways, stress)
     assert {int(stress[i].tier) for i in CONNECTICUT_R_TO_CALVERT} == {4}
+
+
+# --- South Capitol Street, MLK Jr Ave SE to Mississippi Ave SE (OWNER-DECISIONS 432) ----
+
+# The undivided stretch between the two junctions (MLK Jr Ave SE meets it at 38.8357 N,
+# Mississippi Ave SE at 38.8309 N); the live build has them Avoid by the east-of-the-
+# Anacostia rows (141, 144), which 432 replaces.
+SOUTH_CAPITOL_MLK_TO_MISSISSIPPI = {468820704, 590525532, 455234174, 468820714, 1528642818}
+# Just outside it: the divided carriageways north of MLK Jr Ave SE, the way south of
+# Mississippi Ave SE, and South Capitol Terrace SW, a side street of another name.
+SOUTH_CAPITOL_OUTSIDE = {50477490, 468820697, 468820726, 37867120, 6062889}
+
+
+def test_south_capitol_is_lts4_from_mlk_to_mississippi_and_stays_routable() -> None:
+    """432: "Change south captiol street from MLK ave to Missisipi ave to LTS4. There's
+    no other routes through there." LTS 4 (warned), never Avoid and never closed."""
+    (corridor,) = [c for c in corridors.load() if c.id == "south-capitol-st-mlk-to-mississippi"]
+    assert corridor.streets == {"south capitol street"}
+    assert "OWNER-DECISIONS 432" in corridor.reason
+    for entry in corridor.entries:
+        assert "owner" in entry.reason.lower() and entry.evidence.strip()
+        assert entry.tier == 4
+    ways = [W(w["id"], w["tags"], w["coords"]) for w in json.loads(SOUTH_CAPITOL.read_text())]
+    ids = {w.osm_id for w in ways}
+    assert SOUTH_CAPITOL_MLK_TO_MISSISSIPPI <= ids and SOUTH_CAPITOL_OUTSIDE <= ids
+    for tier in (3, 5):
+        stress = classify_all(ways, tier=tier)
+        report = corridors.apply([corridor], ways, stress)
+        assert {a.way_id for a in report.applied} == SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
+        assert {int(stress[i].tier) for i in SOUTH_CAPITOL_MLK_TO_MISSISSIPPI} == {4}
+        assert all(int(stress[i].tier) == tier for i in ids - SOUTH_CAPITOL_MLK_TO_MISSISSIPPI)
+        assert not report.unmatched_entries
+
+
+def test_the_avoid_rows_432_replaces_are_out_of_the_east_of_anacostia_file() -> None:
+    """An approved row outranks a corridor, so the five rows are out of the file (and
+    listed as superseded, for the rows already loaded, which are deleted in the admin)."""
+    path = (
+        corridors.CORRIDORS_DIR.parent
+        / "overrides"
+        / ("2026-09-30-owner-arterials-east-of-anacostia.json")
+    )
+    document = json.loads(path.read_text())
+    rows = {r["osm_way_id"] for r in document["rows"]}
+    assert not rows & SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
+    superseded = {r["osm_way_id"] for r in document["superseded"]}
+    assert superseded == SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
+    assert all("432" in r["replaced_by"] for r in document["superseded"])

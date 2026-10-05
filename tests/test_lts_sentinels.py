@@ -114,3 +114,91 @@ def test_the_rows_are_read_back_by_their_blocks_and_their_middles() -> None:
     assert got.lts4_m == pytest.approx(2 * one, rel=0.01)
     assert got.north_m == pytest.approx(2 * one, rel=0.01)
     assert got.north_lts4_m == pytest.approx(2 * one, rel=0.01)
+
+
+# --- Owner-rated stretches (OWNER-DECISIONS 432) ------------------------------------
+
+
+def test_the_south_capitol_stretch_is_the_owners() -> None:
+    from django.conf import settings
+
+    from config import settings as real
+
+    (row,) = real.REBUILD_SENTINEL_STRETCHES
+    stretch = lts_sentinels.Stretch.of(row)
+    assert stretch.street == "SOUTH CAPITOL ST BN"
+    assert (stretch.south_lat, stretch.north_lat) == (38.8309, 38.8357)
+    assert stretch.tier == 4 and stretch.min_share >= 0.95
+    assert "432" in stretch.decision
+    assert settings.REBUILD_SENTINEL_STRETCHES == ()
+
+
+def _stretch() -> lts_sentinels.Stretch:
+    return lts_sentinels.Stretch(
+        "SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"
+    )
+
+
+def test_a_stretch_at_the_owners_tier_holds_and_one_left_at_avoid_is_refused() -> None:
+    held = lts_sentinels.StretchTiers(_stretch(), 550.0, 550.0)
+    assert lts_sentinels.stretch_problems(held) == []
+    (message,) = lts_sentinels.stretch_problems(lts_sentinels.StretchTiers(_stretch(), 550.0, 0.0))
+    assert "0%" in message and "OWNER-DECISIONS 432" in message and "admin" in message
+    (empty,) = lts_sentinels.stretch_problems(lts_sentinels.StretchTiers(_stretch(), 0.0, 0.0))
+    assert "no segment row" in empty
+
+
+@pytest.mark.django_db
+def test_a_stretch_is_read_back_by_its_blocks_and_latitudes_at_exactly_its_tier() -> None:
+    from pipeline.schema import create_segment_schema, drop_segment_schema
+
+    name = "ltsstretch"
+    drop_segment_schema(name)
+    create_segment_schema(name)
+    try:
+        rows = [
+            # (way, tier, latitude of the middle, blocks): inside at 4, inside at Avoid,
+            # south of Mississippi Ave at 5, north of MLK at 5, another street at 4.
+            (1, 4, 38.8340, ["dc-s"]),
+            (2, 5, 38.8320, ["dc-s"]),
+            (3, 5, 38.8300, ["dc-s"]),
+            (4, 5, 38.8370, ["dc-s"]),
+            (5, 4, 38.8330, ["dc-x"]),
+        ]
+        with connection.cursor() as cursor:
+            for way, tier, lat, blocks in rows:
+                cursor.execute(
+                    f"INSERT INTO {name}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, map_class, attr_sources) VALUES (%s, 0, ST_MakeLine("
+                    "ST_SetSRID(ST_MakePoint(-77.008, %s), 4326), "
+                    "ST_SetSRID(ST_MakePoint(-77.008, %s), 4326)), %s, 'x', 'road', %s::jsonb)",
+                    [way, lat - 0.0002, lat + 0.0002, tier, json.dumps({"blocks": blocks})],
+                )
+        got = lts_sentinels.stretch_tiers(name, _stretch(), ["dc-s"])
+    finally:
+        drop_segment_schema(name)
+    one = 0.0004 * 111_195
+    assert got.total_m == pytest.approx(2 * one, rel=0.01)
+    assert got.at_tier_m == pytest.approx(one, rel=0.01)
+    assert lts_sentinels.stretch_problems(got)
+
+
+def test_validate_refuses_a_stretch_left_at_avoid(monkeypatch) -> None:
+    from pipeline import run
+
+    blocks = [SimpleNamespace(feature_id="dc-s", facts=SimpleNamespace(name="SOUTH CAPITOL ST BN"))]
+    context = SimpleNamespace(
+        require_reference=lambda: SimpleNamespace(road_blocks=blocks), staging_schema="x"
+    )
+    seen = {}
+
+    def read(schema, stretch, ids):
+        seen["ids"] = ids
+        return lts_sentinels.StretchTiers(stretch, 550.0, 0.0)
+
+    monkeypatch.setattr(lts_sentinels, "stretch_tiers", read)
+    row = ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432")
+    with pytest.raises(run.ValidationFailed, match="432"):
+        run.assert_owner_stretches(context, [row])
+    assert seen["ids"] == ["dc-s"]
+    assert run.assert_owner_stretches(context, []) == []

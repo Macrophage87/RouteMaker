@@ -45,6 +45,8 @@ def _no_long_trail_sentinels(settings):
     settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (0, 5000)
     # And the reference LTS 4 road (OWNER-DECISIONS 408) is the region's Connecticut Ave NW.
     settings.REBUILD_SENTINEL_LTS4_STREET = ""
+    # And the owner's rated stretches (OWNER-DECISIONS 432) are the region's.
+    settings.REBUILD_SENTINEL_STRETCHES = ()
 
 
 @pytest.fixture

@@ -236,8 +236,11 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
 - What: `routemaker.flow`, the riders-a-minute figure of the Mass Ride route chart
   (OWNER-DECISIONS 328, 332) and of the capacity map (387 part 1).
 - The named corridors' ratings (`fixtures/corridors/`): North Capitol Street (OWNER-DECISIONS
-  284, 286, 295, 296) and Connecticut Avenue NW R St to Calvert St (408, 409, 411, 413) are the
-  owner's own local knowledge, cited by decision in each file; not a published source.
+  284, 286, 295, 296), Connecticut Avenue NW R St to Calvert St (408, 409, 411, 413) and
+  South Capitol Street, Martin Luther King Jr Ave SE to Mississippi Ave SE, LTS 4 (432:
+  "There's no other routes through there"; its axis is DC Open Data's Roadway Block centre
+  line, CC BY 4.0) are the owner's own local knowledge, cited by decision in each file; not a
+  published source.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
   `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item

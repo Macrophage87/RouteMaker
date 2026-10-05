@@ -156,7 +156,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         from core.management.commands.load_access_overrides import parse_file
 
         rows = parse_file(EAST_FILE.read_text(), EAST_FILE.name)
-        assert len(rows) == 779
+        assert len(rows) == 774
         for row in rows:
             assert row["kind"] == "stress"
             value = row["value"]
@@ -189,7 +189,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         load(str(STRESS_FILE), "--actor", str(admin.discord_user_id), "--confirm")
         before = Override.objects.count()
         out = load(str(EAST_FILE), "--actor", str(admin.discord_user_id))
-        assert out.count("create: way ") == 779
+        assert out.count("create: way ") == 774
         assert Override.objects.count() == before
 
 

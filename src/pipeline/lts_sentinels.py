@@ -102,3 +102,77 @@ def problems(tiers: StreetTiers, min_share: float, north_min_share: float) -> li
             f"{north_min_share:.0%} (OWNER-DECISIONS 409, \"I'd say it's LTS4 north of R\")"
         )
     return found
+
+
+# --- Owner-rated stretches (OWNER-DECISIONS 432) ------------------------------------
+
+_STRETCH_SQL = """
+SELECT COALESCE(sum(len), 0), COALESCE(sum(len) FILTER (WHERE stress_tier = %s), 0)
+FROM (
+    SELECT ST_Length(geometry::geography) AS len,
+           ST_Y(ST_LineInterpolatePoint(geometry, 0.5)) AS lat,
+           stress_tier
+    FROM {schema}.segment
+    WHERE attr_sources -> 'blocks' ?| %s::text[] AND map_class = 'road'
+) AS rows
+WHERE lat BETWEEN %s AND %s
+"""
+
+
+@dataclass(frozen=True)
+class Stretch:
+    """A stretch of a street the owner gave a tier: the agency's street name
+    (`ROUTENAME`), the latitudes of its ends (a row counts by its middle), the tier,
+    the share of the stretch's rows that must carry it, and the decision."""
+
+    street: str
+    south_lat: float
+    north_lat: float
+    tier: int
+    min_share: float
+    decision: str
+
+    @classmethod
+    def of(cls, row: Sequence) -> Stretch:
+        street, south, north, tier, share, decision = row
+        return cls(str(street), float(south), float(north), int(tier), float(share), str(decision))
+
+
+@dataclass(frozen=True)
+class StretchTiers:
+    stretch: Stretch
+    total_m: float
+    at_tier_m: float
+
+    @property
+    def share(self) -> float:
+        return self.at_tier_m / self.total_m if self.total_m else 0.0
+
+
+def stretch_tiers(schema: str, stretch: Stretch, ids: Sequence[str]) -> StretchTiers:
+    """Read the stretch's rows back from the built table."""
+    schema = validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            _STRETCH_SQL.format(schema=schema),
+            [stretch.tier, list(ids), stretch.south_lat, stretch.north_lat],
+        )
+        total, at_tier = (float(value) for value in cursor.fetchone())
+    return StretchTiers(stretch, total, at_tier)
+
+
+def stretch_problems(tiers: StretchTiers) -> list[str]:
+    """What is wrong with the stretch's tiers, in words; empty when it holds. Exactly the
+    owner's tier: a stretch left at Avoid by a row the decision replaced is a failure."""
+    s = tiers.stretch
+    where = f"{s.street} from {s.south_lat:.4f} N to {s.north_lat:.4f} N"
+    if tiers.total_m <= 0:
+        return [f"no segment row is matched to {where}, so {s.decision} was not checked"]
+    if tiers.share < s.min_share:
+        return [
+            f"only {tiers.share:.0%} of {where} ({_mi(tiers.at_tier_m)} of "
+            f"{_mi(tiers.total_m)}) is at tier {s.tier}, under {s.min_share:.0%} "
+            f"({s.decision}); an approved stress override row on its ways outranks the "
+            "named corridor and is deleted in the admin before the rebuild"
+        ]
+    return []

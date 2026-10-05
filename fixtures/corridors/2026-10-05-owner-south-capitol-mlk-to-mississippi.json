@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "decided": "2026-10-05",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 432 (2026-10-05). Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database. It replaces, for these five ways, the Avoid rows of 2026-09-30-owner-arterials-east-of-anacostia.json (OWNER-DECISIONS 141, 144), which outrank a corridor and are deleted in the admin before the rebuild (docs/OPERATIONS.md). The VALIDATE sentinel for this stretch (pipeline.lts_sentinels, REBUILD_SENTINEL_STRETCHES) holds it.",
+  "corridors": [
+    {
+      "id": "south-capitol-st-mlk-to-mississippi",
+      "streets": [
+        "South Capitol Street"
+      ],
+      "axis": [
+        [
+          -77.0075091,
+          38.8362049
+        ],
+        [
+          -77.0077458,
+          38.8356949
+        ],
+        [
+          -77.007806,
+          38.8355652
+        ],
+        [
+          -77.0079885,
+          38.8350186
+        ],
+        [
+          -77.0080491,
+          38.8348178
+        ],
+        [
+          -77.008111,
+          38.8346173
+        ],
+        [
+          -77.0081798,
+          38.8343977
+        ],
+        [
+          -77.0082498,
+          38.8341716
+        ],
+        [
+          -77.0083185,
+          38.8339474
+        ],
+        [
+          -77.0083968,
+          38.8334486
+        ],
+        [
+          -77.0084018,
+          38.8333403
+        ],
+        [
+          -77.0083992,
+          38.8331957
+        ],
+        [
+          -77.008382,
+          38.8330258
+        ],
+        [
+          -77.0083588,
+          38.8328525
+        ],
+        [
+          -77.0083393,
+          38.8327436
+        ],
+        [
+          -77.0083053,
+          38.8326165
+        ],
+        [
+          -77.0082458,
+          38.8324483
+        ],
+        [
+          -77.008161,
+          38.8322389
+        ],
+        [
+          -77.0080654,
+          38.8320325
+        ],
+        [
+          -77.0079814,
+          38.8318856
+        ],
+        [
+          -77.0078965,
+          38.831739
+        ],
+        [
+          -77.0078194,
+          38.8315955
+        ],
+        [
+          -77.007775,
+          38.8314994
+        ],
+        [
+          -77.0076765,
+          38.8308494
+        ],
+        [
+          -77.0076772,
+          38.8302226
+        ]
+      ],
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 432): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" Routable on purpose: it is the only through route there, so riders are warned (LTS 4), not barred and not sent the long way round, as Avoid (141, 144) did.",
+      "entries": [
+        {
+          "id": "mlk-ave-to-mississippi-ave-through",
+          "role": "through",
+          "along_m": [
+            62,
+            614
+          ],
+          "tier": 4,
+          "reason": "The owner (432): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" From Martin Luther King Jr Ave SE to Mississippi Ave SE, the undivided four- and five-lane South Capitol Street.",
+          "evidence": "South Capitol Street from Martin Luther King Jr Ave SE (38.8357 N, 77.0078 W, where the divided part ends) to Mississippi Ave SE (38.8309 N), about 0.34 mi (0.55 km); the axis is the District's Roadway Block centre line of blocks dc-4642170-0, dc-4642513-0 and dc-4641163-0 (SOUTH CAPITOL ST BN), extended 60 m north. OSM ways 468820704, 590525532, 455234174, 468820714 and 1528642818 (highway=primary, 4 to 5 lanes, no bikeway) in the 2026-10-03 extract; in the live build they are Avoid by the east-of-the-Anacostia arterial rows (adjustment east-anacostia-south-capitol-street, decisions 141, 144). Reports: REBUILD-BUNDLE-fix2.md."
+        }
+      ]
+    }
+  ]
+}

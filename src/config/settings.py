@@ -398,6 +398,15 @@ REBUILD_SENTINEL_LTS4_STREET = "CONNECTICUT AVE NW"
 REBUILD_SENTINEL_LTS4_MIN_SHARE = 0.6
 REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.9126
 REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
+# Stretches the owner gave a tier (`pipeline.run.assert_owner_stretches`): VALIDATE refuses
+# a build where less than the share of a stretch's segment rows (found by the DC Roadway
+# Block blocks of the ROUTENAME, a row by the latitude of its middle) is at exactly the
+# tier. (ROUTENAME, south latitude, north latitude, tier, minimum share, decision.)
+# South Capitol St, Martin Luther King Jr Ave SE to Mississippi Ave SE, LTS 4 (432:
+# "There's no other routes through there"), by the named corridor in fixtures/corridors/.
+REBUILD_SENTINEL_STRETCHES = (
+    ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
+)
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0
 MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
 MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()

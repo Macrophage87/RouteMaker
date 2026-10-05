@@ -209,7 +209,7 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
   route an area, so no access row can open one.
 
-- `2026-09-30-owner-arterials-east-of-anacostia.json`: 779 stress rows at
+- `2026-09-30-owner-arterials-east-of-anacostia.json`: 774 stress rows at
   tier 5 (Avoid), hidden, no public_note, category other, annotation
   approved, one adjustment per corridor. The owner (OWNER-DECISIONS 141): "I d
   put most of the Arterials east of the Anacostia river as avoid"; asked which
@@ -222,7 +222,16 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   2026-09-27 file already curates: three of MLK Jr Ave SE at 4, a different
   tier, which the loader would refuse, and six of Pennsylvania Ave SE already
   at 5. Overpass bridges away from the river stay in. Load it after the
-  2026-09-27 file.
+  2026-09-27 file. Five South Capitol Street rows (Martin Luther King Jr Ave SE
+  to Mississippi Ave SE, ways 468820704, 590525532, 455234174, 468820714 and
+  1528642818, about 0.34 mi (0.55 km)) were taken out on 2026-10-05 for
+  OWNER-DECISIONS 432 ("Change south captiol street from MLK ave to Missisipi
+  ave to LTS4. There's no other routes through there."): that stretch is LTS 4
+  by the named corridor `fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json`,
+  and the file lists them under `superseded`. An approved row outranks a
+  corridor, so the five rows already loaded are deleted in the admin before the
+  rebuild (docs/OPERATIONS.md, the rebuild bundle's step H); VALIDATE refuses a
+  build where the stretch is not LTS 4.
 
 ## The agency-data files of 2026-10-01
 

@@ -1128,6 +1128,45 @@ def assert_reference_lts4_street(
     return tiers
 
 
+def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
+    """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
+    out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
+    street layer installed, as the reference LTS 4 road is."""
+    stretches = [lts_sentinels.Stretch.of(row) for row in rows]
+    if not stretches:
+        return []
+    reference = context.require_reference()
+    if not reference.road_blocks:
+        logger.warning(
+            "no agency street layer is installed, so the owner's stretches are not checked"
+        )
+        return []
+    found, read = [], []
+    for stretch in stretches:
+        ids = lts_sentinels.block_ids(reference.road_blocks, stretch.street)
+        if not ids:
+            found.append(
+                f"the installed Roadway Block has no block named {stretch.street}, so "
+                f"{stretch.decision} cannot be checked"
+            )
+            continue
+        tiers = lts_sentinels.stretch_tiers(context.staging_schema, stretch, ids)
+        read.append(tiers)
+        found.extend(lts_sentinels.stretch_problems(tiers))
+        logger.info(
+            "%s %.4f-%.4f N: %.0f%% at tier %d (%s)",
+            stretch.street,
+            stretch.south_lat,
+            stretch.north_lat,
+            100 * tiers.share,
+            stretch.tier,
+            stretch.decision,
+        )
+    if found:
+        raise ValidationFailed("; ".join(found))
+    return read
+
+
 def assert_mass_capacity(
     summary, min_share: float | None = None, median_range: Sequence[float] | None = None
 ) -> None:
@@ -2306,6 +2345,7 @@ def build_handlers(
             _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
             _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
         )
+        assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
