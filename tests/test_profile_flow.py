@@ -588,6 +588,35 @@ class TestMajorJunctions:
         )
         assert self.run(into) == []
 
+    def test_going_on_along_ones_own_road_as_it_gets_busier_is_not_joining(self):
+        """The rider's own road going on is not "joined" where its tier rises (as
+        `cost_of` judges it: review r2, SHOULD_FIX 1)."""
+        on = junction(
+            100.0,
+            [],
+            Control.NONE,
+            incoming=road("Main Street", tier=2),
+            outgoing=road("Main Street", tier=3),
+            continues=True,
+        )
+        assert self.run(on) == []
+
+    def test_a_flagged_junction_is_one_major_though_its_event_is_about_another_road(self):
+        """A left onto B Street (LTS 3) across A Street (LTS 4): the planner's event is
+        the left onto B, the busiest road there is A; one junction, one major."""
+        left = junction(
+            100.0,
+            [road("A Street", tier=4)],
+            Control.SIGNAL,
+            movement=Movement.LEFT,
+            outgoing=road("B Street", tier=3),
+            continues=False,
+        )
+        events = m.assess_route([left], group=True)
+        assert [e.road_display for e in events] == [("B Street",)]
+        majors = self.run(left)
+        assert [(x.kind, x.display) for x in majors] == [(m.MAJOR_FLAGGED, ("B Street",))]
+
     def test_a_left_from_a_one_way_busy_road_onto_another_busy_road_is_major(self):
         left = junction(
             100.0,
