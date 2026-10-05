@@ -408,7 +408,7 @@ export function ElevationChart({
                   <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
                   <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                 </svg>
-                Avoid (A where narrow): no carrying capacity
+                Marked Avoid (A where narrow): no capacity given
               </li>
             )}
             {narrowest && (
@@ -416,7 +416,7 @@ export function ElevationChart({
                 <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M3 5H21L12 20Z" className="pc-narrowest-key" />
                 </svg>
-                Narrowest point (downward triangle)
+                Narrowest with the hills (downward triangle)
               </li>
             )}
             <li>

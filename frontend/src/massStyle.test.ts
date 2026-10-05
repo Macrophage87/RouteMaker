@@ -248,3 +248,24 @@ test("hazards are not built: the seam draws nothing, and no layer or source is a
   assert.deepEqual(hazardLayers(), []);
   assert.ok(!layers.some((l) => /hazard|caution|warning/.test(l.id)));
 });
+
+// The accessibility review's N1: on a Mass Ride's route line a stretch with no capacity figure is the unrated
+// grey, beside the green of 120 to 200 riders a minute. Under deuteranopia the green goes khaki and the grey
+// stays grey, so the pair is the weakest on the line: it is held apart by width as well as colour, and the
+// list says "No capacity figure" in words.
+test("the route's no-figure grey and the 120 to 200 band are told apart under every simulated colour vision", async () => {
+  const { routeClasses } = await import("./lib/routeColours.ts");
+  const classes = routeClasses();
+  const grey = classes.find((c) => c.key === "unknown")!;
+  const good = classes.find((c) => c.key === "m2")!;
+  assert.equal(good.color, MASS_BANDS[2].color);
+  const rows: string[] = [];
+  for (const vision of VISIONS) {
+    const delta = deltaE2000(simulate(grey.color, vision), simulate(good.color, vision));
+    rows.push(`${vision}: ${delta.toFixed(1)}`);
+    // Weaker than any band pair, but visible: CIEDE2000 above 20 in every vision measured (about 31 under deuteranopia).
+    assert.ok(delta >= 20, rows.at(-1));
+  }
+  assert.ok(Math.abs(good.width - grey.width) >= 1.5, `width ${good.width} against ${grey.width}`);
+  assert.equal(rows.length, VISIONS.length);
+});

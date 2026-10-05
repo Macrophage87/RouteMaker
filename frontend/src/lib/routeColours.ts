@@ -190,7 +190,7 @@ export function routeClasses(): readonly RouteClass[] {
     {
       key: "mavoid" as RouteClassKey,
       short: "Avoid",
-      label: "Marked Avoid: no capacity is given",
+      label: "Marked Avoid: no capacity given",
       // The route's own Avoid is the one magenta with the white dash-dot on a Mass Ride too
       // (OWNER-DECISIONS 397, `avoidOnTheRoute`), as the route chart draws it; the capacity map's
       // general Avoid roads keep MASS_AVOID's look (massStyle.js).

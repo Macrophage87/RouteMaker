@@ -12,6 +12,16 @@
 import type { ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import {
+  NARROWEST_BOTH,
+  NARROWEST_FLAT,
+  NARROWEST_HILLS,
+  capacityPair,
+  capacitySummary,
+  capitalise,
+  typicalLines,
+  type CapacityPair,
+} from "./massCapacity.ts";
 import { spanClass } from "./routeColours.ts";
 
 // ---- The two charts ------------------------------------------------------------------------------
@@ -578,12 +588,12 @@ export function climbAt(profile: RouteProfile, metres: number): ProfileClimb | n
 
 /**
  * The riders clause of the Mass Ride sentence: "about 90 riders per minute (tight, slowed by the
- * climb)" (the mock-up's wording, a11y N6 and spec NIT 1), "Avoid, no carrying capacity" on a stretch
+ * climb)" (the mock-up's wording, a11y N6 and spec NIT 1), "marked Avoid, no capacity given" on a stretch
  * marked Avoid (325), and "riders per minute not known" where the width is not known. Never a figure
  * where there is none: an unknown is never "about 0 ... (bottleneck)".
  */
 export function ridersWords(profile: RouteProfile, riders: number | null, metres: number, gradePct: number | null): string {
-  if (inRanges(profile.avoid, metres)) return "Avoid, no carrying capacity";
+  if (inRanges(profile.avoid, metres)) return "marked Avoid, no capacity given";
   if (riders === null || !Number.isFinite(riders)) return "riders per minute not known";
   const reasons = [flowBand(riders).word];
   const climb = climbAt(profile, metres);
@@ -726,6 +736,33 @@ export function climbStress(climb: Pick<ProfileClimb, "from_m" | "to_m" | "tier"
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Not rated";
 }
 
+/** "about 55 riders per minute (bottleneck)". */
+const aboutFigure = (rpm: number): string => `about ${Math.round(rpm)} riders per minute (${flowBand(rpm).word})`;
+
+/**
+ * The chart summary's capacity sentences (OWNER-DECISIONS 424, "Show both."): the narrowest point on the
+ * flat and the narrowest with the hills, each with its mile and figure, labelled as in the route view and
+ * the directions; said once where they are the same spot. The chart's triangle marks the one with the
+ * hills. Then the typical figures, the same way.
+ */
+export function capacitySentences(pair: CapacityPair): string[] {
+  const out: string[] = [];
+  const { flat, hills } = pair;
+  if (flat && hills && pair.samePlace) {
+    const figures =
+      Math.round(flat.rpm) === Math.round(hills.rpm)
+        ? aboutFigure(flat.rpm)
+        : `${aboutFigure(flat.rpm)} on the flat, ${aboutFigure(hills.rpm)} with the hills`;
+    out.push(`${capitalise(NARROWEST_BOTH)}: ${figures}, at mile ${miles(hills.atM)}, marked on the chart.`);
+  } else {
+    if (flat) out.push(`${capitalise(NARROWEST_FLAT)}: ${aboutFigure(flat.rpm)}, at mile ${miles(flat.atM)}.`);
+    if (hills) out.push(`${capitalise(NARROWEST_HILLS)}: ${aboutFigure(hills.rpm)}, at mile ${miles(hills.atM)}, marked on the chart.`);
+  }
+  const typical = typicalLines(pair);
+  if (typical.length > 0) out.push(`${typical.map((line, i) => `${i === 0 ? capitalise(line.label) : line.label}: about ${line.text}`).join("; ")}.`);
+  return out;
+}
+
 /**
  * The summary: the chart's text alternative, said before it and kept beside it. Elevation range and
  * the steepest section; then the stress along the route, or on a Mass Ride the narrowest point and
@@ -746,17 +783,11 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
   const climbs = profile.climbs.length;
   sentences.push(climbs === 0 ? "No sustained climbs." : `${climbs} sustained ${climbs === 1 ? "climb" : "climbs"}, listed in the table.`);
   if (kind === "mass") {
-    const flow = profile.flow;
-    if (flow && flow.narrowest_riders_per_min !== null && flow.narrowest_m !== null) {
-      sentences.push(
-        `The narrowest point carries about ${flow.narrowest_riders_per_min} riders per minute (${flowBand(flow.narrowest_riders_per_min).word}) at mile ${miles(flow.narrowest_m)}, marked on the chart` +
-          (flow.typical_riders_per_min !== null ? `; the typical stretch about ${flow.typical_riders_per_min}.` : "."),
-      );
-    }
+    sentences.push(...capacitySentences(capacityPair(capacitySummary(route.stress_spans), profile.flow)));
     const avoid = profile.avoid ?? [];
     if (avoid.length > 0) {
       const at = listWords(avoid.slice(0, 3).map((r) => miles(r.from_m)));
-      sentences.push(`${avoid.length === 1 ? "One stretch is" : `${avoid.length} stretches are`} marked Avoid, with no carrying capacity, from mile${avoid.length === 1 ? "" : "s"} ${at}${avoid.length > 3 ? " and more" : ""}.`);
+      sentences.push(`${avoid.length === 1 ? "One stretch is" : `${avoid.length} stretches are`} marked Avoid, no capacity given, from mile${avoid.length === 1 ? "" : "s"} ${at}${avoid.length > 3 ? " and more" : ""}.`);
     }
     const crossings = profile.crossings;
     if (crossings === null || crossings === undefined) {

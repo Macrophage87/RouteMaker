@@ -19,8 +19,11 @@ import {
   massBandsChangeSaid,
   massBandsSaid,
   massZoomNotice,
+  capacityPair,
+  narrowestLines,
   narrowestText,
   ridersPerMinute,
+  typicalLines,
 } from "./massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./massLegend.ts";
 import { capacityLead, descriptionText } from "./routeDescription.ts";
@@ -69,7 +72,7 @@ test("each band's share of the distance, Avoid and no-figure apart; the whole pe
   const rows = capacityRows(summary);
   assert.deepEqual(
     rows.map((r) => r.text),
-    ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open", "Avoid: no capacity given", "No capacity figure"],
+    ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open", "Marked Avoid: no capacity given", "No capacity figure"],
   );
 });
 
@@ -105,7 +108,7 @@ test("figures read in words: unit spelled out, one rider singular, the band name
 test("the description's lead says the narrowest point and every share, in words", () => {
   const lead = capacityLead({ stress_spans: SPANS });
   assert.ok(lead);
-  assert.match(lead, /^Carrying capacity: narrowest point 50 riders per minute \(bottleneck\), at the start\./);
+  assert.match(lead, /^Carrying capacity: narrowest on the flat 50 riders per minute \(bottleneck\), at the start\./);
   for (const part of ["under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open", "avoid"]) {
     assert.ok(lead.toLowerCase().includes(part), part);
   }
@@ -121,7 +124,7 @@ test("the description's lead says the narrowest point and every share, in words"
 });
 
 test("US units first: the speed the figure is for is miles an hour, with kilometres in brackets", () => {
-  assert.equal(CAPACITY_LEGEND_TITLE, "Riders per minute at 6-8 mph (10-13 km/h)");
+  assert.equal(CAPACITY_LEGEND_TITLE, "Riders per minute at 6 to 8 mph (10 to 13 km/h)");
 });
 
 // --- The legend and the panel -------------------------------------------------------------
@@ -142,7 +145,7 @@ test("the legend lists the four bands in order, then Avoid, each with its words"
   // working model is never called calibrated (394).
   assert.ok(html.includes("OpenStreetMap contributors"), "OSM is credited");
   assert.ok(
-    html.includes("Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0"),
+    html.includes("DC Open Data, Roadway Block (CC BY 4.0, adapted)") && html.includes("© OpenStreetMap contributors"),
     "the District's Roadway Block is credited",
   );
   assert.ok(!/calibrat/i.test(html), "the model is not called calibrated");
@@ -160,9 +163,58 @@ test("the route's list says each band's share and length in words, one row each,
 
 test("the route view's figures: the narrowest point and the typical, each a term with its description", () => {
   const html = renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: SPANS } }));
-  assert.match(html, /<dt>Narrowest point<\/dt><dd>50 riders per minute \(bottleneck\), at the start<\/dd>/);
-  assert.match(html, /<dt>Typical<\/dt><dd>190 riders per minute<\/dd>/);
+  assert.match(html, /<dt>Narrowest on the flat<\/dt><dd>50 riders per minute \(bottleneck\), at the start<\/dd>/);
+  assert.match(html, /<dt>Typical on the flat<\/dt><dd>190 riders per minute<\/dd>/);
   assert.equal(renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: [] } })), "");
+});
+
+// OWNER-DECISIONS 424: "Show both." The narrowest on the flat (the sections, width only) and with the hills
+// (the profile, width and grade), labelled the same way in the card, the directions, the chart and the fold.
+const hills = (rpm: number, m: number, typical: number | null = 120) => ({
+  narrowest_riders_per_min: rpm,
+  narrowest_m: m,
+  typical_riders_per_min: typical,
+});
+
+test("424: two places, two figures, each labelled, in the card, the directions and the fold", () => {
+  const route = { stress_spans: SPANS, profile: { flow: hills(35, 2000) } as never };
+  const pair = capacityPair(capacitySummary(SPANS), hills(35, 2000));
+  assert.equal(pair.samePlace, false);
+  assert.deepEqual(narrowestLines(pair), [
+    { key: "narrowest-flat", label: "narrowest on the flat", text: "50 riders per minute (bottleneck), at the start" },
+    { key: "narrowest-hills", label: "narrowest with the hills", text: `35 riders per minute (bottleneck), at ${(2000 / M).toFixed(1)} mi (2.0 km) along` },
+  ]);
+  const card = renderToStaticMarkup(createElement(CapacityStats, { route }));
+  assert.match(card, /<dt>Narrowest on the flat<\/dt><dd>50 riders per minute \(bottleneck\), at the start<\/dd>/);
+  assert.match(card, /<dt>Narrowest with the hills<\/dt><dd>35 riders per minute \(bottleneck\), at 1\.2 mi \(2\.0 km\) along<\/dd>/);
+  assert.match(card, /<dt>Typical on the flat<\/dt><dd>190 riders per minute<\/dd>.*<dt>Typical with the hills<\/dt><dd>120 riders per minute<\/dd>/);
+  const lead = capacityLead(route)!;
+  assert.match(lead, /^Carrying capacity: narrowest on the flat 50 riders per minute \(bottleneck\), at the start; narrowest with the hills 35 riders per minute \(bottleneck\), at 1\.2 mi \(2\.0 km\) along\. By distance: /);
+  const fold = renderToStaticMarkup(createElement(CapacityFigures, { route }));
+  assert.ok(fold.includes("Narrowest on the flat 50 riders per minute (bottleneck), at the start; narrowest with the hills 35 riders per minute"), fold);
+});
+
+test("424: the same spot is said once, with both figures where the hills lower it, and one figure where they agree", () => {
+  const lowered = capacityPair(capacitySummary(SPANS), hills(40, 150));
+  assert.equal(lowered.samePlace, true);
+  assert.deepEqual(narrowestLines(lowered), [
+    { key: "narrowest", label: "narrowest on the flat and with the hills", text: "50 riders per minute (bottleneck) on the flat, 40 riders per minute (bottleneck) with the hills, at the start" },
+  ]);
+  const agree = capacityPair(capacitySummary(SPANS), hills(50, 0, 190));
+  assert.deepEqual(narrowestLines(agree), [{ key: "narrowest", label: "narrowest on the flat and with the hills", text: "50 riders per minute (bottleneck), at the start" }]);
+  assert.deepEqual(typicalLines(agree), [{ key: "typical", label: "typical on the flat and with the hills", text: "190 riders per minute" }]);
+  const card = renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: SPANS, profile: { flow: hills(50, 0, 190) } as never } }));
+  assert.equal((card.match(/<dt>/g) ?? []).length, 2, "one narrowest and one typical, each said once");
+  // No profile (or no flow): the flat figures alone, still labelled as on the flat.
+  assert.deepEqual(narrowestLines(capacityPair(capacitySummary(SPANS), null)).map((l) => l.label), ["narrowest on the flat"]);
+});
+
+test("the route list's Avoid and no-figure rows have the route line's own swatches", () => {
+  const html = renderToStaticMarkup(createElement(CapacityFigures, { route: { stress_spans: SPANS } }));
+  const avoidRow = html.split("<li>").find((li) => li.includes("Marked Avoid"))!;
+  assert.ok(avoidRow.includes(ROUTE_AVOID_MAGENTA) && avoidRow.includes('class="route-avoid-mark"') && avoidRow.includes(ROUTE_AVOID_MARK), avoidRow);
+  const noneRow = html.split("<li>").find((li) => li.includes("No capacity figure"))!;
+  assert.ok(noneRow.includes("route-swatch") && !noneRow.includes('class="swatch"'), noneRow);
 });
 
 test("the zoom note says where roads come in, and what this map leaves out", () => {
@@ -283,17 +335,21 @@ test("a Mass Ride's adjacent sections of one band are one section", () => {
 
 // --- Where App and MapView wire it ---------------------------------------------------------
 
-test("the app wires the mode: the map is told the ride type, the legend and the panel follow the tiles, the stress ones stay otherwise", async () => {
+test("the app wires the mode: the map's capacity layers, the legend and the panel follow the tiles, the grey outside DC the ride type", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(app, /massCapacity=\{isMassRide\(preset\)\}/);
+  // Accessibility review S2: the layers switch on the capacity seen, so a table without the column keeps the
+  // stress layers its legend describes; the DC mask follows the ride type.
+  assert.match(app, /massCapacity=\{massMap\}/);
+  assert.match(app, /massArea=\{isMassRide\(preset\)\}/);
   assert.match(app, /watchForCapacity\(map, \(\) => setCapacityTiles\(true\)\)/);
   assert.match(app, /const massMap = isMassRide\(preset\) && capacityTiles;/);
-  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<StressLegend/);
+  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
   // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
   assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
   assert.match(app, /const segments = capacity \? \[\] : stressSegments\(route\.stress_m\);/);
   assert.match(view, /setMassMode\(null, callbacks\.current\.massCapacity === true/);
   assert.match(view, /props\.massCapacity === true/);
+  assert.match(view, /addDcMask\(map, callbacks\.current\.massArea === true/);
 });

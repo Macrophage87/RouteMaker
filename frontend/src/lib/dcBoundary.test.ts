@@ -88,7 +88,7 @@ test("the legend says DC only in words, with the boundary's source", () => {
   assert.ok(html.includes(MASS_DC_ONLY));
   assert.match(MASS_DC_ONLY, /covers DC only for now/);
   assert.ok(html.includes("District of Columbia boundary: © OpenStreetMap contributors (ODbL)."));
-  assert.match(html, /6-8 mph/, "the legend keeps 6-8 mph (404)");
+  assert.match(html, /6 to 8 mph/, "the legend keeps 6 to 8 mph (404), in words a screen reader says as a range");
 });
 
 test("the mask is the world with the District as its hole, and a dashed edge so shading is not the only cue", () => {

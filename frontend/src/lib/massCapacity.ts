@@ -26,17 +26,17 @@ export const CAPACITY_SPEED = formatSpeedRange(6, 8);
 export const CAPACITY_LEGEND_TITLE = `Riders per minute at ${CAPACITY_SPEED}`;
 
 /**
- * Where the figures come from, as every data source is credited (OWNER-DECISIONS 301, 306; the
- * credit lines of docs/SOURCES.md): in DC the lane, bike-lane and parking widths are the District's
+ * Where the figures come from, as every data source is credited (OWNER-DECISIONS 301, 306): short
+ * names here, as the map's own credits.json gives them, and the full reference (the District
+ * Department of Transportation's Roadway Block, through DC GIS) in docs/SOURCES.md. In DC the lane, bike-lane and parking widths are the District's
  * own Roadway Block (404: "Absolutely. That's why I focused on DC."), elsewhere OpenStreetMap's lane
  * and width tags. The flow model is the working model (394), from counts of DC Bike Party rides, and
  * is not called calibrated.
  */
 export const CAPACITY_SOURCE =
-  "An estimate, on the flat, for the narrower direction of the road, less parked cars. Widths in DC: " +
-  "Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0; " +
-  "elsewhere, and where DC has none: © OpenStreetMap contributors, with a typical width for its kind of road " +
-  "where none is mapped. The riders-per-minute model is a working model based on counts of DC Bike Party rides.";
+  "An estimate, on the flat, for the narrower direction of the road, less parked cars. Widths in DC: DC Open Data, " +
+  "Roadway Block (CC BY 4.0, adapted); elsewhere, and where DC has none: © OpenStreetMap contributors, or a typical " +
+  "width for the kind of road. The riders-per-minute model is a working model based on counts of DC Bike Party rides.";
 
 /** The route panel's title for the same figures. */
 export const CAPACITY_FIGURE_TITLE = "Riders per minute along the route";
@@ -122,8 +122,12 @@ export function bandLegendText(index: number): string {
   return `${band.short}: ${band.name}`;
 }
 
-/** The legend row for a stretch marked Avoid. */
-export const AVOID_LEGEND_TEXT = "Avoid (marked by riders): no capacity is given";
+/**
+ * The one phrase for a stretch marked Avoid, on the map's legend, the route's list, the route line's
+ * key and the chart (accessibility review N3). Not "marked by riders": tier-5 Avoid comes from the
+ * owner's overrides and corridors today, and riders' reports are not built (325: "If we've marked it avoid").
+ */
+export const AVOID_LEGEND_TEXT = "Marked Avoid: no capacity given";
 
 /** The word for a figure's band: "bottleneck", "tight", "good" or "wide open"; "" for no figure. */
 export function bandName(rpm: number | null | undefined): string {
@@ -137,6 +141,8 @@ export interface CapacitySummary {
   /** The route's narrowest point, riders per minute, and where its section starts. */
   minRpm: number | null;
   minAtM: number | null;
+  /** Where the narrowest section ends. */
+  minToM: number | null;
   /** The typical (distance-weighted median) capacity; null with no figures. */
   typicalRpm: number | null;
   /** Metres in each band, lowest first (MASS_BANDS), then the metres marked Avoid and the metres with no figure. */
@@ -159,6 +165,7 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
   let unknownM = 0;
   let minRpm: number | null = null;
   let minAtM: number | null = null;
+  let minToM: number | null = null;
   const weighted: Array<{ rpm: number; m: number }> = [];
   for (const span of spans) {
     const m = Math.max(0, span.to_m - span.from_m);
@@ -176,6 +183,7 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
     if (minRpm === null || span.rpm < minRpm) {
       minRpm = span.rpm;
       minAtM = span.from_m;
+      minToM = span.to_m;
     }
   }
   const totalM = bandM.reduce((a, b) => a + b, 0) + avoidM + unknownM;
@@ -192,7 +200,7 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
     }
   }
   const parts = [...bandM, avoidM, unknownM];
-  return { totalM, minRpm, minAtM, typicalRpm, bandM, avoidM, unknownM, percents: wholePercents(parts.map((m) => m / totalM)) };
+  return { totalM, minRpm, minAtM, minToM, typicalRpm, bandM, avoidM, unknownM, percents: wholePercents(parts.map((m) => m / totalM)) };
 }
 
 /** The summary of a route, or null (see capacitySummary). */
@@ -210,6 +218,121 @@ export function narrowestText(summary: CapacitySummary): string {
   if (summary.minRpm === null) return "No capacity figure for this route";
   const at = summary.minAtM !== null && summary.minAtM > 0 ? `, at ${formatDistance(summary.minAtM)} along` : ", at the start";
   return `${ridersPerMinute(summary.minRpm)} (${bandName(summary.minRpm)})${at}`;
+}
+
+/**
+ * The two narrowest points and the two typical figures (OWNER-DECISIONS 424, "Show both."): on the flat,
+ * from the route's sections (the width only, as the map is coloured), and with the hills, from the
+ * profile (the width and the grade, as the chart draws it). Labelled the same way everywhere they are
+ * given: the route view's card, the directions' first sentence, the chart's summary and the capacity fold.
+ */
+export const NARROWEST_FLAT = "narrowest on the flat";
+export const NARROWEST_HILLS = "narrowest with the hills";
+export const NARROWEST_BOTH = "narrowest on the flat and with the hills";
+export const TYPICAL_FLAT = "typical on the flat";
+export const TYPICAL_HILLS = "typical with the hills";
+export const TYPICAL_BOTH = "typical on the flat and with the hills";
+
+/** The profile's figures with the hills (the API's `profile.flow`). */
+export type HillsFlow = {
+  narrowest_riders_per_min: number | null;
+  narrowest_m: number | null;
+  typical_riders_per_min: number | null;
+} | null | undefined;
+
+export interface CapacityPoint {
+  rpm: number;
+  atM: number;
+}
+
+export interface CapacityPair {
+  flat: CapacityPoint | null;
+  hills: CapacityPoint | null;
+  /** The two points are one place: the hills' lies on the flat's narrowest section. */
+  samePlace: boolean;
+  typicalFlat: number | null;
+  typicalHills: number | null;
+}
+
+/** How far outside the flat narrowest section the hills' point may lie and still be "the same spot": a profile sample's spacing. */
+const SAME_PLACE_M = 30;
+
+export function capacityPair(summary: CapacitySummary | null, flow: HillsFlow): CapacityPair {
+  const flat =
+    summary && summary.minRpm !== null && summary.minAtM !== null ? { rpm: summary.minRpm, atM: summary.minAtM } : null;
+  const hills =
+    flow && typeof flow.narrowest_riders_per_min === "number" && typeof flow.narrowest_m === "number"
+      ? { rpm: flow.narrowest_riders_per_min, atM: flow.narrowest_m }
+      : null;
+  const to = summary?.minToM ?? flat?.atM ?? 0;
+  const samePlace = !!flat && !!hills && hills.atM >= flat.atM - SAME_PLACE_M && hills.atM <= to + SAME_PLACE_M;
+  return {
+    flat,
+    hills,
+    samePlace,
+    typicalFlat: summary?.typicalRpm ?? null,
+    typicalHills: flow && typeof flow.typical_riders_per_min === "number" ? flow.typical_riders_per_min : null,
+  };
+}
+
+/** A route's pair: its sections, and its profile where it has one. */
+export function routeCapacityPair(route: Partial<Pick<RouteResponse, "stress_spans" | "profile">>): CapacityPair | null {
+  const summary = capacitySummary(route.stress_spans);
+  if (!summary) return null;
+  return capacityPair(summary, route.profile?.flow);
+}
+
+/** ", at the start" or ", at 0.2 mi (0.3 km) along". */
+const placeText = (m: number): string => (m > 0 ? `, at ${formatDistance(m)} along` : ", at the start");
+
+/** "55 riders per minute (bottleneck)". */
+const figure = (rpm: number): string => `${ridersPerMinute(rpm)} (${bandName(rpm)})`;
+
+/** One labelled figure of the pair: the card's term and description, and the words a sentence uses. */
+export interface CapacityLine {
+  key: string;
+  /** "narrowest on the flat"; the card capitalises it. */
+  label: string;
+  /** "55 riders per minute (bottleneck), at the start". */
+  text: string;
+}
+
+/**
+ * The narrowest point(s) in words: two lines, flat then hills; one where they are the same spot ("say it
+ * once"), with both figures where the hills lower it there; one where only one is known.
+ */
+export function narrowestLines(pair: CapacityPair): CapacityLine[] {
+  const { flat, hills } = pair;
+  if (flat && hills && pair.samePlace) {
+    const figures =
+      Math.round(flat.rpm) === Math.round(hills.rpm)
+        ? figure(flat.rpm)
+        : `${figure(flat.rpm)} on the flat, ${figure(hills.rpm)} with the hills`;
+    return [{ key: "narrowest", label: NARROWEST_BOTH, text: `${figures}${placeText(flat.atM)}` }];
+  }
+  const lines: CapacityLine[] = [];
+  if (flat) lines.push({ key: "narrowest-flat", label: NARROWEST_FLAT, text: `${figure(flat.rpm)}${placeText(flat.atM)}` });
+  if (hills) lines.push({ key: "narrowest-hills", label: NARROWEST_HILLS, text: `${figure(hills.rpm)}${placeText(hills.atM)}` });
+  return lines;
+}
+
+/** The typical figure(s), the same way: once where the two agree. */
+export function typicalLines(pair: CapacityPair): CapacityLine[] {
+  const { typicalFlat: f, typicalHills: hh } = pair;
+  if (f !== null && hh !== null && Math.round(f) === Math.round(hh)) return [{ key: "typical", label: TYPICAL_BOTH, text: ridersPerMinute(f) }];
+  const lines: CapacityLine[] = [];
+  if (f !== null) lines.push({ key: "typical-flat", label: TYPICAL_FLAT, text: ridersPerMinute(f) });
+  if (hh !== null) lines.push({ key: "typical-hills", label: TYPICAL_HILLS, text: ridersPerMinute(hh) });
+  return lines;
+}
+
+/** "Narrowest on the flat": a label at the start of a card's term or a sentence. */
+export const capitalise = (label: string): string => label.charAt(0).toUpperCase() + label.slice(1);
+
+/** The narrowest lines as one clause: "narrowest on the flat 55 riders ...; narrowest with the hills 40 riders ...". */
+export function narrowestClause(pair: CapacityPair): string {
+  const lines = narrowestLines(pair);
+  return lines.length === 0 ? "no capacity figure for this route" : lines.map((l) => `${l.label} ${l.text}`).join("; ");
 }
 
 /** One band's row in the route's list: its name, share and length. */
@@ -232,15 +355,18 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
     metres: summary.bandM[i],
     band: i,
   }));
-  rows.push({ key: "avoid", text: "Avoid: no capacity given", percent: summary.percents[4], metres: summary.avoidM, band: null });
+  rows.push({ key: "avoid", text: AVOID_LEGEND_TEXT, percent: summary.percents[4], metres: summary.avoidM, band: null });
   rows.push({ key: "none", text: "No capacity figure", percent: summary.percents[5], metres: summary.unknownM, band: null });
   return rows.filter((row) => row.metres > 0);
 }
 
-/** The route description's lead sentence and the bar's name: the narrowest point, then each band's share. */
-export function capacityDescription(summary: CapacitySummary): string {
+/**
+ * The route description's lead sentence and the bar's name: the narrowest points, on the flat and with
+ * the hills (424; once where they are the same spot), then each band's share.
+ */
+export function capacityDescription(summary: CapacitySummary, flow?: HillsFlow): string {
   const shares = capacityRows(summary)
     .map((row) => `${row.percent}% ${row.text.toLowerCase()}`)
     .join("; ");
-  return `Carrying capacity: narrowest point ${narrowestText(summary)}. By distance: ${shares}.`;
+  return `Carrying capacity: ${narrowestClause(capacityPair(summary, flow))}. By distance: ${shares}.`;
 }

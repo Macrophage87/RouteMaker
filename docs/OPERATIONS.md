@@ -1005,9 +1005,10 @@ rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a med
 `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
 ride its own direction's lanes less parked cars, from DC's Roadway Block in the District: about 90
 on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the median: reversible lanes count as zero and a 16 ft lane with no parking is read at 11 ft, `settings.MASS_RIDE_DC_*`). Until a
-rebuild has promoted the column, nothing changes for a rider: the tiles carry no `rpm`, the Mass
-Ride map keeps its current styling and its legend and panel are the stress ones, with no error and
-nothing to do. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
+rebuild has promoted the column, a Mass Ride keeps the stress map: the tiles carry no `rpm`, so the
+map keeps its stress layers (the Mass Ride layers switch on only once a capacity has been seen),
+and its legend and panel are the stress ones, with no error and nothing to do. The grey outside DC
+and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
 and the pipeline images together, as the note above says: build both under one TAG (`docker
 compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
 the api's cache every week. The data takes effect after the next rebuild; the front end and the

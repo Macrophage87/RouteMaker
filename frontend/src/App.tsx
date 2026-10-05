@@ -61,7 +61,7 @@ import {
   massBandsSaid,
 } from "./lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
-import { MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
+import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -474,10 +474,13 @@ export function App() {
   const massBandsBefore = useRef<string | null>(null);
   const layersShownNow = useRef(false);
   layersShownNow.current = view === "layers" && panelOpen;
+  // Only for a zoom the rider made: after the first fit to a route, or a place search's fly-to, the
+  // route's or the place's own sentence is what matters (accessibility review S4).
+  const zoomByRider = useRef(false);
   useEffect(() => {
     const said = massBandsChangeSaid(massBandsBefore.current, massBands, layersShownNow.current);
     massBandsBefore.current = massBands;
-    if (said) announce(said);
+    if (said && zoomByRider.current) announce(said);
   }, [massBands, announce]);
 
   const syncHistory = useCallback(
@@ -1205,11 +1208,15 @@ export function App() {
           });
           watchForFacilities(map, setFacilitiesShown);
           watchForCapacity(map, () => setCapacityTiles(true));
-          watchZoom(map, setZoom);
+          watchZoom(map, (z, byRider) => {
+            zoomByRider.current = byRider;
+            setZoom(z);
+          });
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
-        massCapacity={isMassRide(preset)}
+        massCapacity={massMap}
+        massArea={isMassRide(preset)}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1356,7 +1363,17 @@ export function App() {
                       <MassZoomNotes zoom={zoom} shown={stressVisible} />
                     </>
                   ) : (
-                    <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                    <>
+                      <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                      {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
+                          outside DC still shows, so its words and its credit do too (accessibility review S2). */}
+                      {isMassRide(preset) && (
+                        <>
+                          <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
+                          <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
+                        </>
+                      )}
+                    </>
                   )
                 ) : (
                   <p className="hint">The traffic stress legend shows here when the stress map is available.</p>

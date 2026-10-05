@@ -1222,7 +1222,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: each guide line is 3:1 or more on the panel", guides.lines.length === 3 && guides.lines.every((s) => contrast(rgb(s), rgb(guides.bg)) >= 3), JSON.stringify(guides.lines.map((s) => contrast(rgb(s), rgb(guides.bg)).toFixed(2))));
   const marks = await p.eval(`(() => ({ caret: !!document.querySelector('.pc-narrowest path'), label: document.querySelector('.pc-narrowest-text')?.textContent, avoid: document.querySelectorAll('.pc-avoid').length, avoidText: document.querySelector('.pc-avoid-text')?.textContent, avoidFill: document.querySelector('.pc-avoid rect')?.getAttribute('fill'), avoidSize: parseFloat(getComputedStyle(document.querySelector('.pc-avoid-text')).fontSize), avoidInk: getComputedStyle(document.querySelector('.pc-avoid-text')).fill, avoidHatch: document.querySelector('.pc-svg pattern[id$="-avoid"] path')?.getAttribute('d'), bottleneckHatch: document.querySelector('.pc-svg pattern[id$="-flow-crosshatch"] path')?.getAttribute('d') }))()`);
   check("mass chart: the narrowest point is marked with a shape and its figure (147)", marks.caret && marks.label === "Narrowest 55", JSON.stringify(marks));
-  check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Avoid (A where narrow): no carrying capacity") && shape.legend.includes("Narrowest point (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
+  check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Marked Avoid (A where narrow): no capacity given") && shape.legend.includes("Narrowest with the hills (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
   check("mass chart: Avoid is magenta with a white word at the chart's 11-unit type and a texture of its own, not the bottleneck's cross-hatch (397)", marks.avoidFill === "#d6008f" && marks.avoidSize === 11 && /255, 255, 255|#fff/i.test(marks.avoidInk) && !!marks.avoidHatch && marks.avoidHatch !== marks.bottleneckHatch, JSON.stringify(marks));
   check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
   check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
@@ -1237,7 +1237,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: I jumps to the next major intersection", /^Mile 1\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   for (let i = 0; i < 10; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
-  check("mass chart: on the Avoid stretch it says Avoid, never a figure", /^Mile 2\.3: level, Avoid, no carrying capacity\. Next: 9th Street Northwest/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("mass chart: on the Avoid stretch it says Avoid, never a figure", /^Mile 2\.3: level, marked Avoid, no capacity given\. Next: 9th Street Northwest/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("End", "End", 35);
   await sleep(100);
   check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
@@ -1265,28 +1265,34 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   }
 }
 
-// ---- 20. The Mass Ride capacity map: riders per minute in place of the LTS breakdown (OWNER-DECISIONS 325-327, 387) ----
+// ---- 20. The Mass Ride capacity map: riders per minute in place of the LTS breakdown (OWNER-DECISIONS 325-327, 387; its own tiles, 415, 417, 417a; DC only and the outside-DC notice, 418, 418a; the bands by zoom, 421, 422; both narrowest figures, 424) ----
 {
   const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
   await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
   const route = await p.eval(`(() => { const s = document.querySelector('.summary'); const stats = s.querySelector('.capacity-stats');
     const fold = [...s.querySelectorAll('details > summary')].map((x) => x.textContent);
-    return { narrowest: stats?.querySelector('.capacity-narrowest dd')?.textContent, typical: stats?.querySelector('.capacity-typical dd')?.textContent,
+    const terms = (sel) => [...(stats?.querySelectorAll(sel) ?? [])].map((d) => d.querySelector('dt')?.textContent + ' = ' + d.querySelector('dd')?.textContent);
+    return { narrowest: terms('.capacity-narrowest'), typical: terms('.capacity-typical'),
       stressBar: !!s.querySelector('.stress-bar'), folds: fold, ltsWords: /LTS|traffic stress/i.test(s.querySelector('.stats.capacity-stats')?.parentElement?.textContent ?? '') }; })()`);
-  check("capacity: the route view says the narrowest point in words, with its band and where, and the typical figure",
-    route.narrowest === "50 riders per minute (bottleneck), at the start" && route.typical === "150 riders per minute", JSON.stringify(route));
+  // OWNER-DECISIONS 424: both figures, on the flat and with the hills, said once at the same spot; the typical as well.
+  check("capacity: the route view says the narrowest points on the flat and with the hills in words, with band and where, and both typical figures",
+    JSON.stringify(route.narrowest) === JSON.stringify(["Narrowest on the flat and with the hills = 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start"]) &&
+      JSON.stringify(route.typical) === JSON.stringify(["Typical on the flat = 150 riders per minute", "Typical with the hills = 190 riders per minute"]), JSON.stringify(route));
   check("capacity: the stress bar is replaced, and the fold is Riders per minute in place of Stress and facilities",
     !route.stressBar && route.folds.some((t) => t === "Riders per minute") && !route.folds.some((t) => /^Stress and facilities/.test(t)), JSON.stringify(route.folds));
   const fold = await p.eval(`(() => { const d = [...document.querySelectorAll('.summary details')].find((x) => x.querySelector('summary')?.textContent === 'Riders per minute'); if (d) d.open = true;
     const rows = [...(d?.querySelectorAll('.capacity li') ?? [])].map((li) => li.textContent);
-    return { rows, hidden: [...(d?.querySelectorAll('.capacity li svg') ?? [])].every((v) => v.getAttribute('aria-hidden') === 'true'), list: d?.querySelector('.capacity ul')?.getAttribute('aria-label') }; })()`);
-  check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches hidden from a screen reader",
-    fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list), JSON.stringify(fold));
+    const avoidRow = [...(d?.querySelectorAll('.capacity li') ?? [])].find((li) => /Marked Avoid/.test(li.textContent));
+    return { rows, hidden: [...(d?.querySelectorAll('.capacity li svg') ?? [])].every((v) => v.getAttribute('aria-hidden') === 'true'), list: d?.querySelector('.capacity ul')?.getAttribute('aria-label'),
+      avoidMark: !!avoidRow?.querySelector('svg .route-avoid-mark'), said: d?.querySelector('.capacity-narrowest-said')?.textContent ?? '' }; })()`);
+  check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches (Avoid's the route's own) hidden from a screen reader, and both narrowest figures",
+    fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Marked Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list) &&
+      fold.avoidMark && fold.said === "Narrowest on the flat and with the hills 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start.", JSON.stringify(fold));
   const lead = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
   await p.eval("document.querySelector('.route-description summary')?.click(); true");
   await sleep(200);
   const lead2 = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
-  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest point 50 riders per minute \(bottleneck\), at the start\. By distance: /.test(lead || lead2), lead || lead2);
+  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest on the flat and with the hills 50 riders per minute \(bottleneck\) on the flat, 55 riders per minute \(bottleneck\) with the hills, at the start\. By distance: /.test(lead || lead2), lead || lead2);
   await openSheet(p);
   await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
   // The map has drawn a road with a capacity: the legend is riders per minute.
@@ -1296,13 +1302,13 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
       stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
   check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
-    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && /^Avoid/.test(legend.rows[4]) && /^Riders per minute at 6-8 mph \(10-13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
+    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && /^Avoid/.test(legend.rows[4]) && /^Riders per minute at 6 to 8 mph \(10 to 13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
   check("capacity: its swatches are hidden from a screen reader, the heading and the switch say riders per minute, and no stress legend is there",
     legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/.test(legend.toggle) && !legend.stressLegend, JSON.stringify(legend));
   const axLegend = await axNode(p, ".mass-legend");
-  check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6-8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
+  check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6 to 8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
   const notes = await p.eval("[...document.querySelectorAll('#sheet-layers .hint')].map((h) => h.textContent).join(' | ')");
-  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/.test(notes) && /OpenStreetMap and DC Roadway Block/.test(notes), notes.slice(0, 200));
+  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/.test(notes) && /DC Open Data, Roadway Block \(CC BY 4\.0, adapted\)/.test(notes) && /© OpenStreetMap contributors/.test(notes), notes.slice(0, 200));
   // DC only for now (OWNER-DECISIONS 418), in words beside the gray mask, with the boundary's source.
   const dcOnly = await p.eval(`({ legend: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '',
     planner: document.querySelector('#route-planner .mass-dc-only')?.textContent ?? '' })`);
@@ -1310,9 +1316,15 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     /^Mass Ride planning covers DC only for now\. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn\.$/.test(dcOnly.legend) && dcOnly.credit === "District of Columbia boundary: © OpenStreetMap contributors (ODbL).", JSON.stringify(dcOnly));
   check("capacity: the planner says DC only for now in words too, not by the gray map alone", dcOnly.planner === dcOnly.legend && dcOnly.planner !== "", JSON.stringify(dcOnly));
   // 417, 417a: no trail, protected lane or other stress-map layer at any zoom. Every one of them reads the stress
-  // tiles and the capacity layers read their own, so a Mass Ride's map asks for none of the stress tiles past MapView's probe.
+  // tiles and the capacity layers read their own. Until the map has seen a capacity the stress map draws (a table
+  // without the column keeps it, accessibility review S2); once the capacity map is on, a zoom asks for Mass Ride
+  // tiles and for no stress tile.
+  const before = { ...p.tileRequests };
+  await p.eval("document.querySelector('.maplibregl-ctrl-zoom-in')?.click(); true");
+  await sleep(1500);
+  const after = { ...p.tileRequests };
   check("capacity: the Mass Ride map draws from its own tiles, and no stress-map layer (trails, protected lanes, the ride layer) asks for a tile",
-    p.tileRequests.mass > 0 && p.tileRequests.stress <= 1, JSON.stringify(p.tileRequests));
+    after.mass > before.mass && after.stress === before.stress, JSON.stringify({ before, after }));
   // 418a: a route inside DC has no notice.
   const inside = await p.eval("({ shown: !!document.querySelector('.mass-outside-dc'), said: /outside the area Mass Ride/.test(document.querySelector('.status-line')?.textContent ?? '') })");
   check("capacity: a Mass Ride inside DC shows and says no outside-DC notice", !inside.shown && !inside.said, JSON.stringify(inside));
@@ -1363,6 +1375,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(1500);
   const old = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats'), bar: !!document.querySelector('.stress-bar') })");
   check("capacity: a Mass Ride on a table without the column (no rpm in the tiles or the route) shows its current styling: the stress legend, bar and no figures", !old.mass && old.stress && !old.figures && old.bar, JSON.stringify(old));
+  // Accessibility review S2: the map it draws is the one that legend describes. The stress layers stay on (they ask
+  // for tiles beyond MapView's one probe), the Mass Ride layers stay off, and DC only is still said beside the mask.
+  const words = await p.eval("({ dcOnly: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '' })");
+  check("capacity: on that table the stress layers stay visible under the stress legend, and the legend still says DC only, with the boundary's credit",
+    p.tileRequests.stress > 1 && p.tileRequests.mass === 0 && /^Mass Ride planning covers DC only for now\./.test(words.dcOnly) && /OpenStreetMap/.test(words.credit),
+    JSON.stringify({ tiles: p.tileRequests, words }));
   await p.close();
 }
 {
@@ -1380,7 +1398,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 278;
+const EXPECTED = 279;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

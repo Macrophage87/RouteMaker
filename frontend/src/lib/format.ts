@@ -144,10 +144,10 @@ export function formatSpeed(kmh: number): string {
   return `${Math.round(kmh / KMH_PER_MPH)} mph (${Math.round(kmh)} km/h)`;
 }
 
-/** A range of speeds from mph: "6-8 mph (10-13 km/h)", miles first (the Mass Ride map's 6 to 8 mph, OWNER-DECISIONS 326). */
+/** A range of speeds from mph: "6 to 8 mph (10 to 13 km/h)", said as a range by a screen reader (not "6 minus 8"), miles first (the Mass Ride map's 6 to 8 mph, OWNER-DECISIONS 326). */
 export function formatSpeedRange(lowMph: number, highMph: number): string {
   if (!usable(lowMph) || !usable(highMph)) return DASH;
-  return `${Math.round(lowMph)}-${Math.round(highMph)} mph (${Math.round(lowMph * KMH_PER_MPH)}-${Math.round(highMph * KMH_PER_MPH)} km/h)`;
+  return `${Math.round(lowMph)} to ${Math.round(highMph)} mph (${Math.round(lowMph * KMH_PER_MPH)} to ${Math.round(highMph * KMH_PER_MPH)} km/h)`;
 }
 
 /** A whole number of seconds, for "trying again in ...": "1 second", "5 seconds". */

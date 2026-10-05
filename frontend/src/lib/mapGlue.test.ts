@@ -489,13 +489,21 @@ test("before the stress overlay exists there is nothing to ask", () => {
 
 test("the zoom is reported at once and after every zoom", () => {
   let z = 8.4;
-  const listeners: Array<() => void> = [];
+  const listeners: Array<(event?: { originalEvent?: unknown }) => void> = [];
   const seen: number[] = [];
-  watchZoom({ getZoom: () => z, on: (_event, listener) => listeners.push(listener) }, (value) => seen.push(value));
+  const byRider: boolean[] = [];
+  watchZoom({ getZoom: () => z, on: (_event, listener) => listeners.push(listener) }, (value, rider) => {
+    seen.push(value);
+    byRider.push(rider);
+  });
   assert.deepEqual(seen, [8.4]);
   z = 11.2;
-  for (const listener of listeners) listener();
+  for (const listener of listeners) listener({ originalEvent: { type: "click" } });
   assert.deepEqual(seen, [8.4, 11.2]);
+  // The app's own move (fitBounds, flyTo) has no input event: not the rider's.
+  z = 14;
+  for (const listener of listeners) listener({});
+  assert.deepEqual(byRider, [false, true, false]);
 });
 
 test("each facility report is a new set, so React sees the change", () => {
@@ -708,6 +716,13 @@ test("in Mass Ride mode the base map names no path (417a: no trail-name labels),
     // The mask follows the mode, not the overlay switch: it says where Mass Ride planning works.
     setMassMode(map, true, "weekday_offpeak", false);
     assert.equal(layout["massride-dc-mask"], "visible");
+    // A Mass Ride on a table with no capacity column (accessibility review S2): the stress map stays
+    // (the mode off, so the base map's path labels come back), and the grey still shows: it follows the ride type.
+    setMassMode(map, false, "weekday_offpeak", true, true);
+    assert.deepEqual(filters[BASEMAP_PATH_LABEL_LAYER], original);
+    assert.equal(layout["massride-dc-mask"], "visible");
+    setMassMode(map, false, "weekday_offpeak", true, false);
+    assert.equal(layout["massride-dc-mask"], "none");
   } finally {
     setMassRide(false);
   }

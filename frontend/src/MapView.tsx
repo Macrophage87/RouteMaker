@@ -134,10 +134,13 @@ interface Props {
   /** Which rail stations show (the panel's toggles). */
   rail: RailVisibility;
   /**
-   * The ride type is Mass Ride: the map is coloured by carrying capacity, riders per minute, not by
-   * traffic stress (OWNER-DECISIONS 325-327; massStyle.js). Ignored where the tiles carry no capacity.
+   * The map is coloured by carrying capacity, riders per minute, not by traffic stress
+   * (OWNER-DECISIONS 325-327; massStyle.js): a Mass Ride on tiles that carry a capacity (App's
+   * `massMap`). On an older table a Mass Ride keeps the stress layers, as its legend says.
    */
   massCapacity?: boolean;
+  /** The ride type is Mass Ride: the grey outside the District shows (OWNER-DECISIONS 418), whatever the tiles. */
+  massArea?: boolean;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
   /** Whether to load the federal-land data even with the shading off: a Mass Ride's planner lists the points on it. */
@@ -593,7 +596,7 @@ export function MapView(props: Props) {
     // order stressOverlayLayers gives: every casing under every tier.
     const addStress = () => {
       // The mode before the layers, so they are added drawn for it (stressStyle.js, massRide).
-      setMassMode(null, callbacks.current.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible);
+      setMassMode(null, callbacks.current.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible, callbacks.current.massArea === true);
       return addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
     };
 
@@ -610,7 +613,7 @@ export function MapView(props: Props) {
       loaded.current = true;
       // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
       // over the base map, under its labels, the overlays and the route.
-      addDcMask(map, callbacks.current.massCapacity === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
+      addDcMask(map, callbacks.current.massArea === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route-casing",
@@ -863,8 +866,14 @@ export function MapView(props: Props) {
 
   // Mass Ride: the map is coloured by capacity, and the stress colours and rails give way (OWNER-DECISIONS 325).
   useEffect(() => {
-    setMassMode(loaded.current ? mapRef.current : null, props.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible);
-  }, [props.massCapacity]);
+    setMassMode(
+      loaded.current ? mapRef.current : null,
+      props.massCapacity === true,
+      callbacks.current.when,
+      callbacks.current.stressVisible,
+      props.massArea === true,
+    );
+  }, [props.massCapacity, props.massArea]);
 
   // The "Show bike lanes on high-stress roads" switch (OWNER-DECISIONS 275):
   // the rails' filters are set again in place, from the same tiles.

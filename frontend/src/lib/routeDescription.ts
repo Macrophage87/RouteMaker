@@ -159,7 +159,7 @@ export function chevron(open: boolean): string {
  * group's crossings under it: `entryLines`).
  */
 export function descriptionText(
-  route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans">>,
+  route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans" | "profile">>,
   view: DescriptionView = "overview",
 ): string {
   const shown = viewFor(route, view);
@@ -173,12 +173,12 @@ export function descriptionText(
 
 /**
  * A Mass Ride's lead sentence (OWNER-DECISIONS 325: riders per minute in place of the LTS breakdown): the
- * narrowest point and the share of the distance in each band, in words. Null on every other ride type, and
+ * narrowest points, on the flat and with the hills (424), and the share of the distance in each band, in words. Null on every other ride type, and
  * where the route has no capacity figures (an older table), which keep the description as it was.
  */
-export function capacityLead(route: Partial<Pick<RouteResponse, "stress_spans">>): string | null {
+export function capacityLead(route: Partial<Pick<RouteResponse, "stress_spans" | "profile">>): string | null {
   const summary = capacitySummary(route.stress_spans);
-  return summary ? capacityDescription(summary) : null;
+  return summary ? capacityDescription(summary, route.profile?.flow) : null;
 }
 
 /** The most of the description the GPX file carries in full; beyond it, the overview. */

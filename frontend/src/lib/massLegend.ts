@@ -10,6 +10,7 @@ import { MASS_AVOID, MASS_BANDS } from "../massStyle.js";
 import type { RouteResponse } from "./api.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "./dcBoundary.ts";
 import { formatDistance } from "./format.ts";
+import { ROUTE_CASING_WIDTH, routeCasing, routeClasses, routeMarkDash, routeMarkWidth, type RouteClass, type RouteClassKey } from "./routeColours.ts";
 import {
   AVOID_LEGEND_TEXT,
   CAPACITY_FIGURE_TITLE,
@@ -21,8 +22,12 @@ import {
   massBandsSaid,
   capacityRows,
   capacitySummary,
-  narrowestText,
-  ridersPerMinute,
+  capacityPair,
+  capitalise,
+  narrowestClause,
+  narrowestLines,
+  typicalLines,
+  type CapacityLine,
 } from "./massCapacity.ts";
 
 const SWATCH_W = 56;
@@ -49,6 +54,35 @@ export function AvoidSwatch(): ReactElement {
     h("line", { x1: 0, y1: 7, x2: SWATCH_W, y2: 7, stroke: MASS_AVOID.casing, strokeWidth: MASS_AVOID.casingWidth }),
     h("line", { x1: 0, y1: 7, x2: SWATCH_W, y2: 7, stroke: MASS_AVOID.color, strokeWidth: MASS_AVOID.width, strokeDasharray: dash }),
   );
+}
+
+/**
+ * A route section's own swatch (the route line's look, as FacilityBreakdown draws it): for the route
+ * list's Avoid row, the route's magenta with the white dash-dot (397), and its "No capacity figure"
+ * row, the unrated grey on its halo, which the map legend has no row for (accessibility review N2).
+ */
+export function RouteClassSwatch({ cls }: { cls: RouteClass }): ReactElement {
+  const line = (stroke: string, width: number, extra: Record<string, unknown> = {}) =>
+    h("line", { x1: 3, y1: 7, x2: 33, y2: 7, stroke, strokeWidth: width, strokeLinecap: "round", ...extra });
+  return h(
+    "svg",
+    { width: 36, height: 14, "aria-hidden": "true", className: "route-swatch" },
+    line(routeCasing(), ROUTE_CASING_WIDTH),
+    cls.ring ? line(cls.ring, cls.ringWidth ?? cls.haloWidth) : null,
+    line(cls.halo, cls.haloWidth),
+    line(cls.color, cls.width),
+    cls.mark
+      ? line(cls.mark, routeMarkWidth(cls.width), { className: "route-avoid-mark", strokeLinecap: undefined, strokeDasharray: routeMarkDash(cls.width) })
+      : null,
+  );
+}
+
+/** The route classes the list's two rows without a band are drawn in. */
+const ROW_CLASS: Record<string, RouteClassKey> = { avoid: "mavoid", none: "unknown" };
+
+function rowSwatch(key: string): ReactElement {
+  const cls = routeClasses().find((c) => c.key === ROW_CLASS[key]);
+  return cls ? h(RouteClassSwatch, { cls }) : h("span", { className: "swatch", "aria-hidden": "true" });
 }
 
 const row = (key: string, swatch: ReactElement, text: string) =>
@@ -93,7 +127,7 @@ export function MassLegend(): ReactElement {
 }
 
 /** The route's own list: what the map's line colours mean on this route, with each band's share and length. */
-export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_spans"> }): ReactElement | null {
+export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">> }): ReactElement | null {
   const summary = capacitySummary(route.stress_spans);
   if (!summary) return null;
   const pause = h("span", { className: "visually-hidden" }, ", ");
@@ -101,6 +135,8 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
     "figure",
     { className: "stress capacity", "aria-labelledby": "capacity-caption" },
     h("figcaption", { id: "capacity-caption" }, CAPACITY_FIGURE_TITLE),
+    // The narrowest points, as the card and the directions give them (OWNER-DECISIONS 424).
+    h("p", { className: "hint capacity-narrowest-said" }, `${capitalise(narrowestClause(capacityPair(summary, route.profile?.flow)))}.`),
     h(
       "ul",
       { className: "stress-list", "aria-label": "Share of the route in each riders-per-minute band" },
@@ -108,7 +144,7 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
         h(
           "li",
           { key: r.key },
-          r.band === null ? h("span", { className: "swatch", "aria-hidden": "true" }) : h(BandSwatch, { band: MASS_BANDS[r.band] }),
+          r.band === null ? rowSwatch(r.key) : h(BandSwatch, { band: MASS_BANDS[r.band] }),
           h("span", { className: "stress-name" }, r.text),
           pause,
           h("span", { className: "stress-pct" }, `${r.percent}%`),
@@ -121,12 +157,16 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
 }
 
 /**
- * The route view's two figures (the mock-up's cards): the narrowest point, which is the route's
- * bottleneck, and the typical capacity. A definition list like the totals above it.
+ * The route view's figures (the mock-up's cards): the narrowest points, which are the route's
+ * bottleneck, and the typical capacity, each on the flat and with the hills (OWNER-DECISIONS 424),
+ * said once where the two agree. A definition list like the totals above it.
  */
-export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_spans"> }): ReactElement | null {
+export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">> }): ReactElement | null {
   const summary = capacitySummary(route.stress_spans);
   if (!summary || summary.minRpm === null) return null;
+  const pair = capacityPair(summary, route.profile?.flow);
+  const term = (line: CapacityLine, className: string) =>
+    h("div", { key: line.key, className }, h("dt", null, capitalise(line.label)), h("dd", null, line.text));
   return h(
     Fragment,
     null,
@@ -134,10 +174,8 @@ export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_sp
     h(
       "dl",
       { className: "stats capacity-stats" },
-      h("div", { className: "capacity-narrowest" }, h("dt", null, "Narrowest point"), h("dd", null, narrowestText(summary))),
-      summary.typicalRpm !== null
-        ? h("div", { className: "capacity-typical" }, h("dt", null, "Typical"), h("dd", null, ridersPerMinute(summary.typicalRpm)))
-        : null,
+      ...narrowestLines(pair).map((line) => term(line, `capacity-narrowest ${line.key}`)),
+      ...typicalLines(pair).map((line) => term(line, `capacity-typical ${line.key}`)),
     ),
   );
 }

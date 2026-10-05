@@ -92,17 +92,22 @@ export function addStressOverlay(map: OverlayMap, origin: string, visible: boole
  * The map becomes (or stops being) the Mass Ride's (OWNER-DECISIONS 325, 417, 417a, 418): every
  * stress-map layer is hidden and the capacity layers show, the base map names no path, and the
  * grey mask outside the District shows (lib/dcBoundary.ts); or the reverse. In place.
- * `visible` is the overlay's switch (the mask follows the mode alone: it says where Mass Ride
- * planning works whether or not the colours are on). Before the map has its layers there is
- * nothing to set: the overlay and the mask are added in the mode then.
+ * `visible` is the overlay's switch (the mask follows the ride type alone, `area`: it says where
+ * Mass Ride planning works whether or not the colours are on, and whether or not the tiles carry
+ * a capacity yet). `on` is the capacity map itself, switched on only once the tiles carry one
+ * (App's `massMap`): on an older table a Mass Ride keeps the stress layers its legend describes
+ * (accessibility review S2). Before the map has its layers there is nothing to set: the overlay
+ * and the mask are added in the mode then.
  */
-export function setMassMode(map: OverlayMap | null, on: boolean, when: When, visible: boolean): void {
+export function setMassMode(map: OverlayMap | null, on: boolean, when: When, visible: boolean, area: boolean = on): void {
   setMassRide(on);
   if (!map) return;
   setStressWhen(map, when);
   setStressVisibility(map, visible);
   setBasemapPathLabels(map, on);
-  setDcMaskVisibility(map, on);
+  // The grey outside DC follows the ride type, not the tiles: on a table built before the capacity
+  // column a Mass Ride keeps the stress layers (`on` false) and still says, and shows, DC only.
+  setDcMaskVisibility(map, area);
 }
 
 /**
@@ -601,11 +606,16 @@ export function watchForCapacity(map: FacilityMap, seen: () => void): void {
 /** The parts of a MapLibre map the zoom watch uses. */
 export interface ZoomMap {
   getZoom(): number;
-  on(event: "zoomend", listener: () => void): unknown;
+  on(event: "zoomend", listener: (event?: { originalEvent?: unknown }) => void): unknown;
 }
 
-/** Report the zoom now and after every change, for the legend's zoom notes. */
-export function watchZoom(map: ZoomMap, zoom: (z: number) => void): void {
-  zoom(map.getZoom());
-  map.on("zoomend", () => zoom(map.getZoom()));
+/**
+ * Report the zoom now and after every change, for the legend's zoom notes, and whether the rider
+ * made the change: MapLibre's zoom buttons, keyboard, wheel and touch handlers give `zoomend` the
+ * input event as `originalEvent`, and the app's own moves (the first fit to a route, a place search's
+ * fly-to) have none. A sentence about the zoom is said only for the rider's (accessibility review S4).
+ */
+export function watchZoom(map: ZoomMap, zoom: (z: number, byRider: boolean) => void): void {
+  zoom(map.getZoom(), false);
+  map.on("zoomend", (event) => zoom(map.getZoom(), event?.originalEvent != null));
 }
