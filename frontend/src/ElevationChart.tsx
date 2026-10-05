@@ -60,6 +60,7 @@ import {
   readingAt,
   ridersTop,
   sectionWords,
+  stripKey,
   stripSections,
   summaryText,
   type ChartKind,
@@ -156,7 +157,7 @@ export function ElevationChart({
   const markerX = x(reading.m);
   const elevAtMarker = reading.elevationM;
   const ridersAtMarker = reading.riders;
-  const present = classesPresent(sections);
+  const present = stripKey(sections);
   const tableName = kind === "mass" ? "Climbs, bottlenecks and intersections as tables" : "Climbs as a table";
   const prompt = "Move along the chart, or use the arrow keys, to read the route at a point.";
   const keys =
@@ -474,16 +475,6 @@ function capitalise(text: string): string {
 }
 
 /** The strip's sections by the map's class (spanClass: unpaved, path, tier), one of each, in tier order. */
-function classesPresent(sections: StripSection[]): StripSection[] {
-  const seen = new Map<string, StripSection>();
-  for (const s of sections) {
-    const key = spanClass(s).key;
-    if (!seen.has(key)) seen.set(key, s);
-  }
-  const rank = (s: StripSection) => (s.facility === "path" && s.tier !== 5 ? 0 : (s.tier ?? 99)) + (s.unpaved ? 0.5 : 0);
-  return [...seen.values()].sort((a, b) => rank(a) - rank(b));
-}
-
 /** One section of the stress strip, in the map's colour for it, with the tier's pattern (or the unpaved dots). */
 function StripRect({ section: s, x0, w, uid }: { section: StripSection; x0: number; w: number; uid: string }): ReactNode {
   const cls = spanClass(s);

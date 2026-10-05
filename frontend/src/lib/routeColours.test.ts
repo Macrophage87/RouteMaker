@@ -12,6 +12,8 @@ import {
   ROUTE_CASING_PLAIN,
   routeClasses,
   routeLegend,
+  routeMarkDash,
+  routeMarkWidth,
   routePaint,
   routeSections,
   sectionFeatures,
@@ -96,12 +98,28 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   assert.deepEqual(layer.filter, ["==", ["get", "avoid"], true]);
   assert.deepEqual(layer.paint["line-color"], ["get", "mark"]);
   assert.deepEqual(layer.paint["line-dasharray"], [...ROUTE_AVOID_MARK_DASH]);
+  // At each feature's own mark width, which is the class's (r4 mutation NIT 7).
+  assert.deepEqual(layer.paint["line-width"], ["get", "markWidth"]);
+  const avoidFeature = sectionFeatures(routeSections(LINE, [span(0, 300, 5)])).features[0];
+  const avoidClass = routeClasses().find((c) => c.key === "5")!;
+  assert.equal(avoidFeature.properties.markWidth, routeMarkWidth(avoidClass.width));
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   const unpavedAt = mapView.indexOf("map.addLayer(routeUnpavedLayer(");
   const avoidAt = mapView.indexOf("map.addLayer(routeAvoidLayer(");
   assert.ok(unpavedAt > 0 && avoidAt > unpavedAt && avoidAt < mapView.indexOf('id: "route-line"'));
-  // The legend's swatch draws it too.
-  assert.match(readFileSync(new URL("../FacilityBreakdown.tsx", import.meta.url), "utf8"), /row\.mark && \(/);
+  // The legend's swatch draws it too: the same dash-dot, in SVG units of the mark's width (r4 mutation NIT 8).
+  const w = avoidClass.width;
+  assert.equal(routeMarkDash(w), ROUTE_AVOID_MARK_DASH.map((d) => d * routeMarkWidth(w)).join(" "));
+  const dash = routeMarkDash(w).split(" ").map(Number);
+  assert.equal(dash.length, 4);
+  assert.ok(dash[0] > dash[2] && dash[1] === dash[3], `a dash, a gap, a dot, a gap: ${routeMarkDash(w)}`);
+  const legend = readFileSync(new URL("../FacilityBreakdown.tsx", import.meta.url), "utf8");
+  const markAt = legend.indexOf("{row.mark && (");
+  assert.ok(markAt > 0, "the swatch draws the mark wherever the row has one");
+  const swatch = legend.slice(markAt, legend.indexOf("</svg>", markAt));
+  assert.match(swatch, /stroke=\{row\.mark\}/);
+  assert.match(swatch, /strokeWidth=\{routeMarkWidth\(row\.width\)\}/);
+  assert.match(swatch, /strokeDasharray=\{routeMarkDash\(row\.width\)\}/);
 });
 
 test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, the Mass Ride's four bands and Avoid, then not rated", () => {

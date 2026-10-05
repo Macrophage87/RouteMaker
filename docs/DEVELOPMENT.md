@@ -4919,7 +4919,8 @@ and the junction list never see them.
   chart cites USGS 3DEP and, on a Mass Ride, OpenStreetMap lane counts and DC Bike Party
   counts ("indicative (level roads about ±25%; hill adjustment not yet checked)"). The
   summary's stress shares and the climbs' Stress column say the map's class
-  ("traffic-free path", "unpaved, LTS 2"), as the key and the sentence do.
+  ("traffic-free path", "unpaved, LTS 2"), as the key and the sentence do; a path rated
+  Avoid is "Avoid" ("unpaved, Avoid"), as `routeColours.spanClass` draws it.
 - `App.tsx` puts the fold first in the route summary (`ROUTE_FOLDS.elevation`; "Stress and
   facilities" stays after it), open beside the map and closed on a small screen
   (`sidebar.chartFoldOpen(narrow)`). `scrubPoint` goes to `MapView`, which draws the
@@ -4935,7 +4936,9 @@ and the junction list never see them.
   panel, which no single fill can be) and a white AVOID at the 11-unit type (4.9:1), or
   "A" on a block under 36 units (drawn at least 10 wide), listed in the key ("Avoid (A
   where narrow)") only when the route has some; the route panel's stress bar draws it in
-  the same magenta with its near-black cross-hatch, and the route line's paved Avoid has a
+  the same magenta with its near-black cross-hatch (the "Stress and facilities" list's
+  "Avoid 0%" row, on a route with none, keeps the palette's Avoid colour), and the route
+  line's paved Avoid has a
   white dash-dot down its middle (`routeColours.ROUTE_AVOID_MARK`, the route-avoid layer),
   so it is not told from LTS 3 by colour alone in the high contrast palette; the
   narrowest point is a downward triangle with its figure; junction markers are a triangle,

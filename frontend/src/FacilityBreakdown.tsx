@@ -9,7 +9,7 @@ import { avoidMetres, breakdownParts, facilityRows, type BreakdownPart } from ".
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
-import { ROUTE_AVOID_MARK_DASH, ROUTE_CASING_WIDTH, routeCasing, routeLegend, routeMarkWidth } from "./lib/routeColours.ts";
+import { ROUTE_CASING_WIDTH, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
 import { seekNote } from "./lib/summary.ts";
 
 /**
@@ -58,7 +58,7 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
                       y2="7"
                       stroke={row.mark}
                       strokeWidth={routeMarkWidth(row.width)}
-                      strokeDasharray={ROUTE_AVOID_MARK_DASH.map((d) => d * routeMarkWidth(row.width)).join(" ")}
+                      strokeDasharray={routeMarkDash(row.width)}
                     />
                   )}
                 </svg>

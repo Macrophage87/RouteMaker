@@ -105,3 +105,26 @@ test("Avoid in the route panel's bar is the route's magenta in every palette, wi
   // And App gives the bar's segments their accent.
   assert.match(readFileSync(new URL("../App.tsx", import.meta.url), "utf8"), /stress-seg-\$\{s\.key\}[\s\S]{0,200}"--seg-accent" as string\]: s\.casing/);
 });
+
+test("a route with no Avoid lists Avoid at 0% in the palette's own colour, never the magenta (397 \"only if a route uses it\"; r4 spec S-SF1)", async () => {
+  const { currentTiers, setAccessibility } = await import("../stressStyle.js");
+  const { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA } = await import("./routeColours.ts");
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      const palette = currentTiers().find((t: { tier: number }) => t.tier === 5)!;
+      for (const stress of [{ "1": 100, "2": 50 }, { "1": 100, "5": 0 }, { "2": 10, "5": -3 }]) {
+        const avoid = stressSegments(stress).find((s) => s.key === "5")!;
+        assert.equal(avoid.percent, 0, JSON.stringify(stress));
+        assert.notEqual(avoid.color, ROUTE_AVOID_MAGENTA, JSON.stringify(stress));
+        assert.equal(avoid.color, palette.color, JSON.stringify(stress));
+        assert.equal(avoid.casing, palette.casing);
+        assert.notEqual(avoid.casing, ROUTE_AVOID_HALO);
+      }
+      // A metre of Avoid is enough for the magenta.
+      assert.equal(stressSegments({ "1": 100_000, "5": 1 }).find((s) => s.key === "5")!.color, ROUTE_AVOID_MAGENTA);
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+});
