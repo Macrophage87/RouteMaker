@@ -8,10 +8,15 @@ import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
 import {
   FLOW_BANDS,
   FLOW_GUIDES,
+  GRADE_BANDS,
   axisDistance,
+  bottleneckMark,
+  bottleneckRows,
   chartKind,
   climbRows,
   corkerWords,
+  crossingClause,
+  crossingMarkerWords,
   crossingRows,
   elevationLine,
   elevationRange,
@@ -21,6 +26,8 @@ import {
   gradeBand,
   gradeBandShapes,
   gradeWords,
+  jumpTargets,
+  labelWidth,
   linear,
   lonLatAt,
   nearestIndex,
@@ -30,9 +37,14 @@ import {
   positionAfterKey,
   readingAt,
   ridersTop,
+  ridersWords,
+  sectionWords,
+  spanAt,
   stepLength,
   stripSections,
   summaryText,
+  tierAt,
+  tierWords,
   usableProfile,
 } from "./profileChart.ts";
 
@@ -69,7 +81,7 @@ function build(preset: RouteResponse["preset"] = "default", withFlow = false): {
     crossings: withFlow
       ? [
           { m: 800, street: "7th St", severity: "orange", control: "signal", lanes: 4, crossed_tier: 3, corkers_needed: true },
-          { m: 2100, street: null, severity: null, control: "stop", lanes: 2, crossed_tier: 2, corkers_needed: false },
+          { m: 2100, street: null, severity: null, control: "cross_stop", lanes: 2, crossed_tier: 3, kind: "crossing", corkers_needed: true },
         ]
       : null,
   };
@@ -138,7 +150,7 @@ test("a descent says downhill, a flat stretch level, a missing tier says it is n
 test("a Mass Ride's scrub says the grade, the riders per minute with its band, and the next major intersection with corkers", () => {
   const { route, profile } = build("mass-ride", true);
   const r = readingAt(route, profile, 1200);
-  assert.equal(r.text, "Mile 0.7: grade 6%, about 90 riders per minute (tight). Next: an unnamed street at mile 1.3, no corkers needed.");
+  assert.equal(r.text, "Mile 0.7: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: an unnamed street at mile 1.3, corkers needed.");
   const early = readingAt(route, profile, 600);
   assert.equal(early.text, "Mile 0.4: level, about 190 riders per minute (good). Next: 7th St at mile 0.5, corkers needed.");
   const last = readingAt(route, profile, 4000);
@@ -291,8 +303,9 @@ test("the summary gives the elevation range, the steepest section, the climbs an
 test("a Mass Ride's summary names the narrowest point and the major intersections instead of the stress", () => {
   const { route, profile } = build("mass-ride", true);
   const text = summaryText(route, profile);
-  assert.match(text, /The narrowest point carries about 90 riders per minute \(tight\) at mile 0\.7; the typical stretch about 190\./);
-  assert.match(text, /2 major intersections, 1 needing corkers\./);
+  assert.match(text, /The narrowest point carries about 90 riders per minute \(tight\) at mile 0\.7, marked on the chart; the typical stretch about 190\./);
+  assert.match(text, /2 major intersections, 2 needing corkers\./);
+  assert.doesNotMatch(text, /not checked|could not be traced|Avoid/);
   assert.doesNotMatch(text, /Traffic stress/);
 });
 
@@ -300,9 +313,10 @@ test("the intersections table says each marker's shape and whether corkers are n
   const { profile } = build("mass-ride", true);
   const rows = crossingRows(profile);
   assert.deepEqual(rows[0], { mile: "Mile 0.5", street: "7th St", marker: "Higher stress (orange triangle)", corkers: "Corkers needed" });
-  assert.deepEqual(rows[1], { mile: "Mile 1.3", street: "an unnamed street", marker: "Major crossing, stop sign (dot)", corkers: "No corkers needed" });
+  assert.deepEqual(rows[1], { mile: "Mile 1.3", street: "an unnamed street", marker: "Crosses a busy road (LTS 3), cross traffic stops (dot)", corkers: "Corkers needed" });
   const crossing = (profile.crossings as ProfileCrossing[])[0];
   assert.equal(corkerWords(crossing), "corkers needed");
+  assert.equal(corkerWords({ ...crossing, corkers_needed: false }), "no corkers needed");
   assert.equal(nextCrossing(profile.crossings, 800), profile.crossings![1]);
   assert.equal(nextCrossing(profile.crossings, 790), profile.crossings![0]);
   assert.equal(nextCrossing(null, 0), null);
@@ -362,8 +376,201 @@ test("stress sections are clipped to the axis", () => {
   ];
   const got = stripSections(spans, 1000);
   assert.deepEqual(got, [
-    { from_m: 0, to_m: 500, tier: 1 },
-    { from_m: 500, to_m: 1000, tier: 4 },
+    { from_m: 0, to_m: 500, tier: 1, facility: "path", unpaved: null },
+    { from_m: 500, to_m: 1000, tier: 4, facility: "none", unpaved: null },
   ]);
+  assert.equal(stripSections([{ from_m: 0, to_m: 10, tier: 2, facility: "none", unpaved: true }], 10)[0].unpaved, true);
   assert.deepEqual(stripSections(undefined, 1000), []);
+});
+
+// ---- The review revision (the six-lens review's should-fixes; OWNER-DECISIONS 147, 325, 396) ----
+
+test("the grade key reads as words, and each band has a pattern as well as the amber", () => {
+  assert.deepEqual(
+    GRADE_BANDS.map((b) => [b.label, b.pattern]),
+    [
+      ["Grade 5% to 8%", "dots"],
+      ["Grade 8% or more", "hatch"],
+    ],
+  );
+});
+
+test("the guides keep the 327 colours for their lines and swatches", () => {
+  assert.deepEqual(
+    FLOW_GUIDES.map((g) => [g.at, g.color, g.band]),
+    [
+      [60, "#d7191c", 0],
+      [120, "#f28e2b", 1],
+      [200, "#1a9850", 2],
+    ],
+  );
+});
+
+test("a falling estimate is cut at each threshold it crosses, in order along the route", () => {
+  const profile: RouteProfile = { interval_m: 30, m: [0, 90], elevation_m: [1, 1], grade_pct: [0, 0], climbs: [], riders_per_min: [210, 50] };
+  const x = linear(0, 90, 0, 90);
+  const shapes = flowShapes(profile, x, linear(0, 250, 100, 0), 100);
+  assert.deepEqual(
+    shapes.map((s) => s.band.index),
+    [3, 2, 1, 0],
+  );
+  const starts = shapes.map((s) => Number(/^M([\d.]+) /.exec(s.d)?.[1]));
+  for (let i = 1; i < starts.length; i += 1) assert.ok(starts[i] > starts[i - 1], `${starts}`);
+  // Where 210 to 50 crosses 120: 90 m x (210 - 120) / 160.
+  assert.ok(Math.abs(starts[2] - (90 * 90) / 160) < 0.01, `${starts}`);
+});
+
+test("a grade band change splits the shape, and a stretch is in the band of its two grades' mean", () => {
+  const m = [0, 30, 60, 90, 120, 150, 180, 210];
+  const profile: RouteProfile = { interval_m: 30, m, elevation_m: m.map(() => 10), grade_pct: [0, 6, 6, 6, 9, 9, 9, 0], climbs: [] };
+  const plot = { x: linear(0, 210, 0, 210), y: linear(0, 20, 50, 0), left: 0, right: 210, top: 0, bottom: 50 };
+  const shapes = gradeBandShapes(profile, plot);
+  assert.deepEqual(
+    shapes.map((s) => s.band),
+    [1, 2],
+  );
+  // The first stretch (0 then 6: a mean of 3) is not steep, so band 1 starts at 30 m and runs to 120 m.
+  assert.match(shapes[0].d, /^M30 50 L30 /);
+  assert.match(shapes[0].d, /L120 50 Z$/);
+});
+
+test("the scrub never invents a figure: unknown riders are not known, Avoid has no capacity", () => {
+  const { route, profile } = build("mass-ride", true);
+  const unknown = { ...profile, riders_per_min: profile.riders_per_min!.map((r, i) => (profile.m[i] === 600 ? null : r)) };
+  const text = readingAt(route, unknown, 600).text;
+  assert.match(text, /^Mile 0\.4: level, riders per minute not known\./);
+  assert.doesNotMatch(text, /about 0|bottleneck/);
+  const avoid = { ...unknown, avoid: [{ from_m: 570, to_m: 630 }] };
+  assert.match(readingAt(route, avoid, 600).text, /^Mile 0\.4: level, Avoid, no carrying capacity\./);
+  assert.equal(ridersWords(profile, 0, 3000, 0), "about 0 riders per minute (bottleneck)");
+  assert.equal(ridersWords(profile, null, 3000, 0), "riders per minute not known");
+  assert.equal(ridersWords(profile, 100, 3000, -6), "about 100 riders per minute (tight, spaced out for the descent)");
+  assert.equal(ridersWords(profile, 100, 1200, 6), "about 100 riders per minute (tight, slowed by the climb)");
+  assert.equal(ridersWords(profile, 100, 1200, 0.5), "about 100 riders per minute (tight)");
+});
+
+test("intersections not checked say so; none at all says nothing; a gap ahead is named", () => {
+  const { route, profile } = build("mass-ride", true);
+  assert.match(readingAt(route, { ...profile, crossings: null }, 600).text, / Intersections not checked\.$/);
+  assert.match(readingAt(route, { ...profile, crossings: [] }, 600).text, /^Mile 0\.4: level, about 190 riders per minute \(good\)\.$/);
+  assert.equal(crossingClause({ ...profile, crossings: [], unchecked: [{ from_m: 3000, to_m: 4000 }] }, 600), " Part of the way ahead was not checked for intersections.");
+  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }, 2500), " Part of the way ahead was not checked for intersections.");
+  assert.match(crossingClause({ ...profile, unchecked: [{ from_m: 1000, to_m: 1100 }] }, 900), /^ Next: an unnamed street at mile 1\.3, corkers needed\. Part of the way to it was not checked for intersections\.$/);
+  assert.equal(crossingClause(profile, 4000), " No major intersections ahead.");
+  const summary = summaryText(route, { ...profile, crossings: null });
+  assert.match(summary, /Major intersections were not checked for this route\./);
+  assert.doesNotMatch(summary, /No major intersections/);
+  assert.match(summaryText(route, { ...profile, crossings: [] }), /No major intersections\./);
+  assert.match(summaryText(route, { ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }), /Part of the route could not be traced/);
+  assert.match(summaryText(route, { ...profile, avoid: [{ from_m: 3000, to_m: 3100 }] }), /One stretch is marked Avoid, with no carrying capacity, from mile 1\.9\./);
+});
+
+test("the stress said at a spot: tiers, Avoid, a path and an unpaved stretch as the map has them", () => {
+  assert.equal(tierWords(5), "Avoid");
+  assert.equal(tierWords(4), "LTS 4");
+  assert.equal(tierWords(null), null);
+  assert.equal(sectionWords({ tier: 1, facility: "path" }), "traffic-free path");
+  assert.equal(sectionWords({ tier: 2, facility: "none", unpaved: true }), "unpaved, LTS 2");
+  assert.equal(sectionWords({ tier: 1, facility: "path", unpaved: true }), "unpaved traffic-free path");
+  assert.equal(sectionWords({ tier: 3, facility: "lane", unpaved: false }), "LTS 3");
+  assert.equal(sectionWords(null), null);
+  const { route, profile } = build();
+  assert.match(readingAt(route, profile, 300).text, /, traffic-free path\.$/);
+  // A section's end is the next one's start; past the end is the last, before the start the first.
+  assert.equal(tierAt(route.stress_spans, 900), 3);
+  assert.equal(tierAt(route.stress_spans, 899), 1);
+  assert.equal(tierAt(route.stress_spans, 1e6), 2);
+  assert.equal(spanAt(route.stress_spans, -5)?.facility, "path");
+  assert.equal(tierAt([], 5), null);
+});
+
+test("a grade is rounded to the nearest whole percent", () => {
+  assert.equal(gradeWords(6.8), "grade 7%");
+  assert.equal(gradeWords(6.4), "grade 6%");
+  assert.equal(gradeWords(-0.4), "level");
+});
+
+test("the map point is scaled from the API's distance onto the line's own length", () => {
+  // A line of about 866 m for a 2,000 m route: halfway along the route is halfway along the line.
+  const line: [number, number][] = [
+    [-77, 38.9],
+    [-77.01, 38.9],
+  ];
+  const mid = lonLatAt(line, 1000, 2000)!;
+  assert.ok(Math.abs(mid[0] - -77.005) < 1e-9 && Math.abs(mid[1] - 38.9) < 1e-9, `${mid}`);
+  assert.deepEqual(lonLatAt(line, 5000, 2000), [-77.01, 38.9]);
+});
+
+test("a very high stress name is kept before a higher stress one when both lines are taken", () => {
+  const x = linear(0, 1000, 46, 352);
+  const c = (m: number, street: string, severity: ProfileCrossing["severity"]): ProfileCrossing => ({ m, street, severity, control: "signal", lanes: 4, crossed_tier: 3, corkers_needed: true });
+  const placed = placeCrossings([c(100, "A Street", "orange"), c(105, "B Street", "orange"), c(110, "C Street", "red")], x, 46, 352);
+  assert.deepEqual(
+    placed.map((p) => [p.label, p.labelled, p.row]),
+    [
+      ["A St", true, 1],
+      ["B St", false, 0],
+      ["C St", true, 0],
+    ],
+  );
+});
+
+test("the label widths are for the 11-pixel type", () => {
+  assert.equal(labelWidth("14th St"), 7 * 5.9 + 4);
+});
+
+test("scales: whole ten-foot steps, and the riders axis to the next 50", () => {
+  const { profile } = build();
+  const r = elevationRange({ ...profile, elevation_m: profile.elevation_m.map((_, i) => (i === 0 ? 30 : 38)) });
+  assert.ok(Math.abs(r.lo * FT - 90) < 1e-9 && Math.abs(r.hi * FT - 130) < 1e-9, `${r.lo * FT} ${r.hi * FT}`);
+  assert.equal(ridersTop({ ...profile, riders_per_min: [260] }), 300);
+  assert.equal(ridersTop({ ...profile, riders_per_min: [250] }), 250);
+});
+
+test("keys: Page Down steps back five, a tie goes to the earlier sample, and letters jump to climbs and intersections", () => {
+  const total = 8.1 * MILE;
+  const step = stepLength(total);
+  assert.equal(positionAfterKey("PageDown", 10 * step, total), 5 * step);
+  assert.equal(nearestIndex([0, 30], 15), 0);
+  const { profile } = build("mass-ride", true);
+  const targets = jumpTargets(profile);
+  assert.deepEqual(targets, { climbs: [1000], crossings: [800, 2100] });
+  assert.equal(positionAfterKey("c", 0, total, targets), 1000);
+  assert.equal(positionAfterKey("c", 1000, total, targets), null);
+  assert.equal(positionAfterKey("C", 1500, total, targets), 1000);
+  assert.equal(positionAfterKey("i", 0, total, targets), 800);
+  assert.equal(positionAfterKey("i", 800, total, targets), 2100);
+  assert.equal(positionAfterKey("I", 2100, total, targets), 800);
+  assert.equal(positionAfterKey("I", 500, total, targets), null);
+  assert.equal(positionAfterKey("i", 0, total), null);
+});
+
+test("the narrowest point is marked on the riders area with its figure, kept inside the plot", () => {
+  const { profile } = build("mass-ride", true);
+  const x = linear(0, 3 * MILE, 46, 352);
+  const y = linear(0, 250, 150, 94);
+  const mark = bottleneckMark(profile, x, y, 46, 352)!;
+  assert.equal(mark.label, "Narrowest 90");
+  assert.ok(Math.abs(mark.x - x(1200)) < 1e-9 && Math.abs(mark.y - y(90)) < 1e-9);
+  assert.equal(mark.anchor, "middle");
+  assert.equal(bottleneckMark({ ...profile, flow: { narrowest_m: 0, narrowest_riders_per_min: 40, typical_riders_per_min: 190 } }, x, y, 46, 352)!.anchor, "start");
+  assert.equal(bottleneckMark({ ...profile, flow: null }, x, y, 46, 352), null);
+});
+
+test("the bottlenecks table lists each stretch under 60 a minute", () => {
+  const m = [0, 30, 60, 90, 120, 150, 180];
+  const profile: RouteProfile = { interval_m: 30, m, elevation_m: m.map(() => 1), grade_pct: m.map(() => 0), climbs: [], riders_per_min: [55, 40, 70, null, 59, 59, 200] };
+  assert.deepEqual(bottleneckRows(profile), [
+    { start: "Mile 0.0", length: "98 ft (30 m)", lowest: "About 40 a minute" },
+    { start: "Mile 0.1", length: "98 ft (30 m)", lowest: "About 59 a minute" },
+  ]);
+  assert.deepEqual(bottleneckRows({ ...profile, riders_per_min: null }), []);
+});
+
+test("a dot says why the junction is major: a busy road crossed or joined, and its control", () => {
+  const base: ProfileCrossing = { m: 0, street: "Wisconsin Avenue", severity: null, control: "signal", lanes: 4, crossed_tier: 4, kind: "joining", corkers_needed: true };
+  assert.equal(crossingMarkerWords(base), "Joins a busy road (LTS 4), traffic signal (dot)");
+  assert.equal(crossingMarkerWords({ ...base, kind: "crossing", control: "none", crossed_tier: 3 }), "Crosses a busy road (LTS 3), no signal or sign (dot)");
+  assert.equal(crossingMarkerWords({ ...base, kind: undefined, control: "all_stop" }), "Crosses a busy road (LTS 4), all-way stop (dot)");
+  assert.equal(crossingMarkerWords({ ...base, severity: "red" }), "Very high stress (red diamond)");
 });

@@ -45,43 +45,62 @@ export interface ProfileClimb {
   min_riders_per_min?: number | null;
 }
 
-/** A Mass Ride's major junction (core.api.ProfileCrossingOut; OWNER-DECISIONS 333). */
+/**
+ * A Mass Ride's major junction (core.api.ProfileCrossingOut; OWNER-DECISIONS 333, 396): one that
+ * crosses or joins a road of LTS 3 or higher, whatever its control, or any junction with a stress
+ * rating.
+ */
 export interface ProfileCrossing {
   m: number;
   /** The cross street as mapped; null if unnamed. */
   street: string | null;
-  /** The planner's junction marker: orange (triangle), red (diamond); null: none. */
+  /** The planner's junction marker: orange (triangle), red (diamond); null: major only for its busy road (a dot). */
   severity: "orange" | "red" | null;
   control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
   lanes: number | null;
   crossed_tier: number | null;
+  /** Why it is major: flagged by the planner, a busy road crossed, or one joined; absent from an older API. */
+  kind?: "flagged" | "crossing" | "joining";
   /** The crossed road is LTS 3 or worse (OWNER-DECISIONS 142). */
   corkers_needed: boolean;
+}
+
+/** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */
+export interface ProfileRange {
+  from_m: number;
+  to_m: number;
 }
 
 /**
  * The route's elevation along its distance (core.api.ProfileOut; OWNER-DECISIONS 322, 323), as
  * parallel arrays, one entry a router sample in the order ridden. On a Mass Ride it also has the
  * grade-adjusted riders a minute at each sample, the narrowest point and the major junctions
- * (328, 332, 333). Absent from an older API, null where no leg had elevation.
+ * (328, 332, 333, 396). Absent from an older API, null where no leg had elevation. A route over
+ * about 60 km is thinned to about 2,000 samples (each window keeps its steepest grade, its lowest
+ * riders figure and its gaps).
  */
 export interface RouteProfile {
   interval_m: number;
-  /** Metres along the route to each sample (a joint between legs is two samples at one place). */
+  /** Metres along the route to each sample (a joint between legs is two samples at one place; a leg with no elevation, a null at each end). */
   m: number[];
   /** Metres; null where the router had none. */
   elevation_m: (number | null)[];
   /** Percent, signed, positive uphill; read across four samples. */
   grade_pct: (number | null)[];
   climbs: ProfileClimb[];
-  /** Mass Ride only: riders a minute, grade-adjusted; null where the width is not known. */
+  /** Mass Ride only: riders a minute, grade-adjusted; null where the width is not known or the stretch is marked Avoid. */
   riders_per_min?: (number | null)[] | null;
   flow?: {
     narrowest_riders_per_min: number | null;
     narrowest_m: number | null;
     typical_riders_per_min: number | null;
   } | null;
+  /** Mass Ride only: the major junctions; null where they were not checked (never "none"), [] where there are none. */
   crossings?: ProfileCrossing[] | null;
+  /** Mass Ride only: the stretches marked Avoid (325: no carrying capacity). */
+  avoid?: ProfileRange[] | null;
+  /** Mass Ride only: the stretches of a leg that could not be traced: width and junctions not known. */
+  unchecked?: ProfileRange[] | null;
 }
 
 /**

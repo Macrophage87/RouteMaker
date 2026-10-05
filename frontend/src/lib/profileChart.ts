@@ -9,7 +9,7 @@
  * grade-band and riders-band shapes, and which junction labels are thinned out. Units are US
  * first with metric in brackets, as everywhere else (format.ts).
  */
-import type { ProfileClimb, ProfileCrossing, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
+import type { ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 
@@ -38,10 +38,12 @@ export function usableProfile(route: Pick<RouteResponse, "profile">): RouteProfi
 // ---- Grade bands (322: a pattern as well as a colour) --------------------------------------------
 
 export interface GradeBand {
-  /** 1: 5-8%, 2: 8% or more. */
+  /** 1: 5% to 8%, 2: 8% or more. */
   band: 1 | 2;
+  /** The key's words, said as they read ("Grade 5% to 8%", not "5-8%", which a screen reader may say as minus). */
   label: string;
-  words: string;
+  /** The pattern over the amber, so the band is not told by colour alone (the amber is close to the grey area in the light theme). */
+  pattern: "dots" | "hatch";
 }
 
 export const GRADE_BAND_FILL = "#f59e0b";
@@ -49,8 +51,8 @@ export const GRADE_BAND_STEEP = 5;
 export const GRADE_BAND_STEEPER = 8;
 
 export const GRADE_BANDS: readonly GradeBand[] = [
-  { band: 1, label: "Grade 5-8%", words: "5 to 8 percent, in solid amber" },
-  { band: 2, label: "Grade 8% or more", words: "8 percent or more, in hatched amber" },
+  { band: 1, label: "Grade 5% to 8%", pattern: "dots" },
+  { band: 2, label: "Grade 8% or more", pattern: "hatch" },
 ];
 
 /** 0 under 5%, 1 for 5-8%, 2 for 8% or more, by the size of the grade either way (routemaker.profile.band_of). */
@@ -79,6 +81,7 @@ export interface FlowBand {
   pattern: "crosshatch" | "diagonal" | "dots" | "horizontal";
 }
 
+/** The bands' edges and words are `routemaker.flow.BAND_EDGES` and `BAND_WORDS`; tests/test_profile_flow.py holds this list to them. */
 export const FLOW_BANDS: readonly FlowBand[] = [
   { index: 0, from: 0, to: 60, color: "#d7191c", word: "bottleneck", label: "Under 60: bottleneck", pattern: "crosshatch" },
   { index: 1, from: 60, to: 120, color: "#f28e2b", word: "tight", label: "60 to 120: tight", pattern: "diagonal" },
@@ -86,12 +89,22 @@ export const FLOW_BANDS: readonly FlowBand[] = [
   { index: 3, from: 200, to: null, color: "#6a3d9a", word: "wide open", label: "200 and up: wide open", pattern: "horizontal" },
 ];
 
-/** The thresholds the dotted guide lines are drawn at, each in its band's colour. */
-export const FLOW_GUIDES: readonly { at: number; color: string }[] = [
-  { at: 60, color: FLOW_BANDS[0].color },
-  { at: 120, color: FLOW_BANDS[1].color },
-  { at: 200, color: FLOW_BANDS[2].color },
+/**
+ * The thresholds the dotted guide lines are drawn at (329: "labelled in the band colours"). The label's
+ * figure is in the text colour, beside a swatch of the band's colour (the a11y review's S1: the colours
+ * are 2.4:1 to 3.7:1 as 10 px text); the line itself is drawn in its CSS class, `pc-guide-N`, which is
+ * the band colour wherever that is 3:1 on the panel and a darker shade of it where not (orange in the
+ * light theme).
+ */
+export const FLOW_GUIDES: readonly { at: number; color: string; band: 0 | 1 | 2 }[] = [
+  { at: 60, color: FLOW_BANDS[0].color, band: 0 },
+  { at: 120, color: FLOW_BANDS[1].color, band: 1 },
+  { at: 200, color: FLOW_BANDS[2].color, band: 2 },
 ];
+
+/** The Avoid stretches' fill and ink on the riders track: the map's Avoid style, near-black on coral (325, 327). */
+export const AVOID_FILL = "#f4a6a0";
+export const AVOID_INK = "#1b1e24";
 
 export function flowBand(riders: number): FlowBand {
   let found = FLOW_BANDS[0];
@@ -135,11 +148,38 @@ export function tierWords(tier: number | null | undefined): string | null {
   return tier >= 5 ? "Avoid" : `LTS ${tier}`;
 }
 
-export function tierAt(spans: readonly StressSpan[] | undefined, metres: number): number | null {
+/** The stress section at a position: the one it is in (a section's end is the next one's start), the last past the end, the first before the start. */
+export function spanAt(spans: readonly StressSpan[] | undefined, metres: number): StressSpan | null {
   if (!spans || spans.length === 0) return null;
-  for (const span of spans) if (metres >= span.from_m && metres < span.to_m) return span.tier;
+  for (const span of spans) if (metres >= span.from_m && metres < span.to_m) return span;
   const last = spans[spans.length - 1];
-  return metres >= last.to_m ? last.tier : spans[0].tier;
+  return metres >= last.to_m ? last : spans[0];
+}
+
+export function tierAt(spans: readonly StressSpan[] | undefined, metres: number): number | null {
+  return spanAt(spans, metres)?.tier ?? null;
+}
+
+/**
+ * A stress section as it is said, the map's way (routeColours.ts spanClass: unpaved first, then a
+ * path, then the tier; the a11y review's S7): "traffic-free path", "unpaved, LTS 2", "unpaved
+ * traffic-free path", "LTS 3", "Avoid"; null where not rated.
+ */
+export function sectionWords(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">> | null | undefined): string | null {
+  if (!span) return null;
+  const path = span.facility === "path";
+  if (span.unpaved === true) {
+    if (path) return "unpaved traffic-free path";
+    const tier = tierWords(span.tier);
+    return tier ? `unpaved, ${tier}` : null;
+  }
+  if (path) return "traffic-free path";
+  return tierWords(span.tier);
+}
+
+/** Whether a position lies in one of the ranges (both ends included). */
+export function inRanges(ranges: readonly ProfileRange[] | null | undefined, metres: number): boolean {
+  return (ranges ?? []).some((r) => metres >= r.from_m && metres <= r.to_m);
 }
 
 // ---- Scales --------------------------------------------------------------------------------------
@@ -349,6 +389,9 @@ export interface StripSection {
   from_m: number;
   to_m: number;
   tier: number | null;
+  /** The section's facility and surface, so the strip draws a path and an unpaved stretch as the map does (S7). */
+  facility: StressSpan["facility"];
+  unpaved: boolean | null;
 }
 
 /** The route's stress sections for the strip, clipped to the axis; unknown stays a section of its own. */
@@ -356,7 +399,7 @@ export function stripSections(spans: readonly StressSpan[] | undefined, length: 
   if (!spans) return [];
   return spans
     .filter((s) => s.to_m > s.from_m && s.from_m < length)
-    .map((s) => ({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m), tier: s.tier }));
+    .map((s) => ({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m), tier: s.tier, facility: s.facility ?? null, unpaved: s.unpaved ?? null }));
 }
 
 // ---- The scrub: positions, steps, the map marker -------------------------------------------------
@@ -382,11 +425,40 @@ export function stepLength(totalM: number): number {
   return 10 * METRES_PER_MILE;
 }
 
-/** A position after a key: arrows step, Page keys step five, Home and End go to the ends; null for any other key. */
-export function positionAfterKey(key: string, at: number, totalM: number): number | null {
+/** The places the letter keys jump to: the climbs' starts, and on a Mass Ride the major intersections (a11y review N4). */
+export interface JumpTargets {
+  climbs?: readonly number[];
+  crossings?: readonly number[];
+}
+
+export function jumpTargets(profile: RouteProfile): JumpTargets {
+  return { climbs: profile.climbs.map((c) => c.from_m), crossings: (profile.crossings ?? []).map((c) => c.m) };
+}
+
+/** The first target after a position, or the last before it; null where there is none that way. */
+function jump(targets: readonly number[] | undefined, at: number, forward: boolean): number | null {
+  const sorted = [...(targets ?? [])].sort((a, b) => a - b);
+  if (forward) return sorted.find((m) => m > at + 1) ?? null;
+  for (let i = sorted.length - 1; i >= 0; i -= 1) if (sorted[i] < at - 1) return sorted[i];
+  return null;
+}
+
+/**
+ * A position after a key: arrows step, Page keys step five, Home and End go to the ends; C and
+ * Shift+C the next and previous climb, I and Shift+I the next and previous major intersection.
+ * Null for any other key, or a jump with nowhere to go.
+ */
+export function positionAfterKey(key: string, at: number, totalM: number, targets: JumpTargets = {}): number | null {
   const step = stepLength(totalM);
   const clamp = (m: number) => Math.min(Math.max(m, 0), totalM);
   switch (key) {
+    case "c":
+    case "C":
+    case "i":
+    case "I": {
+      const to = jump(key.toLowerCase() === "c" ? targets.climbs : targets.crossings, at, key === key.toLowerCase());
+      return to === null ? null : clamp(to);
+    }
     case "ArrowRight":
     case "ArrowUp":
       return clamp(at + step);
@@ -463,33 +535,70 @@ export interface Reading {
   text: string;
 }
 
+/** The listed climb a position is on, or null. */
+export function climbAt(profile: RouteProfile, metres: number): ProfileClimb | null {
+  return profile.climbs.find((c) => metres >= c.from_m && metres <= c.to_m) ?? null;
+}
+
+/**
+ * The riders clause of the Mass Ride sentence: "about 90 riders per minute (tight, slowed by the
+ * climb)" (the mock-up's wording, a11y N6 and spec NIT 1), "Avoid, no carrying capacity" on a stretch
+ * marked Avoid (325), and "riders per minute not known" where the width is not known. Never a figure
+ * where there is none: an unknown is never "about 0 ... (bottleneck)".
+ */
+export function ridersWords(profile: RouteProfile, riders: number | null, metres: number, gradePct: number | null): string {
+  if (inRanges(profile.avoid, metres)) return "Avoid, no carrying capacity";
+  if (riders === null || !Number.isFinite(riders)) return "riders per minute not known";
+  const reasons = [flowBand(riders).word];
+  const climb = climbAt(profile, metres);
+  if (climb && gradePct !== null && gradePct > 1 && (climb.capacity_drop_pct ?? 0) > 0) reasons.push("slowed by the climb");
+  else if (gradePct !== null && gradePct < -4) reasons.push("spaced out for the descent");
+  return `about ${riders} riders per minute (${reasons.join(", ")})`;
+}
+
+/**
+ * The intersections clause (333, 396): the next major intersection and whether corkers are needed;
+ * "Intersections not checked." where they were not read (`crossings: null`, correctness S2), and
+ * a note where the way ahead runs over a leg that could not be traced. Nothing on a route that has
+ * none at all (the summary says so).
+ */
+export function crossingClause(profile: RouteProfile, metres: number): string {
+  const crossings = profile.crossings;
+  if (crossings === null || crossings === undefined) return " Intersections not checked.";
+  const next = nextCrossing(crossings, metres);
+  const unchecked = profile.unchecked ?? [];
+  if (next) {
+    const gap = unchecked.some((r) => r.to_m > metres && r.from_m < next.m);
+    return ` Next: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}`;
+  }
+  if (unchecked.some((r) => r.to_m > metres)) return " Part of the way ahead was not checked for intersections.";
+  return crossings.length > 0 ? " No major intersections ahead." : "";
+}
+
 /**
  * What the scrub says at a position (OWNER-DECISIONS 322, 328(c), 333): "Mile 4.2: elevation 310 ft
- * (94 m), grade 6%, LTS 2"; on a Mass Ride "Mile 1.1: grade 6%, about 90 riders per minute (tight).
- * Next: 14th St at mile 1.3, corkers needed".
+ * (94 m), grade 6%, LTS 2"; on a Mass Ride "Mile 1.1: grade 6%, about 90 riders per minute (tight,
+ * slowed by the climb). Next: 14th St at mile 1.3, corkers needed".
  */
 export function readingAt(route: RouteResponse, profile: RouteProfile, metres: number, kind: ChartKind = chartKind(route)): Reading {
   const index = nearestIndex(profile.m, metres);
   const m = profile.m[index];
   const elevationM = profile.elevation_m[index] ?? null;
   const gradePct = profile.grade_pct[index] ?? null;
-  const tier = tierAt(route.stress_spans, m);
+  const span = spanAt(route.stress_spans, m);
+  const tier = span?.tier ?? null;
   const riders = profile.riders_per_min?.[index] ?? null;
   const parts: string[] = [];
   const grade = gradeWords(gradePct);
   let text: string;
   if (kind === "mass") {
     if (grade) parts.push(grade);
-    parts.push(riders === null ? "riders per minute not known" : `about ${riders} riders per minute (${flowBand(riders).word})`);
-    text = `${mileWord(m)}: ${parts.join(", ")}.`;
-    const next = nextCrossing(profile.crossings, m);
-    if (next) text += ` Next: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.`;
-    else if (profile.crossings && profile.crossings.length > 0) text += " No major intersections ahead.";
+    parts.push(ridersWords(profile, riders, m, gradePct));
+    text = `${mileWord(m)}: ${parts.join(", ")}.${crossingClause(profile, m)}`;
   } else {
     if (elevationM !== null) parts.push(`elevation ${elevationWords(elevationM)}`);
     if (grade) parts.push(grade);
-    const stress = tierWords(tier);
-    parts.push(stress ?? "stress not rated");
+    parts.push(sectionWords(span) ?? "stress not rated");
     text = `${mileWord(m)}: ${parts.join(", ")}.`;
   }
   return { index, m, elevationM, gradePct, tier, riders, text };
@@ -553,14 +662,26 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
     const flow = profile.flow;
     if (flow && flow.narrowest_riders_per_min !== null && flow.narrowest_m !== null) {
       sentences.push(
-        `The narrowest point carries about ${flow.narrowest_riders_per_min} riders per minute (${flowBand(flow.narrowest_riders_per_min).word}) at mile ${miles(flow.narrowest_m)}` +
+        `The narrowest point carries about ${flow.narrowest_riders_per_min} riders per minute (${flowBand(flow.narrowest_riders_per_min).word}) at mile ${miles(flow.narrowest_m)}, marked on the chart` +
           (flow.typical_riders_per_min !== null ? `; the typical stretch about ${flow.typical_riders_per_min}.` : "."),
       );
     }
-    const crossings = profile.crossings ?? [];
-    if (crossings.length > 0) {
+    const avoid = profile.avoid ?? [];
+    if (avoid.length > 0) {
+      const at = listWords(avoid.slice(0, 3).map((r) => miles(r.from_m)));
+      sentences.push(`${avoid.length === 1 ? "One stretch is" : `${avoid.length} stretches are`} marked Avoid, with no carrying capacity, from mile${avoid.length === 1 ? "" : "s"} ${at}${avoid.length > 3 ? " and more" : ""}.`);
+    }
+    const crossings = profile.crossings;
+    if (crossings === null || crossings === undefined) {
+      sentences.push("Major intersections were not checked for this route.");
+    } else {
       const needing = crossings.filter((c) => c.corkers_needed).length;
-      sentences.push(`${crossings.length} major ${crossings.length === 1 ? "intersection" : "intersections"}, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}.`);
+      sentences.push(
+        crossings.length === 0
+          ? "No major intersections."
+          : `${crossings.length} major ${crossings.length === 1 ? "intersection" : "intersections"}, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}.`,
+      );
+      if ((profile.unchecked ?? []).length > 0) sentences.push("Part of the route could not be traced, so its width and intersections are not known.");
     }
   } else {
     const shares = stressShares(route.stress_spans, total);
@@ -609,12 +730,62 @@ export interface CrossingRow {
   corkers: string;
 }
 
-/** The marker word: its shape and its meaning, so the table says what the chart draws. */
+const CONTROL_WORDS: Readonly<Record<ProfileCrossing["control"], string>> = {
+  signal: "traffic signal",
+  stop: "stop sign",
+  all_stop: "all-way stop",
+  cross_stop: "cross traffic stops",
+  none: "no signal or sign",
+};
+
+/**
+ * The marker word: its shape and its meaning, so the table says what the chart draws. A dot is a
+ * junction major only for the busy road it crosses or joins (396), which the planner draws no
+ * marker for: "Crosses a busy road (LTS 3), cross traffic stops (dot)".
+ */
 export function crossingMarkerWords(crossing: ProfileCrossing): string {
   if (crossing.severity === "red") return "Very high stress (red diamond)";
   if (crossing.severity === "orange") return "Higher stress (orange triangle)";
-  const control = crossing.control === "signal" ? "traffic signal" : crossing.control === "none" ? "crossing" : "stop sign";
-  return `Major crossing, ${control} (dot)`;
+  const what = crossing.kind === "joining" ? "Joins a busy road" : "Crosses a busy road";
+  const tier = tierWords(crossing.crossed_tier);
+  return `${what}${tier ? ` (${tier})` : ""}, ${CONTROL_WORDS[crossing.control] ?? "control not known"} (dot)`;
+}
+
+export interface BottleneckRow {
+  start: string;
+  length: string;
+  lowest: string;
+}
+
+/**
+ * The stretches under 60 riders a minute (327's bottleneck band), in the order ridden: the riders
+ * track as text (the a11y review's N7). Read from the samples, so a stretch is from its first such
+ * sample to its last.
+ */
+export function bottleneckRows(profile: RouteProfile): BottleneckRow[] {
+  const riders = profile.riders_per_min ?? [];
+  const edge = FLOW_BANDS[1].from;
+  const rows: BottleneckRow[] = [];
+  let from: number | null = null;
+  let to = 0;
+  let lowest = Infinity;
+  const close = () => {
+    if (from !== null) rows.push({ start: `Mile ${miles(from)}`, length: formatDistance(Math.max(to - from, 0)), lowest: `About ${lowest} a minute` });
+    from = null;
+    lowest = Infinity;
+  };
+  profile.m.forEach((m, i) => {
+    const r = riders[i];
+    if (r !== null && r !== undefined && r < edge) {
+      if (from === null) from = m;
+      to = m;
+      lowest = Math.min(lowest, r);
+    } else {
+      close();
+    }
+  });
+  close();
+  return rows;
 }
 
 export function crossingRows(profile: RouteProfile): CrossingRow[] {
@@ -665,9 +836,34 @@ export interface PlacedCrossing {
   anchor: "start" | "middle" | "end";
 }
 
-/** An approximate width of a label in the chart's 10-pixel type. */
+/** The chart's type size, in viewBox units (the a11y review's N5: 11, as the mock-up; about 10 px at 375 px wide). */
+export const CHART_TYPE = 11;
+
+/** An approximate width of a label in the chart's 11-pixel type. */
 export function labelWidth(text: string): number {
-  return text.length * 5.4 + 4;
+  return text.length * 5.9 + 4;
+}
+
+export interface BottleneckMark {
+  x: number;
+  y: number;
+  /** "Narrowest 55": the figure is said in the summary and the sentence too. */
+  label: string;
+  anchor: "start" | "middle" | "end";
+}
+
+/**
+ * Where the narrowest point is drawn (147: "with the bottleneck marked"): a downward caret on the
+ * riders area at `flow.narrowest_m`, a shape and its label, not a colour. Null without a figure.
+ */
+export function bottleneckMark(profile: RouteProfile, x: (m: number) => number, y: (riders: number) => number, left: number, right: number): BottleneckMark | null {
+  const flow = profile.flow;
+  if (!flow || flow.narrowest_m === null || flow.narrowest_riders_per_min === null) return null;
+  const at = x(flow.narrowest_m);
+  const label = `Narrowest ${flow.narrowest_riders_per_min}`;
+  const w = labelWidth(label);
+  const anchor = at - w / 2 < left ? "start" : at + w / 2 > right ? "end" : "middle";
+  return { x: at, y: y(flow.narrowest_riders_per_min), label, anchor };
 }
 
 const SEVERITY_RANK: Record<string, number> = { red: 2, orange: 1 };

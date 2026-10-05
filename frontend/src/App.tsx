@@ -79,6 +79,7 @@ import {
   PLANNER_EXTRAS,
   ROUTE_FOLDS,
   SHEET_TITLES,
+  chartFoldOpen,
   copyText,
   focusOnViewChange,
   foldTitle,
@@ -1371,7 +1372,7 @@ function RouteSummary({
           title={foldName(chartKind(route))}
           heading={foldName(chartKind(route))}
           // Offered collapsed on a small screen (OWNER-DECISIONS 322); open beside the map.
-          open={ROUTE_FOLDS.elevation.open && !narrow}
+          open={chartFoldOpen(narrow)}
         >
           <ElevationChart route={route} profile={profile} onScrub={onScrub} />
         </Fold>

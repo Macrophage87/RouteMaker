@@ -180,6 +180,11 @@ export const ROUTE_FOLDS = {
   choices: { title: "Routes to choose from", open: true },
 } as const;
 
+/** Whether the route chart's fold starts open: open beside the map, offered collapsed on a small screen (OWNER-DECISIONS 322). */
+export function chartFoldOpen(narrow: boolean): boolean {
+  return ROUTE_FOLDS.elevation.open && !narrow;
+}
+
 // ---- Where the focus goes ---------------------------------------------------------
 
 /** Why the panel changed view: a bar button, Back (or Escape), or a question or error that needs the planner. */

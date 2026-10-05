@@ -24,6 +24,7 @@ import {
   PLANNER_EXTRAS,
   RIDE_ACTION_SPOKEN,
   ROUTE_FOLDS,
+  chartFoldOpen,
   SHEET_TITLES,
   copyText,
   focusOnViewChange,
@@ -362,7 +363,11 @@ test("the route's folds: Elevation and stress, Stress and facilities, Directions
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   // The route chart (322, 323) sits first, in the elevation slot, and is collapsed on a small screen.
   assert.equal(ROUTE_FOLDS.elevation.title, "Elevation and stress");
-  assert.match(app, /open=\{ROUTE_FOLDS\.elevation\.open && !narrow\}/);
+  // Open beside the map and collapsed on a small screen: a pure decision (the mutation review's 13),
+  // which the fold takes as it is.
+  assert.equal(chartFoldOpen(false), true);
+  assert.equal(chartFoldOpen(true), false);
+  assert.ok(app.includes("open={chartFoldOpen(narrow)}"));
   assert.match(app, /\{profile && \(\s*<Fold/);
   // Each fold is reached from a heading list: a hidden h3 before it (the a11y review's S5).
   for (const key of ["facilities", "junctions", "choices"] as const) {
