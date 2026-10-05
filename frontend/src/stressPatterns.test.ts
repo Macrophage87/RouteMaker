@@ -46,7 +46,11 @@ test("no dash array is odd: solid is no dash at all, in every palette, plain and
   assert.equal(UNPAVED_DASH.length % 2, 0);
   for (const layer of stressOverlayLayers("s") as Layer[]) {
     const dash = layer.paint["line-dasharray"];
-    if (dash !== undefined) assert.equal((dash as number[]).length % 2, 0, `${layer.id}: ${JSON.stringify(dash)}`);
+    if (dash === undefined) continue;
+    // A zoom "step" of literal arrays (the surface-unknown edge) is every one of them.
+    const dashes = (dash as unknown[])[0] === "step" ? (dash as unknown[][]).filter((d) => Array.isArray(d) && d[0] === "literal").map((d) => d[1] as number[]) : [dash as number[]];
+    assert.ok(dashes.length > 0, layer.id);
+    for (const each of dashes) assert.equal(each.length % 2, 0, `${layer.id}: ${JSON.stringify(each)}`);
   }
 });
 
@@ -198,14 +202,15 @@ test("a flip of the accessibility switch repaints the unpaved marks too, in colo
 
 // ---- unpaved trails have no path rail (OWNER-DECISIONS 290) -----------------
 
-test("an unpaved trail gets no path rail, at every tier and ride time; a paved one, and one of unknown surface, keep it", () => {
+test("an unpaved trail gets no path rail, at every tier and ride time; a paved one keeps it, and so does a road of unknown surface; a trail of unknown surface has none (376)", () => {
   const path = (when?: string) => (facilityLayers("s", when as never) as Layer[]).find((l) => l.id === "facility-path") as Layer;
   for (const when of [undefined, "weekend", "weekday_rush"]) {
     const layer = path(when);
     for (const tier of [1, 2, 3, 4, 5]) {
       assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
       assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: true }), true, `LTS ${tier} trail of unknown surface`);
+      assert.equal(draws(layer, { tier, facility: "path", trail: true }), false, `LTS ${tier} trail of unknown surface: no rails (376, A)`);
+      assert.equal(draws(layer, { tier, facility: "path", trail: false }), true, `LTS ${tier} road closed to cars, no surface tag`);
     }
   }
   // A road closed to cars this weekend draws as a path: paved, its rails; unpaved, none.

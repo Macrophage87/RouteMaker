@@ -118,6 +118,11 @@ def segment_schemas(segment_schemas):
     for name in segment_schemas[:2]:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {name}.segment ALTER COLUMN trail_route SET DEFAULT 3")
+            # And a table from before the ride layer's column (OWNER-DECISIONS 391), which draws
+            # z12-13 as it did: the paths and the roads at LTS 3 and above. TestRideLayer adds it.
+            cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN calm_run_m")
+            # And from before the roadside column (403), which TestRoadside adds.
+            cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN roadside")
     return segment_schemas
 
 
@@ -469,8 +474,10 @@ class TestLevels:
 
     def test_the_roads_come_in_at_their_named_zooms(self) -> None:
         """ "Zoom less than 12, show just bike paths and the metro/MARC. 12 and
-        13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73)"""
-        assert (stress_tiles.BUSY_ROADS_MIN_ZOOM, stress_tiles.QUIET_STREETS_MIN_ZOOM) == (12, 14)
+        13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73); from
+        2026-10-05 12 and 13 are the ride layer where the table has its column (391), and
+        what they were where it has not."""
+        assert (stress_tiles.RIDE_LAYER_MIN_ZOOM, stress_tiles.QUIET_STREETS_MIN_ZOOM) == (12, 14)
         assert stress_tiles.level_for(10) is stress_tiles.TRAILS
         assert stress_tiles.level_for(11) is stress_tiles.TRAILS_NEAR
         assert stress_tiles.level_for(12) is stress_tiles.level_for(13) is stress_tiles.BUSY
@@ -530,7 +537,7 @@ class TestLevels:
         zooms = {k: int(v) for k, v in re.findall(r"(\w+):\s*(\d+)", block.group(1))}
         assert zooms == {
             "min": stress_tiles.MIN_ZOOM,
-            "busy": stress_tiles.BUSY_ROADS_MIN_ZOOM,
+            "ride": stress_tiles.RIDE_LAYER_MIN_ZOOM,
             "quiet": stress_tiles.QUIET_STREETS_MIN_ZOOM,
             "max": tile_cache.PREDRAW_MAX_ZOOM,
         }
@@ -552,7 +559,7 @@ class TestLevels:
         full = re.search(r"export const FULL_WIDTH_MIN_ZOOM = (\d+);", style)
         assert near and full, "stressStyle.js no longer declares the zoomed-out zooms"
         assert int(near.group(1)) == stress_tiles.TRAILS_NEAR_MIN_ZOOM
-        assert int(full.group(1)) == stress_tiles.BUSY_ROADS_MIN_ZOOM
+        assert int(full.group(1)) == stress_tiles.RIDE_LAYER_MIN_ZOOM
         assert stress_tiles.level_for(stress_tiles.TRAILS_NEAR_MIN_ZOOM - 1) is stress_tiles.TRAILS
         assert stress_tiles.level_for(stress_tiles.TRAILS_NEAR_MIN_ZOOM) is stress_tiles.TRAILS_NEAR
         legend = (frontend / "lib" / "stressLegend.ts").read_text()
@@ -560,6 +567,12 @@ class TestLevels:
         assert runs, "stressLegend.ts no longer declares PAVED_RUN_MI"
         assert float(runs.group(1)) == schema.Z11_PAVED_RUN_MI
         assert float(runs.group(2)) == schema.Z10_PAVED_RUN_MI
+        # The ride layer's two runs, which the legend and the hint say (OWNER-DECISIONS 391,
+        # 402a).
+        ride = re.search(r"RIDE_RUN_MI = \{ path: ([\d.]+), road: ([\d.]+) \}", legend)
+        assert ride, "stressLegend.ts no longer declares RIDE_RUN_MI"
+        assert float(ride.group(1)) == schema.RIDE_PATH_RUN_MI
+        assert float(ride.group(2)) == schema.RIDE_ROAD_RUN_MI
 
     @pytest.mark.parametrize("z", [10, 12, 14])
     def test_a_tier_the_tiles_have_not_met_is_carried_as_the_table_holds_it(
@@ -1025,10 +1038,11 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_long_trails_are_format_5(self) -> None:
-        # A forgotten bump would serve the old z10-11 tiles as current (mutation
-        # review NIT 7 of ZOOMED-TRAILS).
-        assert stress_tiles.FORMAT_VERSION == 5
+    def test_the_ride_layer_is_format_6(self) -> None:
+        # A forgotten bump would serve the old z10-13 tiles as current (mutation
+        # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375), 6 the ride layer (391)
+        # and the surface-unknown properties (376).
+        assert stress_tiles.FORMAT_VERSION == 6
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1548,3 +1562,240 @@ class TestLongTrails:
             LongTrails(5.0, 8.0, 3), True
         )
         assert "trail_bridge = 1 THEN false WHEN trail_bridge = 2 THEN true" in sql
+
+
+# ---- THE RIDE LAYER (OWNER-DECISIONS 391) ------------------------------------------------------
+
+
+def insert_ride(
+    schema, *, tier=1, trail=True, facility="path", run_mi=None, car_free=None, lat_shift=0.0
+) -> None:
+    """One way in the middle of the tile with a `calm_run_m` of `run_mi` miles (null when
+    it has none: a way that is not a candidate, a mountain-bike trail)."""
+    lon, lat = CENTRE[0] - 0.001, CENTRE[1] + lat_shift
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, is_unpaved, facility, calm_run_m, car_free_when) "
+            "VALUES (8, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), %s, 'x', %s, "
+            "false, %s, %s, %s)",
+            [
+                lon, lat, lon + 0.002, lat, tier, trail, facility,
+                None if run_mi is None else round(run_mi * MILE), car_free or [],
+            ],
+        )  # fmt: skip
+
+
+@db
+class TestRideLayer:
+    """z12-13 is "where to ride" (OWNER-DECISIONS 391: "I'm more concerned with the places
+    to ride than the places not to."): no road at LTS 3 or above, the long and connected
+    traffic-free paths, the calm roads in a long run (402a), and the roads closed to cars at
+    set times; the busy roads from z14. Only on a table that has `calm_run_m`."""
+
+    @pytest.fixture
+    def ride(self, segment_schemas):
+        from pipeline import schema
+
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN calm_run_m integer")
+            cursor.execute(
+                f"CREATE INDEX segment_ride_geom_idx ON {live}.segment USING gist (geometry) "
+                f"WHERE {schema.RIDE_INDEX_PREDICATE}"
+            )
+        return live
+
+    def test_the_levels(self) -> None:
+        with_column = frozenset({"calm_run_m"})
+        for z in (12, 13):
+            assert stress_tiles.level_for(z, with_column) is stress_tiles.RIDE_LAYER
+            assert stress_tiles.level_for(z) is stress_tiles.BUSY
+            assert stress_tiles.level_for(z, frozenset({"facility"})) is stress_tiles.BUSY
+        assert stress_tiles.level_for(14, with_column) is stress_tiles.FULL
+        assert stress_tiles.level_for(11, with_column) is stress_tiles.TRAILS_NEAR
+        assert stress_tiles.level_for(10, with_column) is stress_tiles.TRAILS
+        ride = stress_tiles.RIDE_LAYER
+        assert (ride.min_zoom, ride.merged, ride.long_trails) == (12, True, None)
+        assert (ride.extent, ride.buffer) == (4096, 32)
+
+    def test_the_thresholds_are_the_owners_numbers_and_named_constants(self) -> None:
+        from pipeline import schema
+
+        # "short isolated stubs (under about 0.25 mi)": the paths' bar. The roads' is the
+        # owner's proposed 2 mi (402a: "2 mi (3.2 km) continuous"), measured
+        # (docs/OPERATIONS.md, "The ride layer (z12-13)").
+        assert schema.RIDE_PATH_RUN_MI == 0.25
+        assert schema.RIDE_ROAD_RUN_MI == 2.0
+        sql = schema.ride_layer_predicate(True, True)
+        assert "COALESCE(calm_run_m, 0) >= 402" in sql  # 0.25 mi
+        assert "COALESCE(calm_run_m, 0) >= 3219" in sql  # 2 mi
+        assert "stress_tier <= 2 AND NOT is_trail_class" in sql, "LTS 1 and LTS 2 roads (402a)"
+        assert "stress_tier >= 3" not in sql, "no busy road is drawn at z12-13"
+        assert "cardinality(car_free_when) > 0" in sql
+        assert "cardinality(car_free_when) > 0" not in schema.ride_layer_predicate(True)
+
+    @pytest.mark.parametrize("z", [12, 13])
+    @pytest.mark.parametrize(
+        ("tier", "trail", "facility", "run_mi", "kept"),
+        [
+            (1, True, "path", 5.0, True),  # a long connected path
+            (1, True, "path", 0.25, True),  # exactly the bar
+            (1, True, "path", 0.24, False),  # a short isolated stub waits for z14
+            (1, True, "path", None, False),  # a mountain-bike trail: no run at all
+            (1, True, "path", 0.0, False),  # an unnamed candidate the derive never reached
+            (1, True, "protected", 1.0, True),  # a roadside trail of its own
+            (1, False, "path", 1.0, True),  # a road closed to cars for good: a path
+            (1, False, "none", 2.0, True),  # a calm road in a run of 2 mi (402a)
+            (1, False, "none", 1.99, False),
+            (1, False, "none", 0.5, False),  # the old half-mile street (391) is no longer one
+            (1, False, "none", None, False),
+            (1, False, "lane", 3.0, True),  # a calm road with a painted lane
+            (2, False, "none", 5.0, True),  # "LTS2 counts" (402a)
+            (2, False, "none", 1.5, False),
+            (3, False, "none", 5.0, False),  # no LTS 3 road, whatever its run
+            (4, False, "none", 5.0, False),
+            (5, False, "none", 5.0, False),
+            (3, False, "protected", 5.0, False),  # nor a cycle track's road
+        ],
+    )
+    def test_each_way_is_kept_or_not(self, client, ride, z, tier, trail, facility, run_mi, kept):
+        insert_ride(ride, tier=tier, trail=trail, facility=facility, run_mi=run_mi)
+        assert lines_in(client.get(url(*tile_of(*CENTRE, z))).content) == int(kept)
+
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_a_road_closed_to_cars_at_set_times_is_kept_for_those_times(
+        self, client, ride, z
+    ) -> None:
+        insert_ride(ride, tier=3, trail=False, facility="none", run_mi=None, car_free=["weekend"])
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        (feature,) = layer.features
+        assert feature.properties.get("car_free_only") == "weekend"
+        assert "car_free" not in feature.properties
+
+    @pytest.mark.parametrize(
+        ("tier", "trail", "facility", "run_mi"),
+        [(3, False, "none", None), (4, False, "none", 9.0), (1, True, "path", 0.1)],
+    )
+    def test_from_z14_every_way_is_drawn(self, client, ride, tier, trail, facility, run_mi):
+        insert_ride(ride, tier=tier, trail=trail, facility=facility, run_mi=run_mi)
+        assert lines_in(client.get(url(*tile_of(*CENTRE, 14))).content) == 1
+
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_a_table_without_the_column_draws_the_busy_roads_as_before(
+        self, client, segment_schemas, z
+    ) -> None:
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, facility) VALUES (9, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 3, 'x', false, 'none')",
+                [CENTRE[0] - 0.001, CENTRE[1], CENTRE[0] + 0.001, CENTRE[1]],
+            )
+        response = client.get(url(*tile_of(*CENTRE, z)))
+        assert lines_in(response.content) == 1
+        assert "+k" not in response["ETag"]
+
+    def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
+        insert_ride(ride, run_mi=1.0)
+        etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
+        assert "+kcfrmosbtl-v6" in etag, etag
+        assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
+        assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
+        assert len(etag) < 64
+
+    def test_the_ride_index_is_in_the_schema_and_the_tile_query_can_use_it(self, ride) -> None:
+        from pipeline import schema
+
+        assert "segment_ride_geom_idx" in schema.SEGMENT_DDL
+        optional = frozenset({"facility", "car_free_when", "calm_run_m"})
+        z, x, y = tile_of(*CENTRE, 12)
+        params = {"z": z, "x": x, "y": y, "extent": 4096, "buffer": 32, "margin": 0.01}
+        params["unit"] = 1.0
+        with connection.cursor() as cursor:
+            cursor.execute("SET enable_seqscan = off")
+            try:
+                cursor.execute(
+                    f"EXPLAIN {stress_tiles.tile_sql(stress_tiles.RIDE_LAYER, optional)}", params
+                )
+                plan = "\n".join(row[0] for row in cursor.fetchall())
+            finally:
+                cursor.execute("RESET enable_seqscan")
+        assert "segment_ride_geom_idx" in plan
+
+    def test_the_rebuild_creates_the_index_and_the_column(self, segment_schemas) -> None:
+        from pipeline import schema
+
+        assert "calm_run_m      integer" in schema.SEGMENT_DDL
+        # The DDL as the rebuild runs it, in a schema of its own, before the fixture changed it.
+        name = "ridecheck"
+        drop_segment_schema(name)
+        try:
+            create_segment_schema(name)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT indexdef FROM pg_indexes WHERE schemaname = %s "
+                    "AND indexname = 'segment_ride_geom_idx'",
+                    [name],
+                )
+                (definition,) = cursor.fetchone()
+        finally:
+            drop_segment_schema(name)
+        assert "USING gist (geometry)" in definition and "calm_run_m" in definition
+
+
+# ---- TRAILS BESIDE A ROAD (OWNER-DECISIONS 403) ------------------------------------------------
+
+
+@db
+class TestRoadside:
+    """A trail beside a road carries `roadside` (true or left out), which the map reads to draw
+    one with no surface mapped as a paved path (403); only on a table with the column."""
+
+    @pytest.fixture
+    def beside(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN roadside boolean")
+        return live
+
+    def put(self, schema, roadside, lat_shift=0.0) -> None:
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1] + lat_shift
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, is_unpaved, facility, roadside) VALUES (%s, 0, "
+                "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, null, "
+                "'path', %s)",
+                [11 if roadside else 12, lon, lat, lon + 0.002, lat, roadside],
+            )
+
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_the_property_is_true_or_left_out(self, client, beside, z) -> None:
+        self.put(beside, True)
+        self.put(beside, False, lat_shift=0.0005)
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        marks = sorted(str(f.properties.get("roadside")) for f in layer.features)
+        assert marks == ["None", "True"], marks
+        assert all("unpaved" not in f.properties for f in layer.features), "surface unknown"
+
+    def test_the_etag_names_the_column(self, client, beside) -> None:
+        self.put(beside, True)
+        etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+        assert "+cfrmoesbtl-v6" in etag, etag
+        assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
+        assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
+
+    def test_a_table_without_the_column_carries_nothing(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, facility) VALUES (13, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, 'path')",
+                [lon, lat, lon + 0.002, lat],
+            )
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        assert all("roadside" not in f.properties for f in layer.features)

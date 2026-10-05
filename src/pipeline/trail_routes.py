@@ -10,7 +10,13 @@ writes what that rule reads, beside the rest of a segment's row:
 - `trail_run_m`, the length of the way's named run, derived in the staging
   schema once the rows are written (`derive_trail_runs`); and
 - `trail_bridge`, how a short bridge inside a trail is judged
-  (`judge_bridges`).
+  (`judge_bridges`); and
+- `calm_run_m`, the length of the connected network or named run a path is part
+  of, or of the calm run of a road at LTS 1 or 2 (`pipeline.calm_roads`), which the
+  z12-13 "where to ride" layer keeps it for (OWNER-DECISIONS 391, 402a;
+  `derive_calm_runs`); and
+- `roadside`, whether a drawn trail lies beside a road, so that one with no surface
+  mapped keeps the paved path's look (OWNER-DECISIONS 403; `derive_roadside`).
 
 The relations are OSM's, cited as the rest of the map's data is.
 """
@@ -23,8 +29,16 @@ import osmium
 
 from routemaker.singletrack import SCALE_KEYS, grade, is_paved
 
+from . import calm_roads
 from .schema import (
+    CALM_PATH_GAP_M,
+    CALM_ROAD_MAX_TIER,
+    CALM_RUN_COLUMN,
     PAVED_ROUTE_MIN,
+    ROADSIDE_COLUMN,
+    ROADSIDE_FRACTION,
+    ROADSIDE_M,
+    ROADSIDE_SAMPLE_M,
     ROADSIDE_TRAIL_FACILITY,
     ROUTE_ANY_BICYCLE,
     ROUTE_LONG_BICYCLE,
@@ -117,6 +131,27 @@ def is_zoomed_out_trail(facility: str, is_trail_class: bool, car_free_when) -> b
         or (facility == ROADSIDE_TRAIL_FACILITY and is_trail_class)
         or bool(car_free_when)
     )
+
+
+def is_calm_candidate(
+    *,
+    zoomed_out_trail: bool,
+    mountain_bike: bool,
+    mtb_only: bool,
+    is_trail_class: bool,
+    stress_tier: int,
+    map_class: str,
+) -> bool:
+    """Whether the way can be in the z12-13 ride layer (OWNER-DECISIONS 391, 402a),
+    and so is written with a `calm_run_m` of 0 for `derive_calm_runs` to set: a path
+    or trail the zoomed-out map draws (`is_zoomed_out_trail`), or a road at LTS 1 or
+    LTS 2 that is not a trail, of any class ("LTS2 counts"); never a mountain-bike
+    trail (a way in a route=mtb relation, one tagged as such, or one the no-bike-paths
+    rules call mountain-bike only), and nothing that is not a drawn road (a hidden,
+    barred or alley way)."""
+    if mountain_bike or mtb_only or map_class != "road":
+        return False
+    return zoomed_out_trail or (stress_tier <= CALM_ROAD_MAX_TIER and not is_trail_class)
 
 
 class Routes(NamedTuple):
@@ -222,6 +257,65 @@ WHERE s.id = runs.id
 """
 
 
+# The calm runs (`derive_calm_runs`, OWNER-DECISIONS 391, 402a). A candidate is
+# written with `calm_run_m` 0 (`is_calm_candidate`). A path or trail (the zoomed-out
+# map's `trails` rule) gets the length of the connected network of such candidates
+# (eps CALM_PATH_GAP_M), or of its named run (`trail_run_m`) if that is longer. A
+# road gets the length of its calm run (`pipeline.calm_roads`: continuous LTS 1 and 2
+# road, ended at every junction with a road at LTS 3 or above); a road with no name
+# stays 0: it has no run.
+_DERIVE_CALM_PATHS = """
+UPDATE {schema}.segment AS s
+SET {calm} = GREATEST(runs.run_m, COALESCE(s.{run}, 0))
+FROM (
+    SELECT id, round(sum(length_m) OVER (PARTITION BY chain))::integer AS run_m
+    FROM (
+        SELECT id,
+               ST_Length(geometry::geography) AS length_m,
+               ST_ClusterDBSCAN(
+                   ST_Transform(geometry, {srid}), eps := {gap}, minpoints := 1
+               ) OVER () AS chain
+        FROM {schema}.segment
+        WHERE {calm} = 0 AND map_class = 'road' AND {trails}
+    ) AS chained
+) AS runs
+WHERE s.id = runs.id
+"""
+
+
+# The trails beside a road (`derive_roadside`, OWNER-DECISIONS 403). The writer sets
+# `roadside` true where a drawn trail's tags or facility say it is a sidepath, false
+# where they say it is not or the way is not a drawn trail, and leaves it null for the
+# geometry to decide: points ROADSIDE_SAMPLE_M apart along the trail (both ends
+# included), each beside a road when one lies within ROADSIDE_M of it on the ground.
+# The degrees only find the candidates through the geometry index (0.0005 degrees is
+# 43 m of longitude and 56 m of latitude at 39 N, more than ROADSIDE_M).
+_ROADSIDE_SEARCH_DEG = 0.0005
+_DERIVE_ROADSIDE = """
+UPDATE {schema}.segment AS t
+SET {roadside} = near.beside
+FROM (
+    SELECT u.id, avg(CASE WHEN EXISTS (
+               SELECT 1 FROM {schema}.segment AS r
+               WHERE NOT r.is_trail_class AND r.map_class IN ('road', 'barred')
+                 AND ST_DWithin(r.geometry, p.point, {search})
+                 AND ST_DWithin(r.geometry::geography, p.point::geography, {within})
+           ) THEN 1.0 ELSE 0.0 END) >= {fraction} AS beside
+    FROM {schema}.segment AS u
+    CROSS JOIN LATERAL (
+        SELECT GREATEST(1, ceil(ST_Length(u.geometry::geography) / {step}))::integer AS n
+    ) AS k
+    CROSS JOIN LATERAL generate_series(0, k.n) AS i
+    CROSS JOIN LATERAL (
+        SELECT ST_LineInterpolatePoint(u.geometry, i::float8 / k.n) AS point
+    ) AS p
+    WHERE u.{roadside} IS NULL AND u.is_trail_class AND u.map_class = 'road'
+    GROUP BY u.id
+) AS near
+WHERE t.id = near.id
+"""
+
+
 # The short bridges (`judge_bridges`). A candidate (trail_bridge 3) is a drawn
 # trail way tagged bridge=*. Candidates whose ends meet are one chain (a bridge
 # and its boardwalk, or a bridge OSM splits in two), judged as one: the chain is
@@ -311,6 +405,33 @@ def runs_sql(schema: str) -> str:
     )
 
 
+def calm_paths_sql(schema: str) -> str:
+    """The UPDATE that sets the paths' calm runs (`derive_calm_runs`)."""
+    validate_schema_name(schema)
+    return _DERIVE_CALM_PATHS.format(
+        schema=schema,
+        calm=CALM_RUN_COLUMN,
+        run=TRAIL_RUN_COLUMN,
+        srid=RUN_PROJECTION_SRID,
+        trails=trails_predicate(True, True),
+        gap=CALM_PATH_GAP_M,
+    )
+
+
+def roadside_sql(schema: str) -> str:
+    """The UPDATE that decides, by geometry, the drawn trails whose tags left
+    `roadside` open (`derive_roadside`)."""
+    validate_schema_name(schema)
+    return _DERIVE_ROADSIDE.format(
+        schema=schema,
+        roadside=ROADSIDE_COLUMN,
+        search=_ROADSIDE_SEARCH_DEG,
+        within=ROADSIDE_M,
+        fraction=ROADSIDE_FRACTION,
+        step=ROADSIDE_SAMPLE_M,
+    )
+
+
 def bridges_sql(schema: str) -> str:
     """The UPDATE that judges the short bridges (`judge_bridges`)."""
     validate_schema_name(schema)
@@ -361,6 +482,40 @@ def derive_trail_runs(schema: str) -> int:
     return set_runs
 
 
+def derive_calm_runs(schema: str) -> tuple[int, int]:
+    """Set `calm_run_m` on the staging schema's candidates (OWNER-DECISIONS 391, 402a):
+    the paths' networks here, the roads' calm runs in `pipeline.calm_roads`. Run after
+    `derive_trail_runs`, whose `trail_run_m` a path's run is at least. Returns the
+    number of rows set: (the paths, the roads)."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(calm_paths_sql(schema))
+        set_paths = cursor.rowcount
+    set_roads = calm_roads.derive(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(f"ANALYZE {schema}.segment")
+    return set_paths, set_roads
+
+
+def derive_roadside(schema: str) -> int:
+    """Decide `roadside` on the staging schema's drawn trails that their tags left open
+    (OWNER-DECISIONS 403; `roadside_sql`), and set it false on any row still null.
+    Returns the number of rows beside a road."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(roadside_sql(schema))
+        cursor.execute(
+            f"UPDATE {schema}.segment SET {ROADSIDE_COLUMN} = false WHERE {ROADSIDE_COLUMN} IS NULL"
+        )
+        cursor.execute(f"SELECT count(*) FROM {schema}.segment WHERE {ROADSIDE_COLUMN}")
+        (beside,) = cursor.fetchone()
+    return beside
+
+
 class LongTrailSummary(NamedTuple):
     """What VALIDATE reads of the long-trail columns before a promotion."""
 
@@ -395,3 +550,43 @@ def long_trail_summary(schema: str, sentinel_ways, run_floor_m: int) -> LongTrai
         )
         sentinels = {way: (route, run) for way, route, run in cursor.fetchall()}
     return LongTrailSummary(on_route, in_run, unjudged, sentinels)
+
+
+class CalmRunSummary(NamedTuple):
+    """What VALIDATE reads of the calm-run column before a promotion."""
+
+    # Path rows (is_trail_class) in a run of at least the ride layer's path bar.
+    path_rows: int
+    # Street rows (not is_trail_class) in a run of at least the street bar.
+    street_rows: int
+    # Named candidates left at 0: always 0 after the derive, so a nonzero count
+    # is a derive that did not run to the end.
+    unset_named: int
+    # {sentinel way id: its longest calm run}; a way the table does not hold is absent.
+    sentinels: dict[int, int]
+
+
+def calm_run_summary(
+    schema: str, sentinel_ways, path_floor_m: int, street_floor_m: int
+) -> CalmRunSummary:
+    """Count the staging schema's ride-layer rows and read the sentinel ways."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT count(*) FILTER (WHERE is_trail_class AND {CALM_RUN_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE NOT is_trail_class AND {CALM_RUN_COLUMN} >= %s), "
+            f"count(*) FILTER (WHERE {CALM_RUN_COLUMN} = 0 AND "
+            f"{NAME_KEY.format(name=TRAIL_NAME_COLUMN)} IS NOT NULL) "
+            f"FROM {schema}.segment",
+            [path_floor_m, street_floor_m],
+        )
+        paths, streets, unset = cursor.fetchone()
+        cursor.execute(
+            f"SELECT osm_way_id, COALESCE(max({CALM_RUN_COLUMN}), 0) FROM {schema}.segment "
+            "WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id",
+            [list(sentinel_ways)],
+        )
+        sentinels = dict(cursor.fetchall())
+    return CalmRunSummary(paths, streets, unset, sentinels)

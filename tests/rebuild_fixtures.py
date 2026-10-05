@@ -121,6 +121,19 @@ ALPHA_BRIDGE_ID = 2102
 REGIONAL_ROUTE_ID = 2200
 MOUNTAIN_BIKE_ID = 2300
 NAMED_STREET_ID = 2400
+# The ride layer's (OWNER-DECISIONS 391, 402a) and the surface rules' (376, 403): a second
+# way of the street's name and a third of another name carrying straight on, which are one
+# calm run of 3.5 km (2.2 mi) across the change of name; a track with no surface, and a
+# grade1 track with none; a path with no surface and no name, away from roads; a
+# traffic-free path of no name touching the unnamed path, so they are one network; and a
+# cycleway with no surface 10 m beside Gamma Street, a roadside trail.
+NAMED_STREET_EAST_ID = 2401
+NAMED_ROAD_ON_ID = 2402
+TRACK_NO_SURFACE_ID = 2500
+TRACK_GRADE1_ID = 2501
+BARE_PATH_ID = 2502
+BARE_PATH_NEXT_ID = 2503
+ROADSIDE_PATH_ID = 2504
 
 
 def build_long_trails_extract(path: Path) -> None:
@@ -144,6 +157,19 @@ def build_long_trails_extract(path: Path) -> None:
             32: (-77.040, 38.900),
             41: (-77.050, 38.890),
             42: (-77.040, 38.890),
+            43: (-77.030, 38.890),
+            44: (-77.010, 38.890),
+            # The roadside cycleway, 10 m north of Gamma Street.
+            45: (-77.048, 38.89009),
+            46: (-77.042, 38.89009),
+            # Two tracks, and two unnamed paths that meet.
+            51: (-77.020, 38.920),
+            52: (-77.010, 38.920),
+            53: (-77.020, 38.910),
+            54: (-77.010, 38.910),
+            55: (-77.095, 38.900),
+            56: (-77.090, 38.900),
+            57: (-77.085, 38.900),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -165,6 +191,13 @@ def build_long_trails_extract(path: Path) -> None:
                 {"highway": "path", "bicycle": "yes", "surface": "dirt", "name": "Rocky Loop"},
             ),
             (NAMED_STREET_ID, [41, 42], {"highway": "residential", "name": "Gamma Street"}),
+            (NAMED_STREET_EAST_ID, [42, 43], {"highway": "residential", "name": "Gamma Street"}),
+            (NAMED_ROAD_ON_ID, [43, 44], {"highway": "residential", "name": "Delta Road"}),
+            (TRACK_NO_SURFACE_ID, [51, 52], {"highway": "track"}),
+            (TRACK_GRADE1_ID, [53, 54], {"highway": "track", "tracktype": "grade1"}),
+            (BARE_PATH_ID, [55, 56], {"highway": "path", "bicycle": "yes"}),
+            (BARE_PATH_NEXT_ID, [56, 57], {"highway": "path", "bicycle": "yes"}),
+            (ROADSIDE_PATH_ID, [45, 46], {"highway": "cycleway"}),
         ]
         # osmium reads a file whose ways are in id order.
         for way_id, way_nodes, tags in sorted(ways, key=lambda way: way[0]):

@@ -9,13 +9,16 @@ import {
   CAR_FREE_NOTE,
   LTS_MEANS,
   ROADWAY_LANES,
+  ROUTE_AT_EVERY_ZOOM,
   StressLegend,
   StressZoomNotes,
+  UNKNOWN_SURFACE_LEGEND,
   UNPAVED_LEGEND,
   ZOOMED_OUT,
   dashPx,
   everyTrailFrom,
   facilityLegendHint,
+  rideLayerText,
   stressZoomHint,
   stressZoomNotice,
 } from "./stressLegend.ts";
@@ -23,6 +26,7 @@ import {
   FACILITIES,
   LEGEND_SWATCH_PX,
   PALETTES,
+  UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   currentTiers,
   legendWidths,
@@ -34,15 +38,18 @@ import {
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
-  const out = stressZoomNotice(STRESS_ZOOMS.busy - 0.01, true);
-  assert.equal(out, `Zoom in to see every path and trail, and traffic stress on roads. ${ZOOMED_OUT}`);
-  assert.ok(out!.startsWith("Zoom in to see every path and trail, and traffic stress on roads. Zoomed out, only the long-distance"));
+  const out = stressZoomNotice(STRESS_ZOOMS.ride - 0.01, true);
+  assert.equal(out, `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`);
+  assert.ok(out!.startsWith("Zoom in to see more paths and trails, calm roads and traffic stress on roads. Zoomed out, only the long-distance"));
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min, true), out);
 });
 
-test("at busy-road zoom the notice says the quiet streets are a zoom away, and the busy roads faint", () => {
-  const out = stressZoomNotice(STRESS_ZOOMS.busy, true);
-  assert.equal(out, "Zoom in to see the quiet streets. Busy roads are drawn faintly until zoom 14.");
+test("at zoom 12-13 the notice says this is the where-to-ride view and what waits for zoom 14 (OWNER-DECISIONS 391)", () => {
+  const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
+  assert.equal(
+    out,
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
+  );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
 
@@ -62,10 +69,24 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10;`));
   assert.ok(hint.includes("an unpaved one needs a regional bike route or a longer run. Trails beside a road count the same way."));
   assert.ok(hint.includes("Lines are drawn thinner at zooms 10 and 11."));
-  assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.busy)));
-  assert.equal(everyTrailFrom(12), "Every other path and trail, mountain-bike trails and local routes included, shows from zoom 12.");
-  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.busy} the busy roads at LTS 3 and above show, faintly,`));
-  assert.ok(hint.includes(`from zoom ${STRESS_ZOOMS.quiet} the quiet streets, footways and sidewalks, with every line solid from zoom 14.`));
+  assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
+  assert.equal(
+    everyTrailFrom(12),
+    "Paths on local routes and other connected paths show from zoom 12; mountain-bike trails and every short path show from zoom 14.",
+  );
+  // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
+  assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
+  assert.ok(
+    hint.includes(
+      "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
+        "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
+        "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
+    ),
+  );
+  assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
+  assert.match(ROUTE_AT_EVERY_ZOOM, /own busy stretches and junction warnings at every zoom/);
+  assert.doesNotMatch(hint, /faintly,? and from zoom 14|show, faintly/, "no busy road is drawn at zoom 12-13 now");
+  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, every line solid from zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
   assert.ok(hint.includes("shows only from zoom 15, and faintly, so the bike lane is the main line."));
   assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, military bases and parking lots not at all."));
@@ -76,7 +97,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
 
 test("rendered: the notice as a status, then the hint", () => {
   const html = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11.2, shown: true }));
-  assert.match(html, /^<p class="notice" role="status">Zoom in to see every path and trail, and traffic stress on roads\./);
+  assert.match(html, /^<p class="notice" role="status">Zoom in to see more paths and trails, calm roads and traffic stress on roads\./);
   assert.match(html, /<p class="hint">Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, long named trails, and roads closed to cars at set times\./);
   // The hint rendered is the one for the map's own zoom (round-1 mutant F08).
   assert.match(html, /The map is at zoom 11\.<\/p><p class="hint">Roads closed to cars/);
@@ -240,7 +261,7 @@ test("the Unpaved row draws the brown ramp light to dark, each on its casing wit
 
 test("the bike-facility legend lists the rails the map has drawn, in FACILITIES' order, each with its dash under the casing", () => {
   const widths = legendWidths(currentTiers());
-  const rows = swatches(legendHtml()).slice(currentTiers().length + 1);
+  const rows = swatches(legendHtml()).slice(currentTiers().length + 2);
   assert.deepEqual(rows.map((r) => r.text.split(" ")[0]), FACILITIES.map((f) => f.short));
   FACILITIES.forEach((facility, i) => {
     const [rail, casing] = rows[i].lines;
@@ -251,7 +272,7 @@ test("the bike-facility legend lists the rails the map has drawn, in FACILITIES'
     assert.equal(Number(casing["stroke-width"]), widths.facilityCasing);
   });
   // Only what the map has drawn; none, and there is no facility legend at all.
-  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 1).map((r) => r.text.split(" ")[0]), ["Painted"]);
+  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 2).map((r) => r.text.split(" ")[0]), ["Painted"]);
   assert.doesNotMatch(legendHtml(new Set()), /Bike facility legend|Sharrows/);
 });
 
@@ -273,3 +294,29 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   const hidden = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom: 11, shown: false }));
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
 });
+
+test("the legend has a Surface unknown row: LTS 1's casing and line in short dashes, and the words, no color alone (OWNER-DECISIONS 376, A)", () => {
+  for (const strong of [false, true]) {
+    withSwitches(strong, false, () => {
+      const tiers = currentTiers();
+      const widths = legendWidths(tiers);
+      const rows = swatches(legendHtml());
+      const row = rows[tiers.length + 1];
+      assert.ok(row.text.startsWith("Surface unknown"), row.text);
+      assert.ok(row.text.includes(UNKNOWN_SURFACE_LEGEND));
+      const [casing, line] = row.lines;
+      const dash = dashPx(UNKNOWN_SURFACE_DASH, widths.tiers[0].line);
+      assert.equal(casing.stroke, tiers[0].casing);
+      assert.equal(Number(casing["stroke-width"]), widths.tiers[0].casing);
+      assert.equal(line.stroke, tiers[0].color);
+      assert.equal(Number(line["stroke-width"]), widths.tiers[0].line);
+      assert.equal(casing["stroke-dasharray"], dash, "the edge is dashed as the line is");
+      assert.equal(line["stroke-dasharray"], dash);
+      assert.ok(UNKNOWN_SURFACE_DASH.reduce((a, b) => a + b, 0) * widths.tiers[0].line <= LEGEND_SWATCH_PX, "a whole cycle shows");
+    });
+  }
+  // Plain US English, what it is and why, naming the source; no jargon, no colour as the only cue.
+  assert.match(UNKNOWN_SURFACE_LEGEND, /^A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines\. A trail beside a road with no surface mapped shows as a paved path\.$/);
+  assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
+});
+

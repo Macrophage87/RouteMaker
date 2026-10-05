@@ -542,6 +542,46 @@ class TestRulesThatHadNoTest:
         assert is_unpaved({"surface": "asphalt"}) is False
         assert is_unpaved({"surface": "gravel"}) is True
 
+    @pytest.mark.parametrize(
+        ("tags", "want"),
+        [
+            # OWNER-DECISIONS 376, C: a track with no surface is read as unpaved ...
+            ({"highway": "track"}, True),
+            ({"highway": "track", "tracktype": "grade2"}, True),
+            ({"highway": "track", "tracktype": "grade5"}, True),
+            ({"highway": "track", "tracktype": "unknown"}, True),
+            # ... unless it is grade1 (paved or nearly so), which stays unknown.
+            ({"highway": "track", "tracktype": "grade1"}, None),
+            # An explicit surface always wins, either way.
+            ({"highway": "track", "surface": "asphalt"}, False),
+            ({"highway": "track", "tracktype": "grade1", "surface": "gravel"}, True),
+            ({"highway": "track", "surface": "paved"}, False),
+            # No other way is inferred: a path, a footway, a road with no surface is unknown.
+            ({"highway": "path"}, None),
+            ({"highway": "footway"}, None),
+            ({"highway": "residential"}, None),
+            ({"highway": "service", "tracktype": "grade3"}, None),
+            ({}, None),
+        ],
+    )
+    def test_a_track_with_no_surface_is_inferred_unpaved(self, tags, want) -> None:
+        """Only the stored column and the map read it: the classifier's own speed cap
+        keeps reading `is_unpaved`, so a track's tier does not move."""
+        from routemaker.stress import inferred_unpaved
+
+        assert inferred_unpaved(tags) is want
+
+    def test_inferring_a_track_unpaved_moves_no_tier(self) -> None:
+        """The classifier reads the raw `is_unpaved` (its unpaved rural speed cap), not the
+        inferred one, so reading a track as unpaved on the map changes no stress."""
+        import inspect
+
+        from routemaker import stress
+
+        source = inspect.getsource(stress)
+        assert source.count("inferred_unpaved(") == 1, "only its definition: nothing here calls it"
+        assert "if not urban and is_unpaved(tags):" in source
+
     def test_an_unknown_bike_lane_width_is_read_as_narrow(self) -> None:
         """The conservative default, and the common case in this region's
         tagging."""

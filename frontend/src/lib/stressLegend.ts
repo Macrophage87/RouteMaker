@@ -2,21 +2,23 @@
  * What the stress legend says about zoom: what the overlay draws at the zoom
  * the map is at. The owner, 2026-09-28: "It looks way too busy zoomed out
  * though." and "Zoomed out just show the trails." - so below
- * `STRESS_ZOOMS.busy` the tiles carry only the traffic-free paths, and the
+ * `STRESS_ZOOMS.ride` the tiles carry only the long traffic-free paths, and the
  * legend says why the roads have no stress lines there (core/stress_tiles.py);
- * from it the busy roads, faint, and from `STRESS_ZOOMS.quiet` the quiet
- * streets (OWNER-DECISIONS 73, 76, 77, 78).
+ * from it the "where to ride" layer, with no busy road (OWNER-DECISIONS 391), and
+ * from `STRESS_ZOOMS.quiet` every road, the busy ones and the quiet streets (73, 76,
+ * 77, 78).
  * Written with createElement so a test renders it (as pointsList.ts).
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
-import { METRES_PER_MILE, formatDistance } from "./format.ts";
+import { METRES_PER_MILE, formatDistance, formatRunMiles } from "./format.ts";
 import {
   ALLEY_MIN_ZOOM,
   BESIDE_ROAD_MIN_ZOOM,
   FACILITIES,
   LEGEND_SWATCH_PX,
   SOLID_MIN_ZOOM,
+  UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   currentTiers,
   legendWidths,
@@ -45,10 +47,37 @@ export const ZOOMED_OUT =
  */
 export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
 
-/** Where every other path and trail comes back (STRESS_ZOOMS.busy). */
-export function everyTrailFrom(busy: number): string {
-  return `Every other path and trail, mountain-bike trails and local routes included, shows from zoom ${busy}.`;
+/**
+ * The runs the ride layer needs at zoom 12-13, in miles (`pipeline.schema.RIDE_PATH_RUN_MI` and
+ * `RIDE_ROAD_RUN_MI`, OWNER-DECISIONS 391, 402a; tests/test_stress_tiles.py holds them equal): a path
+ * or trail in a connected network of the first, a calm road (LTS 1 or 2) in a run of the second with
+ * no junction with a busy road.
+ */
+export const RIDE_RUN_MI = { path: 0.25, road: 2 };
+
+/** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
+export function everyTrailFrom(ride: number): string {
+  return `Paths on local routes and other connected paths show from zoom ${ride}; mountain-bike trails and every short path show from zoom ${STRESS_ZOOMS.quiet}.`;
 }
+
+/**
+ * What zoom 12 and 13 show (OWNER-DECISIONS 391, "I'm more concerned with the places to ride than the
+ * places not to."): where to ride, and what waits for zoom 14, said so a rider who cannot see the map
+ * knows a missing road is not a missing street.
+ */
+export function rideLayerText(ride: number, quiet: number): string {
+  return (
+    `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
+    `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
+    `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
+    `and best avoided), mountain-bike trails, shorter paths, the other streets and the junction warnings on the map ` +
+    `show from zoom ${quiet}.`
+  );
+}
+
+/** A planned route is drawn whole at every zoom (OWNER-DECISIONS 391). */
+export const ROUTE_AT_EVERY_ZOOM =
+  "A route you plan still shows its own busy stretches and junction warnings at every zoom.";
 
 /** The bike-facility legend's note on the protected lanes the zoomed-out map leaves out. */
 export const ROADWAY_LANES = "Protected lanes in the roadway show with their street.";
@@ -67,21 +96,23 @@ export const CAR_FREE_NOTE =
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
-  if (zoom < STRESS_ZOOMS.busy) return `Zoom in to see every path and trail, and traffic stress on roads. ${ZOOMED_OUT}`;
-  if (zoom < STRESS_ZOOMS.quiet) return `Zoom in to see the quiet streets. Busy roads are drawn faintly until zoom ${SOLID_MIN_ZOOM}.`;
+  if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
+  if (zoom < STRESS_ZOOMS.quiet) {
+    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
+  }
   return null;
 }
 
 /** The standing note on what is drawn at which zoom. */
 export function stressZoomHint(zoom: number | null): string {
-  const { min, busy, quiet } = STRESS_ZOOMS;
+  const { min, ride, quiet } = STRESS_ZOOMS;
   let text =
     `${ZOOMED_OUT} A named paved trail counts when it runs ${formatDistance(PAVED_RUN_MI[11] * METRES_PER_MILE)} ` +
     `or more at zoom 11, or ${formatDistance(PAVED_RUN_MI[10] * METRES_PER_MILE)} at zoom 10; an unpaved one ` +
     `needs a regional bike route or a longer run. Trails beside a road count ` +
-    `the same way. Lines are drawn thinner at zooms 10 and 11. ${everyTrailFrom(busy)} From zoom ${busy} the ` +
-    `busy roads at LTS 3 and above show, faintly, and from zoom ${quiet} the quiet streets, footways and sidewalks, with every line solid ` +
-    `from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
+    `the same way. Lines are drawn thinner at zooms 10 and 11. ${rideLayerText(ride, quiet)} ${ROUTE_AT_EVERY_ZOOM} ` +
+    `${everyTrailFrom(ride)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
+    `sidewalks show too, every line solid from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, military ` +
     `bases and parking lots not at all. Further out than zoom ${min} nothing is drawn, and streets with no ` +
@@ -129,6 +160,13 @@ export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 
 /** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
 export const UNPAVED_LEGEND =
   "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has.";
+
+/**
+ * The surface-unknown line's entry (OWNER-DECISIONS 376, A): the shape that says so, in words, and why.
+ * A paved path has edge lines; an unpaved trail is brown with a dotted center line; this is neither.
+ */
+export const UNKNOWN_SURFACE_LEGEND =
+  "A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines. A trail beside a road with no surface mapped shows as a paved path.";
 
 /** The bike-facility legend's words, with the lane switch's state. */
 export function facilityLegendHint(showHighLanes: boolean): string {
@@ -194,6 +232,17 @@ export function UnpavedSwatch({ tiers, widths }: { tiers: readonly Tier[]; width
   );
 }
 
+/** The surface-unknown swatch: LTS 1's casing and line, both in short dashes of the same length (UNKNOWN_SURFACE_DASH), at the map's widths. */
+export function UnknownSurfaceSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
+  const on = dashPx(UNKNOWN_SURFACE_DASH, widths.line);
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "unknown-surface" },
+    line(6, tier.casing, widths.casing, on),
+    line(6, tier.color, widths.line, on),
+  );
+}
+
 type Facility = (typeof FACILITIES)[number];
 
 /** A facility's swatch: its rails, with the casing of LTS 1's line over them. */
@@ -246,6 +295,7 @@ export function StressLegend({
       { className: "legend", "aria-label": "Traffic stress legend" },
       ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
+      row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
     ),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),

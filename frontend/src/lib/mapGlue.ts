@@ -11,6 +11,7 @@ import {
   stressCasingLayers,
   gapLayers,
   ringLayers,
+  unknownSurfaceLayers,
   stressFilters,
   stressLayers,
   stressOverlayLayers,
@@ -91,13 +92,15 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
   for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
     map.setPaintProperty(layer.id, "line-width", layer.paint["line-width"]);
     // A casing is a ring around a faint line (stressStyle.js, FAINT), so its gap follows the line's width.
     if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
+    // The surface-unknown edge's dashes are in its own width, which the switch changes (stressStyle.js, unknownSurfaceLayers).
+    if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;

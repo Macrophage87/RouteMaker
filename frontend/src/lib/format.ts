@@ -86,6 +86,18 @@ export function formatAxisDistance(metres: number): string {
   return `${short(at / METRES_PER_MILE)} mi (${short(at / 1000)} km)`;
 }
 
+/**
+ * A run of road or path for the map's explanations, given in miles: feet (and kilometres) below
+ * half a mile, so a quarter mile reads "1,320 ft (0.4 km)" and not the "0.3 mi" that
+ * `formatDistance`'s one decimal rounds it to, which is not the bar; from half a mile as
+ * `formatDistance` says it.
+ */
+export function formatRunMiles(miles: number): string {
+  const metres = miles * METRES_PER_MILE;
+  if (miles < 0.5) return `${Math.round(miles * 5280).toLocaleString("en-US")} ft (${(metres / 1000).toFixed(1)} km)`;
+  return formatDistance(metres);
+}
+
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
 export function formatExtra(metres: number): string {
   if (!usable(metres)) return DASH;

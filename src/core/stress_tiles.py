@@ -15,7 +15,10 @@ measured on the first promoted build, the z10 tile over downtown DC held
 The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
 metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
 (OWNER-DECISIONS 73; "Zoomed out just show the trails." before it, 65, and
-"Show roadside trails (Recommended)", 66):
+"Show roadside trails (Recommended)", 66). Zoom 12-13 changed on 2026-10-05
+(391): "I'm more concerned with the places to ride than the places not to." The
+busy roads and their junction markers now wait for zoom 14, and z12-13 is the
+RIDE LAYER below, on a table that has the column it reads:
 
 - `TRAILS` and `TRAILS_NEAR`, z10 and z11 (up to BUSY_ROADS_MIN_ZOOM - 1): the
   traffic-free paths and trails and nothing else (`pipeline.schema.trails_predicate`:
@@ -29,14 +32,22 @@ metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
   higher bar for an unpaved way and a higher bar again at z10 than at z11; a
   road closed to cars at set times stays whatever its length (377). The rail
   stations draw over them from the front end.
-- `BUSY`, from BUSY_ROADS_MIN_ZOOM to QUIET_STREETS_MIN_ZOOM - 1: those, and
-  the roads at LTS 3 and above - Avoid and the expressways included
-  (`pipeline.schema.busy_predicate`). The map draws them faint there (the
-  owner: "The high LTS roads aren't that important because you aren't going
-  to route around them.", "Show them faintly", then "Make solid at 14";
-  OWNER-DECISIONS 76, 77).
-- `FULL`, from QUIET_STREETS_MIN_ZOOM: every segment, one feature each, the
-  quiet streets and footways with the rest. The map asks for nothing past z14
+- `RIDE_LAYER`, from RIDE_LAYER_MIN_ZOOM to QUIET_STREETS_MIN_ZOOM - 1, "where
+  to ride" (OWNER-DECISIONS 391): no road at LTS 3 or above is drawn. It holds the
+  long and connected traffic-free paths (a connected network of at least
+  RIDE_PATH_RUN_MI, which drops the short isolated stubs, and no mountain-bike
+  trail), the calm roads worth a long ride (402, 402a: a continuous run of LTS 1 and 2
+  road of at least RIDE_ROAD_RUN_MI with no junction with a road at LTS 3 or above,
+  `pipeline.calm_roads`) and the roads closed to cars at set times
+  (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`, which the rebuild writes).
+- `BUSY`, the same zooms on a table without the `calm_run_m` column, which draws what
+  z12-13 drew before 391: the paths and trails and the roads at LTS 3 and above - Avoid
+  and the expressways included (`pipeline.schema.busy_predicate`). The map draws them
+  faint there (the owner: "The high LTS roads aren't that important because you aren't
+  going to route around them.", "Show them faintly", then "Make solid at 14";
+  OWNER-DECISIONS 76, 77). A data rebuild adds the column; nothing else does.
+- `FULL`, from QUIET_STREETS_MIN_ZOOM: every segment, one feature each, the busy
+  roads, the quiet streets and footways with the rest. The map asks for nothing past z14
   - it draws z15-16 from the z14 tile (`STRESS_ZOOMS.max` in the front end's
   mapStyle.ts) - so z14 is the deepest zoom drawn ahead; z15-16 are still
   served, for the contract, and drawn on request.
@@ -86,11 +97,13 @@ from django.utils.http import parse_etags
 from django.views.decorators.http import require_http_methods
 
 from pipeline.schema import (
+    CALM_RUN_COLUMN,
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
     MOTOR_ONLY_RULE,
     MTB_ONLY_COLUMN,
+    ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_BRIDGE_COLUMN,
@@ -102,6 +115,7 @@ from pipeline.schema import (
     LongTrails,
     busy_predicate,
     long_trails_predicate,
+    ride_layer_predicate,
     trails_predicate,
     validate_schema_name,
 )
@@ -112,17 +126,19 @@ LAYER = "stress"
 MIN_ZOOM = 10
 MAX_ZOOM = 16
 
-# THE ZOOMS THE ROADS COME IN AT (the owner, 2026-09-29, OWNER-DECISIONS 73).
-# Further out than BUSY_ROADS_MIN_ZOOM only the traffic-free paths and trails;
-# from it the roads at LTS 3 and above; from QUIET_STREETS_MIN_ZOOM the quiet
-# streets (LTS 1-2) and every segment. The front end's legend says so from its
-# own copies, `STRESS_ZOOMS.busy` and `STRESS_ZOOMS.quiet` in
-# frontend/src/lib/mapStyle.ts, which a test holds equal to these: change
-# both, and run the pre-draw.
-BUSY_ROADS_MIN_ZOOM = 12
+# THE ZOOMS THE ROADS COME IN AT (the owner, 2026-09-29, OWNER-DECISIONS 73, and
+# 2026-10-05, 391). Further out than RIDE_LAYER_MIN_ZOOM only the long traffic-free
+# paths and trails; from it the ride layer, and no busy road; from
+# QUIET_STREETS_MIN_ZOOM every segment: the roads at LTS 3 and above, the quiet
+# streets (LTS 1-2) and the junction markers with them. (On a table without the
+# ride layer's column the roads at LTS 3 and above come in at RIDE_LAYER_MIN_ZOOM,
+# as they did.) The front end's legend says so from its own copies,
+# `STRESS_ZOOMS.ride` and `STRESS_ZOOMS.quiet` in frontend/src/lib/mapStyle.ts,
+# which a test holds equal to these: change both, and run the pre-draw.
+RIDE_LAYER_MIN_ZOOM = 12
 QUIET_STREETS_MIN_ZOOM = 14
 
-# The long trails come in two grades below BUSY_ROADS_MIN_ZOOM (OWNER-DECISIONS
+# The long trails come in two grades below RIDE_LAYER_MIN_ZOOM (OWNER-DECISIONS
 # 375): z10 keeps fewer than z11. This is a server-side detail the front end
 # does not need, so it is not in STRESS_ZOOMS.
 TRAILS_NEAR_MIN_ZOOM = 11
@@ -138,8 +154,10 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
 # does not change. 4: the busy roads at z12-13 and the quiet streets from z14
 # (73), with the expressway and separate-bikeway properties. 5: z10-11 keep
-# only the long trails (375).
-FORMAT_VERSION = 5
+# only the long trails (375). 6: z12-13 is the ride layer, with no busy road, on a table
+# with `calm_run_m` (391); surface-unknown paths are told apart by a missing
+# `unpaved` in the feature (376).
+FORMAT_VERSION = 6
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -206,13 +224,28 @@ TRAILS_NEAR = Level(
     predicate=trails_predicate,
     long_trails=Z11_LONG_TRAILS,
 )
-BUSY = Level("busy", BUSY_ROADS_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
+RIDE_LAYER = Level(
+    "ride",
+    RIDE_LAYER_MIN_ZOOM,
+    4096,
+    32,
+    None,
+    merged=True,
+    predicate=ride_layer_predicate,
+)
+BUSY = Level("busy", RIDE_LAYER_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
 FULL = Level("full", QUIET_STREETS_MIN_ZOOM, 4096, 64, None, merged=False)
 LEVELS = (FULL, BUSY, TRAILS_NEAR, TRAILS)
 
 
-def level_for(z: int) -> Level:
-    return next(level for level in LEVELS if z >= level.min_zoom)
+def level_for(z: int, optional: frozenset[str] = frozenset()) -> Level:
+    """The level a tile at `z` is drawn at, on a table with the `optional` columns:
+    z12-13 is the ride layer where there is a `calm_run_m` to draw it from, and the
+    busy roads (what it was before OWNER-DECISIONS 391) where there is not."""
+    level = next(level for level in LEVELS if z >= level.min_zoom)
+    if level is BUSY and CALM_RUN_COLUMN in optional:
+        return RIDE_LAYER
+    return level
 
 
 def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
@@ -269,6 +302,9 @@ OPTIONAL_PROPERTIES = {
     # Each is true or left out.
     "mtb": MTB_ONLY_COLUMN,
     "rough": ROUGH_COLUMN,
+    # OWNER-DECISIONS 403: a trail beside a road, which the map draws as a paved path
+    # where no surface is mapped (not 376 A's surface-unknown dashes). True or left out.
+    "roadside": ROADSIDE_COLUMN,
 }
 
 # How an optional property is drawn from its column, where it is not the
@@ -285,6 +321,7 @@ OPTIONAL_EXPRESSIONS = {
     "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
     "mtb": f"NULLIF(s.{MTB_ONLY_COLUMN}, false)",
     "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
+    "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -419,7 +456,7 @@ def render(
     none is given)."""
     if timeout_ms is None:
         timeout_ms = DRAW_TIMEOUT_MS
-    level = level_for(z)
+    level = level_for(z, optional)
     c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
     params = {
         "c_west": c_west,
@@ -456,7 +493,7 @@ def live_table() -> tuple[int | None, frozenset[str]]:
             "SELECT t.oid, ARRAY(SELECT attname::text FROM pg_attribute WHERE attrelid = t.oid "
             "AND attname = ANY(%s) AND NOT attisdropped) "
             "FROM (SELECT to_regclass(%s)::oid AS oid) AS t",
-            [[*OPTIONAL_PROPERTIES.values(), *LONG_TRAIL_COLUMNS], _table()],
+            [[*OPTIONAL_PROPERTIES.values(), *LONG_TRAIL_COLUMNS, CALM_RUN_COLUMN], _table()],
         )
         oid, columns = cursor.fetchone()
     return oid, frozenset(columns or ())
@@ -470,8 +507,10 @@ ETAG_LETTERS = {
     TRAIL_BRIDGE_COLUMN: "b",
     TRAIL_ROUTE_COLUMN: "t",
     TRAIL_RUN_COLUMN: "l",
+    CALM_RUN_COLUMN: "k",
     MTB_ONLY_COLUMN: "o",
     ROUGH_COLUMN: "r",
+    ROADSIDE_COLUMN: "e",
 }
 
 
@@ -483,9 +522,8 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all seven (`+cfmsbtl`, about 33 characters), in the order of
-    # the column names: the car-free times, the facility, the map class, the
-    # separate bikeway, and the long trails' bridge, route and run.
+    # key with all of them (a `+` and one letter each, eleven in all), in the order
+    # of the column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'
 

@@ -208,6 +208,43 @@ BESIDE_FRACTION = 0.6
 _EARTH_M = 6_371_008.8
 
 
+# What a trail's own tags say about lying beside a road (OWNER-DECISIONS 403: "Most trails
+# near a road are paved."): a sidewalk (`footway`, `path` or `cycleway` = sidewalk, whatever
+# the bicycle access), `is_sidepath=yes`, or any `is_sidepath:of*` naming the road.
+SIDEPATH_OF_PREFIX = "is_sidepath:of"
+
+
+def roadside_by_tags(tags: dict[str, str]) -> bool | None:
+    """True where a trail's tags say it is a sidepath beside a road, False where they say
+    it is not (`is_sidepath=no`, which the geometry does not overrule), None where they do
+    not say (the rebuild then asks the geometry: `pipeline.trail_routes.derive_roadside`)."""
+    sidepath = tags.get("is_sidepath")
+    if sidepath == "no":
+        return False
+    if sidepath == "yes":
+        return True
+    if SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
+        return True
+    if any(key.startswith(SIDEPATH_OF_PREFIX) for key in tags):
+        return True
+    return None
+
+
+def roadside_start(tags: dict[str, str], facility_class: str, *, drawn_trail: bool) -> bool | None:
+    """The `segment.roadside` the rebuild writes before the geometry is asked: False on a
+    way that is not a trail the map draws, the tags' answer where they give one, True on a
+    trail already classed the protected facility beside a road, and None (ask the
+    geometry) otherwise."""
+    if not drawn_trail:
+        return False
+    by_tags = roadside_by_tags(tags)
+    if by_tags is not None:
+        return by_tags
+    if facility_class == Facility.PROTECTED.value:
+        return True
+    return None
+
+
 def declares_separate(tags: dict[str, str]) -> bool:
     return any(tags.get(key) == "separate" for key in CYCLEWAY_KEYS)
 

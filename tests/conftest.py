@@ -36,6 +36,10 @@ def _no_long_trail_sentinels(settings):
     no bridge is left unjudged runs in every rebuild either way."""
     settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = ()
     settings.REBUILD_LONG_TRAIL_FLOORS = (0, 0)
+    # The ride layer's (OWNER-DECISIONS 391; `pipeline.run.assert_calm_runs`), likewise.
+    settings.REBUILD_SENTINEL_CALM_PATH_WAYS = ()
+    settings.REBUILD_SENTINEL_CALM_STREET_WAYS = ()
+    settings.REBUILD_CALM_RUN_FLOORS = (0, 0)
 
 
 @pytest.fixture
