@@ -317,16 +317,21 @@ def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
 #   (traffic-free paths within CALM_PATH_GAP_M of one another, so a road crossing
 #   does not break a trail in two) or whose named run (`trail_run_m`) is at least
 #   RIDE_PATH_RUN_MI; short isolated stubs and mountain-bike trails wait for z14;
-# - the similarly long calm streets: LTS 1 streets in a run of the same name,
-#   within CALM_STREET_GAP_M of one another, of at least RIDE_STREET_RUN_MI,
-#   measured like a trail's named run; and
+# - the calm roads worth a long ride (402, 402a: "For calm streets, I'm thinking
+#   more calm roads. Places someone would likely want to ride for a while. In the
+#   cities that's just too dense." and "LTS2 counts. Suburban streets would rarely
+#   qualify because they tend to have a lot of intersection stress rather than
+#   roadway stress."): a continuous run of named LTS 1 and LTS 2 road, of any class
+#   and across changes of name, that ends at every junction with a road at LTS 3 or
+#   above, of at least RIDE_ROAD_RUN_MI (`pipeline.calm_roads`, which says how a run
+#   goes through a junction); and
 # - the roads closed to cars at set times, whatever their length (as 377 does).
 #
 # `calm_run_m` holds the length of that run or network, in metres, on the ways
 # that are candidates (`pipeline.trail_routes.derive_calm_runs`): 0 on a candidate
 # before it is derived, and null on every other way (a way that is not a path and
-# not an LTS 1 street, or a mountain-bike trail). Written by the rebuild alone, so
-# a live table from before it has no such column and draws today's z12-13.
+# not a road at LTS 1 or 2, or a mountain-bike trail). Written by the rebuild alone,
+# so a live table from before it has no such column and draws today's z12-13.
 #
 # The thresholds are tunable and measured against the region before review
 # (docs/OPERATIONS.md, "The ride layer (z12-13)").
@@ -334,33 +339,51 @@ CALM_RUN_COLUMN = "calm_run_m"
 # Traffic-free paths within this many metres (100 ft) are one network: a road
 # crossing, a trailhead's parking lot.
 CALM_PATH_GAP_M = 30
-# Same-named calm streets within this many metres (330 ft) are one run: a street
-# that crosses a busy road and carries on, or jogs a little.
-CALM_STREET_GAP_M = 100
 # "short isolated stubs (under about 0.25 mi)".
 RIDE_PATH_RUN_MI = 0.25
-# A calm street is a long one at this run, in miles: twice the stub bar. Measured on the
-# 2026-10-03 extract with the live table's rows (docs/OPERATIONS.md, "The ride layer (z12-13)"):
-# at 0.25 mi nearly every named residential street is in (Annandale: 60 mi of calm streets,
-# most of the layer again); at 1 mi almost none is (3 mi); 0.5 mi keeps the through streets and
-# loop roads, about 17 mi in the Annandale-Alexandria box and 1,800 mi in the region.
-RIDE_STREET_RUN_MI = 0.5
+# The calmest tiers a calm road is made of: LTS 1 and LTS 2 ("LTS2 counts").
+CALM_ROAD_MAX_TIER = 2
+# A calm road is a long one at this run, in miles (3.2 km): the owner's proposed bar (402a,
+# "2 mi (3.2 km) continuous as proposed, not yet confirmed"), the one setting to move. Measured
+# on a copy of the live table's rows with names from the 2026-10-03 extract (docs/OPERATIONS.md,
+# "The ride layer (z12-13)"): 1,642 mi in the region, nearly all of it rural (Montgomery County
+# 38 mi, all in the Agricultural Reserve; DC and Baltimore none); at 1 mi, 4,831 mi (DC 33, MoCo
+# 184, Baltimore 38).
+RIDE_ROAD_RUN_MI = 2.0
+
+
+# TRAILS BESIDE A ROAD (OWNER-DECISIONS 403, 2026-10-05): "Most trails near a road are paved.
+# There are minor exceptions." 376 A draws a trail with no surface mapped as a dashed line of its
+# own, with no path rails; a trail beside a road keeps the paved path's look instead, and only a
+# trail away from roads (a park trail) is drawn surface-unknown. The exceptions are left to a
+# surface tag in OSM or a surface override, not to the default. A drawn trail is beside a road
+# (`roadside`) when its own tags say it is a sidepath or a sidewalk (`routemaker.facility.
+# roadside_by_tags`: `footway`, `path` or `cycleway` = sidewalk, `is_sidepath=yes`, any
+# `is_sidepath:of*`; `is_sidepath=no` says it is not, whatever the geometry), when its facility
+# is already the protected one beside a road, or else when at least ROADSIDE_FRACTION of the
+# points ROADSIDE_SAMPLE_M apart along it lie within ROADSIDE_M of a road (a way that is not a
+# trail, drawn or barred: a motorway's own sidepath counts). Measured with the rule
+# (docs/OPERATIONS.md, "Trails beside a road").
+ROADSIDE_COLUMN = "roadside"
+ROADSIDE_M = 25.0
+ROADSIDE_FRACTION = 0.6
+ROADSIDE_SAMPLE_M = 20.0
 
 
 def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     """The z12-13 ride layer's condition, on a table with the `calm_run_m`
     column (`core.stress_tiles.RIDE_LAYER`): a path or trail in a long enough
-    connected network or named run, an LTS 1 street in a long enough run, and
-    with `has_car_free` any road closed to cars at set times. A way that is
-    neither a path nor an LTS 1 street has no run (null), so it is not in it."""
+    connected network or named run, a road at LTS 1 or 2 in a long enough calm run,
+    and with `has_car_free` any road closed to cars at set times. A way that is
+    neither a path nor such a road has no run (null), so it is not in it."""
     path_m = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
-    street_m = round(RIDE_STREET_RUN_MI * METRES_PER_MILE)
+    road_m = round(RIDE_ROAD_RUN_MI * METRES_PER_MILE)
     run = f"COALESCE({CALM_RUN_COLUMN}, 0)"
     paths = f"({trails_predicate(has_facility)} AND {run} >= {path_m})"
-    streets = f"(stress_tier = 1 AND NOT is_trail_class AND {run} >= {street_m})"
+    roads = f"(stress_tier <= {CALM_ROAD_MAX_TIER} AND NOT is_trail_class AND {run} >= {road_m})"
     if has_car_free:
-        return f"({paths} OR {streets} OR cardinality({CAR_FREE_COLUMN}) > 0)"
-    return f"({paths} OR {streets})"
+        return f"({paths} OR {roads} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return f"({paths} OR {roads})"
 
 
 # The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
@@ -368,7 +391,7 @@ def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 # tile's scan does not read every street in the box. The query's predicate implies
 # it: each of its terms is a run at or above the shorter of the two bars, or a
 # timed closure.
-_RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_STREET_RUN_MI) * METRES_PER_MILE)
+_RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_ROAD_RUN_MI) * METRES_PER_MILE)
 RIDE_INDEX_PREDICATE = (
     f"COALESCE({CALM_RUN_COLUMN}, 0) >= {_RIDE_INDEX_MIN_M} OR cardinality({CAR_FREE_COLUMN}) > 0"
 )
@@ -572,12 +595,17 @@ CREATE TABLE {schema}.segment (
     -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
     -- ways, 2 where an end is unpaved, 0 otherwise (3 only during the rebuild).
     trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
-    -- The ride layer (`calm_run_m`; OWNER-DECISIONS 391): the length in metres of the
-    -- connected network or named run of a traffic-free path, or the named run of an
-    -- LTS 1 street, which the z12-13 tiles keep it for. 0 on such a way until
-    -- `pipeline.trail_routes.derive_calm_runs` sets it; null on every other way and
-    -- on a mountain-bike trail.
+    -- The ride layer (`calm_run_m`; OWNER-DECISIONS 391, 402a): the length in metres of
+    -- the connected network or named run of a traffic-free path, or the calm run of a
+    -- named road at LTS 1 or 2 (`pipeline.calm_roads`), which the z12-13 tiles keep it
+    -- for. 0 on such a way until `pipeline.trail_routes.derive_calm_runs` sets it; null
+    -- on every other way and on a mountain-bike trail.
     calm_run_m      integer,
+    -- A drawn trail beside a road (OWNER-DECISIONS 403; `pipeline.trail_routes.
+    -- derive_roadside`): a sidepath by its tags or by lying along a road. Such a trail
+    -- with no surface mapped is drawn as the paved path it most likely is, not as a
+    -- surface-unknown one. Null only during the rebuild; false on every other way.
+    roadside        boolean,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

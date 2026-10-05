@@ -121,6 +121,8 @@ def segment_schemas(segment_schemas):
             # And a table from before the ride layer's column (OWNER-DECISIONS 391), which draws
             # z12-13 as it did: the paths and the roads at LTS 3 and above. TestRideLayer adds it.
             cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN calm_run_m")
+            # And from before the roadside column (403), which TestRoadside adds.
+            cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN roadside")
     return segment_schemas
 
 
@@ -565,11 +567,12 @@ class TestLevels:
         assert runs, "stressLegend.ts no longer declares PAVED_RUN_MI"
         assert float(runs.group(1)) == schema.Z11_PAVED_RUN_MI
         assert float(runs.group(2)) == schema.Z10_PAVED_RUN_MI
-        # The ride layer's two runs, which the legend and the hint say (OWNER-DECISIONS 391).
-        ride = re.search(r"RIDE_RUN_MI = \{ path: ([\d.]+), street: ([\d.]+) \}", legend)
+        # The ride layer's two runs, which the legend and the hint say (OWNER-DECISIONS 391,
+        # 402a).
+        ride = re.search(r"RIDE_RUN_MI = \{ path: ([\d.]+), road: ([\d.]+) \}", legend)
         assert ride, "stressLegend.ts no longer declares RIDE_RUN_MI"
         assert float(ride.group(1)) == schema.RIDE_PATH_RUN_MI
-        assert float(ride.group(2)) == schema.RIDE_STREET_RUN_MI
+        assert float(ride.group(2)) == schema.RIDE_ROAD_RUN_MI
 
     @pytest.mark.parametrize("z", [10, 12, 14])
     def test_a_tier_the_tiles_have_not_met_is_carried_as_the_table_holds_it(
@@ -1587,8 +1590,8 @@ def insert_ride(
 class TestRideLayer:
     """z12-13 is "where to ride" (OWNER-DECISIONS 391: "I'm more concerned with the places
     to ride than the places not to."): no road at LTS 3 or above, the long and connected
-    traffic-free paths, the calm streets in a long run, and the roads closed to cars at set
-    times; the busy roads from z14. Only on a table that has `calm_run_m`."""
+    traffic-free paths, the calm roads in a long run (402a), and the roads closed to cars at
+    set times; the busy roads from z14. Only on a table that has `calm_run_m`."""
 
     @pytest.fixture
     def ride(self, segment_schemas):
@@ -1619,14 +1622,15 @@ class TestRideLayer:
     def test_the_thresholds_are_the_owners_numbers_and_named_constants(self) -> None:
         from pipeline import schema
 
-        # "short isolated stubs (under about 0.25 mi)": the paths' bar. The streets' is a
-        # measured choice (docs/OPERATIONS.md, "The ride layer (z12-13)"): twice that.
+        # "short isolated stubs (under about 0.25 mi)": the paths' bar. The roads' is the
+        # owner's proposed 2 mi (402a: "2 mi (3.2 km) continuous"), measured
+        # (docs/OPERATIONS.md, "The ride layer (z12-13)").
         assert schema.RIDE_PATH_RUN_MI == 0.25
-        assert schema.RIDE_STREET_RUN_MI == 0.5
+        assert schema.RIDE_ROAD_RUN_MI == 2.0
         sql = schema.ride_layer_predicate(True, True)
         assert "COALESCE(calm_run_m, 0) >= 402" in sql  # 0.25 mi
-        assert "COALESCE(calm_run_m, 0) >= 805" in sql  # 0.5 mi
-        assert "stress_tier = 1 AND NOT is_trail_class" in sql
+        assert "COALESCE(calm_run_m, 0) >= 3219" in sql  # 2 mi
+        assert "stress_tier <= 2 AND NOT is_trail_class" in sql, "LTS 1 and LTS 2 roads (402a)"
         assert "stress_tier >= 3" not in sql, "no busy road is drawn at z12-13"
         assert "cardinality(car_free_when) > 0" in sql
         assert "cardinality(car_free_when) > 0" not in schema.ride_layer_predicate(True)
@@ -1642,11 +1646,13 @@ class TestRideLayer:
             (1, True, "path", 0.0, False),  # an unnamed candidate the derive never reached
             (1, True, "protected", 1.0, True),  # a roadside trail of its own
             (1, False, "path", 1.0, True),  # a road closed to cars for good: a path
-            (1, False, "none", 0.5, True),  # a calm street in a run of half a mile
-            (1, False, "none", 0.49, False),
+            (1, False, "none", 2.0, True),  # a calm road in a run of 2 mi (402a)
+            (1, False, "none", 1.99, False),
+            (1, False, "none", 0.5, False),  # the old half-mile street (391) is no longer one
             (1, False, "none", None, False),
-            (1, False, "lane", 3.0, True),  # a calm street with a painted lane
-            (2, False, "none", 5.0, False),  # LTS 2 is not a calm street
+            (1, False, "lane", 3.0, True),  # a calm road with a painted lane
+            (2, False, "none", 5.0, True),  # "LTS2 counts" (402a)
+            (2, False, "none", 1.5, False),
             (3, False, "none", 5.0, False),  # no LTS 3 road, whatever its run
             (4, False, "none", 5.0, False),
             (5, False, "none", 5.0, False),
@@ -1738,3 +1744,58 @@ class TestRideLayer:
             drop_segment_schema(name)
         assert "USING gist (geometry)" in definition and "calm_run_m" in definition
 
+
+# ---- TRAILS BESIDE A ROAD (OWNER-DECISIONS 403) ------------------------------------------------
+
+
+@db
+class TestRoadside:
+    """A trail beside a road carries `roadside` (true or left out), which the map reads to draw
+    one with no surface mapped as a paved path (403); only on a table with the column."""
+
+    @pytest.fixture
+    def beside(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN roadside boolean")
+        return live
+
+    def put(self, schema, roadside, lat_shift=0.0) -> None:
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1] + lat_shift
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, is_unpaved, facility, roadside) VALUES (%s, 0, "
+                "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, null, "
+                "'path', %s)",
+                [11 if roadside else 12, lon, lat, lon + 0.002, lat, roadside],
+            )
+
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_the_property_is_true_or_left_out(self, client, beside, z) -> None:
+        self.put(beside, True)
+        self.put(beside, False, lat_shift=0.0005)
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        marks = sorted(str(f.properties.get("roadside")) for f in layer.features)
+        assert marks == ["None", "True"], marks
+        assert all("unpaved" not in f.properties for f in layer.features), "surface unknown"
+
+    def test_the_etag_names_the_column(self, client, beside) -> None:
+        self.put(beside, True)
+        etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+        assert "+cfrmoesbtl-v6" in etag, etag
+        assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
+        assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
+
+    def test_a_table_without_the_column_carries_nothing(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, facility) VALUES (13, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, 'path')",
+                [lon, lat, lon + 0.002, lat],
+            )
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        assert all("roadside" not in f.properties for f in layer.features)

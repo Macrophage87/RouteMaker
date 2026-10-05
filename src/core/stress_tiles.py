@@ -36,8 +36,9 @@ RIDE LAYER below, on a table that has the column it reads:
   to ride" (OWNER-DECISIONS 391): no road at LTS 3 or above is drawn. It holds the
   long and connected traffic-free paths (a connected network of at least
   RIDE_PATH_RUN_MI, which drops the short isolated stubs, and no mountain-bike
-  trail), the calm streets in a long run (LTS 1, a run of one name of at least
-  RIDE_STREET_RUN_MI) and the roads closed to cars at set times
+  trail), the calm roads worth a long ride (402, 402a: a continuous run of LTS 1 and 2
+  road of at least RIDE_ROAD_RUN_MI with no junction with a road at LTS 3 or above,
+  `pipeline.calm_roads`) and the roads closed to cars at set times
   (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`, which the rebuild writes).
 - `BUSY`, the same zooms on a table without the `calm_run_m` column, which draws what
   z12-13 drew before 391: the paths and trails and the roads at LTS 3 and above - Avoid
@@ -102,6 +103,7 @@ from pipeline.schema import (
     MAP_CLASS_COLUMN,
     MOTOR_ONLY_RULE,
     MTB_ONLY_COLUMN,
+    ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_BRIDGE_COLUMN,
@@ -300,6 +302,9 @@ OPTIONAL_PROPERTIES = {
     # Each is true or left out.
     "mtb": MTB_ONLY_COLUMN,
     "rough": ROUGH_COLUMN,
+    # OWNER-DECISIONS 403: a trail beside a road, which the map draws as a paved path
+    # where no surface is mapped (not 376 A's surface-unknown dashes). True or left out.
+    "roadside": ROADSIDE_COLUMN,
 }
 
 # How an optional property is drawn from its column, where it is not the
@@ -316,6 +321,7 @@ OPTIONAL_EXPRESSIONS = {
     "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
     "mtb": f"NULLIF(s.{MTB_ONLY_COLUMN}, false)",
     "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
+    "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -504,6 +510,7 @@ ETAG_LETTERS = {
     CALM_RUN_COLUMN: "k",
     MTB_ONLY_COLUMN: "o",
     ROUGH_COLUMN: "r",
+    ROADSIDE_COLUMN: "e",
 }
 
 
@@ -515,7 +522,7 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, ten in all), in the order
+    # key with all of them (a `+` and one letter each, eleven in all), in the order
     # of the column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'

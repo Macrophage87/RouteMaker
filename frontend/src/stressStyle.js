@@ -408,8 +408,10 @@ const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true],
  * is paved). Park trails with no surface tag were drawn like a paved path, with a path's
  * rails and a dark edge; they may be either. It is a style only: nothing is closed.
  * Roads with no surface tag (nearly every street) are not this; they draw as they always did.
+ * Nor is a trail beside a road (the tiles' "roadside", OWNER-DECISIONS 403: "Most trails near
+ * a road are paved. There are minor exceptions."): it keeps the paved path's look, rails and all.
  */
-const surfaceUnknown = ["all", ["==", ["get", "trail"], true], ["!", ["has", "unpaved"]]];
+const surfaceUnknown = ["all", ["==", ["get", "trail"], true], ["!", ["has", "unpaved"]], ["!=", ["get", "roadside"], true]];
 
 /**
  * The surface-unknown line's shape (no colour in it): short, even dashes, a dash as long as

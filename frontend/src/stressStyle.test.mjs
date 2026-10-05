@@ -565,8 +565,17 @@ test("a trail with no surface mapped draws as its own dashed line: no rails, no 
     assert.deepEqual(drawnBy(when, { tier: 1, facility: "none", trail: false }), ["stress-1", "stress-casing-1"]);
     // A road closed to cars for good, with no surface tag, keeps its rails (it is not a trail).
     assert.deepEqual(drawnBy(when, { tier: 1, facility: "path", trail: false }), ASPATH);
-    // A roadside trail keeps its protected-lane rails over its dashes.
+    // A protected trail the tiles do not call roadside keeps its protected-lane rails over its dashes.
     assert.deepEqual(drawnBy(when, { tier: 1, facility: "protected", trail: true }), ["facility-protected", "stress-unknown", "stress-unknown-casing"]);
+    // 403: a trail beside a road with no surface mapped draws as the paved path it most likely is.
+    assert.deepEqual(drawnBy(when, { ...unknown, roadside: true }), ASPATH, `${when}: a roadside path keeps its rails`);
+    assert.deepEqual(
+      drawnBy(when, { tier: 1, facility: "protected", trail: true, roadside: true }),
+      drawnBy(when, { tier: 1, facility: "protected", trail: true, unpaved: false }),
+      `${when}: a sidepath keeps its protected-lane look`,
+    );
+    // Its surface, where mapped, still decides: an unpaved roadside trail is brown with its mark.
+    assert.deepEqual(drawnBy(when, { ...unknown, roadside: true, unpaved: true }), ["stress-1", "stress-casing-1", "stress-unpaved-1"]);
     // A tier other than 1 (an override on a trail) is drawn as it is: nothing is left undrawn.
     assert.deepEqual(drawnBy(when, { tier: 2, facility: "path", trail: true }), ["stress-2", "stress-casing-2", "stress-gap-2"]);
   }

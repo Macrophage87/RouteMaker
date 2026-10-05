@@ -3544,13 +3544,14 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
-## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391)
+## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in
 docs/OPERATIONS.md, "The ride layer (z12-13)".
 
 - **Pipeline.** `pipeline.schema` holds the constants (`RIDE_PATH_RUN_MI`,
-  `RIDE_STREET_RUN_MI`, `CALM_PATH_GAP_M`, `CALM_STREET_GAP_M`),
+  `RIDE_ROAD_RUN_MI`, `CALM_ROAD_MAX_TIER`, `CALM_PATH_GAP_M`; 403's `ROADSIDE_M`,
+  `ROADSIDE_FRACTION`, `ROADSIDE_SAMPLE_M`),
   `ride_layer_predicate` and the partial index; `pipeline.trail_routes` holds
   `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE
   summary (`calm_run_summary`); `pipeline.run.assert_calm_runs` is the check, and the
@@ -3570,6 +3571,26 @@ docs/OPERATIONS.md, "The ride layer (z12-13)".
   `stress-1`, `stress-casing-1` and the path rails leave a feature with `trail` true and
   no `unpaved` to them. The dashes are the cue that is not colour; the legend row says
   so in words.
+- **Calm roads (402, 402a).** `pipeline.calm_roads` is the road half of the calm runs:
+  `_JUNCTIONS` (SQL) lists, for each named LTS 1-2 candidate row, its ends and every
+  vertex it shares with another candidate or with a road at LTS 3 or above, with the
+  distance along the row and the bearings either side; `runs_of` (pure Python, a
+  union-find over the pieces between junctions, `pairs` deciding which ends go on into
+  which) gives each row the longest run it is in. `derive` reads the junctions through a
+  server-side cursor and writes the runs with one `UPDATE ... FROM unnest`. The pure part
+  is tested without a database (`tests/test_trail_routes.py`: `turn_deg`, `pairs`,
+  `runs_of`); the derive on shared vertices built in metres (`road`, `busy`), so two roads
+  given one point share it exactly as OSM ways share a node.
+- **Trails beside a road (403).** `routemaker.facility.roadside_by_tags` and
+  `roadside_start` (what the writer stores before the geometry: True, False or None),
+  `pipeline.trail_routes.derive_roadside` (the geometry, in SQL, on the rows left None),
+  the `roadside` column and tile property (`core.stress_tiles.OPTIONAL_PROPERTIES`, ETag
+  `e`), and the front end's `surfaceUnknown` filter in `stressStyle.js`, which leaves a
+  feature with `roadside` true to the paved path's layers. `tests/test_stress_tiles.py`
+  drops the column in its fixture (a table from before it) and `TestRoadside` adds it.
+- **Measuring.** The figures in docs/OPERATIONS.md were taken on a private copy of the live
+  table (read-only `COPY` out of the live database, never a write to it), with names from
+  the source extract read by osmium and the old and new derives run on the copy.
 - **Not done here:** decision 390 (solid LTS 3 and 4 below zoom 14), which is its own
   change; on a table with `calm_run_m` it is moot at z12-13.
 

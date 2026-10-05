@@ -361,16 +361,17 @@ REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341
 # what that extract gives (12,503 and 4,402 rows, measured on a full-size copy).
 REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 10595312)
 REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
-# The ride layer's runs (OWNER-DECISIONS 391; `pipeline.run.assert_calm_runs`): the two
+# The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
 # long trails above are paths in a connected network of 8 mi or more, so they are the path
-# sentinels; and a calm street (the street sentinel: Lakeview Drive, OSM way 8814005, a
-# 1.7 mi LTS 1 run of its name in the 2026-10-03 extract) must come out at the ride layer's
-# street bar. The floors are the path rows in a run of RIDE_PATH_RUN_MI and the street rows in
-# a run of RIDE_STREET_RUN_MI, about half of what that extract gives (30,972 and 4,939 rows,
-# measured on the live table's rows; docs/OPERATIONS.md, "The ride layer (z12-13)").
+# sentinels; and a calm road (the road sentinel: Elmer School Road in Montgomery County's
+# Agricultural Reserve, OSM way 5968951, in a 3.2 mi calm run in the 2026-10-03 extract) must
+# come out at the ride layer's road bar. The floors are the path rows in a run of
+# RIDE_PATH_RUN_MI and the road rows in a calm run of RIDE_ROAD_RUN_MI, about half of what that
+# extract gives (30,972 and 2,398 rows, measured on a copy of the live table's rows;
+# docs/OPERATIONS.md, "The ride layer (z12-13)"). The setting keeps its STREET name.
 REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 10595312)
-REBUILD_SENTINEL_CALM_STREET_WAYS = (8814005,)
-REBUILD_CALM_RUN_FLOORS = (15000, 2400)
+REBUILD_SENTINEL_CALM_STREET_WAYS = (5968951,)
+REBUILD_CALM_RUN_FLOORS = (15000, 1200)
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

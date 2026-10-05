@@ -45,12 +45,14 @@ from rebuild_fixtures import (
     GIB,
     LUA_LOADED_LOG,
     MOUNTAIN_BIKE_ID,
+    NAMED_ROAD_ON_ID,
     NAMED_STREET_EAST_ID,
     NAMED_STREET_ID,
     ONE_WAY_ID,
     PARALLEL_COUNT,
     REGIONAL_ROUTE_ID,
     REPO,
+    ROADSIDE_PATH_ID,
     SEPARATE_ROAD_ID,
     SINGLETRACK_ID,
     TOWPATH_ABOVE_ID,
@@ -4304,19 +4306,21 @@ def test_a_rebuild_that_loses_the_long_trails_is_refused(
 def ride_rows(schema: str) -> dict[int, tuple]:
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT osm_way_id, stress_tier, is_unpaved, trail_name, calm_run_m "
+            "SELECT osm_way_id, stress_tier, is_unpaved, trail_name, calm_run_m, roadside "
             f"FROM {schema}.segment ORDER BY osm_way_id, ordinal"
         )
-        return {way: (tier, unpaved, name, calm) for way, tier, unpaved, name, calm in cursor}
+        return {way: tuple(rest) for way, *rest in cursor}
 
 
 def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     tmp_path, segment_schemas, states, settings
 ) -> None:
-    """OWNER-DECISIONS 391 and 376 C, through the real stages: a mountain-bike trail has no
-    calm run, the regional route is in a long network, two unnamed paths that meet are one
-    network, a street's two same-named ways are one calm run, and a track with no surface is
-    stored unpaved unless it is grade1. The sentinels and floors are this extract's."""
+    """OWNER-DECISIONS 391, 402a, 403 and 376 C, through the real stages: a mountain-bike
+    trail has no calm run, the regional route is in a long network, two unnamed paths that
+    meet are one network, a street's two same-named ways and the road of another name that
+    carries straight on are one calm run, a track with no surface is stored unpaved unless
+    it is grade1, and a trail beside a road is roadside where one away from roads is not.
+    The sentinels and floors are this extract's."""
     settings.REBUILD_SENTINEL_CALM_PATH_WAYS = (REGIONAL_ROUTE_ID,)
     settings.REBUILD_SENTINEL_CALM_STREET_WAYS = (NAMED_STREET_ID,)
     settings.REBUILD_CALM_RUN_FLOORS = (1, 1)
@@ -4329,9 +4333,14 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     assert rows[REGIONAL_ROUTE_ID][3] >= 12_875
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
-    west, east = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID]
-    assert west[0] == 1, "the street is calm"
-    assert west[2] == "Gamma Street" and west[3] == east[3] == pytest.approx(1730, rel=0.03)
+    west, east, on = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID], rows[NAMED_ROAD_ON_ID]
+    assert west[0] == 1 and on[0] <= 2, "the roads are calm"
+    assert west[2] == "Gamma Street" and on[2] == "Delta Road"
+    assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
+    assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"
+    assert rows[ROADSIDE_PATH_ID][1] is None, "and its surface stays unknown"
+    assert rows[BARE_PATH_ID][4] is False, "a trail away from roads is not"
+    assert west[4] is False, "nor is a road"
 
     assert rows[TRACK_NO_SURFACE_ID][1] is True, "a track with no surface is inferred unpaved"
     assert rows[TRACK_GRADE1_ID][1] is None, "grade1 is not"

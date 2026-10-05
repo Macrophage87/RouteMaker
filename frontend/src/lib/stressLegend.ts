@@ -49,10 +49,11 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
 
 /**
  * The runs the ride layer needs at zoom 12-13, in miles (`pipeline.schema.RIDE_PATH_RUN_MI` and
- * `RIDE_STREET_RUN_MI`, OWNER-DECISIONS 391; tests/test_stress_tiles.py holds them equal): a path or
- * trail in a connected network of the first, a calm street in a run of one name of the second.
+ * `RIDE_ROAD_RUN_MI`, OWNER-DECISIONS 391, 402a; tests/test_stress_tiles.py holds them equal): a path
+ * or trail in a connected network of the first, a calm road (LTS 1 or 2) in a run of the second with
+ * no junction with a busy road.
  */
-export const RIDE_RUN_MI = { path: 0.25, street: 0.5 };
+export const RIDE_RUN_MI = { path: 0.25, road: 2 };
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
@@ -67,8 +68,8 @@ export function everyTrailFrom(ride: number): string {
 export function rideLayerText(ride: number, quiet: number): string {
   return (
     `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
-    `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm streets (LTS 1) that run ` +
-    `${formatRunMiles(RIDE_RUN_MI.street)} or more under one name. Busy roads (LTS 3 and above, ` +
+    `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
+    `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
     `and best avoided), mountain-bike trails, shorter paths, the other streets and the junction warnings on the map ` +
     `show from zoom ${quiet}.`
   );
@@ -95,9 +96,9 @@ export const CAR_FREE_NOTE =
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
-  if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm streets and traffic stress on roads. ${ZOOMED_OUT}`;
+  if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
   if (zoom < STRESS_ZOOMS.quiet) {
-    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm streets. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
+    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
   }
   return null;
 }
@@ -165,7 +166,7 @@ export const UNPAVED_LEGEND =
  * A paved path has edge lines; an unpaved trail is brown with a dotted center line; this is neither.
  */
 export const UNKNOWN_SURFACE_LEGEND =
-  "A path or trail with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines.";
+  "A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines. A trail beside a road with no surface mapped shows as a paved path.";
 
 /** The bike-facility legend's words, with the lane switch's state. */
 export function facilityLegendHint(showHighLanes: boolean): string {

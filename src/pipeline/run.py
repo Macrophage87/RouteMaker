@@ -76,7 +76,7 @@ from .rebuild import RebuildTimedOut, Stage
 from .schema import (
     METRES_PER_MILE,
     RIDE_PATH_RUN_MI,
-    RIDE_STREET_RUN_MI,
+    RIDE_ROAD_RUN_MI,
     ROUTE_LONG_BICYCLE,
     Z10_UNPAVED_RUN_MI,
     Z11_PAVED_RUN_MI,
@@ -862,14 +862,14 @@ LONG_TRAIL_SENTINEL_RUN_M = round(Z10_UNPAVED_RUN_MI * METRES_PER_MILE)
 LONG_TRAIL_FLOOR_RUN_M = round(Z11_PAVED_RUN_MI * METRES_PER_MILE)
 
 
-# The ride layer's sentinel and floors (OWNER-DECISIONS 391; the same idea as the long
-# trails'): the path sentinels (the W&OD and the C&O, which are long trails too) must come
-# out in a connected network or run of at least LONG_TRAIL_SENTINEL_RUN_M, the street
-# sentinel in a calm run of at least the street bar, and the table must hold at least
-# `settings.REBUILD_CALM_RUN_FLOORS` path rows in a run of the path bar and street rows in
-# a run of the street bar.
+# The ride layer's sentinel and floors (OWNER-DECISIONS 391, 402a; the same idea as the
+# long trails'): the path sentinels (the W&OD and the C&O, which are long trails too) must
+# come out in a connected network or run of at least LONG_TRAIL_SENTINEL_RUN_M, the road
+# sentinel in a calm run of at least the road bar, and the table must hold at least
+# `settings.REBUILD_CALM_RUN_FLOORS` path rows in a run of the path bar and road rows in a
+# calm run of the road bar.
 CALM_PATH_RUN_M = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
-CALM_STREET_RUN_M = round(RIDE_STREET_RUN_MI * METRES_PER_MILE)
+CALM_ROAD_RUN_M = round(RIDE_ROAD_RUN_MI * METRES_PER_MILE)
 
 
 def assert_calm_runs(
@@ -888,7 +888,7 @@ def assert_calm_runs(
             "the calm-run derive did not run to the end"
         )
     wanted = [(way, LONG_TRAIL_SENTINEL_RUN_M, "path") for way in path_sentinels]
-    wanted += [(way, CALM_STREET_RUN_M, "street") for way in street_sentinels]
+    wanted += [(way, CALM_ROAD_RUN_M, "road") for way in street_sentinels]
     for way, minimum, kind in wanted:
         if way not in summary.sentinels:
             raise ValidationFailed(
@@ -900,13 +900,13 @@ def assert_calm_runs(
             raise ValidationFailed(
                 f"the calm-run {kind} sentinel way {way} came out at a run of "
                 f"{summary.sentinels[way]} m, not {minimum} m or more: the names or the "
-                "geometry were lost, and z12-13 would drop the long paths and calm streets"
+                "geometry were lost, and z12-13 would drop the long paths and calm roads"
             )
     path_floor, street_floor = floors
     if summary.path_rows < path_floor or summary.street_rows < street_floor:
         raise ValidationFailed(
             f"{summary.path_rows} path rows are in a run of {CALM_PATH_RUN_M} m or more and "
-            f"{summary.street_rows} street rows in one of {CALM_STREET_RUN_M} m or more, under "
+            f"{summary.street_rows} road rows in a calm run of {CALM_ROAD_RUN_M} m or more, under "
             f"the floors of {path_floor} and {street_floor} (settings.REBUILD_CALM_RUN_FLOORS): "
             "the ride layer did not come out of the rebuild"
         )
@@ -2172,6 +2172,9 @@ def build_handlers(
                         if long_trail or calm_candidate
                         else None,
                         calm_run_m=0 if calm_candidate else None,
+                        roadside=facility.roadside_start(
+                            way.tags, way_facility, drawn_trail=trail and way_map_class == "road"
+                        ),
                         trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
                         trail_bridge=3
                         if long_trail and trail_routes.is_bridge_way(way.tags)
@@ -2182,6 +2185,7 @@ def build_handlers(
         writers.write_segments(context.staging_schema, rows)
         trail_routes.derive_trail_runs(context.staging_schema)
         trail_routes.derive_calm_runs(context.staging_schema)
+        trail_routes.derive_roadside(context.staging_schema)
 
     def validate() -> None:
         if set(context.build_logs) != set(variants.Variant):
@@ -2225,7 +2229,7 @@ def build_handlers(
                 context.staging_schema,
                 (*calm_path_sentinels, *calm_street_sentinels),
                 CALM_PATH_RUN_M,
-                CALM_STREET_RUN_M,
+                CALM_ROAD_RUN_M,
             ),
             calm_path_sentinels,
             calm_street_sentinels,

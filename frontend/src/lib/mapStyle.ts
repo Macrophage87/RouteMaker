@@ -112,7 +112,7 @@ export function stressSource(origin: string) {
  * concerned with the places to ride than the places not to." (391). Below
  * `min` nothing is drawn; from `min` only the long traffic-free paths and
  * trails; from `ride` the "where to ride" layer: the long and connected
- * paths and the long calm streets, and no busy road
+ * paths and the long calm roads, and no busy road
  * (RIDE_LAYER_MIN_ZOOM in core/stress_tiles.py); from `quiet` every segment:
  * the busy roads at LTS 3 and above, the quiet streets, and the rest
  * (QUIET_STREETS_MIN_ZOOM). `max` is the source's

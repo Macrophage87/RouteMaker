@@ -39,8 +39,8 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
   const out = stressZoomNotice(STRESS_ZOOMS.ride - 0.01, true);
-  assert.equal(out, `Zoom in to see more paths and trails, calm streets and traffic stress on roads. ${ZOOMED_OUT}`);
-  assert.ok(out!.startsWith("Zoom in to see more paths and trails, calm streets and traffic stress on roads. Zoomed out, only the long-distance"));
+  assert.equal(out, `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`);
+  assert.ok(out!.startsWith("Zoom in to see more paths and trails, calm roads and traffic stress on roads. Zoomed out, only the long-distance"));
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min, true), out);
 });
 
@@ -48,7 +48,7 @@ test("at zoom 12-13 the notice says this is the where-to-ride view and what wait
   const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
   assert.equal(
     out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm streets. Busy roads, mountain-bike trails and short paths show from zoom 14.",
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
   );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
@@ -79,7 +79,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(
     hint.includes(
       "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
-        "and calm streets (LTS 1) that run 0.5 mi (0.8 km) or more under one name. Busy roads (LTS 3 and above, and best avoided), " +
+        "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
         "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
     ),
   );
@@ -97,7 +97,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
 
 test("rendered: the notice as a status, then the hint", () => {
   const html = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11.2, shown: true }));
-  assert.match(html, /^<p class="notice" role="status">Zoom in to see more paths and trails, calm streets and traffic stress on roads\./);
+  assert.match(html, /^<p class="notice" role="status">Zoom in to see more paths and trails, calm roads and traffic stress on roads\./);
   assert.match(html, /<p class="hint">Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, long named trails, and roads closed to cars at set times\./);
   // The hint rendered is the one for the map's own zoom (round-1 mutant F08).
   assert.match(html, /The map is at zoom 11\.<\/p><p class="hint">Roads closed to cars/);
@@ -316,7 +316,7 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
     });
   }
   // Plain US English, what it is and why, naming the source; no jargon, no colour as the only cue.
-  assert.match(UNKNOWN_SURFACE_LEGEND, /^A path or trail with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines\.$/);
+  assert.match(UNKNOWN_SURFACE_LEGEND, /^A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines\. A trail beside a road with no surface mapped shows as a paved path\.$/);
   assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
 });
 
