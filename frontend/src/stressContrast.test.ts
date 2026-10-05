@@ -26,7 +26,20 @@ import {
 } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
-import { ROUTE_BLUE, ROUTE_CASING_CVD, ROUTE_CASING_WIDTH, ROUTE_HALO_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeClasses } from "./lib/routeColours.ts";
+import {
+  ROUTE_AVOID_MAGENTA,
+  ROUTE_AVOID_MARK,
+  ROUTE_BLUE,
+  ROUTE_CASING_CVD,
+  ROUTE_CASING_WIDTH,
+  ROUTE_HALO_WIDTH,
+  ROUTE_LINE_WIDTH,
+  isUnpavedClass,
+  routeCasing,
+  routeClasses,
+  routeSections,
+  sectionFeatures,
+} from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
 import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 
@@ -174,13 +187,23 @@ function worstDelta(a: string, b: string): { delta: number; vision: string } {
   return VISIONS.map((vision) => ({ vision, delta: deltaE2000(simulate(a, vision), simulate(b, vision)) })).reduce((x, y) => (y.delta < x.delta ? y : x));
 }
 
-/** What a route section can be drawn in under the cvd palette: the tiers, the unrated grey and the traffic-free violet. */
+/**
+ * What a paved route section is actually drawn in under the cvd palette (the accessibility switch
+ * on): routeClasses(), so the tiers, the unrated grey, the traffic-free violet and the route's own
+ * Avoid magenta (397), not the map's tier colours (the r3 accessibility review's S1: this read
+ * tiersFor("cvd") and so tested a blue-black Avoid the route no longer draws). Keyed by the short
+ * name, with whether the class carries a mark that is not colour (Avoid's dash-dot).
+ */
+function cvdRouteDrawn(): Record<string, { color: string; mark?: string }> {
+  return withSwitch(true, () => {
+    const out: Record<string, { color: string; mark?: string }> = {};
+    for (const c of routeClasses()) if (!isUnpavedClass(c.key)) out[c.short] = { color: c.color, ...(c.mark ? { mark: c.mark } : {}) };
+    return out;
+  });
+}
+
 function cvdRouteClasses(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const tier of tiersFor("cvd")) out[tier.short] = tier.color;
-  out["Not rated"] = unrated("cvd").color;
-  out["Traffic-free"] = (FACILITIES.find((f: { facility: string }) => f.facility === "path") as { color: string }).color;
-  return out;
+  return Object.fromEntries(Object.entries(cvdRouteDrawn()).map(([name, c]) => [name, c.color]));
 }
 
 /** The route casing's floor against every class: the best a search of sRGB reached with LTS 2 at 3:1 and 30 apart (19.1). */
@@ -225,8 +248,11 @@ test("cvd: the route's casing is 3:1 from every base-map surface, so the route s
 test("cvd: the unrated colour is at least 20 CIEDE2000 from every tier and the traffic-free violet, under every vision", (t) => {
   const classes = cvdRouteClasses();
   const failures: string[] = [];
+  const marked = cvdRouteDrawn();
   for (const [name, colour] of Object.entries(classes)) {
     if (name === "Not rated") continue;
+    // Avoid carries its own dash-dot, so it is held to the next test instead.
+    if (marked[name].mark) continue;
     const d = worstDelta(UNRATED_CVD_COLOUR, colour);
     t.diagnostic(`${UNRATED_CVD_COLOUR} against ${name}: ${d.delta.toFixed(1)} (${d.vision}); the default grey ${UNRATED.color}: ${worstDelta(UNRATED.color, colour).delta.toFixed(1)}`);
     if (d.delta < DELTA_E_FLOOR) failures.push(`${name}: ${d.delta.toFixed(1)} under ${d.vision}`);
@@ -239,6 +265,34 @@ test("cvd: the unrated colour is at least 20 CIEDE2000 from every tier and the t
   assert.ok(Math.abs(relativeLuminance(UNRATED_CVD_COLOUR) - relativeLuminance(UNRATED.color)) < 0.02);
   // Inside the route's casing it is 3:1.
   assert.ok(contrastRatio(UNRATED_CVD_COLOUR, ROUTE_CASING_CVD) >= 3);
+});
+
+test("cvd: the route's Avoid magenta, where it is under 20 CIEDE2000 from a class for some vision, is told from it by its white dash-dot", (t) => {
+  const drawn = cvdRouteDrawn();
+  const avoid = drawn.Avoid;
+  assert.equal(avoid.color, ROUTE_AVOID_MAGENTA, "the colour the route draws, not the map's Avoid");
+  assert.equal(avoid.mark, ROUTE_AVOID_MARK);
+  assert.ok(contrastRatio(ROUTE_AVOID_MARK, ROUTE_AVOID_MAGENTA) >= 3, `the mark on the magenta: ${contrastRatio(ROUTE_AVOID_MARK, ROUTE_AVOID_MAGENTA).toFixed(2)}:1`);
+  const close: string[] = [];
+  for (const [name, c] of Object.entries(drawn)) {
+    if (name === "Avoid") continue;
+    const d = worstDelta(avoid.color, c.color);
+    t.diagnostic(`Avoid against ${name} ${c.color}: ${d.delta.toFixed(1)} (${d.vision})`);
+    if (d.delta < DELTA_E_FLOOR) {
+      close.push(name);
+      // The cue only works if the other class has no such mark.
+      assert.equal(c.mark, undefined, name);
+    }
+  }
+  // The premise: the magenta alone is close to LTS 3 (tritanopia) and LTS 2 (deuteranopia).
+  assert.ok(close.includes("LTS 3") && close.includes("LTS 2"), close.join(", "));
+  // And every Avoid section on the map carries the mark: the feature says so, for the route-avoid layer.
+  const line = [[-77.05, 38.9], [-77.04, 38.9], [-77.03, 38.9]] as [number, number][];
+  const features = withSwitch(true, () =>
+    sectionFeatures(routeSections(line, [{ from_m: 0, to_m: 800, tier: 3, facility: "none" }, { from_m: 800, to_m: 1700, tier: 5, facility: "none" }])).features,
+  );
+  assert.deepEqual(features.map((f) => [f.properties.key, f.properties.avoid]), [["3", false], ["5", true]]);
+  assert.equal(features[1].properties.mark, ROUTE_AVOID_MARK);
 });
 
 // ---------------------------------------------------------------------------

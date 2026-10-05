@@ -14,6 +14,9 @@ import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleK
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
+import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK } from "./avoidColour.ts";
+
+export { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
 export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown";
 
@@ -38,6 +41,8 @@ export interface RouteClass {
   ring?: string;
   /** Its width: a pixel wider each side than `haloWidth`. */
   ringWidth?: number;
+  /** The dash-dot down the middle of a paved Avoid section (ROUTE_AVOID_MARK), the cue that is not colour; none elsewhere. */
+  mark?: string;
 }
 
 /**
@@ -90,17 +95,21 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
 /**
  * Avoid on the planned route (OWNER-DECISIONS 397: "Avoid as a single color should be magenta. It's
  * a very striking danger color. Only do if a route uses it"): one magenta in every palette, paved or
- * unpaved (an unpaved one keeps its dotted mark), in place of the palette's Avoid. Only the route's
- * own sections: the map's general Avoid roads keep the palette's Avoid (stressStyle.js), and the
- * legend lists Avoid only when the route rides some (`routeLegend`). The route chart's Avoid is the
- * same magenta (profileChart.ts AVOID_FILL). Its halo is near-black, 4.1:1 from it (the halo rule:
- * dark under a class lighter than 0.14 luminance; the magenta is 0.16).
+ * unpaved, in place of the palette's Avoid (avoidColour.ts). Only the route's own sections: the map's
+ * general Avoid roads keep the palette's Avoid (stressStyle.js), and the legend lists Avoid only when
+ * the route rides some (`routeLegend`). The route chart's Avoid and the route panel's stress bar are
+ * the same magenta. Its halo is near-black, 4.1:1 from it (the halo rule: dark under a class lighter
+ * than 0.14 luminance; the magenta is 0.16). A paved Avoid also carries a white dash-dot down its
+ * middle (ROUTE_AVOID_MARK, MapView's route-avoid layer), so it is not told by colour alone: in the
+ * high contrast palette the magenta is close to LTS 3 and LTS 2 for some colour visions. An unpaved
+ * Avoid keeps its dotted unpaved mark instead, which already sets it apart from every paved class.
  */
-export const ROUTE_AVOID_MAGENTA = "#d6008f";
-export const ROUTE_AVOID_HALO = "#14040a";
-
 const avoidOnTheRoute = (c: RouteClass): RouteClass =>
-  c.key === "5" || c.key === "u5" ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO } : c;
+  c.key === "5"
+    ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO, mark: ROUTE_AVOID_MARK }
+    : c.key === "u5"
+      ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO }
+      : c;
 
 /**
  * The classes a section is drawn in, in the legend's order: traffic-free
@@ -182,6 +191,9 @@ export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<
     const brown = tier !== null ? classByKey(`u${tier}` as RouteClassKey) : undefined;
     if (brown) return brown;
   }
+  // Avoid before traffic-free: a path rated Avoid (only an access override could make one) is drawn
+  // as the route chart draws it, in the Avoid magenta, not the path's violet (r3 correctness, N3).
+  if (span.tier === 5) return classByKey("5") as RouteClass;
   if (span.facility === "path") return classByKey("path") as RouteClass;
   const tier = classByKey(String(span.tier) as RouteClassKey);
   return span.tier !== null && tier ? tier : (classByKey("unknown") as RouteClass);
@@ -195,6 +207,7 @@ export interface RouteSection {
   haloWidth: number;
   ring?: string;
   ringWidth?: number;
+  mark?: string;
   coordinates: LonLat[];
 }
 
@@ -260,7 +273,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -284,6 +297,9 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
         // The dotted unpaved mark (MapView's route-unpaved layer draws only these).
         unpaved: isUnpavedClass(section.key),
         markWidth: routeMarkWidth(section.width),
+        // The white dash-dot over a paved Avoid section (MapView's route-avoid layer draws only these).
+        avoid: section.mark !== undefined,
+        mark: section.mark ?? "rgba(0, 0, 0, 0)",
       },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),

@@ -40,6 +40,7 @@ import {
   setStressWhen,
   onLaneSwitch,
   routeUnpavedLayer,
+  routeAvoidLayer,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -619,6 +620,8 @@ export function MapView(props: Props) {
       // The dotted mark over an unpaved section, in its halo colour (OWNER-DECISIONS 302):
       // brown is not the only thing that says unpaved.
       map.addLayer(routeUnpavedLayer(ROUTE_STRESS_SOURCE) as never);
+      // The white dash-dot over a paved Avoid section (397): magenta is not the only thing that says Avoid.
+      map.addLayer(routeAvoidLayer(ROUTE_STRESS_SOURCE) as never);
       map.addLayer({
         id: "route-line",
         type: "line",

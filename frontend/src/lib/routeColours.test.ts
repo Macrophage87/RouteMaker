@@ -6,6 +6,8 @@ import { haversineM, type LonLat } from "./geo.ts";
 import {
   ROUTE_AVOID_HALO,
   ROUTE_AVOID_MAGENTA,
+  ROUTE_AVOID_MARK,
+  ROUTE_AVOID_MARK_DASH,
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
   routeClasses,
@@ -16,6 +18,8 @@ import {
   spanClass,
 } from "./routeColours.ts";
 import { UNRATED } from "./stressBar.ts";
+import { ROUTE_AVOID_LAYER_ID, routeAvoidLayer } from "./mapGlue.ts";
+import { readFileSync } from "node:fs";
 
 // A straight line east along 38.9 N, one vertex every 0.001 degrees (~86.6 m).
 const LINE: LonLat[] = Array.from({ length: 11 }, (_, i) => [-77.05 + i * 0.001, 38.9] as LonLat);
@@ -65,6 +69,38 @@ test("traffic-free comes before the tier, and a lane is its tier", () => {
   assert.equal(spanClass({ tier: 3, facility: "lane" }).key, "3");
   assert.equal(spanClass({ tier: 5, facility: "protected" }).key, "5");
   assert.equal(spanClass({ tier: null, facility: "path" }).key, "path");
+  // But Avoid comes before traffic-free, so the route line matches the chart's magenta (r3 N3).
+  assert.equal(spanClass({ tier: 5, facility: "path" }).key, "5");
+  assert.equal(spanClass({ tier: 5, facility: "path" }).color, ROUTE_AVOID_MAGENTA);
+});
+
+test("a paved Avoid section carries the white dash-dot, in every palette; nothing else does, and an unpaved Avoid keeps its dots instead", () => {
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
+      const features = sectionFeatures(routeSections(LINE, [span(0, 300, 3), span(300, 600, 5), span(600, 900, 5, "none")].map((s, i) => (i === 2 ? { ...s, unpaved: true } : s)))).features;
+      assert.deepEqual(features.map((f) => [f.properties.key, f.properties.avoid, f.properties.unpaved]), [["3", false, false], ["5", true, false], ["u5", false, true]]);
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+  assert.ok(contrastRatio(ROUTE_AVOID_MARK, ROUTE_AVOID_MAGENTA) >= 3);
+  // Its dash is a dash-dot, unlike the unpaved mark's even dots.
+  assert.equal(ROUTE_AVOID_MARK_DASH.length, 4);
+  assert.notEqual(ROUTE_AVOID_MARK_DASH[0], ROUTE_AVOID_MARK_DASH[2]);
+  // The map layer that draws it: only the marked sections, in their mark colour, above the unpaved dots.
+  const layer = routeAvoidLayer("route-stress");
+  assert.equal(layer.id, ROUTE_AVOID_LAYER_ID);
+  assert.deepEqual(layer.filter, ["==", ["get", "avoid"], true]);
+  assert.deepEqual(layer.paint["line-color"], ["get", "mark"]);
+  assert.deepEqual(layer.paint["line-dasharray"], [...ROUTE_AVOID_MARK_DASH]);
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  const unpavedAt = mapView.indexOf("map.addLayer(routeUnpavedLayer(");
+  const avoidAt = mapView.indexOf("map.addLayer(routeAvoidLayer(");
+  assert.ok(unpavedAt > 0 && avoidAt > unpavedAt && avoidAt < mapView.indexOf('id: "route-line"'));
+  // The legend's swatch draws it too.
+  assert.match(readFileSync(new URL("../FacilityBreakdown.tsx", import.meta.url), "utf8"), /row\.mark && \(/);
 });
 
 test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, then not rated", () => {

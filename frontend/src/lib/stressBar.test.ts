@@ -52,10 +52,10 @@ test("missing, negative or non-numeric values count as zero", () => {
   assert.equal(byKey["4"].metres, 0);
 });
 
-test("the tier colours are the overlay's own", async () => {
+test("the tier colours are the overlay's own, but Avoid is the route's magenta (397)", async () => {
   const { currentTiers } = await import("../stressStyle.js");
   const segments = stressSegments(sample);
-  for (const tier of currentTiers()) {
+  for (const tier of currentTiers().filter((t: { tier: number }) => t.tier < 5)) {
     const segment = segments.find((s) => s.key === String(tier.tier));
     assert.equal(segment?.color, tier.color);
   }
@@ -74,4 +74,34 @@ test("each percent is its own share rounded, and an empty tier reads 0%", () => 
       if (s.metres === 0) assert.equal(s.percent, 0, `${JSON.stringify(stress)} ${s.key}`);
     }
   }
+});
+
+test("Avoid in the route panel's bar is the route's magenta in every palette, with a near-black hatch 3:1 from it (397; r3 spec SF-1)", async () => {
+  const { contrastRatio, currentTiers, setAccessibility } = await import("../stressStyle.js");
+  const { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, routeClasses } = await import("./routeColours.ts");
+  const { readFileSync } = await import("node:fs");
+  for (const on of [false, true]) {
+    setAccessibility(on, { remember: false });
+    try {
+      const segments = stressSegments({ "2": 100, "5": 50 });
+      const avoid = segments.find((s) => s.key === "5")!;
+      assert.equal(avoid.color, ROUTE_AVOID_MAGENTA, on ? "high contrast" : "default");
+      assert.equal(avoid.color, routeClasses().find((c) => c.key === "5")?.color, "the route line's Avoid");
+      assert.equal(avoid.casing, ROUTE_AVOID_HALO, "the hatch, as the route chart's strip draws it");
+      assert.ok(contrastRatio(avoid.casing, avoid.color) >= 3, `${contrastRatio(avoid.casing, avoid.color).toFixed(2)}:1`);
+      // The other tiers keep the palette's colours.
+      for (const tier of currentTiers().filter((t: { tier: number }) => t.tier < 5)) {
+        assert.equal(segments.find((s) => s.key === String(tier.tier))?.color, tier.color);
+      }
+    } finally {
+      setAccessibility(false, { remember: false });
+    }
+  }
+  // The cue that is not colour: the bar's Avoid segment is cross-hatched in its accent.
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const body = css.match(/\n\.stress-seg-5 \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(body, /repeating-linear-gradient\(45deg, var\(--seg-accent/);
+  assert.match(body, /repeating-linear-gradient\(-45deg, var\(--seg-accent/);
+  // And App gives the bar's segments their accent.
+  assert.match(readFileSync(new URL("../App.tsx", import.meta.url), "utf8"), /stress-seg-\$\{s\.key\}[\s\S]{0,200}"--seg-accent" as string\]: s\.casing/);
 });
