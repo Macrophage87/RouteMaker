@@ -32,6 +32,10 @@ count on the space (a proposal for the owner to confirm; PLAN.md). Grade,
 surface and turns are reductions the route applies (part 2); this is the flat,
 straight, clear-road figure, which is what the map is coloured by.
 
+The figure is the LEVEL capacity only (`flow.level_riders_per_min`): the grade
+adjustment depends on direction and distance into a climb, so the route chart
+applies it (`flow.adjusted_riders_per_min`), not the map tiles.
+
 Pure functions of a way's tags: the rebuild writes the answer onto
 `segment.mass_capacity_rpm` (`pipeline.run`), and nothing reads the tags again.
 """
@@ -124,13 +128,19 @@ def usable_width_m(tags: Mapping[str, str], per_direction_lanes: int | None = No
     if highway in DEFAULT_PATH_WIDTH_M:
         return DEFAULT_PATH_WIDTH_M[highway]
     oneway = is_oneway(tags)
+    tagged_total = _lanes_total(tags, None, oneway)
     lanes = _lanes_total(tags, per_direction_lanes, oneway)
     if lanes is None:
         default = DEFAULT_LANES.get(highway)
         if default is None:
             return None
         lanes = max(1, default // 2) if oneway and default > 1 else default
-    width = lanes * LANE_WIDTH_M
+    if tagged_total is None and per_direction_lanes and per_direction_lanes >= 1:
+        # The classifier's lanes a direction: the elevation chart's own width
+        # (`flow.usable_width_m`), so the chart and the map agree.
+        width = flow.usable_width_m("1", "none", per_direction_lanes, oneway)
+    else:
+        width = lanes * LANE_WIDTH_M
     # A painted lane on the roadway is usable; a protected one is not (127), and a
     # side that says it has none has none (`cycleway_sides` reads the precedence).
     for side in cycleway_sides(dict(tags)).values():

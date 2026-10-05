@@ -854,6 +854,12 @@ order), and nothing asks for hazards.
   on the roadway (5 ft where no width is surveyed), never a protected lane (127), and never a
   parking lane (parked cars are in it: a proposal for the owner). One module holds the constants,
   and `tests/test_mass_capacity.py` holds the front end's band edges equal to its own.
+* **One model with the elevation chart.** `src/routemaker/flow.py` is copied verbatim from
+  wip/elevation-chart (27cddab); `massflow` takes its constants, `level_riders_per_min`, band
+  edges and (for the classifier's lanes) `usable_width_m` from it, so the chart and the map agree.
+  The column is the flat-ground (level) figure only: the grade adjustment depends on direction
+  and on distance into a climb, so the route chart applies it, not the tiles. The legend says
+  "on the flat".
 * **The column.** `segment.mass_capacity_rpm integer` (`pipeline.schema.MASS_CAPACITY_COLUMN`),
   written by the segment writer for every row from the way's tags and the classifier's lanes
   (`pipeline.run.write_segments`). Nullable: a table built before it has none, and nothing breaks.

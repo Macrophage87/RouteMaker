@@ -774,14 +774,14 @@ const federalFetched = (p) =>
     return { narrowest: stats?.querySelector('.capacity-narrowest dd')?.textContent, typical: stats?.querySelector('.capacity-typical dd')?.textContent,
       stressBar: !!s.querySelector('.stress-bar'), folds: fold, ltsWords: /LTS|traffic stress/i.test(s.querySelector('.stats.capacity-stats')?.parentElement?.textContent ?? '') }; })()`);
   check("capacity: the route view says the narrowest point in words, with its band and where, and the typical figure",
-    route.narrowest === "50 riders per minute (bottleneck), at the start" && route.typical === "190 riders per minute", JSON.stringify(route));
+    route.narrowest === "50 riders per minute (bottleneck), at the start" && route.typical === "150 riders per minute", JSON.stringify(route));
   check("capacity: the stress bar is replaced, and the fold is Riders per minute in place of Stress and facilities",
     !route.stressBar && route.folds.some((t) => t === "Riders per minute") && !route.folds.some((t) => /^Stress and facilities/.test(t)), JSON.stringify(route.folds));
   const fold = await p.eval(`(() => { const d = [...document.querySelectorAll('.summary details')].find((x) => x.querySelector('summary')?.textContent === 'Riders per minute'); if (d) d.open = true;
     const rows = [...(d?.querySelectorAll('.capacity li') ?? [])].map((li) => li.textContent);
     return { rows, hidden: [...(d?.querySelectorAll('.capacity li svg') ?? [])].every((v) => v.getAttribute('aria-hidden') === 'true'), list: d?.querySelector('.capacity ul')?.getAttribute('aria-label') }; })()`);
   check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches hidden from a screen reader",
-    fold.rows.length === 6 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list), JSON.stringify(fold));
+    fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list), JSON.stringify(fold));
   const lead = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
   await p.eval("document.querySelector('.route-description summary')?.click(); true");
   await sleep(200);
@@ -793,7 +793,7 @@ const federalFetched = (p) =>
   const gotLegend = await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
   const legend = await p.eval(`(() => { const u = document.querySelector('.mass-legend'); if (!u) return null;
     return { name: u.getAttribute('aria-label'), rows: [...u.querySelectorAll('li')].map((li) => li.textContent), swatchesHidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
-      heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('label.toggle')?.textContent.trim(),
+      heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
       stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
   check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
     gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && /^Avoid/.test(legend.rows[4]) && /^Riders per minute at 6-8 mph \(10-13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
