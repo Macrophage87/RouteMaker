@@ -2701,7 +2701,7 @@ edges". The command prints the lines to run in that case:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
-docker compose stop valhalla-weekend
+docker compose stop valhalla-weekend valhalla-offroad
 ```
 
 The api plans weekend rides on the standard graph while there is no weekend

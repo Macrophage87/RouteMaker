@@ -290,7 +290,7 @@ class TestSchema:
             "text",
             "text_lanes_hidden",
         }
-        assert entry["properties"]["kind"]["enum"] == ["stretch", "junction", "via"]
+        assert entry["properties"]["kind"]["enum"] == ["stretch", "junction", "via", "walk"]
         for field in (
             "kind",
             "from_m",

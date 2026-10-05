@@ -1514,12 +1514,12 @@ class TestLongTrails:
         for z in (10, 11):
             response = client.get(url(*tile_of(*CENTRE, z)))
             assert lines_in(response.content) == 1
-            assert "+cfmsbtl-v" not in response["ETag"]
+            assert "+cfrmosbtl-v" not in response["ETag"]
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, True, 3, None)
-        assert "+cfmsbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+        assert "+cfrmosbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
         optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})

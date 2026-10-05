@@ -48,7 +48,8 @@ ROUTERS = (
     "valhalla-offroad",
 )
 VARIANTS = ("standard", "no-trail", "ebike", "weekend")
-ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in VARIANTS}
+# Every upstream the api repoints, the off-road router (compose profile `offroad`) included.
+ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in (*VARIANTS, "offroad")}
 DJANGO_SERVICES = ("api", "worker", "rebuild")
 HEALTHZ = "/healthz"
 LOGIN = "/auth/login"

@@ -31,7 +31,7 @@ STDLIB = set(sys.stdlib_module_names)
 @pytest.fixture(scope="module")
 def SERVICES() -> dict:
     """The rendered stack from the shipped example, the way the deploy tests read it."""
-    return render(REPO / ".env.example")["services"]
+    return render(REPO / ".env.example", "offroad")["services"]
 
 
 @pytest.fixture(scope="module")

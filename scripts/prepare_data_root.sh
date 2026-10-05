@@ -125,6 +125,8 @@ tiles/ebike
 tiles/ebike/current
 tiles/weekend
 tiles/weekend/current
+tiles/offroad
+tiles/offroad/current
 extracts
 reference
 rebuild
