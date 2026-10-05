@@ -2,7 +2,7 @@
 # Template: @REPO@ is replaced by scripts/boot/install-boot-unit.sh with the
 # absolute path of this checkout. Runs as the user, no sudo. For it to run at
 # boot without anyone logging in, user lingering must be on once:
-#   sudo loginctl enable-linger steph
+#   sudo loginctl enable-linger "$USER"
 [Unit]
 Description=RouteMaker stack start (waits for Docker and the WSL bind paths, checks postgis)
 Documentation=file://@REPO@/docs/DEPLOYMENT.md
