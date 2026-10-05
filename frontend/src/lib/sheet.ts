@@ -18,9 +18,12 @@ export function opensSheet(kind: StatusKind): boolean {
   return kind === "confirm" || kind === "error";
 }
 
-/** The order of the panel's first three sections. A desktop's never changes. */
+/**
+ * The order of the panel's first three sections: the points first, then the ride settings (the
+ * "presets" section: the Ride line), then the route (OWNER-DECISIONS 312). A desktop's never changes.
+ */
 export function sheetOrder(narrow: boolean, kind: StatusKind, hasRoute: boolean): SheetSection[] {
-  return narrow && (hasRoute || opensSheet(kind)) ? ["route", "presets", "points"] : ["presets", "points", "route"];
+  return narrow && (hasRoute || opensSheet(kind)) ? ["route", "points", "presets"] : ["points", "presets", "route"];
 }
 
 /** The long-ride question takes the focus, once the sheet is open: a hidden button cannot take it. */

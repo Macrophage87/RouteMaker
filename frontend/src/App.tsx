@@ -184,6 +184,9 @@ export function App() {
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
   const [legendTarget, setLegendTarget] = useState(false);
+  // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
+  // this opens the search, Add point and the rest again.
+  const [editPoints, setEditPoints] = useState(false);
   const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
   const openedBy = useRef<BarItem["id"]>("layers");
   const prevView = useRef<PanelView>("planner");
@@ -699,19 +702,25 @@ export function App() {
   const slow = useLongerThan(status.kind === "loading", STILL_PLANNING_AFTER_MS);
 
   const presetsSection = <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} />;
+  // A route is on screen: the points are compact unless the rider is editing them.
+  const routeShownForPoints = shown !== null;
+  const compactPoints = routeShownForPoints && points.length >= 2 && !editPoints;
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
         Points
       </h2>
-      <PlaceSearch
-        pointCount={points.length}
-        loop={loopVias}
-        full={points.length >= MAX_POINTS}
-        gate={geoGate}
-        bias={searchBias}
-        onPick={pickPlace}
-      />
+      {/* The controls stay in the page while the points are compact (hidden), so the search keeps its state. */}
+      <div className="points-controls" hidden={compactPoints}>
+        <PlaceSearch
+          pointCount={points.length}
+          loop={loopVias}
+          full={points.length >= MAX_POINTS}
+          gate={geoGate}
+          bias={searchBias}
+          onPick={pickPlace}
+        />
+      </div>
       {points.length === 0 ? (
         <p className="hint">{searchLede(preset, loopVias)}</p>
       ) : (
@@ -724,6 +733,18 @@ export function App() {
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias)}</p>}
+      {routeShownForPoints && points.length >= 2 && (
+        <button
+          type="button"
+          className="secondary edit-points"
+          aria-expanded={!compactPoints}
+          aria-controls="points-edit"
+          onClick={() => setEditPoints((on) => !on)}
+        >
+          {compactPoints ? "Edit points" : "Done editing points"}
+        </button>
+      )}
+      <div id="points-edit" hidden={compactPoints}>
       <div className="actions point-add">
         <button
           type="button"
@@ -772,6 +793,7 @@ export function App() {
         <p className="hint">{emptyPlanHint(preset, loopVias)}</p>
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
       </MoreTips>
+      </div>
       {notice && (
         <p className="notice" role="status">
           {notice}

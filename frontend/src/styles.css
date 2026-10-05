@@ -1794,6 +1794,20 @@ details.fold fieldset.candidates {
   margin: 0;
 }
 
+/* The fold's own summary names the group; the legend stays for a screen reader (the radios' group name). */
+details.fold fieldset.candidates legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.edit-points {
+  margin-top: 4px;
+}
+
 details.fold .stress,
 details.fold .junctions {
   margin-top: 4px;

@@ -23,6 +23,7 @@ import {
   stepsCount,
 } from "./sidebar.ts";
 import { StressZoomNotes, ZOOM_LEVELS_LINK, CAR_FREE_NOTE } from "./stressLegend.ts";
+import { sheetOrder } from "./sheet.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const app = src("../App.tsx");
@@ -104,8 +105,6 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.match(searchLede("default", false), /^Search, or click the map: start, then end\./);
   assert.match(searchLede("default", true), /come[s]? back to the start/);
   assert.match(app, /<MoreTips>\s*<p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>/);
-  const html = renderToStaticMarkup(createElement("div"));
-  assert.equal(html, "<div></div>");
   assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
   // Add point at map center first, then the compact row; every existing button is still there.
   const labels = ["Add point at map center", "Reverse", "Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-add"')));
@@ -277,7 +276,21 @@ test("the beta banner is still the first child of the panel's body, before the s
 test("the skip link and its target stay: #route-planner is the aside, and every live region is still in the page", () => {
   assert.match(app, /href="#route-planner"/);
   assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
-  for (const text of ["announce(", "role=\"status\" aria-live=\"polite\" className=\"status-line\"", "said.text"]) {
-    assert.ok(app.includes(text.replace(/\\"/g, '"')) || app.includes(text), text);
-  }
+  assert.match(app, /<div role="status" aria-live="polite" className="status-line">/);
+  assert.match(app, /\{said\.text\}/);
+  assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
+});
+
+test("on a desktop the points come first, then the Ride line, then the route; on a phone the route leads", () => {
+  assert.deepEqual(sheetOrder(false, "idle", false), ["points", "presets", "route"]);
+  assert.deepEqual(sheetOrder(false, "ok", true), ["points", "presets", "route"]);
+  assert.deepEqual(sheetOrder(true, "ok", true), ["route", "points", "presets"]);
+  assert.deepEqual(sheetOrder(true, "idle", false), ["points", "presets", "route"]);
+});
+
+test("with a route shown the points are compact, behind 'Edit points', and the controls stay in the page", () => {
+  assert.match(app, /const compactPoints = routeShownForPoints && points\.length >= 2 && !editPoints;/);
+  assert.match(app, /<div className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
+  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-edit"/);
+  assert.match(app, /<div id="points-edit" hidden=\{compactPoints\}>/);
 });
