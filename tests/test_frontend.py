@@ -120,7 +120,9 @@ def bundled_fonts() -> dict[str, tuple[str, str, str]]:
     block = re.search(r"BUNDLED_FONTS\s*=\s*\[(.*?)\];", source, re.S)
     assert block, "notices.mjs no longer declares BUNDLED_FONTS"
     entries = re.findall(
-        r'name:\s*"([^"]+)",\s*version:\s*"([^"]+)",\s*license:\s*"([^"]+)",\s*file:\s*"([^"]+)"', block.group(1)
+        r'name:\s*"([^"]+)",\s*version:\s*"([^"]+)",\s*'
+        r'license:\s*"([^"]+)",\s*file:\s*"([^"]+)"',
+        block.group(1),
     )
     assert entries, "BUNDLED_FONTS has no entries"
     return {name: (version, licence, file) for name, version, licence, file in entries}
@@ -150,7 +152,8 @@ def test_the_built_licence_notices_are_complete_and_each_packages_own() -> None:
         assert name in sections, f"{name}: no section in licenses.txt"
         got_version, got_licence, body = sections.pop(name)
         assert (got_version, got_licence) == (version, licence), name
-        assert body.strip() == (FRONTEND / file).read_text().strip(), f"{name}: the text is not {file}"
+        expected = (FRONTEND / file).read_text().strip()
+        assert body.strip() == expected, f"{name}: the text is not {file}"
     assert not set(fonts) & set(committed_notices()), "a font is not a package"
     required = {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"}
     assert required <= set(sections), sorted(sections)
