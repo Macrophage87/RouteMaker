@@ -834,6 +834,181 @@ validity and a few known places), and the browser check section 9 of
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
 
+### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
+
+"The focus is on carrying capacity, not LTS here ... The headline color should be riders per
+minute." In Mass Ride mode the map and the route line are coloured by riders per minute, and the
+LTS colours and the path, protected-lane and painted-lane rails are not drawn. Part 1 is the
+capacity map; part 2 is the route chart (it needs the elevation chart, 322, 323) and part 3 is
+the rider-marked hazards, which wait for the peer-review backend. Hazards are not built: the
+seam is `hazardLayers()` in `frontend/src/massStyle.js` (an empty list, in its place in the draw
+order), and nothing asks for hazards.
+
+* **The model** (`src/routemaker/massflow.py`, the plan's headline throughput; the working
+  model, OWNER-DECISIONS 394, sources pending FOLLOWUP-FLOW-CALIBRATION): riders a minute =
+  60 x 0.37 riders per m2 x 0.7 utilisation x usable width x 1.9 m/s, so 29.5 riders a minute
+  for every metre of usable width: 99 for an 11 ft (3.35 m) lane. The flat, straight,
+  clear-road figure; the climbs, signals and surface of part 2 reduce it.
+* **Usable width** (OWNER-DECISIONS 404; `massflow.usable_width_m`, one function; the table
+  cases are `tests/test_mass_capacity.py` `TestTheDistrictsWidths`). The width a corked group
+  has in the direction it rides. The corkers hold the cross streets at each junction, not the
+  oncoming traffic, and a DC Bike Party keeps to its own side, so:
+  - a two-way street gives the ride its own direction's travel lanes and the painted lane on
+    its side (not the oncoming lanes, not a centre turn lane); a segment is drawn once for both
+    directions, so it carries the NARROWER direction's width (a ride flows at its narrowest
+    point; a divided road's carriageway is a one-way way and gets its own lanes);
+  - a one-way street gives every travel lane and every painted lane running with it (a
+    contraflow lane is not counted; a bare `cycleway=lane` on a one-way is one lane);
+  - a street of one shared lane (DC's "bidirectional" lane, OSM `lanes=1` two-way) is the ride's;
+  - parked cars are never usable width (404 (1)), and a painted lane beside parking keeps a door
+    zone out, `DOOR_ZONE_M` 3.5 ft (1.07 m); no margin is taken beside a travel lane;
+  - protected lanes are never usable (127).
+
+  **In DC** (404 (3)) the way's Roadway Block records decide it (`WayFacts.block_facts`, handed
+  over by `pipeline.run.write_segments`; the narrowest block along the way): lanes by direction
+  times the block's lane width (`TOTALTRAVELLANEWIDTH` / `TOTALTRAVELLANES`, which the parser
+  divides), plus the painted bike lanes at their width (5 ft where none), less door zones. DC
+  records parking lanes apart from travel lanes, so the parked cars are out of that width by
+  construction (curb to curb less parking). Reversible lanes count as ZERO (405, the safe,
+  narrower reading): DC's `TOTALTRAVELLANESREVERSIBLE` is stale where the lanes were removed
+  (Connecticut Ave NW's ended in 2020; DCist, 2021-12-15, credited in docs/SOURCES.md), so a
+  block's reversible lanes count only where the reviewed allowlist
+  (`settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS`, BLOCKKEYs, empty for now) names it, half
+  (rounded down) to each direction, and never on a street in
+  `MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW). The 57 blocks DC still records
+  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md for the owner to check. A
+  block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
+  (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
+  shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
+  classifier's LTS reading of DC lanes (179) is separate and unchanged. Bus lanes are in DC's
+  counts and are counted. A block with no
+  lanes, or a lane width outside 6 to 20 ft, gives nothing and the way falls back to OSM.
+  **Elsewhere**, and as that fallback: a mapped `width` (2.4 to 40 m, curb to curb) less the
+  parked cars (`parking_width_m`: from `parking:<side>` or `parking:lane:<side>`, 8 ft (2.4 m) a
+  side parallel, 4.5 m angled, 5 m end-on, half on the kerb half; none for `no`, `separate`,
+  `on_kerb`, `street_side` and the no-parking values) and door zones, halved on a two-way way;
+  otherwise the lanes in each direction (`lanes:forward`/`lanes:backward`, else half of `lanes`,
+  else the classifier's through lanes a direction, else half the class default) times 11 ft,
+  plus the painted lane on that side less a door zone where OSM says parking there.
+
+  Worked examples, ft (m), riders a minute: DC two-way 2 + 2 lanes of 10.5 ft, parking both
+  sides: 21 ft (6.40 m) a direction, 189. DC one lane each way of 8 ft between parked cars:
+  8 ft (2.44 m), 72. DC one-way 3 lanes of 11 ft, no parking: 33 ft (10.06 m), 297. DC 10 ft
+  lane and a 5 ft bike lane beside parking, each way: 10 + 5 - 3.5 = 11.5 ft (3.51 m), 103.
+  Connecticut Ave NW (1 + 1 and 2 reversible, 10 ft): 10 ft (3.05 m), 90, the reversible lanes
+  being zero (405). A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
+  width: OSM's, e.g. an untagged residential street, 11 ft (3.35 m), 99. OSM 30 ft curb-to-curb
+  with `parking:both=lane`: (30 - 2 x 7.9) / 2 = 7.1 ft (2.17 m), 64.
+* **One model with the elevation chart.** `src/routemaker/flow.py` is copied verbatim from
+  wip/elevation-chart (27cddab; its constants are unchanged in 461c853 and later); `massflow`
+  takes its constants, `level_riders_per_min` and band edges from it. Since 404 the WIDTH is
+  `massflow`'s, not `flow.usable_width_m` (which reads both directions of a two-way road from
+  the classifier's lanes): at integration the elevation chart's riders-a-minute track should read
+  this column (`segment.mass_usable_width_m`) for its stretches' widths, so the chart and the
+  map agree (reports/MASSRIDE-MAP-rev1.md, "Integration").
+  The column is the flat-ground (level) figure only: the grade adjustment depends on direction
+  and on distance into a climb, so the route chart applies it, not the tiles. The legend says
+  "on the flat".
+* **The column.** `segment.mass_usable_width_m real` (metres; `pipeline.schema.MASS_WIDTH_COLUMN`; revised
+  from riders a minute on the coordinator's call: the column is physical width, and `routemaker.flow` turns it
+  into riders when tiles and routes are served, so tuning the flow constants needs no rebuild and the map
+  and chart cannot disagree), written by the segment writer for every row from the way's tags and the classifier's lanes
+  (`pipeline.run.write_segments`), with the way's District blocks since 404: the width a ride
+  has in its narrower direction, parked cars out. Nullable: a table built before it has none,
+  and nothing breaks.
+* **The tile property** (`core.stress_tiles`): `rpm`, an optional property in the same way as
+  `facility` and the long-trail columns (`OPTIONAL_PROPERTIES`), computed in the tile SQL from the width and `flow`'s constant (`RPM_PER_METRE_SQL`), rounded down to a multiple of 10
+  (`RPM_STEP`) so the band edges (60, 120, 200) never move and the zoomed-out levels, which merge
+  every segment of one value into one feature, are not split a feature per integer. ETag letter
+  `w` (`r` is the rough surface's; the tag is `+kcfrmwoesbtl` on a full table). FORMAT_VERSION 7
+  (the rebuild bundle).
+* **The VALIDATE sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
+  least 98% of the road rows and of the path rows carry a figure; no road row is under 44 or over
+  1,181 riders a minute; and the median road lies in `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`,
+  60 to 200 since 404 (90 to 260 while a two-way street counted both directions; a model in the
+  wrong units, or with a zero constant, is a refused build). The tests'
+  toy extracts set the median range wide (`tests/conftest.py`).
+* **The route.** `core.routing.classify` reads the column where the live table has it
+  (`PieceClass.rpm`), and for a Mass Ride `stress_spans` ends a section where the capacity changes
+  band and gives each `rpm`, the lowest along it (a stretch marked Avoid is one section with null).
+  Another ride type, and a table without the column, carry no figures, and the route is drawn by
+  stress as it was. A section folded away for being under 10 m does not lower its neighbour's
+  figure, so a section's figure always lies in the band its colour says.
+* **The front end.** `frontend/src/massStyle.js` (bands, layers, filters), `lib/massCapacity.ts`
+  (the narrowest point, the shares, the words), `lib/massLegend.ts` (the legend and the route's
+  list), and the route line's classes in `lib/routeColours.ts` (`m0` to `m3`, `mavoid`; the dashed
+  ones have a layer of their own each, `lib/mapGlue.ts` `routeDashLayers`). The capacity layers
+  are on the map always and drawn only in Mass Ride mode (`setMassMode`); in that mode the stress
+  and facility layers take out the features that carry `rpm` (`massHides`). **The fallback:** the
+  tiles of a table without the column carry no `rpm`, so nothing is hidden, the capacity layers
+  draw nothing, and the legend and panel (which learn it from the map, `watchForCapacity`, and
+  from the route's sections) are the stress ones: Mass Ride shows its current styling, never an
+  error. Every street shows from zoom 14; at zoom 12-13 only the long calm roads do, because the
+  tiles there are the ride layer (OWNER-DECISIONS 391, 402a; the rebuild bundle), which carries no
+  busy road; trails, paths and alleys are never drawn in this mode.
+* **Colours** (327): red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7
+  px solid, purple #6a3d9a 8.5 px solid; each outlined by a halo 3:1 from it (dark under the red,
+  orange and green, white under the purple), which shows in the dash gaps. Avoid: near-black
+  #14040a on coral #ee3b2c, dash-dot, labelled AVOID. The widths thin out below zoom 16.
+* **The colour-blind check** (327: "the implementation must verify it under CVD simulation").
+  `frontend/src/massStyle.test.ts`, with the repo's own simulator and CIEDE2000
+  (`testSupport/colourVision.ts`, Machado 2009 at severity 1.0). A pair of bands whose colours
+  are under 20 apart for any vision must differ in a cue besides colour (width by 1.5 px or more,
+  or dash), and the red and the green must differ in both. The colour distances, CIEDE2000:
+
+  | pair | normal | protan | deutan | tritan |
+  |---|---|---|---|---|
+  | under 60 / 60-120 | 29.7 | 29.0 | 17.6 | 18.8 |
+  | under 60 / 120-200 (red / green) | 70.0 | 21.4 | 10.8 | 63.1 |
+  | under 60 / 200+ | 39.4 | 47.3 | 54.6 | 33.6 |
+  | 60-120 / 120-200 | 49.6 | 9.6 | 20.1 | 59.8 |
+  | 60-120 / 200+ | 59.7 | 62.2 | 65.1 | 38.1 |
+  | 120-200 / 200+ | 52.0 | 52.6 | 45.8 | 41.4 |
+
+  Red and green are 10.8 apart for a deuteranope and 21.4 for a protanope; they differ in width
+  (4 against 7 px) and dash (dashed against solid). Orange and green are 9.6 apart for a
+  protanope; they differ in width (5.5 against 7 px) and dash.
+* **Measured, before 404** (read-only against the live table, 2026-10-05, the whole-street,
+  OSM-only rule): roads median 198; band shares of road length 0.0% under 60, 25.5% 60-120,
+  69.6% 120-200, 4.9% 200+; three quarters of road rows took a class default. Superseded.
+* **Measured, after 404** (offline, from the installed Roadway Block,
+  `/home/steph/routemaker-data/reference/roadway.json`, 13,833 DC blocks, 1,179.5 mi, weighted by
+  block length; no database). 1,158.5 mi take the District's width and 21.0 mi fall back to OSM.
+  Bands (riders a minute, as the tiles round them): under 60 0.1 mi (0.0%), 60-120 801.0 mi
+  (69.1%), 120-200 251.6 mi (21.7%), 200+ 105.8 mi (9.1%); median 90. By DC functional class
+  (under 60 / 60-120 / 120-200 / 200+): 1 interstate 0 / 0 / 38 / 62%, 2 freeway 0 / 6 / 23 /
+  71%, 3 principal arterial 0 / 9 / 53 / 37%, 4 minor arterial 0 / 54 / 32 / 14%, 5 collector
+  0 / 77 / 18 / 5%, 7 local 0 / 84 / 15 / 1%. The ride's own direction (406) is what moves most
+  of DC from good to tight, against a reading of the whole street (0.0 / 9.0 / 58.5 / 32.5%) the
+  owner has ruled out. The region outside DC is not
+  re-measured here (no live reads): an untagged two-lane street is now 99 (was 198).
+* **Measured, after 405 and 407 (3)** (the same offline method). Reversible lanes at zero and
+  the 16 ft lane capped at 11 ft move 0.0 / 69.2 / 21.7 / 9.1% to 0.0 / 71.6 / 19.3 / 9.1%
+  (under 60 0.1 mi; 60-120 830.6 mi, 120-200 224.1 mi, 200+ 105.0 mi of 1,159.8 mi on DC's width);
+  the cap alone moves 24.5 mi (453 blocks) and the reversible lanes 3.4 mi, in DC's 7.5 mi of
+  them. The median road is unchanged, so the sentinel's 60 to 200 stands. By DC functional class
+  (under 60 / 60-120 / 120-200 / 200+): 1: 0 / 0 / 38 / 62%, 2: 0 / 10 / 19 / 71%, 3: 0 / 12 / 51 /
+  37%, 4: 0 / 54 / 32 / 14%, 5: 0 / 79 / 16 / 5%, 7: 0 / 87 / 12 / 1%.
+* **Provisional (OWNER-DECISIONS 406, 407).** The ride's own direction only (406: the oncoming
+  side is never counted, and no text in the app suggests using it), the 3.5 ft door zone, the 8 ft
+  OSM parking default and the 16 ft to 11 ft cap (407) are provisional: revisit them with
+  FOLLOWUP-FLOW-CALIBRATION.
+* **Why red is all but empty, and why that is not a bug.** The band edge of 60 riders a minute
+  is 2.03 m (6.7 ft) of usable width at 29.5 a metre: narrower than any travel lane. Before 404
+  it was unreachable by construction for a road: the least a road got was one 11 ft lane (99) or
+  a mapped width of at least 2.4 m (70). The tile SQL (`floor(round(width x 29.5) / 10) x 10`),
+  the band filters (`massStyle.js`, `min` inclusive) and the edges are right: a 2.0 m row is 59,
+  tiled 50, red. Now a road reaches red where a direction has under 6.7 ft: one DC block (46th Pl
+  NE, a 6 ft lane) and an OSM street whose mapped width, less parked cars, leaves under that a
+  direction (a 30 ft street parked both sides is 64, tight; a 26 ft one is 46, red). Paths are
+  often under 60 but are not drawn. Red bottlenecks will mostly come from part 2's reductions
+  (grade, turns, signals) on the route chart.
+* **Tests.** `tests/test_mass_capacity.py` (the model, the sentinel, the sections),
+  `tests/test_stress_tiles.py::TestMassCapacity` (the tile property, the fallback, the ETag),
+  `tests/test_route_api.py::TestMassRideCapacitySections`, `tests/test_pipeline_end_to_end.py` (the
+  column written, and a build that loses it refused), and on the front end
+  `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`.
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The

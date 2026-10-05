@@ -27,6 +27,7 @@ from django.test import override_settings
 from test_ratelimit import in_one_window
 
 from core import presets, routing
+from routemaker import flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -233,10 +234,31 @@ class TestAnswer:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None},
-            {"from_m": 900, "to_m": 1300, "tier": 1, "facility": "none", "unpaved": None},
-            {"from_m": 1300, "to_m": 1700, "tier": 4, "facility": "none", "unpaved": None},
-            {"from_m": 1700, "to_m": 2200, "tier": None, "facility": None, "unpaved": None},
+            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None, "rpm": None},
+            {
+                "from_m": 900,
+                "to_m": 1300,
+                "tier": 1,
+                "facility": "none",
+                "unpaved": None,
+                "rpm": None,
+            },
+            {
+                "from_m": 1300,
+                "to_m": 1700,
+                "tier": 4,
+                "facility": "none",
+                "unpaved": None,
+                "rpm": None,
+            },
+            {
+                "from_m": 1700,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            },
         ]
         # The sections agree with the totals.
         by_tier = {}
@@ -535,7 +557,14 @@ class TestStressBreakdown:
         assert stress["unknown"] == pytest.approx(2200.0)
         assert sum(v for k, v in stress.items() if k != "unknown") == 0
         assert response.json()["stress_spans"] == [
-            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
+            {
+                "from_m": 0,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            }
         ]
         # And the facility breakdown, which must sum to the same distance
         # (mutation review r1, RT15).
@@ -1324,7 +1353,14 @@ class TestTimeBudget:
         assert body["stress_adjustments"] == []
         # And the route is one unknown section, as its totals are.
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
+            {
+                "from_m": 0,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            }
         ]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
@@ -2511,3 +2547,66 @@ class TestSurfaceOfPieces:
         assert stretches and all(
             e["surface"] == "unpaved" and e["text"].endswith(", unpaved.") for e in stretches
         ), [(e["surface"], e["text"]) for e in stretches]
+
+
+@db
+class TestMassRideCapacitySections:
+    """The Mass Ride's route line is coloured by carrying capacity, riders a minute
+    (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
+    table's `mass_usable_width_m`, for a Mass Ride only and only where the table has it."""
+
+    @staticmethod
+    def capacities(segments, by_way: dict[int, int | None]) -> None:
+        with connection.cursor() as cursor:
+            for way, rpm in by_way.items():
+                cursor.execute(
+                    f"UPDATE {segments}.segment SET mass_usable_width_m = %s WHERE osm_way_id = %s",
+                    [None if rpm is None else rpm / flow.level_riders_per_min(1.0), way],
+                )
+
+    def test_a_mass_ride_carries_the_capacity_and_ends_a_section_where_the_band_does(
+        self, client, segments, router
+    ) -> None:
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        spans = post(client, good_body("mass-ride")).json()["stress_spans"]
+        # The trace's last piece matches no segment: unknown, with no figure.
+        assert [(s["tier"], s["rpm"]) for s in spans] == [(3, 50), (1, 250), (4, 250), (None, None)]
+
+    def test_another_ride_type_carries_none(self, client, segments, router) -> None:
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        spans = post(client, good_body("default")).json()["stress_spans"]
+        assert spans and all(s["rpm"] is None for s in spans)
+
+    def test_a_table_without_the_column_draws_a_mass_ride_by_stress_as_before(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
+        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        router(standard_router())
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        spans = response.json()["stress_spans"]
+        assert spans and all(s["rpm"] is None for s in spans)
+        assert [s["tier"] for s in spans][:1] == [3], "still the stress sections"
+
+    def test_a_piece_class_carries_the_capacity_and_still_pickles(self) -> None:
+        import pickle
+
+        again = pickle.loads(pickle.dumps(routing.PieceClass("2", "path", True, 120)))
+        assert again == ("2", "path") and again.unpaved is True and again.rpm == 120
+        assert routing.PieceClass("2", "path").rpm is None
+
+    def test_classify_reads_the_capacity(self, segments) -> None:
+        self.capacities(segments, {101: 50, 202: None})
+        pieces = [routing.Piece(101, -77.045, LAT, 100.0), routing.Piece(202, -77.0375, LAT, 100.0)]
+        monkey = routing._capacity_column_seen
+        try:
+            routing._capacity_column_seen = False
+            classes = routing.classify(pieces, "weekday_offpeak")
+        finally:
+            routing._capacity_column_seen = monkey
+        assert [c.rpm for c in classes] == [50, None]
+        assert all(len(c) == 2 for c in classes)

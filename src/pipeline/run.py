@@ -40,6 +40,7 @@ from routemaker import (
     corridors,
     divided,
     facility,
+    massflow,
     ridetime,
     singletrack,
     speed_corrections,
@@ -57,6 +58,7 @@ from . import (
     discrepancies,
     elevation,
     extract,
+    mass_capacity,
     overrides,
     promotion,
     reconcile,
@@ -1079,6 +1081,22 @@ def assert_bicycle_closures_reached_the_tiles(readbacks: dict) -> None:
             for variant, readback in readbacks.items()
         ),
     )
+
+
+def assert_mass_capacity(
+    summary, min_share: float | None = None, median_range: Sequence[float] | None = None
+) -> None:
+    """The Mass Ride capacity column came out of the rebuild (OWNER-DECISIONS 325-327,
+    387): present on nearly every road and path row, in a plausible range
+    (`pipeline.mass_capacity`). The map colours by it and falls back silently
+    without it, so a pass that lost it would promote the old map unannounced."""
+    found = mass_capacity.problems(
+        summary,
+        mass_capacity.MIN_SHARE if min_share is None else min_share,
+        tuple(mass_capacity.MEDIAN_RANGE_RPM if median_range is None else median_range),
+    )
+    if found:
+        raise ValidationFailed("; ".join(found))
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -2104,6 +2122,14 @@ def build_handlers(
             return facility.MapClass.BARRED
         return base
 
+    def dc_blocks_of(osm_id: int) -> tuple:
+        """The District Roadway Block records a way lies along, for its Mass Ride
+        width (OWNER-DECISIONS 404); none outside DC or where no block reached it."""
+        facts = context.road_facts_by_way.get(osm_id)
+        if facts is None or facts.agency != agency_roads.DC_AGENCY:
+            return ()
+        return facts.block_facts
+
     def write_segments() -> None:
         from .schema import schema_exists
 
@@ -2115,6 +2141,14 @@ def build_handlers(
 
         reference = context.require_reference()
         classify_facilities()
+        dc_rules = massflow.DcRules(
+            wide_lane_ft=_setting("MASS_RIDE_DC_WIDE_LANE_FT"),
+            wide_lane_cap_ft=_setting("MASS_RIDE_DC_WIDE_LANE_CAP_FT"),
+            verified_reversible_blocks=frozenset(
+                _setting("MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS")
+            ),
+            ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
+        )
         rows: list[dict] = []
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
@@ -2163,6 +2197,12 @@ def build_handlers(
                         walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
+                        mass_usable_width_m=massflow.usable_width_rounded(
+                            way.tags,
+                            getattr(stress, "lanes", None),
+                            dc_blocks_of(way.osm_id),
+                            dc_rules,
+                        ),
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
@@ -2213,6 +2253,10 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        assert_mass_capacity(
+            mass_capacity.capacity_summary(context.staging_schema),
+            median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
+        )
         sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
         assert_long_trails(
             trail_routes.long_trail_summary(

@@ -103,10 +103,10 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   assert.match(readFileSync(new URL("../FacilityBreakdown.tsx", import.meta.url), "utf8"), /row\.mark && \(/);
 });
 
-test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, then not rated", () => {
+test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, the Mass Ride's four bands and Avoid, then not rated", () => {
   assert.deepEqual(
     routeClasses().map((c) => c.key),
-    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "unknown"],
+    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "m0", "m1", "m2", "m3", "mavoid", "unknown"],
   );
   for (const c of routeClasses()) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
 });

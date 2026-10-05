@@ -738,8 +738,9 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 6 (5 was the long trails; 6 the ride layer and the
-surface-unknown trails) must reach the api and the pipeline images
+`l`, `b`). FORMAT_VERSION 7 (5 was the long trails; 6 was claimed by both the ride layer
+with the surface-unknown trails and the Mass Ride capacity, on branches that never shipped
+alone; 7 is the rebuild bundle, which carries both) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -897,9 +898,10 @@ don't drop it.
 drew before: the paths and the roads at LTS 3 and above, faint, with the front end's
 `FAINT` rules) on one that does not, so a table promoted before this rebuild draws
 today's z12-13 until the data rebuild promotes the column. The ETag names it with
-`k` (`+kcfrmoesbtl-v6"` with all eleven optional columns, `e` being 403's `roadside`,
-about 34 characters, inside the cache's 64) and `FORMAT_VERSION` is 6 (the same format as the surface-unknown
-properties below: the tile cache key changes, so run the pre-draw as the steps
+`k` (`+kcfrmwoesbtl-v7"` with all twelve optional columns, `e` being 403's `roadside` and
+`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 7
+(the rebuild bundle's format, with the surface-unknown properties below and the Mass Ride
+capacity: the tile cache key changes, so run the pre-draw as the steps
 below say). The ride layer has its own partial index,
 `segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
 (a test); the busy-road layer keeps the overview index.
@@ -991,6 +993,27 @@ the Tree Farm Trail and Baltimore's Stony Run Walking Path (most roadside trails
 surface are unnamed sidepaths). The 82 ft bar is a judgment within the table: the count
 keeps climbing past it with no plateau, so the nearer bar is kept and a trail the rule
 is unsure of stays dashed, as 376 A drew it.
+
+**The Mass Ride capacity column** (FOLLOWUP-MASSRIDE-MAP part 1, OWNER-DECISIONS 325-327,
+387). `segment.mass_usable_width_m` is the usable width in metres `routemaker.massflow`
+gives each segment from its way's tags, the classifier's lanes and, in DC, the Roadway Block
+blocks it lies along (the narrower direction, parked cars out; OWNER-DECISIONS 404); `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
+(rounded down to ten; ETag letter `w`, since `r` is the rough surface's), the route's coloured sections carry it for a Mass Ride,
+and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
+came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path
+rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
+`settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
+ride its own direction's lanes less parked cars, from DC's Roadway Block in the District: about 90
+on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the median: reversible lanes count as zero and a 16 ft lane with no parking is read at 11 ft, `settings.MASS_RIDE_DC_*`). Until a
+rebuild has promoted the column, nothing changes for a rider: the tiles carry no `rpm`, the Mass
+Ride map keeps its current styling and its legend and panel are the stress ones, with no error and
+nothing to do. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
+and the pipeline images together, as the note above says: build both under one TAG (`docker
+compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
+the api's cache every week. The data takes effect after the next rebuild; the front end and the
+api that read it are safe before it. Every street shows on the Mass Ride map from zoom 14; at zoom 12-13
+only the long calm roads do, because those tiles are the ride layer (391, 402a), which carries no
+busy road; trails, paths and alleys never.
 
 Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
@@ -1241,7 +1264,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v6"`, or `+kcfrmosbtl-v6"` with all ten optional columns) and a repeat
+   (`-v7"`, or `+kcfrmwoesbtl-v7"` with all twelve optional columns) and a repeat
    with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.

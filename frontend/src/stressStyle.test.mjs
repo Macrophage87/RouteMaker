@@ -1,6 +1,7 @@
 // Run with: npm test (from frontend/), or node --test frontend/src/stressStyle.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { massFilters, massLayers } from "./massStyle.js";
 import {
   BASEMAP,
   stressLayers,
@@ -237,9 +238,12 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
   const rings = ringLayers("s").map((l) => l.id);
   assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
-  assert.deepEqual([...ids].sort(), [...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks].sort(), "each layer once");
+  const mass = massLayers("s").map((l) => l.id);
+  assert.deepEqual([...ids].sort(), [...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
+  // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
+  assert.deepEqual(ids.slice(-mass.length), mass);
   // The rings under everything, so a rail still shows over them.
   assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
@@ -394,7 +398,8 @@ test("a path's rails are a path's width when a closure makes a road one", () => 
 
 test("stressFilters covers every overlay layer, and a style with them validates", () => {
   const filters = stressFilters("weekend");
-  assert.deepEqual(Object.keys(filters).sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
+  // The Mass Ride's layers have their own filters (massStyle.js, massFilters), which do not follow the ride time.
+  assert.deepEqual([...Object.keys(filters), ...Object.keys(massFilters())].sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
   const style = {
     version: 8,
     sources: { stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] } },

@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_CHOICES, S_DEFAULT, S_MASS, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -1261,11 +1261,75 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   }
 }
 
+// ---- 20. The Mass Ride capacity map: riders per minute in place of the LTS breakdown (OWNER-DECISIONS 325-327, 387) ----
+{
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
+  const route = await p.eval(`(() => { const s = document.querySelector('.summary'); const stats = s.querySelector('.capacity-stats');
+    const fold = [...s.querySelectorAll('details > summary')].map((x) => x.textContent);
+    return { narrowest: stats?.querySelector('.capacity-narrowest dd')?.textContent, typical: stats?.querySelector('.capacity-typical dd')?.textContent,
+      stressBar: !!s.querySelector('.stress-bar'), folds: fold, ltsWords: /LTS|traffic stress/i.test(s.querySelector('.stats.capacity-stats')?.parentElement?.textContent ?? '') }; })()`);
+  check("capacity: the route view says the narrowest point in words, with its band and where, and the typical figure",
+    route.narrowest === "50 riders per minute (bottleneck), at the start" && route.typical === "150 riders per minute", JSON.stringify(route));
+  check("capacity: the stress bar is replaced, and the fold is Riders per minute in place of Stress and facilities",
+    !route.stressBar && route.folds.some((t) => t === "Riders per minute") && !route.folds.some((t) => /^Stress and facilities/.test(t)), JSON.stringify(route.folds));
+  const fold = await p.eval(`(() => { const d = [...document.querySelectorAll('.summary details')].find((x) => x.querySelector('summary')?.textContent === 'Riders per minute'); if (d) d.open = true;
+    const rows = [...(d?.querySelectorAll('.capacity li') ?? [])].map((li) => li.textContent);
+    return { rows, hidden: [...(d?.querySelectorAll('.capacity li svg') ?? [])].every((v) => v.getAttribute('aria-hidden') === 'true'), list: d?.querySelector('.capacity ul')?.getAttribute('aria-label') }; })()`);
+  check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches hidden from a screen reader",
+    fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list), JSON.stringify(fold));
+  const lead = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
+  await p.eval("document.querySelector('.route-description summary')?.click(); true");
+  await sleep(200);
+  const lead2 = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
+  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest point 50 riders per minute \(bottleneck\), at the start\. By distance: /.test(lead || lead2), lead || lead2);
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  // The map has drawn a road with a capacity: the legend is riders per minute.
+  const gotLegend = await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
+  const legend = await p.eval(`(() => { const u = document.querySelector('.mass-legend'); if (!u) return null;
+    return { name: u.getAttribute('aria-label'), rows: [...u.querySelectorAll('li')].map((li) => li.textContent), swatchesHidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
+      heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
+      stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
+  check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
+    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && /^Avoid/.test(legend.rows[4]) && /^Riders per minute at 6-8 mph \(10-13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
+  check("capacity: its swatches are hidden from a screen reader, the heading and the switch say riders per minute, and no stress legend is there",
+    legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/.test(legend.toggle) && !legend.stressLegend, JSON.stringify(legend));
+  const axLegend = await axNode(p, ".mass-legend");
+  check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6-8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
+  const notes = await p.eval("[...document.querySelectorAll('#sheet-layers .hint')].map((h) => h.textContent).join(' | ')");
+  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths and bike lanes are not drawn/.test(notes) && /OpenStreetMap and DC Roadway Block/.test(notes), notes.slice(0, 200));
+  await p.eval("document.querySelector('.mass-legend').scrollIntoView({ block: 'center' }); true");
+  await sleep(600);
+  await p.shot(`${SHOTS}/capacity_legend.png`, await p.eval("(() => { const r = document.querySelector('#sheet-layers').getBoundingClientRect(); return { x: Math.max(0, r.left), y: 0, width: Math.round(r.width), height: Math.min(900, Math.round(r.height)) }; })()"));
+  // The route line on the map, and the roads under it.
+  await p.key("Escape", "Escape", 27);
+  await sleep(400);
+  await p.shot(`${SHOTS}/capacity_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
+  await p.close();
+}
+{
+  // Any other ride type, and a rebuilt table's Mass Ride before the map has drawn a capacity: the stress ones.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), stressTiles: "capacity" });
+  await openSheet(p);
+  await sleep(1500);
+  const other = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats') })");
+  check("capacity: another ride type keeps the traffic stress legend and panel, with no riders-per-minute figures", !other.mass && other.stress && !other.figures, JSON.stringify(other));
+  await p.close();
+}
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), stressTiles: true });
+  await openSheet(p);
+  await sleep(1500);
+  const old = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats'), bar: !!document.querySelector('.stress-bar') })");
+  check("capacity: a Mass Ride on a table without the column (no rpm in the tiles or the route) shows its current styling: the stress legend, bar and no figures", !old.mass && old.stress && !old.figures && old.bar, JSON.stringify(old));
+  await p.close();
+}
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 258;
+const EXPECTED = 268;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

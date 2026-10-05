@@ -29,6 +29,8 @@
  * against the base map's own fill colours.
  */
 
+import { massHides, massLayers } from "./massStyle.js";
+
 // The tiers' shapes: what tells them apart without colour. Weight rises with
 // stress (OWNER-DECISIONS 274, 283: "If I didn't see the key, I'd think that
 // LTS4 was lower stress"): ink - the share of the line that is drawn (the dash
@@ -813,8 +815,41 @@ function linePaint(color, width, busy, zoomedOut = null) {
   };
 }
 
-/** Each overlay layer's filter in the ride time `when`, by layer id. */
-export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
+/**
+ * Whether the map is the Mass Ride's (OWNER-DECISIONS 325): set by App from the ride type. Where
+ * the tiles carry the capacity (`rpm`), the stress layers - LTS colours, facility rails and the
+ * Avoid style - are not drawn then, and massStyle.js's layers are. Where they do not (a table
+ * promoted before the capacity column), nothing is hidden and the map is as it was.
+ */
+let massRide = false;
+const massListeners = new Set();
+
+export function massRideOn() {
+  return massRide;
+}
+
+export function setMassRide(on) {
+  if (massRide === on) return;
+  massRide = on;
+  massListeners.forEach((listener) => listener());
+}
+
+export function subscribeMassRide(listener) {
+  massListeners.add(listener);
+  return () => massListeners.delete(listener);
+}
+
+/**
+ * Each overlay layer's filter in the ride time `when`, by layer id. In the Mass Ride map
+ * (`mass`) each also excludes the features that carry a capacity (massStyle.js, massHides).
+ */
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide) {
+  const filters = stressFiltersOf(when, showHighLanes);
+  if (!mass) return filters;
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
+}
+
+function stressFiltersOf(when, showHighLanes) {
   const filters = {};
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
@@ -1241,6 +1276,9 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
+    // The Mass Ride map's own layers, over these: drawn only in that mode, and only where the tiles
+    // carry the capacity (their filters need `rpm`; massStyle.js).
+    ...massLayers(sourceId, STRESS_TILE_LAYER, accessibilityOn()),
   ];
 }
 

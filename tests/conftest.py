@@ -40,6 +40,9 @@ def _no_long_trail_sentinels(settings):
     settings.REBUILD_SENTINEL_CALM_PATH_WAYS = ()
     settings.REBUILD_SENTINEL_CALM_STREET_WAYS = ()
     settings.REBUILD_CALM_RUN_FLOORS = (0, 0)
+    # And the Mass Ride capacity's median road is a region's, not a toy extract's
+    # (the share and the plausible range of a road's figure are still checked).
+    settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (0, 5000)
 
 
 @pytest.fixture

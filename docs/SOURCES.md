@@ -76,8 +76,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   - **Roadway Block** (District Department of Transportation / DC GIS), item
     `6fcba8618ae744949630da3ea12d90eb`, retrieved 2026-10-01, sha256
     `45066cff69065adeb0fb3ba3376abaaf58862bd37e3baba63d92062e68bb8108`; posted speed,
-    lanes, one-way streets, bike lanes, parking and fallback counts in the District.
-    `fixtures/datasets/README.md`.
+    lanes, one-way streets, bike lanes, parking and fallback counts in the District;
+    and, since OWNER-DECISIONS 404, the Mass Ride capacity map's usable widths in the
+    District (travel-lane, bike-lane and parking widths and lanes by direction,
+    `routemaker.massflow`), credited on the Mass Ride legend in the credit line's own
+    words with OpenStreetMap beside it. `fixtures/datasets/README.md`. The block's
+    reversible-lane count is NOT trusted for the Mass Ride width (OWNER-DECISIONS
+    405): the District ended Connecticut Avenue NW's reversible lanes in 2020, so the
+    layer's count is stale there, and reversible lanes count as zero everywhere
+    unless a reviewed block is allowlisted. The reason, and the owner's source for
+    it: DCist, "Say goodbye to reversible lanes on Connecticut Avenue and hello to a
+    bike-friendly redesign", 2021-12-15 (dcist.com), credited here.
   - **Metro Stations Regional** (<https://opendata.dc.gov/datasets/metro-stations-regional>;
     ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51`) and
     **Metro Station Entrances (Regional)** (the same service, layer 111), retrieved

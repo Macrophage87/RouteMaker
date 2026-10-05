@@ -101,6 +101,7 @@ from pipeline.schema import (
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
+    MASS_WIDTH_COLUMN,
     MOTOR_ONLY_RULE,
     MTB_ONLY_COLUMN,
     ROADSIDE_COLUMN,
@@ -119,6 +120,7 @@ from pipeline.schema import (
     trails_predicate,
     validate_schema_name,
 )
+from routemaker import flow
 
 from . import ratelimit, tile_cache
 
@@ -154,10 +156,13 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
 # does not change. 4: the busy roads at z12-13 and the quiet streets from z14
 # (73), with the expressway and separate-bikeway properties. 5: z10-11 keep
-# only the long trails (375). 6: z12-13 is the ride layer, with no busy road, on a table
-# with `calm_run_m` (391); surface-unknown paths are told apart by a missing
-# `unpaved` in the feature (376).
-FORMAT_VERSION = 6
+# only the long trails (375). 6 was taken by two branches that never shipped on their own:
+# the ride layer at z12-13, with no busy road, on a table with `calm_run_m` (391), and
+# surface-unknown paths told apart by a missing `unpaved` (376); and the Mass Ride
+# capacity, `rpm`, on a table that has the column (OWNER-DECISIONS 325-327, 387). 7: the
+# rebuild bundle, which carries both, with the roadside trails' `roadside` (403) and
+# NO-BIKE-PATHS' `mtb` and `rough` (290, 291).
+FORMAT_VERSION = 7
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -305,7 +310,16 @@ OPTIONAL_PROPERTIES = {
     # OWNER-DECISIONS 403: a trail beside a road, which the map draws as a paved path
     # where no surface is mapped (not 376 A's surface-unknown dashes). True or left out.
     "roadside": ROADSIDE_COLUMN,
+    # The Mass Ride capacity (OWNER-DECISIONS 325-327, 387), riders a minute, from the
+    # usable width (404-407).
+    "rpm": MASS_WIDTH_COLUMN,
 }
+
+# The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
+RPM_STEP = 10
+# Riders a minute for each metre of usable width, from `routemaker.flow`: the column holds
+# the width, and the tile computes the riders, so tuning the constants needs no rebuild.
+RPM_PER_METRE_SQL = repr(round(flow.level_riders_per_min(1.0), 6))
 
 # How an optional property is drawn from its column, where it is not the
 # column as it is. `car_free`: the ride times a road closed to motor traffic
@@ -322,6 +336,15 @@ OPTIONAL_EXPRESSIONS = {
     "mtb": f"NULLIF(s.{MTB_ONLY_COLUMN}, false)",
     "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
     "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
+    # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
+    # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
+    # feature never moves band; and the zoomed-out levels, which collect every
+    # segment of one value into one feature, are not split into a feature per
+    # distinct figure (one per integer would be about 400 values a class).
+    "rpm": (
+        f"(floor(round(s.{MASS_WIDTH_COLUMN}::numeric * {RPM_PER_METRE_SQL}) / {RPM_STEP}.0)"
+        f" * {RPM_STEP})::int"
+    ),
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -511,6 +534,8 @@ ETAG_LETTERS = {
     MTB_ONLY_COLUMN: "o",
     ROUGH_COLUMN: "r",
     ROADSIDE_COLUMN: "e",
+    # `w` for width: `r` is the rough surface's (the bundle's two branches both took it).
+    MASS_WIDTH_COLUMN: "w",
 }
 
 
@@ -522,8 +547,9 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, eleven in all), in the order
-    # of the column names.
+    # key with all of them (a `+` and one letter each, twelve in all: `W/"stress-` and a
+    # ten-digit oid, `+` and twelve letters, `-v7"`, 37 characters), in the order of the
+    # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'
 

@@ -442,6 +442,13 @@ ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
 # (SEGMENT_DDL); absent on a table built before it.
 UNSMOOTHED_TIER_COLUMN = "stress_unsmoothed_tier"
 
+# The Mass Ride map's per-segment usable width, metres (riders a minute follow from it)
+# (`routemaker.massflow`; OWNER-DECISIONS 325-327, 387). Carried in a stress tile
+# as `rpm` where the live table has the column, and left out of one that has not
+# (`core.stress_tiles.OPTIONAL_PROPERTIES`), so a table promoted before it draws the
+# Mass Ride map as it was.
+MASS_WIDTH_COLUMN = "mass_usable_width_m"
+
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
 MOTOR_ONLY_RULE = "starts_with(stress_rule, 'motor-only classification (')"
@@ -606,6 +613,12 @@ CREATE TABLE {schema}.segment (
     -- with no surface mapped is drawn as the paved path it most likely is, not as a
     -- surface-unknown one. Null only during the rebuild; false on every other way.
     roadside        boolean,
+    -- The width a mass-ride group has on the way, metres (`routemaker.massflow`;
+    -- OWNER-DECISIONS 325-327, 387). Riders a minute is computed from it by
+    -- `routemaker.flow` when tiles and routes are served (the stress tiles carry `rpm`),
+    -- so tuning the flow constants needs no rebuild.
+    -- Null on a table built before the column existed (the map then draws as it did).
+    mass_usable_width_m real      CHECK (mass_usable_width_m BETWEEN 0 AND 60),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

@@ -793,6 +793,10 @@ class WayFacts:
     aadt: int | None = None
     aadt_year: int | None = None
     names_agree: bool | None = None
+    # Each block's own record, in the order of `blocks`: the Mass Ride width reads
+    # the blocks one by one (`massflow.usable_width_m`, OWNER-DECISIONS 404), not
+    # this aggregate. Not part of the facts' identity.
+    block_facts: tuple[RoadFacts, ...] = field(default=(), compare=False, repr=False)
 
     @property
     def parking_reach_m(self) -> float | None:
@@ -1017,6 +1021,7 @@ def aggregate(
         aadt=busiest.aadt if busiest else None,
         aadt_year=busiest.aadt_year if busiest else None,
         names_agree=names,
+        block_facts=tuple(facts),
     )
 
 

@@ -80,6 +80,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("calm_run_m"),
             row.get("roadside", False),
             _tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),
+            row.get("mass_usable_width_m"),
         )
         for row in rows
     ]
@@ -90,7 +91,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -123,6 +124,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         calm_run_m,
                         roadside,
                         unsmoothed_tier,
+                        mass_capacity,
                     ),
                 )
                 for (
@@ -157,6 +159,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     calm_run_m,
                     roadside,
                     unsmoothed_tier,
+                    mass_capacity,
                 ) in batch
             )
             cursor.execute(
@@ -170,7 +173,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
-                     stress_unsmoothed_tier)
+                     stress_unsmoothed_tier, mass_usable_width_m)
                     VALUES {args}"""
             )
             written += len(batch)

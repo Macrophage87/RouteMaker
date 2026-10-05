@@ -25,6 +25,7 @@ from pipeline.schema import (
     drop_segment_schema,
     trails_predicate,
 )
+from routemaker import flow
 from routemaker.classes import (
     SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
@@ -1038,11 +1039,12 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_ride_layer_is_format_6(self) -> None:
+    def test_the_bundle_is_format_7(self) -> None:
         # A forgotten bump would serve the old z10-13 tiles as current (mutation
-        # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375), 6 the ride layer (391)
-        # and the surface-unknown properties (376).
-        assert stress_tiles.FORMAT_VERSION == 6
+        # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375); 6 was claimed by both
+        # the ride layer (391) with the surface-unknown properties (376) and the Mass Ride
+        # capacity (325-327), on branches that never shipped alone; 7 is the rebuild bundle.
+        assert stress_tiles.FORMAT_VERSION == 7
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1242,7 +1244,7 @@ class TestCarFree:
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmosbtl-v" in etag
+        assert "+cfrmwosbtl-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1528,12 +1530,12 @@ class TestLongTrails:
         for z in (10, 11):
             response = client.get(url(*tile_of(*CENTRE, z)))
             assert lines_in(response.content) == 1
-            assert "+cfrmosbtl-v" not in response["ETag"]
+            assert "+cfrmwosbtl-v" not in response["ETag"]
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, True, 3, None)
-        assert "+cfrmosbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+        assert "+cfrmwosbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
         optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})
@@ -1700,7 +1702,7 @@ class TestRideLayer:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+kcfrmosbtl-v6" in etag, etag
+        assert "+kcfrmwosbtl-v7" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1783,7 +1785,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmoesbtl-v6" in etag, etag
+        assert "+cfrmwoesbtl-v7" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1799,3 +1801,63 @@ class TestRoadside:
             )
         layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
         assert all("roadside" not in f.properties for f in layer.features)
+
+
+@db
+class TestMassCapacity:
+    """The Mass Ride map's per-segment capacity, `rpm` (OWNER-DECISIONS 325-327, 387),
+    carried exactly as the other optional columns are: only from a table that has
+    the column, rounded so the zoomed-out levels still merge, and named in the ETag."""
+
+    @staticmethod
+    def insert_roads(schema, capacities) -> None:
+        with connection.cursor() as cursor:
+            for i, rpm in enumerate(capacities):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.00025
+                cursor.execute(
+                    f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, mass_usable_width_m) VALUES (%s, 0, ST_MakeLine("
+                    "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 3, 'x', %s)",
+                    [2000 + i, lon, lat, lon + 0.002, lat, rpm / flow.level_riders_per_min(1.0)],
+                )
+
+    @staticmethod
+    def rpms(client, z) -> list:
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        return sorted(f.properties.get("rpm", -1) for f in layer.features)
+
+    def test_the_tile_carries_the_capacity_rounded_down_to_ten(self, client, segment_schemas):
+        live, _ = segment_schemas
+        self.insert_roads(live, [44, 99, 119, 120, 198, 199, 200, 593])
+        assert self.rpms(client, 14) == [40, 90, 110, 120, 190, 190, 200, 590]
+
+    def test_a_band_edge_never_moves_band_in_the_tile(self) -> None:
+        """The bands are 60, 120 and 200 (OWNER-DECISIONS 327): multiples of the step."""
+        assert all(edge % stress_tiles.RPM_STEP == 0 for edge in (60, 120, 200))
+
+    def test_the_busy_level_merges_by_the_rounded_figure(self, client, segment_schemas):
+        live, _ = segment_schemas
+        self.insert_roads(live, [191, 195, 199, 205])
+        assert self.rpms(client, 12) == [190, 200]
+
+    def test_a_table_without_the_column_carries_nothing_and_says_so(
+        self, client, segment_schemas
+    ) -> None:
+        """Until a rebuild writes the column the tiles are as they were, and the
+        Mass Ride map keeps its current styling (the front end sees no `rpm`)."""
+        live, _ = segment_schemas
+        self.insert_roads(live, [99])
+        before = client.get(url(*tile_of(*CENTRE, 14)))
+        assert "+cfrmwosbtl-v" in before["ETag"]
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN mass_usable_width_m")
+        after = client.get(url(*tile_of(*CENTRE, 14)))
+        assert self.rpms(client, 14) == [-1]
+        assert "+cfrmosbtl-v" in after["ETag"]
+
+    def test_the_etag_letter_and_the_property_come_from_the_column(self) -> None:
+        # `w` for width: `r` is the rough surface's (`is_rough`), one letter a column.
+        assert stress_tiles.ETAG_LETTERS["mass_usable_width_m"] == "w"
+        assert stress_tiles.ETAG_LETTERS["is_rough"] == "r"
+        assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
+        assert stress_tiles.OPTIONAL_PROPERTIES["rpm"] == "mass_usable_width_m"

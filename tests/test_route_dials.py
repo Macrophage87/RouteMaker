@@ -1652,6 +1652,7 @@ class TestStressSpansThroughThePlan:
             "tier": 1,
             "facility": "path",
             "unpaved": None,
+            "rpm": None,
         }
         assert spans[-1] == {
             "from_m": 2200,
@@ -1659,6 +1660,7 @@ class TestStressSpansThroughThePlan:
             "tier": None,
             "facility": None,
             "unpaved": None,
+            "rpm": None,
         }
 
 

@@ -51,7 +51,9 @@ import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
-import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { CAPACITY_FOLD_TITLE, CAPACITY_LEGEND_TITLE, capacitySummary, isMassRide } from "./lib/massCapacity.ts";
+import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -215,6 +217,10 @@ export function App() {
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
+  // The stress tiles carry the Mass Ride capacity (a table built before the column does not): the Mass Ride
+  // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
+  const [capacityTiles, setCapacityTiles] = useState(false);
+  const massMap = isMassRide(preset) && capacityTiles;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
@@ -1175,10 +1181,12 @@ export function App() {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
           watchForFacilities(map, setFacilitiesShown);
+          watchForCapacity(map, () => setCapacityTiles(true));
           watchZoom(map, setZoom);
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
+        massCapacity={isMassRide(preset)}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1269,7 +1277,7 @@ export function App() {
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
                   (Mass Ride's alone), rail stations; then the full legend. */}
               <section aria-labelledby="layers-heading">
-                <h3 id="layers-heading">Traffic stress</h3>
+                <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
                   <label className="toggle">
                     <input
@@ -1278,7 +1286,7 @@ export function App() {
                       checked={stressVisible}
                       onChange={(event) => setStressVisible(event.target.checked)}
                     />
-                    Show traffic stress on the map
+                    {massMap ? "Show riders per minute on the map" : "Show traffic stress on the map"}
                   </label>
                 )}
                 {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -1319,7 +1327,14 @@ export function App() {
                   Legend
                 </h3>
                 {stress === "available" ? (
-                  <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                  massMap ? (
+                    <>
+                      <MassLegend />
+                      <MassZoomNotes zoom={zoom} shown={stressVisible} />
+                    </>
+                  ) : (
+                    <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                  )
                 ) : (
                   <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
                 )}
@@ -1457,7 +1472,9 @@ function RouteSummary({
   pickerCount: number;
 }) {
   useStressStyle();
-  const segments = stressSegments(route.stress_m);
+  // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
+  const capacity = capacitySummary(route.stress_spans);
+  const segments = capacity ? [] : stressSegments(route.stress_m);
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
@@ -1505,6 +1522,7 @@ function RouteSummary({
         </div>
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
+      <CapacityStats route={route} />
       {segments.length > 0 && (
         <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
           <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
@@ -1538,6 +1556,13 @@ function RouteSummary({
           <ElevationChart route={route} profile={profile} onScrub={onScrub} />
         </Fold>
       )}
+      {capacity && (
+        // A Mass Ride's fold is about riders per minute, in place of the stress and facility figures (OWNER-DECISIONS 325).
+        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open}>
+          <CapacityFigures route={route} />
+        </Fold>
+      )}
+      {!capacity && (
       <Fold title={ROUTE_FOLDS.facilities.title} heading={ROUTE_FOLDS.facilities.title} open={ROUTE_FOLDS.facilities.open}>
         {segments.length > 0 && (
           <figure className="stress" aria-labelledby="stress-detail-caption">
@@ -1558,6 +1583,7 @@ function RouteSummary({
         )}
         <FacilityBreakdown route={route} part="figures" />
       </Fold>
+      )}
       <RouteDescription route={route} fold />
       {junctions !== null && (
         <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
