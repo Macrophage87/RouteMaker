@@ -336,7 +336,7 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
 });
 
-test("the route's folds: Stress and facilities, Directions, Junctions to watch, Routes to choose from; no elevation chart yet", () => {
+test("the route's folds: Elevation and stress, Stress and facilities, Directions, Junctions to watch, Routes to choose from", () => {
   assert.equal(foldTitle("Junctions to watch", 4), "Junctions to watch (4)");
   assert.equal(foldTitle("Stress and facilities", null), "Stress and facilities");
   assert.equal(stepsCount(1), "1 step");
@@ -353,13 +353,17 @@ test("the route's folds: Stress and facilities, Directions, Junctions to watch, 
     return i;
   };
   const order = [
+    "title={foldName(chartKind(route))}",
     "<Fold title={ROUTE_FOLDS.facilities.title}",
     "<RouteDescription route={route} fold />",
     "foldTitle(ROUTE_FOLDS.junctions.title, junctions)",
     "foldTitle(ROUTE_FOLDS.choices.title, pickerCount)",
   ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
-  assert.doesNotMatch(app, /Elevation and stress/, "the elevation chart is not in the app (322), so there is no section for it");
+  // The route chart (322, 323) sits first, in the elevation slot, and is collapsed on a small screen.
+  assert.equal(ROUTE_FOLDS.elevation.title, "Elevation and stress");
+  assert.match(app, /open=\{ROUTE_FOLDS\.elevation\.open && !narrow\}/);
+  assert.match(app, /\{profile && \(\s*<Fold/);
   // Each fold is reached from a heading list: a hidden h3 before it (the a11y review's S5).
   for (const key of ["facilities", "junctions", "choices"] as const) {
     assert.ok(app.includes(`heading={ROUTE_FOLDS.${key}.title} open={ROUTE_FOLDS.${key}.open}`), key);
@@ -372,6 +376,7 @@ test("the route's folds: Stress and facilities, Directions, Junctions to watch, 
 
 test("a Fold: closed unless open, 'Routes to choose from' open by default, and its hidden h3 first", () => {
   assert.deepEqual(Object.fromEntries(Object.entries(ROUTE_FOLDS).map(([k, v]) => [k, v.open])), {
+    elevation: true,
     facilities: false,
     directions: false,
     junctions: false,

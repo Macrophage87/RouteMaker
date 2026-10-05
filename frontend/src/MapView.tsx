@@ -119,6 +119,8 @@ interface Props {
   markerReset: number;
   /** The junction the route summary's list asked the map to show (nonce: again), or null. */
   junctionFocus: { index: number; nonce: number } | null;
+  /** The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null: a ringed marker, not in the tab order. */
+  scrubPoint?: LonLat | null;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -920,6 +922,29 @@ export function MapView(props: Props) {
     if (!map || !loaded.current || !map.getSource(STRESS_SOURCE_ID)) return;
     setStressWhen(map, props.when);
   }, [props.when]);
+
+  // The elevation chart's scrub marker (OWNER-DECISIONS 322): a ring with a cross, so it is a shape and not a
+  // colour, over the route; aria-hidden, because the chart says where it is in words. It stays on the screen.
+  const scrubMarker = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    const point = props.scrubPoint ?? null;
+    if (!map) return;
+    if (point === null) {
+      scrubMarker.current?.remove();
+      scrubMarker.current = null;
+      return;
+    }
+    if (!scrubMarker.current) {
+      const element = document.createElement("div");
+      element.className = "scrub-marker";
+      element.setAttribute("aria-hidden", "true");
+      scrubMarker.current = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map);
+    } else {
+      scrubMarker.current.setLngLat(point);
+    }
+    if (!map.getBounds().contains(point)) map.easeTo({ center: point, duration: 250, padding: callbacks.current.framePadding() });
+  }, [props.scrubPoint]);
 
   // The rail stations' toggles.
   useEffect(() => {

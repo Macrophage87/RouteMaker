@@ -171,6 +171,9 @@ export function stepsCount(n: number): string {
  * are closed (Directions remembers its own state).
  */
 export const ROUTE_FOLDS = {
+  // The route chart (OWNER-DECISIONS 322, 323), in the elevation slot; App closes it on a small screen. Its title
+  // on a Mass Ride is "Elevation and riders per minute" (profileChart.ts foldName).
+  elevation: { title: "Elevation and stress", open: true },
   facilities: { title: "Stress and facilities", open: false },
   directions: { title: "Directions", open: false },
   junctions: { title: "Junctions to watch", open: false },

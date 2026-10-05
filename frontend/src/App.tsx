@@ -40,6 +40,8 @@ import {
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
+import { ElevationChart } from "./ElevationChart.tsx";
+import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
@@ -228,6 +230,8 @@ export function App() {
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
   const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
+  // The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null.
+  const [scrubPoint, setScrubPoint] = useState<LonLat | null>(null);
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
@@ -952,6 +956,7 @@ export function App() {
           points={routedPoints}
           narrow={narrow}
           onSelectJunction={(index) => setJunctionFocus((f) => ({ index, nonce: (f?.nonce ?? 0) + 1 }))}
+          onScrub={setScrubPoint}
           picker={
             candidateRows(answer) === null ? null : (
               <CandidatePicker answer={answer} choice={choice} onChoose={choose} />
@@ -1017,6 +1022,7 @@ export function App() {
         onRemovePoint={removeFromMap}
         markerReset={markerReset}
         junctionFocus={junctionFocus}
+        scrubPoint={scrubPoint}
         onReady={(map) => {
           mapRef.current = map;
           void fetchCoverage(window.location.origin).then((coverage) => {
@@ -1274,6 +1280,7 @@ function RouteSummary({
   points,
   narrow,
   onSelectJunction,
+  onScrub,
   picker,
   pickerCount,
 }: {
@@ -1281,6 +1288,8 @@ function RouteSummary({
   points: LonLat[];
   narrow: boolean;
   onSelectJunction: (index: number) => void;
+  /** The chart's scrub: the map point it reads, or null. */
+  onScrub: (point: LonLat | null) => void;
   /** The routes to choose from (CandidatePicker), or null with one route. */
   picker: ReactNode;
   pickerCount: number;
@@ -1292,8 +1301,9 @@ function RouteSummary({
   const loopSaid = loopNote(route);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
-  // figures in view; Stress and facilities, Directions, Junctions to watch and Routes to choose
-  // from as folds. There is no elevation chart yet (322), so no fold for one.
+  // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
+  // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
+  const profile = usableProfile(route);
   const junctions = route.intersections == null ? null : junctionItems(route).length;
   return (
     <div className="summary">
@@ -1356,6 +1366,16 @@ function RouteSummary({
       )}
       <QuickFigures figures={quickFigures(route)} />
       <FacilityBreakdown route={route} part="notices" />
+      {profile && (
+        <Fold
+          title={foldName(chartKind(route))}
+          heading={foldName(chartKind(route))}
+          // Offered collapsed on a small screen (OWNER-DECISIONS 322); open beside the map.
+          open={ROUTE_FOLDS.elevation.open && !narrow}
+        >
+          <ElevationChart route={route} profile={profile} onScrub={onScrub} />
+        </Fold>
+      )}
       <Fold title={ROUTE_FOLDS.facilities.title} heading={ROUTE_FOLDS.facilities.title} open={ROUTE_FOLDS.facilities.open}>
         {segments.length > 0 && (
           <figure className="stress" aria-labelledby="stress-detail-caption">

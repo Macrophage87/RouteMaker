@@ -1961,3 +1961,203 @@ details.zoom-notes {
     overflow: visible;
   }
 }
+
+/* The route chart (OWNER-DECISIONS 322, 323, 328-333; ElevationChart.tsx). The picture is one slider to a
+   screen reader (its value text says the spot); the summary and the tables beside it are its text. */
+.elevation-chart {
+  --pc-area: #c3c9d4;
+  --pc-line: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .elevation-chart {
+    --pc-area: #3a4250;
+  }
+}
+
+.pc-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pc-plot {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+
+.pc-plot:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.pc-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.pc-axis-text,
+.pc-guide-text,
+.pc-cross-text {
+  font-size: 10px;
+  fill: var(--text-muted);
+  font-family: var(--font);
+}
+
+.pc-cross-text {
+  fill: var(--text);
+}
+
+.pc-axis {
+  stroke: var(--swatch-border);
+  stroke-width: 1;
+}
+
+.pc-area {
+  fill: var(--pc-area);
+}
+
+.pc-line,
+.pc-flow-edge {
+  stroke: var(--pc-line);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.pc-flow-edge {
+  stroke-width: 1.3;
+}
+
+.pc-strip-frame {
+  stroke: var(--swatch-border);
+  stroke-width: 1;
+}
+
+.pc-tick {
+  stroke: var(--text-muted);
+  stroke-width: 0.8;
+}
+
+.pc-dot {
+  fill: var(--text);
+  stroke: var(--bg);
+  stroke-width: 1.2;
+}
+
+.pc-marker line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.pc-marker circle {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.pc-readout {
+  margin: 0;
+  min-height: 2.8em;
+  font-size: 13px;
+}
+
+.pc-keys {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pc-legend,
+.pc-tiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pc-legend li,
+.pc-tiers li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pc-legend svg {
+  flex: none;
+  border: 1px solid var(--swatch-border);
+}
+
+.pc-legend svg[viewBox] {
+  border: 0;
+}
+
+.pc-table-fold > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.pc-table-wrap {
+  overflow-x: auto;
+  margin: 4px 0 8px;
+}
+
+.pc-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.pc-table caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 4px;
+}
+
+.pc-table th,
+.pc-table td {
+  border: 1px solid var(--border);
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pc-table thead th {
+  background: var(--bg-soft);
+}
+
+/* The chart's reading point on the map: a ring with a cross (a shape, not a colour), dark outside and white
+   inside so it shows on the light map and over the route's colours. */
+.scrub-marker {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--map-focus);
+  box-shadow: 0 0 0 2px var(--map-focus-inner);
+  background:
+    linear-gradient(var(--map-focus), var(--map-focus)) center / 2px 12px no-repeat,
+    linear-gradient(var(--map-focus), var(--map-focus)) center / 12px 2px no-repeat,
+    rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .pc-svg {
+    forced-color-adjust: none;
+  }
+}

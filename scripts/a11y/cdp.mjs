@@ -183,6 +183,7 @@ export async function axNode(page, selector) {
     expanded: prop("expanded"),
     checked: prop("checked") === "true" ? true : prop("checked") === "false" ? false : prop("checked"),
     disabled: prop("disabled"),
+    valuetext: prop("valuetext"),
   };
 }
 
@@ -252,6 +253,39 @@ export const contrast = (a, b) => {
 // ---- The mock routes: the shape of a RouteResponse (frontend/src/lib/api.ts), not real plans ----
 const coords = [];
 for (let i = 0; i <= 40; i++) coords.push([-77.04 + i * 0.00075, 38.91 - i * 0.0005]);
+/**
+ * The route chart's profile (core.api.ProfileOut; OWNER-DECISIONS 322, 323, 328, 333) for a route of `distance`
+ * metres: a gentle rise, a 6% climb from 1,800 m to 2,100 m, a plateau, then a 4% descent. With `mass`, the riders
+ * a minute (a pinch at the start, 90 on the climb, 190 elsewhere) and seven major intersections.
+ */
+const profileFor = (distance, mass = false) => {
+  const n = Math.floor(distance / 30) + 1;
+  const m = Array.from({ length: n }, (_, i) => i * 30);
+  const height = (d) => (d < 1800 ? 100 + 0.002 * d : d < 2100 ? 103.6 + 0.06 * (d - 1800) : d < 3200 ? 121.6 : d < 3500 ? 121.6 - 0.04 * (d - 3200) : 109.6);
+  const grade = (d) => (d < 1800 ? 0.2 : d <= 2100 ? 6 : d < 3200 ? 0 : d <= 3500 ? -4 : 0);
+  const riders = (d) => (d < 200 ? 55 : d >= 1800 && d <= 2100 ? 90 : 190);
+  const crossing = (at, street, severity, control, tier, corkers) => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, corkers_needed: corkers });
+  return {
+    interval_m: 30,
+    m,
+    elevation_m: m.map((d) => Math.round(height(d) * 10) / 10),
+    grade_pct: m.map(grade),
+    climbs: [{ from_m: 1800, to_m: 2100, gain_m: 18, avg_grade_pct: 6, max_grade_pct: 6.4, tier: 2, ...(mass ? { capacity_drop_pct: 53, min_riders_per_min: 90 } : {}) }],
+    riders_per_min: mass ? m.map(riders) : null,
+    flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190 } : null,
+    crossings: mass
+      ? [
+          crossing(1000, "18th Street Northwest", "orange", "none", 3, true),
+          crossing(1700, "17th Street Northwest", "orange", "signal", 3, true),
+          crossing(2100, "15th Street Northwest", "red", "signal", 4, true),
+          crossing(2500, "14th Street Northwest", "orange", "signal", 3, true),
+          crossing(2900, "13th Street Northwest", "orange", "signal", 3, true),
+          crossing(3300, "Pierce Street", null, "stop", 2, false),
+          crossing(4000, "9th Street Northwest", "red", "none", 4, true),
+        ]
+      : null,
+  };
+};
 const BASE = {
   preset: "default",
   variant: "standard",
@@ -268,6 +302,7 @@ const BASE = {
     { from_m: 0, to_m: 900, tier: 1, facility: "path" },
     { from_m: 900, to_m: 4660, tier: 2, facility: "lane" },
   ],
+  profile: profileFor(4660),
   // One orange, then two reds 10 m apart: a group when zoomed out.
   intersections: [
     { m: 2000, lon: coords[17][0], lat: coords[17][1], severity: "orange", reason: "Left turn across a 4-lane 35 mph (56 km/h) road, signal", crossed_tier: 3, movement: "left", control: "signal", kind: "left_turn", cost_ft: 300 },
@@ -363,6 +398,7 @@ export const S_MASS = (() => {
   r.preset = "mass-ride";
   r.dials = { stress: 0, hills: 0, when: "weekday", carrying: null };
   r.calm_search = null;
+  r.profile = profileFor(4660, true);
   const at = (i, m, severity, tier, control, kind, reason, group) => ({
     m, lon: coords[i][0], lat: coords[i][1], severity, reason, crossed_tier: tier, movement: "straight", control, kind, cost_ft: 300, group,
   });
