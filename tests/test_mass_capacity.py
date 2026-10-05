@@ -484,6 +484,22 @@ class TestTheRoutesSections:
         )
         assert spans == [{"from_m": 0, "to_m": 200, "tier": 2, "facility": "none", "unpaved": None}]
 
+    def test_a_stretch_outside_dc_is_its_own_section_with_no_figure(self) -> None:
+        """OWNER-DECISIONS 427: Mass Ride figures are not supported outside DC."""
+        spans = routing.stress_spans(
+            [
+                (100.0, "2", "none", None, 130, False),
+                (100.0, "2", "none", None, 150, True),
+                (100.0, "2", "none", None, 140, False),
+            ],
+            capacity=True,
+        )
+        assert [(s["from_m"], s["to_m"], s["rpm"], s.get("outside_dc")) for s in spans] == [
+            (0, 100, 130, None),
+            (100, 200, None, True),
+            (200, 300, 140, None),
+        ]
+
     def test_a_section_ends_where_the_band_changes(self) -> None:
         spans = routing.stress_spans(
             [

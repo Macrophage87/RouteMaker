@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from functools import lru_cache
 from pathlib import Path
 
@@ -127,6 +128,39 @@ def min_rpm_for(z: int) -> int | None:
 
 
 DC_BOUNDARY_PATH = Path(__file__).resolve().parent / "geodata" / "dc-boundary.geojson"
+
+
+@lru_cache(maxsize=1)
+def _dc_polygons() -> list:
+    geometry = json.loads(DC_BOUNDARY_PATH.read_bytes())["geometry"]
+    return [
+        [[(float(pt[0]), float(pt[1])) for pt in ring] for ring in polygon]
+        for polygon in geometry["coordinates"]
+    ]
+
+
+def inside_dc(lon: float, lat: float, tolerance_m: float = DC_EDGE_TOLERANCE_M) -> bool:
+    """Whether a point counts as inside the District for Mass Ride planning: inside the
+    boundary, or within `tolerance_m` of its edge, so a border road is inside (OWNER-
+    DECISIONS 420), as the tiles and the front end's `dcBoundary.ts` read it. A Mass
+    Ride's route gives no riders-per-minute figure for its parts outside (427)."""
+    from routemaker.cbd import in_polygons
+
+    polygons = _dc_polygons()
+    if in_polygons((lon, lat), polygons):
+        return True
+    kx = 111_320.0 * math.cos(math.radians(lat))
+    ky = 110_574.0
+    for polygon in polygons:
+        for ring in polygon:
+            for (ax, ay), (bx, by) in zip(ring, ring[1:], strict=False):
+                ux, uy = (bx - ax) * kx, (by - ay) * ky
+                px, py = (lon - ax) * kx, (lat - ay) * ky
+                length2 = ux * ux + uy * uy
+                s = 0.0 if length2 == 0 else max(0.0, min(1.0, (px * ux + py * uy) / length2))
+                if math.hypot(px - s * ux, py - s * uy) <= tolerance_m:
+                    return True
+    return False
 
 
 @lru_cache(maxsize=1)

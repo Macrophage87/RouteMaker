@@ -523,7 +523,7 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm]]) in the order
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC]]]) in the order
     ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
@@ -536,7 +536,9 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     lowest capacity along it, riders a minute, or null where the segments have none. A
     stretch marked Avoid (tier 5) is one section whatever its capacity: it shows only
     "Avoid" (325). A section folded into its neighbour does not lower the neighbour's
-    `rpm`, so a section's figure always lies in the band its colour says.
+    `rpm`, so a section's figure always lies in the band its colour says. A stretch
+    outside the District (OWNER-DECISIONS 427; border roads are inside, 420) is its own
+    section with `rpm` null and `outside_dc` true: Mass Ride figures are not supported there.
     """
     # Pieces are cut at every shape vertex, so a long stretch of one class
     # arrives as many short pieces: they are joined before anything is judged
@@ -545,8 +547,15 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     for stretch in stretches:
         metres, tier, kind = stretch[:3]
         unpaved = stretch[3] if len(stretch) > 3 else None
-        rpm = stretch[4] if capacity and len(stretch) > 4 else None
-        band = band_of(rpm) if capacity and rpm is not None and tier != "5" else None
+        outside = capacity and len(stretch) > 5 and bool(stretch[5])
+        rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
+        band = (
+            "outside"
+            if outside
+            else band_of(rpm)
+            if capacity and rpm is not None and tier != "5"
+            else None
+        )
         if spans and spans[-1][1:5] == [tier, kind, unpaved, band]:
             spans[-1][0] += metres
             spans[-1][5] = _lowest(spans[-1][5], rpm)
@@ -579,6 +588,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         }
         if capacity:
             entry["rpm"] = None if tier == "5" else rpm
+            if _band == "outside":
+                entry["outside_dc"] = True
         out.append(entry)
     return out
 
@@ -1253,6 +1264,18 @@ def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]
 # width nor its junctions are known, so its intersections were not checked).
 STRETCH_AVOID = "avoid"
 STRETCH_UNTRACED = "untraced"
+# Outside the District (OWNER-DECISIONS 427): Mass Ride figures are not supported there yet,
+# so the stretch has no width and no riders a minute; border roads count as inside (420).
+STRETCH_OUTSIDE_DC = "outside_dc"
+
+
+def _outside_dc(piece) -> bool:
+    """Whether a traced piece lies outside the District (its midpoint; a piece with no
+    position is taken as inside)."""
+    from .mass_tiles import inside_dc
+
+    lon, lat = getattr(piece, "lon", None), getattr(piece, "lat", None)
+    return lon is not None and lat is not None and not inside_dc(lon, lat)
 
 
 def _flow_stretches(
@@ -1275,7 +1298,8 @@ def _flow_stretches(
             for i in range(run[0], run[1]):
                 klass = classes[i]
                 avoid = flow.is_avoid(klass[0])
-                if avoid:
+                outside = _outside_dc(pieces[i])
+                if avoid or outside:
                     width = None
                 elif capacity:
                     width = getattr(klass, "width_m", None)
@@ -1286,7 +1310,7 @@ def _flow_stretches(
                         getattr(klass, "lanes", None),
                         getattr(klass, "oneway", None),
                     )
-                note = STRETCH_AVOID if avoid else None
+                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if outside else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -1510,6 +1534,7 @@ def route_profile(
             "crossings": None,
             "avoid": None,
             "unchecked": None,
+            "outside_dc": None,
             "crossings_complete": None,
         }
         if riders is not None:
@@ -1527,6 +1552,8 @@ def route_profile(
             end_m = sample_m[-1]
             body["avoid"] = _stretch_ranges(flow_stretches, STRETCH_AVOID, end_m)
             body["unchecked"] = _stretch_ranges(flow_stretches, STRETCH_UNTRACED, end_m)
+            # 427: the parts of a Mass Ride outside DC, said in words, with no figure.
+            body["outside_dc"] = _stretch_ranges(flow_stretches, STRETCH_OUTSIDE_DC, end_m)
             body["crossings"] = None if majors is None else [_crossing_out(x) for x in majors]
             body["crossings_complete"] = None if majors is None else bool(majors_complete)
         return body
@@ -2334,6 +2361,7 @@ def plan(
                         *classes[i],
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
+                        preset_name == "mass-ride" and _outside_dc(pieces[i]),
                     )
                     for i in range(run[0], run[1])
                 )

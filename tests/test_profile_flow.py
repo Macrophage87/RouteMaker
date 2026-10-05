@@ -835,6 +835,48 @@ class TestFlowStretches:
             (500.0, None, routing.STRETCH_UNTRACED),
         ]
 
+    def test_a_stretch_outside_dc_has_no_width_and_its_own_note(self):
+        """OWNER-DECISIONS 427: no riders-per-minute figure for the parts of a Mass Ride
+        outside DC (Rosslyn here); a border road, within the tolerance, is inside (420)."""
+
+        class P:
+            def __init__(self, metres, lon, lat):
+                self.metres, self.lon, self.lat = metres, lon, lat
+
+        classes = [routing.PieceClass("2", "none", None, 2, False, 6.0)] * 3
+        pieces = [
+            P(100.0, -77.0365, 38.8977),
+            P(100.0, -77.0720, 38.8960),
+            P(50.0, -77.0365, 38.8977),
+        ]
+        got = routing._flow_stretches([(0, 3)], pieces, classes, capacity=True)
+        assert got == [
+            (100.0, 6.0, None),
+            (100.0, None, routing.STRETCH_OUTSIDE_DC),
+            (50.0, 6.0, None),
+        ]
+        assert routing._stretch_ranges(got, routing.STRETCH_OUTSIDE_DC, 250.0) == [
+            {"from_m": 100, "to_m": 200}
+        ]
+
+    def test_the_district_s_edge_has_the_border_tolerance(self):
+        from core import mass_tiles
+
+        assert mass_tiles.inside_dc(-77.0365, 38.8977)  # the White House
+        assert not mass_tiles.inside_dc(-77.0720, 38.8960)  # Rosslyn, Virginia
+        # A point just outside the drawn edge: inside within the tolerance, outside without it.
+        ring = mass_tiles._dc_polygons()[0][0]
+        (ax, ay), (bx, by) = ring[0], ring[1]
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        inside_near = [
+            (mx + dx, my + dy)
+            for dx, dy in ((0.00012, 0), (-0.00012, 0), (0, 0.00012), (0, -0.00012))
+            if not mass_tiles.inside_dc(mx + dx, my + dy, tolerance_m=0)
+        ]
+        assert inside_near, "one of the four nudges lies outside the edge"
+        lon, lat = inside_near[0]
+        assert mass_tiles.inside_dc(lon, lat)  # about 10 to 13 m out: a border road
+
     def test_with_the_capacity_column_the_width_is_the_segments_own(self):
         """The chart reads the width the capacity map colours by (`mass_usable_width_m`,
         OWNER-DECISIONS 404, 406), never the lanes' estimate, so the two always agree; Avoid

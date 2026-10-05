@@ -68,7 +68,7 @@ test("each band's share of the distance, Avoid and no-figure apart; the whole pe
   assert.equal(summary.avoidM, 200);
   assert.equal(summary.unknownM, 400);
   assert.equal(summary.percents.reduce((a, b) => a + b, 0), 100);
-  assert.deepEqual(summary.percents, [8, 30, 30, 17, 5, 10]);
+  assert.deepEqual(summary.percents, [8, 30, 30, 17, 5, 10, 0]);
   const rows = capacityRows(summary);
   assert.deepEqual(
     rows.map((r) => r.text),
@@ -352,4 +352,26 @@ test("the app wires the mode: the map's capacity layers, the legend and the pane
   assert.match(view, /setMassMode\(null, callbacks\.current\.massCapacity === true/);
   assert.match(view, /props\.massCapacity === true/);
   assert.match(view, /addDcMask\(map, callbacks\.current\.massArea === true/);
+});
+
+test("427: the parts of a Mass Ride outside DC carry no figure, keep their stress colour, and are said in words", async () => {
+  const { OUTSIDE_DC_FIGURES, OUTSIDE_DC_ROW } = await import("./massCapacity.ts");
+  const spans: StressSpan[] = [
+    { from_m: 0, to_m: 500, tier: 3, facility: "none", rpm: null, outside_dc: true },
+    { from_m: 500, to_m: 1500, tier: 2, facility: "none", rpm: 90 },
+    { from_m: 1500, to_m: 2500, tier: 2, facility: "none", rpm: 190 },
+  ];
+  const summary = capacitySummary(spans)!;
+  assert.equal(summary.outsideM, 500);
+  assert.equal(summary.unknownM, 0, "not counted as a stretch with no figure");
+  assert.equal(summary.minRpm, 90, "the narrowest is DC's");
+  assert.equal(summary.percents.reduce((a, b) => a + b, 0), 100);
+  assert.ok(capacityRows(summary).some((r) => r.key === "outside" && r.text === OUTSIDE_DC_ROW && r.percent === 20));
+  // Not greyed: the route line keeps the section's traffic-stress colour.
+  assert.equal(spanClass(spans[0], true).key, "3");
+  assert.equal(spanClass({ ...spans[0], outside_dc: false }, true).key, "unknown");
+  const card = renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: spans } }));
+  const fold = renderToStaticMarkup(createElement(CapacityFigures, { route: { stress_spans: spans } }));
+  for (const html of [card, fold]) assert.ok(html.includes(OUTSIDE_DC_FIGURES.replace(/'/g, "&#x27;")), html);
+  assert.ok(!renderToStaticMarkup(createElement(CapacityStats, { route: { stress_spans: SPANS } })).includes("outside DC"));
 });

@@ -231,13 +231,14 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
 export function spanClass(
-  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm">>,
+  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm" | "outside_dc">>,
   capacity = false,
 ): RouteClass {
   // A Mass Ride's section (`capacity`: the route's sections carry riders per minute, usesCapacity): by
   // capacity band, or Avoid alone for a stretch marked Avoid; a section with no capacity is the unknown
   // grey (OWNER-DECISIONS 325, 327).
-  if (capacity) {
+  // Outside DC (427) a Mass Ride's section has no figure and is not greyed: it keeps its stress colour.
+  if (capacity && !span.outside_dc) {
     if (span.tier === 5) return classByKey("mavoid") as RouteClass;
     const band = bandIndex(span.rpm);
     return (band !== null ? classByKey(`m${band}` as RouteClassKey) : classByKey("unknown")) as RouteClass;

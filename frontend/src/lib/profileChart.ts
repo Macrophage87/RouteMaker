@@ -16,6 +16,7 @@ import {
   NARROWEST_BOTH,
   NARROWEST_FLAT,
   NARROWEST_HILLS,
+  OUTSIDE_DC_FIGURES,
   capacityPair,
   capacitySummary,
   capitalise,
@@ -593,6 +594,7 @@ export function climbAt(profile: RouteProfile, metres: number): ProfileClimb | n
  * where there is none: an unknown is never "about 0 ... (bottleneck)".
  */
 export function ridersWords(profile: RouteProfile, riders: number | null, metres: number, gradePct: number | null): string {
+  if (inRanges(profile.outside_dc, metres)) return "outside DC, no riders-per-minute figure yet";
   if (inRanges(profile.avoid, metres)) return "marked Avoid, no capacity given";
   if (riders === null || !Number.isFinite(riders)) return "riders per minute not known";
   const reasons = [flowBand(riders).word];
@@ -784,6 +786,8 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
   sentences.push(climbs === 0 ? "No sustained climbs." : `${climbs} sustained ${climbs === 1 ? "climb" : "climbs"}, listed in the table.`);
   if (kind === "mass") {
     sentences.push(...capacitySentences(capacityPair(capacitySummary(route.stress_spans), profile.flow)));
+    // 427: the parts outside DC have no figure, said in words (the narrowest and typical are DC's).
+    if ((profile.outside_dc ?? []).length > 0) sentences.push(OUTSIDE_DC_FIGURES);
     const avoid = profile.avoid ?? [];
     if (avoid.length > 0) {
       const at = listWords(avoid.slice(0, 3).map((r) => miles(r.from_m)));

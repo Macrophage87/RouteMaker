@@ -22,6 +22,7 @@ import {
   massBandsSaid,
   capacityRows,
   capacitySummary,
+  OUTSIDE_DC_FIGURES,
   capacityPair,
   capitalise,
   narrowestClause,
@@ -79,6 +80,7 @@ export function RouteClassSwatch({ cls }: { cls: RouteClass }): ReactElement {
 
 /** The route classes the list's two rows without a band are drawn in. */
 const ROW_CLASS: Record<string, RouteClassKey> = { avoid: "mavoid", none: "unknown" };
+// The parts outside DC keep their stress colours on the line (427), so their row has no one swatch.
 
 function rowSwatch(key: string): ReactElement {
   const cls = routeClasses().find((c) => c.key === ROW_CLASS[key]);
@@ -137,6 +139,7 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
     h("figcaption", { id: "capacity-caption" }, CAPACITY_FIGURE_TITLE),
     // The narrowest points, as the card and the directions give them (OWNER-DECISIONS 424).
     h("p", { className: "hint capacity-narrowest-said" }, `${capitalise(narrowestClause(capacityPair(summary, route.profile?.flow)))}.`),
+    summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
     h(
       "ul",
       { className: "stress-list", "aria-label": "Share of the route in each riders-per-minute band" },
@@ -177,5 +180,6 @@ export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_sp
       ...narrowestLines(pair).map((line) => term(line, `capacity-narrowest ${line.key}`)),
       ...typicalLines(pair).map((line) => term(line, `capacity-typical ${line.key}`)),
     ),
+    summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
   );
 }

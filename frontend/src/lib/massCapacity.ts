@@ -149,7 +149,9 @@ export interface CapacitySummary {
   bandM: number[];
   avoidM: number;
   unknownM: number;
-  /** Whole percents of `totalM`, in the order bands, Avoid, no figure; they add up to 100. */
+  /** Metres outside DC, where Mass Ride figures are not supported yet (427): in no band, no figure. */
+  outsideM: number;
+  /** Whole percents of `totalM`, in the order bands, Avoid, no figure, outside DC; they add up to 100. */
   percents: number[];
 }
 
@@ -163,12 +165,17 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
   const bandM = MASS_BANDS.map(() => 0);
   let avoidM = 0;
   let unknownM = 0;
+  let outsideM = 0;
   let minRpm: number | null = null;
   let minAtM: number | null = null;
   let minToM: number | null = null;
   const weighted: Array<{ rpm: number; m: number }> = [];
   for (const span of spans) {
     const m = Math.max(0, span.to_m - span.from_m);
+    if (span.outside_dc) {
+      outsideM += m;
+      continue;
+    }
     if (span.tier === 5) {
       avoidM += m;
       continue;
@@ -186,7 +193,7 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
       minToM = span.to_m;
     }
   }
-  const totalM = bandM.reduce((a, b) => a + b, 0) + avoidM + unknownM;
+  const totalM = bandM.reduce((a, b) => a + b, 0) + avoidM + unknownM + outsideM;
   if (!(totalM > 0)) return null;
   weighted.sort((a, b) => a.rpm - b.rpm);
   const counted = weighted.reduce((sum, w) => sum + w.m, 0);
@@ -199,8 +206,8 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
       break;
     }
   }
-  const parts = [...bandM, avoidM, unknownM];
-  return { totalM, minRpm, minAtM, minToM, typicalRpm, bandM, avoidM, unknownM, percents: wholePercents(parts.map((m) => m / totalM)) };
+  const parts = [...bandM, avoidM, unknownM, outsideM];
+  return { totalM, minRpm, minAtM, minToM, typicalRpm, bandM, avoidM, unknownM, outsideM, percents: wholePercents(parts.map((m) => m / totalM)) };
 }
 
 /** The summary of a route, or null (see capacitySummary). */
@@ -335,6 +342,17 @@ export function narrowestClause(pair: CapacityPair): string {
   return lines.length === 0 ? "no capacity figure for this route" : lines.map((l) => `${l.label} ${l.text}`).join("; ");
 }
 
+/** The route list's row for the parts outside DC (OWNER-DECISIONS 427). */
+export const OUTSIDE_DC_ROW = "Outside DC: no figures yet";
+
+/**
+ * What the panel and the chart say where part of a Mass Ride is outside the District (427): no
+ * greying, the words alone; the narrowest point, the typical figure and the bottlenecks are the DC
+ * parts' only. The 418a notice stays as well.
+ */
+export const OUTSIDE_DC_FIGURES =
+  "Mass Ride figures are not supported outside DC yet, so no riders-per-minute figures are given for the parts of this route outside the District.";
+
 /** One band's row in the route's list: its name, share and length. */
 export interface CapacityRow {
   key: string;
@@ -357,6 +375,7 @@ export function capacityRows(summary: CapacitySummary): CapacityRow[] {
   }));
   rows.push({ key: "avoid", text: AVOID_LEGEND_TEXT, percent: summary.percents[4], metres: summary.avoidM, band: null });
   rows.push({ key: "none", text: "No capacity figure", percent: summary.percents[5], metres: summary.unknownM, band: null });
+  rows.push({ key: "outside", text: OUTSIDE_DC_ROW, percent: summary.percents[6], metres: summary.outsideM, band: null });
   return rows.filter((row) => row.metres > 0);
 }
 

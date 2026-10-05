@@ -1392,13 +1392,18 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       live: document.querySelector('.status-line')?.getAttribute('aria-live') }; })()`);
   check("outside DC: a Mass Ride route that leaves the District shows the notice in words in the route view", out.text === notice && out.visible, JSON.stringify(out));
   check("outside DC: the route's polite live region says it with the route", out.said.includes(notice) && out.live === "polite", JSON.stringify(out));
+  // 427: no figures for the parts outside DC, said in words in the route view; nothing greyed.
+  const words = await p.eval(`(() => { const s = document.querySelector('.summary'); return { said: s?.querySelector('.capacity-stats ~ .capacity-outside-dc, .capacity-outside-dc')?.textContent ?? '',
+    narrowest: [...(s?.querySelectorAll('.capacity-narrowest dd') ?? [])].map((d) => d.textContent) }; })()`);
+  check("outside DC: the route view says Mass Ride figures are not supported outside DC, and its narrowest figure is DC's",
+    /^Mass Ride figures are not supported outside DC yet/.test(words.said) && words.narrowest.length > 0 && !words.narrowest.some((t) => /^50 riders/.test(t)), JSON.stringify(words));
   await p.close();
 }
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 279;
+const EXPECTED = 280;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

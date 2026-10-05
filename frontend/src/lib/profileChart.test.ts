@@ -783,3 +783,12 @@ test("the block width the word AVOID needs: a narrower block says A", () => {
   assert.equal(avoidLabel(35.9), "A");
   assert.equal(avoidLabel(30), "A");
 });
+
+test("427: the chart says in words that Mass Ride figures outside DC are not supported, and gives none there", async () => {
+  const { OUTSIDE_DC_FIGURES } = await import("./massCapacity.ts");
+  const { route, profile } = build("mass-ride", true);
+  const outside = { ...profile, outside_dc: [{ from_m: 0, to_m: 400 }] };
+  assert.ok(summaryText(route, outside).includes(OUTSIDE_DC_FIGURES));
+  assert.ok(!summaryText(route, profile).includes(OUTSIDE_DC_FIGURES));
+  assert.equal(ridersWords(outside, 120, 200, 0), "outside DC, no riders-per-minute figure yet");
+});

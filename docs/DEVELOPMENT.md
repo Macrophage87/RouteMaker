@@ -3800,7 +3800,7 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 279 checks with the route chart, section 17 for the loop box
+- **The browser check** (scripts/a11y/check.mjs, 280 checks with the route chart, section 17 for the loop box
   and the Plan button, section 18 for Use my location, and section 20 for the Mass Ride capacity map: its
   legend, bands by zoom and their status line, the DC-only words and mask, the outside-DC notice, both
   narrowest figures, and a table without the capacity column keeping the stress map; 325-327, 387, 417,

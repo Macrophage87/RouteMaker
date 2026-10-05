@@ -36,6 +36,12 @@ export interface StressSpan {
    * where the capacity changes band, so a section is one colour.
    */
   rpm?: number | null;
+  /**
+   * A Mass Ride's only: the section is outside the District (border roads count as inside,
+   * OWNER-DECISIONS 420), where Mass Ride figures are not supported yet (427): `rpm` is null and
+   * the line keeps its traffic-stress colour, not the no-figure grey.
+   */
+  outside_dc?: boolean;
 }
 
 /** One sustained climb of the profile (core.api.ProfileClimbOut; OWNER-DECISIONS 322, 328(c)). */
@@ -111,6 +117,8 @@ export interface RouteProfile {
   avoid?: ProfileRange[] | null;
   /** Mass Ride only: the stretches of a leg that could not be traced: width and junctions not known. */
   unchecked?: ProfileRange[] | null;
+  /** Mass Ride only: the stretches outside DC, with no riders a minute (OWNER-DECISIONS 427). */
+  outside_dc?: ProfileRange[] | null;
 }
 
 /**

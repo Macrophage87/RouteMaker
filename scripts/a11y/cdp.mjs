@@ -543,6 +543,9 @@ export const S_MASS_CAPACITY = (() => {
 export const S_MASS_OUTSIDE_DC = (() => {
   const r = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
   r.geometry.coordinates = [[-77.072, 38.896], ...r.geometry.coordinates];
+  // 427: the API gives the part outside DC no figure, and says where it is.
+  r.stress_spans[0] = { ...r.stress_spans[0], rpm: null, outside_dc: true };
+  r.profile.outside_dc = [{ from_m: 0, to_m: 300 }];
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>
