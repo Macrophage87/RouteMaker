@@ -27,7 +27,9 @@ def test_the_settings_are_the_owners_street_and_r_st() -> None:
 
     assert real.REBUILD_SENTINEL_LTS4_STREET == "CONNECTICUT AVE NW"
     assert real.REBUILD_SENTINEL_LTS4_NORTH_OF_LAT == R_ST
-    assert 0.5 < real.REBUILD_SENTINEL_LTS4_MIN_SHARE <= real.REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE
+    # Pinned exactly: a loosened share would pass the 49% / 72% build 408/409 refuse.
+    assert real.REBUILD_SENTINEL_LTS4_MIN_SHARE == 0.6
+    assert real.REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE == 0.95
     assert settings.REBUILD_SENTINEL_LTS4_STREET == ""
 
 
@@ -53,6 +55,39 @@ def test_a_calmer_street_is_refused_in_words(given, said) -> None:
         assert words in message, message
         assert "OWNER-DECISIONS 40" in message
     assert " mi (" in found[0], "US units first"
+
+
+@pytest.mark.parametrize(
+    ("given", "words"),
+    [
+        # 2026-10-03: 49% overall, 72% north of R St.
+        (tiers(lts4=490.0, north_lts4=432.0), ["only 49%", "72% of CONNECTICUT AVE NW north"]),
+        (tiers(lts4=550.0, north_lts4=590.0), ["only 55%"]),
+        (tiers(lts4=700.0, north_lts4=540.0), ["90% of CONNECTICUT AVE NW north"]),
+    ],
+)
+def test_the_real_settings_refuse_the_build_of_2026_10_03(given, words) -> None:
+    from config import settings as real
+
+    found = lts_sentinels.problems(
+        given, real.REBUILD_SENTINEL_LTS4_MIN_SHARE, real.REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE
+    )
+    assert len(found) == len(words), found
+    for message, said in zip(found, words, strict=True):
+        assert said in message, message
+
+
+def test_the_real_settings_pass_the_street_as_rebuilt() -> None:
+    from config import settings as real
+
+    assert (
+        lts_sentinels.problems(
+            tiers(lts4=670.0, north_lts4=594.0),
+            real.REBUILD_SENTINEL_LTS4_MIN_SHARE,
+            real.REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE,
+        )
+        == []
+    )
 
 
 def test_a_street_with_no_rows_is_refused() -> None:

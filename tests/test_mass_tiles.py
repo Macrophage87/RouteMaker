@@ -52,15 +52,25 @@ def road(
     line(schema, way, [start, end], tier, rpm, trail, facility, ordinal)
 
 
-def line(schema, way, points, tier=3, rpm=150.0, trail=False, facility="none", ordinal=0) -> None:
+def line(
+    schema,
+    way,
+    points,
+    tier=3,
+    rpm=150.0,
+    trail=False,
+    facility="none",
+    ordinal=0,
+    map_class="road",
+) -> None:
     width = None if rpm is None else rpm / flow.level_riders_per_min(1.0)
     wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in points) + ")"
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-            "stress_rule, is_trail_class, facility, mass_usable_width_m, calm_run_m) VALUES "
-            "(%s, %s, ST_GeomFromText(%s, 4326), %s, 'x', %s, %s, %s, 0)",
-            [way, ordinal, wkt, tier, trail, facility, width],
+            "stress_rule, is_trail_class, facility, mass_usable_width_m, calm_run_m, map_class) "
+            "VALUES (%s, %s, ST_GeomFromText(%s, 4326), %s, 'x', %s, %s, %s, 0, %s)",
+            [way, ordinal, wkt, tier, trail, facility, width, map_class],
         )
 
 
@@ -157,6 +167,52 @@ class TestTiles:
             layer = features(client, z)
             assert sum(len(f.lines) for f in layer.features) == 1, z
 
+    def test_a_barred_road_or_an_alley_with_a_width_is_not_drawn(self, client, segment_schemas):
+        """A motorway or a bicycle=no road has a mass width (the lane count's default), and
+        an alley a width too; only a `road` is the Mass Ride map's."""
+        live, _ = segment_schemas
+        y = WHITE_HOUSE[1]
+        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE), rpm=150)
+        for way, map_class in ((2, "barred"), (3, "alley"), (4, "hidden")):
+            start = (WHITE_HOUSE[0], y + 0.0003 * (way - 1))
+            line(live, way, [start, east_of(start)], rpm=250, map_class=map_class)
+        for z in (12, 14):
+            assert rpms(features(client, z)) == [(3, 150)], z
+
+    def test_a_barred_line_or_a_trail_is_no_part_of_a_run(self, client, segment_schemas):
+        """422: 300 m of Wide open road with a barred line, a trail and an Avoid line
+        joined on, each longer than the run's half mile, is still a short block (z10-11)."""
+        live, _ = segment_schemas
+        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE, 300), rpm=250)
+        barred = [east_of(WHITE_HOUSE, 300), east_of(WHITE_HOUSE, 900)]
+        line(live, 2, barred, rpm=250, map_class="barred")
+        line(live, 3, [WHITE_HOUSE, east_of(WHITE_HOUSE, -600)], rpm=250, trail=True)
+        line(live, 4, [WHITE_HOUSE, north_of(WHITE_HOUSE, 600)], tier=5, rpm=250)
+        for z in (10, 11):
+            assert rpms(features(client, z)) == [(5, 250)], z
+
+    def test_a_run_is_measured_inside_the_district(self, client, segment_schemas):
+        """422: a 300 m stretch of Wide open road inside the District that goes on for a mile
+        outside it is a short block, not a run: Maryland's length does not count."""
+        live, _ = segment_schemas
+        inside = GEORGETOWN
+        edge = nearest_points(DC.boundary, Point(inside))[0]
+        k = math.cos(math.radians(38.9))
+        dx, dy = (edge.x - inside[0]) * 111_320 * k, (edge.y - inside[1]) * 110_950
+        n = math.hypot(dx, dy)
+
+        def along(metres):
+            return (
+                edge.x + dx / n * metres / (111_320 * k),
+                edge.y + dy / n * metres / 110_950,
+            )
+
+        line(live, 1, [along(-300), along(1500)], rpm=250)
+        assert DC.contains(Point(along(-300))) and not DC.contains(Point(along(1500)))
+        for z in (10, 11):
+            assert rpms(features(client, z, at=inside)) == [], z
+        assert rpms(features(client, 12, at=inside)) == [(3, 250)]
+
     def test_nothing_outside_the_district(self, client, segment_schemas):
         """418: no capacity colour outside DC; a tile that misses its box is empty."""
         live, _ = segment_schemas
@@ -235,6 +291,23 @@ class TestCaching:
         tile_cache.evict(stress, also_keep=(mass,))
         assert tile_cache.get(mass, 12, 1, 1) == b"m" and tile_cache.get(stress, 12, 1, 1) == b"s"
         assert tile_cache.get('W/"stress-1-v1"', 12, 1, 1) is None
+
+    def test_a_stress_tile_drawn_on_request_does_not_evict_the_mass_tiles(
+        self, client, segment_schemas, monkeypatch
+    ):
+        """The stress tiles' own cache write, past the pre-draw zooms, evicts stale versions
+        every time (EVICT_EVERY made 1): the Mass Ride tiles' tag is not stale."""
+        live, _ = segment_schemas
+        road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE))
+        oid, optional = stress_tiles.live_table()
+        mass = mass_tiles.etag_for(oid, optional)
+        tile_cache.put(mass, 12, 1, 1, b"m")
+        tile_cache.put('W/"stress-1-v1"', 12, 1, 1, b"old")
+        monkeypatch.setattr(tile_cache, "EVICT_EVERY", 1)
+        z = tile_cache.PREDRAW_MAX_ZOOM + 1
+        assert features(client, z, kind="stress").features
+        assert tile_cache.get('W/"stress-1-v1"', 12, 1, 1) is None, "the eviction ran"
+        assert tile_cache.get(mass, 12, 1, 1) == b"m"
 
     def test_the_predraw_draws_the_districts_tiles_too(self, segment_schemas, monkeypatch):
         live, _ = segment_schemas

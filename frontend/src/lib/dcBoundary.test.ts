@@ -186,3 +186,33 @@ test("a route clearly outside DC still gets the notice: 60 m over the line, and 
   const route = { preset: "mass-ride", geometry: { type: "LineString", coordinates: [WHITE_HOUSE, BETHESDA] } } as unknown as RouteResponse;
   assert.equal(outsideDcNote(route), MASS_OUTSIDE_DC_NOTICE);
 });
+
+test("a stretch between two points inside DC leaves it when its middle is across Virginia (420)", () => {
+  // Georgetown's far side and the District's southern tip: both ends in DC, the straight stretch
+  // between them cutting over the Potomac and Virginia, 2 km from the boundary at its middle.
+  const a: LonLat = [-77.099, 38.911];
+  const b: LonLat = [-77.032, 38.802];
+  assert.equal(nearDc(a) && nearDc(b), true);
+  assert.equal(nearDc([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), false);
+  assert.equal(leavesDc([a, b]), true);
+  assert.equal(outsideDcNote(route("mass-ride", [a, b])), MASS_OUTSIDE_DC_NOTICE);
+});
+
+test("the notice tolerance is 22 m: a point 30 m over the line leaves DC, one 15 m over does not", () => {
+  // Straight out of Western Ave's edge, to the first point the given distance from the boundary.
+  const [lon, lat] = WESTERN_AVE[3];
+  const over = (metres: number): LonLat => {
+    for (let step = 0; step < 2000; step++) {
+      const p: LonLat = [lon - step * 1e-5, lat + step * 1e-5];
+      if (!inDc(p) && metresToDcEdge(p) >= metres) return p;
+    }
+    throw new Error("no point found");
+  };
+  const near = over(15);
+  const far = over(30);
+  assert.ok(metresToDcEdge(near) < DC_EDGE_TOLERANCE_M && metresToDcEdge(far) > DC_EDGE_TOLERANCE_M);
+  assert.ok(metresToDcEdge(far) < 40, String(metresToDcEdge(far)));
+  assert.equal(leavesDc([WESTERN_AVE[3], near]), false);
+  assert.equal(leavesDc([WESTERN_AVE[3], far]), true);
+  assert.equal(outsideDcNote(route("mass-ride", [WHITE_HOUSE, WESTERN_AVE[3], far])), MASS_OUTSIDE_DC_NOTICE);
+});

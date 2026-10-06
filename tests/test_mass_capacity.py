@@ -167,6 +167,22 @@ class TestTheModel:
         beside = massflow.usable_width_m({**base, "parking:both": "lane"})
         assert open_kerb - beside == pytest.approx(massflow.DOOR_ZONE_M, abs=0.001)
 
+    def test_a_painted_lane_beside_parking_on_a_one_way_street_keeps_a_door_zone_out(self) -> None:
+        for base in (
+            {"highway": "secondary", "oneway": "yes", "lanes": "2", "cycleway:right": "lane"},
+            {"highway": "secondary", "oneway": "yes", "width": "40'", "cycleway:right": "lane"},
+        ):
+            open_kerb = massflow.usable_width_m(base)
+            beside = massflow.usable_width_m({**base, "parking:right": "lane"})
+            parked = (
+                0.0
+                if "width" not in base
+                else massflow.parking_width_m({"parking:right": "lane"})["right"]
+            )
+            assert open_kerb - beside == pytest.approx(massflow.DOOR_ZONE_M + parked, abs=0.001), (
+                base
+            )
+
     def test_paths_have_a_width_of_their_own(self) -> None:
         assert massflow.capacity_rpm({"highway": "cycleway"}) == 89
         assert massflow.capacity_rpm({"highway": "footway", "width": "3"}) == 89

@@ -71,6 +71,9 @@ def test_dc_s_own_higher_count_is_kept(overrides) -> None:
         (38.9096, "CONNECTICUT AVE NW"),  # the Dupont underpass (414): not touched
         (R_ST + 0.001, "CONNECTICUT AVE NW"),  # R St to Calvert St
         (38.9212, "CONNECTICUT AVE NW"),  # just south of Calvert St
+        (CALVERT - 0.0001, "CONNECTICUT AVE NW"),  # 11 m south of the cut
+        (CALVERT - 0.001, "CONNECTICUT AVE NW"),  # 110 m south: the cut has not moved south
+        (CALVERT - 0.0019, "CONNECTICUT AVE NW"),  # 210 m south, inside a 0.002 degree slip
         (38.95, "16TH ST NW"),  # another street keeps 405's zero
     ],
 )

@@ -50,3 +50,15 @@ def test_the_fixture_names_the_racks_node():
     spec = zoo.access()["spur"]["racks"]
     assert spec["node"] == 9827008403
     assert "bicycle_parking" in spec["tags"]
+
+
+def test_a_way_is_inside_by_its_midpoint_not_its_first_node():
+    footway = {"highway": "footway", "bicycle": "no"}
+    # Starts and ends outside the outline, and runs through the middle of the Zoo.
+    through = [(INSIDE[0] - 0.006, INSIDE[1]), (INSIDE[0] + 0.006, INSIDE[1])]
+    assert not zoo.contains(through[0])
+    assert zoo.closed_way(1, footway, through)
+    # Starts inside it, and runs a mile and more away: its midpoint is outside.
+    away = [INSIDE, (INSIDE[0] + 0.02, INSIDE[1])]
+    assert zoo.contains(away[0])
+    assert not zoo.closed_way(1, footway, away)

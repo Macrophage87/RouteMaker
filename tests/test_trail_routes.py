@@ -911,6 +911,19 @@ class TestCalmRoads:
         assert got[1] == got[2] == pytest.approx(1000, abs=5)
         assert got[3] == pytest.approx(500, abs=5)
 
+    def test_the_back_bearing_is_on_the_ground_too(self, segment_schemas) -> None:
+        # The same bend, with Ash Street drawn the other way so that its row ENDS at the
+        # junction: the bearing back along it, 40 degrees east of north on the ground (about
+        # 47 in degrees of lon/lat), is the one that decides.
+        _live, staging = segment_schemas
+        road(staging, 1, "Elm Street", (0, 0), (0, 500))
+        road(staging, 2, "Ash Street", (321, 883), (0, 500))
+        road(staging, 3, "Fir Street", (0, 500), (-500, 500))
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1000, abs=5)
+        assert got[3] == pytest.approx(500, abs=5)
+
     def test_an_unnamed_road_has_no_run_and_does_not_join_one(self, segment_schemas) -> None:
         _live, staging = segment_schemas
         road(staging, 1, "Birch Road", (0, 0), (500, 0))
