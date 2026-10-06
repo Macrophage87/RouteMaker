@@ -41,6 +41,7 @@ from routemaker import trailaccess
 JBAB = Path(__file__).parent / "data" / "jbab_military.json"
 THROUGH = Path(__file__).parent / "data" / "military_through.json"
 EDGES = Path(__file__).parent / "data" / "military_edges.json"
+DESIGNATED = Path(__file__).parent / "data" / "military_designated.json"
 REOPENINGS = (
     Path(__file__).parent.parent
     / "fixtures"
@@ -111,6 +112,17 @@ def test_untagged_roads_and_paths_inside_a_base_are_closed_and_perimeter_ways_ar
     "tags, why",
     [
         ({"highway": "cycleway", "bicycle": "designated"}, ra.WHY_SIGNED),
+        # B1: motor_vehicle=no keeps cars off a shared-use path, not bicycles (the Jeff
+        # Todd Way side path, the Fairfax County Parkway Trail at the North Area).
+        (
+            {
+                "highway": "cycleway",
+                "bicycle": "designated",
+                "foot": "designated",
+                "motor_vehicle": "no",
+            },
+            ra.WHY_SIGNED,
+        ),
         ({"highway": "trunk", "ref": "US 1", "name": "Richmond Highway"}, ra.WHY_PUBLIC_ROUTE),
         ({"highway": "primary", "ref": "SR 611;SR 999"}, ra.WHY_PUBLIC_ROUTE),
         ({"highway": "primary", "ref": "MD 198"}, ra.WHY_PUBLIC_ROUTE),
@@ -137,6 +149,8 @@ def test_a_signed_way_or_a_public_route_number_stays_open_and_is_listed(tags, wh
         {"highway": "path", "bicycle": "permissive"},
         # Signed, but an access key keeps everyone out.
         {"highway": "cycleway", "bicycle": "designated", "access": "private"},
+        {"highway": "cycleway", "bicycle": "designated", "vehicle": "no"},
+        {"highway": "cycleway", "bicycle": "designated", "access": "military"},
     ],
 )
 def test_a_ways_own_open_tags_no_longer_open_it_inside_a_base(tags):
@@ -384,10 +398,30 @@ def test_settings_floor_every_large_installation():
 
     floors = real.REBUILD_SENTINEL_MILITARY_MIN_CLOSED
     assert {"Fort Belvoir", "Fort Detrick", "Marine Corps Base Quantico"} <= set(floors)
-    assert {"Joint Base Anacostia Bolling", "Aberdeen Proving Ground", "The Pentagon"} <= set(
-        floors
-    )
-    assert all(floor >= 290 for floor in floors.values())
+    assert {"Aberdeen Proving Ground", "The Pentagon"} <= set(floors)
+    # Bolling's old outline and JBAB overlap: one floor for the two (O1).
+    assert floors[("Bolling Air Force Base", "Joint Base Anacostia Bolling")] >= 800
+    assert "Bolling Air Force Base" not in floors and "Joint Base Anacostia Bolling" not in floors
+    assert all(floor >= 470 for floor in floors.values())
+
+
+def test_overlapping_installations_share_one_floor_whichever_name_wins_the_tie():
+    """O1: the old Bolling outline lies inside JBAB, so a way's name is a tie-break
+    an OSM edit can move. The combined floor holds either way the ways fall."""
+    pair = ("Bolling Air Force Base", "Joint Base Anacostia Bolling")
+
+    def ctx(bolling, jbab):
+        names = ["Bolling Air Force Base"] * bolling + ["Joint Base Anacostia Bolling"] * jbab
+        found = [
+            ra.MilitaryWay(i, name, "service", "", 10.0, ra.CLOSED, ra.WHY_CLOSED)
+            for i, name in enumerate(names)
+        ]
+        return SimpleNamespace(military_ways=found, military_through=[], ways=[], no_bicycle={})
+
+    for split in ((8, 2), (1, 9), (0, 10), (10, 0)):
+        assert run.assert_military_closures(ctx(*split), (), {pair: 10}) == 10
+    with pytest.raises(run.ValidationFailed, match="Bolling"):
+        run.assert_military_closures(ctx(5, 4), (), {pair: 10})
 
 
 # --- Inside by length (437; S2) ---------------------------------------------------
@@ -631,3 +665,66 @@ def test_the_rebuild_finds_a_through_network_from_its_own_ways():
     assert run.military_through_networks(context) == [([1], [10, 12])]
     context.ways = [ways[0], ways[1], ways[3]]
     assert run.military_through_networks(context) == []
+
+
+# --- Ways signed for bicycles (B1, 438.1) -------------------------------------------
+
+JEFF_TODD_SIDE_PATH = (
+    1147219723, 299021475, 232393905, 299021476, 232393906, 679383213,
+    679385745, 679385747, 679385748,
+)  # fmt: skip
+NORTH_AREA_TRAIL = (
+    158976668, 158976667, 600029658, 1452551410, 1452551411, 1452551424, 1452551425,
+    1452551426, 1452551429, 1452551430, 1452551431, 1452551432, 1452551434, 1452551435,
+)  # fmt: skip
+RIVERWALK = (148773141, 148773142, 546106273)
+
+
+def designated_found():
+    data = json.loads(DESIGNATED.read_text())
+    ways = [(w["id"], w["tags"], [tuple(p) for p in w["coords"]]) for w in data["ways"]]
+    return {m.way_id: m for m in ra.military_closures(ways, _areas(data["areas"]))}
+
+
+def test_motor_vehicle_no_does_not_close_a_signed_path():
+    tags = {"highway": "cycleway", "bicycle": "designated", "motor_vehicle": "no"}
+    assert ra.signed_for_bicycles(tags)
+    assert not ra.signed_for_bicycles({**tags, "access": "no"})
+    assert not ra.signed_for_bicycles({**tags, "vehicle": "private"})
+    # A numbered road still closes on motor_vehicle (unchanged).
+    assert not ra.public_route({"highway": "primary", "ref": "SR 610", "motor_vehicle": "no"})
+
+
+def test_the_jeff_todd_way_side_path_and_the_parkway_trail_stay_open_on_real_data():
+    """B1, on the 2026-10-03 ways: the mapped Jeff Todd Way side path (437.6) and the
+    Fairfax County Parkway Trail through Fort Belvoir North Area are all
+    `bicycle=designated motor_vehicle=no`, and stay open; so does the Riverwalk."""
+    found = designated_found()
+    for way_id in (*JEFF_TODD_SIDE_PATH, *NORTH_AREA_TRAIL, *RIVERWALK):
+        assert found[way_id].why == ra.WHY_SIGNED, way_id
+    assert found[299021476].installation == "Fort Belvoir"
+    assert found[158976668].installation == "Fort Belvoir North Area"
+    assert "motor_vehicle=no" in found[299021476].tags
+    assert "motor_vehicle=no" in found[158976668].tags
+
+
+def test_a_designated_way_only_the_base_reaches_is_closed_with_its_own_reason():
+    """438.1: the Belvoir Rd crossing on the main post (1322746319) is closed, the
+    rest stay open; the listed id closes even with no other tag against it."""
+    assert set(ra.DESIGNATED_BASE_ONLY) == {1322746319}
+    found = designated_found()
+    m = found[1322746319]
+    assert m.closed and m.why == ra.WHY_BASE_ONLY
+    assert m.installation == "Fort Belvoir"
+    assert ra.signed_for_bicycles({"bicycle": "designated", "foot": "designated"})
+    # By id only: the same tags on another way stay open.
+    tags = {"highway": "cycleway", "bicycle": "designated"}
+    (other,) = ra.military_closures([(9, tags, line(-77.018, 38.845))], [BASE])
+    assert not other.closed
+    # An approved override row still reopens a listed way (the owner's evidence).
+    (reopened,) = ra.military_closures(
+        [(1322746319, {**tags, "bicycle": "yes"}, line(-77.018, 38.845))],
+        [BASE],
+        reopened={1322746319},
+    )
+    assert reopened.why == ra.WHY_OVERRIDE

@@ -414,7 +414,10 @@ REBUILD_SENTINEL_STRETCHES = (
 REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = (193043941, 97677540, 99419868)
 # The fewest ways VALIDATE accepts closed in each large installation (by its OSM name),
 # about three quarters of the 2026-10-03 extract's count under OWNER-DECISIONS 437: an
-# outline lost or renamed upstream would otherwise reopen a whole base silently.
+# outline lost or renamed upstream would otherwise reopen a whole base silently. A
+# tuple of names is one floor for their sum: nearly every way of the old Bolling Air
+# Force Base outline lies equally inside JBAB, so which name it gets is a tie-break an
+# OSM edit (or deleting the old outline) can move; only the two together are held.
 REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
     "Marine Corps Base Quantico": 1600,  # 2,175 closed
     "Aberdeen Proving Ground": 1550,  # 2,082
@@ -422,8 +425,7 @@ REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
     "Fort George G Meade": 1500,  # 2,053
     "Joint Base Andrews": 2200,  # 2,951
     "Fort Detrick": 470,  # 625
-    "Bolling Air Force Base": 500,  # 674
-    "Joint Base Anacostia Bolling": 290,  # 397
+    ("Bolling Air Force Base", "Joint Base Anacostia Bolling"): 800,  # 674 + 397 = 1,071
     "The Pentagon": 500,  # 675
 }
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0

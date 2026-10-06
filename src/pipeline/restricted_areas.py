@@ -355,6 +355,20 @@ SIGNED_FOR_BICYCLES = frozenset({"designated"})
 PUBLIC_REF = re.compile(r"^(I|US|MD|VA|SR|CR|DC)[ -]?\d", re.IGNORECASE)
 # Access keys any of which, at a closing value, keeps a numbered road closed.
 ACCESS_KEYS = ("access", "vehicle", "bicycle", "motor_vehicle")
+# The keys that can keep a *bicycle* off a way signed for bicycles. Not
+# `motor_vehicle`: `bicycle=designated motor_vehicle=no` is an ordinary shared-use
+# path (the Jeff Todd Way side path and the Fairfax County Parkway Trail at Fort
+# Belvoir), the same keys `open_to_bicycles` reads outside a base.
+BICYCLE_ACCESS_KEYS = ("access", "vehicle", "bicycle")
+# OWNER-DECISIONS 438.1: "The bike paths that would only be open to those authorized
+# on base are the ones I want to leave out." Ways signed for bicycles that only base
+# ways reach, by OSM way id (2026-10-03 extract; REBUILD-BUNDLE-fix3-recheck). Closed
+# with their own reason, ahead of `signed_for_bicycles`.
+DESIGNATED_BASE_ONLY = {
+    # A 21 m marked crossing 547 m inside the main post that joins only Belvoir Rd
+    # (access=permissive, closed by 437.1) and two footways.
+    1322746319: "Belvoir Rd crossing, Fort Belvoir main post (438.1)",
+}
 # Installations OSM shows public ways in (the area's OSM id, `w` way or `r`
 # relation). The owner, 2026-10-05: "There are parts of the pentagon reservation you
 # can bike to"; OWNER-DECISIONS 437.5 ("Agree"): open South Fern St and S Eads St,
@@ -413,6 +427,7 @@ WHY_SIGNED = "open: signed for bicycles (bicycle=designated)"
 WHY_PUBLIC_ROUTE = "open: a numbered public road; owner to confirm"
 WHY_EDGE_PATH = "open: the Pentagon's public streets and walkways (OWNER-DECISIONS 437.5)"
 WHY_CLOSED = "closed: inside a military area"
+WHY_BASE_ONLY = "closed: signed for bicycles but inside the secured post (OWNER-DECISIONS 438.1)"
 WHY_TAGGED_OPEN = (
     "closed: inside a military area; its own access/bicycle tag no longer opens it "
     "(OWNER-DECISIONS 437)"
@@ -440,8 +455,8 @@ class MilitaryWay:
         return self.status == CLOSED
 
 
-def _closing_access(tags) -> bool:
-    return any(tags.get(key) in NO_PUBLIC_ACCESS for key in ACCESS_KEYS)
+def _closing_access(tags, keys: Sequence[str] = ACCESS_KEYS) -> bool:
+    return any(tags.get(key) in NO_PUBLIC_ACCESS for key in keys)
 
 
 def public_permission(tags) -> bool:
@@ -453,9 +468,12 @@ def public_permission(tags) -> bool:
 
 
 def signed_for_bicycles(tags) -> bool:
-    """`bicycle=designated`, with no access key against it: the one permission a
-    way's own tags still carry inside a military area (OWNER-DECISIONS 437.1)."""
-    return tags.get("bicycle") in SIGNED_FOR_BICYCLES and not _closing_access(tags)
+    """`bicycle=designated`, with no `access`, `vehicle` or `bicycle` key against
+    it: the one permission a way's own tags still carry inside a military area
+    (OWNER-DECISIONS 437.1). `motor_vehicle=no` keeps cars off, not bicycles."""
+    return tags.get("bicycle") in SIGNED_FOR_BICYCLES and not _closing_access(
+        tags, BICYCLE_ACCESS_KEYS
+    )
 
 
 def public_route(tags) -> bool:
@@ -496,7 +514,8 @@ def military_closures(
     A way is inside when at least INSIDE_FRACTION of its *length* is
     (OWNER-DECISIONS 437; `_Shapes`). Inside, only these stay open: an override's
     bicycle permission, a numbered public road, the Pentagon's listed streets and
-    walkways (437.5), and a way signed for bicycles (`bicycle=designated`). A way
+    walkways (437.5), and a way signed for bicycles (`bicycle=designated`) unless
+    `DESIGNATED_BASE_ONLY` lists it (438.1). A way
     inside an ordinary area and the Pentagon reservation (the building) is judged
     by the ordinary rule."""
     if not areas:
@@ -523,6 +542,8 @@ def military_closures(
             status, why = OPEN, WHY_PUBLIC_ROUTE
         elif at_edge and osm_id in PENTAGON_OPEN_WAYS:
             status, why = OPEN, WHY_EDGE_PATH
+        elif osm_id in DESIGNATED_BASE_ONLY:
+            status, why = CLOSED, WHY_BASE_ONLY
         elif signed_for_bicycles(tags):
             status, why = OPEN, WHY_SIGNED
         else:

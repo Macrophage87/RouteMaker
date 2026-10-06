@@ -1179,11 +1179,16 @@ def assert_military_closures(
     from every graph. Returns the number of ways closed."""
     closed = sum(1 for m in context.military_ways if m.closed)
     by_site = Counter(m.installation for m in context.military_ways if m.closed)
-    short = {
-        site: (by_site.get(site, 0), floor)
-        for site, floor in (min_closed or {}).items()
-        if by_site.get(site, 0) < floor
-    }
+    # A floor's key is one installation's OSM name, or a tuple of names counted
+    # together: overlapping outlines (Bolling's old outline inside JBAB) split their
+    # ways by which area holds most of each, and that tie-break can move with any
+    # OSM edit, so only their sum is held.
+    short = {}
+    for site, floor in (min_closed or {}).items():
+        names = (site,) if isinstance(site, str) else tuple(site)
+        count = sum(by_site.get(name, 0) for name in names)
+        if count < floor:
+            short[site] = (count, floor)
     if short:
         raise ValidationFailed(
             "military areas closed fewer ways than their floor (closed, floor): "
