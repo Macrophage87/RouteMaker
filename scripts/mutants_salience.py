@@ -5,7 +5,7 @@ FOLLOWUP-STRESS-SALIENCE (owner items 274-293), the unpaved brown ramp (302) and
 the credits (301), with the release review's seam mutants: the high-stress lane
 switch on the map (F01-F06), and the description's lanes-hidden and unpaved
 surface seams in the API (X19-X31). The salience developer's 46 ad hoc mutants
-(r0's 11 and r1's, under /home/steph/rmdata/tmp) are committed here so the next
+(r0's 11 and r1's, under ~/rmdata/tmp) are committed here so the next
 merge is checked. A mutation pass run against WHOLE test files, as
 `scripts/mutants_federal.py` does: a mutant is killed when the tests named for it
 fail. It works on a copy of the repository under $TMPDIR and removes it at the end:

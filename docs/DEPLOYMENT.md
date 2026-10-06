@@ -875,32 +875,33 @@ docker compose up -d photon
 
 An index built elsewhere on the same host is moved into place with no download
 and no import. On the local host the index built on 2026-09-27 is at
-`/home/steph/rmdata/search/photon-index` (742 MB, `photon_data/node_1`
-inside), and it is owned by the image's photon user (uid 9011, mode 755), so
-the move is a root step for the owner:
+`~/rmdata/search/photon-index` (742 MB, `photon_data/node_1` inside;
+`~/rmdata` is the operator's scratch directory, outside the checkout), and it
+is owned by the image's photon user (uid 9011, mode 755), so the move is a root
+step for the owner:
 
 ```sh
-export DATA_ROOT=/home/steph/routemaker-data   # this host's
+export DATA_ROOT=/srv/routemaker/data      # the same value as DATA_ROOT in .env
 docker compose stop photon
-rmdir "$DATA_ROOT/photon"                      # the empty one; steph owns $DATA_ROOT
-sudo mv /home/steph/rmdata/search/photon-index "$DATA_ROOT/photon"
+rmdir "$DATA_ROOT/photon"                      # the empty one; the deploy user owns it
+sudo mv ~/rmdata/search/photon-index "$DATA_ROOT/photon"
 docker compose up -d photon
 ```
 
 Why `sudo`: moving a directory to a different parent rewrites its `..` entry,
 which needs write permission on the directory itself (rename(2) gives EACCES
-otherwise), and steph cannot write to a 9011-owned directory; `mv` then fails
-with "Permission denied" rather than copying. As root it is a plain rename:
-`/home/steph/rmdata` and `$DATA_ROOT` are on the same filesystem, so nothing is
+otherwise), and the deploy user cannot write to a 9011-owned directory; `mv`
+then fails with "Permission denied" rather than copying. As root it is a plain
+rename: `~/rmdata` and `$DATA_ROOT` are on the same filesystem, so nothing is
 copied, the inode and the 9011 ownership stay as they are, and it is instant.
 Checked on 2026-09-28 on a 9011-owned scratch copy on that filesystem: `rmdir`
-as steph succeeded, `mv` as steph failed with "Permission denied", `mv` as root
-succeeded with the same inode and owner. `cp -a` and removing the source is no
-way round it: steph cannot remove the 9011-owned source either. Ownership
-needs nothing afterwards: the image's entrypoint re-owns `/photon/data` to its
-photon user on every start. Check it with step 4 above.
-`scripts/check_compose_limits.py` counts photon's 3 GB as resident, which it
-now is.
+as the deploy user succeeded, `mv` as that user failed with "Permission
+denied", `mv` as root succeeded with the same inode and owner. `cp -a` and
+removing the source is no way round it: the deploy user cannot remove the
+9011-owned source either. Ownership needs nothing afterwards: the image's
+entrypoint re-owns `/photon/data` to its photon user on every start. Check it
+with step 4 above. `scripts/check_compose_limits.py` counts photon's 3 GB as
+resident, which it now is.
 
 ## What the deployment serves
 
@@ -1473,10 +1474,10 @@ empty cluster looks healthy.
    6. Route, geocode and the stress tile must return 200, and the tile must not
       be empty.
 
-   Logs: `/home/steph/rmdata/boot/` (`latest.log`, `last-status`, which reads
-   `RUNNING` while a run is in progress and `OK` or `FAILED` after it). It never
-   runs a plain `docker compose up`, never touches Docker Desktop or WSL, and
-   never uses sudo. It reads `COMPOSE_PROJECT_NAME` from `.env` and refuses to
+   Logs: `~/rmdata/boot/`, or `$BOOT_LOG_DIR` if set (`latest.log`,
+   `last-status`, which reads `RUNNING` while a run is in progress and `OK` or
+   `FAILED` after it). It never runs a plain `docker compose up`, never
+   touches Docker Desktop or WSL, and never uses sudo. It reads `COMPOSE_PROJECT_NAME` from `.env` and refuses to
    run if that is missing or disagrees with `COMPOSE_PROJECT` in the
    environment, so it cannot start a second stack on the same `DATA_ROOT`.
 
@@ -1549,7 +1550,7 @@ scripts/boot/start-stack.sh --dry-run            # read-only: should say mode: W
 scripts/boot/install-boot-unit.sh policy no      # in place, no restart: stops the NEXT boot racing
 grep -q '^RESTART_POLICY=' .env || printf 'RESTART_POLICY=no\n' >> .env   # so later recreates keep it
 scripts/boot/install-boot-unit.sh install        # renders, verifies, enables; does not start
-sudo loginctl enable-linger steph                # the one sudo step: run the unit with no login
+sudo loginctl enable-linger "$USER"              # the one sudo step: run the unit with no login
 scripts/boot/install-boot-unit.sh status         # unit, linger, last result, log tail
 ```
 
@@ -1560,7 +1561,7 @@ one-shot `migrate` container at `no`.
 
 ```sh
 uptime -s                                        # when the distro booted
-cat /home/steph/rmdata/boot/last-status          # OK or FAILED, with a time after the boot
+cat ~/rmdata/boot/last-status                    # OK or FAILED, with a time after the boot
 journalctl --user -u routemaker-boot.service -b --no-pager | tail -n 20
 ```
 
@@ -1579,7 +1580,7 @@ distro already.
 scripts/boot/install-boot-unit.sh uninstall
 sed -i '/^RESTART_POLICY=no$/d' .env
 scripts/boot/install-boot-unit.sh policy unless-stopped   # migrate stays no
-sudo loginctl disable-linger steph   # optional, sudo; only if nothing else needs linger
+sudo loginctl disable-linger "$USER" # optional, sudo; only if nothing else needs linger
 ```
 
 To take the code out as well, land a revert the same way: rebase the revert
@@ -1588,7 +1589,7 @@ on the PR head, and have the owner fast-forward `main` to that exact sha with
 `git push origin <sha>:refs/heads/main` from WSL; then
 `git fetch origin && git merge --ff-only origin/main` in the serving checkout.
 Leftovers, safe to delete: `${DATA_ROOT}/.boot-token` and
-`/home/steph/rmdata/boot/`.
+`~/rmdata/boot/`.
 
 Tests: `python3 -m unittest tests.test_boot_scripts` (fake `docker` and `curl`,
 a temporary DATA_ROOT; nothing live is touched).

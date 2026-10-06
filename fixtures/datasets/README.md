@@ -9,7 +9,8 @@ pattern of `fixtures/cbd/README.md`.
 derivative the rebuild reads is `<DATA_ROOT>/reference/roadway.json`, installed
 by `scripts/install_reference_data.py --roadway-block ... --baltimore-centerline
 ...` (docs/DEVELOPMENT.md, "Agency street layers"). The raw layers were stored
-on the development host under `/home/steph/rmdata/datasets/<slug>/`, each beside
+on the development host under `~/rmdata/datasets/<slug>/` (the operator's
+scratch directory, outside the checkout), each beside
 a `README.md` the downloader wrote with the same record as the tables below.
 Each was downloaded once, by `scripts/fetch_agency_layer.py`, paged at the
 service's `maxRecordCount` and written unedited (GeoJSON, WGS 84,
@@ -191,7 +192,7 @@ The Mass Ride map's federal-land shading (PLAN.md FOLLOWUP-FEDERAL-LAYER, owner
 items 236-239; docs/DEVELOPMENT.md, "The federal-land overlay"). The owner
 approved the downloads for this item. Each layer was fetched once by
 `scripts/fetch_agency_layer.py` into
-`/home/steph/rmdata/datasets/federal/<slug>/`, unedited (GeoJSON, WGS 84,
+`~/rmdata/datasets/federal/<slug>/`, unedited (GeoJSON, WGS 84,
 `where=1=1`, `outFields=*`), each beside the `README.md` the downloader wrote.
 The raw files are not in this repository; the derivative the front end loads,
 `frontend/src/federal-data/federal-land.json`, is.

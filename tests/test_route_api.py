@@ -1829,7 +1829,7 @@ class TestUnexpectedErrors:
         The traceback goes to the log instead, where the operator reads it."""
 
         def breaks(url, payload, timeout):
-            raise RuntimeError("SELECT secret FROM somewhere /home/steph")
+            raise RuntimeError("SELECT secret FROM somewhere /home/operator")
 
         router(breaks)
         with override_settings(DEBUG=debug):
