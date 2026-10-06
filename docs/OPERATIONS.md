@@ -3277,8 +3277,7 @@ the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-
 index backup may be two releases back. `L` is the short commit t9 is on:
 
 ```sh
-export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
-cd "$REPO"; D=$DATA_ROOT; L=$(git rev-parse --short HEAD)
+cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(git rev-parse --short HEAD)   # D: never exported
 docker tag ghcr.io/macrophage87/routemaker-api:dev ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null
 docker image inspect --format '{{.Id}}' ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null   # the live image's id
 cp $D/frontend/index.html ~/rmdata/frontend-index-$L.html
@@ -3356,8 +3355,7 @@ changes (302), and `calm_search` carries `no_fit` and the `limited` code `"ceili
 ("Long calm plans ..., Rollback", above); the old front end works against the new API.
 
 ```sh
-export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
-cd "$REPO"; D=$DATA_ROOT; L=<the short commit saved in step 0.1>
+cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=<the short commit saved in step 0.1>
 docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
   sh -c "cp /bk/frontend-index-$L.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
@@ -3469,18 +3467,25 @@ the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECIS
 394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
 reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
 the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
-Mill Rd (433).
+Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md), the narrower military
+rule and the owner's reopenings (437, 437a-c).
 Nothing in it is live until the rebuild promotes the new table.
 
 Read the post-rebuild before/after with three changes in mind. 425 counts a block's
 reversible lanes in each direction, so it can raise the tiers on 16th St NW, Canal Rd NW,
 Clara Barton Pkwy, Chain Bridge Rd and Independence Ave SE/SW (no measurement of it is
 recorded but Connecticut's, in docs/DEVELOPMENT.md). The military-area rule closes about
-2,070 mi (3,330 km) of roads and paths inside bases region-wide (Quantico, Aberdeen, Fort
-Meade, Andrews, Fort Belvoir and Patuxent River the most; Joint Base Anacostia-Bolling
-about 63 mi (101 km) with the older Bolling outline it overlaps), so routes that used to cut through one go round
-it; `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
-open. And Veirs Mill Rd's former Avoid stretch comes out LTS 3 (433).
+2,170 mi (3,490 km) of roads and paths inside bases region-wide (Quantico, Aberdeen, Fort
+Meade, Fort Belvoir, Andrews and Patuxent River the most; Joint Base Anacostia-Bolling
+about 68 mi (109 km) with the older Bolling outline it overlaps), so routes that used to cut
+through one go round it. Inside a base only a numbered public road, a way signed for
+bicycles (`bicycle=designated`), the Pentagon's listed streets and walkways (437.5) and the
+owner's reopened ways (437.6, 437a-c: Jeff Todd Way, Russell Rd, Saint Elizabeths Rd SE and
+its side path) stay open, about 38 mi (62 km) in all; "inside" is the share of a way's
+length. `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
+open. Veirs Mill Rd's former Avoid stretch comes out LTS 3 on its two-lane carriageways and
+LTS 4 on the seven with three or four lanes (433, 437.4), and Saint Elizabeths Rd SE LTS 4
+(437c).
 
 The remap also takes `mtb:scale` and `mtb:scale:imba` off every paved way
 (`strip_paved_ratings` in lua/routemaker_remap.lua): Valhalla's parser read the rating as
@@ -3488,7 +3493,7 @@ the surface, so the paved Rock Creek Trail in Montgomery County (`mtb:scale=0`),
 Trail and Northwest Branch were priced as dirt and routes avoided them. 172 paved ways
 carry a rating in the 2026-10-03 extract; the rebuild logs the count (`paved ways with an
 mtb rating`). Access does not change. Being a lua change, it needs
-`scripts/check_tile_build_access.sh` (45 cases, 0 failures on the bundle) and the full
+`scripts/check_tile_build_access.sh` (48 cases, 0 failures on the bundle) and the full
 graph rebuild, which step I is.
 
 **Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
@@ -3515,8 +3520,9 @@ Q() { docker compose exec -T postgis psql -U routemaker -d routemaker -AtX -c "$
 ```
 
 Never `export DATA_ROOT`: compose takes the shell's value over `.env`, so a wrong one
-recreates the services on an empty tree. `D` is a plain shell variable; set it again in
-each new shell.
+recreates the services on an empty tree. `D` is a plain shell variable, and `Q` a shell
+function: define both again in each new shell, and `ACTOR` (step H) too; an empty `$ACTOR`
+fails `--actor` safely, but it stops the step.
 
 **A. Before the day.** The commit deployed is the reviewed bundle SHA with main as an
 ancestor (the main ruleset fast-forwards only), with the front-end tests and CI green on
@@ -3581,7 +3587,8 @@ docker compose build api rebuild </dev/null 2>&1 | tee ~/bundle-build.log
 The api build may contact Docker Hub for its base image **(owner OK)**. `lua/` is bound
 live into `rebuild`, but `rebuild` is stopped and paused, so nothing builds early.
 
-**F. The tile-build check** (about 2 s; `lua/graph.lua` changed, "Firing a rebuild by hand"):
+**F. The tile-build check** (about 2 s; `lua/graph.lua` and `lua/routemaker_remap.lua`
+changed, "Firing a rebuild by hand"):
 
 ```sh
 scripts/check_tile_build_access.sh                               # exit 0 required; the new pipeline image, --network none
@@ -3603,7 +3610,7 @@ Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and
 Never a plain `up -d`, and never name `valhalla-offroad` in an `up` on this host ("After a
 host restart", above). Rollback point: the images tagged in C.
 
-**H. Reference data and overrides.** Four files, database rows that take effect only
+**H. Reference data and overrides.** Five files, database rows that take effect only
 once loaded, all **(owner OK: a live DB write)**, each a dry run first and then `--confirm`,
 before the rebuild:
 
@@ -3616,7 +3623,10 @@ before the rebuild:
 - the Veirs Mill sidepath (433): retires the two `bicycle=designated` rows on the
   north-side sidewalks and closes them (`bicycle=no`);
 - the Montgomery Planning LTS 5 file (433): retires the 23 Veirs Mill Rd Avoid rows and
-  keeps the other 386.
+  keeps the other 386;
+- the military reopenings (437.6, 437a-c): `bicycle=yes` on Jeff Todd Way (10 ways), Russell
+  Rd (32) and Saint Elizabeths Rd SE (2) and its side path (11), and LTS 4 on that road,
+  retiring its two east-of-the-Anacostia Avoid rows; after the east-of-the-Anacostia file.
 
 ```sh
 ACTOR=$(Q "select discord_user_id from app_user where is_instance_admin")   # one row
@@ -3633,9 +3643,12 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | grep -v '^present:'
 #   dry: 23 retire (moco-lts5-veirs-mill-road); the other 386 present
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-06-owner-military-reopenings.json | grep -v '^present:'
+#   dry: 2 retire (Saint Elizabeths Rd SE 316866053, 1181165198, tier 5), 57 create (55 access, 2 stress)
 ```
 
-Any "disagrees" refusal: stop and report. Then the same four with `--confirm`, in the same
+Any "disagrees" refusal: stop and report. Then the same five with `--confirm`, in the same
 order:
 
 ```sh
@@ -3647,7 +3660,24 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
     < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | tail -2
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
     < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-06-owner-military-reopenings.json | tail -2
 ```
+
+Each ends `wrote N of M rows; the rest were already approved`, and each retiring file's
+line before it is its `retired` count. In order: Dupont `wrote 20 of 20`; east of the
+Anacostia `retired 5 rows`; Veirs sidepath `retired 2 rows`, `wrote 2 of 2`; Montgomery
+`retired 23 rows`; military `retired 2 rows`, `wrote 57 of 57`. **Then check H before
+firing I**; a skipped
+or failed load is otherwise found only about 3 h into the rebuild (VALIDATE runs after the
+tile build), or, for the Veirs Mill and military files, never before the swap:
+
+```sh
+Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
+Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053)))"   # 9: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path row, the two Veirs closures, two tier-4 rows
+```
+
+Anything else: stop, load the missing file again (dry run, then `--confirm`), and check again.
 
 The api image must be the bundle's (step G): the old loader does not know `retire` and
 would refuse the Veirs Mill file as a conflict.
@@ -3665,8 +3695,11 @@ docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
 docker compose logs -f rebuild </dev/null
 ```
 
-Watch for `military areas:` (about 20,950 ways closed, 2,070 mi, and about 1,100 left open
-at 2026-10-03's extract; VALIDATE's `military areas:` line repeats the count),
+Watch for `military areas:` (about 21,730 ways closed, 2,170 mi, and about 250 left open,
+38 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
+areas:` line repeats the count, and refuses an installation below its floor
+(`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base), no warning
+`Pentagon ways listed open ... not found`,
 `curated bike lanes (fixtures/bike_lanes): 23 ways`, `SOUTH CAPITOL ST BN 38.8309-38.8357 N:
 100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
 `override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
@@ -3687,7 +3720,9 @@ Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1" 
 Q "select left(version,8),count(*) from stress_tile_cache group by 1"            # W/"stres and W/"mass- rows
 Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236" # the Dupont underpass: road, 4
 Q "select stress_tier, count(*) from live.segment where osm_way_id in (468820704,590525532,455234174,468820714,1528642818) group by 1"  # South Capitol (432): 4 only
-Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,697039269,724229765,968550957) group by 1,2"  # Veirs Mill (433): 3, lane
+Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,968550957) group by 1,2"  # Veirs Mill two-lane (433): 3, lane
+Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (724229765,724229775,1055964463,1055974099,1059851647,697039269,724229779) group by 1,2"  # three and four lanes (437.4): 4, lane
+Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,267730806,316866053,1001796647,346101190,345398786) order by 1"   # Jeff Todd, Russell, Saint Elizabeths (4), its path, South Fern: drawn; North Rotary Rd 345398786: hidden
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
 curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
@@ -3751,8 +3786,12 @@ route chart width estimate).
   then the images (the `pre-bundle-$L` tags from C, then `up -d --no-deps --no-build
   --force-recreate api worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the
   same for `rebuild`). Roll the data back first if it is also going back. The old images have the
-  pause (355 is on main). Migration 0010 stays applied, which is harmless. The Dupont rows
-  and 433's two `bicycle=no` rows (ids above the saved max id) stay until the owner
-  deletes them in the admin; the rows H retired are gone, and come back by loading the
-  files as they were at `pre-bundle-$L` (`git show $L:fixtures/overrides/<file>.json`). The old api
-  ignores an `offroad` row in `valhalla_upstream`.
+  pause (355 is on main). Migration 0010 stays applied, which is harmless. The rows H
+  wrote (ids above the saved max id in `~/override-maxid-pre-bundle.txt`: the Dupont rows,
+  433's two `bicycle=no` rows and the 57 rows of the military file) stay until the owner
+  deletes them in the admin. The rows H retired are gone; to bring them back, **first**
+  delete those rows (433's `bicycle=no` rows on 468762518 and 791422825, and the military
+  file's tier-4 rows on 316866053 and 1181165198, or the old files are refused as a
+  conflict), then load the files as they were at `pre-bundle-$L` (`git show
+  $L:fixtures/overrides/<file>.json`): the east-of-the-Anacostia, Veirs Mill sidepath and
+  Montgomery Planning files. The old api ignores an `offroad` row in `valhalla_upstream`.
