@@ -3480,12 +3480,15 @@ Meade, Fort Belvoir, Andrews and Patuxent River the most; Joint Base Anacostia-B
 about 68 mi (109 km) with the older Bolling outline it overlaps), so routes that used to cut
 through one go round it. Inside a base only a numbered public road, a way signed for
 bicycles (`bicycle=designated`), the Pentagon's listed streets and walkways (437.5) and the
-owner's reopened ways (437.6, 437a-c: Jeff Todd Way, Russell Rd, Saint Elizabeths Rd SE and
-its side path) stay open, about 38 mi (62 km) in all; "inside" is the share of a way's
+owner's reopened ways (437.6, 437a-c, 438.2: Jeff Todd Way, Russell Rd, Saint Elizabeths Rd
+SE and its side path, Pentagon Connector Road) stay open, about 41 mi (66 km) in all; a few
+signed paths only the base reaches stay closed (438.1, 439: until the community confirms
+them); "inside" is the share of a way's
 length. `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
 open. Veirs Mill Rd's former Avoid stretch comes out LTS 3 on its two-lane carriageways and
 LTS 4 on the seven with three or four lanes (433, 437.4), and Saint Elizabeths Rd SE LTS 4
-(437c).
+(437c), as is Jeff Todd Way's roadway at Fort Belvoir (439b; its side path keeps its
+own rating).
 
 The remap also takes `mtb:scale` and `mtb:scale:imba` off every paved way
 (`strip_paved_ratings` in lua/routemaker_remap.lua): Valhalla's parser read the rating as
@@ -3624,9 +3627,11 @@ before the rebuild:
   north-side sidewalks and closes them (`bicycle=no`);
 - the Montgomery Planning LTS 5 file (433): retires the 23 Veirs Mill Rd Avoid rows and
   keeps the other 386;
-- the military reopenings (437.6, 437a-c): `bicycle=yes` on Jeff Todd Way (10 ways), Russell
-  Rd (32) and Saint Elizabeths Rd SE (2) and its side path (11), and LTS 4 on that road,
-  retiring its two east-of-the-Anacostia Avoid rows; after the east-of-the-Anacostia file.
+- the military reopenings (437.6, 437a-c, 438.2, 439b): `bicycle=yes` on Jeff Todd Way (10
+  ways), Russell Rd (32), Saint Elizabeths Rd SE (2) and its side path (11) and Pentagon
+  Connector Road (25), LTS 4 on Saint Elizabeths Rd SE (retiring its two
+  east-of-the-Anacostia Avoid rows) and on Jeff Todd Way's 15 carriageway ways; after the
+  east-of-the-Anacostia file.
 
 ```sh
 ACTOR=$(Q "select discord_user_id from app_user where is_instance_admin")   # one row
@@ -3645,7 +3650,7 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 #   dry: 23 retire (moco-lts5-veirs-mill-road); the other 386 present
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-10-06-owner-military-reopenings.json | grep -v '^present:'
-#   dry: 2 retire (Saint Elizabeths Rd SE 316866053, 1181165198, tier 5), 57 create (55 access, 2 stress)
+#   dry: 2 retire (Saint Elizabeths Rd SE 316866053, 1181165198, tier 5), 97 create (80 access, 17 stress)
 ```
 
 Any "disagrees" refusal: stop and report. Then the same five with `--confirm`, in the same
@@ -3667,14 +3672,14 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 Each ends `wrote N of M rows; the rest were already approved`, and each retiring file's
 line before it is its `retired` count. In order: Dupont `wrote 20 of 20`; east of the
 Anacostia `retired 5 rows`; Veirs sidepath `retired 2 rows`, `wrote 2 of 2`; Montgomery
-`retired 23 rows`; military `retired 2 rows`, `wrote 57 of 57`. **Then check H before
+`retired 23 rows`; military `retired 2 rows`, `wrote 97 of 97`. **Then check H before
 firing I**; a skipped
 or failed load is otherwise found only about 3 h into the rebuild (VALIDATE runs after the
 tile build), or, for the Veirs Mill and military files, never before the swap:
 
 ```sh
 Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
-Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053)))"   # 9: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path row, the two Veirs closures, two tier-4 rows
+Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339,1311964678)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053,232308625)))"   # 11: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path, Connector Road row, the two Veirs closures, three tier-4 rows (Dupont, Saint Elizabeths, Jeff Todd)
 ```
 
 Anything else: stop, load the missing file again (dry run, then `--confirm`), and check again.
@@ -3695,8 +3700,8 @@ docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
 docker compose logs -f rebuild </dev/null
 ```
 
-Watch for `military areas:` (about 21,730 ways closed, 2,170 mi, and about 250 left open,
-38 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
+Watch for `military areas:` (about 21,690 ways closed, 2,168 mi, and about 290 left open,
+41 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
 areas:` line repeats the count, and refuses an installation below its floor
 (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base), no warning
 `Pentagon ways listed open ... not found`,
@@ -3722,7 +3727,7 @@ Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236"
 Q "select stress_tier, count(*) from live.segment where osm_way_id in (468820704,590525532,455234174,468820714,1528642818) group by 1"  # South Capitol (432): 4 only
 Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,968550957) group by 1,2"  # Veirs Mill two-lane (433): 3, lane
 Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (724229765,724229775,1055964463,1055974099,1059851647,697039269,724229779) group by 1,2"  # three and four lanes (437.4): 4, lane
-Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,267730806,316866053,1001796647,346101190,345398786) order by 1"   # Jeff Todd, Russell, Saint Elizabeths (4), its path, South Fern: drawn; North Rotary Rd 345398786: hidden
+Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,299021476,267730806,316866053,1001796647,346101190,32866298,345398786) order by 1"   # Jeff Todd (4), its side path (1), Russell, Saint Elizabeths (4), its path, South Fern, Connector Road: drawn; North Rotary Rd 345398786: hidden
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
 curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
@@ -3788,7 +3793,7 @@ route chart width estimate).
   same for `rebuild`). Roll the data back first if it is also going back. The old images have the
   pause (355 is on main). Migration 0010 stays applied, which is harmless. The rows H
   wrote (ids above the saved max id in `~/override-maxid-pre-bundle.txt`: the Dupont rows,
-  433's two `bicycle=no` rows and the 57 rows of the military file) stay until the owner
+  433's two `bicycle=no` rows and the 97 rows of the military file) stay until the owner
   deletes them in the admin. The rows H retired are gone; to bring them back, **first**
   delete those rows (433's `bicycle=no` rows on 468762518 and 791422825, and the military
   file's tier-4 rows on 316866053 and 1181165198, or the old files are refused as a
