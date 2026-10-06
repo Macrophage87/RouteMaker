@@ -875,6 +875,7 @@ PIPELINE_ONLY_PATHS = {
     "load_access_overrides takes its file on stdin",
     "fixtures/speed": "speed corrections are applied by the rebuild",
     "fixtures/corridors": "named corridors are applied by the rebuild's classifier",
+    "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
 }
 
 PATH_CONSTANT = re.compile(

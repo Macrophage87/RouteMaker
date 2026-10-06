@@ -1603,6 +1603,9 @@ def inline_commands(text: str) -> list[list[str]]:
     return [span.split() for span in inline_code(text) if span.split()]
 
 
+SHELL_VARIABLE = re.compile(r'"?\$[A-Z][A-Z_]*"?')
+
+
 def documented_manage_commands(documents=None) -> list[tuple[str, str | None, list[str]]]:
     """(document, service, argv after `manage.py`) for every `manage.py`
     command a guide shows, in a shell block or inline. `service` is the
@@ -1625,7 +1628,10 @@ def documented_manage_commands(documents=None) -> list[tuple[str, str | None, li
             # A redirection is the shell's, not an argument: `< file.json` feeds
             # `load_access_overrides -` its standard input.
             command = re.split(
-                r"\s(?:\|\||&&|;|\||<|>)\s|\s</dev/null", PLACEHOLDER.sub("1", match.group(1))
+                r"\s(?:\|\||&&|;|\||<|>)\s|\s</dev/null",
+                # A shell variable the runbook set just before (`--actor "$ACTOR"`) is a
+                # placeholder too.
+                SHELL_VARIABLE.sub("1", PLACEHOLDER.sub("1", match.group(1))),
             )[0]
             service = re.search(
                 r"docker compose (?:exec|run)\s+(?:-\S+\s+)*(\S+)\s+(?:\./)?manage\.py", line

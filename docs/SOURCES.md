@@ -241,6 +241,12 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   "There's no other routes through there"; its axis is DC Open Data's Roadway Block centre
   line, CC BY 4.0) are the owner's own local knowledge, cited by decision in each file; not a
   published source.
+- The curated bike lanes (`fixtures/bike_lanes/`): Veirs Mill Road's painted lane (OWNER-DECISIONS
+  433, "Yes, it should be marked") is the owner's own local knowledge, cited by decision in the
+  file, until it is mapped in OpenStreetMap; not a published source.
+- The military areas the rebuild closes to bicycles (`pipeline.restricted_areas`) are
+  OpenStreetMap's own `landuse=military` and `military=*` polygons (© OpenStreetMap
+  contributors, ODbL), read from the same extract as the ways.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
   `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item

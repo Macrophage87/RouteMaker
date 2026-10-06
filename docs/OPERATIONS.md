@@ -3462,9 +3462,21 @@ calibration, main's front end and log changes, the route chart, the z12-13 ride 
 (calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
 and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
 the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
-394-424; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
-reports, kept outside the repository).
+394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
+reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
+the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
+Mill Rd (433).
 Nothing in it is live until the rebuild promotes the new table.
+
+Read the post-rebuild before/after with three changes in mind. 425 counts a block's
+reversible lanes in each direction, so it can raise the tiers on 16th St NW, Canal Rd NW,
+Clara Barton Pkwy, Chain Bridge Rd and Independence Ave SE/SW (no measurement of it is
+recorded but Connecticut's, in docs/DEVELOPMENT.md). The military-area rule closes about
+2,070 mi (3,330 km) of roads and paths inside bases region-wide (Quantico, Aberdeen, Fort
+Meade, Andrews, Fort Belvoir and Patuxent River the most; Joint Base Anacostia-Bolling
+about 63 mi (101 km) with the older Bolling outline it overlaps), so routes that used to cut through one go round
+it; `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
+open. And Veirs Mill Rd's former Avoid stretch comes out LTS 3 (433).
 
 **Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
 (the `rebuild` service). `docker compose build api rebuild` (or `docker compose build`),
@@ -3485,10 +3497,13 @@ every docker command. Steps marked **(owner)** need the owner's OK. Each step na
 rollback point; "Rollback", below, uses them.
 
 ```sh
-export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
-D=$DATA_ROOT
+D=$(sed -n 's/^DATA_ROOT=//p' .env)            # the deployment's data root, read from .env
 Q() { docker compose exec -T postgis psql -U routemaker -d routemaker -AtX -c "$1" </dev/null; }
 ```
+
+Never `export DATA_ROOT`: compose takes the shell's value over `.env`, so a wrong one
+recreates the services on an empty tree. `D` is a plain shell variable; set it again in
+each new shell.
 
 **A. Before the day.** The commit deployed is the reviewed bundle SHA with main as an
 ancestor (the main ruleset fast-forwards only), with the front-end tests and CI green on
@@ -3514,10 +3529,10 @@ Close the heavy apps on the host and pause Windows Update for the run. C: wants 
 **C. Rollback points.** Nothing changes yet; these are what "Rollback" restores.
 
 ```sh
-L=$(git rev-parse --short HEAD)
+L=$(git rev-parse --short HEAD); echo "$L" > ~/rmdata/pre-bundle-commit.txt
 docker tag ghcr.io/macrophage87/routemaker-api:dev      ghcr.io/macrophage87/routemaker-api:pre-bundle-$L      </dev/null
 docker tag ghcr.io/macrophage87/routemaker-pipeline:dev ghcr.io/macrophage87/routemaker-pipeline:pre-bundle-$L </dev/null
-cp $D/frontend/index.html ~/frontend-index-pre-bundle.html
+cp $D/frontend/index.html ~/rmdata/frontend-index-pre-bundle.html   # restored by "Rollback" with busybox
 for v in standard no-trail ebike weekend; do echo "$v $(readlink $D/tiles/$v/current)"; done > ~/tiles-pre-bundle.txt
 Q "select max(id) from override" > ~/override-maxid-pre-bundle.txt
 ls -l $D/backups | tail -1                                        # last night's backup is there
@@ -3575,18 +3590,54 @@ Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and
 Never a plain `up -d`, and never name `valhalla-offroad` in an `up` on this host ("After a
 host restart", above). Rollback point: the images tagged in C.
 
-**H. Reference data and overrides.** The Dupont Circle underpass rows (OWNER-DECISIONS
-414, 416: `bicycle=yes` and LTS 4 on the ten underpass ways OSM tags `bicycle=no`) are
-database rows and take effect only once loaded. **(owner OK: a live DB write.)** Dry run
-first, then `--confirm`, before the rebuild:
+**H. Reference data and overrides.** Four files, database rows that take effect only
+once loaded, all **(owner OK: a live DB write)**, each a dry run first and then `--confirm`,
+before the rebuild:
+
+- the Dupont Circle underpass (OWNER-DECISIONS 414, 416: `bicycle=yes` and LTS 4 on the
+  ten underpass ways OSM tags `bicycle=no`);
+- the east-of-the-Anacostia arterials again (432): its `retire` list withdraws the five
+  South Capitol St Avoid rows (MLK Jr Ave SE to Mississippi Ave SE), which outrank the new
+  LTS 4 corridor; VALIDATE refuses a build where the stretch is not LTS 4, so this one is
+  not optional;
+- the Veirs Mill sidepath (433): retires the two `bicycle=designated` rows on the
+  north-side sidewalks and closes them (`bicycle=no`);
+- the Montgomery Planning LTS 5 file (433): retires the 23 Veirs Mill Rd Avoid rows and
+  keeps the other 386.
 
 ```sh
+ACTOR=$(Q "select discord_user_id from app_user where is_instance_admin")   # one row
 docker compose exec -T rebuild python3 scripts/install_reference_data.py --data-root /data </dev/null   # harmless; the crossings file is unchanged
-docker compose exec -T api python manage.py load_access_overrides - --actor <owner discord id> \
-    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json      # dry: 20 to create (10 access, 10 stress), no conflict
-docker compose exec -T api python manage.py load_access_overrides - --actor <owner discord id> --confirm \
-    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json | grep -v '^present:'
+#   dry: 20 create (10 access, 10 stress), no conflict
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | grep -v '^present:'
+#   dry: 5 retire (South Capitol 468820704, 590525532, 455234174, 468820714, 1528642818)
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | grep -v '^present:'
+#   dry: 2 retire {'bicycle': 'designated'}, 2 create {'bicycle': 'no'}
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | grep -v '^present:'
+#   dry: 23 retire (moco-lts5-veirs-mill-road); the other 386 present
 ```
+
+Any "disagrees" refusal: stop and report. Then the same four with `--confirm`, in the same
+order:
+
+```sh
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | tail -2
+```
+
+The api image must be the bundle's (step G): the old loader does not know `retire` and
+would refuse the Veirs Mill file as a conflict.
 
 Baltimore's Harford Road (282a): see "Rebuild checklist: Harford Road (decision 282a)",
 above. The Baltimore file is loaded only if the owner approves it, and the owner then
@@ -3601,7 +3652,10 @@ docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
 docker compose logs -f rebuild </dev/null
 ```
 
-Watch for `facility classes:`, `AADT smoothing`, `named corridors` (two corridors),
+Watch for `military areas:` (about 20,950 ways closed, 2,070 mi, and about 1,100 left open
+at 2026-10-03's extract; VALIDATE's `military areas:` line repeats the count),
+`curated bike lanes (fixtures/bike_lanes): 23 ways`, `SOUTH CAPITOL ST BN 38.8309-38.8357 N:
+100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
 `override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
 R St NW), the Mass Ride width line (at least 98% of road and path rows with a width, the
 median road 60-200 riders a minute), the calm-run floors (Elmer School Road at 2 mi), the
@@ -3619,6 +3673,10 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate 
 Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1"   # five rows; offroad has no previous on its first build
 Q "select left(version,8),count(*) from stress_tile_cache group by 1"            # W/"stres and W/"mass- rows
 Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236" # the Dupont underpass: road, 4
+Q "select stress_tier, count(*) from live.segment where osm_way_id in (468820704,590525532,455234174,468820714,1528642818) group by 1"  # South Capitol (432): 4 only
+Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,697039269,724229765,968550957) group by 1,2"  # Veirs Mill (433): 3, lane
+Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
+Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
 curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
 curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
 curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
@@ -3681,5 +3739,7 @@ route chart width estimate).
   --force-recreate api worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the
   same for `rebuild`). Roll the data back first if it is also going back. The old images have the
   pause (355 is on main). Migration 0010 stays applied, which is harmless. The Dupont rows
-  (ids above the saved max id) stay until the owner deletes them in the admin. The old api
+  and 433's two `bicycle=no` rows (ids above the saved max id) stay until the owner
+  deletes them in the admin; the rows H retired are gone, and come back by loading the
+  files as they were at `pre-bundle-$L` (`git show $L:fixtures/overrides/<file>.json`). The old api
   ignores an `offroad` row in `valhalla_upstream`.
