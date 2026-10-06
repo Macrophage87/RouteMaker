@@ -14,18 +14,15 @@ area assembly (multipolygon relations and closed ways alike):
   graph (`military_closures`, `rm:no_bicycle=military`): the owner reported a
   route through Joint Base Anacostia-Bolling on 2026-10-05, down the base's
   riverside roads and walkways, which carry no access tag of their own. Under
-  the standing rule "err closed on bike access" (OWNER-DECISIONS 330) every
-  road and path inside a military area is closed, but for a way whose own tags
-  give the public a bicycle (`bicycle` yes/designated/permissive, or `access`
-  yes/permissive with no bicycle tag) and a numbered public route (`ref`
-  US/I/MD/VA/SR/CR/DC n, with no access tag against it: US 1 through Fort
-  Belvoir, MD 198 at Fort Meade). Those stay open, are drawn, and are listed
-  in the rebuild's `military-closures.csv` for the owner to check; an access
-  override reopens anything else, with evidence. The installations in
-  `PUBLIC_EDGE_AREAS` (the Pentagon reservation: "There are parts of the
-  pentagon reservation you can bike to", the owner, 2026-10-05) close only
-  their roads; their paths and walkways keep their own tags, and every one is
-  listed. The building itself (`military=office`) is closed as any base is.
+  the standing rule "err closed on bike access" (OWNER-DECISIONS 330), narrowed
+  by 437, every road and path inside a military area is closed but a way an
+  owner's override reopens, a numbered public route (`ref` US/I/MD/VA/SR/CR/DC
+  n, with no access tag against it: US 1 through Fort Belvoir, MD 198 at Fort
+  Meade), a way signed for bicycles (`bicycle=designated`) and, in the Pentagon
+  reservation (`PUBLIC_EDGE_AREAS`), its listed streets and walkways (437.5).
+  A way's own `access=yes` or `bicycle=yes` no longer opens it (437.1-437.3).
+  Every way is listed in the rebuild's `military-closures.csv`. The building
+  itself (`military=office`) is closed as any base is.
 - `cemetery` - `landuse=cemetery` or `amenity=grave_yard`. The owner: "There's
   a lot of cemetary roads, such as arlington national cemetary. We shouldn't
   have these roads on here, even if some of them can be technically ridden. I
@@ -45,7 +42,8 @@ area assembly (multipolygon relations and closed ways alike):
   re-routed for it here: only `pipeline.trail_closures` reads this kind.
 
 A way is inside when at least INSIDE_FRACTION of its vertices fall in one of
-the kind's areas, outside that area's holes. So a road or a trail that only
+the kind's areas, outside that area's holes; for the military rule, at least
+INSIDE_FRACTION of its length (`_Shapes`, OWNER-DECISIONS 437). So a road or a trail that only
 borders an area - the Mount Vernon Trail by Arlington National Cemetery and
 the Pentagon, a street past a parking lot - is not inside it.
 """

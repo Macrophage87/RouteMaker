@@ -4876,6 +4876,35 @@ a time (`--check` only checks that every mutant applies). It includes the
 boundary mutants of ARTERIAL review r0 (each re-match, corridor and smoothing
 threshold moved past its tested edge); every one is killed.
 
+## Military areas (owner report 2026-10-05; OWNER-DECISIONS 330, 437)
+
+`pipeline.restricted_areas.military_closures` runs in CLASSIFY_FACILITIES, after APPLY_OVERRIDES,
+over every highway way and the `landuse=military` / `military=*` areas of the source extract.
+
+- **Inside** is the share of a way's length inside the areas, at least `INSIDE_FRACTION` (0.5),
+  by `_Shapes` (shapely: the outer rings less the inner ones; overlapping areas are unioned so no
+  stretch counts twice; a stretch along the boundary is not inside). The cemetery, parking and
+  park rules still count vertices (`_inside`).
+- **Open inside a base**, and nothing else (437): a way an approved access override wrote a
+  bicycle key on (`RebuildContext.bicycle_override_ways`, from `overrides.apply_access`), a
+  numbered public road (`public_route`), the Pentagon's listed ways inside its reservation
+  (`PENTAGON_OPEN_WAYS`), and `bicycle=designated` with no closing access key. A way's own
+  `access=yes`/`permissive` or `bicycle=yes`/`permissive` is listed as
+  `WHY_TAGGED_OPEN` and closed.
+- Closed ways are `rm:no_bicycle=military` (first in `trail_closures.ORDER`, on every graph);
+  closed roads are left off the map. `military-closures.csv` lists every way with its share.
+- **VALIDATE** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
+  installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name; empty in the test
+  settings), and `through_networks`: an open network inside a base that meets the bicycle-open
+  network outside at two or more nodes refuses the build unless every way in it is open for a
+  listed reason (`THROUGH_EXCEPTIONS`). A listed Pentagon way not seen open is warned about.
+
+Tests: `tests/test_military_closures.py`, with `tests/data/military_through.json` (Fort Belvoir
+and Fort Detrick, the open-by-tag ways that formed the through networks before 437, and their
+outside neighbours) and `tests/data/military_edges.json` (Telegraph Rd, Russell Rd, South Fern St
+and Saint Elizabeths Rd SE with their outlines clipped round them); the tile-build cases for a
+closed tier-3/4 road with directional grants are in `tests/test_tile_build_access.py`.
+
 ## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 
 The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
