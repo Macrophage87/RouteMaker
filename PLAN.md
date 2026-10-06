@@ -1631,7 +1631,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   3. APG's `access=private bicycle=yes` roads and Quantico's mountain-bike network needing base access: "Close."
   4. Veirs Mill's 3- and 4-lane carriageways with the marked lane (433): "LTS4. Bikeable, but problematic."
   5. The Pentagon: "Agree": open South Fern St and S Eads St, keep North Rotary Rd closed, keep open only the walkways around the Pentagon Memorial, the transit centre and the trail links, and close the other interior walkways.
-  6. Jeff Todd Way (Fort Belvoir): "Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it." Open, by an access override row (the side path is not in OSM).
+  6. Jeff Todd Way (Fort Belvoir): "Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it." Open, by an access override row. Correction (fix round 4): the side path *is* mapped in OSM, as `bicycle=designated motor_vehicle=no` cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road (1.70 mi), continuing as 679385745, 679385747 and 679385748 to Orville St (1.05 mi); fix round 3 closed it by mistake (`motor_vehicle=no` read as closing) and fix round 4 reopens it.
   Also: "inside a base" by the share of a way's length inside the polygon, not by its vertices.
 - 437a, Owner 2026-10-06, on Russell Rd (Quantico): "Russel road even has sharrows. It's not that bad." Open by an access override row, rated by the normal classifier.
 - 437b, Owner 2026-10-06, on Saint Elizabeths Rd SE: "Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road." Its side path open by an access override row.

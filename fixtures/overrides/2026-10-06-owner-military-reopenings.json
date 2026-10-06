@@ -11,7 +11,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 131756393, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 69.5 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -26,7 +26,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 131756713, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=concrete, 52.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -41,7 +41,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 131756714, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 67.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -56,7 +56,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 131756715, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=concrete, 52.2 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -71,7 +71,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 232308619, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 70.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -86,7 +86,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 232308625, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 1100.4 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -101,7 +101,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 232308636, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 1106.4 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -116,7 +116,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 306059636, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 368.2 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -131,7 +131,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 1098724285, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 65.8 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",
@@ -146,7 +146,7 @@
       "value": {
         "bicycle": "yes"
       },
-      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area; the side path is not in OSM (the owner may map it), so the roadway row carries the permission.",
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
       "evidence": "OSM, 2026-10-03 extract: way 1098724286, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 384.1 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
       "fingerprint": {
         "name": "Jeff Todd Way",

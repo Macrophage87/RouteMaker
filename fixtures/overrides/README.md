@@ -249,8 +249,9 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   Pentagon's listed ways stay open (OWNER-DECISIONS 437; `pipeline.restricted_areas`),
   so these are `bicycle=yes` access rows: Jeff Todd Way at Fort Belvoir, the 10 ways
   without the SR 619 number, 2.07 mi (3.34 km) (437.6: "Jeff Todd Way has a quality
-  side path near it. It's not listed, but I wouldn't avoid it."; the side path is not
-  in OSM); Russell Road at Quantico, the 32 ways the rule closes, 5.38 mi (8.66 km)
+  side path near it. It's not listed, but I wouldn't avoid it."; the side path is
+  mapped, as `bicycle=designated` cycleways, and stays open as signed for bicycles);
+  Russell Road at Quantico, the 32 ways the rule closes, 5.38 mi (8.66 km)
   (437a: "Russel road even has sharrows. It's not that bad."; its two `access=private`
   MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Road SE,
   its 2 roadway ways, 0.54 mi (872 m), open and with a tier-4 stress row (437c), and
