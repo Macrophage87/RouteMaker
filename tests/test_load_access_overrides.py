@@ -156,7 +156,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         from core.management.commands.load_access_overrides import parse_file
 
         rows = parse_file(EAST_FILE.read_text(), EAST_FILE.name)
-        assert len(rows) == 774
+        assert len(rows) == 772
         for row in rows:
             assert row["kind"] == "stress"
             value = row["value"]
@@ -189,7 +189,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         load(str(STRESS_FILE), "--actor", str(admin.discord_user_id), "--confirm")
         before = Override.objects.count()
         out = load(str(EAST_FILE), "--actor", str(admin.discord_user_id))
-        assert out.count("create: way ") == 774
+        assert out.count("create: way ") == 772
         assert Override.objects.count() == before
 
 
@@ -881,3 +881,33 @@ class TestTheRetiringFiles:
         assert len(rows) == 386
         assert not any(r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road" for r in rows)
         assert all("433" in r["reason"] for r in retired)
+
+    def test_437_reopens_the_military_ways_and_retires_saint_elizabeths_avoid_rows(
+        self, admin, tmp_path
+    ):
+        """OWNER-DECISIONS 437.6, 437a-c: 55 bicycle=yes rows and Saint Elizabeths Rd SE
+        at tier 4, which first withdraws the two Avoid rows the east-of-the-Anacostia
+        file loaded on 2026-09-30 (that file no longer carries them)."""
+        from core.management.commands.load_access_overrides import parse_retired
+        from core.models import Override
+
+        path = REPO / "fixtures" / "overrides" / "2026-10-06-owner-military-reopenings.json"
+        text = path.read_text()
+        retired = parse_retired(text, path.name)
+        assert {r["osm_way_id"] for r in retired} == {316866053, 1181165198}
+        actor = str(admin.discord_user_id)
+        # The two rows as the live database holds them since the 2026-09-30 load.
+        old = [{**r, "reason": "141", "evidence": "e"} for r in retired]
+        load(write_rows(tmp_path, old), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 2
+        dry = load(str(path), "--actor", actor)
+        assert dry.count("retire: way ") == 2 and dry.count("create: way ") == 57
+        assert "disagrees" not in dry and Override.objects.count() == 2
+        load(str(path), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 57
+        tiers = set(
+            Override.objects.filter(
+                kind="stress", osm_way_id__in=[316866053, 1181165198]
+            ).values_list("value__tier", flat=True)
+        )
+        assert tiers == {4}

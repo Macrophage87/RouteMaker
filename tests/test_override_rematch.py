@@ -426,7 +426,9 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     documents = fixture_documents()
     # 1,785, and the Dupont Circle underpass's 10 access and 10 stress rows (decision 416),
     # less the rows moved to `retire`: South Capitol's 5 (432) and Veirs Mill's 23 (433).
-    assert sum(len(d["rows"]) for d in documents.values()) == 1785 + 20 - 5 - 23
+    # And the military reopenings (437.6, 437a-c): 55 access and 2 stress rows, less the
+    # 2 Saint Elizabeths Rd SE Avoid rows the east-of-the-Anacostia file gave up (437c).
+    assert sum(len(d["rows"]) for d in documents.values()) == 1785 + 20 - 5 - 23 + 57 - 2
     for name, document in documents.items():
         for row in document["rows"]:
             assert rematch.fingerprint_problem(row.get("fingerprint")) is None, (
@@ -437,11 +439,13 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
 
 def test_the_override_counts_the_owner_asked_about() -> None:
     kinds = [row["kind"] for d in fixture_documents().values() for row in d["rows"]]
-    # 232 access rows, and the Dupont underpass's 10 (decision 416).
-    assert kinds.count("access") == 232 + 10
+    # 232 access rows, the Dupont underpass's 10 (decision 416), and the 55 military
+    # reopenings (437.6, 437a-c).
+    assert kinds.count("access") == 232 + 10 + 55
     # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
     # Less the 5 South Capitol (432) and 23 Veirs Mill (433) rows retired; 433's two
-    # access rows were replaced, not removed.
+    # access rows were replaced, not removed. Saint Elizabeths Rd SE's 2 Avoid rows
+    # became 2 tier-4 rows in the military reopenings file (437c).
     assert kinds.count("stress") == 1551 - 1 + 3 + 10 - 5 - 23
 
 
@@ -482,7 +486,7 @@ def test_the_harford_ways_lie_along_open_baltimore_record_634() -> None:
 def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
     found = rematch.load_fingerprints()
     # A retired row carries no fingerprint: it is deleted on load, never re-matched.
-    assert len(found) == 1785 + 20 + 1 - 5 - 23
+    assert len(found) == 1785 + 20 + 1 - 5 - 23 + 57 - 2
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
 
