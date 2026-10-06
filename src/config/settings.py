@@ -412,6 +412,20 @@ REBUILD_SENTINEL_STRETCHES = (
 # base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
 # in the 2026-10-03 extract. One the extract no longer has is warned about.
 REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = (193043941, 97677540, 99419868)
+# The fewest ways VALIDATE accepts closed in each large installation (by its OSM name),
+# about three quarters of the 2026-10-03 extract's count under OWNER-DECISIONS 437: an
+# outline lost or renamed upstream would otherwise reopen a whole base silently.
+REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
+    "Marine Corps Base Quantico": 1600,  # 2,175 closed
+    "Aberdeen Proving Ground": 1550,  # 2,082
+    "Fort Belvoir": 1800,  # 2,391
+    "Fort George G Meade": 1500,  # 2,053
+    "Joint Base Andrews": 2200,  # 2,951
+    "Fort Detrick": 470,  # 625
+    "Bolling Air Force Base": 500,  # 674
+    "Joint Base Anacostia Bolling": 290,  # 397
+    "The Pentagon": 500,  # 675
+}
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0
 MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
 MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()

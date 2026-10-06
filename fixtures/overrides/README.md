@@ -215,7 +215,7 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
   route an area, so no access row can open one.
 
-- `2026-09-30-owner-arterials-east-of-anacostia.json`: 774 stress rows at
+- `2026-09-30-owner-arterials-east-of-anacostia.json`: 772 stress rows at
   tier 5 (Avoid), hidden, no public_note, category other, annotation
   approved, one adjustment per corridor. The owner (OWNER-DECISIONS 141): "I d
   put most of the Arterials east of the Anacostia river as avoid"; asked which
@@ -238,6 +238,25 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   corridor, so the file is loaded again before the rebuild, which withdraws
   the five rows already loaded (docs/OPERATIONS.md, the rebuild bundle's step
   H); VALIDATE refuses a build where the stretch is not LTS 4.
+  The two Saint Elizabeths Road SE rows (316866053, 1181165198) were taken
+  out on 2026-10-06 for OWNER-DECISIONS 437c ("St Elizabeths road is open to
+  bikes, but It's LTS4."): the military reopenings file below retires them and
+  carries the road at LTS 4.
+
+- `2026-10-06-owner-military-reopenings.json`: ways inside military areas the
+  owner reopens to bicycles with evidence. Inside a base only an override row, a
+  numbered public road, a way signed for bicycles (`bicycle=designated`) and the
+  Pentagon's listed ways stay open (OWNER-DECISIONS 437; `pipeline.restricted_areas`),
+  so these are `bicycle=yes` access rows: Jeff Todd Way at Fort Belvoir, the 10 ways
+  without the SR 619 number, 2.07 mi (3.34 km) (437.6: "Jeff Todd Way has a quality
+  side path near it. It's not listed, but I wouldn't avoid it."; the side path is not
+  in OSM); Russell Road at Quantico, the 32 ways the rule closes, 5.38 mi (8.66 km)
+  (437a: "Russel road even has sharrows. It's not that bad."; its two `access=private`
+  MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Road SE,
+  its 2 roadway ways, 0.54 mi (872 m), open and with a tier-4 stress row (437c), and
+  its 11-way side path, 0.55 mi (885 m), the mapped `bicycle=yes` sidewalk and
+  crossings (437b). It retires the two east-of-the-Anacostia Avoid rows on the road.
+  Load it after the east-of-the-Anacostia file (docs/OPERATIONS.md, step H).
 
 ## The agency-data files of 2026-10-01
 

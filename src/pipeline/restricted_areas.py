@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -194,6 +194,97 @@ def _inside(coords: Sequence[tuple[float, float]], index: _Index) -> bool:
     )
 
 
+class _Shapes:
+    """A kind's areas as shapely geometries, for the share of a way's *length*
+    that lies inside them (the military rule; OWNER-DECISIONS 437: "measure
+    inside a base by the share of a way's length inside the polygon ... not by
+    vertices"). Counting vertices let a road that only follows a fence count as
+    inside: Telegraph Rd 51806786 at Quantico has both of its vertices on the
+    boundary and none of its length inside, and South Fern St 346101190 at the
+    Pentagon is 13% inside. A stretch that runs along the boundary is not
+    inside; holes (inner rings) are outside, as `_in_area` reads them."""
+
+    def __init__(self, areas: Sequence[Area]) -> None:
+        # Imported here: the api image imports pipeline modules but not this one's
+        # military rule, and shapely is a pipeline-image package.
+        import shapely
+        from shapely.geometry import Polygon
+
+        def polygonal(rings: Sequence[Ring]):
+            parts = []
+            for ring in rings:
+                if len(ring) < 3:
+                    continue
+                valid = shapely.make_valid(Polygon(ring))
+                parts.extend(
+                    g
+                    for g in shapely.get_parts(valid)
+                    if g.geom_type in ("Polygon", "MultiPolygon")
+                )
+            return shapely.union_all(parts) if parts else None
+
+        self._shapely = shapely
+        self.areas: list[Area] = []
+        geoms = []
+        for area in areas:
+            _, outers, inners = area
+            geom = polygonal(outers)
+            if geom is None or geom.is_empty:
+                continue
+            holes = polygonal(inners)
+            if holes is not None and not holes.is_empty:
+                geom = geom.difference(holes)
+            shapely.prepare(geom)
+            self.areas.append(area)
+            geoms.append(geom)
+        self.geoms = geoms
+        self.tree = shapely.STRtree(geoms) if geoms else None
+
+    def _inside_m(self, line, geom) -> float:
+        if geom.contains_properly(line):
+            return _length_m(list(line.coords))
+        if not geom.intersects(line):
+            return 0.0
+        pieces = line.intersection(geom).difference(geom.boundary)
+        return sum(
+            _length_m(list(part.coords))
+            for part in self._shapely.get_parts(pieces)
+            if part.geom_type == "LineString"
+        )
+
+    def share(self, coords: Sequence[tuple[float, float]]) -> tuple[float, Area | None]:
+        """(The share of the way's length inside any of the areas, the area that
+        holds most of it.) A way of one point, or of no length, is inside if
+        its point is."""
+        shapely = self._shapely
+        if self.tree is None or not coords:
+            return 0.0, None
+        total = _length_m(coords)
+        if len(coords) < 2 or total <= 0:
+            point = shapely.Point(coords[0])
+            for i in self.tree.query(point):
+                if self.geoms[i].contains_properly(point):
+                    return 1.0, self.areas[i]
+            return 0.0, None
+        line = shapely.LineString(coords)
+        best, best_m, inside = None, 0.0, []
+        for i in self.tree.query(line):
+            geom = self.geoms[i]
+            metres = self._inside_m(line, geom)
+            if metres <= 0:
+                continue
+            inside.append(geom)
+            if metres > best_m:
+                best, best_m = self.areas[i], metres
+        if not inside:
+            return 0.0, None
+        if len(inside) > 1:
+            # Overlapping areas (Bolling's old outline inside JBAB): the union, so
+            # no stretch counts twice.
+            best_m = self._inside_m(line, shapely.union_all(inside))
+        return min(1.0, best_m / total), best
+
+
 def ways_inside(
     ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
     areas: Sequence[Area],
@@ -242,13 +333,24 @@ def parking_ways(ways, areas: Sequence[Area]) -> set[int]:
     return ways_inside(ways, areas, _lot_way)
 
 
-# --- Military areas closed to bicycles (owner report 2026-10-05; OWNER-DECISIONS 330) --
+# --- Military areas closed to bicycles (owner report 2026-10-05; OWNER-DECISIONS 330,
+# 437) --
 
 # The `rm:no_bicycle` reason of a way inside a military area.
 MILITARY_NO_BICYCLE = "military"
-# A way's own tags that give the public a bicycle there.
+# A way's own tags that give the public a bicycle there (what the report says the
+# tags meant). Inside a military area only `bicycle=designated`, a way signed for
+# bicycles (the Anacostia Riverwalk past the Navy Yard, the Fairfax County Parkway
+# Trail through Fort Belvoir), still keeps a way open (OWNER-DECISIONS 437.1: "only an
+# explicit bicycle permission on the way itself"). `access=yes` or `permissive` alone
+# no longer does (437.1, Fort Belvoir's main post and Fort Detrick: "These roads aren't
+# open to the public, but could be used by people with access ... it's a better option
+# to just disable this for all"), and nor does `bicycle=yes` or `permissive` (437.2,
+# JBAB's sidewalks: "Same."; 437.3, APG's `access=private bicycle=yes` roads and
+# Quantico's mountain-bike network: "Close.").
 PUBLIC_BICYCLE = frozenset({"yes", "designated", "permissive"})
 PUBLIC_ACCESS = frozenset({"yes", "permissive"})
+SIGNED_FOR_BICYCLES = frozenset({"designated"})
 # A numbered public road: Interstate, US, Maryland, Virginia (primary, and the
 # State Route secondary system), county, District. Not a base's own numbers
 # (Quantico's `MCB 1`).
@@ -256,18 +358,67 @@ PUBLIC_REF = re.compile(r"^(I|US|MD|VA|SR|CR|DC)[ -]?\d", re.IGNORECASE)
 # Access keys any of which, at a closing value, keeps a numbered road closed.
 ACCESS_KEYS = ("access", "vehicle", "bicycle", "motor_vehicle")
 # Installations OSM shows public ways in (the area's OSM id, `w` way or `r`
-# relation): only their roads are closed. The owner, 2026-10-05: "There are
-# parts of the pentagon reservation you can bike to" - the Pentagon Memorial,
-# the transit centre's bike parking, the links to the Mount Vernon Trail and
-# the Route 110 trail. Its paths keep the tags OSM gives them, and every way in
-# it is listed for the owner (REBUILD-BUNDLE-fix2).
+# relation). The owner, 2026-10-05: "There are parts of the pentagon reservation you
+# can bike to"; OWNER-DECISIONS 437.5 ("Agree"): open South Fern St and S Eads St,
+# keep North Rotary Rd closed, keep open only the walkways around the Pentagon
+# Memorial, the transit centre and the trail links, and close the other interior
+# walkways. So inside the reservation only `PENTAGON_OPEN_WAYS` (and a numbered
+# road, VA 110) stay open.
 PUBLIC_EDGE_AREAS = {"w916068128": "The Pentagon reservation"}
+# OWNER-DECISIONS 437.5, by OSM way id (2026-10-03 extract; REBUILD-BUNDLE-fix3 lists
+# them with their tags). A way renumbered upstream closes (err closed), and the
+# rebuild names it (`pentagon_open_missing`).
+PENTAGON_STREETS = {
+    # South Fern Street. Its southern way, 346101190, is 89% outside the reservation
+    # and is not judged here at all.
+    44486932: "South Fern Street",
+    345304597: "South Fern Street",
+    346101170: "South Fern Street",
+    1311964684: "South Fern Street",
+    1311964685: "South Fern Street",
+    # South Eads Street.
+    8797265: "South Eads Street",
+    345398628: "South Eads Street",
+    732977786: "South Eads Street",
+}
+PENTAGON_WALKWAYS = {
+    # Around the Pentagon Memorial: the bicycle=yes sidewalk and crossing on its west
+    # side and the signed crossing to the 27 Trail. The memorial's own paths are
+    # bicycle=no or pedestrian, and stay closed.
+    433350216: "Pentagon Memorial, west sidewalk to the 27 Trail",
+    1022785581: "Pentagon Memorial, west sidewalk",
+    904635692: "Pentagon Memorial, crossing",
+    1099367498: "Pentagon Memorial, 27 Trail crossing",
+    # The transit centre: the walkways between the bus bays and the Metro entrance.
+    438981665: "Transit centre walkway",
+    438981666: "Transit centre walkway",
+    1154847317: "Transit centre sidewalk",
+    1154847318: "Transit centre walkway",
+    1154847319: "Transit centre walkway",
+    1154847320: "Transit centre walkway",
+    # The trail links: the 27 Trail, the 9/11 National Memorial Trail, and the
+    # bicycle=yes links between them and the Route 110 side.
+    548580375: "27 Trail",
+    1022785577: "9/11 National Memorial Trail",
+    1022785578: "Trail link (9/11 National Memorial Trail)",
+    639490277: "Trail link (27 Trail)",
+    669611250: "Trail link, east sidewalk",
+    1357847574: "Trail link, east sidewalk",
+    1354339762: "Trail link, east sidewalk",
+    1354339763: "Trail link, east crossing",
+}
+PENTAGON_OPEN_WAYS = {**PENTAGON_STREETS, **PENTAGON_WALKWAYS}
 
 CLOSED, OPEN = "closed", "open"
-WHY_PERMITTED = "open: the way's own tags give the public a bicycle"
+WHY_OVERRIDE = "open: an approved access override reopens it (owner's evidence)"
+WHY_SIGNED = "open: signed for bicycles (bicycle=designated)"
 WHY_PUBLIC_ROUTE = "open: a numbered public road; owner to confirm"
-WHY_EDGE_PATH = "open: a path in an installation with public parts, as OSM tags it"
+WHY_EDGE_PATH = "open: the Pentagon's public streets and walkways (OWNER-DECISIONS 437.5)"
 WHY_CLOSED = "closed: inside a military area"
+WHY_TAGGED_OPEN = (
+    "closed: inside a military area; its own access/bicycle tag no longer opens it "
+    "(OWNER-DECISIONS 437)"
+)
 WHY_NAMED_ROAD = "closed: a named road with no access tag; owner to check whether it is public"
 
 
@@ -283,25 +434,48 @@ class MilitaryWay:
     status: str
     why: str
     tags: str = ""
+    # The share of the way's length inside the area (OWNER-DECISIONS 437).
+    share: float = 1.0
 
     @property
     def closed(self) -> bool:
         return self.status == CLOSED
 
 
+def _closing_access(tags) -> bool:
+    return any(tags.get(key) in NO_PUBLIC_ACCESS for key in ACCESS_KEYS)
+
+
 def public_permission(tags) -> bool:
-    """The way's own tags give the public a bicycle."""
+    """The way's own tags give the public a bicycle. Inside a military area this
+    no longer opens a way (437); it only names why a closed one is listed."""
     if tags.get("bicycle") in PUBLIC_BICYCLE:
         return True
     return tags.get("access") in PUBLIC_ACCESS and tags.get("bicycle") is None
 
 
+def signed_for_bicycles(tags) -> bool:
+    """`bicycle=designated`, with no access key against it: the one permission a
+    way's own tags still carry inside a military area (OWNER-DECISIONS 437.1)."""
+    return tags.get("bicycle") in SIGNED_FOR_BICYCLES and not _closing_access(tags)
+
+
 def public_route(tags) -> bool:
-    """A numbered public road with no access tag that keeps anyone out."""
+    """A numbered public road with no access tag that keeps anyone out. A ref that
+    carries a public number beside a base's own (`SR 641;MCB 3`, two short pieces of
+    Montezuma Ave at Quantico) counts: the public number is the state's road."""
     refs = [part.strip() for part in (tags.get("ref") or "").split(";")]
     if not any(PUBLIC_REF.match(ref) for ref in refs):
         return False
-    return not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ACCESS_KEYS)
+    return not _closing_access(tags)
+
+
+BICYCLE_KEYS = ("bicycle", "bicycle:forward", "bicycle:backward")
+
+
+def reopened_by_override(tags) -> bool:
+    """The (override-written) tags give a bicycle a way through."""
+    return any(tags.get(key) in PUBLIC_BICYCLE for key in BICYCLE_KEYS)
 
 
 def _shown_tags(tags) -> str:
@@ -309,65 +483,149 @@ def _shown_tags(tags) -> str:
     return " ".join(f"{k}={tags[k]}" for k in keys if tags.get(k) is not None)
 
 
-def _installation(coords, index: _Index) -> str:
-    names = Counter(
-        getattr(area, "name", "") or getattr(area, "osm", "") or "unnamed military area"
-        for p in coords
-        for area in index.containing(p)
-    )
-    return names.most_common(1)[0][0] if names else ""
+def _label(area) -> str:
+    return getattr(area, "name", "") or getattr(area, "osm", "") or "unnamed military area"
 
 
-def military_closures(ways, areas: Sequence[Area]) -> list[MilitaryWay]:
+def military_closures(
+    ways, areas: Sequence[Area], reopened: Collection[int] = frozenset()
+) -> list[MilitaryWay]:
     """Every highway way inside a military area, closed or (with the reason) left
-    open. `ways` are `(osm_id, tags, coordinates)`. A way inside an ordinary area
-    and a public-edge one (the Pentagon building inside its reservation) is judged
+    open. `ways` are `(osm_id, tags, coordinates)`, the tags as the overrides left
+    them; `reopened` are the ways an approved access override wrote a bicycle key
+    on (the owner's evidence, OWNER-DECISIONS 330: reopen manually).
+
+    A way is inside when at least INSIDE_FRACTION of its *length* is
+    (OWNER-DECISIONS 437; `_Shapes`). Inside, only these stay open: an override's
+    bicycle permission, a numbered public road, the Pentagon's listed streets and
+    walkways (437.5), and a way signed for bicycles (`bicycle=designated`). A way
+    inside an ordinary area and the Pentagon reservation (the building) is judged
     by the ordinary rule."""
     if not areas:
         return []
     edge = [a for a in areas if getattr(a, "osm", "") in PUBLIC_EDGE_AREAS]
     ordinary = [a for a in areas if getattr(a, "osm", "") not in PUBLIC_EDGE_AREAS]
-    strict = _Index(ordinary) if ordinary else None
-    lenient = _Index(edge) if edge else None
+    strict = _Shapes(ordinary) if ordinary else None
+    lenient = _Shapes(edge) if edge else None
     out: list[MilitaryWay] = []
     for osm_id, tags, coords in ways:
         highway = tags.get("highway")
         if highway is None or not coords:
             continue
-        if strict is not None and _inside(coords, strict):
-            index, kept_by_edge = strict, False
-        elif lenient is not None and _inside(coords, lenient):
-            index, kept_by_edge = lenient, highway in TRAIL_CLASS_HIGHWAY
-        else:
-            continue
-        if public_permission(tags):
-            status, why = OPEN, WHY_PERMITTED
+        share, area = strict.share(coords) if strict is not None else (0.0, None)
+        at_edge = False
+        if share < INSIDE_FRACTION:
+            share, area = lenient.share(coords) if lenient is not None else (0.0, None)
+            if share < INSIDE_FRACTION:
+                continue
+            at_edge = True
+        if osm_id in reopened and reopened_by_override(tags):
+            status, why = OPEN, WHY_OVERRIDE
         elif public_route(tags):
             status, why = OPEN, WHY_PUBLIC_ROUTE
-        elif kept_by_edge:
+        elif at_edge and osm_id in PENTAGON_OPEN_WAYS:
             status, why = OPEN, WHY_EDGE_PATH
+        elif signed_for_bicycles(tags):
+            status, why = OPEN, WHY_SIGNED
         else:
             status, why = CLOSED, WHY_CLOSED
-            if (
+            if public_permission(tags):
+                why = WHY_TAGGED_OPEN
+            elif (
                 highway not in TRAIL_CLASS_HIGHWAY
                 and highway not in ("service", "track")
                 and tags.get("name")
-                and not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ACCESS_KEYS)
+                and not _closing_access(tags)
             ):
                 why = WHY_NAMED_ROAD
         out.append(
             MilitaryWay(
                 osm_id,
-                _installation(coords, index),
+                _label(area),
                 highway,
                 tags.get("name") or "",
                 round(_length_m(coords), 1),
                 status,
                 why,
                 _shown_tags(tags),
+                round(share, 3),
             )
         )
     return out
+
+
+def pentagon_open_missing(found: Sequence[MilitaryWay]) -> list[int]:
+    """The listed Pentagon ways (437.5) the rule did not find open in the
+    reservation: renumbered or re-drawn upstream, so closed (err closed) until the
+    list is updated. Warned about, by id."""
+    seen = {m.way_id for m in found if m.why == WHY_EDGE_PATH}
+    return sorted(set(PENTAGON_OPEN_WAYS) - seen)
+
+
+# Ways a bicycle may ride outside a base, for `through_networks`' entry points.
+CLOSED_CLASSES = frozenset({"motorway", "motorway_link", "construction", "proposed"})
+
+
+def open_to_bicycles(tags) -> bool:
+    """A way outside every base a bicycle may ride, by its own tags."""
+    if tags.get("highway") in CLOSED_CLASSES:
+        return False
+    return not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "bicycle", "vehicle"))
+
+
+# The reasons a way inside a base may stay open and still meet the outside network
+# at two or more points (`through_networks`): a numbered public road, a way signed
+# for bicycles, an owner override, the Pentagon's listed ways.
+THROUGH_EXCEPTIONS = frozenset({WHY_PUBLIC_ROUTE, WHY_SIGNED, WHY_OVERRIDE, WHY_EDGE_PATH})
+
+
+def through_networks(
+    found: Sequence[MilitaryWay],
+    node_ids: Mapping[int, Sequence[int]],
+    outside_open: Collection[int],
+    exceptions: Collection[str] = THROUGH_EXCEPTIONS,
+) -> list[tuple[list[int], list[int]]]:
+    """The open networks inside a base a route could pass *through*: each
+    connected set of open in-base ways that holds a way open for a reason other
+    than `exceptions` and meets `outside_open` (bicycle-open ways outside every
+    base) at two or more nodes, as `(way ids, entry nodes)`. Empty is the pass
+    (OWNER-DECISIONS 437: the Fort Belvoir and Fort Detrick networks that joined the
+    public streets at 21 and more points)."""
+    inside = {m.way_id: m for m in found}
+    open_in = {m.way_id for m in found if not m.closed}
+    by_node: dict[int, list[int]] = defaultdict(list)
+    for way_id, nodes in node_ids.items():
+        if way_id in open_in or (way_id in outside_open and way_id not in inside):
+            for node in set(nodes):
+                by_node[node].append(way_id)
+    parent = {w: w for w in open_in}
+
+    def find(w: int) -> int:
+        while parent[w] != w:
+            parent[w] = parent[parent[w]]
+            w = parent[w]
+        return w
+
+    for ways_here in by_node.values():
+        here = [w for w in ways_here if w in open_in]
+        for other in here[1:]:
+            parent[find(other)] = find(here[0])
+    members: dict[int, list[int]] = defaultdict(list)
+    for w in open_in:
+        members[find(w)].append(w)
+    entries: dict[int, set[int]] = defaultdict(set)
+    for node, ways_here in by_node.items():
+        here = [w for w in ways_here if w in open_in]
+        if here and any(w not in open_in for w in ways_here):
+            entries[find(here[0])].add(node)
+    out = []
+    for root, ways_in in members.items():
+        if len(entries[root]) < 2:
+            continue
+        if all(inside[w].why in exceptions for w in ways_in):
+            continue
+        out.append((sorted(ways_in), sorted(entries[root])))
+    return sorted(out)
 
 
 def _cell(text: str) -> str:

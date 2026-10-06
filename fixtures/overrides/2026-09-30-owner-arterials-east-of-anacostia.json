@@ -3,7 +3,7 @@
   "decided": "2026-09-30",
   "decided_by": "the deployment owner",
   "status": "approved for loading by the owner on 2026-09-30 (OWNER-DECISIONS 144) Five South Capitol Street rows, Martin Luther King Jr Ave SE to Mississippi Ave SE, were taken out on 2026-10-05 for OWNER-DECISIONS 432 (\"Change south captiol street from MLK ave to Missisipi ave to LTS4\"): that stretch is LTS 4 by a named corridor (fixtures/corridors/). They are listed under `retire`: loading this file again withdraws the rows already loaded (load_access_overrides; docs/OPERATIONS.md, the rebuild bundle's step H).",
-  "annotations": "The owner, 2026-09-30 (OWNER-DECISIONS 141): \"Make arterials LTS 3 or greater unless there s bike infrastructure. I d put most of the Arterials east of the Anacostia river as avoid.\" Asked which to strike (OWNER-DECISIONS 144): struck \"11th St SE\", \"Ridge Rd SE\", \"River bridges\"; everything else (South Capitol St SW included) is approved to load as Avoid. The District's trunk, primary and secondary ways east of the Anacostia River, placed by the state boundary and the river's OSM line in the Geofabrik extract of 2026-09-25, less every way named 11th Street Southeast or Ridge Road Southeast and the four ways that cross the river (the river bridges), and less nine ways the 2026-09-27 file already curates. Overpass bridges well away from the river stay in by design; asked whether they should (OWNER-DECISIONS 177), the owner said: \"Yes, keep them in\". Tier 5, hidden, no public_note, category other, annotation approved.",
+  "annotations": "The owner, 2026-09-30 (OWNER-DECISIONS 141): \"Make arterials LTS 3 or greater unless there s bike infrastructure. I d put most of the Arterials east of the Anacostia river as avoid.\" Asked which to strike (OWNER-DECISIONS 144): struck \"11th St SE\", \"Ridge Rd SE\", \"River bridges\"; everything else (South Capitol St SW included) is approved to load as Avoid. The District's trunk, primary and secondary ways east of the Anacostia River, placed by the state boundary and the river's OSM line in the Geofabrik extract of 2026-09-25, less every way named 11th Street Southeast or Ridge Road Southeast and the four ways that cross the river (the river bridges), and less nine ways the 2026-09-27 file already curates. Overpass bridges well away from the river stay in by design; asked whether they should (OWNER-DECISIONS 177), the owner said: \"Yes, keep them in\". Tier 5, hidden, no public_note, category other, annotation approved. The two Saint Elizabeths Rd SE rows (316866053, 1181165198) were taken out on 2026-10-06 for OWNER-DECISIONS 437c (\"St Elizabeths road is open to bikes, but It's LTS4.\"): 2026-10-06-owner-military-reopenings.json retires them and rates the road LTS 4.",
   "rows": [
     {
       "kind": "stress",
@@ -14027,26 +14027,6 @@
     },
     {
       "kind": "stress",
-      "osm_way_id": 316866053,
-      "value": {
-        "tier": 5,
-        "adjustment_id": "east-anacostia-saint-elizabeths-road-southeast",
-        "category": "other",
-        "visibility": "hidden",
-        "annotation_status": "approved",
-        "display": "route_only"
-      },
-      "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 141): \"Make arterials LTS 3 or greater unless there s bike infrastructure. I d put most of the Arterials east of the Anacostia river as avoid.\" And (OWNER-DECISIONS 144): struck \"11th St SE\", \"Ridge Rd SE\", \"River bridges\"; everything else (South Capitol St SW included) is approved to load as Avoid.",
-      "evidence": "OSM, Geofabrik extract of 2026-09-25: way 316866053, Saint Elizabeths Road Southeast, highway=secondary, 811 m, east of the Anacostia River in the District; tier now 3.",
-      "fingerprint": {
-        "name": "Saint Elizabeths Road Southeast",
-        "highway": "secondary",
-        "length_m": 812.2,
-        "line": "-77.002575,38.859953 -77.002791,38.859476 -77.004080,38.856021 -77.004634,38.854682 -77.004957,38.853949 -77.005482,38.853016"
-      }
-    },
-    {
-      "kind": "stress",
       "osm_way_id": 1180994973,
       "value": {
         "tier": 5,
@@ -14103,26 +14083,6 @@
         "highway": "secondary",
         "length_m": 29.7,
         "line": "-77.002439,38.860198 -77.002575,38.859953"
-      }
-    },
-    {
-      "kind": "stress",
-      "osm_way_id": 1181165198,
-      "value": {
-        "tier": 5,
-        "adjustment_id": "east-anacostia-saint-elizabeths-road-southeast",
-        "category": "other",
-        "visibility": "hidden",
-        "annotation_status": "approved",
-        "display": "route_only"
-      },
-      "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 141): \"Make arterials LTS 3 or greater unless there s bike infrastructure. I d put most of the Arterials east of the Anacostia river as avoid.\" And (OWNER-DECISIONS 144): struck \"11th St SE\", \"Ridge Rd SE\", \"River bridges\"; everything else (South Capitol St SW included) is approved to load as Avoid.",
-      "evidence": "OSM, Geofabrik extract of 2026-09-25: way 1181165198, Saint Elizabeths Road Southeast, highway=secondary, 60 m, east of the Anacostia River in the District; tier now 3.",
-      "fingerprint": {
-        "name": "Saint Elizabeths Road Southeast",
-        "highway": "secondary",
-        "length_m": 59.7,
-        "line": "-77.005482,38.853016 -77.005763,38.852526"
       }
     },
     {

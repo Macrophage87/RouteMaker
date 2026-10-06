@@ -28,7 +28,7 @@ import sqlite3
 import subprocess
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -650,6 +650,12 @@ class RebuildContext:
     # Every way inside a military area, and whether the rule closed it
     # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
     military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
+    # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
+    bicycle_override_ways: frozenset[int] = frozenset()
+    # Open networks inside a base that meet the outside network at two or more points
+    # for no listed reason (`restricted_areas.through_networks`); VALIDATE refuses any.
+    military_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1137,7 +1143,37 @@ def assert_reference_lts4_street(
     return tiers
 
 
-def assert_military_closures(context: RebuildContext, sentinel_ways: Sequence[int]) -> int:
+def military_through_networks(context: RebuildContext) -> list[tuple[list[int], list[int]]]:
+    """`restricted_areas.through_networks` over the rebuild's ways: the outside
+    ways it needs are only those that share a node with an open in-base way."""
+    inside = {m.way_id for m in context.military_ways}
+    open_in = {m.way_id for m in context.military_ways if not m.closed}
+    open_nodes = {
+        node
+        for way_id in open_in
+        for node in getattr(context.ways_by_id.get(way_id), "node_ids", ())
+    }
+    node_ids = {}
+    outside_open = set()
+    for way in context.ways:
+        if way.osm_id in open_in:
+            node_ids[way.osm_id] = way.node_ids
+        elif (
+            way.osm_id not in inside
+            and way.node_ids
+            and not open_nodes.isdisjoint(way.node_ids)
+            and restricted_areas.open_to_bicycles(way.tags)
+        ):
+            node_ids[way.osm_id] = way.node_ids
+            outside_open.add(way.osm_id)
+    return restricted_areas.through_networks(context.military_ways, node_ids, outside_open)
+
+
+def assert_military_closures(
+    context: RebuildContext,
+    sentinel_ways: Sequence[int],
+    min_closed: Mapping[str, int] | None = None,
+) -> int:
     """Ways inside a military area were closed (owner report 2026-10-05): each
     sentinel way, a Joint Base Anacostia-Bolling walkway or service road with no
     access tag of its own, carries `rm:no_bicycle=military` where the extract has
@@ -1145,6 +1181,28 @@ def assert_military_closures(context: RebuildContext, sentinel_ways: Sequence[in
     renumbers ways); the closure gate reads a sample of the reason's ways back
     from every graph. Returns the number of ways closed."""
     closed = sum(1 for m in context.military_ways if m.closed)
+    by_site = Counter(m.installation for m in context.military_ways if m.closed)
+    short = {
+        site: (by_site.get(site, 0), floor)
+        for site, floor in (min_closed or {}).items()
+        if by_site.get(site, 0) < floor
+    }
+    if short:
+        raise ValidationFailed(
+            "military areas closed fewer ways than their floor (closed, floor): "
+            f"{short}; an installation's outline was lost or renamed upstream, so its "
+            "roads and paths could be routed again (OWNER-DECISIONS 437; "
+            "REBUILD_SENTINEL_MILITARY_MIN_CLOSED)"
+        )
+    if context.military_through:
+        named = [
+            (ways[:5], len(ways), len(entries)) for ways, entries in context.military_through[:5]
+        ]
+        raise ValidationFailed(
+            "open networks inside a military area meet the public network at two or more "
+            f"points (first ways, ways, entries): {named}; a route could pass through a base "
+            "(OWNER-DECISIONS 437)"
+        )
     present = {way.osm_id for way in context.ways}
     wrong = [
         way_id
@@ -1889,6 +1947,7 @@ def build_handlers(
             if reference is not None and way_id in reference.bridge_bicycle_legal
         }
         context.bicycle_override_directions = superseded
+        context.bicycle_override_ways = frozenset(superseding)
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]
@@ -1959,16 +2018,29 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
-        # And closed to bicycles, everything inside a military area but what its own
-        # tags or a public route number open (owner report 2026-10-05, under "err
-        # closed on bike access", OWNER-DECISIONS 330); what is left open is drawn.
-        context.military_ways = restricted_areas.military_closures(placed, areas["military"])
-        left_open = {m.way_id for m in context.military_ways if not m.closed}
-        military_closed = {m.way_id for m in context.military_ways if m.closed}
-        context.short_paths_hidden |= (
-            restricted_areas.roads_inside(placed, areas["military"]) - left_open
+        # And closed to bicycles, everything inside a military area (by the share of
+        # its length) but a numbered public road, a way signed for bicycles, the
+        # Pentagon's listed ways and what an owner's override reopens (owner report
+        # 2026-10-05, "err closed on bike access", OWNER-DECISIONS 330, 437); what is
+        # left open is drawn, and a closed road is left off the map (88).
+        context.military_ways = restricted_areas.military_closures(
+            placed, areas["military"], reopened=context.bicycle_override_ways
         )
+        military_closed = {m.way_id for m in context.military_ways if m.closed}
+        context.short_paths_hidden |= {
+            m.way_id
+            for m in context.military_ways
+            if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
+        }
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
+        missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
+        if missing_pentagon:
+            logger.warning(
+                "Pentagon ways listed open (OWNER-DECISIONS 437.5) not found open in the "
+                "reservation, so closed (renumbered upstream?): %s",
+                missing_pentagon,
+            )
+        context.military_through = military_through_networks(context)
         # Paved ways with a mountain-bike rating: the remap removes the rating, which
         # Valhalla's parser would price as dirt (lua/routemaker_remap.lua,
         # strip_paved_ratings; the paved Rock Creek Trail in Montgomery County).
@@ -2436,7 +2508,11 @@ def build_handlers(
             _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
         )
         assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
-        assert_military_closures(context, _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"))
+        assert_military_closures(
+            context,
+            _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
+        )
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
