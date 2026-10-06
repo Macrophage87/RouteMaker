@@ -491,3 +491,27 @@ def test_the_offroad_graph_is_not_held_to_the_mtb_class(tmp_path: Path) -> None:
     text = (tmp_path / "bicycle-closure-probes.csv").read_text().splitlines()
     assert text[0] == "way_id,lon,lat,reason"
     assert text[1].endswith(",mtb") and text[2].endswith(",private")
+
+
+def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_path: Path) -> None:
+    from pipeline import run as run_module
+
+    probes = [
+        tiles.ClosureProbe(1, -77.0, 38.9, "mtb"),
+        tiles.ClosureProbe(2, -77.0, 38.91, "private"),
+    ]
+    monkeypatch.setattr(run_module, "closure_probes", lambda context: probes)
+    monkeypatch.setattr(run_module, "write_closure_reports", lambda *args: None)
+    monkeypatch.setattr(
+        tiles, "read_closures", lambda run, config_path, held: [probe.way_id for probe in held]
+    )
+    context = SimpleNamespace(
+        work_dir=tmp_path,
+        singletracks=set(),
+        build_configs={variant: tmp_path / f"{variant.value}.json" for variant in Variant},
+    )
+    readbacks = run_module._closures_across_variants(context, run=None)
+    assert set(readbacks) == set(Variant)
+    for variant in Variant:
+        expected = [2] if variant is Variant.OFFROAD else [1, 2]
+        assert readbacks[variant] == expected, variant

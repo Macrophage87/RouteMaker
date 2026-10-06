@@ -558,8 +558,8 @@ end
 -- Valhalla 3.5.1's PBF parser reads `mtb:scale` and `mtb:scale:imba` as the
 -- edge's surface: `mtb:scale=0` prices it as dirt, 2 and up as the roughest
 -- class, whatever its `surface` says. So the paved Rock Creek Trail in
--- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; ways
--- 851669430, 198389125, 563155347, 161835541, 770109524), the ICC Trail and
+-- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; way
+-- 851669430 among them), the ICC Trail and
 -- Northwest Branch were priced as dirt and avoided, though the segment table
 -- rates them paved and LTS 1. `routemaker.singletrack` already says a paved
 -- trail is not singletrack whatever its rating; this takes the same paved test
