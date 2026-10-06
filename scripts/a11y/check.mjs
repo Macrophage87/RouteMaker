@@ -1163,9 +1163,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.tab();
   await sleep(250);
   check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
-  // The mouse: hovering moves the same marker.
+  // The mouse: hovering moves the same marker. Under load the map draws it late, so wait for
+  // it (up to 2 s) rather than a fixed pause; the check below is unchanged.
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
-  await sleep(200);
+  await p.waitFor("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout')?.textContent ?? '')", 2000);
   check("chart: hovering the picture moves a marker on the map too, and shows the same sentence", await p.eval("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout').textContent)"), await p.eval("document.querySelector('.pc-readout').textContent"));
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
   await sleep(150);
@@ -1302,7 +1303,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
       stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
   check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
-    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && /^Avoid/.test(legend.rows[4]) && /^Riders per minute at 6 to 8 mph \(10 to 13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
+    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && legend.rows[4] === "Marked Avoid: no capacity given" && /^Riders per minute at 6 to 8 mph \(10 to 13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
   check("capacity: its swatches are hidden from a screen reader, the heading and the switch say riders per minute, and no stress legend is there",
     legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/.test(legend.toggle) && !legend.stressLegend, JSON.stringify(legend));
   const axLegend = await axNode(p, ".mass-legend");
