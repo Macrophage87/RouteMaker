@@ -71,6 +71,17 @@ SINGLETRACK = {
     "rm:no_bicycle": "singletrack",
 }
 RATED = {"mtb:scale": "2"}
+# A base road (Jeff Todd Way's tags) as the extract carries it once the military-area
+# rule closed it.
+MILITARY_ROAD = {
+    "highway": "secondary",
+    "name": "Jeff Todd Way",
+    "lanes": "2",
+    "maxspeed": "40 mph",
+    "rm:stress_tier": "3",
+    "rm:facility": "none",
+    "rm:no_bicycle": "military",
+}
 OPEN, CLOSED = True, False
 
 # (name, tags, bicycle access): True or False for both directions, or a
@@ -122,6 +133,29 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
             "bicycle": "yes",
             "rm:trail_class": "yes",
             "rm:no_bicycle": "cbd_sidewalk",
+        },
+        CLOSED,
+    ),
+    # A road closed inside a military area (OWNER-DECISIONS 437; REBUILD-BUNDLE-fix2 S4):
+    # the first reason ever written on a road rather than a trail-class way, at tier 3
+    # and 4, against the directional grants upstream reads ahead of plain `bicycle`.
+    (
+        "a tier-4 road in a military area, one-way with cycleway=opposite_lane",
+        {**MILITARY_ROAD, "rm:stress_tier": "4", "oneway": "yes", "cycleway": "opposite_lane"},
+        CLOSED,
+    ),
+    (
+        "a tier-3 road in a military area, one-way with oneway:bicycle=no",
+        {**MILITARY_ROAD, "oneway": "yes", "oneway:bicycle": "no"},
+        CLOSED,
+    ),
+    (
+        "a tier-3 road in a military area with bicycle:forward=yes and a lane",
+        {
+            **MILITARY_ROAD,
+            "bicycle:forward": "yes",
+            "cycleway:right": "lane",
+            "rm:facility": "lane",
         },
         CLOSED,
     ),
