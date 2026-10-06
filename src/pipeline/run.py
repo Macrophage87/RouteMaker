@@ -1684,6 +1684,12 @@ def build_handlers(
                     rule=current.rule
                     + (", street volume (median)" if way.osm_id in smoothed_rule else ""),
                 )
+            if lane_applied:
+                # The owner's reading of the curated lane (433, 437.4): LTS 4 on three
+                # or more lanes a direction or at 45 mph and more.
+                context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
+                    context.stress_by_way[way.osm_id], tags
+                )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
                     context.stress_by_way[way.osm_id],

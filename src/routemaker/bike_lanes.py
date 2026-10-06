@@ -11,8 +11,7 @@ Why a checked-in file and not an override row, as for the curated speeds
 (`routemaker.speed_corrections`): an access override is applied after
 classification, and may not write a `cycleway` key, and a stress row writes a
 tier where the owner's answer is a facility and the tier should follow from it by
-the same tables as every other road (about LTS 3 at 35 to 40 mph with two lanes,
-LTS 4 at 45 mph or three lanes and more). So the lane is a reviewed file under
+the same tables as every other road. So the lane is a reviewed file under
 `fixtures/bike_lanes/`: a row per way, the side (`right`, the kerb side of a
 one-way carriageway; `left`; or `both`), and the owner's words and the map
 evidence. It adds `cycleway:<side>=lane` to the tags the classifier and the
@@ -21,12 +20,23 @@ facility class read, never to the graph's tags.
 A row fills a gap and never overrules the map: a way that now carries any
 `cycleway` key of its own (the owner's OSM edit, once it is in the extract) is
 read as OSM has it, and the row is reported as unused.
+
+The owner's own reading of the lane is kept over the tables' (`owner_tier`): "about
+LTS 3 at 35-40 mph with 2 lanes, LTS 4 at 45 mph or 3+ lanes" (433), and of the 3- and
+4-lane Veirs Mill carriageways, "LTS4. Bikeable, but problematic." (437.4). Furth's
+table gives a painted lane LTS 3 at 35 mph whatever the lane count, so a curated lane
+on three or more through lanes a direction, or at 45 mph and more, is held at LTS 4.
+Only on a way a row's lane was used: the classifier's tables are unchanged elsewhere.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+
+from .stress import Stress, StressResult
+from .tags import lanes_per_direction
 
 BIKE_LANES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "bike_lanes"
 SIDES = ("right", "left", "both")
@@ -69,3 +79,24 @@ def corrected(tags: dict[str, str], side: str | None) -> tuple[dict[str, str], b
     if side is None or any(key == "cycleway" or key.startswith("cycleway:") for key in tags):
         return tags, False
     return {**tags, f"cycleway:{side}": "lane"}, True
+
+
+# The owner's reading of a curated lane (433, 437.4): LTS 4 from this many through
+# lanes a direction, or from this speed.
+OWNER_LTS4_LANES = 3
+OWNER_LTS4_MPH = 45.0
+
+
+def owner_tier(result: StressResult, tags: dict[str, str]) -> StressResult:
+    """The classifier's result for a way a curated lane was used on, held at LTS 4
+    on three or more through lanes a direction or at 45 mph and more (437.4)."""
+    lanes = lanes_per_direction(tags) or 0
+    speed = result.speed_mph or 0.0
+    if result.tier >= Stress.LTS4 or (lanes < OWNER_LTS4_LANES and speed < OWNER_LTS4_MPH):
+        return result
+    why = f"{lanes} lanes" if lanes >= OWNER_LTS4_LANES else f"{speed:g} mph"
+    return replace(
+        result,
+        tier=Stress.LTS4,
+        rule=f"{result.rule}; curated lane at {why}: LTS 4 (OWNER-DECISIONS 433, 437.4)",
+    )
