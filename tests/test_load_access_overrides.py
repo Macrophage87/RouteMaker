@@ -885,7 +885,9 @@ class TestTheRetiringFiles:
     def test_437_reopens_the_military_ways_and_retires_saint_elizabeths_avoid_rows(
         self, admin, tmp_path
     ):
-        """OWNER-DECISIONS 437.6, 437a-c: 55 bicycle=yes rows and Saint Elizabeths Rd SE
+        """OWNER-DECISIONS 437.6, 437a-c, 438.2: 80 bicycle=yes rows (Pentagon Connector
+        Road's 25 among them) and Jeff Todd Way's roadway at
+        tier 4 (439b, 15 rows) and Saint Elizabeths Rd SE
         at tier 4, which first withdraws the two Avoid rows the east-of-the-Anacostia
         file loaded on 2026-09-30 (that file no longer carries them)."""
         from core.management.commands.load_access_overrides import parse_retired
@@ -901,13 +903,17 @@ class TestTheRetiringFiles:
         load(write_rows(tmp_path, old), "--actor", actor, "--confirm")
         assert Override.objects.count() == 2
         dry = load(str(path), "--actor", actor)
-        assert dry.count("retire: way ") == 2 and dry.count("create: way ") == 57
+        assert dry.count("retire: way ") == 2 and dry.count("create: way ") == 97
         assert "disagrees" not in dry and Override.objects.count() == 2
         load(str(path), "--actor", actor, "--confirm")
-        assert Override.objects.count() == 57
+        assert Override.objects.count() == 97
         tiers = set(
             Override.objects.filter(
                 kind="stress", osm_way_id__in=[316866053, 1181165198]
             ).values_list("value__tier", flat=True)
         )
         assert tiers == {4}
+        jeff = Override.objects.filter(kind="stress", osm_way_id__in=[232308625, 232393907])
+        assert set(jeff.values_list("value__tier", flat=True)) == {4}
+        # Connector Road keeps the classifier's rating (439b corrects 439a).
+        assert not Override.objects.filter(kind="stress", osm_way_id=32866298).exists()

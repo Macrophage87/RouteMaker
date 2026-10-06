@@ -618,6 +618,34 @@ def test_the_reopenings_file_carries_each_decision():
             1198494303,
         },
         "437c": {316866053, 1181165198},
+        # Pentagon Connector Road, by id (not Fort Meade's Connector Road, access=no).
+        "438.2": {
+            32866298,
+            50557521,
+            50557526,
+            50557527,
+            50557528,
+            296172078,
+            296172079,
+            296172080,
+            296172081,
+            296173435,
+            296173436,
+            345398624,
+            345398633,
+            514215556,
+            514215557,
+            514215558,
+            758995471,
+            1022788239,
+            1311964674,
+            1311964675,
+            1311964676,
+            1311964678,
+            1311964679,
+            1365254349,
+            1365254351,
+        },
         "437b": {
             1184926339,
             1469856110,
@@ -634,11 +662,25 @@ def test_the_reopenings_file_carries_each_decision():
     }
     for decision, ids in by_decision.items():
         assert {w for w, r in access.items() if f"decision {decision}," in r["reason"]} == ids
-    assert len(access) == sum(len(ids) for ids in by_decision.values()) == 55
+    assert len(access) == sum(len(ids) for ids in by_decision.values()) == 80
+    assert {r["fingerprint"]["name"] for w, r in access.items() if w in by_decision["438.2"]} == {
+        "Connector Road"
+    }
+    # 439: the Pentagon transit-centre link runs over sidewalk 345398651 (OSM
+    # access=private); the owner left it closed pending community review. So no row
+    # opens it or the link's other ways.
+    assert not {345398651, 38355363, 345398802, 904642304, 345398771, 1022785583} & set(access)
     # Saint Elizabeths Rd SE is LTS 4 (437c), and the Avoid rows the east-of-the-Anacostia
     # file loaded are retired here; that file no longer carries them.
-    assert set(stress) == by_decision["437c"]
+    # Jeff Todd Way's roadway is LTS 4 (439b: "I meant Jeff Todd. It's LTS4"): the 10
+    # ways above and its 5 SR 619 carriageways inside the base. Connector Road keeps
+    # the classifier's rating; the side path keeps its own.
+    jeff_sr619 = {232308648, 232393907, 1076054099, 1076054100, 1411382767}
+    assert set(stress) == by_decision["437c"] | by_decision["437.6"] | jeff_sr619
     assert all(r["value"]["tier"] == 4 for r in stress.values())
+    assert all("decision 439b," in stress[w]["reason"] for w in by_decision["437.6"] | jeff_sr619)
+    assert not set(stress) & set(JEFF_TODD_SIDE_PATH)
+    assert not set(stress) & by_decision["438.2"]
     assert {r["osm_way_id"] for r in data["retire"]} == by_decision["437c"]
     assert all(r["value"]["tier"] == 5 for r in data["retire"])
     east = json.loads(
@@ -709,13 +751,21 @@ def test_the_jeff_todd_way_side_path_and_the_parkway_trail_stay_open_on_real_dat
 
 
 def test_a_designated_way_only_the_base_reaches_is_closed_with_its_own_reason():
-    """438.1: the Belvoir Rd crossing on the main post (1322746319) is closed, the
-    rest stay open; the listed id closes even with no other tag against it."""
-    assert set(ra.DESIGNATED_BASE_ONLY) == {1322746319}
+    """438.1: the Belvoir Rd crossing on the main post (1322746319) is closed; 439:
+    the borderline ways wait for the community; the listed ids close even with no
+    other tag against them, and the rest stay open."""
+    pending = {704730666, 1117514150, 1117514151, 1117514152, 1117514153, 1117514154}
+    assert set(ra.DESIGNATED_BASE_ONLY) == {1322746319} | pending
     found = designated_found()
     m = found[1322746319]
     assert m.closed and m.why == ra.WHY_BASE_ONLY
     assert m.installation == "Fort Belvoir"
+    # 439: the borderline ways (704730666 at Belvoir, the Russell Rd side path at
+    # Quantico) are closed until the community confirms them.
+    for way_id in pending:
+        assert found[way_id].closed and found[way_id].why == ra.WHY_PENDING_REVIEW, way_id
+    assert found[704730666].installation == "Fort Belvoir"
+    assert found[1117514150].installation == "Marine Corps Base Quantico"
     assert ra.signed_for_bicycles({"bicycle": "designated", "foot": "designated"})
     # By id only: the same tags on another way stay open.
     tags = {"highway": "cycleway", "bicycle": "designated"}
@@ -728,3 +778,15 @@ def test_a_designated_way_only_the_base_reaches_is_closed_with_its_own_reason():
         reopened={1322746319},
     )
     assert reopened.why == ra.WHY_OVERRIDE
+
+
+def test_the_jeff_todd_way_side_path_keeps_its_low_rating_beside_the_lts_4_road():
+    """439b: the roadway is LTS 4 by its own stress rows; the side path ("But that
+    sidepath looks fine") has no row and the classifier rates it by its own tags."""
+    from routemaker import stress
+
+    data = json.loads(DESIGNATED.read_text())
+    tags = {w["id"]: w["tags"] for w in data["ways"]}
+    for way_id in JEFF_TODD_SIDE_PATH:
+        result = stress.classify(dict(tags[way_id]), jurisdiction="VA")
+        assert result.tier == stress.Stress.LTS1, (way_id, result)

@@ -2,8 +2,8 @@
   "version": 1,
   "decided": "2026-10-06",
   "decided_by": "the deployment owner",
-  "status": "OWNER-DECISIONS 437.6, 437a, 437b, 437c. Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
-  "annotations": "Ways inside military areas that the owner reopens to bicycles with evidence (437: inside a base only an override row, a numbered public road, a way signed for bicycles and the Pentagon's listed ways stay open). Jeff Todd Way at Fort Belvoir, its 10 ways without the SR 619 number (437.6); Russell Rd at Quantico, the 32 ways the rule closes (437a; its two access=private MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Rd SE, its 2 roadway ways, open and LTS 4 (437c), and its 11-way side path (437b). Hidden, category other, no public note (no wording approved).",
+  "status": "OWNER-DECISIONS 437.6, 437a, 437b, 437c, 438.2, 439b. Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "Ways inside military areas that the owner reopens to bicycles with evidence (437: inside a base only an override row, a numbered public road, a way signed for bicycles and the Pentagon's listed ways stay open). Jeff Todd Way at Fort Belvoir, its 10 ways without the SR 619 number (437.6); Russell Rd at Quantico, the 32 ways the rule closes (437a; its two access=private MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Rd SE, its 2 roadway ways, open and LTS 4 (437c), and its 11-way side path (437b). Pentagon Connector Road, its 25 ways in the reservation by way id (438.2; not Fort Meade's Connector Road, which is access=no and stays closed), rated by the classifier. The link from S Eads St into the transit centre is not here: it runs over sidewalk 345398651, which OSM tags access=private, and the owner left it closed pending community review (439). Jeff Todd Way's roadway, its 15 carriageway ways inside the base (the 10 above and the 5 SR 619 ones), is LTS 4 by stress rows (439b); its side path keeps its own rating. Hidden, category other, no public note (no wording approved).",
   "rows": [
     {
       "kind": "access",
@@ -868,6 +868,681 @@
         "highway": "footway",
         "length_m": 243.6,
         "line": "-77.004655,38.854386 -77.004690,38.854049 -77.004798,38.853831 -77.005268,38.853001 -77.005286,38.852948 -77.005229,38.852840 -77.005258,38.852738 -77.005291,38.852696 -77.005354,38.852667 -77.005420,38.852642 -77.005492,38.852644 -77.005543,38.852626 -77.005661,38.852485"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 32866298,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 32866298, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 66.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 66.3,
+        "line": "-77.054019,38.867920 -77.053984,38.867988 -77.053870,38.868123 -77.053643,38.868276 -77.053500,38.868336"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557521,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557521, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 59.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 59.3,
+        "line": "-77.053500,38.868336 -77.052849,38.868503"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557526,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557526, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 58.6 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 58.6,
+        "line": "-77.051695,38.868833 -77.051074,38.869045"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557527,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557527, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 78.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 78.2,
+        "line": "-77.051074,38.869045 -77.050780,38.869163 -77.050543,38.869286 -77.050341,38.869444"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557528,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557528, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 68.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 68.1,
+        "line": "-77.052433,38.868622 -77.051695,38.868833"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172078,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172078, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 22.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 22.7,
+        "line": "-77.051706,38.868906 -77.051953,38.868835"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172079,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172079, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 139.4 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 139.4,
+        "line": "-77.050093,38.870042 -77.050166,38.869923 -77.050332,38.869568 -77.050426,38.869472 -77.050665,38.869305 -77.051078,38.869118"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172080,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172080, Connector Road, highway=tertiary, lanes=2, maxspeed=25 mph, bicycle=yes, 35.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 35.7,
+        "line": "-77.049994,38.870527 -77.049819,38.870818"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172081,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172081, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 59.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 59.3,
+        "line": "-77.051078,38.869118 -77.051706,38.868906"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296173435,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296173435, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 62.6 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 62.6,
+        "line": "-77.052790,38.868606 -77.053480,38.868435"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296173436,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296173436, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 41.8 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 41.8,
+        "line": "-77.053480,38.868435 -77.053754,38.868332 -77.053889,38.868242"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 345398624,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 345398624, Connector Road, highway=tertiary, oneway=yes, lanes=2, bicycle=yes, 33.0 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 33.0,
+        "line": "-77.051953,38.868835 -77.052310,38.868733"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 345398633,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 345398633, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 29.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 29.7,
+        "line": "-77.052465,38.868689 -77.052790,38.868606"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215556,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215556, Connector Road, highway=tertiary, lanes=2, maxspeed=25 mph, bicycle=yes, 27.9 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 27.9,
+        "line": "-77.050075,38.870128 -77.050024,38.870376"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215557,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215557, Connector Road, highway=tertiary, lanes=3, maxspeed=25 mph, bicycle=yes, 17.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 17.1,
+        "line": "-77.050024,38.870376 -77.049994,38.870527"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215558,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215558, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 71.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 71.2,
+        "line": "-77.050341,38.869444 -77.050206,38.869614 -77.050120,38.869808 -77.050093,38.870042"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 758995471,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 758995471, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 44.0 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 44.0,
+        "line": "-77.053889,38.868242 -77.054047,38.868111 -77.054187,38.867925"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1022788239,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1022788239, Connector Road, highway=tertiary, maxspeed=25 mph, bicycle=yes, 9.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 9.7,
+        "line": "-77.050093,38.870042 -77.050075,38.870128"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964674,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964674, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 26.8 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 26.8,
+        "line": "-77.054284,38.867709 -77.054297,38.867563 -77.054283,38.867469"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964675,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964675, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 14.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 14.2,
+        "line": "-77.052310,38.868733 -77.052465,38.868689"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964676,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964676, Connector Road, highway=tertiary, oneway=yes, 20.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 20.1,
+        "line": "-77.054284,38.867709 -77.054052,38.867708"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964678,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964678, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 31.9 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 31.9,
+        "line": "-77.054062,38.867421 -77.054052,38.867708"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964679,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964679, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 38.4 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 38.4,
+        "line": "-77.052849,38.868503 -77.052433,38.868622"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1365254349,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1365254349, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 25.5 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 25.5,
+        "line": "-77.054187,38.867925 -77.054284,38.867709"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1365254351,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1365254351, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 23.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 23.7,
+        "line": "-77.054052,38.867708 -77.054019,38.867920"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756393,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756393, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 69.5 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 69.5,
+        "line": "-77.147203,38.740269 -77.147262,38.740708 -77.147306,38.740888"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756713,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756713, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=concrete, 52.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.0,
+        "line": "-77.143220,38.731335 -77.142981,38.730906"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756714,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756714, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 67.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 67.0,
+        "line": "-77.147473,38.740854 -77.147423,38.740645 -77.147381,38.740257"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756715,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756715, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=concrete, 52.2 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.2,
+        "line": "-77.142827,38.730954 -77.143068,38.731385"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308619,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308619, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 70.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 70.0,
+        "line": "-77.147306,38.740888 -77.147392,38.741123 -77.147553,38.741417 -77.147599,38.741472"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308625,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308625, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 1100.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1100.4,
+        "line": "-77.143068,38.731385 -77.143557,38.732269 -77.143788,38.732593 -77.146617,38.736023 -77.147243,38.736809 -77.147426,38.737086 -77.147531,38.737302 -77.147648,38.737727 -77.147671,38.737939 -77.147662,38.738181 -77.147629,38.738419 -77.147556,38.738721 -77.147231,38.739787 -77.147198,38.740006 -77.147203,38.740269"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308636,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308636, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 1106.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1106.4,
+        "line": "-77.147381,38.740257 -77.147389,38.740018 -77.147435,38.739783 -77.147755,38.738756 -77.147831,38.738442 -77.147865,38.738192 -77.147875,38.737935 -77.147850,38.737706 -77.147726,38.737255 -77.147613,38.737021 -77.147420,38.736731 -77.146789,38.735938 -77.143962,38.732510 -77.143735,38.732209 -77.143585,38.731975 -77.143220,38.731335"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 306059636,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 306059636, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 368.2 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 368.2,
+        "line": "-77.149940,38.744241 -77.149333,38.743428 -77.147753,38.741404"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1098724285,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724285, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 65.8 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 65.8,
+        "line": "-77.147753,38.741404 -77.147573,38.741087 -77.147473,38.740854"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1098724286,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724286, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 384.1 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 384.1,
+        "line": "-77.147599,38.741472 -77.149749,38.744243 -77.149880,38.744432"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308648,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 232308648, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 144.1 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 144.1,
+        "line": "-77.142981,38.730906 -77.142305,38.729722"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232393907,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 232393907, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 903.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 903.4,
+        "line": "-77.136374,38.723271 -77.137428,38.725494 -77.137555,38.725723 -77.137695,38.725914 -77.137880,38.726114 -77.138459,38.726571 -77.140664,38.727941 -77.141148,38.728308 -77.141369,38.728529 -77.141634,38.728852 -77.141754,38.729034 -77.142160,38.729769"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1076054099,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1076054099, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 812.6 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 812.6,
+        "line": "-77.142305,38.729722 -77.141896,38.728982 -77.141771,38.728792 -77.141495,38.728457 -77.141266,38.728227 -77.140766,38.727848 -77.138563,38.726479 -77.138003,38.726038 -77.137694,38.725666 -77.137574,38.725449 -77.136867,38.723993"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1076054100,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1076054100, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 144.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 144.0,
+        "line": "-77.142160,38.729769 -77.142827,38.730954"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1411382767,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1411382767, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=3, maxspeed=40 mph, surface=asphalt, 94.3 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 94.3,
+        "line": "-77.136867,38.723993 -77.136483,38.723200"
       }
     }
   ],

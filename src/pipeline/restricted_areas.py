@@ -360,14 +360,31 @@ ACCESS_KEYS = ("access", "vehicle", "bicycle", "motor_vehicle")
 # path (the Jeff Todd Way side path and the Fairfax County Parkway Trail at Fort
 # Belvoir), the same keys `open_to_bicycles` reads outside a base.
 BICYCLE_ACCESS_KEYS = ("access", "vehicle", "bicycle")
-# OWNER-DECISIONS 438.1: "The bike paths that would only be open to those authorized
-# on base are the ones I want to leave out." Ways signed for bicycles that only base
-# ways reach, by OSM way id (2026-10-03 extract; REBUILD-BUNDLE-fix3-recheck). Closed
-# with their own reason, ahead of `signed_for_bicycles`.
+WHY_BASE_ONLY = "closed: signed for bicycles but inside the secured post (OWNER-DECISIONS 438.1)"
+WHY_PENDING_REVIEW = (
+    "closed: signed for bicycles inside a base; closed until the community confirms it is "
+    "public (OWNER-DECISIONS 439)"
+)
+# Ways signed for bicycles that stay closed inside a base, by OSM way id (2026-10-03
+# extract; REBUILD-BUNDLE-fix3-recheck), each with its reason; checked ahead of
+# `signed_for_bicycles`. An approved override row still reopens one.
 DESIGNATED_BASE_ONLY = {
-    # A 21 m marked crossing 547 m inside the main post that joins only Belvoir Rd
-    # (access=permissive, closed by 437.1) and two footways.
-    1322746319: "Belvoir Rd crossing, Fort Belvoir main post (438.1)",
+    # OWNER-DECISIONS 438.1: "The bike paths that would only be open to those
+    # authorized on base are the ones I want to leave out." A 21 m marked crossing
+    # 547 m inside the main post that joins only Belvoir Rd (access=permissive, closed
+    # by 437.1) and two footways.
+    1322746319: WHY_BASE_ONLY,
+    # OWNER-DECISIONS 439, on the borderline ways: "I don't ride much there, so I'll
+    # wait for community input." Err closed (330) until there is evidence
+    # (PLAN FOLLOWUP-BASE-COMMUNITY-REVIEW). A 2.2 km (1.38 mi) cycleway at Fort
+    # Belvoir, 450 m in, that joins the Jeff Todd Way trail toward Woodlawn.
+    704730666: WHY_PENDING_REVIEW,
+    # The side path beside Russell Rd at MCB Quantico, 1.8 km in (0.34 mi).
+    1117514150: WHY_PENDING_REVIEW,
+    1117514151: WHY_PENDING_REVIEW,
+    1117514152: WHY_PENDING_REVIEW,
+    1117514153: WHY_PENDING_REVIEW,
+    1117514154: WHY_PENDING_REVIEW,
 }
 # Installations OSM shows public ways in (the area's OSM id, `w` way or `r`
 # relation). The owner, 2026-10-05: "There are parts of the pentagon reservation you
@@ -427,7 +444,6 @@ WHY_SIGNED = "open: signed for bicycles (bicycle=designated)"
 WHY_PUBLIC_ROUTE = "open: a numbered public road; owner to confirm"
 WHY_EDGE_PATH = "open: the Pentagon's public streets and walkways (OWNER-DECISIONS 437.5)"
 WHY_CLOSED = "closed: inside a military area"
-WHY_BASE_ONLY = "closed: signed for bicycles but inside the secured post (OWNER-DECISIONS 438.1)"
 WHY_TAGGED_OPEN = (
     "closed: inside a military area; its own access/bicycle tag no longer opens it "
     "(OWNER-DECISIONS 437)"
@@ -515,7 +531,7 @@ def military_closures(
     (OWNER-DECISIONS 437; `_Shapes`). Inside, only these stay open: an override's
     bicycle permission, a numbered public road, the Pentagon's listed streets and
     walkways (437.5), and a way signed for bicycles (`bicycle=designated`) unless
-    `DESIGNATED_BASE_ONLY` lists it (438.1). A way
+    `DESIGNATED_BASE_ONLY` lists it (438.1, 439). A way
     inside an ordinary area and the Pentagon reservation (the building) is judged
     by the ordinary rule."""
     if not areas:
@@ -543,7 +559,7 @@ def military_closures(
         elif at_edge and osm_id in PENTAGON_OPEN_WAYS:
             status, why = OPEN, WHY_EDGE_PATH
         elif osm_id in DESIGNATED_BASE_ONLY:
-            status, why = CLOSED, WHY_BASE_ONLY
+            status, why = CLOSED, DESIGNATED_BASE_ONLY[osm_id]
         elif signed_for_bicycles(tags):
             status, why = OPEN, WHY_SIGNED
         else:
