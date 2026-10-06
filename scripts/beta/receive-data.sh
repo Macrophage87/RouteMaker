@@ -29,7 +29,8 @@
 #                no accounts (OWNER-DECISIONS 367.3), so this deletes the beta's own; it is
 #                refused while any exist unless --delete-beta-accounts is given too.
 #   snapshot-db --label NAME
-#            pg_dump the database to DATA_ROOT/backups/pre-NAME-<utc>.dump and print its path.
+#            pg_dump the database to DATA_ROOT/backups/pre-NAME-<utc>.dump (or the same name
+#            under --backups-dir) and print its path.
 #            The runbook takes one before every release update (which may migrate forward).
 #   restore-dump FILE
 #            put back a dump made by snapshot-db or by a safety dump (rollback). A pre-rollback
@@ -45,7 +46,15 @@
 #   --delete-beta-accounts   db: with --replace-db, accept that the beta's accounts go
 #   --label NAME             snapshot-db: a word naming the snapshot (release, before-x, ...)
 #   --allow-sha-mismatch     the bundle was built from a different git sha than this checkout
+#   --backups-dir DIR        snapshot-db and restore-dump: write the safety dumps to DIR instead
+#                            of DATA_ROOT/backups. The no-sudo mode the release agent uses
+#                            (scripts/beta/auto-release.sh): DIR is a directory of the caller's
+#                            own, absolute, outside DATA_ROOT, and writable by nobody else.
 #   -h, --help
+#
+# RECEIVE_DATA_REPO names the checkout whose beta-compose.sh and .env to use [the one this
+# script is in]: the release agent runs its own installed copy of this script against the
+# beta's checkout, whatever release that checkout is at.
 #
 # Every step is idempotent: running `files` twice installs the same bytes twice; a graph's old
 # build directory is kept (the previous `current` is recorded as `previous`), so the swap is
@@ -57,10 +66,11 @@ die() { echo "receive-data: $*" >&2; exit 2; }
 note() { echo "receive-data: $*" >&2; }
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "${RECEIVE_DATA_REPO:-$here/../..}" && pwd)
+[ -x "$repo/scripts/beta/beta-compose.sh" ] || die "$repo has no scripts/beta/beta-compose.sh"
 
 bundle=""; env_file="$repo/.env"; replace_db=0; update_data=0; delete_accounts=0
-allow_sha=0; command_name=""; label=""; dump_file=""
+allow_sha=0; command_name=""; label=""; dump_file=""; backups_dir=""
 
 usage() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
@@ -74,6 +84,7 @@ while [ $# -gt 0 ]; do
 		--update-data) update_data=1; shift ;;
 		--delete-beta-accounts) delete_accounts=1; shift ;;
 		--allow-sha-mismatch) allow_sha=1; shift ;;
+		--backups-dir) [ $# -ge 2 ] || die "$1 needs a value"; backups_dir=$2; shift 2 ;;
 		-*) die "unknown option $1" ;;
 		*)
 			if [ -z "$command_name" ]; then command_name=$1
@@ -99,6 +110,22 @@ case "$data_root" in
 esac
 [ -d "$data_root" ] || die "$data_root does not exist; run scripts/prepare_data_root.sh first"
 
+# Where safety dumps go. The default is DATA_ROOT/backups, owned by the container uid (sudo).
+# --backups-dir is the caller's own directory: it must already exist, be absolute, be owned by
+# the caller, sit outside DATA_ROOT (the worker's nightly pruning and the containers see that
+# tree), and be writable by nobody else (a dump holds the beta's accounts).
+if [ -n "$backups_dir" ]; then
+	case "$command_name" in snapshot-db | restore-dump | db) ;; *) die "--backups-dir is for snapshot-db, restore-dump and db" ;; esac
+	case "$backups_dir" in /?*) ;; *) die "--backups-dir '$backups_dir' is not absolute" ;; esac
+	[ -d "$backups_dir" ] && [ ! -L "$backups_dir" ] || die "--backups-dir $backups_dir is not a directory (create it first, mode 700)"
+	backups_dir=$(cd "$backups_dir" && pwd -P)
+	case "$backups_dir/" in "$(cd "$data_root" && pwd -P)"/*) die "--backups-dir $backups_dir is inside DATA_ROOT; use a directory of your own outside it" ;; esac
+	[ "$(stat -c %u "$backups_dir")" = "$(id -u)" ] || die "--backups-dir $backups_dir is not owned by $(id -un)"
+	case "$(stat -c %A "$backups_dir")" in ?????w???? | ????????w?) die "--backups-dir $backups_dir is writable by others; chmod 700 it" ;; esac
+else
+	backups_dir="$data_root/backups"
+fi
+
 case "$command_name" in
 	verify | files | db)
 		[ -n "$bundle" ] || die "--bundle DIR is required"
@@ -112,7 +139,7 @@ esac
 
 manifest_value() { sed -n "s/^$1=//p" "$bundle/MANIFEST.txt" | head -n 1; }
 has_part() { grep -qw "$1" <<<"$(manifest_value parts)"; }
-bc() { BETA_ENV_FILE="$env_file" "$here/beta-compose.sh" "$@"; }
+bc() { BETA_ENV_FILE="$env_file" "$repo/scripts/beta/beta-compose.sh" "$@"; }
 
 verify_bundle() { # optional argument: only the files under that prefix (the db step needs only db/)
 	local prefix=${1:-}
@@ -296,9 +323,9 @@ app_is_down() { # nothing may write while the database is replaced
 # Not a name the worker's nightly pruning matches (routemaker-<utc>.dump), so it is kept.
 snapshot() {
 	local file
-	file="$data_root/backups/pre-$1-$(date -u +%Y%m%dT%H%M%SZ).dump"
-	[ -d "$data_root/backups" ] && [ -w "$data_root/backups" ] ||
-		die "cannot write $data_root/backups (it is owned by the container uid): run this with sudo"
+	file="$backups_dir/pre-$1-$(date -u +%Y%m%dT%H%M%SZ).dump"
+	[ -d "$backups_dir" ] && [ -w "$backups_dir" ] ||
+		die "cannot write $backups_dir (DATA_ROOT/backups is owned by the container uid): run this with sudo, or give --backups-dir"
 	note "safety dump of the current database to $file"
 	# umask 077: the dump holds the beta's own accounts.
 	(umask 077 && bc exec -T postgis pg_dump -U "$pguser" -d "$pgdatabase" --format=custom --no-owner -n public -n "$live_schema" </dev/null >"$file.part") ||
