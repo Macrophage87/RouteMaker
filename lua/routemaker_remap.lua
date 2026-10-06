@@ -540,6 +540,9 @@ function M.remap_way(tags, derived)
     out.bicycle = "destination"
   end
 
+  -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).
+  M.strip_paved_ratings(tags, out)
+
   -- Last, so no line above can grant a direction back: the conditional-access
   -- resolution writes `bicycle:forward` / `:backward` from OSM's own
   -- `bicycle=no` + `bicycle:conditional=yes @ ...`.
@@ -548,6 +551,48 @@ function M.remap_way(tags, derived)
   end
 
   return out
+end
+
+-- A paved way's mountain-bike rating comes off before the tile build.
+--
+-- Valhalla 3.5.1's PBF parser reads `mtb:scale` and `mtb:scale:imba` as the
+-- edge's surface: `mtb:scale=0` prices it as dirt, 2 and up as the roughest
+-- class, whatever its `surface` says. So the paved Rock Creek Trail in
+-- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; ways
+-- 851669430, 198389125, 563155347, 161835541, 770109524), the ICC Trail and
+-- Northwest Branch were priced as dirt and avoided, though the segment table
+-- rates them paved and LTS 1. `routemaker.singletrack` already says a paved
+-- trail is not singletrack whatever its rating; this takes the same paved test
+-- (`M.PAVED_SURFACES`, the same five values and `concrete:*`) to the graph. 172
+-- paved ways carried a rating in the 2026-10-03 extract.
+--
+-- Access is not changed. The parser grants bicycle access from any rating, but
+-- graph.lua already strips the ratings from every way upstream leaves closed
+-- (`M.strip_ratings_if_closed`), so on a closed way the rating was never what
+-- decided access, and on an open one it grants nothing new. `sac_scale` is left
+-- alone: upstream reads it as an access grant on a way with no bicycle tag, and
+-- it does not set the surface. `mtb:scale:uphill` and `mtb:description` stay as
+-- they are.
+M.PAVED_SURFACES = { asphalt = true, concrete = true, paved = true,
+  paving_stones = true, chipseal = true }
+M.PAVED_RATING_KEYS = { "mtb:scale", "mtb:scale:imba" }
+
+function M.is_paved(tags)
+  local surface = tags.surface or ""
+  return M.PAVED_SURFACES[surface] == true or surface:sub(1, 9) == "concrete:"
+end
+
+--- Write REMOVE for each rating key a paved way carries; returns whether any.
+function M.strip_paved_ratings(tags, out)
+  if not M.is_paved(tags) then return false end
+  local any = false
+  for _, key in ipairs(M.PAVED_RATING_KEYS) do
+    if tags[key] ~= nil then
+      out[key] = M.REMOVE
+      any = true
+    end
+  end
+  return any
 end
 
 -- `rm:no_bicycle` closes both directions, whatever else the way says.
@@ -616,9 +661,10 @@ end
 -- A one-way open to bicycles in its own direction keeps its ratings: the
 -- parser keeps a one-way's reverse closed whatever the rating
 -- (tests/test_tile_build_access.py), so there is nothing for it to reopen, and
--- stripping cost the Green Loop Trail (ways 1324891525 and 1324891526,
--- `oneway=yes`, `mtb:scale=3`, asphalt) its `path` surface class
--- (SINGLETRACK-review-r1). Upstream's output says it is that case without a
+-- stripping cost a rated one-way its surface class (SINGLETRACK-review-r1, the
+-- Green Loop Trail, ways 1324891525 and 1324891526, `oneway=yes`,
+-- `mtb:scale=3`). That trail is asphalt, so since fix round 2 its `mtb:scale`
+-- comes off in the remap anyway and it is priced paved (`M.strip_paved_ratings`). Upstream's output says it is that case without a
 -- second reading of the access tags: `oneway` is "true", and the direction the
 -- one-way runs - `bike_forward`, or `bike_backward` where `oneway_reverse` is
 -- "true" (`oneway=-1`, which upstream has already swapped) - is "true". A

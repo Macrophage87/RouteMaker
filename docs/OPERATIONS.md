@@ -3478,6 +3478,15 @@ about 63 mi (101 km) with the older Bolling outline it overlaps), so routes that
 it; `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
 open. And Veirs Mill Rd's former Avoid stretch comes out LTS 3 (433).
 
+The remap also takes `mtb:scale` and `mtb:scale:imba` off every paved way
+(`strip_paved_ratings` in lua/routemaker_remap.lua): Valhalla's parser read the rating as
+the surface, so the paved Rock Creek Trail in Montgomery County (`mtb:scale=0`), the ICC
+Trail and Northwest Branch were priced as dirt and routes avoided them. 172 paved ways
+carry a rating in the 2026-10-03 extract; the rebuild logs the count (`paved ways with an
+mtb rating`). Access does not change. Being a lua change, it needs
+`scripts/check_tile_build_access.sh` (45 cases, 0 failures on the bundle) and the full
+graph rebuild, which step I is.
+
 **Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
 (the `rebuild` service). `docker compose build api rebuild` (or `docker compose build`),
 never `build api` alone: tile format 7 must reach the api and the pipeline together, or the

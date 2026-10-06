@@ -354,11 +354,12 @@ for _, case in ipairs(closed_cases) do
     rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
 end
 -- A one-way open its own way keeps its ratings: the parser keeps its reverse
--- closed anyway, and the rating is its surface class (SINGLETRACK-review-r1:
--- the Green Loop Trail, oneway=yes, mtb:scale=3, asphalt).
+-- closed anyway, and the rating is its surface class (SINGLETRACK-review-r1).
+-- On a natural surface: a paved way loses `mtb:scale` before upstream runs
+-- (`remap.strip_paved_ratings`, below).
 for _, case in ipairs({
-  { "a one-way trail", { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes", surface = "asphalt" } },
-  { "a oneway=-1 trail", { highway = "path", oneway = "-1", bicycle = "yes", foot = "yes", surface = "asphalt" } },
+  { "a one-way trail", { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes", surface = "dirt" } },
+  { "a oneway=-1 trail", { highway = "path", oneway = "-1", bicycle = "yes", foot = "yes", surface = "dirt" } },
 }) do
   local _, unrated_out = transform_way(case[2])
   local _, rated_out = transform_way(rated(case[2]))
@@ -368,6 +369,35 @@ for _, case in ipairs({
   check(case[1] .. ": keeps its rating", rated_out["mtb:scale"] == "1" and rated_out["mtb:description"] == "roots")
   check(case[1] .. ": with the same access as unrated",
     rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
+end
+
+-- A paved one-way (the Green Loop Trail, oneway=yes, mtb:scale=3, asphalt):
+-- its `mtb:scale` comes off in the remap, so the parser prices it paved, and
+-- its access is upstream's, as unrated. `mtb:description` stays.
+do
+  local paved = { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes", surface = "asphalt" }
+  local _, unrated_out = transform_way(paved)
+  local _, rated_out = transform_way(rated(paved))
+  check("a paved one-way trail: loses mtb:scale", rated_out["mtb:scale"] == nil)
+  check("a paved one-way trail: keeps mtb:description", rated_out["mtb:description"] == "roots")
+  check("a paved one-way trail: with the same access as unrated",
+    rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
+end
+-- The paved Rock Creek Trail (way 851669430's tags): reaches the parser with no
+-- rating and open both ways, as unrated.
+do
+  local rock_creek = { highway = "cycleway", surface = "paved", bicycle = "designated",
+    foot = "designated", motor_vehicle = "no", ["mtb:scale"] = "0", sac_scale = "hiking" }
+  local unrated = {}
+  for k, v in pairs(rock_creek) do unrated[k] = v end
+  unrated["mtb:scale"] = nil
+  local _, out = transform_way(rock_creek)
+  local _, plain = transform_way(unrated)
+  check("the paved Rock Creek Trail reaches the parser without mtb:scale", out["mtb:scale"] == nil)
+  check("and open both ways", out.bike_forward == "true" and out.bike_backward == "true")
+  check("with the access it has unrated",
+    out.bike_forward == plain.bike_forward and out.bike_backward == plain.bike_backward)
+  check("and sac_scale passes through", out.sac_scale == "hiking")
 end
 
 local open_cases = {

@@ -1969,6 +1969,20 @@ def build_handlers(
             restricted_areas.roads_inside(placed, areas["military"]) - left_open
         )
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
+        # Paved ways with a mountain-bike rating: the remap removes the rating, which
+        # Valhalla's parser would price as dirt (lua/routemaker_remap.lua,
+        # strip_paved_ratings; the paved Rock Creek Trail in Montgomery County).
+        paved_rated = sum(
+            1
+            for way in context.ways
+            if singletrack.is_paved(way.tags)
+            and any(way.tags.get(key) is not None for key in singletrack.SCALE_KEYS)
+        )
+        logger.info(
+            "paved ways with an mtb rating, priced paved in the graph (the remap drops the "
+            "rating): %d",
+            paved_rated,
+        )
         write_reports(
             context.work_dir,
             {MILITARY_REPORT_NAME: restricted_areas.military_report_csv(context.military_ways)},

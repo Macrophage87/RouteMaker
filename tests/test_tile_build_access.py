@@ -212,8 +212,9 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         (OPEN, CLOSED),
     ),
     # The Green Loop Trail (ways 1324891525, 1324891526): a one-way keeps its
-    # rating, and with it its surface class, since the parser keeps its
-    # reverse closed anyway (SINGLETRACK-review-r1).
+    # rating where it is not paved, since the parser keeps its reverse closed
+    # anyway (SINGLETRACK-review-r1); this one is asphalt, so the remap takes the
+    # rating off and the tile prices it paved (fix round 2).
     (
         "a rated one-way asphalt trail (the Green Loop Trail)",
         {
@@ -247,6 +248,39 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
     (
         "OSM access=no with bicycle=designated on a rated path",
         {"highway": "path", "access": "no", "bicycle": "designated", "foot": "yes", **RATED},
+        OPEN,
+    ),
+    # The paved Rock Creek Trail in Montgomery County (way 851669430's tags):
+    # `mtb:scale=0` used to make the tile price it as dirt.
+    (
+        "a paved trail rated mtb:scale=0 (the Rock Creek Trail)",
+        {
+            "highway": "cycleway",
+            "surface": "paved",
+            "smoothness": "good",
+            "bicycle": "designated",
+            "foot": "designated",
+            "motor_vehicle": "no",
+            "mtb:scale": "0",
+            "sac_scale": "hiking",
+            "rm:trail_class": "yes",
+            "rm:facility": "path",
+        },
+        OPEN,
+    ),
+    (
+        "the Rock Creek Trail unrated",
+        {
+            "highway": "cycleway",
+            "surface": "paved",
+            "smoothness": "good",
+            "bicycle": "designated",
+            "foot": "designated",
+            "motor_vehicle": "no",
+            "sac_scale": "hiking",
+            "rm:trail_class": "yes",
+            "rm:facility": "path",
+        },
         OPEN,
     ),
     ("an open path", {"highway": "path", "bicycle": "yes", "foot": "yes"}, OPEN),
@@ -342,11 +376,15 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
 
 # What the tile says the surface is, where a rating decides it. The parser
 # reads a rating as the surface too (SINGLETRACK-review-r0, finding 4), so an
-# open rated trail must keep its rating - the towpath above all - and its
-# unrated twin shows what the surface would be without one.
+# open unpaved rated trail keeps its rating - the towpath above all - and its
+# unrated twin shows what the surface would be without one; a paved one loses it.
 SURFACES = {
-    "a rated one-way asphalt trail (the Green Loop Trail)": "path",
-    "the same, mapped oneway=-1": "path",
+    # Paved: the remap removes the rating (fix round 2), so the tile prices the
+    # trail as its surface says, rated or not.
+    "a rated one-way asphalt trail (the Green Loop Trail)": "paved_smooth",
+    "the same, mapped oneway=-1": "paved_smooth",
+    "a paved trail rated mtb:scale=0 (the Rock Creek Trail)": "paved_smooth",
+    "the Rock Creek Trail unrated": "paved_smooth",
     "an open rated trail (not singletrack)": "path",
     "the same trail unrated": "dirt",
     "the C&O towpath above lock 21": "dirt",

@@ -1017,5 +1017,48 @@ check("a stricter access tag is kept on it",
 check("an unmarked footway is not opened",
   M.remap_way({ highway = "footway" }, { is_trail_class = true }).bicycle == nil)
 
+-- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
+-- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
+-- 851669430 among others, as the 2026-10-03 extract tags it).
+local rock_creek = {
+  highway = "cycleway", name = "Rock Creek Trail", surface = "paved", smoothness = "good",
+  bicycle = "designated", foot = "designated", motor_vehicle = "no", segregated = "no",
+  ["mtb:scale"] = "0", sac_scale = "hiking", trail_visibility = "excellent",
+}
+local paved_out = M.remap_way(rock_creek, { is_trail_class = true })
+check("a paved trail's mtb:scale is removed", paved_out["mtb:scale"] == M.REMOVE)
+check("and sac_scale is left alone", paved_out.sac_scale == nil)
+check("and no access key is written", paved_out.bicycle == nil and paved_out.access == nil
+  and paved_out["bicycle:forward"] == nil and paved_out["bicycle:backward"] == nil
+  and paved_out.foot == nil)
+check("nor the surface", paved_out.surface == nil)
+check("mtb:scale:imba on asphalt is removed too",
+  M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:imba"] = "1" },
+    { is_trail_class = true })["mtb:scale:imba"] == M.REMOVE)
+check("and on concrete:plates",
+  M.remap_way({ highway = "path", surface = "concrete:plates", ["mtb:scale"] = "2" },
+    { is_trail_class = true })["mtb:scale"] == M.REMOVE)
+check("a dirt trail keeps its rating",
+  M.remap_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "2" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("and so does a trail with no surface tag",
+  M.remap_way({ highway = "path", ["mtb:scale"] = "1" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("gravel is not paved",
+  M.remap_way({ highway = "path", surface = "gravel", ["mtb:scale"] = "0" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("mtb:scale:uphill and mtb:description stay",
+  (function()
+    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:uphill"] = "1",
+      ["mtb:description"] = "x" }, { is_trail_class = true })
+    return o["mtb:scale:uphill"] == nil and o["mtb:description"] == nil
+  end)())
+check("a closed paved singletrack-rated way stays closed",
+  (function()
+    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale"] = "3" },
+      { is_trail_class = true, no_bicycle = "park_path" })
+    return o["mtb:scale"] == M.REMOVE and o.bicycle == "no"
+  end)())
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
