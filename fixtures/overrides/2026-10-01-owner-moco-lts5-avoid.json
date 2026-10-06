@@ -2,8 +2,8 @@
  "version": 1,
  "decided": "2026-10-01",
  "decided_by": "the deployment owner",
- "status": "approved for loading by the owner on 2026-10-01 (OWNER-DECISIONS 181: \"Load it (Recommended)\"), with the Montgomery County Planning Department credit added in the same change",
- "annotations": "409 ways, 44.6 mi, where Montgomery County Planning's existing-condition LTS (LTS_EXIST) is 5 on the record the way lies along for at least half its length and our tier is below 5. Tier 5 (Avoid), hidden, no public note, category other. Motorways (a bicycle may not ride them) and ways an approved file already curates are left out. One adjustment per street (an unnamed way takes the name of the county record it lies along; a way with neither is grouped by the 0.01-degree cell its midpoint lies in). Licence: Montgomery Planning's open terms with attribution to the Montgomery County Planning Department (fixtures/datasets/README.md; PLAN.md, the three-question gate of 2026-10-01).",
+ "status": "approved for loading by the owner on 2026-10-01 (OWNER-DECISIONS 181: \"Load it (Recommended)\"), with the Montgomery County Planning Department credit added in the same change; the 23 Veirs Mill Road rows (moco-lts5-veirs-mill-road) retired 2026-10-05 by OWNER-DECISIONS 433 (\"It's not an avoid\"), listed under `retire`",
+ "annotations": "409 ways, 44.6 mi, as loaded on 2026-10-01; 386 ways, 42.6 mi since the 23 Veirs Mill Road rows were retired (OWNER-DECISIONS 433), where Montgomery County Planning's existing-condition LTS (LTS_EXIST) is 5 on the record the way lies along for at least half its length and our tier is below 5. Tier 5 (Avoid), hidden, no public note, category other. Motorways (a bicycle may not ride them) and ways an approved file already curates are left out. One adjustment per street (an unnamed way takes the name of the county record it lies along; a way with neither is grouped by the 0.01-degree cell its midpoint lies in). Licence: Montgomery Planning's open terms with attribution to the Montgomery County Planning Department (fixtures/datasets/README.md; PLAN.md, the three-question gate of 2026-10-01).",
  "rows": [
   {
    "kind": "stress",
@@ -1443,66 +1443,6 @@
     "highway": "trunk",
     "length_m": 259.7,
     "line": "-76.932146,39.106446 -76.933309,39.104292"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 128574906,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 128574906 (Veirs Mill Road, highway=primary, 0.07 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 108.7,
-    "line": "-77.104914,39.069066 -77.103900,39.068487"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 128574914,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 128574914 (Veirs Mill Road, highway=primary, 0.02 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 34.9,
-    "line": "-77.109245,39.071751 -77.108934,39.071551"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 128574915,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 128574915 (Veirs Mill Road, highway=primary, 0.02 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 38.0,
-    "line": "-77.108902,39.071725 -77.109251,39.071933"
    }
   },
   {
@@ -3467,26 +3407,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 697039269,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 697039269 (Veirs Mill Road, highway=primary, 0.16 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 249.7,
-    "line": "-77.104774,39.069215 -77.105898,39.069861 -77.107065,39.070585"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 697039299,
    "value": {
     "tier": 5,
@@ -4427,226 +4347,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 724229764,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229764 (Veirs Mill Road, highway=primary, 0.10 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 154.6,
-    "line": "-77.100398,39.066423 -77.099467,39.065841 -77.098987,39.065567"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229765,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229765 (Veirs Mill Road, highway=primary, 0.02 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 38.9,
-    "line": "-77.100294,39.066516 -77.100647,39.066733"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229768,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229768 (Veirs Mill Road, highway=primary, 0.09 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 141.3,
-    "line": "-77.098896,39.065512 -77.097604,39.064732"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229769,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229769 (Veirs Mill Road, highway=primary, 0.10 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 153.6,
-    "line": "-77.098896,39.065661 -77.100294,39.066516"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229771,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229771 (Veirs Mill Road, highway=primary, 0.09 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 152.7,
-    "line": "-77.097604,39.064732 -77.096206,39.063891"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229774,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229774 (Veirs Mill Road, highway=primary, 0.09 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 151.7,
-    "line": "-77.097516,39.064816 -77.098896,39.065661"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229775,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229775 (Veirs Mill Road, highway=primary, 0.03 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 42.4,
-    "line": "-77.097130,39.064580 -77.097516,39.064816"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 724229779,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 724229779 (Veirs Mill Road, highway=primary, 0.10 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 167.8,
-    "line": "-77.103236,39.068292 -77.104774,39.069215"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 763304846,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 763304846 (Veirs Mill Road, highway=primary, 0.07 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 116.5,
-    "line": "-77.102961,39.067942 -77.101880,39.067315"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 763304847,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 763304847 (Veirs Mill Road, highway=primary, 0.06 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 101.2,
-    "line": "-77.103900,39.068487 -77.102961,39.067942"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 763304848,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 763304848 (Veirs Mill Road, highway=primary, 0.10 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 159.4,
-    "line": "-77.101777,39.067413 -77.103236,39.068292"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 845504611,
    "value": {
     "tier": 5,
@@ -4963,86 +4663,6 @@
     "highway": "secondary",
     "length_m": 55.5,
     "line": "-76.932616,39.112137 -76.932378,39.111673"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 962163265,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 962163265 (Veirs Mill Road, highway=primary, 0.15 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 235.3,
-    "line": "-77.094789,39.063083 -77.092596,39.061826"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 962163266,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 962163266 (Veirs Mill Road, highway=primary, 0.07 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 109.3,
-    "line": "-77.096121,39.063986 -77.097130,39.064580"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 968550957,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 968550957 (Veirs Mill Road, highway=primary, 0.13 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 206.5,
-    "line": "-77.111125,39.072900 -77.109245,39.071751"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 968550959,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 968550959 (Veirs Mill Road, highway=primary, 0.19 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 309.0,
-    "line": "-77.089191,39.059878 -77.086310,39.058230"
    }
   },
   {
@@ -5627,46 +5247,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 1055964463,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 1055964463 (Veirs Mill Road, highway=primary, 0.13 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 203.0,
-    "line": "-77.107065,39.070585 -77.108902,39.071725"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1055974099,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 1055974099 (Veirs Mill Road, highway=primary, 0.07 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 118.0,
-    "line": "-77.109251,39.071933 -77.110338,39.072576"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 1057613316,
    "value": {
     "tier": 5,
@@ -5783,46 +5363,6 @@
     "highway": "secondary",
     "length_m": 17.0,
     "line": "-77.148741,39.022417 -77.148932,39.022452"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1059851646,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 1059851646 (Veirs Mill Road, highway=primary, 0.04 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 61.9,
-    "line": "-77.096206,39.063891 -77.095631,39.063559"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1059851647,
-   "value": {
-    "tier": 5,
-    "adjustment_id": "moco-lts5-veirs-mill-road",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery Planning layer: \"They also have an LTS5, which we can mark as avoid.\" And 2026-10-01 (OWNER-DECISIONS 181): \"Load it (Recommended)\".",
-   "evidence": "Montgomery County Planning Department, Bicycle Level of Traffic Stress (item fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way 1059851647 (Veirs Mill Road, highway=primary, 0.06 mi); tier now 4 (mixed traffic, 35 mph or above).",
-   "fingerprint": {
-    "name": "Veirs Mill Road",
-    "highway": "primary",
-    "length_m": 89.9,
-    "line": "-77.095631,39.063559 -77.094789,39.063083"
    }
   },
   {
@@ -8184,6 +7724,307 @@
     "length_m": 110.6,
     "line": "-76.919950,39.106622 -76.919488,39.106433 -76.919221,39.106346 -76.918775,39.106233"
    }
+  }
+ ],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 128574906,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 128574914,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 128574915,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 697039269,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229764,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229765,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229768,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229769,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229771,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229774,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229775,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 724229779,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 763304846,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 763304847,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 763304848,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 962163265,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 962163266,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 968550957,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 968550959,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1055964463,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1055974099,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1059851646,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1059851647,
+   "value": {
+    "tier": 5,
+    "adjustment_id": "moco-lts5-veirs-mill-road",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Not Avoid: the painted lane is marked in fixtures/bike_lanes/ and the classifier rates the road."
   }
  ]
 }

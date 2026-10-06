@@ -550,8 +550,8 @@ def test_south_capitol_is_lts4_from_mlk_to_mississippi_and_stays_routable() -> N
 
 
 def test_the_avoid_rows_432_replaces_are_out_of_the_east_of_anacostia_file() -> None:
-    """An approved row outranks a corridor, so the five rows are out of the file (and
-    listed as superseded, for the rows already loaded, which are deleted in the admin)."""
+    """An approved row outranks a corridor, so the five rows are out of the file, and
+    under `retire`, so loading the file withdraws the rows already loaded."""
     path = (
         corridors.CORRIDORS_DIR.parent
         / "overrides"
@@ -560,6 +560,6 @@ def test_the_avoid_rows_432_replaces_are_out_of_the_east_of_anacostia_file() -> 
     document = json.loads(path.read_text())
     rows = {r["osm_way_id"] for r in document["rows"]}
     assert not rows & SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
-    superseded = {r["osm_way_id"] for r in document["superseded"]}
-    assert superseded == SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
-    assert all("432" in r["replaced_by"] for r in document["superseded"])
+    retired = {r["osm_way_id"] for r in document["retire"]}
+    assert retired == SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
+    assert all("432" in r["reason"] for r in document["retire"])

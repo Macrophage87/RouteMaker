@@ -169,6 +169,12 @@ as a hidden adjustment named `way-<id>`.
   tags as a plain sidewalk, made `bicycle=designated` (ways 468762518 and
   791422825; "Local override (Recommended)", 2026-09-30) until the owner
   retags it upstream. `segregated=no` is not an access key and is left out.
+  Since 2026-10-05 (decision 433) the file closes the two ways instead
+  (`bicycle=no`): they are the north-side sidewalks, and the owner says "Drop
+  the north side, it's a cliff. Does not appear to exist."; the path the owner
+  reported is on the south side and is not in OSM (the owner maps it
+  upstream). The `bicycle=designated` rows are under `retire`, so loading the
+  file withdraws them and writes the closing rows in one step.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and
@@ -228,10 +234,10 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   OWNER-DECISIONS 432 ("Change south captiol street from MLK ave to Missisipi
   ave to LTS4. There's no other routes through there."): that stretch is LTS 4
   by the named corridor `fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json`,
-  and the file lists them under `superseded`. An approved row outranks a
-  corridor, so the five rows already loaded are deleted in the admin before the
-  rebuild (docs/OPERATIONS.md, the rebuild bundle's step H); VALIDATE refuses a
-  build where the stretch is not LTS 4.
+  and the file lists them under `retire`. An approved row outranks a
+  corridor, so the file is loaded again before the rebuild, which withdraws
+  the five rows already loaded (docs/OPERATIONS.md, the rebuild bundle's step
+  H); VALIDATE refuses a build where the stretch is not LTS 4.
 
 ## The agency-data files of 2026-10-01
 
@@ -256,6 +262,11 @@ files.
   Montgomery County Planning Department"; docs/OPERATIONS.md, "Licences, and the
   credits every map must carry"); a deployment that drops the rows drops the
   line with them.
+  Since 2026-10-05 (decision 433, "It's not an avoid. It might not be great,
+  but it's not that bad.") the 23 Veirs Mill Road rows
+  (`moco-lts5-veirs-mill-road`, 1.96 carriageway-mi) are under `retire`, and
+  the file holds 386 ways, 42.6 mi: loading it withdraws them, and the painted
+  lane is marked in `fixtures/bike_lanes/` for the classifier to rate.
 - `2026-10-01-owner-baltimore-facilities.json` ("Load Baltimore facilities",
   OWNER-DECISIONS 182): 256 stress rows, the tier the classifier gives with the
   City of Baltimore's recorded bike lane, buffered, separated or contraflow lane
@@ -347,6 +358,15 @@ why) in `<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`, and summar
 the log line and the run row. A failed row is left as it was, so it is still counted as
 matching no way; nothing is dropped quietly. Rows whose way is present but no longer
 looks like its fingerprint are listed as `drifted` and still apply.
+
+A file may also `retire` rows a later decision withdraws: a top-level list of
+`{"kind", "osm_way_id", "value", "reason"}`, each the row as it was loaded and the
+decision that withdraws it. `load_access_overrides` deletes each approved or proposed
+row of that kind, way and exact value (audited as a delete with that reason) before it
+plans the file's own rows, so a replacing row on the same way is not refused as a
+conflict; a row already gone is `absent`. Dry by default like the rest. Used by the
+2026-09-30 east-of-the-Anacostia file (decision 432), the Veirs Mill sidepath file and
+the Montgomery Planning LTS 5 file (433).
 
 A file that re-points a row at new ways keeps the old way in a top-level `superseded`
 list, with `replaced_by` and the old way's fingerprint, because the row already loaded

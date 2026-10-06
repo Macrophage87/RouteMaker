@@ -36,6 +36,7 @@ from typing import TypeVar
 
 from routemaker import (
     agency_roads,
+    bike_lanes,
     cbd,
     corridors,
     divided,
@@ -98,6 +99,9 @@ REMATCH_REPORT_NAME = "override-rematch"
 # corridors did (ARTERIAL review r0, SF4).
 SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
 CORRIDOR_REPORT_NAME = "named-corridors.md"
+# Every way inside a military area, closed or left open, for the owner (owner report
+# 2026-10-05; `restricted_areas.military_report_csv`).
+MILITARY_REPORT_NAME = "military-closures.csv"
 
 
 def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
@@ -633,6 +637,8 @@ class RebuildContext:
     mtb_only: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
     speed_corrected: set[int] = field(default_factory=set)
+    # Ways classified with a curated bike lane (`routemaker.bike_lanes`; OWNER-DECISIONS 433).
+    bike_lanes_marked: set[int] = field(default_factory=set)
     # The ways the stress map leaves out by their length or their place
     # (pipeline.restricted_areas): the short unnamed paths
     # (facility.short_paths_to_hide), the roads inside a military base, every
@@ -641,6 +647,9 @@ class RebuildContext:
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
+    # Every way inside a military area, and whether the rule closed it
+    # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
+    military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1128,6 +1137,40 @@ def assert_reference_lts4_street(
     return tiers
 
 
+def assert_military_closures(context: RebuildContext, sentinel_ways: Sequence[int]) -> int:
+    """Ways inside a military area were closed (owner report 2026-10-05): each
+    sentinel way, a Joint Base Anacostia-Bolling walkway or service road with no
+    access tag of its own, carries `rm:no_bicycle=military` where the extract has
+    it. A sentinel the extract no longer has is warned about, not refused (OSM
+    renumbers ways); the closure gate reads a sample of the reason's ways back
+    from every graph. Returns the number of ways closed."""
+    closed = sum(1 for m in context.military_ways if m.closed)
+    present = {way.osm_id for way in context.ways}
+    wrong = [
+        way_id
+        for way_id in sentinel_ways
+        if way_id in present
+        and context.no_bicycle.get(way_id) != restricted_areas.MILITARY_NO_BICYCLE
+    ]
+    missing = [way_id for way_id in sentinel_ways if way_id not in present]
+    if missing:
+        logger.warning(
+            "military-closure sentinel ways not in the extract (renumbered?): %s", missing
+        )
+    if wrong:
+        raise ValidationFailed(
+            f"ways {wrong} inside Joint Base Anacostia-Bolling are not closed to bicycles "
+            "(rm:no_bicycle=military): the military-area rule did not run or lost its areas, "
+            "so a route could run through a base again (owner report 2026-10-05)"
+        )
+    logger.info(
+        "military areas: %d ways closed to bicycles, %d left open (military-closures.csv)",
+        closed,
+        len(context.military_ways) - closed,
+    )
+    return closed
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -1502,6 +1545,10 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # And the curated bike lanes (OWNER-DECISIONS 433, Veirs Mill Road): a painted
+        # lane the map is missing, for the classifier and the facility class only.
+        lanes = bike_lanes.load()
+        laned: set[int] = set()
         # The agency's street layer, over the way's own tags: a posted speed,
         # lanes, one-way, bike lane and parking it records take precedence (in
         # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
@@ -1542,6 +1589,10 @@ def build_handlers(
             tags, applied = speed_corrections.corrected(tags, speeds.get(way.osm_id))
             if applied:
                 used.add(way.osm_id)
+            tags, lane_applied = bike_lanes.corrected(tags, lanes.get(way.osm_id))
+            if lane_applied:
+                laned.add(way.osm_id)
+                context.class_tags_by_way[way.osm_id] = tags
 
             def classified(aadt, tags=tags, way=way, match=match, facts=facts):
                 return classify(
@@ -1635,6 +1686,15 @@ def build_handlers(
             # Posted since, or gone from the extract: either way the row is no
             # longer what sets the way's speed, which a reviewer should know.
             logger.warning("curated speed limits not applied (posted, or no such way): %s", unused)
+        context.bike_lanes_marked = laned
+        logger.info("curated bike lanes (fixtures/bike_lanes): %d ways", len(laned))
+        unused_lanes = sorted(set(lanes) - laned)
+        if unused_lanes:
+            # Mapped since (the owner's OSM edit), or gone from the extract.
+            logger.warning(
+                "curated bike lanes not applied (a cycleway tag now, or no such way): %s",
+                unused_lanes,
+            )
 
     def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
         """The DC-against-OSM discrepancy report for the owner, each rebuild
@@ -1899,11 +1959,27 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
-        context.short_paths_hidden |= restricted_areas.roads_inside(placed, areas["military"])
+        # And closed to bicycles, everything inside a military area but what its own
+        # tags or a public route number open (owner report 2026-10-05, under "err
+        # closed on bike access", OWNER-DECISIONS 330); what is left open is drawn.
+        context.military_ways = restricted_areas.military_closures(placed, areas["military"])
+        left_open = {m.way_id for m in context.military_ways if not m.closed}
+        military_closed = {m.way_id for m in context.military_ways if m.closed}
+        context.short_paths_hidden |= (
+            restricted_areas.roads_inside(placed, areas["military"]) - left_open
+        )
+        logger.info("%s", restricted_areas.military_summary(context.military_ways))
+        write_reports(
+            context.work_dir,
+            {MILITARY_REPORT_NAME: restricted_areas.military_report_csv(context.military_ways)},
+            "military-closure",
+        )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         routes = route_relations.read_routes(context.source_pbf)
-        nobike = trail_closures.closures(context.ways, routes, areas[restricted_areas.PARK])
+        nobike = trail_closures.closures(
+            context.ways, routes, areas[restricted_areas.PARK], military=military_closed
+        )
         context.no_bicycle = nobike.reasons
         context.walk_bike = nobike.walk_bike
         context.destination_only = nobike.destination_only
@@ -2346,6 +2422,7 @@ def build_handlers(
             _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
         )
         assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
+        assert_military_closures(context, _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"))
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),

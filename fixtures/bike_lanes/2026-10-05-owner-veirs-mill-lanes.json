@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "decided": "2026-10-05",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 433 (2026-10-05). Read by the rebuild from its image (routemaker.bike_lanes); nothing is loaded into the database. Until the owner's OSM edit (cycleway:right=lane, its width, maxspeed) is in the extract; a cycleway tag on the way then wins.",
+  "annotations": "The 23 Veirs Mill Road carriageway ways of the former Montgomery Planning LTS 5 stretch, both directions, every one oneway=yes, so the lane is cycleway:right=lane. The classifier then rates the road by its own tables (about LTS 3 at 35 to 40 mph with two lanes, LTS 4 at 45 mph or three lanes and more).",
+  "rows": [
+    {
+      "osm_way_id": 1055964463,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 1055964463, Veirs Mill Road, highway=primary, oneway=yes, lanes=3, maxspeed=none (read at the 35 mph default), no cycleway tag, 666 ft (203 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 1055974099,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 1055974099, Veirs Mill Road, highway=primary, oneway=yes, lanes=3, maxspeed=none (read at the 35 mph default), no cycleway tag, 387 ft (118 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 1059851646,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 1059851646, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 203 ft (62 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 1059851647,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 1059851647, Veirs Mill Road, highway=primary, oneway=yes, lanes=3, maxspeed=none (read at the 35 mph default), no cycleway tag, 295 ft (90 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 128574906,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 128574906, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 357 ft (109 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 128574914,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 128574914, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), bridge, no cycleway tag, 115 ft (35 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 128574915,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 128574915, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), bridge, no cycleway tag, 125 ft (38 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 697039269,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 697039269, Veirs Mill Road, highway=primary, oneway=yes, lanes=4, maxspeed=none (read at the 35 mph default), no cycleway tag, 819 ft (250 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229764,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229764, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 507 ft (155 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229765,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229765, Veirs Mill Road, highway=primary, oneway=yes, lanes=3, maxspeed=none (read at the 35 mph default), no cycleway tag, 128 ft (39 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229768,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229768, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 464 ft (141 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229769,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229769, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 504 ft (154 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229771,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229771, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 501 ft (153 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229774,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229774, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 498 ft (152 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229775,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229775, Veirs Mill Road, highway=primary, oneway=yes, lanes=3, maxspeed=none (read at the 35 mph default), no cycleway tag, 139 ft (42 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 724229779,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 724229779, Veirs Mill Road, highway=primary, oneway=yes, lanes=4, maxspeed=none (read at the 35 mph default), no cycleway tag, 551 ft (168 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 763304846,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 763304846, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 382 ft (116 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 763304847,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 763304847, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 332 ft (101 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 763304848,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 763304848, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 523 ft (159 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 962163265,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 962163265, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 772 ft (235 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 962163266,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 962163266, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 359 ft (109 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 968550957,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 968550957, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=35 mph, no cycleway tag, 677 ft (206 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    },
+    {
+      "osm_way_id": 968550959,
+      "side": "right",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), of the wide painted bike lane on Veirs Mill Road (MD 586) from Twinbrook Parkway east to about 77.088 W: \"Yes, it should be marked\", and \"It's not an avoid. It might not be great, but it's not that bad.\" The lane is on the kerb side of this one-way carriageway.",
+      "evidence": "OSM, Geofabrik extract of 2026-10-03: way 968550959, Veirs Mill Road, highway=primary, oneway=yes, lanes=2, maxspeed=none (read at the 35 mph default), no cycleway tag, 1,014 ft (309 m); Montgomery Planning LTS 5 (moco-lts5-veirs-mill-road) until 433. Investigation: VEIRS-MILL-lane-side.md."
+    }
+  ]
+}

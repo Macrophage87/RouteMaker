@@ -47,6 +47,8 @@ def _no_long_trail_sentinels(settings):
     settings.REBUILD_SENTINEL_LTS4_STREET = ""
     # And the owner's rated stretches (OWNER-DECISIONS 432) are the region's.
     settings.REBUILD_SENTINEL_STRETCHES = ()
+    # And the military-closure sentinels (owner report 2026-10-05) are the region's ways.
+    settings.REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = ()
 
 
 @pytest.fixture

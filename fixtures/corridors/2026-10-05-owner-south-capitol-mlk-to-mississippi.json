@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-10-05",
   "decided_by": "the deployment owner",
-  "status": "OWNER-DECISIONS 432 (2026-10-05). Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database. It replaces, for these five ways, the Avoid rows of 2026-09-30-owner-arterials-east-of-anacostia.json (OWNER-DECISIONS 141, 144), which outrank a corridor and are deleted in the admin before the rebuild (docs/OPERATIONS.md). The VALIDATE sentinel for this stretch (pipeline.lts_sentinels, REBUILD_SENTINEL_STRETCHES) holds it.",
+  "status": "OWNER-DECISIONS 432 (2026-10-05). Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database. It replaces, for these five ways, the Avoid rows of 2026-09-30-owner-arterials-east-of-anacostia.json (OWNER-DECISIONS 141, 144), which outrank a corridor; that file retires them (`retire`), so loading it before the rebuild withdraws the rows already loaded (docs/OPERATIONS.md, the rebuild bundle's step H). The VALIDATE sentinel for this stretch (pipeline.lts_sentinels, REBUILD_SENTINEL_STRETCHES) holds it.",
   "corridors": [
     {
       "id": "south-capitol-st-mlk-to-mississippi",

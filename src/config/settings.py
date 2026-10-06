@@ -407,6 +407,11 @@ REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
 REBUILD_SENTINEL_STRETCHES = (
     ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
 )
+# Ways inside Joint Base Anacostia-Bolling that VALIDATE requires closed to bicycles
+# (`pipeline.run.assert_military_closures`; the owner's report of a route through the
+# base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
+# in the 2026-10-03 extract. One the extract no longer has is warned about.
+REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = (193043941, 97677540, 99419868)
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0
 MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
 MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()

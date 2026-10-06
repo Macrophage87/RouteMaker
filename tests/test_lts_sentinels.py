@@ -143,7 +143,7 @@ def test_a_stretch_at_the_owners_tier_holds_and_one_left_at_avoid_is_refused() -
     held = lts_sentinels.StretchTiers(_stretch(), 550.0, 550.0)
     assert lts_sentinels.stretch_problems(held) == []
     (message,) = lts_sentinels.stretch_problems(lts_sentinels.StretchTiers(_stretch(), 550.0, 0.0))
-    assert "0%" in message and "OWNER-DECISIONS 432" in message and "admin" in message
+    assert "0%" in message and "OWNER-DECISIONS 432" in message and "retires" in message
     (empty,) = lts_sentinels.stretch_problems(lts_sentinels.StretchTiers(_stretch(), 0.0, 0.0))
     assert "no segment row" in empty
 

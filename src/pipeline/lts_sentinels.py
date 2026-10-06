@@ -173,6 +173,6 @@ def stretch_problems(tiers: StretchTiers) -> list[str]:
             f"only {tiers.share:.0%} of {where} ({_mi(tiers.at_tier_m)} of "
             f"{_mi(tiers.total_m)}) is at tier {s.tier}, under {s.min_share:.0%} "
             f"({s.decision}); an approved stress override row on its ways outranks the "
-            "named corridor and is deleted in the admin before the rebuild"
+            "named corridor; load the file that retires it before the rebuild"
         ]
     return []

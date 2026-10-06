@@ -2,17 +2,17 @@
   "version": 1,
   "decided": "2026-09-30",
   "decided_by": "the deployment owner",
-  "status": "approved for loading by the owner on 2026-09-30 (\"Local override (Recommended)\")",
-  "annotations": "bicycle=designated only: segregated=no, which the owner's answer also names, is not an access key (pipeline.overrides.ACCESS_KEYS), so the loader would refuse it; it changes nothing the rebuild reads. With bicycle=designated the sidewalk is a sidepath for bicycles (routemaker.classes.trail_kind), the protected facility, and a roadside trail on the stress map (OWNER-DECISIONS 66).",
+  "status": "approved for loading by the owner on 2026-09-30 (\"Local override (Recommended)\"); superseded 2026-10-05 by OWNER-DECISIONS 433: the two sidewalks are on the north side, which the owner says does not appear to exist (\"it's a cliff\"), so the bicycle=designated rows are retired and the ways closed to bicycles (err closed, OWNER-DECISIONS 330)",
+  "annotations": "Since 2026-10-05 (OWNER-DECISIONS 433): bicycle=no on the two north-side sidewalks, and the 2026-09-30 bicycle=designated rows under `retire`, which loading the file withdraws. The sidepath the owner reported (item 114) is on the south side and is not in OSM (REBUILD-BUNDLE-fix2, VEIRS-MILL-lane-side): the owner maps it upstream as its own way. Before: bicycle=designated only: segregated=no, which the owner's answer also names, is not an access key (pipeline.overrides.ACCESS_KEYS), so the loader would refuse it; it changes nothing the rebuild reads. With bicycle=designated the sidewalk is a sidepath for bicycles (routemaker.classes.trail_kind), the protected facility, and a roadside trail on the stress map (OWNER-DECISIONS 66).",
   "rows": [
     {
       "kind": "access",
       "osm_way_id": 468762518,
       "value": {
-        "bicycle": "designated"
+        "bicycle": "no"
       },
-      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 468762518, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 485 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road.",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Closed to bicycles: the path does not appear to exist on the ground, and under the standing rule an unclear way is closed (OWNER-DECISIONS 330) until it is reopened with evidence.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 468762518, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 485 m, along the north side of Veirs Mill Road (MD 586), 70 to 115 ft (22 to 35 m) north of the road's centre line; the owner, 2026-10-05: \"it's a cliff\".",
       "fingerprint": {
         "name": null,
         "highway": "footway",
@@ -24,16 +24,34 @@
       "kind": "access",
       "osm_way_id": 791422825,
       "value": {
-        "bicycle": "designated"
+        "bicycle": "no"
       },
-      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 791422825, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 30 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road.",
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" Closed to bicycles: the path does not appear to exist on the ground, and under the standing rule an unclear way is closed (OWNER-DECISIONS 330) until it is reopened with evidence.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 791422825, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 30 m, along the north side of Veirs Mill Road (MD 586), 70 to 115 ft (22 to 35 m) north of the road's centre line; the owner, 2026-10-05: \"it's a cliff\".",
       "fingerprint": {
         "name": null,
         "highway": "footway",
         "length_m": 30.1,
         "line": "-77.108958,39.071824 -77.109232,39.071991"
       }
+    }
+  ],
+  "retire": [
+    {
+      "kind": "access",
+      "osm_way_id": 468762518,
+      "value": {
+        "bicycle": "designated"
+      },
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" The 2026-09-30 row (OWNER-DECISIONS 114, 115) promoted the wrong side."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 791422825,
+      "value": {
+        "bicycle": "designated"
+      },
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 433), on Veirs Mill Road (MD 586) at the Rock Creek Trail and the Twinbrook Connector Trail: \"Yes, it should be marked\" (the wide painted bike lane), then \"Drop the north side, it's a cliff. Does not appear to exist. It's not an avoid. It might not be great, but it's not that bad.\" The 2026-09-30 row (OWNER-DECISIONS 114, 115) promoted the wrong side."
     }
   ]
 }

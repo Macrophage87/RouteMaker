@@ -737,3 +737,147 @@ def test_a_file_of_block_corrections_only_has_nothing_to_load(admin, tmp_path) -
     empty.write_text(json.dumps({"version": 1, "rows": [], "agency_blocks": []}))
     with pytest.raises(CommandError, match="has no rows"):
         load(str(empty), "--actor", str(admin.discord_user_id))
+
+
+# --- Retiring rows a later decision withdraws (OWNER-DECISIONS 432, 433) ----------
+
+DESIGNATED = {"kind": "access", "osm_way_id": 42, "value": {"bicycle": "designated"}}
+
+
+def write_file(tmp_path, rows, retire, name="retire.json") -> str:
+    path = tmp_path / name
+    path.write_text(json.dumps({"version": 1, "rows": rows, "retire": retire}))
+    return str(path)
+
+
+@pytest.mark.django_db
+class TestRetire:
+    def test_a_retired_row_is_deleted_audited_and_its_replacement_loaded(self, admin, tmp_path):
+        """433: the north sidewalk's bicycle=designated row is withdrawn and the way
+        closed in one load, which a plain file would refuse as a conflict."""
+        from core.models import AuditLogEntry, Override
+
+        actor = str(admin.discord_user_id)
+        load(
+            write_rows(tmp_path, [{**DESIGNATED, "reason": "r", "evidence": "e"}]),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        (old,) = Override.objects.all()
+        closing = {
+            "kind": "access",
+            "osm_way_id": 42,
+            "value": {"bicycle": "no"},
+            "reason": "433",
+            "evidence": "e",
+        }
+        with pytest.raises(CommandError, match="disagrees"):
+            load(write_rows(tmp_path, [closing]), "--actor", actor)
+        path = write_file(tmp_path, [closing], [{**DESIGNATED, "reason": "OWNER-DECISIONS 433"}])
+        dry = load(path, "--actor", actor)
+        assert f"retire: way 42 {{'bicycle': 'designated'}} (override {old.pk})" in dry
+        assert "create: way 42" in dry and Override.objects.count() == 1
+        load(path, "--actor", actor, "--confirm")
+        (new,) = Override.objects.all()
+        assert new.value == {"bicycle": "no"} and new.approved and new.pk != old.pk
+        deleted = AuditLogEntry.objects.get(action="delete", object_id=str(old.pk))
+        assert "retired" in deleted.detail and "OWNER-DECISIONS 433" in deleted.detail
+        assert ACTOR_NOTE in deleted.detail
+        # Again: nothing to retire, the new row present.
+        again = load(path, "--actor", actor, "--confirm")
+        assert "absent: way 42" in again and "present: way 42" in again
+        assert Override.objects.count() == 1
+
+    def test_only_the_exact_value_is_retired(self, admin, tmp_path):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        load(
+            write_rows(
+                tmp_path,
+                [{**DESIGNATED, "value": {"bicycle": "yes"}, "reason": "r", "evidence": "e"}],
+            ),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        load(
+            write_file(tmp_path, [], [{**DESIGNATED, "reason": "x"}]), "--actor", actor, "--confirm"
+        )
+        assert [o.value for o in Override.objects.all()] == [{"bicycle": "yes"}]
+
+    def test_a_stress_row_is_retired_and_a_retire_only_file_loads(self, admin, tmp_path):
+        """433's 23 Montgomery Planning rows: retired, nothing new loaded."""
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        value = {**ADJUSTMENT, "annotation_status": "approved"}
+        stress = [
+            {"kind": "stress", "osm_way_id": w, "value": value, "reason": "r", "evidence": "e"}
+            for w in (7, 8)
+        ]
+        load(write_rows(tmp_path, stress), "--actor", actor, "--confirm")
+        out = load(
+            write_file(
+                tmp_path, [], [{"kind": "stress", "osm_way_id": 7, "value": value, "reason": "433"}]
+            ),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        assert "retired 1 rows" in out
+        assert [o.osm_way_id for o in Override.objects.all()] == [8]
+
+    @pytest.mark.parametrize(
+        "entry, problem",
+        [
+            ({"kind": "access", "osm_way_id": 1, "value": {"bicycle": "yes"}}, "reason"),
+            (
+                {"kind": "other", "osm_way_id": 1, "value": {"bicycle": "yes"}, "reason": "r"},
+                "kind",
+            ),
+            (
+                {"kind": "access", "osm_way_id": 0, "value": {"bicycle": "yes"}, "reason": "r"},
+                "osm_way_id",
+            ),
+            ({"kind": "access", "osm_way_id": 1, "value": {}, "reason": "r"}, "value"),
+        ],
+    )
+    def test_a_malformed_retire_entry_is_refused(self, admin, tmp_path, entry, problem):
+        with pytest.raises(CommandError, match=problem):
+            load(write_file(tmp_path, [], [entry]), "--actor", str(admin.discord_user_id))
+
+
+class TestTheRetiringFiles:
+    """The checked-in files that retire rows (OWNER-DECISIONS 432, 433)."""
+
+    def test_432_retires_the_five_south_capitol_avoid_rows(self):
+        from core.management.commands.load_access_overrides import parse_retired
+
+        text = EAST_FILE.read_text()
+        retired = parse_retired(text, EAST_FILE.name)
+        assert {r["osm_way_id"] for r in retired} == {
+            468820704,
+            590525532,
+            455234174,
+            468820714,
+            1528642818,
+        }
+        assert all(r["value"]["tier"] == 5 and "432" in r["reason"] for r in retired)
+        assert not {r["osm_way_id"] for r in json.loads(text)["rows"]} & {
+            r["osm_way_id"] for r in retired
+        }
+
+    def test_433_retires_the_23_veirs_mill_moco_rows_and_keeps_the_rest(self):
+        from core.management.commands.load_access_overrides import parse_file, parse_retired
+
+        moco = REPO / "fixtures" / "overrides" / "2026-10-01-owner-moco-lts5-avoid.json"
+        text = moco.read_text()
+        retired = parse_retired(text, moco.name)
+        assert len(retired) == 23
+        assert {r["value"]["adjustment_id"] for r in retired} == {"moco-lts5-veirs-mill-road"}
+        rows = parse_file(text, moco.name)
+        assert len(rows) == 386
+        assert not any(r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road" for r in rows)
+        assert all("433" in r["reason"] for r in retired)

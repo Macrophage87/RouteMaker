@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-09-30",
   "decided_by": "the deployment owner",
-  "status": "approved for loading by the owner on 2026-09-30 (OWNER-DECISIONS 144) Five South Capitol Street rows, Martin Luther King Jr Ave SE to Mississippi Ave SE, were taken out on 2026-10-05 for OWNER-DECISIONS 432 (\"Change south captiol street from MLK ave to Missisipi ave to LTS4\"): that stretch is LTS 4 by a named corridor (fixtures/corridors/). They are listed under `superseded`; the rows already loaded are deleted in the admin before the rebuild (docs/OPERATIONS.md).",
+  "status": "approved for loading by the owner on 2026-09-30 (OWNER-DECISIONS 144) Five South Capitol Street rows, Martin Luther King Jr Ave SE to Mississippi Ave SE, were taken out on 2026-10-05 for OWNER-DECISIONS 432 (\"Change south captiol street from MLK ave to Missisipi ave to LTS4\"): that stretch is LTS 4 by a named corridor (fixtures/corridors/). They are listed under `retire`: loading this file again withdraws the rows already loaded (load_access_overrides; docs/OPERATIONS.md, the rebuild bundle's step H).",
   "annotations": "The owner, 2026-09-30 (OWNER-DECISIONS 141): \"Make arterials LTS 3 or greater unless there s bike infrastructure. I d put most of the Arterials east of the Anacostia river as avoid.\" Asked which to strike (OWNER-DECISIONS 144): struck \"11th St SE\", \"Ridge Rd SE\", \"River bridges\"; everything else (South Capitol St SW included) is approved to load as Avoid. The District's trunk, primary and secondary ways east of the Anacostia River, placed by the state boundary and the river's OSM line in the Geofabrik extract of 2026-09-25, less every way named 11th Street Southeast or Ridge Road Southeast and the four ways that cross the river (the river bridges), and less nine ways the 2026-09-27 file already curates. Overpass bridges well away from the river stay in by design; asked whether they should (OWNER-DECISIONS 177), the owner said: \"Yes, keep them in\". Tier 5, hidden, no public_note, category other, annotation approved.",
   "rows": [
     {
@@ -15486,61 +15486,71 @@
       }
     }
   ],
-  "superseded": [
+  "retire": [
     {
       "kind": "stress",
       "osm_way_id": 455234174,
-      "replaced_by": "fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json (OWNER-DECISIONS 432: LTS 4, not Avoid)",
-      "fingerprint": {
-        "name": "South Capitol Street",
-        "highway": "primary",
-        "length_m": 236.2,
-        "line": "-77.008354,38.833847 -77.008420,38.833630 -77.008403,38.833133 -77.008374,38.832895 -77.008312,38.832631 -77.008181,38.832283 -77.008088,38.832076 -77.007922,38.831789"
-      }
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-south-capitol-street",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 432 (2026-10-05): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" LTS 4 by the named corridor fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json, which an approved Avoid row would outrank."
     },
     {
       "kind": "stress",
       "osm_way_id": 468820704,
-      "replaced_by": "fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json (OWNER-DECISIONS 432: LTS 4, not Avoid)",
-      "fingerprint": {
-        "name": "South Capitol Street",
-        "highway": "primary",
-        "length_m": 62.1,
-        "line": "-77.007788,38.835686 -77.007817,38.835555 -77.007968,38.835146"
-      }
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-south-capitol-street",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 432 (2026-10-05): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" LTS 4 by the named corridor fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json, which an approved Avoid row would outrank."
     },
     {
       "kind": "stress",
       "osm_way_id": 468820714,
-      "replaced_by": "fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json (OWNER-DECISIONS 432: LTS 4, not Avoid)",
-      "fingerprint": {
-        "name": "South Capitol Street",
-        "highway": "primary",
-        "length_m": 45.5,
-        "line": "-77.007922,38.831789 -77.007797,38.831571 -77.007753,38.831404"
-      }
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-south-capitol-street",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 432 (2026-10-05): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" LTS 4 by the named corridor fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json, which an approved Avoid row would outrank."
     },
     {
       "kind": "stress",
       "osm_way_id": 590525532,
-      "replaced_by": "fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json (OWNER-DECISIONS 432: LTS 4, not Avoid)",
-      "fingerprint": {
-        "name": "South Capitol Street",
-        "highway": "primary",
-        "length_m": 148.3,
-        "line": "-77.007968,38.835146 -77.008213,38.834277 -77.008354,38.833847"
-      }
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-south-capitol-street",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 432 (2026-10-05): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" LTS 4 by the named corridor fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json, which an approved Avoid row would outrank."
     },
     {
       "kind": "stress",
       "osm_way_id": 1528642818,
-      "replaced_by": "fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json (OWNER-DECISIONS 432: LTS 4, not Avoid)",
-      "fingerprint": {
-        "name": "South Capitol Street",
-        "highway": "primary",
-        "length_m": 60.9,
-        "line": "-77.007753,38.831404 -77.007712,38.831210 -77.007677,38.830860"
-      }
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-south-capitol-street",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 432 (2026-10-05): \"Change south captiol street from MLK ave to Missisipi ave to LTS4. There's no other routes through there.\" LTS 4 by the named corridor fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json, which an approved Avoid row would outrank."
     }
   ]
 }

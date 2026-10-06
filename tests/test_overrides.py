@@ -1014,25 +1014,33 @@ def test_the_montana_ave_ne_file_is_approved_at_tier_3() -> None:
         assert "public_note" not in row["value"]
 
 
-def test_the_veirs_mill_sidepath_file_designates_the_two_sidewalks() -> None:
-    """The owner, 2026-09-30 (OWNER-DECISIONS 115): "Local override (Recommended)"
-    for the Veirs Mill Road sidepath between the Rock Creek Trail and the
-    Twinbrook Connector Trail, tagged in OSM as a plain sidewalk."""
+def test_the_veirs_mill_north_sidewalks_are_closed_and_the_designation_retired() -> None:
+    """The owner, 2026-10-05 (OWNER-DECISIONS 433): "Drop the north side, it's a cliff.
+    Does not appear to exist." The 2026-09-30 rows (114, 115: "Local override
+    (Recommended)") made the north-side sidewalks a sidepath; the reported path is on
+    the south side and not in OSM. So the rows are retired on load and the two ways
+    closed to bicycles (err closed, 330)."""
     import json
 
-    from core.management.commands.load_access_overrides import parse_file
+    from core.management.commands.load_access_overrides import parse_file, parse_retired
     from routemaker.facility import Facility, facility
 
     path = BEACH_DRIVE_NW.with_name("2026-09-30-owner-veirs-mill-sidepath.json")
-    document = json.loads(path.read_text())
-    assert "Local override (Recommended)" in document["status"]
-    rows = parse_file(path.read_text(), path.name)
+    text = path.read_text()
+    document = json.loads(text)
+    assert "Local override (Recommended)" in document["status"] and "433" in document["status"]
+    rows = parse_file(text, path.name)
     assert {r["osm_way_id"] for r in rows} == {468762518, 791422825}
     for row in rows:
-        assert row["kind"] == "access" and row["value"] == {"bicycle": "designated"}
-        assert "Local override (Recommended)" in row["reason"]
-    # As the rebuild reads the way once the row is applied: a sidepath.
+        assert row["kind"] == "access" and row["value"] == {"bicycle": "no"}
+        assert "OWNER-DECISIONS 433" in row["reason"] and "cliff" in row["reason"]
+    retired = parse_retired(text, path.name)
+    assert {(r["osm_way_id"], json.dumps(r["value"])) for r in retired} == {
+        (468762518, '{"bicycle": "designated"}'),
+        (791422825, '{"bicycle": "designated"}'),
+    }
+    # As the rebuild reads the way once the row is applied: no sidepath, closed.
     way = Way(468762518, highway="footway", footway="sidewalk", surface="concrete")
-    assert facility(way.tags) is Facility.NONE, "the control"
-    apply_access([way], [Override("access", 468762518, {"bicycle": "designated"})])
-    assert facility(way.tags) is Facility.PROTECTED
+    apply_access([way], [Override("access", 468762518, {"bicycle": "no"})])
+    assert facility(way.tags) is not Facility.PROTECTED
+    assert way.tags["bicycle"] == "no"
