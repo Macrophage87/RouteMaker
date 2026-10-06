@@ -1148,11 +1148,8 @@ def military_through_networks(context: RebuildContext) -> list[tuple[list[int], 
     ways it needs are only those that share a node with an open in-base way."""
     inside = {m.way_id for m in context.military_ways}
     open_in = {m.way_id for m in context.military_ways if not m.closed}
-    open_nodes = {
-        node
-        for way_id in open_in
-        for node in getattr(context.ways_by_id.get(way_id), "node_ids", ())
-    }
+    by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
+    open_nodes = {node for way_id in open_in for node in getattr(by_id.get(way_id), "node_ids", ())}
     node_ids = {}
     outside_open = set()
     for way in context.ways:

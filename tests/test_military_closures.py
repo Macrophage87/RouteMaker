@@ -615,3 +615,19 @@ def test_the_reopenings_file_carries_each_decision():
     assert not {1026975878, 1527935777} & set(access)
     # Jeff Todd Way's SR 619 ways are numbered, so the rule leaves them open already.
     assert not {232308648, 232393907, 1076054099, 1076054100, 1411382767} & set(access)
+
+
+def test_the_rebuild_finds_a_through_network_from_its_own_ways():
+    """`run.military_through_networks` over the rebuild's ways: an open in-base road
+    whose ends meet two open streets outside is found; a motorway gives no entry."""
+    found = [ra.MilitaryWay(1, "Fort Example", "service", "", 10.0, ra.OPEN, "open: by hand")]
+    ways = [
+        Way(1, {"highway": "service"}, [10, 11, 12], line(-77.018, 38.845), [0, 1, 2]),
+        Way(2, {"highway": "residential"}, [10, 20], line(-77.03, 38.845, 0.001), [0, 1]),
+        Way(3, {"highway": "residential"}, [12, 30], line(-77.03, 38.846, 0.001), [0, 1]),
+        Way(4, {"highway": "motorway"}, [11, 40], line(-77.03, 38.847, 0.001), [0, 1]),
+    ]
+    context = SimpleNamespace(military_ways=found, ways=ways, ways_by_id={})
+    assert run.military_through_networks(context) == [([1], [10, 12])]
+    context.ways = [ways[0], ways[1], ways[3]]
+    assert run.military_through_networks(context) == []
