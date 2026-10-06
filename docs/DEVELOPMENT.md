@@ -4888,13 +4888,16 @@ over every highway way and the `landuse=military` / `military=*` areas of the so
 - **Open inside a base**, and nothing else (437): a way an approved access override wrote a
   bicycle key on (`RebuildContext.bicycle_override_ways`, from `overrides.apply_access`), a
   numbered public road (`public_route`), the Pentagon's listed ways inside its reservation
-  (`PENTAGON_OPEN_WAYS`), and `bicycle=designated` with no closing access key. A way's own
+  (`PENTAGON_OPEN_WAYS`), and `bicycle=designated` with no closing `access`, `vehicle` or
+  `bicycle` key (`motor_vehicle=no` does not close a shared-use path), unless
+  `DESIGNATED_BASE_ONLY` lists its id (438.1, 439: closed with its own reason). A way's own
   `access=yes`/`permissive` or `bicycle=yes`/`permissive` is listed as
   `WHY_TAGGED_OPEN` and closed.
 - Closed ways are `rm:no_bicycle=military` (first in `trail_closures.ORDER`, on every graph);
   closed roads are left off the map. `military-closures.csv` lists every way with its share.
 - **VALIDATE** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
-  installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name; empty in the test
+  installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name, or a tuple of names held
+  as one sum where outlines overlap, as Bolling's old outline and JBAB do; empty in the test
   settings), and `through_networks`: an open network inside a base that meets the bicycle-open
   network outside at two or more nodes refuses the build unless every way in it is open for a
   listed reason (`THROUGH_EXCEPTIONS`). A listed Pentagon way not seen open is warned about.
