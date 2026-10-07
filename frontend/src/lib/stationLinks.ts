@@ -96,8 +96,11 @@ export function stationLinksElement(station: Pick<Station, "name" | "metro" | "p
     item.append(a);
     list.append(item);
   }
+  // Seen, not heard: each link's accessible name already ends "opens in a new tab", so a
+  // screen reader would otherwise say it twice (the final a11y re-check's A1).
   const note = document.createElement("p");
   note.className = "hint";
+  note.setAttribute("aria-hidden", "true");
   note.textContent = STATION_LINK_NOTE;
   root.append(list, note);
   return root;

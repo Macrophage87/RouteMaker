@@ -80,6 +80,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
+  // Whether the press of the click now arriving went down on the backdrop itself. A finger held
+  // on the map opens the panel under it, and its lift can come as a click on the new backdrop;
+  // that press began on the map, so it does not close what it just opened.
+  const pressedBackdrop = useRef(false);
   const [state, setState] = useState<InfoState>({ kind: "loading" });
   // The answer's sentence for the dialog's own status region, empty until it comes.
   const [said, setSaid] = useState("");
@@ -96,6 +100,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     }
     if (!dialog.open) {
       returnTo.current = document.activeElement;
+      pressedBackdrop.current = false;
       dialog.showModal?.();
     }
     headingRef.current?.focus();
@@ -166,8 +171,14 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       aria-describedby={id("where")}
       aria-busy={state.kind === "loading" ? true : undefined}
       onKeyDown={onKeyDown}
+      onPointerDown={(event) => {
+        pressedBackdrop.current = event.target === dialogRef.current;
+      }}
       onClick={(event) => {
-        if (event.target === dialogRef.current) close();
+        // A click on the backdrop (the dialog element itself) closes it, if it was pressed there too.
+        const fromBackdrop = pressedBackdrop.current;
+        pressedBackdrop.current = false;
+        if (event.target === dialogRef.current && fromBackdrop) close();
       }}
     >
       <div className="road-info-body">

@@ -780,7 +780,9 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!(document.querySelector('#points-search').compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.querySelector('.toggle').getBoundingClientRect().height) }; })()");
   check("loop first: it is in the Points section, after the search, and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
   check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
-  await p.eval("window.__said = []; const live = document.querySelector('p.visually-hidden[role=status]'); new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
+  // Every live region in the page, not only the first one found: the road panel's dialog holds a
+  // status region of its own (S1) ahead of the page's in the document, and "once" means once in all of them.
+  await p.eval("window.__said = []; const sel = '[role=status], [role=alert], [aria-live]:not([aria-live=off])'; for (const live of document.querySelectorAll(sel)) if (!live.parentElement?.closest(sel)) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
   await p.eval("document.querySelector('.loop-toggle input').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(700);
@@ -1514,9 +1516,13 @@ async function saidInDialog(p, text) {
   await sleep(300);
   // The keyboard's way: I on the focused map, for the road at its center.
   await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  // What had the focus when I went down, and the API's asks, so a failure says which half failed.
+  const keyFocus = await p.eval("document.activeElement?.className ?? ''");
+  const askedBeforeKey = p.infoRequests.length;
   await p.key("i", "KeyI", 73);
   const byKey = await p.waitFor(infoOpen, 8000);
   const keyed = await p.eval("({ where: document.querySelector('dialog.road-info .road-info-kind')?.textContent ?? '', canvasLabel: document.querySelector('.maplibregl-canvas').getAttribute('aria-label') })");
+  Object.assign(keyed, { keyFocus, asked: p.infoRequests.length - askedBeforeKey });
   check("road panel: I on the focused map opens it for the road at the center, and the map's name says so",
     byKey && keyed.where === "Main road, nearest the map center" && /Press I for what is known about the road at the center/.test(keyed.canvasLabel), JSON.stringify(keyed));
   await p.escape();
