@@ -159,11 +159,11 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         return json.loads(EAST_FILE.read_text())["rows"]
 
     def test_it_parses_as_approved_hidden_rows_with_the_decided_tiers(self) -> None:
-        """OWNER-DECISIONS 445, 445d: 252 stay Avoid, 90 are floored at 4, 36 at 3."""
+        """OWNER-DECISIONS 445, 445d, 445f: 250 stay Avoid, 90 are floored at 4, 36 at 3."""
         from core.management.commands.load_access_overrides import parse_file
 
         rows = parse_file(EAST_FILE.read_text(), EAST_FILE.name)
-        assert len(rows) == 378
+        assert len(rows) == 376
         by_tier = {5: 0, 4: 0, 3: 0}
         for row in rows:
             assert row["kind"] == "stress"
@@ -181,7 +181,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
                     value["category"] == "driver_behaviour"
                     or "pennsylvania" in value["adjustment_id"]
                 )
-        assert by_tier == {5: 252, 4: 90, 3: 36}
+        assert by_tier == {5: 250, 4: 90, 3: 36}
 
     def test_the_avoid_rows_are_only_the_main_carriageways_of_the_highway_like_roads(self) -> None:
         """445, 445a-c: Avoid only on the named roads, none of their side lanes; Minnesota
@@ -226,15 +226,15 @@ class TestTheArterialsEastOfTheAnacostiaFile:
                 assert "classifier tier" in row["evidence"] or "tier now" in row["evidence"]
 
     def test_everything_else_is_retired_by_the_value_that_was_loaded(self) -> None:
-        """The 522 rows of 445 and the 5 of 432 are under `retire`, tier 5, the old value;
+        """The 524 rows of 445 and 445f and the 5 of 432 are under `retire`, tier 5, the old value;
         no row of the file is both kept at Avoid and retired."""
         document = json.loads(EAST_FILE.read_text())
         retire = document["retire"]
-        assert len(retire) == 527
+        assert len(retire) == 529
         assert all(r["value"]["tier"] == 5 for r in retire)
         assert all("OWNER-DECISIONS 4" in r["reason"] for r in retire)
         ways = {r["osm_way_id"] for r in retire}
-        assert len(ways) == 527
+        assert len(ways) == 529
         avoid = {r["osm_way_id"] for r in document["rows"] if r["value"]["tier"] == 5}
         assert not avoid & ways
         # a floor row replaces the Avoid row on the same way, which is retired first
@@ -252,7 +252,10 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         )
         # 445d keeps the four Benning ways (bridge 135146277 among them) and adds two ramps
         assert not ways & INTERCHANGE_445D
-        assert len(avoid) - 2 + 522 == 772
+        assert len(avoid) - 2 + 522 + 2 == 772
+        # 445f: Kenilworth Avenue NE's two main-road ways are retired, not kept
+        assert {203015546, 130808357} <= ways
+        assert not {203015546, 130808357} & avoid
         assert {135146277, 962622875, 135146257, 135146261} <= avoid
         assert {926566914, 6056218} <= avoid
 
@@ -313,7 +316,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         load(str(STRESS_FILE), "--actor", str(admin.discord_user_id), "--confirm")
         before = Override.objects.count()
         out = load(str(EAST_FILE), "--actor", str(admin.discord_user_id))
-        assert out.count("create: way ") == 378
+        assert out.count("create: way ") == 376
         assert Override.objects.count() == before
 
 
@@ -1030,7 +1033,7 @@ class TestTheRetiringFiles:
 
     def test_445_retires_the_rows_loaded_before_and_loads_the_floors(self, admin, tmp_path):
         """OWNER-DECISIONS 445-445c: the 772 Avoid rows (and the five of 432) are in the
-        database; loading the file retires 527 and writes 378 (445d: the four Benning ways were
+        database; loading the file retires 529 and writes 376 (445d: the four Benning ways were
         loaded and stay, the two ramps are new), no conflict."""
         from core.management.commands.load_access_overrides import parse_retired
         from core.models import Override
@@ -1043,16 +1046,17 @@ class TestTheRetiringFiles:
             for r in json.loads(EAST_FILE.read_text())["rows"]
             if r["value"]["tier"] == 5 and r["osm_way_id"] not in (926566914, 6056218)
         ]
+        # the database holds the two 445f ways too (they are in `retire`)
         loaded += [{**r, "reason": "141", "evidence": "e"} for r in kept]
         load(write_rows(tmp_path, loaded), "--actor", actor, "--confirm")
-        assert Override.objects.count() == 527 + 250
+        assert Override.objects.count() == 529 + 248
         dry = load(str(EAST_FILE), "--actor", actor)
-        assert dry.count("retire: way ") == 527
+        assert dry.count("retire: way ") == 529
         assert dry.count("create: way ") == 128
         assert "disagrees" not in dry
         load(str(EAST_FILE), "--actor", actor, "--confirm")
         tiers = collections.Counter(o.value["tier"] for o in Override.objects.all())
-        assert tiers == {5: 252, 4: 90, 3: 36}
+        assert tiers == {5: 250, 4: 90, 3: 36}
 
     def test_433_retires_the_23_veirs_mill_moco_rows_and_keeps_the_rest(self):
         from core.management.commands.load_access_overrides import parse_file, parse_retired

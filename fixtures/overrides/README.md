@@ -231,10 +231,10 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   2026-09-27 file.
   Cut back on 2026-10-06 (OWNER-DECISIONS 445): "I think I was too harsh with
   some of the east of the river options. Set the ones that look like normal
-  roads back to whatever their LTS was." Now **378 rows, 527 retired**:
-  - 252 rows stay tier 5 (Avoid, 20.0 mi, 32.2 km) on the main carriageways
+  roads back to whatever their LTS was." Now **376 rows, 529 retired** (445f, 2026-10-07, took out two Kenilworth Avenue NE ways, below):
+  - 250 rows stay tier 5 (Avoid, 19.7 mi, 31.8 km) on the main carriageways
     of Suitland Parkway SE (trunk and primary), Pennsylvania Avenue SE (trunk),
-    Branch Avenue SE (trunk), Kenilworth Avenue NE (primary), Indian Head
+    Branch Avenue SE (trunk), Kenilworth Avenue NE (primary, less the two ways 445f retires), Indian Head
     Highway, South Capitol Street and South Capitol Street SW and SE (outside the stretch
     of 432), and East Capitol Street NE and SE (primary; "East Cap is a highway
     past the river. I don't think any map should plan with that."), and, by 445d, six
@@ -245,8 +245,14 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
     stretch around here that I'd avoid 38.8961758,-76.9518693", ending at
     38.8976873,-76.9499615 ("the last you could pull off to a different spot", logged in
     OWNER-DECISIONS' "Record of owner words used in 444/445"; Foote
-    Street NE on Kenilworth Avenue NE, way 203015546, already Avoid). Benning Road
+    Street NE on Kenilworth Avenue NE, way 203015546). Benning Road
     beyond the interchange and the freeway ramps (barred) are unchanged.
+  - 445f (2026-10-07, "the map changes were in the exact opposite direction as they should
+    have been on kenilworth."): Kenilworth Avenue NE ways 203015546 and 130808357 (0.22 mi, 350 m) run
+    north-east of the Foote Street NE turn-off, the side the owner did not mean, so they
+    are retired and the classifier rates them. The ramps 926566914 and 6056218 and Benning
+    Road across the interchange stay Avoid. The roughly 35 m of 203015546 between the
+    turn-off and the ramp follow the classifier unless OSM splits the way.
   - The side lanes beside those roads are retired (2.3 mi, 3.7 km), after the North Capitol
     Street precedent (284, 286, 295: the highway-like roadway is Avoid, its side
     lanes are ordinary streets): East Capitol Street NE's four secondary ways, Kenilworth
@@ -260,10 +266,10 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
     2.4 mi, 3.9 km; the classifier rated 5 of them 2, 30 of them 3 and one 4).
   - The floors are minimums: on a fresh extract a way the classifier rates higher
     keeps the higher tier, and one it rates lower is raised to the floor.
-  - Every other row is retired: 522 in all, 126 of them replaced by the floor rows
-    on the same ways (27.0 mi, 43.5 km of road, 396 ways, goes back to the
+  - Every other row is retired: 524 in all, 126 of them replaced by the floor rows
+    on the same ways (27.2 mi, 43.8 km of road, 398 ways, goes back to the
     classifier, which had it at LTS 2 to 4). Loading the file again withdraws the
-    rows already loaded, then writes the 378 (docs/OPERATIONS.md, the rebuild
+    rows already loaded, then writes the 376 (docs/OPERATIONS.md, the rebuild
     bundle's step H).
   Five South Capitol Street rows (Martin Luther King Jr Ave SE
   to Mississippi Ave SE, ways 468820704, 590525532, 455234174, 468820714 and
