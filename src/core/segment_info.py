@@ -173,6 +173,7 @@ OPTIONAL_COLUMNS = (
     "map_class",
     "road_speed_mph",
     "road_lanes",
+    "road_oneway",
     "attr_sources",
     "stress_adjustment_id",
     "stress_computed_tier",
@@ -501,11 +502,18 @@ def traffic_rows(row: dict) -> list[dict]:
     have_lane_column = "road_lanes" in row
     if not path:
         lanes = row.get("road_lanes")
+        oneway = row.get("road_oneway") is True
         if lanes is not None:
             source = ATTR_SOURCES.get(_attr(row, "lanes") or "osm", OSM)
-            rows.append(_row("Lanes", f"{lanes} each way" if lanes != 1 else "1 each way", source))
+            value = (
+                f"{lanes} in this direction (a one-way street, or one side of a divided road)"
+                if oneway
+                else f"{lanes} each way"
+            )
+            rows.append(_row("Lanes", value, source))
         elif "lanes" in assumed:
-            rows.append(_row("Lanes", "Not mapped; assumed 1 each way", CLASSIFIER))
+            value = "Not mapped; assumed 1 " + ("in this direction" if oneway else "each way")
+            rows.append(_row("Lanes", value, CLASSIFIER))
         elif not have_lane_column:
             rows.append(_row("Lanes", NEXT_UPDATE, None))
         speed = row.get("road_speed_mph")
@@ -730,11 +738,14 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
             if found:
                 mph = float(found.group(1))
                 add("speed", "Speed", f"{mph_and_kmh(mph)}, assumed")
+        # road_lanes counts one direction's through lanes: on a one-way street (or one
+        # carriageway of a divided road) there is no "each way" (the review's C-1).
         lanes = row.get("road_lanes")
+        way = "in this direction" if row.get("road_oneway") is True else "each way"
         if lanes is not None:
-            add("lanes", "Lanes", f"{lanes} each way")
+            add("lanes", "Lanes", f"{lanes} {way}")
         elif "lanes" in assumed:
-            add("lanes", "Lanes", "1 each way, assumed")
+            add("lanes", "Lanes", f"1 {way}, assumed")
     aadt = row.get("volume_aadt")
     if aadt is not None:
         who = VOLUME_SHORT.get(str(row.get("volume_source") or ""), "")
@@ -768,7 +779,7 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     width = row.get("mass_usable_width_m")
     if width is not None:
         riders = flow.level_riders_per_min(float(width))
-        add("mass", "Room for", f"~{round(riders):,} riders a minute")
+        add("mass", "Room for", f"About {round(riders):,} riders a minute")
     return rows
 
 
@@ -803,6 +814,9 @@ def describe(row: dict, router: dict) -> dict:
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),
+        # The nearest point on the way itself, [lon, lat]: the panel's Street View link
+        # opens there, on the road it describes (OWNER-DECISIONS 441o).
+        "on_way": [round(float(row["on_lon"]), 6), round(float(row["on_lat"]), 6)],
         "kind": kind,
         "summary": summary_rows(row, router, open_),
         "sections": sections,

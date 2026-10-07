@@ -776,7 +776,7 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The point "Add point at map center" would place, while it has focus. */
+/* The map's center, which Map tools' two actions use, while it is open. */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -1272,7 +1272,7 @@ dialog.road-info::backdrop {
 }
 
 .road-info-place button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 4px 10px;
 }
 
@@ -1336,8 +1336,17 @@ dialog.road-info::backdrop {
   font-size: 0.8125rem;
 }
 
+/* A nearby station: its name in view, then its short links (OWNER-DECISIONS 441q). */
 .road-info-stations {
   margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.road-info-station-name {
+  margin: 0;
 }
 
 .road-info-links {
@@ -1814,10 +1823,6 @@ button.secondary,
 }
 
 /* Points */
-.point-add button {
-  flex: 1 1 100%;
-}
-
 .point-tools {
   margin-top: 8px;
 }
@@ -2573,4 +2578,55 @@ details.zoom-notes {
   .pc-avoid-inner {
     stroke: Canvas;
   }
+}
+
+/* Map tools (OWNER-DECISIONS 450; MapTools.tsx): one small control under the zoom buttons,
+   at least 44px, opening a column of two plain buttons under it. The map is the light
+   flavour in both themes, so it keeps the map controls' light colours; forced colours
+   give it the system's. */
+.map-tools-ctrl {
+  background: transparent;
+}
+
+.map-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.map-tools button {
+  min-height: 44px;
+  min-width: 44px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #16181d;
+  background: #ffffff;
+  border: 1px solid #6b7280;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 10%);
+  text-align: left;
+}
+
+.map-tools button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.map-tools button:focus-visible {
+  outline: 3px solid var(--map-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--map-focus-inner);
+}
+
+.map-tools-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.map-tools-panel[hidden] {
+  display: none;
 }

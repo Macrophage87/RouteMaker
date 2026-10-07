@@ -3730,7 +3730,7 @@ Tests: `lib/sidebar.test.ts`.
   heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
   dialog or on the place search's list (`sheetEscape`). When a route arrives and the
-  points compact, a focus in the search, Add point at map center or the tools goes to
+  points compact, a focus in the search or the point tools goes to
   "Edit points" (`rescueCompactFocus`), so it is never left in a hidden element.
 - **Live regions.** The route's (`.status-line`) and the points' (`said`) are outside
   the panel, so a bar sheet or the phone's hidden sheet does not silence them; the
@@ -5248,13 +5248,17 @@ Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
-## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m; v0.2.1)
+## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m-441q, 450; v0.2.1)
 
 **What a rider does.** A right-click on the map (a computer), a finger held still for
 0.6 s (a phone; `lib/roadInfo.ts` `LongPress`, called off by a drift past 10 px, a second
 finger, the finger lifting or the map moving, and never preventing a default, so the map
-pans and pinches as before), I with the map focused, or "Road info at map center" in the
-planner (the crosshair shows the center, as for "Add point at map center"). Each opens
+pans and pinches as before), I with the map focused, or "Road info at map center" in Map
+tools (450; `MapTools.tsx`): one small button, at least 44 px, in a map control under the
+zoom buttons, a disclosure (`aria-expanded`, two plain buttons, not an ARIA menu) holding
+"Add point at map center" and "Road info at map center"; Escape closes it and the focus
+goes back to it, as it does before either action runs, and the crosshair shows the center
+while it is open. The two were wide planner buttons before 450. Each way opens
 `RoadInfoDialog.tsx`, the platform's modal `<dialog>`: the focus goes to its heading,
 Escape and Close close it and the focus goes back to what opened it, Tab stays inside.
 It opens compact (the owner: "a bit wordy and I have to scroll"), so the common case fits
@@ -5264,10 +5268,10 @@ then a top row of real buttons (441n), "Set as start", "Set as end" (not in a lo
 Start / Destination / Stop choice does (`applyPlace`: loop-aware, the coverage check, the
 cap; an unavailable one is `aria-disabled` with its reason beside it and as its
 description), say "Stop 2 set here." and the like, and close the panel, the focus going
-back to what opened it; then the API's `summary` as a list, one short line a fact with no source under it
+back to what opened it (the map, after a long press); then the API's `summary` as a list, one short line a fact with no source under it
 ("Traffic stress: LTS 3 · For experienced cyclists", "Why", "Speed", "Lanes", "Traffic:
 22,000 a day (DDOT 2024)", "Bike lane", "Surface" off a plain paved road, "Bikes: Allowed"
-or "Not allowed — military area", and "Room for: ~160 riders a minute" on the Mass Ride map
+or "Not allowed — military area", and "Room for: About 160 riders a minute" on the Mass Ride map
 only); a line with nothing useful is left out, but bike access is always said. A nearby
 station's pages follow, then a closed native `<details>` "Details and sources" with every
 section (a heading each, the figures a description list with the source in words), the
@@ -5276,10 +5280,13 @@ as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
 (`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
 OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
 release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
-passes it yet. The live region says one short sentence ("Connecticut Avenue Northwest: LTS
-3, for experienced cyclists." and on a closed way "Bikes not allowed here."). On a phone
-it is a sheet from the bottom. The help (More tips) says all three ways, and
-the map's own name says "Press I". A right-button drag that rotates the map is not a
+passes it yet. A polite status region inside the dialog (always rendered, empty until the
+answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
+cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
+silent, since the modal makes everything outside it inert. On a phone it is a sheet from
+the bottom. The help (More tips) names all four ways (right-click, hold, I, Map tools) and
+says that NVDA and JAWS pass I to the map only in focus mode; the map's own name says
+"Press I" (and only the canvas has `aria-keyshortcuts="I"`). A right-button drag that rotates the map is not a
 request (`MapView.tsx`: the contextmenu waits for the release on platforms that send it
 with the press, and a release that moved more than 5 px is a rotation). A held finger on
 the route line still picks the line up; the panel's long press only starts off it.
@@ -5294,14 +5301,17 @@ the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", 
 441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
 (posted 55 mph)"), an override's tier before it and its category, its note only where the
-row's display is `map` (a `route_only` note is never shown on a click); lanes each way and
+row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each
+way" or, where `road_oneway` is true (a one-way street, or one carriageway of a divided
+road), "in this direction", since `road_lanes` counts one direction; and
 the speed limit, posted (with `attr_sources`' source) or assumed (the classifier's figure
 from the rule); the count, its publisher and year, or "No count"; the facility class,
 `car_free_when`, the shared surface rule (`is_unpaved`, `is_rough`, a roadside path's
 "probably paved", 403, 440); bike access; and the Mass Ride width and riders a minute on
 the level (`flow.level_riders_per_min`), shown on the Mass Ride map only. The answer's
 `kind` and `summary` (`summary_rows`: `{id, label, value}`, no sources) are the compact
-lines; the sections stay the full record. "Street View" is Google's public URL for the spot clicked, in a new tab with
+lines; the sections stay the full record. "Street View" is Google's public URL for the nearest point on the way (the answer's
+`on_way`, `[lon, lat]`, 441o; the spot itself when no road is found), in a new tab with
 `rel="noopener noreferrer"`, named in text only, with the note that the spot is sent to
 Google only if the link is followed. No person is ever named: an owner's row is "Owner
 override" or "Owner-rated corridor".
@@ -5339,8 +5349,11 @@ Start here / End here / Add as stop: a Metro station's WMATA page from
 `rail-data/wmata-station-slugs.json` (curated and checked, rail-data/README.md) and a MARC
 Penn station's Penn Line timetable; Union Station and New Carrollton offer both. Offered,
 never followed by itself (441c). The road panel lists the pages of the nearest station the
-map shows within 400 m (0.25 mi) of its spot, which is how a keyboard or screen-reader rider
-reaches them.
+map shows within 0.25 mi (400 m) of its spot, which is how a keyboard or screen-reader rider
+reaches them: the station's name in view ("Nearby station: Dupont Circle"), then the short
+links "Station site" and "MARC timetable" (441q), whose accessible names stay specific and
+hold the visible words ("Dupont Circle station site, WMATA, opens in a new tab"; "MARC
+timetable, Penn Line, MTA Maryland, opens in a new tab").
 
 **Deploying it.** Code, no migration, and one new segment column, which arrives with the
 next rebuild (its DDL is in `SEGMENT_DDL`; until then the endpoint tolerates its absence).
@@ -5356,7 +5369,10 @@ corridor; the route-only note kept off; a silent router; an old table; no coordi
 any log; 400, 403 uncounted, 429; the rule and reason words; `bike_access_reason`),
 `tests/test_beta_overlay.py`, `lib/roadInfo.test.ts`, `lib/stationLinks.test.ts` (every
 Metro station on the map has a slug, no stray, Penn and Union Station, the nearby station),
-and section 21 of the a11y check (15 checks: a right-click opens a modal dialog with the
+and section 21 of the a11y check (29 checks since the v0.2.1 fix round, among them Map tools
+by keyboard, the answer read from the accessibility tree inside the dialog, Shift+Tab, an
+unavailable top-row button, the station links near Union Station and the focus after a long
+press; the first 15: a right-click opens a modal dialog with the
 focus on its heading, one request with the spot in the query only, labelled sections with
 sources in words, no capacity off the Mass Ride map, the Street View link and its note,
 the polite announcement, the dialog's accessible name, Tab held inside, I on the focused

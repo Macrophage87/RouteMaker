@@ -1598,6 +1598,10 @@ class SegmentInfoOut(Schema):
     )
     osm_way_id: int | None = None
     distance_m: float | None = Field(default=None, description="How far the way is from the spot.")
+    on_way: list[float] | None = Field(
+        default=None,
+        description="The nearest point on the way, [lon, lat]: where the Street View link opens.",
+    )
     kind: str | None = Field(default=None, description="The kind of way, in a few words.")
     summary: list[InfoSummaryOut] = Field(
         default_factory=list,

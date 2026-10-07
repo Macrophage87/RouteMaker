@@ -14,8 +14,10 @@
  * it goes back to whatever opened it (the map, or the Road info button). The summary is
  * a list; in the details each part is a labelled section with a heading, the figures a
  * description list; nothing depends on colour. The answer is also said, in one short
- * sentence, through the page's live region (App's `announce`), so a rider who stays on
- * the heading hears it come in.
+ * sentence, through a polite status region inside the dialog itself (always rendered,
+ * empty until the answer comes, as the weight dialog's total is), so a rider who stays on
+ * the heading hears it come in: the page's own region is outside the modal, which makes it
+ * inert and drops it from the accessibility tree (the a11y review's S1).
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
@@ -27,6 +29,7 @@ import {
   STREET_VIEW_NOTE,
   STREET_VIEW_TEXT,
   fetchSegmentInfo,
+  streetViewPoint,
   infoHeading,
   infoSaid,
   osmEditUrl,
@@ -41,7 +44,7 @@ import {
   type SegmentInfo,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
-import { STATION_LINK_NOTE, stationLinks } from "./lib/stationLinks.ts";
+import { stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
@@ -54,8 +57,11 @@ interface Props {
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
   onClose: () => void;
-  /** Say a short sentence through the page's live region. */
-  announce: (text: string) => void;
+  /**
+   * Where the focus goes on close when whatever opened the panel cannot take it back (a
+   * long press leaves the focus on the page itself): the map (the a11y review's N6).
+   */
+  fallbackFocus?: () => HTMLElement | null;
   /**
    * The editing release's hook (OWNER-DECISIONS 441g/441h, 441m): the "Change LTS" control
    * for a signed-in instance admin, drawn third in the bottom action row. Not passed until
@@ -70,11 +76,13 @@ interface Props {
 
 const FOCUSABLE = "button:not([disabled]), [href], summary, [tabindex]:not([tabindex='-1'])";
 
-export function RoadInfoDialog({ request, massRide, station, onClose, announce, changeLtsAction, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, changeLtsAction, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
   const [state, setState] = useState<InfoState>({ kind: "loading" });
+  // The answer's sentence for the dialog's own status region, empty until it comes.
+  const [said, setSaid] = useState("");
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
 
@@ -92,11 +100,12 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
     }
     headingRef.current?.focus();
     setState({ kind: "loading" });
+    setSaid("");
     const controller = new AbortController();
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
         setState(next);
-        announce(infoSaid(next));
+        setSaid(infoSaid(next));
       },
       () => undefined,
     );
@@ -110,12 +119,17 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
     const onDialogClose = () => {
       const back = returnTo.current;
       returnTo.current = null;
+      setSaid("");
       onClose();
-      if (back instanceof HTMLElement && back.isConnected && back !== document.body) back.focus();
+      if (back instanceof HTMLElement && back.isConnected && back !== document.body && back !== document.documentElement) {
+        back.focus();
+        if (document.activeElement === back) return;
+      }
+      fallbackFocus?.()?.focus();
     };
     dialog.addEventListener("close", onDialogClose);
     return () => dialog.removeEventListener("close", onDialogClose);
-  }, [onClose]);
+  }, [onClose, fallbackFocus]);
 
   const close = () => dialogRef.current?.close();
 
@@ -168,6 +182,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
         <p id={id("where")} className="road-info-kind">
           {where}
         </p>
+        {/* Always in the dialog, empty at first: a region created holding its text is often not spoken. */}
+        <p className="visually-hidden road-info-said" role="status">
+          {said}
+        </p>
         {request && (
           <ul className="road-info-place" aria-label="Use this spot">
             {actions.map((action) => (
@@ -196,8 +214,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
               .map((a, n) => (
                 <span key={a.choice}>
                   {n > 0 && " "}
-                  <span aria-hidden="true">{a.text}: </span>
-                  <span id={id(`why-${a.choice}`)}>{a.unavailable}</span>
+                  {/* Read too: without the button's name the same reason twice reads as a stutter (the a11y review's N1). */}
+                  {a.text}: <span id={id(`why-${a.choice}`)}>{a.unavailable}</span>
                 </span>
               ))}
           </p>
@@ -226,20 +244,21 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
           </ul>
         )}
         {station && links.length > 0 && (
-          <ul className="road-info-links road-info-stations" aria-label={`Nearby station: ${station.name}`}>
-            {links.map((link) => (
-              <li key={link.href}>
-                <a href={link.href} target="_blank" rel="noopener noreferrer" aria-describedby={id("station-note")}>
-                  {link.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-        {station && links.length > 0 && (
-          <p className="visually-hidden" id={id("station-note")}>
-            {STATION_LINK_NOTE}
-          </p>
+          <div className="road-info-stations">
+            {/* The station's name in view, beside its short links (OWNER-DECISIONS 441q; the a11y review's N2). */}
+            <p className="road-info-station-name" id={id("station")}>
+              <span className="road-info-label">Nearby station:</span> {station.name}
+            </p>
+            <ul className="road-info-links" aria-labelledby={id("station")}>
+              {links.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={link.label}>
+                    {link.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {ready && (
           <details
@@ -294,7 +313,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce, 
               <li>
                 <a
                   className="road-info-button"
-                  href={streetViewUrl(request.point)}
+                  href={streetViewUrl(streetViewPoint(ready, request.point))}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-describedby={id("sv-note")}

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
@@ -156,6 +157,12 @@ interface Props {
    * long press on a phone, or I with the map focused (the map's centre).
    */
   onRoadInfo?: (request: InfoRequest) => void;
+  /**
+   * Drawn in a map control of its own under the zoom buttons (top right): App's "Map tools"
+   * (OWNER-DECISIONS 450; MapTools.tsx), so it sits with the map's other controls, in their
+   * Tab order, inside the map's region.
+   */
+  tools?: ReactNode;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -241,6 +248,8 @@ function accuracyData(accuracy: { centre: LonLat; radiusM: number } | null) {
 
 export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
+  // The map control App's Map tools is drawn into, once the map has made it.
+  const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
@@ -347,6 +356,11 @@ export function MapView(props: Props) {
     mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // Map tools, under the zoom buttons (OWNER-DECISIONS 450): an empty control React fills.
+    const toolsControl = document.createElement("div");
+    toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
+    map.addControl({ onAdd: () => toolsControl, onRemove: () => toolsControl.remove() }, "top-right");
+    setToolsHost(toolsControl);
     // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the
     // scales, so it is the bottom of the corner's stack. On a narrow map it
     // starts as the "i" button with the OpenStreetMap credit beside it, as
@@ -861,6 +875,7 @@ export function MapView(props: Props) {
       markers.current.forEach((m) => m.remove());
       markers.current = [];
       mapRef.current = null;
+      setToolsHost(null);
       map.remove();
     };
   }, []);
@@ -1135,7 +1150,12 @@ export function MapView(props: Props) {
     federalSync.current?.();
   }, [props.federalVisible, props.federalWanted]);
 
-  return <div ref={container} className="map" role="region" aria-label="Map" />;
+  return (
+    <>
+      <div ref={container} className="map" role="region" aria-label="Map" />
+      {toolsHost && props.tools ? createPortal(props.tools, toolsHost) : null}
+    </>
+  );
 }
 
 /** The summary list's row for the junction at `index`. */

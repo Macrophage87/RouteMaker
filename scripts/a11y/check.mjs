@@ -1409,6 +1409,37 @@ const bareSpot = (p) =>
       if (document.elementFromPoint(x, y) === c) return [x, y]; }
     return null; })()`);
 const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connecticut Avenue Northwest/.test(document.querySelector('dialog.road-info h2')?.textContent ?? '')";
+/** Opens Map tools (by the zoom buttons; OWNER-DECISIONS 450) if it is closed, and presses one of its two buttons. */
+const mapTool = (p, label) =>
+  p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
+    [...document.querySelectorAll('.map-tools-panel button')].find((b) => b.textContent === ${JSON.stringify(label)})?.click(); return true; })()`);
+/** A test probe: moves the map, the MapLibre map in MapView's ref, found through React's fiber; whether it was found. */
+const jumpMap = (p, lon, lat, zoom) =>
+  p.eval(`(() => { const el = document.querySelector('.map'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    for (let f = key ? el[key] : null; f; f = f.return) {
+      for (let h = f.memoizedState; h && typeof h === 'object' && 'next' in h; h = h.next) {
+        const m = h.memoizedState?.current;
+        if (m && typeof m.jumpTo === 'function' && typeof m.getCenter === 'function') { m.jumpTo({ center: [${lon}, ${lat}], zoom: ${zoom} }); return true; }
+      } }
+    return false; })()`);
+/**
+ * Whether `text` is in the accessibility tree inside a status region inside a dialog (the
+ * a11y review's S1): read from the tree, not the page's text, so a region the modal made
+ * inert (and the tree drops) does not pass.
+ */
+async function saidInDialog(p, text) {
+  const { nodes } = await p.s("Accessibility.getFullAXTree", {});
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const hits = nodes.filter((n) => !n.ignored && n.name?.value === text);
+  for (const hit of hits) {
+    let status = null;
+    for (let n = byId.get(hit.parentId); n; n = byId.get(n.parentId)) {
+      if (!status && n.role?.value === "status") status = n;
+      if (status && n.role?.value === "dialog") return { found: !status.ignored, dialog: n.name?.value ?? "" };
+    }
+  }
+  return { found: false, hits: hits.length };
+}
 {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const at = await bareSpot(p);
@@ -1454,15 +1485,16 @@ const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connect
     return { names: [...(ul?.querySelectorAll('a') ?? [])].map((a) => a.textContent), last: d.querySelector('.road-info-body').lastElementChild?.className ?? '',
       sv: link('Street View'), osm: link('Edit in OSM') }; })()`);
   const sv = row.sv;
-  check("road panel: Street View is Google's public link for the spot, in a new tab, with no opener or referrer, its privacy note its description",
-    /^https:\/\/www\.google\.com\/maps\/@\?api=1&map_action=pano&viewpoint=3\d\.\d{6},-7\d\.\d{6}$/.test(sv.href) && sv.target === "_blank" && /noopener/.test(sv.rel) && /noreferrer/.test(sv.rel) &&
+  check("road panel: Street View is Google's public link for the point on the road the panel describes (441o), in a new tab, with no opener or referrer, its privacy note its description",
+    sv.href === "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=38.910000,-77.040000" && sv.target === "_blank" && /noopener/.test(sv.rel) && /noreferrer/.test(sv.rel) &&
       sv.note === "Opens in a new tab; Google gets this spot only if you follow the link.", JSON.stringify(sv));
   check("road panel: the bottom row is Street View then Edit in OSM (no Change LTS before the editor exists); Edit in OSM opens the way in OpenStreetMap's editor, with its note",
     JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM"]) && row.last === "road-info-actions" &&
       row.osm.href === "https://www.openstreetmap.org/edit?way=101" && row.osm.target === "_blank" && /noopener/.test(row.osm.rel) && /noreferrer/.test(row.osm.rel) &&
       row.osm.note === "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.", JSON.stringify(row));
-  const said = await p.eval("[...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).find((t) => /^Connecticut Avenue Northwest:/.test(t)) ?? ''");
-  check("road panel: the answer is said through the app's polite region, in one short sentence", said === "Connecticut Avenue Northwest: LTS 3, for experienced cyclists.", said);
+  const said = await saidInDialog(p, "Connecticut Avenue Northwest: LTS 3, for experienced cyclists.");
+  check("road panel: the answer is said in one short sentence by a status region inside the dialog, in the accessibility tree (not the page's region the modal makes inert; S1)",
+    said.found && said.dialog === "Connecticut Avenue Northwest", JSON.stringify(said));
   const ax = await axNode(p, "dialog.road-info");
   check("road panel: a screen reader meets a dialog named for the road", ax?.role === "dialog" && ax?.name === "Connecticut Avenue Northwest", JSON.stringify(ax));
   await p.shot(`${SHOTS}/road-info_dialog.png`);
@@ -1473,6 +1505,11 @@ const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connect
     inside.push(await p.eval("!!document.activeElement?.closest('dialog.road-info')"));
   }
   check("road panel: Tab stays inside the open dialog", inside.every(Boolean), JSON.stringify(inside));
+  // And backwards: Shift+Tab from the heading goes round to the last control, still inside (the a11y review's N9).
+  await p.eval("document.querySelector('dialog.road-info h2').focus(); true");
+  await p.tab(true);
+  const backwards = await p.eval("({ inside: !!document.activeElement?.closest('dialog.road-info'), text: document.activeElement?.textContent ?? '' })");
+  check("road panel: Shift+Tab from the heading goes round to the dialog's last control, Edit in OSM", backwards.inside && backwards.text === "Edit in OSM", JSON.stringify(backwards));
   await p.escape();
   await sleep(300);
   // The keyboard's way: I on the focused map, for the road at its center.
@@ -1486,16 +1523,50 @@ const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connect
   await sleep(300);
   const back = await p.eval("({ closed: !document.querySelector('dialog.road-info[open]'), canvas: document.activeElement === document.querySelector('.maplibregl-canvas') })");
   check("road panel: Escape closes it and the focus goes back to the map", back.closed && back.canvas, JSON.stringify(back));
-  // The button in the planner, and its Close button.
-  await p.eval("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Road info at map center')?.focus(); true");
+  // Map tools (OWNER-DECISIONS 450): one small visible button with the map's zoom buttons, a disclosure
+  // of plain buttons holding the two map-center actions; nothing of them in the planner.
+  const tools = await p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); const r = t?.getBoundingClientRect();
+    const corner = t?.closest('.maplibregl-ctrl-top-right'); const zoomIn = corner?.querySelector('.maplibregl-ctrl-zoom-in');
+    return { name: t?.textContent ?? '', expanded: t?.getAttribute('aria-expanded') ?? '', w: Math.round(r?.width ?? 0), h: Math.round(r?.height ?? 0),
+      underZoom: !!(zoomIn && t && (zoomIn.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING)), inMap: !!t?.closest('.map[role=region]'),
+      panelHidden: document.querySelector('.map-tools-panel')?.hidden ?? null,
+      planner: [...document.querySelectorAll('.panel button')].filter((b) => /map center/.test(b.textContent)).length }; })()`);
+  check("map tools: one Map tools button, at least 44 px, after the map's zoom buttons in the map's corner, closed, and no map-center button in the planner (450)",
+    tools.name === "Map tools" && tools.expanded === "false" && tools.w >= 44 && tools.h >= 44 && tools.underZoom && tools.inMap && tools.panelHidden === true && tools.planner === 0, JSON.stringify(tools));
+  await p.eval("document.querySelector('.map-tools-toggle').focus(); true");
+  await p.enter();
+  await sleep(200);
+  const toolsOpen = await p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); const panel = document.getElementById(t.getAttribute('aria-controls') ?? '');
+    return { expanded: t.getAttribute('aria-expanded'), focus: document.activeElement === t, shown: !!panel && !panel.hidden && panel.getBoundingClientRect().height > 0,
+      buttons: [...(panel?.querySelectorAll('button') ?? [])].map((b) => b.textContent), menus: document.querySelectorAll('.map-tools [role^=menu]').length }; })()`);
+  const toolsAx = await axNode(p, ".map-tools-toggle");
+  const stops = [];
+  for (let i = 0; i < 2; i++) {
+    await p.tab();
+    stops.push(await p.eval("document.activeElement?.textContent ?? ''"));
+  }
+  check("map tools: Enter opens it and it says so (expanded); its two plain buttons, not an ARIA menu, are the next Tab stops",
+    toolsOpen.expanded === "true" && toolsOpen.focus && toolsOpen.shown && toolsAx?.role === "button" && toolsAx?.expanded === true && toolsOpen.menus === 0 &&
+      JSON.stringify(toolsOpen.buttons) === JSON.stringify(["Add point at map center", "Road info at map center"]) &&
+      JSON.stringify(stops) === JSON.stringify(["Add point at map center", "Road info at map center"]), JSON.stringify({ toolsOpen, toolsAx, stops }));
+  await p.escape();
+  await sleep(200);
+  const toolsShut = await p.eval("(() => { const t = document.querySelector('.map-tools-toggle'); return { expanded: t.getAttribute('aria-expanded'), focus: document.activeElement === t, hidden: document.querySelector('.map-tools-panel').hidden }; })()");
+  check("map tools: Escape closes it and the focus goes back to Map tools", toolsShut.expanded === "false" && toolsShut.focus && toolsShut.hidden, JSON.stringify(toolsShut));
+  // Road info at map center from Map tools, by keyboard, and the panel's Close.
+  await p.enter();
+  await sleep(200);
+  await p.tab();
+  await p.tab();
   await p.enter();
   const byButton = await p.waitFor(infoOpen, 8000);
   await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Close')?.click(); true");
   await sleep(300);
-  const backToButton = await p.eval("document.activeElement?.textContent === 'Road info at map center' && !document.querySelector('dialog.road-info[open]')");
-  check("road panel: Road info at map center opens it, and Close gives the focus back to the button", byButton && backToButton, String(backToButton));
+  const backToButton = await p.eval("(() => { const t = document.querySelector('.map-tools-toggle'); return { focus: document.activeElement === t, expanded: t.getAttribute('aria-expanded'), closed: !document.querySelector('dialog.road-info[open]') }; })()");
+  check("road panel: Map tools' Road info at map center opens it, and Close gives the focus back to Map tools",
+    byButton && backToButton.focus && backToButton.expanded === "false" && backToButton.closed, JSON.stringify(backToButton));
   // The top row (OWNER-DECISIONS 441n): real buttons under the heading that put the spot in the plan, then close.
-  await p.enter();
+  await mapTool(p, "Road info at map center");
   await p.waitFor(infoOpen, 8000);
   const top = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const ul = d.querySelector('ul.road-info-place');
     const after = (a, b) => !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
@@ -1509,22 +1580,59 @@ const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connect
   const placed = await p.eval(`({ closed: !document.querySelector('dialog.road-info[open]'), pins: document.querySelectorAll('.pin').length,
     focus: document.activeElement?.textContent ?? '', said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).find((t) => / set here\.$/.test(t)) ?? '' })`);
   check("road panel: Add as stop puts the spot in the plan as a stop, says so, closes, and gives the focus back",
-    placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Road info at map center", JSON.stringify(placed));
+    placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Map tools", JSON.stringify(placed));
   const tip = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
-  check("road panel: the help says how to reach it by mouse, by touch and by keyboard, and where the details are",
-    /Right-click the map \(or press and hold on a phone\) for a short summary/.test(tip) && /Details and sources/.test(tip) && /press I for the road at the center/.test(tip), tip.slice(0, 300));
+  check("road panel: the help says how to reach it by mouse, by touch and by keyboard (I and Map tools, and browse mode), and where the details are",
+    /Right-click the map \(or press and hold on a phone\) for a short summary/.test(tip) && /Details and sources/.test(tip) && /press I for the road at the center/.test(tip) &&
+      /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/.test(tip) && /With NVDA or JAWS, I reaches the map only in focus mode/.test(tip), tip.slice(0, 600));
+  // An unavailable top-row button (the a11y review's T1): on an empty plan Set as end gives its reason as its
+  // description, and pressing it neither closes the panel nor adds a point.
+  await p.eval("document.querySelector('.point-tools button:last-child')?.textContent === 'Clear' && document.querySelector('.point-tools button:last-child').click(); true");
+  await sleep(500);
+  await mapTool(p, "Road info at map center");
+  await p.waitFor(infoOpen, 8000);
+  const endAx = await axNode(p, "dialog.road-info .road-info-place li:nth-child(2) > button");
+  await p.eval("document.querySelector('dialog.road-info .road-info-place li:nth-child(2) > button').focus(); true");
+  await p.enter();
+  await sleep(400);
+  const end = await p.eval(`(() => { const b = document.querySelector('dialog.road-info .road-info-place li:nth-child(2) > button');
+    return { text: b?.textContent ?? '', disabled: b?.getAttribute('aria-disabled') ?? '', open: !!document.querySelector('dialog.road-info[open]'), focus: document.activeElement === b,
+      pins: document.querySelectorAll('.pin').length, why: document.querySelector('dialog.road-info .road-info-place-why')?.textContent ?? '' }; })()`);
+  check("road panel: on an empty plan Set as end is unavailable, its reason its description, and pressing it does nothing",
+    end.text === "Set as end" && end.disabled === "true" && endAx?.description === "Set a start first." && end.open && end.focus && end.pins === 0, JSON.stringify({ end, endAx }));
+  check("road panel: the reasons line names each button with its reason, so browse mode does not read the same reason twice (N1)",
+    end.why === "Set as end: Set a start first. Add as stop: Set a start first.", end.why);
+  await p.escape();
+  await sleep(300);
+  // A station near the spot: the keyboard's way to its pages (441b), its name in view beside short
+  // links whose accessible names stay specific (441q; the a11y review's T1 and N2).
+  const jumped = await jumpMap(p, -77.007417, 38.897774, 16);
+  await sleep(600);
+  await mapTool(p, "Road info at map center");
+  await p.waitFor(infoOpen, 8000);
+  const st = await p.eval(`(() => { const box = document.querySelector('dialog.road-info .road-info-stations'); const label = box?.querySelector('.road-info-station-name');
+    return { name: label?.textContent ?? '', named: !!label?.id && box?.querySelector('ul')?.getAttribute('aria-labelledby') === label.id,
+      links: [...(box?.querySelectorAll('a') ?? [])].map((a) => [a.textContent, a.href, a.target, a.rel].join(' ')) }; })()`);
+  const stAx = [await axNode(p, "dialog.road-info .road-info-stations li:nth-child(1) > a"), await axNode(p, "dialog.road-info .road-info-stations li:nth-child(2) > a")];
+  check("road panel: near Union Station it names the station in view, then Station site and MARC timetable, real links in a new tab with specific names",
+    jumped && st.name === "Nearby station: Union Station" && st.named &&
+      JSON.stringify(st.links) === JSON.stringify([
+        "Station site https://www.wmata.com/ridertools/station/union-station _blank noopener noreferrer",
+        "MARC timetable https://www.mta.maryland.gov/schedule/timetable/marc-penn _blank noopener noreferrer"]) &&
+      stAx[0]?.role === "link" && stAx[0]?.name === "Union Station site, WMATA, opens in a new tab" &&
+      stAx[1]?.role === "link" && stAx[1]?.name === "MARC timetable, Penn Line, MTA Maryland, opens in a new tab", JSON.stringify({ jumped, st, stAx }));
   await p.close();
 }
 {
   // On the Mass Ride map the panel gives the usable width and riders a minute.
   const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
   await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
-  await p.eval("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Road info at map center')?.click(); true");
+  await mapTool(p, "Road info at map center");
   await p.waitFor(infoOpen, 8000);
   const mass = await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-mass .road-info-row')].map((r) => r.textContent).join(' | ')");
   const room = await p.eval("document.querySelector('dialog.road-info .road-info-line-mass')?.textContent ?? ''");
   check("road panel: on the Mass Ride map the summary gives the room, and the details the usable width and riders a minute, US units first",
-    room === "Room for: ~150 riders a minute" && /Usable width22 ft \(6\.7 m\)/.test(mass) && /Riders a minuteAbout 150 on the level/.test(mass), JSON.stringify({ room, mass }));
+    room === "Room for: About 150 riders a minute" && /Usable width22 ft \(6\.7 m\)/.test(mass) && /Riders a minuteAbout 150 on the level/.test(mass), JSON.stringify({ room, mass }));
   await p.close();
 }
 {
@@ -1556,18 +1664,23 @@ const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connect
   // The owner's "I have to scroll": on a phone the common case fits, the action row on screen, nothing to scroll.
   const fit = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const r = d.getBoundingClientRect();
     const row = d.querySelector('.road-info-actions')?.getBoundingClientRect();
-    const big = [...d.querySelectorAll('a.road-info-button')].every((a) => a.getBoundingClientRect().height >= 44);
+    const big = [...d.querySelectorAll('a.road-info-button, .road-info-place button')].every((a) => a.getBoundingClientRect().height >= 44);
     return { scroll: d.scrollHeight - d.clientHeight, top: Math.round(r.top), bottom: Math.round(r.bottom), rowBottom: Math.round(row?.bottom ?? 9999), vh: innerHeight, big }; })()`);
-  check("road panel: on a phone the compact panel fits the screen without scrolling, the action row's buttons 44px tall",
+  check("road panel: on a phone the compact panel fits the screen without scrolling, the top and bottom rows' buttons 44px tall",
     fit.scroll <= 1 && fit.top >= 0 && fit.bottom <= fit.vh && fit.rowBottom <= fit.vh && fit.big, JSON.stringify(fit));
   await p.shot(`${SHOTS}/road-info_phone.png`);
+  // Closed after a long press, the focus goes to the map, not the page (the a11y review's N6).
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Close')?.click(); true");
+  await sleep(300);
+  const afterHold = await p.eval("({ closed: !document.querySelector('dialog.road-info[open]'), canvas: document.activeElement === document.querySelector('.maplibregl-canvas') })");
+  check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 301;
+const EXPECTED = 309;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

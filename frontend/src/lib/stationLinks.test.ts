@@ -36,7 +36,7 @@ test("every Metro station on the map has a checked WMATA slug, and the table has
 test("the owner's example: Fort Totten's page", async () => {
   const { WMATA_SLUGS } = await load();
   assert.deepEqual(stationLinks({ name: "Fort Totten", metro: ["red", "green", "yellow"], penn: false }, WMATA_SLUGS), [
-    { text: "Fort Totten on WMATA's site", href: "https://www.wmata.com/ridertools/station/fort-totten" },
+    { text: "Station site", label: "Fort Totten station site, WMATA, opens in a new tab", href: "https://www.wmata.com/ridertools/station/fort-totten" },
   ]);
   assert.equal(WMATA_STATION_BASE, "https://www.wmata.com/ridertools/station/");
 });
@@ -63,7 +63,25 @@ test("a link names its page in words, never a logo or a bare URL", async () => {
   const { WMATA_SLUGS } = await load();
   for (const link of stationLinks({ name: "New Carrollton", metro: ["orange", "silver"], penn: true }, WMATA_SLUGS)) {
     assert.ok(!link.text.startsWith("http"));
-    assert.match(link.text, /WMATA|MARC Penn Line/);
+    assert.match(link.label, /WMATA|MARC/);
+  }
+});
+
+test("short visible words (441q), specific accessible names that hold them (label in name)", async () => {
+  const { RAIL_STATIONS, WMATA_SLUGS } = await load();
+  const dupont = RAIL_STATIONS.find((s) => s.name === "Dupont Circle")!;
+  assert.deepEqual(stationLinks(dupont, WMATA_SLUGS).map((l) => [l.text, l.label]), [
+    ["Station site", "Dupont Circle station site, WMATA, opens in a new tab"],
+  ]);
+  const union = RAIL_STATIONS.find((s) => s.name === "Union Station")!;
+  assert.deepEqual(stationLinks(union, WMATA_SLUGS).map((l) => [l.text, l.label]), [
+    ["Station site", "Union Station site, WMATA, opens in a new tab"],
+    ["MARC timetable", "MARC timetable, Penn Line, MTA Maryland, opens in a new tab"],
+  ]);
+  for (const station of RAIL_STATIONS) {
+    for (const link of stationLinks(station, WMATA_SLUGS)) {
+      assert.ok(link.label.toLowerCase().includes(link.text.toLowerCase()), `${station.name}: ${link.label}`);
+    }
   }
 });
 

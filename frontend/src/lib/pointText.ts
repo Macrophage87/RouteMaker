@@ -139,14 +139,14 @@ export function editingTips(): string {
   return (
     "Drag any marker to move it, or drag the route line to pull it through somewhere else" +
     " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
-    ' move the map with the arrow keys and use "Add point at map center"; Ctrl+Z undoes the' +
+    ' move the map with the arrow keys and use "Add point at map center" in Map tools; Ctrl+Z undoes the' +
     " last change and Ctrl+Shift+Z redoes it."
   );
 }
 
 /** The hint with the start alone, with the keyboard's way to place the next point. */
 export function loneStartHint(preset: PresetId, loop: boolean): string {
-  const keys = 'or use "Add point at map center"';
+  const keys = 'or use "Add point at map center" in Map tools';
   if (loop) return `Now click the map to add a stop, ${keys}. The ride comes back to the start.`;
   if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
   return (

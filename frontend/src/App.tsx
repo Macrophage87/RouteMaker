@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
-import { INFO_BUTTON_LABEL, INFO_HELP, placeAtSpot, type InfoRequest } from "./lib/roadInfo.ts";
+import { MapTools } from "./MapTools.tsx";
+import { INFO_HELP, placeAtSpot, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
@@ -269,6 +270,10 @@ export function App() {
   // The road panel's spot (OWNER-DECISIONS 441a), or null while it is closed.
   const [roadInfo, setRoadInfo] = useState<InfoRequest | null>(null);
   const closeRoadInfo = useCallback(() => setRoadInfo(null), []);
+  // The map is where the focus goes when the road panel's opener cannot take it back (a long press).
+  const mapFocus = useCallback(() => mapRef.current?.getCanvas() ?? null, []);
+  // Map tools (OWNER-DECISIONS 450) shows the crosshair while it is open.
+  const toolsCrosshair = useCallback((on: boolean) => setCrosshair((c) => (c.button === on ? c : { ...c, button: on })), []);
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
   const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
@@ -313,7 +318,6 @@ export function App() {
   const panelRef = useRef<HTMLElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const addRef = useRef<HTMLButtonElement>(null);
   const planButtonRef = useRef<HTMLButtonElement>(null);
   const routeHeadingRef = useRef<HTMLHeadingElement>(null);
   const pointsHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -449,13 +453,13 @@ export function App() {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
 
-  // After Remove, the focus goes to the next Remove button, or to Add.
+  // After Remove, the focus goes to the next Remove button, or (none left) to the search.
   useEffect(() => {
     const index = focusAfterRemove.current;
     if (index === null) return;
     focusAfterRemove.current = null;
     const target = removeRefs.current[Math.min(index, points.length - 1)];
-    (target ?? addRef.current)?.focus();
+    (target ?? pointsSearchRef.current?.querySelector<HTMLElement>("input"))?.focus();
   }, [points]);
 
   // The latest points, for handlers the map holds on to between renders.
@@ -945,7 +949,7 @@ export function App() {
   // A route is on screen: the points are compact unless the rider is editing them.
   const routeShownForPoints = shown !== null;
   const compactPoints = routeShownForPoints && points.length >= 2 && !editPoints;
-  // A route arriving while the focus is in the search, Add point at map center or the tools hides
+  // A route arriving while the focus is in the search or the point tools hides
   // them: the focus goes to "Edit points" rather than dropping to the page (lib/sidebar.ts
   // rescueCompactFocus; the review's B1). After the sheet-order effect above, which may put the
   // focus back on the element it had.
@@ -1049,20 +1053,8 @@ export function App() {
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
-      <div className="actions point-add">
-        <button
-          type="button"
-          ref={addRef}
-          onClick={addAtCentre}
-          onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
-          onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
-          disabled={points.length >= MAX_POINTS}
-        >
-          Add point at map center
-        </button>
-      </div>
+      {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
+          zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
       {/* The compact row: Reverse, Undo, Redo and Clear. */}
       <div className="actions point-tools">
         {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
@@ -1099,21 +1091,6 @@ export function App() {
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
         <p className="hint">{INFO_HELP}</p>
       </MoreTips>
-      <div className="actions road-info-actions">
-        <button
-          type="button"
-          className="secondary"
-          aria-haspopup="dialog"
-          aria-keyshortcuts="I"
-          onClick={roadInfoAtCentre}
-          onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
-          onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
-        >
-          {INFO_BUTTON_LABEL}
-        </button>
-      </div>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
           its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}
@@ -1271,13 +1248,21 @@ export function App() {
         onFederalData={setFederalData}
         onStationPoint={placeStation}
         onRoadInfo={setRoadInfo}
+        tools={
+          <MapTools
+            onAddPoint={addAtCentre}
+            addDisabled={points.length >= MAX_POINTS}
+            onRoadInfo={roadInfoAtCentre}
+            onCrosshair={toolsCrosshair}
+          />
+        }
       />
       <RoadInfoDialog
         request={roadInfo}
         massRide={massMap}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
         onClose={closeRoadInfo}
-        announce={announce}
+        fallbackFocus={mapFocus}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
       />

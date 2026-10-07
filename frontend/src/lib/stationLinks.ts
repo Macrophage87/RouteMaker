@@ -22,7 +22,6 @@ import { visibleLines, type RailVisibility, type Station } from "./railStations.
 export const WMATA_STATION_BASE = "https://www.wmata.com/ridertools/station/";
 export const MARC_PENN_TIMETABLE = "https://www.mta.maryland.gov/schedule/timetable/marc-penn";
 
-/** DC Open Data's station name -> WMATA's station page slug, each checked 2026-10-07. */
 /** DC Open Data's station name -> WMATA's station page slug (rail-data/wmata-station-slugs.json; railData.ts). */
 export type StationSlugs = Readonly<Record<string, string>>;
 
@@ -41,20 +40,41 @@ export function parseStationSlugs(text: string): StationSlugs | null {
 }
 
 export interface StationLink {
-  /** The link's own words, naming the page and the station. */
+  /** The link's short visible words (OWNER-DECISIONS 441q), shown beside the station's visible name. */
   text: string;
+  /**
+   * Its accessible name: the station, the page and the site, and that it leaves the map.
+   * It starts with or holds the visible words, so a voice-control rider can say them
+   * (WCAG 2.5.3, label in name).
+   */
+  label: string;
   href: string;
 }
 
-/** Said beside the links: they leave the map, for another site. */
+/** Said beside the links on a station's card: they leave the map, for another site. */
 export const STATION_LINK_NOTE = "Opens in a new tab.";
+export const WMATA_LINK_TEXT = "Station site";
+export const MARC_LINK_TEXT = "MARC timetable";
+
+/** "Dupont Circle station", but "Union Station" as it is. */
+function stationWords(name: string): string {
+  return /\bstation$/i.test(name.trim()) ? name.trim() : `${name.trim()} station`;
+}
 
 /** The pages a station's card offers: WMATA's for a Metro station, the Penn Line timetable for a MARC Penn one. */
 export function stationLinks(station: Pick<Station, "name" | "metro" | "penn">, slugs: StationSlugs): StationLink[] {
   const links: StationLink[] = [];
   const slug = station.metro.length > 0 && Object.hasOwn(slugs, station.name) ? slugs[station.name] : undefined;
-  if (slug) links.push({ text: `${station.name} on WMATA's site`, href: `${WMATA_STATION_BASE}${slug}` });
-  if (station.penn) links.push({ text: "MARC Penn Line timetable (MTA Maryland)", href: MARC_PENN_TIMETABLE });
+  if (slug) {
+    links.push({
+      text: WMATA_LINK_TEXT,
+      label: `${stationWords(station.name)} site, WMATA, opens in a new tab`,
+      href: `${WMATA_STATION_BASE}${slug}`,
+    });
+  }
+  if (station.penn) {
+    links.push({ text: MARC_LINK_TEXT, label: "MARC timetable, Penn Line, MTA Maryland, opens in a new tab", href: MARC_PENN_TIMETABLE });
+  }
   return links;
 }
 
@@ -72,6 +92,7 @@ export function stationLinksElement(station: Pick<Station, "name" | "metro" | "p
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.textContent = link.text;
+    a.setAttribute("aria-label", link.label);
     item.append(a);
     list.append(item);
   }

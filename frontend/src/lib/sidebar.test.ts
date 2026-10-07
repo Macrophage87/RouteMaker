@@ -162,10 +162,12 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     return i;
   };
   assert.deepEqual(
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", "Add point at map center"].map(inPoints),
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", "Add point at map center"].map(inPoints).sort((a, b) => a - b),
-    "the search, then the loop box, then the points and Add point at map center",
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
+    "the search, then the loop box, then the points and their tools",
   );
+  // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
+  assert.doesNotMatch(points, /Add point at map center|Road info at map center/);
   assert.ok(inPoints("{loop && (") > points.indexOf("</div>", inPoints('id="points-search"')), "outside the part that hides while the points compact");
   assert.match(points, /aria-describedby=\{loopHintId\}/);
   assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
@@ -183,19 +185,27 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.equal(MORE_TIPS, "More tips");
   assert.equal(FEWER_TIPS, "Fewer tips");
   // The keyboard's way in stays in view (the a11y review's S6).
-  assert.equal(searchLede(false), "Search, click the map, or use Add point at map center: start, then end. Later clicks add stops.");
-  assert.equal(searchLede(true), "Search, click the map, or use Add point at map center: start, then stops. The ride comes back to the start.");
+  assert.equal(searchLede(false), "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.");
+  assert.equal(searchLede(true), "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start.");
   // The start-up how-to only before any point; with points, how to change them (the correctness review's N5).
   assert.match(
     app,
     /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>\}/,
   );
   assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
-  // Add point at map center first, then the compact row; every existing button is still there.
-  const labels = ["Add point at map center", "Reverse", "Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-add"')));
+  // The compact row; every existing button is still there. Add point at map center is in Map tools (450).
+  const labels = ["Reverse", "Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-tools"')));
   assert.ok(labels.every((i) => i > 0));
   assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
-  assert.match(app, /ref=\{addRef\}/);
+  assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
+  assert.match(app, /<MapTools\s+onAddPoint=\{addAtCentre\}/);
+  // I works only on the focused map: no button claims it (the a11y review's S2); the map's canvas still does.
+  assert.doesNotMatch(app, /aria-keyshortcuts="I"/);
+  const tools = src("../MapTools.tsx");
+  assert.doesNotMatch(tools, /aria-keyshortcuts|role="menu|role="menuitem/, "a disclosure of plain buttons, not an ARIA menu");
+  assert.match(tools, /aria-expanded=\{open\}\s+aria-controls=\{panelId\}/);
+  assert.match(tools, /hidden=\{!open\}/);
+  assert.match(src("../MapView.tsx"), /canvas\.setAttribute\("aria-keyshortcuts", "I"\)/);
   assert.match(app, /aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/);
   assert.match(app, /<p className="hint" id="reverse-hint">/);
 });
@@ -237,7 +247,7 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
   type Before = "combobox" | "addButton" | "removeButton" | null;
   const cases: Array<{ name: string; before: Before; wasCompact: boolean; compact: boolean; moves: boolean }> = [
     { name: "a route arrives with the focus in the search", before: "combobox", wasCompact: false, compact: true, moves: true },
-    { name: "a route arrives with the focus on Add point at map center", before: "addButton", wasCompact: false, compact: true, moves: true },
+    { name: "a route arrives with the focus on a point tool (Reverse, Clear)", before: "addButton", wasCompact: false, compact: true, moves: true },
     { name: "a route arrives with the focus on a point's Remove (still shown)", before: "removeButton", wasCompact: false, compact: true, moves: false },
     { name: "a route arrives with the focus on the page", before: null, wasCompact: false, compact: true, moves: false },
     { name: "already compact", before: "combobox", wasCompact: true, compact: true, moves: false },

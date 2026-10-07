@@ -3536,10 +3536,12 @@ public front end"), and goes last.
 
 **Migration.** core 0010 (`segment.mtb_only`, `walk_bike`) is state only: the segment table
 is unmanaged and created whole by each rebuild. `migrate` records it and runs no SQL. The
-new columns `calm_run_m`, `roadside`, `stress_unsmoothed_tier` and `mass_usable_width_m`
-need no migration, as `facility` and the trail columns did not: the rebuild's DDL creates
-them (`pipeline.schema.SEGMENT_DDL`) and the writer fills all 37 columns. The api reads
-each one only where the live table has it, so the new api is safe on the old table.
+new columns `calm_run_m`, `roadside`, `stress_unsmoothed_tier`, `mass_usable_width_m` and
+`bike_access_reason` (nullable; why a way is closed to bicycles, written by WRITE_SEGMENTS
+and read by the road panel's GET /api/segment-info) need no migration, as `facility` and
+the trail columns did not: the rebuild's DDL creates them (`pipeline.schema.SEGMENT_DDL`)
+and the writer fills all 38 columns. The api reads each one only where the live table has
+it, so the new api is safe on the old table.
 
 **The order.** Run from the deployment checkout, one step at a time, with `</dev/null` on
 every docker command. Steps marked **(owner)** need the owner's OK. Each step names its
@@ -3895,6 +3897,7 @@ Q "select osm_way_id, map_class from live.segment where osm_way_id in (118985761
 Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,299021476,267730806,316866053,1001796647,346101190,32866298,345398786) order by 1"   # Jeff Todd (4), its side path (1), Russell, Saint Elizabeths (4), its path, South Fern, Connector Road: drawn; North Rotary Rd 345398786: hidden
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
+Q "select bike_access_reason, count(*) from live.segment group by 1 order by 2 desc"   # the road panel's closure reasons (new column): mostly null, then private, bicycle_no, military and the rest; an error here means the rebuild did not write it
 curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
 curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
 curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty

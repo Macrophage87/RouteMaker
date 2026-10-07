@@ -12,7 +12,7 @@
  * a line left out rather than "none" - and the actions; every figure with its source
  * is behind a closed "Details and sources" disclosure.
  *
- * The pure half: the request, the Street View link, which sections and summary lines
+ * The pure half: the request, the Street View link (on the road, 441o), which sections and summary lines
  * show, what the live region says, and the long press's own timing. RoadInfoDialog.tsx draws it; MapView.tsx
  * listens for the gestures.
  */
@@ -51,6 +51,8 @@ export interface SegmentInfo {
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;
+  /** The nearest point on the way itself, [lon, lat], where Street View opens (441o); absent from an older API. */
+  on_way?: [number, number] | null;
   sections: InfoSection[];
   attribution: string[];
 }
@@ -83,10 +85,14 @@ export const OSM_EDIT_NOTE =
   "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.";
 export const DETAILS_TEXT = "Details and sources";
 export const INFO_BUTTON_LABEL = "Road info at map center";
+/** The map's small disclosure by its zoom buttons (OWNER-DECISIONS 450) and the two map-center actions it holds. */
+export const MAP_TOOLS_LABEL = "Map tools";
+export const ADD_AT_CENTRE_LABEL = "Add point at map center";
 export const INFO_KEY = "i";
 export const INFO_HELP =
   "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
-  "With the map focused, press I for the road at the center of the map, or use Road info at map center.";
+  `From the keyboard: with the map focused, press I for the road at the center of the map, or open ${MAP_TOOLS_LABEL} (by the map's zoom buttons) for ${INFO_BUTTON_LABEL} and ${ADD_AT_CENTRE_LABEL}. ` +
+  `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${MAP_TOOLS_LABEL} works in either.`;
 /** How long a finger must rest, unmoved, for a long press. */
 export const LONG_PRESS_MS = 600;
 /** How far a finger may drift and still be a long press, not a pan. */
@@ -96,6 +102,17 @@ export const LONG_PRESS_SLOP_PX = 10;
 export function streetViewUrl([lon, lat]: LonLat): string {
   const fixed = (n: number) => n.toFixed(6);
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${fixed(lat)},${fixed(lon)}`;
+}
+
+/**
+ * Where the Street View link opens (OWNER-DECISIONS 441o): the nearest point on the road
+ * the panel describes, as the API gives it, else (no road, an older API) the spot itself.
+ */
+export function streetViewPoint(info: SegmentInfo | null, spot: LonLat): LonLat {
+  const on = info?.found ? info.on_way : null;
+  return Array.isArray(on) && on.length === 2 && on.every((n) => typeof n === "number" && Number.isFinite(n))
+    ? [on[0], on[1]]
+    : spot;
 }
 
 /** OpenStreetMap's editor for the way, or null when the answer names no way. */

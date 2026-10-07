@@ -86,8 +86,8 @@ export const FEWER_TIPS = "Fewer tips";
  */
 export function searchLede(loop: boolean): string {
   return loop
-    ? "Search, click the map, or use Add point at map center: start, then stops. The ride comes back to the start."
-    : "Search, click the map, or use Add point at map center: start, then end. Later clicks add stops.";
+    ? "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start."
+    : "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.";
 }
 
 /** The Ride line's visible action: Edit while closed, Done while open. Its state is read from aria-expanded. */
@@ -283,8 +283,8 @@ export interface FocusContainer {
 }
 
 /**
- * When a route arrives the points compact, hiding the search, Add point at map
- * center and the tools. If the focus was in them, it would drop to the page
+ * When a route arrives the points compact, hiding the search and the point
+ * tools. If the focus was in them, it would drop to the page
  * (a hidden element cannot hold it): it goes to "Edit points" instead, which
  * opens them again (the review's B1). True when it moved the focus.
  */

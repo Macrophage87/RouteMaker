@@ -170,9 +170,11 @@ class TestAnswer:
             "Traffic: 18,400 a day (DDOT 2024)",
             "Bike lane: Painted",
             "Bikes: Allowed",
-            f"Room for: ~{riders:,} riders a minute",
+            f"Room for: About {riders:,} riders a minute",
         ]
         assert [r["id"] for r in body["summary"]][-1] == "mass"
+        # Street View opens on the way itself (OWNER-DECISIONS 441o): the spot is on it here.
+        assert body["on_way"] == [round(SPOT[0], 6), round(SPOT[1], 6)]
         # The router was asked at the spot on the way, with the bicycle costing only.
         assert [c[2] for c in router.calls] == ["bicycle"]
 
@@ -187,6 +189,7 @@ class TestAnswer:
             "open": None,
             "osm_way_id": None,
             "distance_m": None,
+            "on_way": None,
             "kind": None,
             "summary": [],
             "sections": [],
@@ -236,6 +239,51 @@ class TestAnswer:
             "Why: Path away from traffic, open to bicycles",
             "Bikes: Allowed",
         ]
+
+    def test_street_view_point_is_snapped_onto_the_way(
+        self, client, segment_schemas, router
+    ) -> None:
+        live, _ = segment_schemas
+        # The way runs east-west 20 m north of the spot clicked: the link's point is on it.
+        on = north(SPOT, 20)
+        insert(live, 120, [east(on, -50), east(on, 50)])
+        router.answers = {"bicycle": [edge(120, "R Street Northwest")]}
+        body = get(client).json()
+        assert body["found"] is True and 19 < body["distance_m"] < 21
+        lon, lat = body["on_way"]
+        assert abs(lon - SPOT[0]) < 1e-6 and abs(lat - on[1]) < 1e-6
+
+    def test_lanes_on_a_one_way_street_are_in_this_direction(
+        self, client, segment_schemas, router
+    ) -> None:
+        # road_lanes is one direction's count: "3 each way" was wrong on a one-way
+        # street such as 9th Street NW (the correctness review's C-1).
+        live, _ = segment_schemas
+        insert(live, 121, [SPOT, east(SPOT, 80)], road_lanes=3, road_oneway=True)
+        router.answers = {"bicycle": [edge(121, "9th Street Northwest")]}
+        body = get(client).json()
+        assert "Lanes: 3 in this direction" in summary(body)
+        assert section(body, "traffic")["Lanes"]["value"] == (
+            "3 in this direction (a one-way street, or one side of a divided road)"
+        )
+
+    def test_lanes_on_a_two_way_street_are_each_way(self, client, segment_schemas, router) -> None:
+        live, _ = segment_schemas
+        insert(live, 122, [SPOT, east(SPOT, 80)], road_lanes=2, road_oneway=False)
+        router.answers = {"bicycle": [edge(122, "16th Street Northwest")]}
+        body = get(client).json()
+        assert "Lanes: 2 each way" in summary(body)
+        assert section(body, "traffic")["Lanes"]["value"] == "2 each way"
+
+    def test_assumed_lanes_on_a_one_way_street(self, client, segment_schemas, router) -> None:
+        live, _ = segment_schemas
+        insert(live, 123, [SPOT, east(SPOT, 80)], stress_assumed=["lanes"], road_oneway=True)
+        router.answers = {"bicycle": [edge(123, "Corcoran Street Northwest")]}
+        body = get(client).json()
+        assert "Lanes: 1 in this direction, assumed" in summary(body)
+        assert (
+            section(body, "traffic")["Lanes"]["value"] == "Not mapped; assumed 1 in this direction"
+        )
 
     def test_assumed_speed_and_lanes_say_assumed(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas

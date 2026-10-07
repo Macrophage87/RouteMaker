@@ -20,6 +20,7 @@ import {
   segmentInfoUrl,
   shownSections,
   shownSummary,
+  streetViewPoint,
   streetViewUrl,
   subtitle,
   valueParts,
@@ -39,7 +40,7 @@ const INFO: SegmentInfo = {
     { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },
     { id: "why", label: "Why", value: "30 mph, mixed traffic" },
     { id: "bikes", label: "Bikes", value: "Allowed" },
-    { id: "mass", label: "Room for", value: "~150 riders a minute" },
+    { id: "mass", label: "Room for", value: "About 150 riders a minute" },
   ],
   attribution: ["© OpenStreetMap contributors (ODbL)"],
   sections: [
@@ -129,6 +130,18 @@ test("the help says where the summary and the details are", () => {
   assert.match(INFO_HELP, /^Right-click the map \(or press and hold on a phone\) for a short summary/);
   assert.match(INFO_HELP, /Details and sources/);
   assert.match(INFO_HELP, /press I for the road at the center/);
+  // Map tools and both its actions by name (OWNER-DECISIONS 450), and the screen readers' browse mode (the a11y review's N7).
+  assert.match(INFO_HELP, /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/);
+  assert.match(INFO_HELP, /With NVDA or JAWS, I reaches the map only in focus mode/);
+});
+
+test("Street View opens on the road the panel describes (441o), else at the spot", () => {
+  const spot: [number, number] = [-77.0434, 38.9125];
+  assert.deepEqual(streetViewPoint({ ...INFO, on_way: [-77.04335, 38.91262] }, spot), [-77.04335, 38.91262]);
+  assert.deepEqual(streetViewPoint({ ...INFO, on_way: undefined }, spot), spot, "an older API");
+  assert.deepEqual(streetViewPoint({ ...INFO, on_way: [Number.NaN, 38.9] }, spot), spot);
+  assert.deepEqual(streetViewPoint({ ...INFO, found: false, on_way: [-77, 38.9] }, spot), spot);
+  assert.deepEqual(streetViewPoint(null, spot), spot, "still looking it up");
 });
 
 test("the live region says one short sentence: the name and the stress, and a closure", () => {
