@@ -1,0 +1,674 @@
+"""What is known about the road or path at a map spot: GET /api/segment-info.
+
+OWNER-DECISIONS 441 and 441a: a right-click (a long press on a phone, or the
+keyboard's way to the map's centre) opens a panel naming the nearest road or
+path and what RouteMaker knows of it - its name and kind, its traffic stress
+and why, lanes, speed limit, traffic volume, bike facility, surface, whether a
+bicycle may use it and why, and on the Mass Ride map its usable width and riders
+a minute - each with its source in words, US units first (OWNER-DECISIONS 85).
+
+Read only. The way is the nearest row of the live segment table within
+`SNAP_RADIUS_M` (a drawn road or path is preferred to a hidden sidewalk or
+driveway a few metres nearer); its name and kind, and whether the graph lets a
+bicycle on it, come from the standard router's `/locate` at the spot on the way,
+as the route's own street names do. Every column newer than the oldest live
+table is optional: an older table answers with what it has and says the rest is
+"available after the next data update".
+
+Privacy (OWNER-DECISIONS 395): the spot is in the query string, which neither
+gunicorn's access log nor the beta's nginx records, and nothing here logs it.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+
+from django.conf import settings
+from django.db import connection
+
+from pipeline.schema import validate_schema_name
+from routemaker import flow
+
+# How far from the spot a way may be and still be the one the rider meant: a
+# right-click on a drawn road lands within a few metres of its centre line at
+# street zoom; past about 100 ft it is as likely the next street.
+SNAP_RADIUS_M = 30.0
+# A drawn road or path this much further than a hidden way (a sidewalk mapped
+# beside it, a driveway) is still the one meant: the rider clicked what the map
+# shows.
+DRAWN_PREFERENCE_M = 15.0
+# Rows the nearest-neighbour scan reads before the distances are compared.
+CANDIDATES = 12
+# How far around the spot on the way `/locate` looks for its edges.
+LOCATE_RADIUS_M = 8
+LOCATE_TIMEOUT_S = 3.0
+# Missing optional columns are looked for again this often, so the first
+# answer after a rebuild's swap sees the new ones without a restart.
+COLUMN_RECHECK_S = 300.0
+
+FEET_PER_METRE = 3.28084
+KMH_PER_MPH = 1.609344
+
+OSM = "OpenStreetMap"
+CLASSIFIER = "RouteMaker classifier"
+OWNER = "Owner override"
+ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
+NEXT_UPDATE = "Available after the next data update"
+
+# The step words (OWNER-DECISIONS 441i-l: whole tiers only in this release).
+TIER_WORDS = {
+    1: "Comfortable for everyone",
+    2: "Fine for adults",
+    3: "For experienced cyclists",
+    4: "High stress: busy, fast traffic",
+    5: "Avoid",
+}
+
+# Who published a traffic count (`segment.volume_source`), in the words
+# docs/SOURCES.md credits them by.
+VOLUME_SOURCES = {
+    "ddot": "DDOT 2024 Traffic Volume, DC Open Data (CC BY 4.0, adapted)",
+    "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
+    "vdot": "VDOT",
+    "mdot-sha": "MDOT SHA",
+}
+
+# Where a classifier input came from (`segment.attr_sources`).
+ATTR_SOURCES = {
+    "osm": OSM,
+    "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
+    "baltimore-centerline": "Open Baltimore street centerline",
+}
+
+FACILITY_WORDS = {
+    "path": "Traffic-free path",
+    "protected": "Protected bike lane",
+    "lane": "Painted bike lane",
+    "none": "None: shared with traffic",
+}
+
+# Valhalla's edge use, then its road classification, in plain words.
+USE_WORDS = {
+    "cycleway": "Bike path",
+    "path": "Path",
+    "footway": "Footpath",
+    "pedestrian": "Pedestrian street or plaza",
+    "bridleway": "Bridle path",
+    "mountain_bike": "Mountain-bike trail",
+    "track": "Track (farm or forest road)",
+    "living_street": "Living street",
+    "alley": "Alley",
+    "driveway": "Driveway",
+    "parking_aisle": "Parking aisle",
+    "service_road": "Service road",
+    "ramp": "Ramp",
+    "turn_channel": "Turn lane",
+    "sidewalk": "Sidewalk",
+    "steps": "Steps",
+    "elevator": "Elevator",
+    "pedestrian_crossing": "Crosswalk",
+    "ferry": "Ferry",
+}
+PATH_USES = frozenset(
+    {"cycleway", "path", "footway", "pedestrian", "bridleway", "mountain_bike", "sidewalk", "steps"}
+)
+CLASS_WORDS = {
+    "motorway": "Freeway",
+    "trunk": "Major highway",
+    "primary": "Main road",
+    "secondary": "Secondary road",
+    "tertiary": "Through street",
+    "unclassified": "Minor road",
+    "residential": "Residential street",
+    "service_other": "Service road",
+}
+
+# The reason a way is closed to bicycles, or reopened (`segment.bike_access_reason`,
+# written by the rebuild: `pipeline.run.bike_access_reason`), in plain words. No
+# person is ever named: an owner override is "an owner override".
+ACCESS_WORDS = {
+    "override_open": (
+        True,
+        "Open: reopened by an owner override, with evidence that bikes are allowed",
+    ),
+    "override_closed": (
+        False,
+        "Closed: an owner override, with evidence that bikes are not allowed",
+    ),
+    "military": (
+        False,
+        "Closed: inside a military area (closed unless there is evidence bikes are allowed)",
+    ),
+    "secured": (
+        False,
+        "Closed: inside a secure government site"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
+    "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
+    "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
+    "motorway": (False, "Closed: a freeway"),
+    "motorroad": (False, "Closed: a motor-vehicle-only road"),
+    "private": (False, "Closed: private, or no public access"),
+    "cbd_sidewalk": (False, "Closed: a downtown sidewalk where riding is not allowed"),
+    "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
+    "singletrack": (False, "Closed: mountain-bike singletrack"),
+    "mtb": (False, "Closed: a mountain-bike trail (kept for a future mountain-bike mode)"),
+    "dismount": (False, "Closed: a long walk-your-bike stretch"),
+    "sac_scale": (False, "Closed: a rough hiking trail"),
+    "informal": (False, "Closed: an informal path"),
+    "foot_designated": (False, "Closed: a footpath for walkers"),
+    "trail_visibility": (False, "Closed: a faint trail"),
+    "hiking_route": (False, "Closed: a hiking trail"),
+    "natural_surface": (False, "Closed: a natural-surface footpath"),
+    "park_path": (False, "Closed: a park footpath not open to bicycles"),
+    "err_closed": (False, "Closed: unclear whether bikes are allowed, so treated as closed"),
+}
+
+# Every column this endpoint reads that an older live table may lack.
+OPTIONAL_COLUMNS = (
+    "facility",
+    "car_free_when",
+    "map_class",
+    "road_speed_mph",
+    "road_lanes",
+    "attr_sources",
+    "stress_adjustment_id",
+    "stress_computed_tier",
+    "stress_adjustment_direction",
+    "stress_adjustment_category",
+    "stress_adjustment_note",
+    "stress_adjustment_display",
+    "trail_name",
+    "roadside",
+    "walk_bike",
+    "mass_usable_width_m",
+    "bike_access_reason",
+)
+REQUIRED_COLUMNS = (
+    "osm_way_id",
+    "stress_tier",
+    "stress_rule",
+    "stress_assumed",
+    "volume_source",
+    "volume_aadt",
+    "volume_year",
+    "is_trail_class",
+    "is_unpaved",
+    "is_rough",
+)
+
+_columns: dict[str, tuple[frozenset[str], float]] = {}
+
+
+def live_columns(schema: str) -> frozenset[str]:
+    """The live segment table's columns; looked for again every COLUMN_RECHECK_S
+    while one of OPTIONAL_COLUMNS is missing, since a swap only adds columns."""
+    known = _columns.get(schema)
+    now = time.monotonic()
+    if known and (set(OPTIONAL_COLUMNS) <= known[0] or now - known[1] < COLUMN_RECHECK_S):
+        return known[0]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = 'segment'",
+            [schema],
+        )
+        found = frozenset(row[0] for row in cursor.fetchall())
+    _columns[schema] = (found, now)
+    return found
+
+
+def forget_columns() -> None:
+    """For tests: the next answer reads the table's columns afresh."""
+    _columns.clear()
+
+
+# --- the nearest way -------------------------------------------------------------------
+
+
+def nearest_row(lat: float, lon: float) -> dict | None:
+    """The live segment row the spot is on, with `distance_m` and the spot on it
+    (`on_lon`, `on_lat`); None when nothing is within SNAP_RADIUS_M."""
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    have = live_columns(schema)
+    wanted = [c for c in (*REQUIRED_COLUMNS, *OPTIONAL_COLUMNS) if c in have]
+    select = ", ".join(f"s.{c}" for c in wanted)
+    sql = f"""
+        WITH spot AS (SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS g)
+        SELECT {select},
+               ST_Distance(s.geometry::geography, spot.g::geography) AS distance_m,
+               ST_X(ST_ClosestPoint(s.geometry, spot.g)) AS on_lon,
+               ST_Y(ST_ClosestPoint(s.geometry, spot.g)) AS on_lat
+        FROM spot, LATERAL (
+            SELECT * FROM {schema}.segment AS c
+            ORDER BY c.geometry <-> spot.g
+            LIMIT {CANDIDATES}
+        ) AS s
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [lon, lat])
+        names = [d[0] for d in cursor.description]
+        rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+    return choose(rows)
+
+
+def choose(rows: list[dict]) -> dict | None:
+    """The row meant: the nearest within SNAP_RADIUS_M, unless a drawn way (one
+    the map shows) is within DRAWN_PREFERENCE_M of it and the nearest is hidden."""
+    near = sorted(
+        (r for r in rows if r.get("distance_m") is not None and r["distance_m"] <= SNAP_RADIUS_M),
+        key=lambda r: r["distance_m"],
+    )
+    if not near:
+        return None
+    first = near[0]
+    if first.get("map_class") == "hidden":
+        drawn = [r for r in near if r.get("map_class") != "hidden"]
+        if drawn and drawn[0]["distance_m"] <= first["distance_m"] + DRAWN_PREFERENCE_M:
+            return drawn[0]
+    return first
+
+
+# --- the router's edges ---------------------------------------------------------------
+
+
+class RouterSilent(Exception):
+    """The router did not answer; the panel says what the table alone knows."""
+
+
+def locate_edges(lat: float, lon: float, costing: str) -> list[dict]:
+    """The router's edges around a spot for one costing (`/locate`, verbose)."""
+    from . import routing
+
+    payload = {
+        "locations": [{"lat": lat, "lon": lon, "radius": LOCATE_RADIUS_M}],
+        "costing": costing,
+        "verbose": True,
+    }
+    url = f"{settings.VALHALLA_UPSTREAMS['standard'].rstrip('/')}/locate"
+    try:
+        answer = routing._transport(url, payload, LOCATE_TIMEOUT_S)
+    except (routing.RouterUnavailable, routing.RouterRefused) as error:
+        raise RouterSilent(str(error)) from error
+    if not isinstance(answer, list):
+        raise RouterSilent("the router's locate answer is not a list")
+    edges = []
+    for location in answer[:1]:
+        for edge in (location or {}).get("edges") or []:
+            if isinstance(edge, dict):
+                edges.append(edge)
+    return edges
+
+
+def edge_facts(edges: list[dict], way_id: int) -> dict | None:
+    """The name and kind of the way from the router's edges of it, or None."""
+    from .geocode import _ROUTE_REF
+
+    for edge in edges:
+        info = edge.get("edge_info") or {}
+        if info.get("way_id") != way_id:
+            continue
+        names = [n.strip() for n in info.get("names") or [] if isinstance(n, str) and n.strip()]
+        name = next((n for n in names if not _ROUTE_REF.match(n)), names[0]) if names else None
+        classification = (edge.get("edge") or {}).get("classification") or {}
+        return {
+            "name": name,
+            "use": str(classification.get("use") or ""),
+            "classification": str(classification.get("classification") or ""),
+        }
+    return None
+
+
+def router_facts(lat: float, lon: float, way_id: int) -> dict:
+    """{bicycle: bool|None, name, use, classification} from the router: whether
+    a bicycle may use the way (its edges are among the bicycle costing's), and
+    its name and kind from whichever costing reaches it. `bicycle` is None when
+    the router did not answer."""
+    try:
+        found = edge_facts(locate_edges(lat, lon, "bicycle"), way_id)
+    except RouterSilent:
+        return {"bicycle": None, "name": None, "use": "", "classification": ""}
+    if found is not None:
+        return {"bicycle": True, **found}
+    for costing in ("pedestrian", "auto"):
+        try:
+            found = edge_facts(locate_edges(lat, lon, costing), way_id)
+        except RouterSilent:
+            break
+        if found is not None:
+            return {"bicycle": False, **found}
+    return {"bicycle": False, "name": None, "use": "", "classification": ""}
+
+
+# --- words ----------------------------------------------------------------------------
+
+
+def feet_and_metres(metres: float) -> str:
+    return f"{round(metres * FEET_PER_METRE):,} ft ({metres:.1f} m)"
+
+
+def mph_and_kmh(mph: float) -> str:
+    return f"{mph:g} mph ({round(mph * KMH_PER_MPH)} km/h)"
+
+
+def road_kind(router: dict, row: dict) -> tuple[str, str]:
+    """The kind of way in words, and where that came from."""
+    use = router.get("use") or ""
+    if use in USE_WORDS:
+        return USE_WORDS[use], ROUTER
+    classification = router.get("classification") or ""
+    if classification in CLASS_WORDS:
+        return CLASS_WORDS[classification], ROUTER
+    if row.get("is_trail_class"):
+        return "Path or trail", OSM
+    return "Road", OSM
+
+
+_MIXED_PARTS = {
+    "single lane": "one lane each way",
+    "urban multilane": "several lanes, city street",
+    "multilane": "several lanes",
+    "low volume": "light traffic",
+    "mid volume": "moderate traffic",
+    "high volume": "heavy traffic",
+    "rough surface": "rough surface",
+    "arterial floor": "a main road, so rated at least this",
+    "collector floor": "a collector road, so rated at least this",
+    "two-way floor": "a wide two-way road, so rated at least this",
+    "wide one-way floor": "a wide one-way road, so rated at least this",
+    "two-way busy": "a busy two-way road",
+    "shoulder read as a lane": "the shoulder read as a bike lane",
+}
+_TRAIL_KINDS = {
+    "open to bicycles": "open to bicycles",
+    "not open to bicycles": "not open to bicycles",
+    "sidepath for bicycles": "a side path beside a road",
+    "no bicycle facility": "not marked for bicycles",
+}
+_SPEED = re.compile(r"(\d+(?:\.\d+)?) mph(?: or (?:below|above))?")
+
+
+def _parts(text: str, table: dict[str, str]) -> list[str]:
+    return [table.get(p.strip(), p.strip()) for p in text.split(",") if p.strip()]
+
+
+def rule_words(rule: str) -> str:
+    """The classifier's rule (`segment.stress_rule`) in plain words."""
+    rule = (rule or "").strip()
+    rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
+    if rule.startswith("override: stress adjustment") or rule.startswith("named corridor:"):
+        return "Owner-rated corridor"
+    if "curated lane at" in rule:
+        return "Owner-rated: a bike lane on a road this busy is LTS 4"
+    if rule.startswith("legal but avoid"):
+        posted = _SPEED.search(rule)
+        return "Avoid: highway-like road" + (f" (posted {posted.group(0)})" if posted else "")
+    match = re.match(r"motor-only classification \((\w+)\)", rule)
+    if match:
+        return f"Avoid: highway-like road ({match.group(1).replace('_', ' ')})"
+    if rule.startswith("closed to motor traffic"):
+        return "Closed to motor traffic, so rated as a path"
+    match = re.match(r"trail-class way \(([^,)]+)(?:, ([^)]+))?\)", rule)
+    if match:
+        kind = _TRAIL_KINDS.get(match.group(2) or "", match.group(2) or "")
+        return "Path away from traffic" + (f", {kind}" if kind else "")
+    if rule.startswith("separated track alongside"):
+        return "Separated bike track beside the road"
+    if rule.startswith("mixed traffic"):
+        parts = _parts(rule[len("mixed traffic") :], _MIXED_PARTS)
+        speed = [p for p in parts if _SPEED.fullmatch(p)]
+        rest = [p for p in parts if not _SPEED.fullmatch(p)]
+        return ", ".join([*speed, "mixed traffic", *rest])
+    if rule.startswith("bike lane"):
+        return "Bike lane, " + ", ".join(_parts(rule[len("bike lane") :], _MIXED_PARTS))
+    match = re.match(
+        r"motor traffic restricted \(([^)]*)\), LTS (\d) at most(?:, posted (.*))?", rule
+    )
+    if match:
+        posted = f", posted {match.group(3)}" if match.group(3) else ""
+        return f"Little motor traffic ({match.group(1)}), so LTS {match.group(2)} at most{posted}"
+    return rule[:1].upper() + rule[1:] if rule else "No reason recorded"
+
+
+ADJUSTMENT_CATEGORIES = {
+    "speed": "speed",
+    "road_conditions": "road conditions",
+    "driver_behaviour": "driver behaviour",
+    "intersection": "an intersection",
+    "sightlines": "sightlines",
+    "better_among_alternatives": "better than the alternatives nearby",
+    "other": "other",
+}
+
+
+def tier_text(tier: int) -> str:
+    words = TIER_WORDS.get(tier, "")
+    return words if tier == 5 else f"LTS {tier}: {words}"
+
+
+def _row(label: str, value: str, source: str | None) -> dict:
+    return {"label": label, "value": value, "source": source}
+
+
+def stress_rows(row: dict) -> list[dict]:
+    tier = int(row["stress_tier"])
+    adjusted = row.get("stress_adjustment_id") is not None or str(
+        row.get("stress_rule", "")
+    ).startswith(("override:", "named corridor:"))
+    source = OWNER if adjusted else CLASSIFIER
+    rows = [
+        _row("Level", tier_text(tier), source),
+        _row("Why", rule_words(row["stress_rule"]), source),
+    ]
+    computed = row.get("stress_computed_tier")
+    direction = row.get("stress_adjustment_direction")
+    if computed is not None and direction in ("up", "down"):
+        rows.append(_row("Before the override", tier_text(int(computed)), CLASSIFIER))
+    category = row.get("stress_adjustment_category")
+    if category in ADJUSTMENT_CATEGORIES:
+        rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
+    note = row.get("stress_adjustment_note")
+    # A note marked route_only is for a route over the stretch, never a map click.
+    if note and row.get("stress_adjustment_display") == "map":
+        rows.append(_row("Note", str(note), OWNER))
+    return rows
+
+
+def _attr(row: dict, key: str) -> str | None:
+    sources = row.get("attr_sources")
+    if isinstance(sources, dict):
+        value = sources.get(key)
+        return value if isinstance(value, str) else None
+    return None
+
+
+def traffic_rows(row: dict) -> list[dict]:
+    rows = []
+    path = bool(row.get("is_trail_class"))
+    assumed = [str(a) for a in (row.get("stress_assumed") or [])]
+    have_lane_column = "road_lanes" in row
+    if not path:
+        lanes = row.get("road_lanes")
+        if lanes is not None:
+            source = ATTR_SOURCES.get(_attr(row, "lanes") or "osm", OSM)
+            rows.append(_row("Lanes", f"{lanes} each way" if lanes != 1 else "1 each way", source))
+        elif "lanes" in assumed:
+            rows.append(_row("Lanes", "Not mapped; assumed 1 each way", CLASSIFIER))
+        elif not have_lane_column:
+            rows.append(_row("Lanes", NEXT_UPDATE, None))
+        speed = row.get("road_speed_mph")
+        if speed is not None:
+            source = ATTR_SOURCES.get(_attr(row, "maxspeed") or "osm", OSM)
+            rows.append(_row("Speed limit", f"{mph_and_kmh(float(speed))}, posted", source))
+        elif "maxspeed" in assumed:
+            found = _SPEED.search(str(row.get("stress_rule") or ""))
+            value = (
+                f"Not posted in the data; assumed {found.group(0)}"
+                if found
+                else "Not posted in the data; assumed"
+            )
+            rows.append(_row("Speed limit", value, CLASSIFIER))
+        elif "road_speed_mph" not in row:
+            found = _SPEED.search(str(row.get("stress_rule") or ""))
+            rows.append(
+                _row(
+                    "Speed limit",
+                    f"Read as {found.group(0)}" if found else NEXT_UPDATE,
+                    CLASSIFIER if found else None,
+                )
+            )
+    aadt = row.get("volume_aadt")
+    if aadt is not None:
+        source = VOLUME_SOURCES.get(
+            str(row.get("volume_source") or ""), str(row.get("volume_source") or "").upper() or None
+        )
+        year = row.get("volume_year")
+        value = f"{int(aadt):,} vehicles a day (annual average)" + (
+            f", {year} count" if year else ", year not known"
+        )
+        rows.append(_row("Traffic volume", value, source))
+    elif not path:
+        rows.append(_row("Traffic volume", "No count", None))
+    return rows
+
+
+def riding_rows(row: dict) -> list[dict]:
+    rows = []
+    facility = row.get("facility")
+    if facility in FACILITY_WORDS:
+        value = FACILITY_WORDS[facility]
+        when = [w for w in row.get("car_free_when") or [] if isinstance(w, str)]
+        if when:
+            value += (
+                f"; closed to cars at set times ({', '.join(w.replace('_', ' ') for w in when)})"
+            )
+        rows.append(_row("Bike facility", value, OSM))
+    elif "facility" not in row:
+        rows.append(
+            _row(
+                "Bike facility",
+                "Path away from traffic" if row.get("is_trail_class") else NEXT_UPDATE,
+                OSM if row.get("is_trail_class") else None,
+            )
+        )
+    rows.append(_row("Surface", surface_words(row), OSM))
+    if row.get("walk_bike"):
+        rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
+    return rows
+
+
+def surface_words(row: dict) -> str:
+    """The shared surface rule (`is_unpaved`, `is_rough`; OWNER-DECISIONS 302, 403, 440)."""
+    unpaved = row.get("is_unpaved")
+    rough = bool(row.get("is_rough"))
+    if unpaved is None:
+        if row.get("is_trail_class") and row.get("roadside"):
+            return "Not mapped; probably paved (a side path beside a road)"
+        return "Not mapped"
+    if unpaved:
+        return "Unpaved, rough" if rough else "Unpaved"
+    return "Paved, rough" if rough else "Paved"
+
+
+def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
+    """Whether a bicycle may use the way, and the rows saying so and why."""
+    have_reason = "bike_access_reason" in row
+    reason = row.get("bike_access_reason")
+    known = ACCESS_WORDS.get(reason) if isinstance(reason, str) else None
+    map_class = row.get("map_class")
+    if bicycle is None:
+        # The router did not answer: the table's own reading.
+        if known is not None:
+            bicycle = known[0]
+        elif map_class == "barred":
+            bicycle = False
+        elif map_class is not None:
+            bicycle = True
+    if bicycle is None:
+        return None, [_row("Bike access", "Not known right now (the router did not answer)", None)]
+    if bicycle:
+        if known is not None and known[0]:
+            return True, [
+                _row("Bike access", known[1], OWNER if reason.startswith("override") else OSM)
+            ]
+        return True, [_row("Bike access", "Open to bicycles", ROUTER)]
+    if known is not None and not known[0]:
+        source = (
+            OWNER
+            if reason.startswith("override")
+            else (CLASSIFIER if reason in ("military", "secured", "err_closed") else OSM)
+        )
+        return False, [_row("Bike access", known[1], source)]
+    why = "Closed to bicycles" + (
+        "" if have_reason else "; the reason is available after the next data update"
+    )
+    return False, [_row("Bike access", why, ROUTER)]
+
+
+def mass_rows(row: dict) -> list[dict]:
+    if "mass_usable_width_m" not in row:
+        return [
+            _row("Usable width", NEXT_UPDATE, None),
+            _row("Riders a minute", NEXT_UPDATE, None),
+        ]
+    width = row.get("mass_usable_width_m")
+    if width is None:
+        value = "Not used by a mass ride" if int(row["stress_tier"]) == 5 else "Not known"
+        return [_row("Usable width", value, None)]
+    riders = flow.level_riders_per_min(float(width))
+    return [
+        _row(
+            "Usable width",
+            feet_and_metres(float(width)),
+            "RouteMaker Mass Ride model, from OpenStreetMap and DC Roadway Block"
+            " (DC Open Data, CC BY 4.0, adapted)",
+        ),
+        _row(
+            "Riders a minute", f"About {round(riders):,} on the level", "RouteMaker Mass Ride model"
+        ),
+    ]
+
+
+def describe(row: dict, router: dict) -> dict:
+    """The panel's answer for one row and the router's facts about its way."""
+    path = bool(row.get("is_trail_class"))
+    name = router.get("name") or row.get("trail_name")
+    name_source = ROUTER if router.get("name") else (OSM if name else None)
+    kind, kind_source = road_kind(router, row)
+    title = name or ("Unnamed path" if path or router.get("use") in PATH_USES else "Unnamed road")
+    open_, access = access_rows(row, router.get("bicycle"))
+    sections = [
+        {
+            "id": "road",
+            "heading": "Road or path",
+            "rows": [
+                _row("Name", name or "No name mapped", name_source),
+                _row("Kind", kind, kind_source),
+            ],
+        },
+        {"id": "stress", "heading": "Traffic stress", "rows": stress_rows(row)},
+        {"id": "traffic", "heading": "Traffic", "rows": traffic_rows(row)},
+        {"id": "riding", "heading": "Riding", "rows": riding_rows(row)},
+        {"id": "access", "heading": "Bike access", "rows": access},
+        {"id": "mass", "heading": "Mass Ride capacity", "rows": mass_rows(row)},
+    ]
+    sections = [s for s in sections if s["rows"]]
+    return {
+        "found": True,
+        "title": title,
+        "tier": int(row["stress_tier"]),
+        "open": open_,
+        "osm_way_id": int(row["osm_way_id"]),
+        "distance_m": round(float(row["distance_m"]), 1),
+        "sections": sections,
+    }
+
+
+def segment_info(lat: float, lon: float) -> dict:
+    """What is known of the way at the spot, or `{"found": false}`."""
+    row = nearest_row(lat, lon)
+    if row is None:
+        return {"found": False, "title": "No road here", "sections": []}
+    router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
+    return describe(row, router)

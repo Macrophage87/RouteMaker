@@ -49,7 +49,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing
+from . import geocode, presets, ratelimit, routing, segment_info
 
 logger = logging.getLogger(__name__)
 
@@ -1547,3 +1547,78 @@ def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
     return _places(response, found, REVERSE_MAX_AGE_S)
+
+
+# --- What is known about the road at a map spot -------------------------------------
+#
+# GET /api/segment-info (OWNER-DECISIONS 441, 441a; core.segment_info): read only, signed
+# out, counted per client like place names, refused when a foreign page sent it (as the
+# place search is), and sharing the place names' router slot. The spot is in the query
+# string, which no access log records (OWNER-DECISIONS 395), and is never logged here.
+
+SEGMENT_INFO_MAX_AGE_S = 300
+
+
+class SegmentInfoIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class InfoRowOut(Schema):
+    label: str
+    value: str
+    source: str | None = Field(default=None, description="Where the value came from, in words.")
+
+
+class InfoSectionOut(Schema):
+    id: Literal["road", "stress", "traffic", "riding", "access", "mass"]
+    heading: str
+    rows: list[InfoRowOut]
+
+
+class SegmentInfoOut(Schema):
+    found: bool = Field(description="Whether a road or path is within reach of the spot.")
+    title: str = Field(
+        description="The way's name, 'Unnamed road' or 'Unnamed path', or 'No road here'."
+    )
+    tier: int | None = Field(default=None, description="Traffic stress, 1-4, or 5 for Avoid.")
+    open: bool | None = Field(
+        default=None, description="Whether a bicycle may use it; null when not known."
+    )
+    osm_way_id: int | None = None
+    distance_m: float | None = Field(default=None, description="How far the way is from the spot.")
+    sections: list[InfoSectionOut]
+    attribution: list[str]
+
+
+SEGMENT_INFO_ATTRIBUTION = ("© OpenStreetMap contributors (ODbL)",)
+
+
+@api.get(
+    "/segment-info",
+    response={
+        200: SegmentInfoOut,
+        400: ErrorOut,
+        403: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: ErrorOut,
+    },
+    summary="What is known about the road or path nearest a spot",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.SEGMENT_INFO),
+    ratelimit.rate_limited(ratelimit.SEGMENT_INFO_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
+    found = segment_info.segment_info(params.lat, params.lon)
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})

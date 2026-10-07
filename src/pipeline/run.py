@@ -2551,6 +2551,13 @@ def build_handlers(
                 stress_tier=int(stress.tier),
                 map_class=way_map_class,
             )
+            # Why a bicycle may not use it, or why an override reopened it, for the map's
+            # road panel (OWNER-DECISIONS 441a); the router says whether it may.
+            access_reason = facility.bike_access_reason(
+                way.tags,
+                no_bicycle=context.no_bicycle.get(way.osm_id),
+                overridden=way.osm_id in context.bicycle_override_ways,
+            )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
                     writers.segment_row(
@@ -2593,6 +2600,7 @@ def build_handlers(
                         trail_bridge=3
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
+                        bike_access_reason=access_reason,
                     )
                 )
         context.rows = rows

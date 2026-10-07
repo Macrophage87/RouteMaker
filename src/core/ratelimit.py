@@ -139,6 +139,12 @@ GEOCODE = Limit(scope="geocode", requests=60, window_s=60)
 REVERSE_BURST = Limit(scope="reverse-10s", requests=30, window_s=10)
 REVERSE = Limit(scope="reverse", requests=60, window_s=60)
 
+# What is known about the road at a map spot (GET /api/segment-info, OWNER-DECISIONS 441a):
+# one request per right-click or long press, so PLAN.md:65's 60 a minute, with a burst
+# for a rider clicking along a street.
+SEGMENT_INFO_BURST = Limit(scope="segment-info-10s", requests=20, window_s=10)
+SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
+
 
 def _normalise(candidate: str) -> str | None:
     try:

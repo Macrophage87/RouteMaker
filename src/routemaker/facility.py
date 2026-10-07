@@ -430,6 +430,46 @@ def map_class(tags: dict[str, str]) -> MapClass:
     return MapClass.ROAD
 
 
+def bike_access_reason(
+    tags: dict[str, str],
+    *,
+    no_bicycle: str | None = None,
+    overridden: bool = False,
+) -> str | None:
+    """Why a bicycle may not use a way, or why it was reopened, as one short code
+    for the map's road panel (`segment.bike_access_reason`; OWNER-DECISIONS 441a;
+    `core.segment_info.ACCESS_WORDS` words it). None on a way with nothing to say.
+
+    `no_bicycle` is the way's `rm:no_bicycle` reason (military, secured, a trail
+    rule, the CBD sidewalks; `pipeline.trail_closures`), `overridden` whether an
+    approved access override wrote a bicycle key on it. An override is named
+    first, closed or open by the tag it left, unless a closure rule still closed
+    the way; then the rule's reason, then what the way's own tags say. Whether the
+    graph lets a bicycle on the way is the router's to say: this is only the why.
+    """
+    bicycle = tags.get("bicycle")
+    if overridden and no_bicycle is None:
+        if bicycle in BICYCLE_ALLOWED or bicycle == "dismount":
+            return "override_open"
+        if bicycle in BARRING_BICYCLE:
+            return "override_closed"
+    if no_bicycle is not None:
+        return no_bicycle
+    if bicycle in BICYCLE_ALLOWED:
+        return None
+    if bicycle == "no":
+        return "bicycle_no"
+    if bicycle == "use_sidepath":
+        return "bicycle_use_sidepath"
+    if bicycle == "private" or any(tags.get(k) in NO_PUBLIC_ACCESS for k in ("access", "vehicle")):
+        return "private"
+    if tags.get("highway") in BARRED_HIGHWAY:
+        return "motorway"
+    if tags.get("motorroad") == "yes":
+        return "motorroad"
+    return None
+
+
 def has_separate_bikeway(tags: dict[str, str]) -> bool:
     """Whether a road says its bike facility is mapped as a way of its own
     beside it (`cycleway*=separate`): 15th Street NW and Pennsylvania Avenue NW

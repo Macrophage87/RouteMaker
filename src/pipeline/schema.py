@@ -620,6 +620,13 @@ CREATE TABLE {schema}.segment (
     -- so tuning the flow constants needs no rebuild.
     -- Null on a table built before the column existed (the map then draws as it did).
     mass_usable_width_m real      CHECK (mass_usable_width_m BETWEEN 0 AND 60),
+    -- Why a bicycle may not use the way, or why an owner override reopened it, as a
+    -- short code (`routemaker.facility.bike_access_reason`), for the map's road panel
+    -- (OWNER-DECISIONS 441a; `core.segment_info` words it and asks the router whether
+    -- the graph lets a bicycle on). Null on a way with nothing to say, and on every row
+    -- of a table built before the column existed (the panel then says the reason comes
+    -- with the next data update).
+    bike_access_reason text,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 
