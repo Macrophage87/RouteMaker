@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
-import { INFO_BUTTON_LABEL, INFO_HELP, type InfoRequest } from "./lib/roadInfo.ts";
+import { INFO_BUTTON_LABEL, INFO_HELP, placeAtSpot, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
@@ -669,6 +669,25 @@ export function App() {
     announce(stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias]);
 
+  // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
+  // right-clicked or held (or the map's center by keyboard), as the search's choice places a
+  // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
+  const placeSpot = useCallback((choice: PlaceChoice, point: LonLat) => {
+    cancelLocateNotice();
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    if (choice === "via" && pointsRef.current.length >= MAX_POINTS) {
+      setNotice(maxPointsNotice());
+      return;
+    }
+    setNotice(null);
+    const placed = placeAtSpot(pointsRef.current, point, choice, loopVias);
+    commit(placed.next);
+    announce(placed.said);
+  }, [commit, announce, loopVias]);
+
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
@@ -1259,6 +1278,8 @@ export function App() {
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
         onClose={closeRoadInfo}
         announce={announce}
+        plan={{ count: points.length, loop: loopVias }}
+        onPlace={placeSpot}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {narrow && (can.undo || can.redo) && (

@@ -97,6 +97,10 @@ def router(monkeypatch):
     segment_info.forget_columns()
 
 
+def summary(body) -> list[str]:
+    return [f"{r['label']}: {r['value']}" for r in body["summary"]]
+
+
 def section(body, sid):
     found = [s for s in body["sections"] if s["id"] == sid]
     assert found, (sid, body)
@@ -155,6 +159,20 @@ class TestAnswer:
         assert mass["Usable width"]["value"] == "22 ft (6.7 m)"
         riders = round(flow.level_riders_per_min(6.7))
         assert mass["Riders a minute"]["value"] == f"About {riders:,} on the level"
+        # The compact summary: one short line a fact, the lanes not said twice, paved
+        # left out on a road, the capacity (the panel shows it on the Mass Ride map only).
+        assert body["kind"] == "Main road"
+        assert summary(body) == [
+            "Traffic stress: LTS 3 · For experienced cyclists",
+            "Why: 30 mph, mixed traffic",
+            "Speed: 30 mph (48 km/h), posted",
+            "Lanes: 2 each way",
+            "Traffic: 18,400 a day (DDOT 2024)",
+            "Bike lane: Painted",
+            "Bikes: Allowed",
+            f"Room for: ~{riders:,} riders a minute",
+        ]
+        assert [r["id"] for r in body["summary"]][-1] == "mass"
         # The router was asked at the spot on the way, with the bicycle costing only.
         assert [c[2] for c in router.calls] == ["bicycle"]
 
@@ -169,6 +187,8 @@ class TestAnswer:
             "open": None,
             "osm_way_id": None,
             "distance_m": None,
+            "kind": None,
+            "summary": [],
             "sections": [],
             "attribution": ["© OpenStreetMap contributors (ODbL)"],
         }
@@ -210,6 +230,12 @@ class TestAnswer:
         # A path has no lanes, speed or count to speak of.
         traffic = [s for s in body["sections"] if s["id"] == "traffic"]
         assert traffic == []
+        # Nothing about a surface not mapped, no lanes or speed on a path.
+        assert summary(body) == [
+            "Traffic stress: LTS 1 · Comfortable for everyone",
+            "Why: Path away from traffic, open to bicycles",
+            "Bikes: Allowed",
+        ]
 
     def test_assumed_speed_and_lanes_say_assumed(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
@@ -230,6 +256,14 @@ class TestAnswer:
         assert traffic["Lanes"]["value"] == "Not mapped; assumed 1 each way"
         assert traffic["Traffic volume"]["value"] == "No count"
         assert section(body, "road")["Kind"]["value"] == "Residential street"
+        # Assumed figures say so; no count is left out, not printed as "none".
+        assert summary(body) == [
+            "Traffic stress: LTS 2 · Fine for adults",
+            "Why: 20 mph or below, mixed traffic",
+            "Speed: 20 mph (32 km/h), assumed",
+            "Lanes: 1 each way, assumed",
+            "Bikes: Allowed",
+        ]
 
     def test_a_closed_way_says_why(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
@@ -241,6 +275,7 @@ class TestAnswer:
         access = section(body, "access")["Bike access"]
         assert access["value"].startswith("Closed: inside a military area")
         assert access["source"] == "RouteMaker classifier"
+        assert summary(body)[-1] == "Bikes: Not allowed — military area"
 
     def test_an_owner_reopened_way_says_so(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
@@ -325,6 +360,8 @@ class TestAnswer:
         assert section(body, "access")["Bike access"]["value"] == (
             "Closed to bicycles; the reason is available after the next data update"
         )
+        # Not allowed is always said, even with no reason yet; no capacity line.
+        assert summary(body)[-1] == "Bikes: Not allowed"
 
     def test_the_spot_is_never_logged(self, client, segment_schemas, router, caplog) -> None:
         live, _ = segment_schemas
@@ -444,6 +481,18 @@ class TestWords:
         assert written <= set(segment_info.ACCESS_WORDS), written - set(segment_info.ACCESS_WORDS)
         for _open, words in segment_info.ACCESS_WORDS.values():
             assert words.startswith(("Open", "Closed")), words
+        closed = {k for k, (open_, _w) in segment_info.ACCESS_WORDS.items() if not open_}
+        assert closed == set(segment_info.ACCESS_SHORT), closed ^ set(segment_info.ACCESS_SHORT)
+
+    def test_the_summary_why_drops_what_lanes_says(self) -> None:
+        assert segment_info.why_short("mixed traffic, 30 mph, urban multilane") == (
+            "30 mph, mixed traffic"
+        )
+        assert segment_info.why_short("mixed traffic, 35 mph or above, multilane") == (
+            "35 mph or above, mixed traffic"
+        )
+        assert segment_info.why_short("bike lane, 25 mph, single lane") == "Bike lane, 25 mph"
+        assert segment_info.why_short("") is None
 
 
 class TestAccessReason:

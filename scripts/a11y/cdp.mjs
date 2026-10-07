@@ -568,6 +568,17 @@ export const S_SEGMENT_INFO = {
   open: true,
   osm_way_id: 101,
   distance_m: 2.4,
+  kind: "Main road",
+  summary: [
+    { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },
+    { id: "why", label: "Why", value: "30 mph, mixed traffic" },
+    { id: "speed", label: "Speed", value: "30 mph (48 km/h), posted" },
+    { id: "lanes", label: "Lanes", value: "2 each way" },
+    { id: "traffic", label: "Traffic", value: "18,400 a day (DDOT 2024)" },
+    { id: "bike_lane", label: "Bike lane", value: "Painted" },
+    { id: "bikes", label: "Bikes", value: "Allowed" },
+    { id: "mass", label: "Room for", value: "~150 riders a minute" },
+  ],
   attribution: ["© OpenStreetMap contributors (ODbL)"],
   sections: [
     { id: "road", heading: "Road or path", rows: [

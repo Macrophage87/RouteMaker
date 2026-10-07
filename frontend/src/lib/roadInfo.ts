@@ -3,15 +3,23 @@
  * press on a phone, or the keyboard's way to the road at the map's centre (the
  * "Road info" button on the map, or I with the map focused) opens a dialog of what
  * RouteMaker knows of the nearest road or path (GET /api/segment-info; core.segment_info)
- * with an "Open Street View here" link. Read only: changing a road's stress is a later
- * release (441g-441l).
+ * with a bottom row of links drawn as buttons: Street View and Edit in OSM (441m), and
+ * later Change LTS for an admin. Read only: changing a road's stress is a later release
+ * (441g-441l).
  *
- * The pure half: the request, the Street View link, which sections show, what the live
- * region says, and the long press's own timing. RoadInfoDialog.tsx draws it; MapView.tsx
+ * The panel opens compact (owner feedback: "a bit wordy and I have to scroll"): the
+ * name and kind, then a short summary list - one line a fact, no source under each,
+ * a line left out rather than "none" - and the actions; every figure with its source
+ * is behind a closed "Details and sources" disclosure.
+ *
+ * The pure half: the request, the Street View link, which sections and summary lines
+ * show, what the live region says, and the long press's own timing. RoadInfoDialog.tsx draws it; MapView.tsx
  * listens for the gestures.
  */
-import type { LonLat } from "./geo.ts";
+import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { formatRadius } from "./format.ts";
+import { applyPlace, choicesFor, type PlaceChoice } from "./geocode.ts";
+import { pointName } from "./summary.ts";
 
 export interface InfoRow {
   label: string;
@@ -25,9 +33,20 @@ export interface InfoSection {
   rows: InfoRow[];
 }
 
+/** One line of the compact summary: "Traffic stress: LTS 3 · For experienced cyclists". */
+export interface SummaryRow {
+  id: string;
+  label: string;
+  value: string;
+}
+
 export interface SegmentInfo {
   found: boolean;
   title: string;
+  /** The kind of way in a few words ("Main road"); absent from an older API. */
+  kind?: string | null;
+  /** The compact lines; absent from an older API, when the details open instead. */
+  summary?: SummaryRow[];
   tier: number | null;
   open: boolean | null;
   osm_way_id: number | null;
@@ -55,13 +74,18 @@ export const NO_ROAD = "No road here";
 /** How far the API looks for a way (core.segment_info.SNAP_RADIUS_M). */
 export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;
-export const STREET_VIEW_TEXT = "Open Street View here";
-export const STREET_VIEW_NOTE =
-  "Opens Google Street View in a new tab; this spot is sent to Google only if you follow the link.";
+export const STREET_VIEW_TEXT = "Street View";
+/** Street View's one-line privacy note, its link's description. */
+export const STREET_VIEW_NOTE = "Opens in a new tab; Google gets this spot only if you follow the link.";
+/** The bottom row's OpenStreetMap editor link (OWNER-DECISIONS 441m). */
+export const OSM_EDIT_TEXT = "Edit in OSM";
+export const OSM_EDIT_NOTE =
+  "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.";
+export const DETAILS_TEXT = "Details and sources";
 export const INFO_BUTTON_LABEL = "Road info at map center";
 export const INFO_KEY = "i";
 export const INFO_HELP =
-  "Right-click the map (or press and hold on a phone) for what's known about the road there, with a Street View link. " +
+  "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
   "With the map focused, press I for the road at the center of the map, or use Road info at map center.";
 /** How long a finger must rest, unmoved, for a long press. */
 export const LONG_PRESS_MS = 600;
@@ -72,6 +96,60 @@ export const LONG_PRESS_SLOP_PX = 10;
 export function streetViewUrl([lon, lat]: LonLat): string {
   const fixed = (n: number) => n.toFixed(6);
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${fixed(lat)},${fixed(lon)}`;
+}
+
+/** OpenStreetMap's editor for the way, or null when the answer names no way. */
+export function osmEditUrl(info: SegmentInfo): string | null {
+  const way = info.osm_way_id;
+  return info.found && typeof way === "number" && Number.isSafeInteger(way) && way > 0
+    ? `https://www.openstreetmap.org/edit?way=${way}`
+    : null;
+}
+
+/** One of the top row's buttons (OWNER-DECISIONS 441n): what it does, and why it cannot, if it cannot. */
+export interface SpotAction {
+  choice: PlaceChoice;
+  text: string;
+  /** Why the button is unavailable now, said as its description; null when it is available. */
+  unavailable: string | null;
+}
+
+export const SPOT_ACTION_TEXT: Record<PlaceChoice, string> = {
+  start: "Set as start",
+  end: "Set as end",
+  via: "Add as stop",
+};
+
+/**
+ * The top row for a plan of `count` points: Set as start, Set as end, Add as stop, each
+ * available as the search's Start / Destination / Stop choice is (`choicesFor`), else
+ * with the reason it is not. A loop finishes at its start, so it has no end to set.
+ */
+export function spotActions(count: number, loop: boolean): SpotAction[] {
+  const full = count >= MAX_POINTS;
+  const open = choicesFor(count, full, loop);
+  const why = (choice: PlaceChoice): string | null => {
+    if (open.includes(choice)) return null;
+    if (choice === "end") return loop ? "A loop finishes at its start." : "Set a start first.";
+    if (full) return `The route has the most points it can (${MAX_POINTS}).`;
+    if (count === 0) return "Set a start first.";
+    return "Set an end first.";
+  };
+  return (["start", "end", "via"] as const)
+    .filter((choice) => !(loop && choice === "end"))
+    .map((choice) => ({ choice, text: SPOT_ACTION_TEXT[choice], unavailable: why(choice) }));
+}
+
+/** The plan after a top-row button, the new point's index, and what the live region says. */
+export function placeAtSpot(
+  points: readonly LonLat[],
+  point: LonLat,
+  choice: PlaceChoice,
+  loop: boolean,
+): { next: LonLat[]; said: string } {
+  const next = applyPlace(points, point, choice, loop);
+  const index = next.indexOf(point);
+  return { next, said: `${pointName(index, next.length, loop)} set here.` };
 }
 
 /** The request for a spot; the coordinates go in the query only, never in a log (OWNER-DECISIONS 395). */
@@ -114,9 +192,36 @@ export function infoHeading(state: InfoState): string {
   return state.info.found ? state.info.title : NO_ROAD;
 }
 
-/** Where the spot is, in words, under the heading. */
+/** The summary lines shown: the Mass Ride room only on the Mass Ride map. */
+export function shownSummary(info: SegmentInfo, massRide: boolean): SummaryRow[] {
+  return (info.summary ?? []).filter((r) => r.id !== "mass" || massRide);
+}
+
+/** Where the spot is, in a few words. */
 export function originText(origin: InfoOrigin): string {
-  return origin === "centre" ? "The road nearest the center of the map." : "The road nearest the spot you picked.";
+  return origin === "centre" ? "nearest the map center" : "nearest the spot you picked";
+}
+
+/** The line under the heading: the kind and where, "Main road, nearest the spot you picked". */
+export function subtitle(state: InfoState, origin: InfoOrigin): string {
+  const where = originText(origin);
+  const kind = state.kind === "ready" && state.info.found ? state.info.kind : null;
+  return kind ? `${kind}, ${where}` : where[0].toUpperCase() + where.slice(1);
+}
+
+/** A summary value's parts either side of " · ", which is drawn but read as a comma. */
+export function valueParts(value: string): string[] {
+  return value.split(" · ");
+}
+
+/** The way's id and how far it is from the spot, for the details: US units first. */
+export function wayRows(info: SegmentInfo): InfoRow[] {
+  const rows: InfoRow[] = [];
+  if (info.osm_way_id != null) rows.push({ label: "OpenStreetMap way", value: String(info.osm_way_id), source: null });
+  if (info.distance_m != null) {
+    rows.push({ label: "Distance from the spot", value: formatRadius(info.distance_m), source: null });
+  }
+  return rows;
 }
 
 /** One row, as a sentence for the live region and the row's own reading: "Speed limit: 30 mph, posted (OpenStreetMap)". */
@@ -124,17 +229,29 @@ export function rowText(row: InfoRow): string {
   return `${row.label}: ${row.value}${row.source ? ` (source: ${row.source})` : ""}`;
 }
 
-/** What the live region says once the answer is in: the name, the stress and the access, briefly. */
+/** The stress in a phrase: "LTS 3, for experienced cyclists", or "Avoid". */
+function stressPhrase(info: SegmentInfo): string | null {
+  const line = info.summary?.find((r) => r.id === "stress")?.value;
+  const level = line ?? info.sections.find((s) => s.id === "stress")?.rows.find((r) => r.label === "Level")?.value;
+  if (!level) return null;
+  const [head, ...rest] = line ? valueParts(level) : level.split(": ");
+  const tail = rest.join(": ");
+  return tail ? `${head}, ${tail[0].toLowerCase()}${tail.slice(1)}` : head;
+}
+
+/**
+ * What the live region says once the answer is in, one short sentence: "Connecticut
+ * Avenue Northwest: LTS 3, for experienced cyclists." and, on a closed way, "Bikes not
+ * allowed here."
+ */
 export function infoSaid(state: InfoState): string {
   if (state.kind === "loading") return "";
   if (state.kind === "error") return state.message;
   const { info } = state;
   if (!info.found) return `${NO_ROAD}.`;
-  const level = info.sections.find((s) => s.id === "stress")?.rows.find((r) => r.label === "Level")?.value;
-  const access = info.sections.find((s) => s.id === "access")?.rows[0]?.value;
-  return [`Road information: ${info.title}.`, level ? `${level}.` : "", access ? `${access}.` : ""]
-    .filter(Boolean)
-    .join(" ");
+  const stress = stressPhrase(info);
+  const closed = info.open === false ? " Bikes not allowed here." : "";
+  return `${info.title}${stress ? `: ${stress}` : ""}.${closed}`;
 }
 
 /** Whether a key press asks for the road at the centre: I, unmodified, on the map itself. */

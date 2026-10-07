@@ -1,18 +1,29 @@
 // The road panel's pure half (OWNER-DECISIONS 441, 441a; lib/roadInfo.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { MAX_POINTS } from "./geo.ts";
 import {
   LONG_PRESS_MS,
   LONG_PRESS_SLOP_PX,
   LongPress,
   NO_ROAD,
+  OSM_EDIT_NOTE,
   STREET_VIEW_NOTE,
+  STREET_VIEW_TEXT,
+  INFO_HELP,
   infoHeading,
   infoSaid,
   isInfoKey,
+  osmEditUrl,
+  placeAtSpot,
+  spotActions,
   segmentInfoUrl,
   shownSections,
+  shownSummary,
   streetViewUrl,
+  subtitle,
+  valueParts,
+  wayRows,
   type SegmentInfo,
 } from "./roadInfo.ts";
 
@@ -23,6 +34,13 @@ const INFO: SegmentInfo = {
   open: true,
   osm_way_id: 101,
   distance_m: 2.1,
+  kind: "Main road",
+  summary: [
+    { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },
+    { id: "why", label: "Why", value: "30 mph, mixed traffic" },
+    { id: "bikes", label: "Bikes", value: "Allowed" },
+    { id: "mass", label: "Room for", value: "~150 riders a minute" },
+  ],
   attribution: ["© OpenStreetMap contributors (ODbL)"],
   sections: [
     { id: "road", heading: "Road or path", rows: [{ label: "Name", value: "Connecticut Avenue Northwest", source: "OpenStreetMap" }] },
@@ -37,9 +55,18 @@ test("the Street View link is Google's public URL for the spot, latitude first",
     streetViewUrl([-77.0434, 38.9125]),
     "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=38.912500,-77.043400",
   );
+  assert.equal(STREET_VIEW_TEXT, "Street View");
+  assert.equal(STREET_VIEW_NOTE, "Opens in a new tab; Google gets this spot only if you follow the link.");
+});
+
+test("Edit in OSM opens OpenStreetMap's editor for the way, and is not offered without one", () => {
+  assert.equal(osmEditUrl(INFO), "https://www.openstreetmap.org/edit?way=101");
+  assert.equal(osmEditUrl({ ...INFO, osm_way_id: null }), null);
+  assert.equal(osmEditUrl({ ...INFO, found: false }), null);
+  assert.equal(osmEditUrl({ ...INFO, osm_way_id: -5 }), null);
   assert.equal(
-    STREET_VIEW_NOTE,
-    "Opens Google Street View in a new tab; this spot is sent to Google only if you follow the link.",
+    OSM_EDIT_NOTE,
+    "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.",
   );
 });
 
@@ -55,11 +82,70 @@ test("the Mass Ride capacity shows only on the Mass Ride map", () => {
   assert.deepEqual(shownSections(INFO, true).map((s) => s.id), ["road", "stress", "access", "mass"]);
 });
 
-test("the live region says the name, the stress and the access in a sentence", () => {
+test("the Mass Ride room is a summary line only on the Mass Ride map", () => {
+  assert.deepEqual(shownSummary(INFO, false).map((r) => r.id), ["stress", "why", "bikes"]);
+  assert.deepEqual(shownSummary(INFO, true).map((r) => r.id), ["stress", "why", "bikes", "mass"]);
+  assert.deepEqual(shownSummary({ ...INFO, summary: undefined }, true), [], "an older API has no summary");
+});
+
+test("the line under the heading gives the kind and where, briefly", () => {
+  const ready = { kind: "ready" as const, info: INFO };
+  assert.equal(subtitle(ready, "spot"), "Main road, nearest the spot you picked");
+  assert.equal(subtitle(ready, "centre"), "Main road, nearest the map center");
+  assert.equal(subtitle({ kind: "loading" }, "spot"), "Nearest the spot you picked");
+  assert.deepEqual(valueParts("LTS 3 · For experienced cyclists"), ["LTS 3", "For experienced cyclists"]);
+  assert.deepEqual(valueParts("Allowed"), ["Allowed"]);
+});
+
+test("the details give the way's id and its distance, feet first", () => {
+  assert.deepEqual(wayRows(INFO), [
+    { label: "OpenStreetMap way", value: "101", source: null },
+    { label: "Distance from the spot", value: "10 ft (2 m)", source: null },
+  ]);
+});
+
+test("the top row offers start, end and stop as the search does, each unavailable one with its reason", () => {
+  const row = (count: number, loop = false) => spotActions(count, loop).map((a) => `${a.text}${a.unavailable ? ` (${a.unavailable})` : ""}`);
+  assert.deepEqual(row(0), ["Set as start", "Set as end (Set a start first.)", "Add as stop (Set a start first.)"]);
+  assert.deepEqual(row(1), ["Set as start", "Set as end", "Add as stop (Set an end first.)"]);
+  assert.deepEqual(row(2), ["Set as start", "Set as end", "Add as stop"]);
+  assert.deepEqual(row(MAX_POINTS), ["Set as start", "Set as end", `Add as stop (The route has the most points it can (${MAX_POINTS}).)`]);
+  // A loop finishes at its start: no end to set, and a stop can follow the start alone.
+  assert.deepEqual(row(1, true), ["Set as start", "Add as stop"]);
+});
+
+test("a top-row button places the spot as the search's choice would, and says so", () => {
+  const a: [number, number] = [-77.05, 38.9];
+  const b: [number, number] = [-77.0, 38.95];
+  const spot: [number, number] = [-77.0434, 38.9125];
+  assert.deepEqual(placeAtSpot([], spot, "start", false), { next: [spot], said: "Start set here." });
+  assert.deepEqual(placeAtSpot([a, b], spot, "start", false), { next: [spot, b], said: "Start set here." });
+  assert.deepEqual(placeAtSpot([a], spot, "end", false), { next: [a, spot], said: "End set here." });
+  assert.deepEqual(placeAtSpot([a, b], spot, "end", false), { next: [a, spot], said: "End set here." });
+  assert.deepEqual(placeAtSpot([a, b], spot, "via", false), { next: [a, spot, b], said: "Stop 1 set here." });
+});
+
+test("the help says where the summary and the details are", () => {
+  assert.match(INFO_HELP, /^Right-click the map \(or press and hold on a phone\) for a short summary/);
+  assert.match(INFO_HELP, /Details and sources/);
+  assert.match(INFO_HELP, /press I for the road at the center/);
+});
+
+test("the live region says one short sentence: the name and the stress, and a closure", () => {
+  assert.equal(infoSaid({ kind: "ready", info: INFO }), "Connecticut Avenue Northwest: LTS 3, for experienced cyclists.");
+  const closed: SegmentInfo = {
+    ...INFO,
+    open: false,
+    summary: [{ id: "stress", label: "Traffic stress", value: "LTS 4 · High stress: busy, fast traffic" }],
+  };
   assert.equal(
-    infoSaid({ kind: "ready", info: INFO }),
-    "Road information: Connecticut Avenue Northwest. LTS 3: For experienced cyclists. Open to bicycles.",
+    infoSaid({ kind: "ready", info: closed }),
+    "Connecticut Avenue Northwest: LTS 4, high stress: busy, fast traffic. Bikes not allowed here.",
   );
+  const avoid: SegmentInfo = { ...INFO, summary: [{ id: "stress", label: "Traffic stress", value: "Avoid" }] };
+  assert.equal(infoSaid({ kind: "ready", info: avoid }), "Connecticut Avenue Northwest: Avoid.");
+  const older: SegmentInfo = { ...INFO, summary: undefined };
+  assert.equal(infoSaid({ kind: "ready", info: older }), "Connecticut Avenue Northwest: LTS 3, for experienced cyclists.");
   const none = { ...INFO, found: false, title: NO_ROAD, sections: [] };
   assert.equal(infoSaid({ kind: "ready", info: none }), "No road here.");
   assert.equal(infoHeading({ kind: "ready", info: none }), "No road here");

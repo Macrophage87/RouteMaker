@@ -645,6 +645,133 @@ def mass_rows(row: dict) -> list[dict]:
     ]
 
 
+# --- the compact summary ----------------------------------------------------------------
+#
+# The panel's first screen (owner feedback on 441a: "a bit wordy and I have to scroll"):
+# one short line a fact, no source under each, and a row left out rather than "none" or
+# "not known" - except bike access, which is always said. Every figure, with its source,
+# stays in the sections, which the panel keeps behind "Details and sources".
+
+# Who published a traffic count, short, for the summary line "22,000 a day (DDOT 2024)".
+VOLUME_SHORT = {
+    "ddot": "DDOT",
+    "dc-roadway-block": "DDOT",
+    "vdot": "VDOT",
+    "mdot-sha": "MDOT SHA",
+}
+
+# Why a way is closed to bicycles, in a few words: "Not allowed - military area".
+ACCESS_SHORT = {
+    "override_closed": "owner override",
+    "military": "military area",
+    "secured": "secure government site",
+    "bicycle_no": "no-bike rule",
+    "bicycle_use_sidepath": "use the side path",
+    "motorway": "freeway",
+    "motorroad": "motor vehicles only",
+    "private": "private",
+    "cbd_sidewalk": "downtown sidewalk",
+    "zoo": "National Zoo path",
+    "singletrack": "mountain-bike singletrack",
+    "mtb": "mountain-bike trail",
+    "dismount": "walk-your-bike stretch",
+    "sac_scale": "rough hiking trail",
+    "informal": "informal path",
+    "foot_designated": "footpath for walkers",
+    "trail_visibility": "faint trail",
+    "hiking_route": "hiking trail",
+    "natural_surface": "natural-surface footpath",
+    "park_path": "park footpath",
+    "err_closed": "unclear, so treated as closed",
+}
+
+# The parts of the classifier's rule the Lanes line already says.
+_LANE_PARTS = frozenset({"single lane", "urban multilane", "multilane"})
+
+
+def stress_short(tier: int) -> str:
+    """'LTS 3 · For experienced cyclists', or 'Avoid'."""
+    words = TIER_WORDS.get(tier, "")
+    return words if tier == 5 else f"LTS {tier} · {words}"
+
+
+def why_short(rule: str) -> str | None:
+    """The rule in a few words, without what the Lanes line says; None when it adds nothing."""
+    rule = re.sub(r"\s*\(Furth: [^)]*\)", "", (rule or "").strip())
+    for head in ("mixed traffic", "bike lane"):
+        if rule.startswith(head):
+            parts = [p.strip() for p in rule[len(head) :].split(",") if p.strip()]
+            kept = ", ".join(p for p in parts if p not in _LANE_PARTS)
+            rule = f"{head}, {kept}" if kept else head
+            break
+    words = rule_words(rule)
+    return None if words == "No reason recorded" else words
+
+
+def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
+    """The compact summary: [{id, label, value}], in reading order."""
+    tier = int(row["stress_tier"])
+    path = bool(row.get("is_trail_class"))
+    assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
+    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier)}]
+
+    def add(id_: str, label: str, value: str) -> None:
+        rows.append({"id": id_, "label": label, "value": value})
+
+    why = why_short(str(row.get("stress_rule") or ""))
+    if why:
+        add("why", "Why", why)
+    if not path:
+        speed = row.get("road_speed_mph")
+        if speed is not None:
+            add("speed", "Speed", f"{mph_and_kmh(float(speed))}, posted")
+        elif "maxspeed" in assumed:
+            found = _SPEED.search(str(row.get("stress_rule") or ""))
+            if found:
+                mph = float(found.group(1))
+                add("speed", "Speed", f"{mph_and_kmh(mph)}, assumed")
+        lanes = row.get("road_lanes")
+        if lanes is not None:
+            add("lanes", "Lanes", f"{lanes} each way")
+        elif "lanes" in assumed:
+            add("lanes", "Lanes", "1 each way, assumed")
+    aadt = row.get("volume_aadt")
+    if aadt is not None:
+        who = VOLUME_SHORT.get(str(row.get("volume_source") or ""), "")
+        year = row.get("volume_year")
+        credit = " ".join(str(x) for x in (who, year) if x)
+        add("traffic", "Traffic", f"{int(aadt):,} a day" + (f" ({credit})" if credit else ""))
+    facility = row.get("facility")
+    if facility == "protected":
+        add("bike_lane", "Bike lane", "Protected")
+    elif facility == "lane":
+        add("bike_lane", "Bike lane", "Painted")
+    elif facility == "path" and not path:
+        add("bike_lane", "Bike lane", "Traffic-free path")
+    when = [w.replace("_", " ") for w in row.get("car_free_when") or [] if isinstance(w, str)]
+    if when:
+        add("car_free", "Car-free", ", ".join(when))
+    unpaved = row.get("is_unpaved")
+    rough = bool(row.get("is_rough"))
+    if unpaved is not None and (unpaved or rough or path):
+        add("surface", "Surface", surface_words(row))
+    if row.get("walk_bike"):
+        add("walk", "Walk your bike", "A short stretch")
+    reason = row.get("bike_access_reason")
+    if open_ is True:
+        add("bikes", "Bikes", "Allowed")
+    elif open_ is False:
+        short = ACCESS_SHORT.get(reason) if isinstance(reason, str) else None
+        add("bikes", "Bikes", f"Not allowed — {short}" if short else "Not allowed")
+    else:
+        add("bikes", "Bikes", "Not known right now")
+    width = row.get("mass_usable_width_m")
+    if width is not None:
+        riders = flow.level_riders_per_min(float(width))
+        add("mass", "Room for", f"~{round(riders):,} riders a minute")
+    return rows
+
+
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
@@ -676,6 +803,8 @@ def describe(row: dict, router: dict) -> dict:
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),
+        "kind": kind,
+        "summary": summary_rows(row, router, open_),
         "sections": sections,
     }
 
@@ -684,6 +813,6 @@ def segment_info(lat: float, lon: float) -> dict:
     """What is known of the way at the spot, or `{"found": false}`."""
     row = nearest_row(lat, lon)
     if row is None:
-        return {"found": False, "title": "No road here", "sections": []}
+        return {"found": False, "title": "No road here", "summary": [], "sections": []}
     router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
     return describe(row, router)

@@ -1581,6 +1581,12 @@ class InfoSectionOut(Schema):
     rows: list[InfoRowOut]
 
 
+class InfoSummaryOut(Schema):
+    id: str = Field(description="What the line is: stress, why, speed, lanes, traffic, ...")
+    label: str
+    value: str
+
+
 class SegmentInfoOut(Schema):
     found: bool = Field(description="Whether a road or path is within reach of the spot.")
     title: str = Field(
@@ -1592,6 +1598,11 @@ class SegmentInfoOut(Schema):
     )
     osm_way_id: int | None = None
     distance_m: float | None = Field(default=None, description="How far the way is from the spot.")
+    kind: str | None = Field(default=None, description="The kind of way, in a few words.")
+    summary: list[InfoSummaryOut] = Field(
+        default_factory=list,
+        description="The panel's compact lines, one short fact each; sources are in sections.",
+    )
     sections: list[InfoSectionOut]
     attribution: list[str]
 

@@ -5248,7 +5248,7 @@ Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
-## The map's road panel (OWNER-DECISIONS 441, 441a-441f; v0.2.1)
+## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m; v0.2.1)
 
 **What a rider does.** A right-click on the map (a computer), a finger held still for
 0.6 s (a phone; `lib/roadInfo.ts` `LongPress`, called off by a drift past 10 px, a second
@@ -5256,10 +5256,29 @@ finger, the finger lifting or the map moving, and never preventing a default, so
 pans and pinches as before), I with the map focused, or "Road info at map center" in the
 planner (the crosshair shows the center, as for "Add point at map center"). Each opens
 `RoadInfoDialog.tsx`, the platform's modal `<dialog>`: the focus goes to its heading,
-Escape and Close close it and the focus goes back to what opened it, Tab stays inside, each
-part is a section labelled by its own heading and the figures a description list with the
-source in words under each value; the answer is said briefly through the app's polite
-region. On a phone it is a full-height sheet. The help (More tips) says all three ways, and
+Escape and Close close it and the focus goes back to what opened it, Tab stays inside.
+It opens compact (the owner: "a bit wordy and I have to scroll"), so the common case fits
+a phone without scrolling: the name and kind ("Main road, nearest the spot you picked"),
+then a top row of real buttons (441n), "Set as start", "Set as end" (not in a loop) and
+"Add as stop", which put the spot (the map's center by keyboard) in the plan as the search's
+Start / Destination / Stop choice does (`applyPlace`: loop-aware, the coverage check, the
+cap; an unavailable one is `aria-disabled` with its reason beside it and as its
+description), say "Stop 2 set here." and the like, and close the panel, the focus going
+back to what opened it; then the API's `summary` as a list, one short line a fact with no source under it
+("Traffic stress: LTS 3 · For experienced cyclists", "Why", "Speed", "Lanes", "Traffic:
+22,000 a day (DDOT 2024)", "Bike lane", "Surface" off a plain paved road, "Bikes: Allowed"
+or "Not allowed — military area", and "Room for: ~160 riders a minute" on the Mass Ride map
+only); a line with nothing useful is left out, but bike access is always said. A nearby
+station's pages follow, then a closed native `<details>` "Details and sources" with every
+section (a heading each, the figures a description list with the source in words), the
+way's OSM id and distance, and the credit; then the bottom action row (441m), links drawn
+as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
+(`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
+OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
+release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
+passes it yet. The live region says one short sentence ("Connecticut Avenue Northwest: LTS
+3, for experienced cyclists." and on a closed way "Bikes not allowed here."). On a phone
+it is a sheet from the bottom. The help (More tips) says all three ways, and
 the map's own name says "Press I". A right-button drag that rotates the map is not a
 request (`MapView.tsx`: the contextmenu waits for the release on platforms that send it
 with the press, and a release that moved more than 5 px is a rotation). A held finger on
@@ -5280,8 +5299,9 @@ the speed limit, posted (with `attr_sources`' source) or assumed (the classifier
 from the rule); the count, its publisher and year, or "No count"; the facility class,
 `car_free_when`, the shared surface rule (`is_unpaved`, `is_rough`, a roadside path's
 "probably paved", 403, 440); bike access; and the Mass Ride width and riders a minute on
-the level (`flow.level_riders_per_min`), shown on the Mass Ride map only. "Open Street
-View here" is Google's public URL for the spot clicked, in a new tab with
+the level (`flow.level_riders_per_min`), shown on the Mass Ride map only. The answer's
+`kind` and `summary` (`summary_rows`: `{id, label, value}`, no sources) are the compact
+lines; the sections stay the full record. "Street View" is Google's public URL for the spot clicked, in a new tab with
 `rel="noopener noreferrer"`, named in text only, with the note that the spot is sent to
 Google only if the link is followed. No person is ever named: an owner's row is "Owner
 override" or "Owner-rated corridor".

@@ -283,12 +283,16 @@ them (OWNER-DECISIONS 152, 153, 155, 162).
 - Credit: none; nothing is read from these sites. They are pages the map links to,
   named in text only (trademarks; OWNER-DECISIONS 441), each opened in a new tab with no
   opener or referrer, and only when the rider follows the link (441c).
-- **Google Street View** (OWNER-DECISIONS 441): the road panel's "Open Street View here"
+- **Google Street View** (OWNER-DECISIONS 441): the road panel's "Street View" button
   is Google's public Maps URL,
   `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=LAT,LON`
   (<https://developers.google.com/maps/documentation/urls/get-started>). No Google code,
   key or request is in the app; the spot is sent to Google only if the rider follows the
   link, which the panel says beside it.
+- **OpenStreetMap's editor** (OWNER-DECISIONS 441m): the road panel's "Edit in OSM" button
+  is `https://www.openstreetmap.org/edit?way=<id>`, the way the panel describes. Editing
+  needs the rider's own OpenStreetMap account; the panel says not to copy from Google
+  Street View (OpenStreetMap's licence forbids it).
 - **WMATA station pages** (441b): `https://www.wmata.com/ridertools/station/<slug>`, the
   slug for each of the 98 Metro stations from the curated table
   `frontend/src/rail-data/wmata-station-slugs.json`, checked once, read only, against

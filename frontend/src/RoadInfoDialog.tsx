@@ -1,30 +1,46 @@
 /**
  * The map's road panel (OWNER-DECISIONS 441, 441a; lib/roadInfo.ts): what RouteMaker
- * knows of the road or path nearest a spot, each figure with its source in words, and
- * the "Open Street View here" link.
+ * knows of the road or path nearest a spot, with a bottom row of links drawn as
+ * buttons: Street View, Edit in OSM, and (when the editing release passes it) Change LTS.
+ *
+ * Compact, so the common case fits a phone without scrolling: the name, its kind, a
+ * short summary list (one line a fact, read in order), a nearby station's pages, a
+ * closed native "Details and sources" disclosure with every figure, its source in words,
+ * the owner's rating, the way's id and its distance, and the action row.
  *
  * The platform's own modal `<dialog>`, as the ride-type picker is: it makes the rest of
  * the page inert while open, Escape closes it, and Tab is held inside it. On open the
  * focus goes to its heading, so a screen reader says what it is about first; on close
- * it goes back to whatever opened it (the map, or the Road info button). Each part is a
- * labelled section with a heading, the figures a description list; nothing depends on
- * colour. The answer is also said, briefly, through the page's live region (App's
- * `announce`), so a rider who stays on the heading hears it come in.
+ * it goes back to whatever opened it (the map, or the Road info button). The summary is
+ * a list; in the details each part is a labelled section with a heading, the figures a
+ * description list; nothing depends on colour. The answer is also said, in one short
+ * sentence, through the page's live region (App's `announce`), so a rider who stays on
+ * the heading hears it come in.
  */
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
+  DETAILS_TEXT,
   NO_ROAD_HINT,
+  OSM_EDIT_NOTE,
+  OSM_EDIT_TEXT,
+  spotActions,
   STREET_VIEW_NOTE,
   STREET_VIEW_TEXT,
   fetchSegmentInfo,
   infoHeading,
   infoSaid,
-  originText,
+  osmEditUrl,
   shownSections,
+  shownSummary,
   streetViewUrl,
+  subtitle,
+  valueParts,
+  wayRows,
   type InfoRequest,
   type InfoState,
+  type SegmentInfo,
 } from "./lib/roadInfo.ts";
+import type { PlaceChoice } from "./lib/geocode.ts";
 import { STATION_LINK_NOTE, stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
@@ -40,11 +56,21 @@ interface Props {
   onClose: () => void;
   /** Say a short sentence through the page's live region. */
   announce: (text: string) => void;
+  /**
+   * The editing release's hook (OWNER-DECISIONS 441g/441h, 441m): the "Change LTS" control
+   * for a signed-in instance admin, drawn third in the bottom action row. Not passed until
+   * the editor exists, so nothing shows now; it returns null for anyone who may not edit.
+   */
+  changeLtsAction?: (info: SegmentInfo) => ReactNode | null;
+  /** The plan's point count and whether it is a loop, for the top row (OWNER-DECISIONS 441n). */
+  plan: { count: number; loop: boolean };
+  /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
+  onPlace: (choice: PlaceChoice, point: [number, number]) => void;
 }
 
-const FOCUSABLE = "button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])";
+const FOCUSABLE = "button:not([disabled]), [href], summary, [tabindex]:not([tabindex='-1'])";
 
-export function RoadInfoDialog({ request, massRide, station, onClose, announce }: Props) {
+export function RoadInfoDialog({ request, massRide, station, onClose, announce, changeLtsAction, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -109,8 +135,14 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce }
     }
   };
 
-  const sections = state.kind === "ready" && state.info.found ? shownSections(state.info, massRide) : [];
+  const ready = state.kind === "ready" && state.info.found ? state.info : null;
+  const sections = ready ? shownSections(ready, massRide) : [];
+  const summary = ready ? shownSummary(ready, massRide) : [];
   const links = station ? stationLinks(station, WMATA_SLUGS) : [];
+  const where = request ? subtitle(state, request.origin) : "";
+  const osmEdit = ready ? osmEditUrl(ready) : null;
+  const actions = spotActions(plan.count, plan.loop);
+  const changeLts = ready && changeLtsAction ? changeLtsAction(ready) : null;
 
   return (
     <dialog
@@ -133,67 +165,170 @@ export function RoadInfoDialog({ request, massRide, station, onClose, announce }
             Close
           </button>
         </header>
-        <p id={id("where")} className="hint">
-          {request ? originText(request.origin) : ""}
+        <p id={id("where")} className="road-info-kind">
+          {where}
         </p>
-        {state.kind === "loading" && <p className="road-info-status">Looking up what is known about this road…</p>}
+        {request && (
+          <ul className="road-info-place" aria-label="Use this spot">
+            {actions.map((action) => (
+              <li key={action.choice}>
+                <button
+                  type="button"
+                  className="secondary"
+                  aria-disabled={action.unavailable ? true : undefined}
+                  aria-describedby={action.unavailable ? id(`why-${action.choice}`) : undefined}
+                  onClick={() => {
+                    if (action.unavailable) return;
+                    onPlace(action.choice, request.point);
+                    close();
+                  }}
+                >
+                  {action.text}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {request && actions.some((a) => a.unavailable) && (
+          <p className="hint road-info-place-why">
+            {actions
+              .filter((a) => a.unavailable)
+              .map((a, n) => (
+                <span key={a.choice}>
+                  {n > 0 && " "}
+                  <span aria-hidden="true">{a.text}: </span>
+                  <span id={id(`why-${a.choice}`)}>{a.unavailable}</span>
+                </span>
+              ))}
+          </p>
+        )}
+        {state.kind === "loading" && <p className="road-info-status">Looking up this road…</p>}
         {state.kind === "error" && <p className="road-info-status">{state.message}</p>}
         {state.kind === "ready" && !state.info.found && <p className="road-info-status">{NO_ROAD_HINT}</p>}
-        {sections.map((section) => (
-          <section key={section.id} className={`road-info-section road-info-${section.id}`} aria-labelledby={id(section.id)}>
-            <h3 id={id(section.id)}>{section.heading}</h3>
-            <dl>
-              {section.rows.map((row) => (
-                <div key={row.label} className="road-info-row">
-                  <dt>{row.label}</dt>
-                  <dd>
-                    {row.value}
-                    {row.source && <span className="road-info-source">Source: {row.source}</span>}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ))}
+        {summary.length > 0 && (
+          <ul className="road-info-summary" aria-label="Summary">
+            {summary.map((row) => (
+              <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
+                <span className="road-info-label">{row.label}:</span>{" "}
+                {valueParts(row.value).map((part, n) => (
+                  <span key={n}>
+                    {n > 0 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span className="visually-hidden">, </span>
+                      </>
+                    )}
+                    {part}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
         {station && links.length > 0 && (
-          <section className="road-info-section road-info-station" aria-labelledby={id("station")}>
-            <h3 id={id("station")}>Nearby station: {station.name}</h3>
-            <ul className="station-links">
-              {links.map((link) => (
-                <li key={link.href}>
-                  <a href={link.href} target="_blank" rel="noopener noreferrer" aria-describedby={id("station-note")}>
-                    {link.text}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <p id={id("station-note")} className="hint">
-              {STATION_LINK_NOTE}
+          <ul className="road-info-links road-info-stations" aria-label={`Nearby station: ${station.name}`}>
+            {links.map((link) => (
+              <li key={link.href}>
+                <a href={link.href} target="_blank" rel="noopener noreferrer" aria-describedby={id("station-note")}>
+                  {link.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {station && links.length > 0 && (
+          <p className="visually-hidden" id={id("station-note")}>
+            {STATION_LINK_NOTE}
+          </p>
+        )}
+        {ready && (
+          <details
+            key={`${request?.point[0]},${request?.point[1]}`}
+            className="road-info-details"
+            open={summary.length === 0 ? true : undefined}
+          >
+            <summary>{DETAILS_TEXT}</summary>
+            {sections.map((section) => (
+              <section key={section.id} className={`road-info-section road-info-${section.id}`} aria-labelledby={id(section.id)}>
+                <h3 id={id(section.id)}>{section.heading}</h3>
+                <dl>
+                  {section.rows.map((row) => (
+                    <div key={row.label} className="road-info-row">
+                      <dt>{row.label}</dt>
+                      <dd>
+                        {row.value}
+                        {row.source && <span className="road-info-source">Source: {row.source}</span>}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+            {wayRows(ready).length > 0 && (
+              <section className="road-info-section road-info-way" aria-labelledby={id("way")}>
+                <h3 id={id("way")}>The way in the map data</h3>
+                <dl>
+                  {wayRows(ready).map((row) => (
+                    <div key={row.label} className="road-info-row">
+                      <dt>{row.label}</dt>
+                      <dd>{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
+            <p className="hint road-info-credit">
+              Data: {ready.attribution.join(", ")} and the sources above; traffic stress by RouteMaker's classifier and
+              the owner's ratings.
             </p>
-          </section>
+          </details>
+        )}
+        {ready && (
+          <p className="hint road-info-credit-short">
+            Data: {ready.attribution.join(", ")} and others (see {DETAILS_TEXT}).
+          </p>
         )}
         {request && (
-          <section className="road-info-section road-info-streetview" aria-labelledby={id("streetview")}>
-            <h3 id={id("streetview")}>Street View</h3>
-            <p>
-              <a
-                href={streetViewUrl(request.point)}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-describedby={id("streetview-note")}
-              >
-                {STREET_VIEW_TEXT}
-              </a>
+          <div className="road-info-actions">
+            <ul className="road-info-buttons" aria-label="Actions">
+              <li>
+                <a
+                  className="road-info-button"
+                  href={streetViewUrl(request.point)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-describedby={id("sv-note")}
+                >
+                  {STREET_VIEW_TEXT}
+                </a>
+              </li>
+              {osmEdit && (
+                <li>
+                  <a
+                    className="road-info-button"
+                    href={osmEdit}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-describedby={id("osm-note")}
+                  >
+                    {OSM_EDIT_TEXT}
+                  </a>
+                </li>
+              )}
+              {changeLts && <li>{changeLts}</li>}
+            </ul>
+            <p className="hint road-info-notes">
+              <span aria-hidden="true">{STREET_VIEW_TEXT}: </span>
+              <span id={id("sv-note")}>{STREET_VIEW_NOTE}</span>
+              {osmEdit && (
+                <>
+                  {" "}
+                  <span aria-hidden="true">{OSM_EDIT_TEXT}: </span>
+                  <span id={id("osm-note")}>{OSM_EDIT_NOTE}</span>
+                </>
+              )}
             </p>
-            <p id={id("streetview-note")} className="hint">
-              {STREET_VIEW_NOTE}
-            </p>
-          </section>
-        )}
-        {state.kind === "ready" && state.info.found && (
-          <p className="hint road-info-credit">
-            Data: {state.info.attribution.join(", ")}; traffic stress by RouteMaker's classifier and the owner's ratings.
-          </p>
+          </div>
         )}
       </div>
     </dialog>
