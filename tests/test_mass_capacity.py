@@ -401,7 +401,8 @@ class TestTheColumn:
     def test_the_writer_writes_it(self) -> None:
         source = (ROOT / "src" / "pipeline" / "writers.py").read_text()
         assert 'row.get("mass_usable_width_m")' in source
-        assert "mass_usable_width_m)" in source
+        # In the INSERT's column list (the access reason follows it, OWNER-DECISIONS 441a).
+        assert "stress_unsmoothed_tier, mass_usable_width_m" in source
 
 
 def summary(**changes) -> mass_capacity.CapacitySummary:
