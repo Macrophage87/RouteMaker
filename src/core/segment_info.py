@@ -21,6 +21,7 @@ gunicorn's access log nor the beta's nginx records, and nothing here logs it.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 
@@ -39,7 +40,7 @@ SNAP_RADIUS_M = 30.0
 # shows.
 DRAWN_PREFERENCE_M = 15.0
 # Rows the nearest-neighbour scan reads before the distances are compared.
-CANDIDATES = 12
+CANDIDATES = 24
 # How far around the spot on the way `/locate` looks for its edges.
 LOCATE_RADIUS_M = 8
 LOCATE_TIMEOUT_S = 3.0
@@ -475,8 +476,18 @@ def stress_rows(row: dict) -> list[dict]:
     return rows
 
 
+def _json(value):
+    """A jsonb column as Python: the driver may hand it over as text."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return None
+    return value
+
+
 def _attr(row: dict, key: str) -> str | None:
-    sources = row.get("attr_sources")
+    sources = _json(row.get("attr_sources"))
     if isinstance(sources, dict):
         value = sources.get(key)
         return value if isinstance(value, str) else None
@@ -486,7 +497,7 @@ def _attr(row: dict, key: str) -> str | None:
 def traffic_rows(row: dict) -> list[dict]:
     rows = []
     path = bool(row.get("is_trail_class"))
-    assumed = [str(a) for a in (row.get("stress_assumed") or [])]
+    assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
     have_lane_column = "road_lanes" in row
     if not path:
         lanes = row.get("road_lanes")
