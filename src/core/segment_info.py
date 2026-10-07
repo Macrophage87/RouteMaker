@@ -407,7 +407,7 @@ def rule_words(rule: str) -> str:
         return "Avoid: highway-like road" + (f" (posted {posted.group(0)})" if posted else "")
     match = re.match(r"motor-only classification \((\w+)\)", rule)
     if match:
-        return f"Avoid: highway-like road ({match.group(1).replace('_', ' ')})"
+        return f"Highway-like road for motor traffic ({match.group(1).replace('_', ' ')})"
     if rule.startswith("closed to motor traffic"):
         return "Closed to motor traffic, so rated as a path"
     match = re.match(r"trail-class way \(([^,)]+)(?:, ([^)]+))?\)", rule)
@@ -549,6 +549,10 @@ def riding_rows(row: dict) -> list[dict]:
     facility = row.get("facility")
     if facility in FACILITY_WORDS:
         value = FACILITY_WORDS[facility]
+        if facility == "none" and row.get("is_trail_class"):
+            # A path the classifier does not count as a bike facility: a footway, a
+            # sidewalk, a path not open to bicycles. It is not "shared with traffic".
+            value = "None: a path not marked for bicycles"
         when = [w for w in row.get("car_free_when") or [] if isinstance(w, str)]
         if when:
             value += (

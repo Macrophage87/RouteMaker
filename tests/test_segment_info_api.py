@@ -388,7 +388,7 @@ class TestWords:
             ),
             (
                 "motor-only classification (motorway_link)",
-                "Avoid: highway-like road (motorway link)",
+                "Highway-like road for motor traffic (motorway link)",
             ),
             ("override: stress adjustment moco-lts5-georgia-avenue", "Owner-rated corridor"),
             ("named corridor: c1, e2", "Owner-rated corridor"),
