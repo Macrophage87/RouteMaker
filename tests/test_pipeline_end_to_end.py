@@ -4407,7 +4407,7 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     assert west[2] == "Gamma Street" and on[2] == "Delta Road"
     assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
     assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"
-    assert rows[ROADSIDE_PATH_ID][1] is None, "and its surface stays unknown"
+    assert rows[ROADSIDE_PATH_ID][1] is False, "a cycleway with no surface is stored paved (448)"
     assert rows[BARE_PATH_ID][4] is False, "a trail away from roads is not"
     assert west[4] is False, "nor is a road"
 

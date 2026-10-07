@@ -946,6 +946,22 @@ no surface now counts as unpaved there). *Not B* (no untagged path is closed) *a
 not D* (`SHORT_PATH_M` stays 150 m). The investigation counted about 3,145 such
 tracks (763 mi) region-wide; a rebuild's log is the place to read the real figure.
 
+**Built bike paths with no surface (OWNER-DECISIONS 448).** The owner, 2026-10-07, on
+the Marvin Gaye Trail drawn dashed: "Where did these weird dashed bike paths come from" /
+"They are deemphasizing what should be a main route". 19 of its 23 ways are
+`highway=cycleway` with no surface tag. `routemaker.stress.inferred_unpaved` now reads a
+built bike facility (`highway=cycleway`, or a `path` or `footway` with
+`bicycle=designated`) with no `surface` as paved (False), so the stored `is_unpaved`, the
+tiles' `unpaved=false`, the unpaved ranking and the trail seek treat it as paved, like a
+roadside trail (403); no front-end rule changed, because the tile now carries the
+property. 376 A's dashes stay for other trails with no surface (park footpaths, `path` or
+`footway` without a bicycle designation). Access is untouched. Measured on the
+2026-09-25 extract against the live table: 4,384 ways, 352.5 mi (567 km) of them
+cycleway or designated path with no surface, all stored unknown now; 350.5 mi
+(564 km) are not roadside by their own tags (a way beside a road by geometry already shows
+paved, and the rebuild log has the exact count). The owner is advised to tag these
+`surface=asphalt` or `concrete` in OpenStreetMap too.
+
 **Trails beside a road (OWNER-DECISIONS 403).** The owner, 2026-10-05: "Most trails
 near a road are paved. There are minor exceptions." A trail beside a road with no
 surface mapped keeps the paved path's look, its rails and edge; 376 A's dashes stay for
@@ -3688,15 +3704,15 @@ the dry run each prints after `grep -v '^present:'`:
    414, 416: `bicycle=yes` and LTS 4 on the ten underpass ways OSM tags `bicycle=no`).
    Dry: 20 create (10 access, 10 stress), no conflict.
 2. `2026-09-30-owner-arterials-east-of-anacostia.json`, the east-of-the-Anacostia
-   arterials again (432, 445-445e): its `retire` list withdraws the five South Capitol St
+   arterials again (432, 445-445f): its `retire` list withdraws the five South Capitol St
    Avoid rows (MLK Jr Ave SE to Mississippi Ave SE), which outrank the new LTS 4 corridor,
-   and 522 more (445: only the highway-like main carriageways stay Avoid, 250 rows, 445d
+   and 524 more (445, 445f: only the highway-like main carriageways stay Avoid, 248 rows, 445d
    keeping the four Benning Rd NE ways across the DC 295 interchange; the other roads go
    back to the classifier, and Minnesota Ave, one Pennsylvania Ave way and all 36 Nannie
    Helen Burroughs Ave NE ways are re-written as floors, at least LTS 4, 4 and 3
    (`"at_least": true`: the rebuild keeps the classifier's tier where it is higher), 126
    new rows, and 445d writes Avoid on the interchange's two ramps, 128 new rows in all).
-   Dry: 527 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 250 present, no absent. VALIDATE refuses a build where
+   Dry: 529 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 248 present, no absent. VALIDATE refuses a build where
    the South Capitol stretch is not LTS 4, so this one is not optional.
 3. `2026-09-30-owner-veirs-mill-sidepath.json`, the Veirs Mill sidepath (433): retires the
    two `bicycle=designated` rows on the north-side sidewalks and closes them
@@ -3717,7 +3733,7 @@ the dry run each prints after `grep -v '^present:'`:
 These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
 `override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
 database, the six files dry-run and loaded in this order, then the five checks below,
-which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all. A second dry run of each file then printed only
+which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all (before 445f, which retires two more rows: now `3|36 4|90 5|250`, retire 529, present 248, still 128 written). A second dry run of each file then printed only
 `present` and `absent` lines. The other override files are already in the live table
 (on the same copy, after the six, their dry runs printed only `present`) and are not
 loaded again, except two: the Baltimore
@@ -3734,7 +3750,7 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 #   dry: 20 create (10 access, 10 stress), no conflict
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | grep -v '^present:'
-#   dry: 527 retire (the 5 South Capitol rows of 432 and 522 of 445), 128 create (90 tier 4, 36 tier 3, all floors; 2 tier 5 ramps of 445d), 250 present, no absent
+#   dry: 529 retire (the 5 South Capitol rows of 432, 522 of 445 and the 2 Kenilworth Ave NE ways of 445f), 128 create (90 tier 4, 36 tier 3, all floors; 2 tier 5 ramps of 445d), 248 present, no absent
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | grep -v '^present:'
 #   dry: 2 retire {'bicycle': 'designated'}, 2 create {'bicycle': 'no'}
@@ -3769,7 +3785,7 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 
 Each ends `wrote N of M rows; the rest were already approved`, and each retiring file's
 line before it is its `retired` count. In order: Dupont `wrote 20 of 20`; east of the
-Anacostia `retired 527 rows`, `wrote 128 of 378`; Veirs sidepath `retired 2 rows`, `wrote 2
+Anacostia `retired 529 rows`, `wrote 128 of 376`; Veirs sidepath `retired 2 rows`, `wrote 2
 of 2`; Montgomery `retired 23 rows`, `wrote 0 of 386`; military `retired 2 rows`, `wrote 97
 of 97`; crosswalk links `wrote 4 of 4`. **Then check H before
 firing I**; a skipped
@@ -3778,7 +3794,7 @@ tile build), or, for the Veirs Mill and military files, never before the swap:
 
 ```sh
 Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
-Q "select (value->>'tier')::int, count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' group by 1 order by 1"   # 3|36, 4|90, 5|252: the 445 floors and the Avoid rows that stay, the interchange's six included (445d; Saint Elizabeths Rd's two are retired by the military file, so after it none are left over)
+Q "select (value->>'tier')::int, count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' group by 1 order by 1"   # 3|36, 4|90, 5|250: the 445 floors and the Avoid rows that stay, the interchange's six included (445d; Saint Elizabeths Rd's two are retired by the military file, so after it none are left over)
 Q "select count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' and value->>'at_least'='true'"   # 126: the 445a-c floors are minimums ("at_least")
 Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339,1311964678)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053,232308625)))"   # 11: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path, Connector Road row, the two Veirs closures, three tier-4 rows (Dupont, Saint Elizabeths, Jeff Todd)
 Q "select count(*) from override where approved and kind='access' and value->>'bicycle'='yes' and osm_way_id in (1189857618,1362344261,1298593479,1189857620)"   # 4: the crosswalk links (442)

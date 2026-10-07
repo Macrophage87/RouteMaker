@@ -316,7 +316,7 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
     });
   }
   // Plain US English, what it is and why, naming the source; no jargon, no colour as the only cue.
-  assert.match(UNKNOWN_SURFACE_LEGEND, /^A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines\. A trail beside a road with no surface mapped shows as a paved path\.$/);
+  assert.match(UNKNOWN_SURFACE_LEGEND, /^A park path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines\. A trail beside a road, or a path built for bicycles \(a bike path or a path signed for bicycles\), with no surface mapped shows as a paved path\.$/);
   assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
 });
 

@@ -559,6 +559,15 @@ class TestRulesThatHadNoTest:
             # No other way is inferred: a path, a footway, a road with no surface is unknown.
             ({"highway": "path"}, None),
             ({"highway": "footway"}, None),
+            # OWNER-DECISIONS 448: a built bike facility with no surface is paved
+            ({"highway": "cycleway"}, False),
+            ({"highway": "path", "bicycle": "designated"}, False),
+            ({"highway": "footway", "bicycle": "designated"}, False),
+            ({"highway": "path", "bicycle": "yes"}, None),
+            ({"highway": "footway", "bicycle": "dismount"}, None),
+            ({"highway": "cycleway", "surface": "gravel"}, True),
+            ({"highway": "path", "bicycle": "designated", "surface": "dirt"}, True),
+            ({"highway": "residential", "bicycle": "designated"}, None),
             ({"highway": "residential"}, None),
             ({"highway": "service", "tracktype": "grade3"}, None),
             ({}, None),
@@ -570,6 +579,17 @@ class TestRulesThatHadNoTest:
         from routemaker.stress import inferred_unpaved
 
         assert inferred_unpaved(tags) is want
+
+    def test_the_marvin_gaye_trail_cycleway_with_no_surface_is_paved(self) -> None:
+        """OWNER-DECISIONS 448: 19 of the trail's 23 ways (438819447 among them) are
+        `highway=cycleway` with no surface tag; they are stored paved, so the map does not
+        draw them as the dashed surface-unknown trail. A park footway beside is still unknown."""
+        from routemaker.stress import inferred_unpaved, is_unpaved
+
+        marvin_gaye = {"highway": "cycleway", "name": "Marvin Gaye Trail"}
+        assert inferred_unpaved(marvin_gaye) is False
+        assert is_unpaved(marvin_gaye) is None, "the classifier's raw reading is unchanged"
+        assert inferred_unpaved({"highway": "footway", "name": "Park Footpath"}) is None
 
     def test_inferring_a_track_unpaved_moves_no_tier(self) -> None:
         """The classifier reads the raw `is_unpaved` (its unpaved rural speed cap), not the
