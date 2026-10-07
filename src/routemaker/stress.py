@@ -97,6 +97,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
+from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
 from .tags import (
     PAINTED_CYCLEWAY,
@@ -1096,6 +1097,23 @@ def _classify(
         else:
             tier, rule = floor[0], rule + ", " + floor[1]
 
+    # A road closed or restricted to motor traffic carries little of it, so the
+    # class-default speed (35 mph on an unclassified road with nothing posted)
+    # does not set its tier (`motor_restriction`; the WB&A Trail's Bragers Road,
+    # way 11507607). It only ever lowers the tier, never where a traffic count
+    # says what the road carries, and never touches access.
+    restriction = motor_restriction(tags) if aadt is None else None
+    if restriction is not None:
+        cap, what = restriction
+        posted = None if "maxspeed" in assumed else speed_mph
+        if posted is not None and posted > RESTRICTED_POSTED_MPH:
+            cap = Stress(cap + 1)
+        if tier > cap:
+            # The default speed the tables read is not stated as the reason.
+            limited = f"{MOTOR_RESTRICTED_RULE} ({what}), LTS {int(cap)} at most"
+            rule = limited if posted is None else f"{limited}, posted {posted:g} mph"
+            tier = cap
+
     # A surface that sheds riders is not tolerable to a child, which is what
     # LTS1 asserts, so it floors at LTS2. This is narrower than treating surface
     # as stress, which the module deliberately does not do: maintained gravel
@@ -1131,6 +1149,77 @@ def _classify(
     )
 
 
+# Motor traffic that is barred or limited (stress-averse default; the owner's
+# WB&A Trail report, 2026-10-06: "The WB&A trail has a section that parallels a
+# very quiet road, but is marked LTS4 here", logged in OWNER-DECISIONS' "Record of
+# owner words used in 444/445"; approved as 444). Closed to motor vehicles, or open only
+# to farm and forestry traffic: LTS 1 at most. Open only to the people with a
+# right to be there (private, destination, permit, delivery): LTS 2 at most. A
+# posted limit above RESTRICTED_POSTED_MPH raises either by one tier.
+MOTOR_CLOSED_VALUES = frozenset({"no", "agricultural", "forestry"})
+# How the rule of a tier the cap set begins (`pipeline.run.car_free_tier_1` reads it: a
+# road closed to motor traffic for good still gets that function's own reason).
+MOTOR_RESTRICTED_RULE = "motor traffic restricted"
+MOTOR_LIMITED_VALUES = frozenset({"private", "destination", "permit", "delivery"})
+RESTRICTED_POSTED_MPH = 30.0
+# Most specific first: `motorcar` over `motor_vehicle` over `vehicle`.
+MOTOR_RESTRICTION_KEYS = ("motorcar", "motor_vehicle", "vehicle")
+# `bicycle` values that keep a way open to bicycles under `access=private/no`.
+BICYCLE_ALLOWED_VALUES = frozenset({"yes", "designated", "permissive", "official"})
+PUBLIC_ACCESS_VALUES = frozenset({"yes", "permissive", "designated", "official", "public"})
+
+
+def _restriction_tier(value: str) -> Stress | None:
+    if value in MOTOR_CLOSED_VALUES:
+        return Stress.LTS1
+    if value in MOTOR_LIMITED_VALUES:
+        return Stress.LTS2
+    return None
+
+
+def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
+    """The tier a road's motor-traffic restriction caps it at, and what says so,
+    or None for a road open to motor traffic.
+
+    The most specific motor key present decides (`motorcar`, then
+    `motor_vehicle`, then `vehicle`): `motor_vehicle=private` + `motorcar=yes`
+    is open to cars. With none of them, `access` decides, and only where the
+    way's own `bicycle` tag keeps bicycles on it (`access=private` +
+    `bicycle=designated`). A road closed to bicycles too has no ride to state
+    a stress for (OWNER-DECISIONS 444: skipped where the way is closed to
+    bicycles), so it is left as the tables read it: a `bicycle` tag outside
+    `BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...,
+    the set `routemaker.facility.BICYCLE_ALLOWED` opens), or, with no bicycle
+    tag, an `access` or `vehicle` that is not a public value (`vehicle` covers
+    bicycles, as `facility.closed_to_motor_traffic` reads it).
+    Stress only: whether a bicycle may ride the way is the access rules' alone.
+    """
+    if tags.get("highway") in MOTOR_ONLY:
+        return None
+    bicycle = tags.get("bicycle")
+    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES:
+        # bicycle=no, private, dismount, use_sidepath, ...: closed to bicycles.
+        return None
+    access = tags.get("access")
+    if bicycle is None and any(
+        tags.get(key) is not None and tags[key] not in PUBLIC_ACCESS_VALUES
+        for key in ("access", "vehicle")
+    ):
+        # Closed to bicycles as well (access=private or vehicle=no with no
+        # bicycle tag): there is no ride to state a stress for.
+        return None
+    for key in MOTOR_RESTRICTION_KEYS:
+        value = tags.get(key)
+        if value is not None:
+            tier = _restriction_tier(value)
+            return None if tier is None else (tier, f"{key}={value}")
+    if access is not None:
+        tier = _restriction_tier(access)
+        if tier is not None:
+            return tier, f"access={access}"
+    return None
+
+
 def is_rough(tags: dict[str, str]) -> bool:
     """Whether the surface would shed riders, as distinct from being unpaved.
 
@@ -1139,8 +1228,10 @@ def is_rough(tags: dict[str, str]) -> bool:
     `smoothness` are read alongside it and why Group Ride keeps a quality floor
     even when surface avoidance is relaxed.
     """
+    # Cobblestone is paved but rough (OWNER-DECISIONS 440, `routemaker.surfaces`).
     return (
         tags.get("surface") in ROUGH_SURFACES
+        or surfaces.is_rough_paved(tags)
         or tags.get("tracktype") in ROUGH_TRACKTYPES
         or tags.get("smoothness") in ROUGH_SMOOTHNESS
     )
@@ -1153,11 +1244,15 @@ def is_unpaved(tags: dict[str, str]) -> bool | None:
     gravel is common in Loudoun, and reading absence as paved understates the
     unpaved share that the Gravel and rural Group Ride ranking keys on; the
     caller decides what to do with an unknown.
+
+    Paved is every hard surface (OWNER-DECISIONS 440, `routemaker.surfaces`):
+    wood boardwalks and bridges, metal decks, brick, sett, `concrete:plates`
+    and the rest, not only the five road pavings it once listed.
     """
     surface = tags.get("surface")
     if surface is None:
         return None
-    return surface not in {"asphalt", "concrete", "paved", "paving_stones", "chipseal"}
+    return not surfaces.is_paved_surface(surface)
 
 
 def inferred_unpaved(tags: dict[str, str]) -> bool | None:

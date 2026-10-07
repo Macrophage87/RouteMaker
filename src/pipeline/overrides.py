@@ -110,7 +110,12 @@ class OverrideRefused(ValueError):
 STRESS_REQUIRED_KEYS = frozenset(
     {"tier", "adjustment_id", "category", "visibility", "annotation_status", "display"}
 )
-STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note"}
+STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note", "at_least"}
+# `"at_least": true` makes the row a floor: the way is rated
+# max(the classifier's tier, the row's tier), so a way the classifier already
+# rates at or above the row's tier keeps the classifier's tier and its reason
+# (OWNER-DECISIONS 445a-c: "at least an LTS3", "Bump it up if it would be lower").
+# Absent or false, the row sets the tier, up or down, as before.
 STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
 # Stable, readable, and safe in a URL, a tile attribute and a CSS selector.
 ADJUSTMENT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -152,6 +157,8 @@ def stress_value_problem(value: object) -> str | None:
         return "a stress value's tier is an integer"
     if not STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX:
         return f"tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
+    if "at_least" in value and not isinstance(value["at_least"], bool):
+        return "at_least is true (the tier is a floor) or false, or absent"
     adjustment_id = value["adjustment_id"]
     if (
         not isinstance(adjustment_id, str)
@@ -406,6 +413,11 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
     Up or down: a curated tier below the classifier's is a down-adjustment, and
     allowed. The result carries the adjustment (`StressResult.adjustment`),
     whose direction is taken against the classifier's tier.
+
+    A floor row (`"at_least": true`) only ever raises: where the way's tier is
+    already at or above the row's, the way keeps it, its rule and no
+    adjustment, and the row is not counted as applied. So a floor written
+    against one extract stays right when a later extract rates the road higher.
     """
     from routemaker.stress import StressResult
 
@@ -423,6 +435,13 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             continue
         computed.setdefault(override.osm_way_id, current.tier)
         adjustment = stress_adjustment(override, computed[override.osm_way_id])
+        if (
+            override.value.get("at_least") is True
+            and current.tier is not None
+            and current.tier >= adjustment.tier
+        ):
+            # A floor the way already meets: the classifier's tier stands.
+            continue
         stress_by_way[override.osm_way_id] = StressResult(
             tier=adjustment.tier,
             # The provenance says an override produced it and names the

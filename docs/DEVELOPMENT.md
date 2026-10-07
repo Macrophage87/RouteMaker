@@ -4876,6 +4876,15 @@ a time (`--check` only checks that every mutant applies). It includes the
 boundary mutants of ARTERIAL review r0 (each re-match, corridor and smoothing
 threshold moved past its tested edge); every one is killed.
 
+### Floor rows (OWNER-DECISIONS 445a-c)
+
+A stress override row can be a floor (`"at_least": true` beside its `tier`;
+`pipeline.overrides`): the rebuild rates the way max(the classifier's tier, the row's
+tier), and where the classifier already meets it, the way keeps its own tier and reason and
+the row is not counted as applied. The east-of-the-Anacostia file's Minnesota Ave,
+Pennsylvania Ave SE (non-trunk) and Nannie Helen Burroughs Ave NE rows are floors
+(445a-c). Without the key a row sets the tier, up or down, as before.
+
 ## Military areas (owner report 2026-10-05; OWNER-DECISIONS 330, 437)
 
 `pipeline.restricted_areas.military_closures` runs in CLASSIFY_FACILITIES, after APPLY_OVERRIDES,
@@ -4907,6 +4916,110 @@ and Fort Detrick, the open-by-tag ways that formed the through networks before 4
 outside neighbours) and `tests/data/military_edges.json` (Telegraph Rd, Russell Rd, South Fern St
 and Saint Elizabeths Rd SE with their outlines clipped round them); the tile-build cases for a
 closed tier-3/4 road with directional grants are in `tests/test_tile_build_access.py`.
+
+## Secured federal compounds (owner report 2026-10-06; OWNER-DECISIONS 330, 446-446c, 447)
+
+`pipeline.restricted_areas.secured_closures` runs beside `military_closures`, on the same
+read of the source extract's areas, and judges every way inside a secured federal compound
+by the military rule.
+
+- **A secured compound** (`area_kind` returns `SECURED`, checked after `MILITARY`): an area
+  `SECURED_AREAS` names by OSM id, or, by the tag rule (`is_secured_area`), a government
+  area (`landuse=government`, `office=government` or `government=*`, not a building) whose
+  own `access` is in `SECURED_ACCESS` (no, private, military, restricted, permit).
+  `SECURED_AREAS` stays a short curated list of campuses whose internal roads and paths
+  would look open and routable on the map (446c), each filed under a name of its own that
+  holds if OSM renames it. At the 2026-10-03 extract the tag rule catches Goddard alone.
+  `access=private` on a commercial, industrial or residential area is not caught.
+- **Inside and open:** inside as for a base (at least `INSIDE_FRACTION` of the way's
+  length). Open only for an approved override's bicycle permission, a numbered public road,
+  a public road the outline takes in (`SECURED_PUBLIC_WAYS`: Good Luck Rd, Soil
+  Conservation Rd, Brock Bridge Rd's bridge at Jessup, Slacks Rd at Sykesville), the
+  public way in to the Goddard Visitor Center (`SECURED_VISITOR_WAYS`, 446) and a way
+  signed for bicycles. A listed way
+  is open only while its own tags do not close it, and a listed id renumbered upstream
+  closes (err closed). A way inside both a base and a compound is the base's (`skip`).
+- Closed ways are `rm:no_bicycle=secured`, after `military` in `trail_closures.ORDER`, on
+  every graph; closed roads are left off the map. `secured-closures.csv` lists every way
+  (the military report's columns, `facility` for `installation`), and `secured_missing`
+  warns about a listed outline the extract no longer has.
+- **Through networks:** `run.military_through_networks` runs a second time over the secured
+  ways. Every reason a secured way can be open today is in `THROUGH_EXCEPTIONS` (override,
+  numbered route, the listed public roads, the Visitor Center ways, signed for bicycles),
+  so this check cannot refuse a build yet; it guards an open reason added later.
+- **VALIDATE** (`run.assert_secured_closures`): the Rowley sentinel ways
+  (`REBUILD_SENTINEL_SECURED_CLOSED_WAYS`, closed where the extract has them; a missing one
+  is warned about) and a floor per compound (`REBUILD_SENTINEL_SECURED_MIN_CLOSED`, by its
+  `SECURED_AREAS` name, or OSM's for Goddard), about three quarters of the 2026-10-03
+  count, so an outline lost or renumbered upstream fails the build instead of reopening the
+  compound.
+
+The correctional department's land at Sykesville (w736540664, "Sykesville correctional
+land") is listed under the err-closed default (447) while the owner's answer is pending:
+60 ways, 7.3 mi (11.7 km) closed, floor 45; Slacks Rd, the county road through it, stays
+open. Take the entry out of `SECURED_AREAS` and its floor out of settings if the owner
+says to open it.
+
+Tests: `tests/test_secured_areas.py`, on real ways (`tests/data/secured_areas.json`,
+`tests/data/secured_goddard_jessup.json`, `tests/data/secured_sykesville.json`); the
+wiring through the rebuild stages (report, skip, through check, map) in
+`tests/test_pipeline_end_to_end.py`
+(`test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild`).
+
+## Car-free bike roads on the map (OWNER-DECISIONS 442)
+
+`facility.map_class` draws a trail-class way signed `bicycle_road=yes` or `cyclestreet=yes`
+(`BICYCLE_ROAD_KEYS`) with no bicycle tag as a road (`facility.is_bicycle_road`), as on the
+car-free piece of Beach Drive (way 24976160, `highway=pedestrian`), which had read as a
+trail a bicycle may not ride and was left off the map. The map only: the facility class,
+which routing reads, and access are unchanged, and the closed-access check (`access` or
+`vehicle` closing it with no bicycle or foot tag reopening it) runs first, so a private one
+stays hidden. Tests: `tests/test_facility.py`.
+
+## Hard surfaces (OWNER-DECISIONS 440)
+
+`routemaker.surfaces` is the one definition of a paved surface. `is_paved` is the
+map's and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
+graph's (`lua/routemaker_remap.lua`, `M.PAVED_SURFACES` and `M.PAVED_PREFIXES`, kept
+equal by `tests/test_surfaces.py`): road paving and its `:` variants, wood and
+`boardwalk`, metal and `metal_grid`, brick, bricks, sett, tartan, rubber, cobblestone and
+unhewn cobblestone. The two cobblestones are also rough (`stress.is_rough`), so a road
+on them floors at LTS 2 as a dirt one does.
+
+Two narrower readings keep access where it was:
+
+- `is_sealed`, road paving only, is what lets a rated way out of singletrack
+  (`singletrack.is_paved`). A wooden ladder, berm or skinny rated `mtb:scale` 1 or more
+  is a mountain-bike feature whatever its class: The Boss Trail's wooden features are
+  `highway=cycleway`, and the jump lines `bicycle=designated`. A wooden trail bridge
+  rated 0 (the Rock Creek Trail's) was never singletrack.
+- `is_hard_for_access` is the no-bike-path rules' hard-surface exemption
+  (`trailaccess.is_hard_surface`): every paved surface but wood, which counts only on a
+  bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
+  a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
+
+Valhalla 3.5.1 prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
+`paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
+penalty (which still wins). A paved way's mountain-bike rating comes off as before
+(`M.strip_paved_ratings`), now on a wooden deck too, which only ever removes the
+parser's access grant; a rated wooden feature is closed by `rm:no_bicycle=singletrack`.
+`scripts/check_tile_build_access.sh` reads each hard surface's price in a real tile.
+
+## Roads closed or restricted to motor traffic (owner report 2026-10-06, the WB&A Trail)
+
+`stress.motor_restriction` caps the tier of a road whose motor traffic is barred or
+limited, so the class's default speed (35 mph on an unclassified road) does not set it.
+The most specific of `motorcar`, `motor_vehicle` and `vehicle` decides; with none of
+them, `access` decides where the way's own bicycle tag keeps bicycles on it. `no`,
+`agricultural` and `forestry` cap at LTS 1; `private`, `destination`, `permit` and
+`delivery` at LTS 2; a posted limit above 30 mph raises the cap one tier. It only lowers,
+is skipped where a traffic count is known, and leaves a way closed to bicycles too to
+the tables, since there is no ride on it to rate (444): a `bicycle` tag outside
+`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...), or, with no
+bicycle tag, an `access` or `vehicle` that is not a public value. It changes no access: the rule text says why the tier is low, and
+the rough-surface floor still applies after it. Bragers Road (way 11507607) on the
+WB&A Trail is the test case.
 
 ## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 

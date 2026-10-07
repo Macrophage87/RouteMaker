@@ -561,5 +561,9 @@ def test_the_avoid_rows_432_replaces_are_out_of_the_east_of_anacostia_file() -> 
     rows = {r["osm_way_id"] for r in document["rows"]}
     assert not rows & SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
     retired = {r["osm_way_id"] for r in document["retire"]}
-    assert retired == SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
-    assert all("432" in r["reason"] for r in document["retire"])
+    assert SOUTH_CAPITOL_MLK_TO_MISSISSIPPI <= retired
+    assert all(
+        "432" in r["reason"]
+        for r in document["retire"]
+        if r["osm_way_id"] in SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
+    )

@@ -356,6 +356,24 @@ def short_path_candidate(tags: dict[str, str]) -> bool:
     )
 
 
+# `bicycle_road=yes` / `cyclestreet=yes`: a road signed for bicycles, which
+# Valhalla's transform opens to them whatever the class (`pipeline.run`'s
+# `_OPENS_OVER_BICYCLE_NO`). OWNER-DECISIONS 442: the car-free piece of Beach
+# Drive (way 24976160, `highway=pedestrian`, `bicycle_road=yes`, no bicycle tag)
+# stayed routable but dropped off the stress map.
+BICYCLE_ROAD_KEYS = ("bicycle_road", "cyclestreet")
+
+
+def is_bicycle_road(tags: dict[str, str]) -> bool:
+    """A way signed as a bicycle road, with no bicycle tag that says otherwise.
+
+    For the map only: what is drawn as open, never what routing opens.
+    """
+    if tags.get("bicycle") is not None:
+        return False
+    return any(tags.get(key) == "yes" for key in BICYCLE_ROAD_KEYS)
+
+
 def map_class(tags: dict[str, str]) -> MapClass:
     """How the stress map draws a way, by its own tags; a road inside a
     military base is found by its place (`pipeline.military`). BARRED: a
@@ -387,7 +405,11 @@ def map_class(tags: dict[str, str]) -> MapClass:
         # to the base map like a road a bicycle may not use (OWNER-DECISIONS
         # 278, 290(b)). A short `bicycle=dismount` connector stays: routing
         # keeps it, and the route says to walk.
-        if tags.get("bicycle") != "dismount" and not trail_open_to_bicycle(tags):
+        if (
+            tags.get("bicycle") != "dismount"
+            and not trail_open_to_bicycle(tags)
+            and not is_bicycle_road(tags)
+        ):
             return MapClass.BARRED
         return MapClass.ROAD
     if highway is None:

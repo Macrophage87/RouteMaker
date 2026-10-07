@@ -3485,7 +3485,18 @@ SE and its side path, Pentagon Connector Road) stay open, about 41 mi (66 km) in
 signed paths only the base reaches stay closed (438.1, 439: until the community confirms
 them); "inside" is the share of a way's
 length. `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
-open. Veirs Mill Rd's former Avoid stretch comes out LTS 3 on its two-lane carriageways and
+open. The same rule closes secured federal compounds OSM does not tag military (owner
+report 2026-10-06; `restricted_areas.SECURED_AREAS` and a government area with its own
+`access` against the public): Goddard, NIST, NIH Bethesda and its Animal Center, the
+Naval Academy's Yard, the James J. Rowley Training Center, the FDA White Oak campus, the
+Nebraska Avenue Complex, the White House grounds, the state prison complex at Jessup
+(446b) and the correctional department's land at Sykesville (447, closed under err closed
+until the owner rules), about 2,560 ways and 156 mi (252 km), `rm:no_bicycle=secured`; the
+public way in to the Goddard Visitor Center (446, 0.82 mi), Goddard's two county roads,
+Brock Bridge Rd's bridge at Jessup and Slacks Rd through the Sykesville land stay open.
+`secured-closures.csv` beside the military report lists
+them (a `facility` column for `installation`). CIA headquarters is `landuse=military` and is in
+the military count. Veirs Mill Rd's former Avoid stretch comes out LTS 3 on its two-lane carriageways and
 LTS 4 on the seven with three or four lanes (433, 437.4), and Saint Elizabeths Rd SE LTS 4
 (437c), as is Jeff Todd Way's roadway at Fort Belvoir (439b; its side path keeps its
 own rating).
@@ -3496,7 +3507,8 @@ the surface, so the paved Rock Creek Trail in Montgomery County (`mtb:scale=0`),
 Trail and Northwest Branch were priced as dirt and routes avoided them. 172 paved ways
 carry a rating in the 2026-10-03 extract; the rebuild logs the count (`paved ways with an
 mtb rating`). Access does not change. Being a lua change, it needs
-`scripts/check_tile_build_access.sh` (48 cases, 0 failures on the bundle) and the full
+`scripts/check_tile_build_access.sh` (64 cases, 0 failures on wip/pre-rebuild: the bundle's
+48, 14 for hard surfaces and 2 for secured areas) and the full
 graph rebuild, which step I is.
 
 **Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
@@ -3515,7 +3527,11 @@ each one only where the live table has it, so the new api is safe on the old tab
 
 **The order.** Run from the deployment checkout, one step at a time, with `</dev/null` on
 every docker command. Steps marked **(owner)** need the owner's OK. Each step names its
-rollback point; "Rollback", below, uses them.
+rollback point; "Rollback", below, uses them. This rebuild starts from a **fresh Geofabrik
+extract**, downloaded first (owner-approved, OWNER-DECISIONS 443) so the owner's OSM
+edits of 2026-10-06 are in it, and its date is checked before the rebuild builds from it:
+"Before E", below, checks Geofabrik's date, and step I starts the download (by moving the
+clipped extract aside) and checks what came.
 
 ```sh
 D=$(sed -n 's/^DATA_ROOT=//p' .env)            # the deployment's data root, read from .env
@@ -3537,7 +3553,7 @@ and 07:30 UTC.
 
 ```sh
 free -m; docker ps --format '{{.Names}}' </dev/null; df -h /tmp   # only this stack's containers; /tmp near empty
-ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # older than 6 days: the rebuild downloads, so STOP and ask the owner
+ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # 2026-10-03's; this run replaces it ("Before E", 443)
 Q "select count(*) from django_migrations"                       # note it (68 before the bundle)
 Q "select count(*) from live.segment"                            # note it
 Q "select id,task_name,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"
@@ -3560,6 +3576,14 @@ Q "select max(id) from override" > ~/override-maxid-pre-bundle.txt
 ls -l $D/backups | tail -1                                        # last night's backup is there
 ```
 
+Optional **(owner)**, if a rerun on the 2026-10-03 data might be wanted: copy the old
+merged and clipped extracts aside first (about 970 MB; step I keeps only the clipped one,
+and the download overwrites the merged file and the three state extracts):
+
+```sh
+mkdir -p ~/rmdata/extracts-2026-10-03 && cp -p $D/extracts/merged.osm.pbf $D/extracts/source.osm.pbf ~/rmdata/extracts-2026-10-03/
+```
+
 **D. Hold the weekly tick (S3 of the operations review). (owner: `.env` edit)** Every
 Procrastinate worker runs the periodic deferrer for the whole registry, so the maintenance
 `worker` queues the Tuesday 08:00 UTC `weekly_rebuild` even while `rebuild` is stopped, and
@@ -3578,6 +3602,46 @@ Q "select id,status,args from procrastinate_jobs where task_name='weekly_rebuild
 A `todo` row here (after 08:00 UTC on a Tuesday) is the waiting tick. Leave it: with the
 pause in `.env` it ends "paused" as soon as `rebuild` starts in step G, and the check
 there shows it gone. `run_rebuild_now` passes `manual=True`, so the pause does not hold it.
+
+**Before E: a fresh extract (owner-approved download, OWNER-DECISIONS 443).** The owner
+approved downloading a fresh Geofabrik extract for this rebuild ("yes. I approve", 443),
+so that the OSM edits they submitted on 2026-10-06 (the Twinbrook Connector surfaces, the
+bicycle tags of a crossing, Veirs Mill Rd's lanes, limit and side path) are in the
+build; the overrides of H still apply on top, and no Twinbrook surface override is needed.
+The extract on disk is 2026-10-03's and younger than `SOURCE_EXTRACT_MAX_AGE` (six days),
+so the rebuild would reuse it. So step I moves the clipped extract aside just before it
+fires the rebuild: the rebuild's first stage (`FETCH_EXTRACT`, "The source extract",
+above) finds it absent and downloads once, and an automatic retry reuses the new files,
+which are under six days old. Nothing is set in `.env`: leave its
+`SOURCE_EXTRACT_FORCE_REFRESH=` line (from `.env.example`) empty, since a forced refresh
+would download again on every retry. **(owner: confirm about 664 MB.)** The three state
+extracts (PBF) were 21 MB, 215 MB and 428 MB at 2026-10-03, 664 MB (633 MiB) in all; the
+owner was told about 300 MB. The rebuild also writes `merged.osm.pbf` (about 660 MB) and
+`source.osm.pbf` (about 300 MB).
+
+Geofabrik cuts each region's daily file at about 20:21 UTC (the 2026-10-03 files say
+`2026-10-02T20:21:34Z`); an edit made after the cut arrives in the next day's file. So the
+file published early on 2026-10-07 holds edits up to about 2026-10-06 20:21 UTC (16:21
+EDT). First check that Geofabrik's current build is new enough (three small text files):
+
+```sh
+for r in district-of-columbia maryland virginia; do
+  curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
+done                                                             # each at or after the owner's last 2026-10-06 edit
+```
+
+Each `timestamp` (UTC, written `2026-10-06T20\:21\:02Z`) must be at or after the owner's
+last OSM edit of 2026-10-06. Its time is on the owner's changeset list; if that list shows
+local time, EDT is UTC less 4 h, so a 16:00 EDT edit is 20:00 UTC. If any timestamp is
+older, STOP and ask the owner: the run waits for the next day's file. Note the three
+timestamps; step I checks the download against them. Then check that nothing forces a
+refresh:
+
+```sh
+grep '^SOURCE_EXTRACT_FORCE_REFRESH=' .env                        # SOURCE_EXTRACT_FORCE_REFRESH=  (empty), or no line
+```
+
+Nothing has changed yet, and nothing is downloaded until I.
 
 **E. Code and images.**
 
@@ -3606,6 +3670,7 @@ grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: c
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
 docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
 Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
 ```
@@ -3613,25 +3678,53 @@ Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and
 Never a plain `up -d`, and never name `valhalla-offroad` in an `up` on this host ("After a
 host restart", above). Rollback point: the images tagged in C.
 
-**H. Reference data and overrides.** Five files, database rows that take effect only
+**H. Reference data and overrides.** Six files, database rows that take effect only
 once loaded, all **(owner OK: a live DB write)**, each a dry run first and then `--confirm`,
-before the rebuild:
+before the rebuild. In this load order (each later file assumes the earlier ones are in;
+the military file retires two rows the east-of-the-Anacostia file leaves in place), with
+the dry run each prints after `grep -v '^present:'`:
 
-- the Dupont Circle underpass (OWNER-DECISIONS 414, 416: `bicycle=yes` and LTS 4 on the
-  ten underpass ways OSM tags `bicycle=no`);
-- the east-of-the-Anacostia arterials again (432): its `retire` list withdraws the five
-  South Capitol St Avoid rows (MLK Jr Ave SE to Mississippi Ave SE), which outrank the new
-  LTS 4 corridor; VALIDATE refuses a build where the stretch is not LTS 4, so this one is
-  not optional;
-- the Veirs Mill sidepath (433): retires the two `bicycle=designated` rows on the
-  north-side sidewalks and closes them (`bicycle=no`);
-- the Montgomery Planning LTS 5 file (433): retires the 23 Veirs Mill Rd Avoid rows and
-  keeps the other 386;
-- the military reopenings (437.6, 437a-c, 438.2, 439b): `bicycle=yes` on Jeff Todd Way (10
-  ways), Russell Rd (32), Saint Elizabeths Rd SE (2) and its side path (11) and Pentagon
-  Connector Road (25), LTS 4 on Saint Elizabeths Rd SE (retiring its two
-  east-of-the-Anacostia Avoid rows) and on Jeff Todd Way's 15 carriageway ways; after the
-  east-of-the-Anacostia file.
+1. `2026-10-05-owner-dupont-underpass.json`, the Dupont Circle underpass (OWNER-DECISIONS
+   414, 416: `bicycle=yes` and LTS 4 on the ten underpass ways OSM tags `bicycle=no`).
+   Dry: 20 create (10 access, 10 stress), no conflict.
+2. `2026-09-30-owner-arterials-east-of-anacostia.json`, the east-of-the-Anacostia
+   arterials again (432, 445-445e): its `retire` list withdraws the five South Capitol St
+   Avoid rows (MLK Jr Ave SE to Mississippi Ave SE), which outrank the new LTS 4 corridor,
+   and 522 more (445: only the highway-like main carriageways stay Avoid, 250 rows, 445d
+   keeping the four Benning Rd NE ways across the DC 295 interchange; the other roads go
+   back to the classifier, and Minnesota Ave, one Pennsylvania Ave way and all 36 Nannie
+   Helen Burroughs Ave NE ways are re-written as floors, at least LTS 4, 4 and 3
+   (`"at_least": true`: the rebuild keeps the classifier's tier where it is higher), 126
+   new rows, and 445d writes Avoid on the interchange's two ramps, 128 new rows in all).
+   Dry: 527 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 250 present, no absent. VALIDATE refuses a build where
+   the South Capitol stretch is not LTS 4, so this one is not optional.
+3. `2026-09-30-owner-veirs-mill-sidepath.json`, the Veirs Mill sidepath (433): retires the
+   two `bicycle=designated` rows on the north-side sidewalks and closes them
+   (`bicycle=no`). Dry: 2 retire `{'bicycle': 'designated'}`, 2 create `{'bicycle': 'no'}`.
+4. `2026-10-01-owner-moco-lts5-avoid.json`, the Montgomery Planning LTS 5 file (433):
+   retires the 23 Veirs Mill Rd Avoid rows and keeps the other 386. Dry: 23 retire, 386
+   present.
+5. `2026-10-06-owner-military-reopenings.json`, the military reopenings (437.6, 437a-c,
+   438.2, 439b): `bicycle=yes` on Jeff Todd Way (10 ways), Russell Rd (32), Saint
+   Elizabeths Rd SE (2) and its side path (11) and Pentagon Connector Road (25), LTS 4 on
+   Saint Elizabeths Rd SE (retiring its two east-of-the-Anacostia Avoid rows) and on Jeff
+   Todd Way's 15 carriageway ways. Dry: 2 retire (Saint Elizabeths Rd SE 316866053 and
+   1181165198, tier 5), 97 create (80 access `bicycle=yes`, 17 stress tier 4).
+6. `2026-10-06-owner-crosswalk-links.json`, the crosswalk links (442): `bicycle=yes` on
+   four crosswalk and traffic-island ways (way ids only, no names). Dry: 4 create (access,
+   `bicycle=yes`), no conflict.
+
+These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
+`override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
+database, the six files dry-run and loaded in this order, then the five checks below,
+which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all. A second dry run of each file then printed only
+`present` and `absent` lines. The other override files are already in the live table
+(on the same copy, after the six, their dry runs printed only `present`) and are not
+loaded again, except two: the Baltimore
+facilities file (3 create) waits for the owner (282a, below), and
+`2026-10-02-owner-canal-whitehurst.json` has no rows to load (the rebuild reads it from the
+image). If a dry run here prints other counts, the live table has changed since: stop and
+report.
 
 ```sh
 ACTOR=$(Q "select discord_user_id from app_user where is_instance_admin")   # one row
@@ -3641,7 +3734,7 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 #   dry: 20 create (10 access, 10 stress), no conflict
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | grep -v '^present:'
-#   dry: 5 retire (South Capitol 468820704, 590525532, 455234174, 468820714, 1528642818)
+#   dry: 527 retire (the 5 South Capitol rows of 432 and 522 of 445), 128 create (90 tier 4, 36 tier 3, all floors; 2 tier 5 ramps of 445d), 250 present, no absent
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | grep -v '^present:'
 #   dry: 2 retire {'bicycle': 'designated'}, 2 create {'bicycle': 'no'}
@@ -3651,9 +3744,12 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
     < fixtures/overrides/2026-10-06-owner-military-reopenings.json | grep -v '^present:'
 #   dry: 2 retire (Saint Elizabeths Rd SE 316866053, 1181165198, tier 5), 97 create (80 access, 17 stress)
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-06-owner-crosswalk-links.json | grep -v '^present:'
+#   dry: 4 create (access, bicycle=yes), no conflict
 ```
 
-Any "disagrees" refusal: stop and report. Then the same five with `--confirm`, in the same
+Any "disagrees" refusal: stop and report. Then the same six with `--confirm`, in the same
 order:
 
 ```sh
@@ -3667,25 +3763,32 @@ docker compose exec -T api python manage.py load_access_overrides - --actor "$AC
     < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | tail -2
 docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
     < fixtures/overrides/2026-10-06-owner-military-reopenings.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-06-owner-crosswalk-links.json | tail -2
 ```
 
 Each ends `wrote N of M rows; the rest were already approved`, and each retiring file's
 line before it is its `retired` count. In order: Dupont `wrote 20 of 20`; east of the
-Anacostia `retired 5 rows`; Veirs sidepath `retired 2 rows`, `wrote 2 of 2`; Montgomery
-`retired 23 rows`; military `retired 2 rows`, `wrote 97 of 97`. **Then check H before
+Anacostia `retired 527 rows`, `wrote 128 of 378`; Veirs sidepath `retired 2 rows`, `wrote 2
+of 2`; Montgomery `retired 23 rows`, `wrote 0 of 386`; military `retired 2 rows`, `wrote 97
+of 97`; crosswalk links `wrote 4 of 4`. **Then check H before
 firing I**; a skipped
 or failed load is otherwise found only about 3 h into the rebuild (VALIDATE runs after the
 tile build), or, for the Veirs Mill and military files, never before the swap:
 
 ```sh
 Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
+Q "select (value->>'tier')::int, count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' group by 1 order by 1"   # 3|36, 4|90, 5|252: the 445 floors and the Avoid rows that stay, the interchange's six included (445d; Saint Elizabeths Rd's two are retired by the military file, so after it none are left over)
+Q "select count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' and value->>'at_least'='true'"   # 126: the 445a-c floors are minimums ("at_least")
 Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339,1311964678)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053,232308625)))"   # 11: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path, Connector Road row, the two Veirs closures, three tier-4 rows (Dupont, Saint Elizabeths, Jeff Todd)
+Q "select count(*) from override where approved and kind='access' and value->>'bicycle'='yes' and osm_way_id in (1189857618,1362344261,1298593479,1189857620)"   # 4: the crosswalk links (442)
 ```
 
 Anything else: stop, load the missing file again (dry run, then `--confirm`), and check again.
 
 The api image must be the bundle's (step G): the old loader does not know `retire` and
-would refuse the Veirs Mill file as a conflict.
+would refuse the Veirs Mill file as a conflict, nor `at_least`, and would refuse the
+east-of-the-Anacostia file.
 
 Baltimore's Harford Road (282a): see "Rebuild checklist: Harford Road (decision 282a)",
 above. The Baltimore file is loaded only if the owner approves it, and the owner then
@@ -3695,15 +3798,54 @@ in C (rows above it are this step's).
 
 **I. The rebuild** (about 3-3.5 h on a quiet host; abandoned at 8 h). No lane work meanwhile.
 
+First the fresh extract (443). Just before firing, move the 2026-10-03 clipped extract
+aside inside the running `rebuild` container (it runs as 10001, which owns the directory),
+so the rebuild finds it absent and downloads once. Name it by the date it was built: the
+clipped file carries no timestamp of its own, and its state extracts' header (the first
+command) gives the data's cut, `2026-10-02T20:21:34Z`, built on 2026-10-03.
+**(owner OK: the 443 download starts with this run.)**
+
 ```sh
+docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/maryland-latest.osm.pbf </dev/null   # 2026-10-02T20:21:34Z
+docker compose exec -T rebuild mv /data/extracts/source.osm.pbf /data/extracts/source-2026-10-03.osm.pbf </dev/null
+docker compose exec -T rebuild ls -l /data/extracts </dev/null    # no source.osm.pbf; source-2026-10-03.osm.pbf is there
 docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
 docker compose logs -f rebuild </dev/null
 ```
 
+Rollback point, before `run_rebuild_now` only: move the file back
+(`mv /data/extracts/source-2026-10-03.osm.pbf /data/extracts/source.osm.pbf`, the same
+way). The log then shows `rebuilding the source extract: the clipped extract
+/data/extracts/source.osm.pbf is absent` and, about 2-3 min later, `source extract
+rebuilt: /data/extracts/merged.osm.pbf (0.6 GiB) from 3 regions, clipped to
+/data/extracts/source.osm.pbf (0.3 GiB)`. There are no download lines: curl prints nothing
+when it succeeds. Once the second line is there, check what was downloaded in a second
+shell (set `D` again), while the build carries on:
+
+```sh
+for r in district-of-columbia maryland virginia; do
+  docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/$r-latest.osm.pbf </dev/null
+done                                                             # each the timestamp checked before E, or later
+ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # written within the last hour (ls shows local time, EDT)
+```
+
+An older timestamp than the one checked before E, or a `source.osm.pbf` not written within
+the last hour: stop the rebuild (`docker compose stop rebuild </dev/null`, with the owner's
+OK) and report; nothing is promoted. An automatic retry (the job tries up to five times)
+reuses the new files and does not download again; only a retry after a failed download
+downloads. If `rebuilding the source extract` appears a second time in this run, stop the
+rebuild and ask the owner before it goes on.
+
 Watch for `military areas:` (about 21,690 ways closed, 2,168 mi, and about 290 left open,
 41 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
 areas:` line repeats the count, and refuses an installation below its floor
-(`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base), no warning
+(`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base),
+`secured federal compounds:` (about 2,561 ways closed, 156.4 mi, and 39 left open, 4.1 mi,
+at 2026-10-03's extract;
+VALIDATE refuses a compound below its floor, `REBUILD_SENTINEL_SECURED_MIN_CLOSED`, a
+Rowley sentinel way not closed; its open-network check cannot refuse yet, since every
+reason a way in a compound stays open is one of its exceptions), no warning
+`secured compounds listed by OSM id ... not in the extract`, no warning
 `Pentagon ways listed open ... not found`,
 `curated bike lanes (fixtures/bike_lanes): 23 ways`, `SOUTH CAPITOL ST BN 38.8309-38.8357 N:
 100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
@@ -3727,6 +3869,13 @@ Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236"
 Q "select stress_tier, count(*) from live.segment where osm_way_id in (468820704,590525532,455234174,468820714,1528642818) group by 1"  # South Capitol (432): 4 only
 Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,968550957) group by 1,2"  # Veirs Mill two-lane (433): 3, lane
 Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (724229765,724229775,1055964463,1055974099,1059851647,697039269,724229779) group by 1,2"  # three and four lanes (437.4): 4, lane
+Q "select count(*) from live.segment where osm_way_id > 1562063477"   # ways newer than urban-areas.json (2026-09-25): they read as rural; note the count
+Q "select (o.value->>'tier')::int, min(s.stress_tier), count(distinct s.osm_way_id) from override o join live.segment s on s.osm_way_id = o.osm_way_id where o.approved and o.kind='stress' and o.value->>'at_least'='true' group by 1 order by 1"   # 3|3|36 and 4|4|90 or so: no floor way below its floor (445a-c)
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (902479602,1276271654,6084740) order by 1"   # Rowley: barred or hidden, never road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (521457474,165477134,78343985) order by 1"   # ICESat Rd, WMAP Rd (446), Brock Bridge Rd bridge (446b): road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (436808063,1021005797,1126815407) order by 1"   # Sykesville land (447): Beef Farm Rd, a track, a service road: barred or hidden, never road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (11537133,1021005795) order by 1"   # Slacks Rd through the Sykesville land (447): road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (1189857618,1362344261,1298593479,1189857620) order by 1"   # crosswalk links (442): hidden (a crosswalk is not drawn), never barred
 Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,299021476,267730806,316866053,1001796647,346101190,32866298,345398786) order by 1"   # Jeff Todd (4), its side path (1), Russell, Saint Elizabeths (4), its path, South Fern, Connector Road: drawn; North Rotary Rd 345398786: hidden
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
@@ -3734,6 +3883,14 @@ curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag          
 curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
 curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
 ```
+
+The Veirs Mill Rd lines were measured on the 2026-10-03 extract. The owner's 2026-10-06
+edits change its lanes, limit and side path and may split its ways (a split way's new
+pieces read as rural and miss the id-keyed override rows), so other tiers or fewer rows
+there are expected: read `override-rematch.md` for `failed` rows and report; do not roll
+back for this alone. The same goes for the count of ways newer than `urban-areas.json`
+(1,931 at 2026-10-03, so roughly 2,500 now): they lean to a higher tier, the stress-averse
+side; regenerating the list from the fresh extract is for after this run.
 
 If the run row says the pre-draw was cut short, run `docker compose exec -T api python
 manage.py predraw_stress_tiles`. Then the two `trip` probes ("Bicycle closures in the
@@ -3746,12 +3903,16 @@ Mass Ride's route sections carrying `rpm`.
 Mass Ride map at z10, z12 and z14, the DC mask and the outside-DC notice. Start photon
 again if it was stopped. Rollback point: the `index.html` saved in C.
 
-**L. The weekly schedule (owner).** Decide when to unpause: remove the line from `.env`,
-then `docker compose up -d --no-deps --no-build --force-recreate rebuild`. Do it before
+**L. The weekly schedule (owner).** Decide when to unpause: remove the
+`WEEKLY_REBUILD_PAUSED` line from `.env` (leave `SOURCE_EXTRACT_FORCE_REFRESH=` empty), then
+`docker compose up -d --no-deps --no-build --force-recreate rebuild`. Do it before
 the next Tuesday 08:00 UTC, or leave it paused on purpose. While it stays paused the
 rollback target (`live_old`, the `previous` links) lasts.
 
-**M. The beta (after live is verified).** Use the bundle's sha-tagged image, then
+**M. The beta (after live is verified).** Check out on the beta the SHA deployed on live
+(step E's reviewed SHA, `git rev-parse --short HEAD` in the deployment checkout), or
+`receive-data.sh` refuses the bundle (its git sha must match the beta's checkout), and use
+that SHA's tagged image; then
 `scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend "$RM_SSH_HOST"
 /data/routemaker-incoming`; it sends `tiles/offroad` too (about 1.1 GB more). On the
 server, receive the bundle, restart the **four** routers (as `receive-data.sh` prints),
@@ -3792,11 +3953,24 @@ route chart width estimate).
   --force-recreate api worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the
   same for `rebuild`). Roll the data back first if it is also going back. The old images have the
   pause (355 is on main). Migration 0010 stays applied, which is harmless. The rows H
-  wrote (ids above the saved max id in `~/override-maxid-pre-bundle.txt`: the Dupont rows,
-  433's two `bicycle=no` rows and the 97 rows of the military file) stay until the owner
+  wrote (ids above the saved max id in `~/override-maxid-pre-bundle.txt`: the 20 Dupont
+  rows, the east-of-the-Anacostia file's 128 new rows, 433's two `bicycle=no` rows, the 97
+  rows of the military file and the four crosswalk rows, 251 in all) stay until the owner
   deletes them in the admin. The rows H retired are gone; to bring them back, **first**
-  delete those rows (433's `bicycle=no` rows on 468762518 and 791422825, and the military
-  file's tier-4 rows on 316866053 and 1181165198, or the old files are refused as a
-  conflict), then load the files as they were at `pre-bundle-$L` (`git show
+  delete these rows, or the old files are refused as a conflict: 433's `bicycle=no` rows on
+  468762518 and 791422825, the military file's tier-4 rows on 316866053 and 1181165198, and
+  the east-of-the-Anacostia file's 128 new rows (its 126 floor rows sit on ways the old file
+  rates tier 5; its two ramp rows are not in the old file). Define `Q` again (as at the head
+  of "The order"), then:
+
+  ```sh
+  M=$(cat ~/override-maxid-pre-bundle.txt)
+  Q "select count(*) from override where id > $M"                                     # 251: every row step H wrote
+  Q "select id, osm_way_id, value->>'tier' from override where id > $M and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' order by id"   # 128: delete these too (owner, admin) before reloading the old east file
+  ```
+
+  Then load the files as they were at `pre-bundle-$L` (`git show
   $L:fixtures/overrides/<file>.json`): the east-of-the-Anacostia, Veirs Mill sidepath and
-  Montgomery Planning files. The old api ignores an `offroad` row in `valhalla_upstream`.
+  Montgomery Planning files. The 2026-10-03 clipped extract is kept as
+  `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
+  was made. The old api ignores an `offroad` row in `valhalla_upstream`.

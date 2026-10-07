@@ -353,6 +353,13 @@ function M.remap_way(tags, derived)
   -- value, so the split finds nothing to copy there.
   M.split_both(tags, out)
 
+  -- A hard surface Valhalla would price rough reaches the graph as paved
+  -- (OWNER-DECISIONS 440, `M.GRAPH_SURFACE`).
+  local graph_surface = M.GRAPH_SURFACE[tags.surface or ""]
+  if graph_surface then
+    out.surface = graph_surface
+  end
+
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
   end
@@ -563,8 +570,17 @@ end
 -- Northwest Branch were priced as dirt and avoided, though the segment table
 -- rates them paved and LTS 1. `routemaker.singletrack` already says a paved
 -- trail is not singletrack whatever its rating; this takes the same paved test
--- (`M.PAVED_SURFACES`, the same five values and `concrete:*`) to the graph. 172
--- paved ways carried a rating in the 2026-10-03 extract.
+-- (`M.PAVED_SURFACES`) to the graph. 172 road-paved ways carried a rating in the
+-- 2026-10-03 extract.
+--
+-- Paved is every hard surface (OWNER-DECISIONS 440), as `routemaker.surfaces`
+-- defines it and tests/test_surfaces.py keeps equal: road paving and its `:`
+-- variants, wood, metal, brick, sett, tartan, rubber and cobblestone. So a
+-- wooden bridge on the Rock Creek Trail (`mtb:scale=0`) is priced as its deck
+-- and not as dirt. A rated wooden MTB feature loses its rating too, and stays
+-- closed: `routemaker.singletrack` reads only road paving as leaving
+-- singletrack, so `rm:no_bicycle` closes it below, and taking a rating off
+-- only ever removes the parser's grant.
 --
 -- Access is not changed. The parser grants bicycle access from any rating, but
 -- graph.lua already strips the ratings from every way upstream leaves closed
@@ -574,13 +590,34 @@ end
 -- it does not set the surface. `mtb:scale:uphill` and `mtb:description` stay as
 -- they are.
 M.PAVED_SURFACES = { asphalt = true, concrete = true, paved = true,
-  paving_stones = true, chipseal = true }
+  paving_stones = true, chipseal = true, wood = true, boardwalk = true,
+  cobblestone = true, unhewn_cobblestone = true, metal = true, metal_grid = true,
+  brick = true, bricks = true, sett = true, tartan = true, rubber = true }
+M.PAVED_PREFIXES = { "concrete:", "paving_stones:", "asphalt:" }
 M.PAVED_RATING_KEYS = { "mtb:scale", "mtb:scale:imba" }
 
 function M.is_paved(tags)
   local surface = tags.surface or ""
-  return M.PAVED_SURFACES[surface] == true or surface:sub(1, 9) == "concrete:"
+  if M.PAVED_SURFACES[surface] == true then return true end
+  for _, prefix in ipairs(M.PAVED_PREFIXES) do
+    if surface:sub(1, #prefix) == prefix then return true end
+  end
+  return false
 end
+
+-- The surface the graph is handed where Valhalla would price a paved one rough.
+--
+-- Valhalla 3.5.1's parser reads `surface=wood` and `boardwalk` as `compacted`,
+-- the gravel class, and `brick` / `bricks` as `paved_rough`, the cobblestone
+-- class (tests/test_tile_build_access.py, which reads the tile). OWNER-DECISIONS
+-- 440 counts all of them paved and only cobblestone rough, so they reach the
+-- graph as `paving_stones`, which the parser prices `paved`, the class of sett
+-- and paving stones: a deck or a brick path has seams a road's asphalt does
+-- not. Metal, tartan, rubber, sett and the `:` variants already price paved or
+-- better, and cobblestone stays `paved_rough`. A reviewer surface penalty,
+-- written after this, reads the way's own tag and wins.
+M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
+  brick = "paving_stones", bricks = "paving_stones" }
 
 --- Write REMOVE for each rating key a paved way carries; returns whether any.
 function M.strip_paved_ratings(tags, out)

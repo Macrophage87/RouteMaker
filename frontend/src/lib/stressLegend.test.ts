@@ -89,7 +89,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, every line solid from zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
   assert.ok(hint.includes("shows only from zoom 15, and faintly, so the bike lane is the main line."));
-  assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots and military bases not at all, but for the numbered public roads and the few streets open to the public through a base."));
+  assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots, military bases and secure government sites, such as prisons and guarded research campuses, not at all, but for the numbered public roads and the few streets open to the public through them."));
   assert.match(hint, new RegExp(`Further out than zoom ${STRESS_ZOOMS.min} nothing`));
   assert.match(hint, / The map is at zoom 12\.$/);
   assert.doesNotMatch(stressZoomHint(null), /The map is at/);

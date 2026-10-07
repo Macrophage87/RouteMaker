@@ -107,6 +107,11 @@ particular stretch of road might be adjusted, perhaps hidden"):
   ("we could down adjust a road if this is the better route among similar
   routes"). The direction, `up`, `down` or `same`, is not in the file; the
   rebuild takes it against the classifier's tier.
+- `at_least` (optional): `true` makes the row a floor. The rebuild rates the way
+  max(the classifier's tier, `tier`), so a way the classifier already rates at or
+  above it keeps its own tier and reason (OWNER-DECISIONS 445a-c: "at least an
+  LTS3", "Bump it up if it would be lower"). Absent or `false`, the row sets the
+  tier.
 - `adjustment_id`: lower-case words joined by hyphens, at most 64 characters,
   stable across rebuilds, and shared by every way of one stretch. Rows sharing
   one must agree on everything but the way.
@@ -215,33 +220,62 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
   route an area, so no access row can open one.
 
-- `2026-09-30-owner-arterials-east-of-anacostia.json`: 772 stress rows at
-  tier 5 (Avoid), hidden, no public_note, category other, annotation
-  approved, one adjustment per corridor. The owner (OWNER-DECISIONS 141): "I d
-  put most of the Arterials east of the Anacostia river as avoid"; asked which
-  to strike (144): struck "11th St SE", "Ridge Rd SE", "River bridges";
-  everything else, South Capitol St SW included, approved to load as Avoid.
-  The District's trunk, primary and secondary ways east of the river (812 in
-  the draft, 57.4 mi) less 11th Street SE (7 ways), Ridge Road SE (13), the
-  four ways that cross the river (Benning Road's and the Douglass Bridge's
-  spans, both Whitney Young Memorial Bridge ways), and the nine ways the
-  2026-09-27 file already curates: three of MLK Jr Ave SE at 4, a different
-  tier, which the loader would refuse, and six of Pennsylvania Ave SE already
-  at 5. Overpass bridges away from the river stay in. Load it after the
-  2026-09-27 file. Five South Capitol Street rows (Martin Luther King Jr Ave SE
+- `2026-09-30-owner-arterials-east-of-anacostia.json`: stress rows for the
+  trunk, primary and secondary ways east of the Anacostia River, hidden, no
+  public_note, annotation approved, one adjustment per road. The owner
+  (OWNER-DECISIONS 141): "I d put most of the Arterials east of the Anacostia
+  river as avoid"; asked which to strike (144): struck "11th St SE", "Ridge Rd
+  SE", "River bridges"; everything else approved to load as Avoid (772 rows,
+  53.6 mi, 86.3 km, after the nine ways the 2026-09-27 file curates and the
+  river bridges). Overpass bridges away from the river stay in. Load it after the
+  2026-09-27 file.
+  Cut back on 2026-10-06 (OWNER-DECISIONS 445): "I think I was too harsh with
+  some of the east of the river options. Set the ones that look like normal
+  roads back to whatever their LTS was." Now **378 rows, 527 retired**:
+  - 252 rows stay tier 5 (Avoid, 20.0 mi, 32.2 km) on the main carriageways
+    of Suitland Parkway SE (trunk and primary), Pennsylvania Avenue SE (trunk),
+    Branch Avenue SE (trunk), Kenilworth Avenue NE (primary), Indian Head
+    Highway, South Capitol Street and South Capitol Street SW and SE (outside the stretch
+    of 432), and East Capitol Street NE and SE (primary; "East Cap is a highway
+    past the river. I don't think any map should plan with that."), and, by 445d, six
+    ways of the Benning Rd NE / Kenilworth Avenue Freeway (DC 295) interchange
+    (0.79 mi, 1.28 km): Benning Road Northeast ways 962622875, 135146257, 135146261
+    and 135146277 (both carriageways and both bridges; 135146277 had been retired by
+    445, so it is kept) and the ramps 926566914 and 6056218. The owner: "there's a
+    stretch around here that I'd avoid 38.8961758,-76.9518693", ending at
+    38.8976873,-76.9499615 ("the last you could pull off to a different spot", logged in
+    OWNER-DECISIONS' "Record of owner words used in 444/445"; Foote
+    Street NE on Kenilworth Avenue NE, way 203015546, already Avoid). Benning Road
+    beyond the interchange and the freeway ramps (barred) are unchanged.
+  - The side lanes beside those roads are retired (2.3 mi, 3.7 km), after the North Capitol
+    Street precedent (284, 286, 295: the highway-like roadway is Avoid, its side
+    lanes are ordinary streets): East Capitol Street NE's four secondary ways, Kenilworth
+    Avenue NE's 26 secondary ways and Branch Avenue SE's one-way slip 468835493.
+  - 90 rows are LTS 4 floors (`"at_least": true`), ids ending `-lts4`: Minnesota Avenue SE and NE, all 89
+    ways (445a, "Minnesota ave is probably LTS4 in many parts, not avoid ... It's
+    known for people to speed on it", 4.4 mi, 7.1 km), and Pennsylvania Avenue SE's one
+    non-trunk way (445b, 0.08 mi, 130 m).
+  - 36 rows are LTS 3 floors (`"at_least": true`), ids ending `-lts3`: every main
+    carriageway way of Nannie Helen Burroughs Avenue NE (445c, "at least an LTS3",
+    2.4 mi, 3.9 km; the classifier rated 5 of them 2, 30 of them 3 and one 4).
+  - The floors are minimums: on a fresh extract a way the classifier rates higher
+    keeps the higher tier, and one it rates lower is raised to the floor.
+  - Every other row is retired: 522 in all, 126 of them replaced by the floor rows
+    on the same ways (27.0 mi, 43.5 km of road, 396 ways, goes back to the
+    classifier, which had it at LTS 2 to 4). Loading the file again withdraws the
+    rows already loaded, then writes the 378 (docs/OPERATIONS.md, the rebuild
+    bundle's step H).
+  Five South Capitol Street rows (Martin Luther King Jr Ave SE
   to Mississippi Ave SE, ways 468820704, 590525532, 455234174, 468820714 and
   1528642818, about 0.34 mi (0.55 km)) were taken out on 2026-10-05 for
   OWNER-DECISIONS 432 ("Change south captiol street from MLK ave to Missisipi
   ave to LTS4. There's no other routes through there."): that stretch is LTS 4
-  by the named corridor `fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json`,
-  and the file lists them under `retire`. An approved row outranks a
-  corridor, so the file is loaded again before the rebuild, which withdraws
-  the five rows already loaded (docs/OPERATIONS.md, the rebuild bundle's step
-  H); VALIDATE refuses a build where the stretch is not LTS 4.
-  The two Saint Elizabeths Road SE rows (316866053, 1181165198) were taken
-  out on 2026-10-06 for OWNER-DECISIONS 437c ("St Elizabeths road is open to
-  bikes, but It's LTS4."): the military reopenings file below retires them and
-  carries the road at LTS 4.
+  by the named corridor `fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json`;
+  they are under `retire` too, and VALIDATE refuses a build where the stretch
+  is not LTS 4. Saint Elizabeths Road SE: the military reopenings file below
+  retires its other two Avoid rows (316866053, 1181165198) and carries the road
+  at LTS 4 (437c); this file's three remaining Saint Elizabeths Road SE rows are
+  retired by 445.
 
 - `2026-10-06-owner-military-reopenings.json`: ways inside military areas the
   owner reopens to bicycles with evidence. Inside a base only an override row, a
@@ -258,6 +292,15 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   its 11-way side path, 0.55 mi (885 m), the mapped `bicycle=yes` sidewalk and
   crossings (437b). It retires the two east-of-the-Anacostia Avoid rows on the road.
   Load it after the east-of-the-Anacostia file (docs/OPERATIONS.md, step H).
+
+- `2026-10-06-owner-crosswalk-links.json`: four crosswalk and traffic-island ways
+  (1189857618, 1362344261, 1298593479, 1189857620) that link a `bicycle=designated`
+  side path to a `bicycle=designated` paved trail, opened with `bicycle=yes` access rows
+  (OWNER-DECISIONS 442; evidence: surveyed by the owner, bicycles use this crossing to
+  join the paved trail). Way ids only, with no road or place names and no fingerprints,
+  by owner decision 442; so a row whose way OSM splits is listed `failed` in the rematch
+  report and must be re-pointed by hand. Other crosswalks that link designated bike paths with no bicycle
+  tag are the backlog's (PLAN, FOLLOWUP-CROSSWALK-LINKS). Load it in step H.
 
 ## The agency-data files of 2026-10-01
 

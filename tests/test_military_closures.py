@@ -396,12 +396,14 @@ def test_validate_refuses_an_installation_below_its_floor_or_a_through_network()
 def test_settings_floor_every_large_installation():
     from config import settings as real
 
-    floors = real.REBUILD_SENTINEL_MILITARY_MIN_CLOSED
+    floors = dict(real.REBUILD_SENTINEL_MILITARY_MIN_CLOSED)
     assert {"Fort Belvoir", "Fort Detrick", "Marine Corps Base Quantico"} <= set(floors)
     assert {"Aberdeen Proving Ground", "The Pentagon"} <= set(floors)
     # Bolling's old outline and JBAB overlap: one floor for the two (O1).
     assert floors[("Bolling Air Force Base", "Joint Base Anacostia Bolling")] >= 800
     assert "Bolling Air Force Base" not in floors and "Joint Base Anacostia Bolling" not in floors
+    # The large installations; CIA headquarters (owner report 2026-10-06) is small.
+    assert floors.pop("Central Intelligence Agency") >= 225
     assert all(floor >= 470 for floor in floors.values())
 
 

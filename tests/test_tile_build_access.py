@@ -86,6 +86,23 @@ OPEN, CLOSED = True, False
 
 # (name, tags, bicycle access): True or False for both directions, or a
 # (forward, backward) pair where the two differ.
+# What the tile prices each hard surface as (OWNER-DECISIONS 440): no worse than
+# paved, but rough for cobblestone alone.
+HARD_SURFACE_PRICES = {
+    "wood": "paved",
+    "boardwalk": "paved",
+    "brick": "paved",
+    "bricks": "paved",
+    "metal": "paved_smooth",
+    "sett": "paved",
+    "concrete:plates": "paved_smooth",
+    "paving_stones:lanes": "paved",
+    "tartan": "paved",
+    "rubber": "paved",
+    "cobblestone": "paved_rough",
+    "unhewn_cobblestone": "paved_rough",
+}
+
 CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
     ("singletrack, as the extract carries it", {**CCT, **SINGLETRACK}, CLOSED),
     (
@@ -156,6 +173,24 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
             "bicycle:forward": "yes",
             "cycleway:right": "lane",
             "rm:facility": "lane",
+        },
+        CLOSED,
+    ),
+    # A road and a sidewalk closed inside a secured federal compound (owner report
+    # 2026-10-06: the Rowley Training Center), the second reason written on roads.
+    (
+        "a tier-3 road in a secured compound with bicycle:forward=yes",
+        {**MILITARY_ROAD, "rm:no_bicycle": "secured", "bicycle:forward": "yes"},
+        CLOSED,
+    ),
+    (
+        "a bicycle=yes sidewalk in a secured compound",
+        {
+            "highway": "footway",
+            "footway": "sidewalk",
+            "bicycle": "yes",
+            "rm:trail_class": "yes",
+            "rm:no_bicycle": "secured",
         },
         CLOSED,
     ),
@@ -317,6 +352,58 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         },
         OPEN,
     ),
+    # Hard surfaces are paved (OWNER-DECISIONS 440), and the tile prices them so:
+    # a wooden deck reached the parser as `compacted`, the gravel class, and
+    # brick as `paved_rough`, until the remap handed both over as paving stones.
+    *[
+        (
+            f"a {surface} trail deck",
+            {
+                "highway": "cycleway",
+                "bicycle": "designated",
+                "foot": "designated",
+                "surface": surface,
+                "bridge": "yes",
+                "rm:trail_class": "yes",
+                "rm:facility": "path",
+            },
+            OPEN,
+        )
+        for surface in HARD_SURFACE_PRICES
+    ],
+    # A wooden bridge on the Rock Creek Trail (way 156659889): rated
+    # mtb:scale=0, which the parser priced as dirt; it is open and priced as
+    # its deck once the rating comes off.
+    (
+        "a wooden Rock Creek Trail bridge rated mtb:scale=0",
+        {
+            "highway": "cycleway",
+            "bicycle": "designated",
+            "foot": "designated",
+            "surface": "wood",
+            "bridge": "yes",
+            "mtb:scale": "0",
+            "rm:trail_class": "yes",
+            "rm:facility": "path",
+        },
+        OPEN,
+    ),
+    # A rated wooden MTB feature (The Boss Trail, way 808882074) stays
+    # singletrack and closed (`routemaker.singletrack` reads only road paving).
+    (
+        "a rated wooden MTB feature (The Boss Trail)",
+        {
+            "highway": "cycleway",
+            "bicycle": "yes",
+            "foot": "yes",
+            "surface": "wood",
+            "bridge": "yes",
+            "mtb:scale": "3",
+            "mtb:scale:imba": "3",
+            **SINGLETRACK,
+        },
+        CLOSED,
+    ),
     ("an open path", {"highway": "path", "bicycle": "yes", "foot": "yes"}, OPEN),
     (
         "an open rated trail (not singletrack)",
@@ -422,6 +509,8 @@ SURFACES = {
     "an open rated trail (not singletrack)": "path",
     "the same trail unrated": "dirt",
     "the C&O towpath above lock 21": "dirt",
+    **{f"a {surface} trail deck": price for surface, price in HARD_SURFACE_PRICES.items()},
+    "a wooden Rock Creek Trail bridge rated mtb:scale=0": "paved",
 }
 
 

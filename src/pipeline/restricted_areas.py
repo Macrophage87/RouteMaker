@@ -1,7 +1,7 @@
 """The areas a way lies inside that change how the stress map draws it, and how
 a bicycle may route through it.
 
-Four kinds, read from the same source extract as the ways with pyosmium's
+Five kinds, read from the same source extract as the ways with pyosmium's
 area assembly (multipolygon relations and closed ways alike):
 
 - `military` - `landuse=military` or `military=*`. The owner, 2026-09-29:
@@ -23,6 +23,20 @@ area assembly (multipolygon relations and closed ways alike):
   A way's own `access=yes` or `bicycle=yes` no longer opens it (437.1-437.3).
   Every way is listed in the rebuild's `military-closures.csv`. The building
   itself (`military=office`) is closed as any base is.
+- `secured` - a secured federal compound that is not tagged military: one the
+  curated `SECURED_AREAS` list names by its OSM id (the Secret Service's James J.
+  Rowley Training Center, `office=government` and nothing else), or a government
+  area (`landuse=government`, `office=government` or `government=*`, not a
+  building) whose own `access` keeps the public out. The owner, 2026-10-06: "a
+  secure secret service compound is also showing trails". Under the same rule
+  "err closed on bike access" (OWNER-DECISIONS 330) its roads and paths are closed
+  exactly as a military area's (`secured_closures`, `rm:no_bicycle=secured`), with
+  the same exceptions: an owner's override, a numbered public road, a way signed
+  for bicycles. Listed in the rebuild's `secured-closures.csv`. A way inside both
+  kinds is the military rule's. A public campus (NIH's visitor-screened Bethesda
+  campus aside, see `SECURED_AREAS`) is not caught: an `access=private` alone on a
+  commercial or residential area (a gated subdivision, an office park) is no
+  government area.
 - `cemetery` - `landuse=cemetery` or `amenity=grave_yard`. The owner: "There's
   a lot of cemetary roads, such as arlington national cemetary. We shouldn't
   have these roads on here, even if some of them can be technically ridden. I
@@ -66,7 +80,8 @@ Ring = list[tuple[float, float]]
 Area = tuple[tuple[float, float, float, float], list[Ring], list[Ring]]
 
 MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
-KINDS = (MILITARY, CEMETERY, PARKING, PARK)
+SECURED = "secured"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK)
 
 # The share of a way's vertices that must fall inside for it to count as inside.
 INSIDE_FRACTION = 0.5
@@ -81,12 +96,15 @@ PARK_BOUNDARY = frozenset({"national_park", "protected_area"})
 CELL = 0.01
 
 
-def area_kind(tags) -> str | None:
-    """The kind of area a closed way or a multipolygon is, or None."""
+def area_kind(tags, osm: str = "") -> str | None:
+    """The kind of area a closed way or a multipolygon is, or None. `osm` is its OSM
+    id (`w123` or `r123`), for the curated secured compounds (`SECURED_AREAS`)."""
     if tags.get("landuse") == "military" or (
         tags.get("military") is not None and tags.get("military") not in NOT_A_MILITARY_AREA
     ):
         return MILITARY
+    if is_secured_area(tags, osm):
+        return SECURED
     if tags.get("landuse") == "cemetery" or tags.get("amenity") == "grave_yard":
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
@@ -102,6 +120,146 @@ def area_kind(tags) -> str | None:
 
 def is_military_area(tags) -> bool:
     return area_kind(tags) == MILITARY
+
+
+# --- Secured federal compounds (owner report 2026-10-06; OWNER-DECISIONS 330) --
+
+# Secured federal compounds OSM does not tag military, nor with an access tag of their
+# own, by the area's OSM id (the 2026-10-03 extract; reports/SECURE-AREAS.md lists what
+# each closes), with the name the rebuild files them under (stable if OSM renames
+# one). Each is fenced, with guarded gates and no public way through.
+#
+# Keep this list short (OWNER-DECISIONS 446c, the owner: "There's a lot of secure
+# buildings in the area. It's the ones that people might think have open pathways
+# that we should worry about."): only a campus whose internal roads and paths would
+# look open and routable on the map belongs here. A secure building, or a site with
+# no inviting internal network, does not (446b: the Social Security Administration's
+# Woodlawn campus and the wider White Oak Federal Research Center are not listed).
+SECURED_AREAS = {
+    # The owner, 2026-10-06: "a secure secret service compound is also showing
+    # trails". The Secret Service's training centre off Powder Mill Rd, Beltsville/
+    # Laurel: `office=government` and a name, nothing else (its fence is way
+    # 140266648, mapped separately).
+    "w437408534": "James J. Rowley Training Center",
+    # NIH's main campus, Bethesda: a perimeter fence, every visitor screened at the
+    # gate. `amenity=research_institute` only. The Bethesda Trolley Trail through it
+    # is `bicycle=designated` and stays open; the sidewalks along Rockville Pike,
+    # Cedar Ln and Old Georgetown Rd are outside the fence.
+    "w42921793": "National Institutes of Health, Bethesda",
+    # NIH's animal centre near Poolesville (`barrier=fence` on the outline itself).
+    "w1328156254": "National Institutes of Health Animal Center",
+    # The FDA's White Oak campus, Silver Spring: fenced, guarded gates;
+    # `landuse=commercial` only. Not the wider Federal Research Center outline
+    # (r13305997) round it.
+    "r13305996": "FDA White Oak Campus",
+    # NIST, Gaithersburg: guarded gates, visitors registered (`landuse=industrial`).
+    "w47244898": "National Institute of Standards and Technology",
+    # The Naval Academy's Yard, Annapolis (`amenity=university`): a Navy
+    # installation, entered at guarded gates.
+    "r20613247": "United States Naval Academy",
+    # The Department of Homeland Security's Nebraska Avenue Complex, DC.
+    "w67282583": "Nebraska Avenue Complex",
+    # The White House grounds inside the fence (`landuse=government`): North and
+    # South Drive, Jackson Place's court, the Treasury Annex tunnel. Lafayette Park,
+    # the Ellipse and Pennsylvania Avenue are outside it.
+    "w651696687": "The White House grounds",
+    # The state prison complex at Jessup (OWNER-DECISIONS 446b, the owner: "Close the
+    # Jessup prison"): the Maryland Department of Public Safety & Correctional Services'
+    # outline (`landuse=commercial` only), holding the Correctional Institution for
+    # Women, Brockbridge, Dorsey Run, the Pre-Release Unit and the old House of
+    # Correction, and House of Correction Rd and Toulson Rd inside it. Brock Bridge Rd's
+    # bridge, inside the outline, stays open (`SECURED_PUBLIC_WAYS`); Jessup Rd (MD 175)
+    # is outside. Not the department's other outline, w736540664, which is at Sykesville.
+    "w1000668306": "Jessup correctional complex",
+    # The same department's land at Sykesville (`landuse=government` and a name only),
+    # off Slacks Rd beside the Central Maryland Correctional Facility: its farm, service
+    # and track roads (Beef Farm Rd among them). Closed under "err closed on bike access"
+    # (OWNER-DECISIONS 330) while the owner's answer is pending (447: the orchestrator's
+    # pick, "Sykesville land closed"). Slacks Rd, the county road through it, stays open
+    # (`SECURED_PUBLIC_WAYS`).
+    "w736540664": "Sykesville correctional land",
+}
+# Not listed, because a military outline already holds every way inside them (the
+# military rule closes them): the National Security Agency (r16132525,
+# `landuse=government`, inside Fort George G Meade), the FBI Academy (w1229063221,
+# inside Marine Corps Base Quantico). CIA headquarters (w186034091), the Naval
+# Observatory, Mount Weather, the NRO, NGA's sites, Liberty Crossing and the DIA are
+# `landuse=military` themselves.
+
+# Public roads a secured compound's outline takes in, by OSM way id (2026-10-03
+# extract): open, listed for the owner. Goddard's outline (r4237285) reaches past
+# its fence over Good Luck Rd and Soil Conservation Rd, the county roads to its
+# visitor centre and Greenbelt Rd (the owner keeps them open, 446). The Jessup
+# complex's (w1000668306) takes in Brock Bridge Rd's bridge, the county road through
+# Jessup (446b). The Sykesville land's (w736540664) takes in Slacks Rd, the Carroll
+# County road through it (447, owner to confirm). A way renumbered upstream closes
+# (err closed).
+SECURED_PUBLIC_WAYS = {
+    521217842: "Good Luck Road",
+    1413238483: "Good Luck Road",
+    1413238484: "Good Luck Road",
+    1413238485: "Good Luck Road",
+    50935645: "Soil Conservation Road",
+    1415647164: "Soil Conservation Road",
+    78343985: "Brock Bridge Road (its bridge, Jessup)",
+    11537133: "Slacks Road (Sykesville)",
+    1021005795: "Slacks Road (Sykesville)",
+    1021005796: "Slacks Road (its bridge, Sykesville)",
+    110346455: "Slacks Road (its bridge, Sykesville)",
+}
+# The public way in to the Goddard Visitor Center (OWNER-DECISIONS 446, the owner: "For
+# goddard, there's a visitor center, but other than that it's closed to the public"),
+# by OSM way id (2026-10-03 extract): from Greenbelt Rd (MD 193) at Goddard Dr, ICESat
+# Rd and its two turn lanes up to the gate, where ICESat Rd turns `access=private`; WMAP
+# Rd to the centre's driveway loop; the aisles of its two `access=customers` lots; and
+# the two short footways from the south lot to the centre's plaza. Everything else in
+# Goddard stays closed, the Goddard Center Bikeway (1527307168, 1527307170, 1527307171)
+# among it. Open only while the way's own tags do not close it; a way renumbered
+# upstream closes (err closed, 330).
+SECURED_VISITOR_WAYS = {
+    108840488: "Greenbelt Rd turn lane into ICESat Rd",
+    108840489: "Greenbelt Rd turn lane into ICESat Rd",
+    406118615: "ICESat Road",
+    708340400: "ICESat Road",
+    521457474: "ICESat Road, to the gate",
+    165477134: "WMAP Road",
+    6095432: "Visitor Center driveway",
+    165478931: "Visitor Center driveway",
+    6106122: "Visitor Center driveway loop",
+    6095437: "Visitor Center south lot aisle",
+    6100947: "Visitor Center south lot aisle",
+    1168519810: "Visitor Center north lot entrance",
+    1338313092: "Visitor Center north lot aisle",
+    1168519811: "Visitor Center north lot aisle",
+    1171520445: "footway, south lot to the Visitor Center plaza",
+    1171520552: "footway, south lot to the Visitor Center plaza",
+}
+# The values of a government area's own `access` that keep the public out:
+# `routemaker.facility.NO_PUBLIC_ACCESS` (no, private, military, restricted, permit).
+SECURED_ACCESS = NO_PUBLIC_ACCESS
+
+
+def government_area(tags) -> bool:
+    """A government site: `landuse=government`, `office=government` or a
+    `government=*` (not `no`)."""
+    return (
+        tags.get("landuse") == "government"
+        or tags.get("office") == "government"
+        or tags.get("government") not in (None, "no")
+    )
+
+
+def is_secured_area(tags, osm: str = "") -> bool:
+    """A secured federal compound: one `SECURED_AREAS` names, or a government area
+    (not a building) whose own `access` keeps the public out (Goddard Space Flight
+    Center: `government=aerospace access=private`). An `access=private` alone, on a
+    gated subdivision, an office park or a private lot, is no government area and
+    is not caught."""
+    if osm and osm in SECURED_AREAS:
+        return True
+    if tags.get("building") is not None:
+        return False
+    return government_area(tags) and tags.get("access") in SECURED_ACCESS
 
 
 class _NamedArea(tuple):
@@ -124,7 +282,8 @@ class _Areas(osmium.SimpleHandler):
         self.areas: dict[str, list[Area]] = {kind: [] for kind in KINDS}
 
     def area(self, a) -> None:
-        kind = area_kind(a.tags)
+        osm = f"{'w' if a.from_way() else 'r'}{a.orig_id()}"
+        kind = area_kind(a.tags, osm)
         if kind is None:
             return
         outers: list[Ring] = []
@@ -138,12 +297,12 @@ class _Areas(osmium.SimpleHandler):
             return
         xs, ys = [p[0] for p in points], [p[1] for p in points]
         area = ((min(xs), min(ys), max(xs), max(ys)), outers, inners)
-        osm = f"{'w' if a.from_way() else 'r'}{a.orig_id()}"
         self.areas[kind].append(named_area(area, a.tags.get("name") or "", osm))
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, cemetery, parking and park area in an extract, by kind."""
+    """Every military, secured, cemetery, parking and park area in an extract, by
+    kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     return handler.areas
@@ -597,6 +756,98 @@ def pentagon_open_missing(found: Sequence[MilitaryWay]) -> list[int]:
     return sorted(set(PENTAGON_OPEN_WAYS) - seen)
 
 
+# The `rm:no_bicycle` reason of a way inside a secured federal compound.
+SECURED_NO_BICYCLE = "secured"
+WHY_SECURED = "closed: inside a secured federal compound"
+WHY_SECURED_PUBLIC_ROAD = (
+    "open: a public road the compound's outline takes in (SECURED_PUBLIC_WAYS); owner to confirm"
+)
+WHY_SECURED_VISITOR = (
+    "open: the public way in to the Goddard Visitor Center and its parking "
+    "(SECURED_VISITOR_WAYS; OWNER-DECISIONS 446)"
+)
+WHY_SECURED_TAGGED_OPEN = (
+    "closed: inside a secured federal compound; its own access/bicycle tag does not open it "
+    "(OWNER-DECISIONS 437, as on a base)"
+)
+
+
+def _secured_label(area) -> str:
+    osm = getattr(area, "osm", "")
+    return SECURED_AREAS.get(osm) or getattr(area, "name", "") or osm or "unnamed secured area"
+
+
+def secured_closures(
+    ways,
+    areas: Sequence[Area],
+    reopened: Collection[int] = frozenset(),
+    skip: Collection[int] = frozenset(),
+) -> list[MilitaryWay]:
+    """Every highway way inside a secured federal compound (`SECURED`), closed or
+    (with the reason) left open, by the military rule (owner report 2026-10-06; "err
+    closed on bike access", OWNER-DECISIONS 330): inside is at least INSIDE_FRACTION
+    of the way's length, and only an override's bicycle permission, a numbered
+    public road, a public road the outline takes in (`SECURED_PUBLIC_WAYS`), the
+    public way in to the Goddard Visitor Center (`SECURED_VISITOR_WAYS`, 446) and a
+    way signed for bicycles stay open (Powder Mill Rd runs outside the Rowley fence,
+    and is not inside it). `skip` are the ways the military rule already
+    judged (a way inside both kinds is the base's)."""
+    if not areas:
+        return []
+    shapes = _Shapes(areas)
+    out: list[MilitaryWay] = []
+    for osm_id, tags, coords in ways:
+        highway = tags.get("highway")
+        if highway is None or not coords or osm_id in skip:
+            continue
+        share, area = shapes.share(coords)
+        if share < INSIDE_FRACTION:
+            continue
+        if osm_id in reopened and reopened_by_override(tags):
+            status, why = OPEN, WHY_OVERRIDE
+        elif public_route(tags):
+            status, why = OPEN, WHY_PUBLIC_ROUTE
+        elif osm_id in SECURED_PUBLIC_WAYS and not _closing_access(tags):
+            status, why = OPEN, WHY_SECURED_PUBLIC_ROAD
+        elif osm_id in SECURED_VISITOR_WAYS and not _closing_access(tags):
+            status, why = OPEN, WHY_SECURED_VISITOR
+        elif signed_for_bicycles(tags):
+            status, why = OPEN, WHY_SIGNED
+        else:
+            status, why = CLOSED, WHY_SECURED
+            if public_permission(tags):
+                why = WHY_SECURED_TAGGED_OPEN
+            elif (
+                highway not in TRAIL_CLASS_HIGHWAY
+                and highway not in ("service", "track")
+                and tags.get("name")
+                and not _closing_access(tags)
+            ):
+                why = WHY_NAMED_ROAD
+        out.append(
+            MilitaryWay(
+                osm_id,
+                _secured_label(area),
+                highway,
+                tags.get("name") or "",
+                round(_length_m(coords), 1),
+                status,
+                why,
+                _shown_tags(tags),
+                round(share, 3),
+            )
+        )
+    return out
+
+
+def secured_missing(areas: Sequence[Area]) -> list[str]:
+    """The curated compounds (`SECURED_AREAS`) the extract has no area for: deleted
+    or renumbered upstream, so not closed until the list is updated. Warned about;
+    VALIDATE's floors refuse the build."""
+    seen = {getattr(area, "osm", "") for area in areas}
+    return sorted(set(SECURED_AREAS) - seen)
+
+
 # Ways a bicycle may ride outside a base, for `through_networks`' entry points.
 CLOSED_CLASSES = frozenset({"motorway", "motorway_link", "construction", "proposed"})
 
@@ -610,8 +861,19 @@ def open_to_bicycles(tags) -> bool:
 
 # The reasons a way inside a base may stay open and still meet the outside network
 # at two or more points (`through_networks`): a numbered public road, a way signed
-# for bicycles, an owner override, the Pentagon's listed ways.
-THROUGH_EXCEPTIONS = frozenset({WHY_PUBLIC_ROUTE, WHY_SIGNED, WHY_OVERRIDE, WHY_EDGE_PATH})
+# for bicycles, an owner override, the Pentagon's listed ways, a secured compound's
+# listed public roads and the Goddard Visitor Center's way in (446: ICESat Rd meets
+# Greenbelt Rd at three points, its own end and two turn lanes).
+THROUGH_EXCEPTIONS = frozenset(
+    {
+        WHY_PUBLIC_ROUTE,
+        WHY_SIGNED,
+        WHY_OVERRIDE,
+        WHY_EDGE_PATH,
+        WHY_SECURED_PUBLIC_ROAD,
+        WHY_SECURED_VISITOR,
+    }
+)
 
 
 def through_networks(
@@ -667,17 +929,19 @@ def _cell(text: str) -> str:
     return '"' + text.replace('"', '""') + '"' if any(c in text for c in ',"\n') else text
 
 
-def military_report_csv(found: Sequence[MilitaryWay]) -> str:
+def military_report_csv(found: Sequence[MilitaryWay], place: str = "installation") -> str:
     """`<DATA_ROOT>/rebuild/reports/military-closures.csv`: every way the rule
-    looked at, so the owner can see what is closed and what was left open."""
-    lines = ["way_id,installation,highway,name,length_m,status,why,tags"]
+    looked at, so the owner can see what is closed and what was left open. The
+    secured compounds' `secured-closures.csv` is the same, its `place` column
+    `facility`."""
+    lines = [f"way_id,{place},highway,name,length_m,status,why,tags"]
     for m in sorted(found, key=lambda m: (m.installation, m.status, m.way_id)):
         fields = [str(m.way_id), m.installation, m.highway, m.name, f"{m.length_m:.1f}"]
         lines.append(",".join(_cell(f) for f in [*fields, m.status, m.why, m.tags]))
     return "\n".join(lines) + "\n"
 
 
-def military_summary(found: Sequence[MilitaryWay]) -> str:
+def military_summary(found: Sequence[MilitaryWay], what: str = "military areas") -> str:
     """One log line: closed and left-open ways and miles, the biggest installations."""
     closed = [m for m in found if m.closed]
     opened = [m for m in found if not m.closed]
@@ -686,7 +950,7 @@ def military_summary(found: Sequence[MilitaryWay]) -> str:
         by_site[m.installation] += m.length_m
     top = ", ".join(f"{site} {metres / 1609.344:.1f} mi" for site, metres in by_site.most_common(6))
     return (
-        f"military areas: {len(closed)} ways closed to bicycles "
+        f"{what}: {len(closed)} ways closed to bicycles "
         f"({sum(m.length_m for m in closed) / 1609.344:.1f} mi), {len(opened)} left open "
         f"({sum(m.length_m for m in opened) / 1609.344:.1f} mi, listed for the owner); "
         f"most closed: {top or 'none'}"

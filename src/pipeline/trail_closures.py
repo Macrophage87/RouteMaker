@@ -25,7 +25,7 @@ from routemaker import cbd, facility, singletrack, trailaccess, zoo
 from routemaker.cbd import Polygon
 
 from .extract import Way
-from .restricted_areas import MILITARY_NO_BICYCLE, Area, ways_inside
+from .restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE, Area, ways_inside
 
 # The hook for per-park rules (OWNER-DECISIONS 291(6): "Tags now, parks after
 # review"). Keyed by the unit's OSM id, a value is the `rm:no_bicycle` reason
@@ -36,9 +36,11 @@ PARK_RULES: Mapping[int, str] = {}
 
 # Precedence, first match wins: a rule above has already said what the way is.
 # A military area's closure (`restricted_areas.military_closures`) comes first: no graph
-# reopens it, the off-road one included, whatever else the way is.
+# reopens it, the off-road one included, whatever else the way is; and a secured
+# federal compound's (`restricted_areas.secured_closures`, owner report 2026-10-06) next.
 ORDER = (
     MILITARY_NO_BICYCLE,
+    SECURED_NO_BICYCLE,
     "zoo",
     singletrack.NO_BICYCLE,
     cbd.NO_BICYCLE,
@@ -83,9 +85,11 @@ def closures(
     park_areas: list[Area],
     zoo_polygon: list[Polygon] | None = None,
     military: Collection[int] = frozenset(),
+    secured: Collection[int] = frozenset(),
 ) -> TrailClosures:
     """Every NO-BIKE-PATHS closure, by way, and the ways `military` names (closed
-    inside a military area, owner report 2026-10-05) under their own reason."""
+    inside a military area, owner report 2026-10-05) and `secured` names (closed
+    inside a secured federal compound, 2026-10-06) under their own reasons."""
     ways = list(ways)
     result = TrailClosures()
     in_park = park_paths(ways, park_areas)
@@ -102,7 +106,7 @@ def closures(
     spur = zoo.spur_ways()
     for way in ways:
         osm_id, tags = way.osm_id, way.tags
-        if osm_id in spur and osm_id not in military:
+        if osm_id in spur and osm_id not in military and osm_id not in secured:
             # Open and destination-only: no rule closes it (and nothing but the
             # Zoo rule would), so it is not asked.
             result.destination_only.add(osm_id)
@@ -110,6 +114,8 @@ def closures(
         reason = None
         if osm_id in military:
             reason = MILITARY_NO_BICYCLE
+        elif osm_id in secured:
+            reason = SECURED_NO_BICYCLE
         elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):
             reason = zoo.NO_BICYCLE
         elif singletrack.is_singletrack(tags):

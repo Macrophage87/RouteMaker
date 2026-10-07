@@ -427,6 +427,34 @@ REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
     "Fort Detrick": 470,  # 625
     ("Bolling Air Force Base", "Joint Base Anacostia Bolling"): 800,  # 674 + 397 = 1,071
     "The Pentagon": 500,  # 675
+    # CIA headquarters, Langley: `landuse=military` in OSM (way 186034091). The owner,
+    # 2026-10-06: "As is the CIA headquarters".
+    "Central Intelligence Agency": 225,  # 303
+}
+# Ways inside the Secret Service's James J. Rowley Training Center that VALIDATE
+# requires closed to bicycles (`pipeline.run.assert_secured_closures`; the owner's
+# report, 2026-10-06: "a secure secret service compound is also showing trails"): a
+# footway, a track and a service road with no access tag of their own, in the
+# 2026-10-03 extract. One the extract no longer has is warned about.
+REBUILD_SENTINEL_SECURED_CLOSED_WAYS = (902479602, 1276271654, 6084740)
+# The fewest ways VALIDATE accepts closed in each secured federal compound (by the
+# name `restricted_areas.SECURED_AREAS` files it under, or OSM's for one the tag rule
+# finds), about three quarters of the 2026-10-03 extract's count: an outline deleted
+# or renumbered upstream would otherwise reopen a compound silently.
+REBUILD_SENTINEL_SECURED_MIN_CLOSED = {
+    "Goddard Space Flight Center": 525,  # 686 (702 less the Visitor Center's way in, 446)
+    "National Institute of Standards and Technology": 350,  # 464
+    "National Institutes of Health, Bethesda": 330,  # 441
+    "United States Naval Academy": 205,  # 276
+    "FDA White Oak Campus": 160,  # 215
+    "James J. Rowley Training Center": 80,  # 105
+    "The White House grounds": 83,  # 111
+    "Nebraska Avenue Complex": 43,  # 58
+    "National Institutes of Health Animal Center": 20,  # 26
+    # The state prison complex at Jessup (OWNER-DECISIONS 446b).
+    "Jessup correctional complex": 89,  # 119
+    # The correctional department's land at Sykesville (447: closed, err closed).
+    "Sykesville correctional land": 45,  # 60
 }
 MASS_RIDE_DC_WIDE_LANE_FT = 16.0
 MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0

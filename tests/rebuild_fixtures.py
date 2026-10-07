@@ -514,6 +514,70 @@ def build_dials_extract(path: Path) -> None:
         writer.close()
 
 
+SECURED_ROAD_ID = 3000
+SECURED_AND_BASE_ID = 3002
+BASE_CYCLEWAY_ID = 3003
+OUTSIDE_ROAD_ID = 3005
+SECURED_OUTLINE_ID = 3100
+BASE_OUTLINE_ID = 3101
+
+
+def build_secured_extract(path: Path) -> None:
+    """A secured federal compound beside a military base, their outlines overlapping
+    (owner report 2026-10-06; `restricted_areas.secured_closures`), all inside the
+    District's box.
+
+    The compound is a government area with its own `access=private` (the tag rule, as
+    Goddard is found). Inside it, an untagged service road that ends on a cycleway
+    signed for bicycles inside the base (open there); inside both outlines, a street
+    the base's rule judges; south of both, a public street.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            # The compound's outline, and the base's, 0.003 degrees over it.
+            1: (-77.080, 38.920),
+            2: (-77.070, 38.920),
+            3: (-77.070, 38.930),
+            4: (-77.080, 38.930),
+            5: (-77.073, 38.920),
+            6: (-77.065, 38.920),
+            7: (-77.065, 38.930),
+            8: (-77.073, 38.930),
+            # The compound's service road, ending where the base's cycleway starts.
+            10: (-77.0770, 38.924),
+            11: (-77.0715, 38.924),
+            12: (-77.0660, 38.924),
+            # The street inside both outlines.
+            13: (-77.0728, 38.927),
+            14: (-77.0702, 38.927),
+            # The public street south of both.
+            15: (-77.085, 38.915),
+            16: (-77.060, 38.915),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            SECURED_ROAD_ID: ([10, 11], {"highway": "service"}),
+            SECURED_AND_BASE_ID: ([13, 14], {"highway": "residential"}),
+            BASE_CYCLEWAY_ID: ([11, 12], {"highway": "cycleway", "bicycle": "designated"}),
+            OUTSIDE_ROAD_ID: ([15, 16], {"highway": "residential", "name": "Outside Street"}),
+            SECURED_OUTLINE_ID: (
+                [1, 2, 3, 4, 1],
+                {"landuse": "government", "access": "private", "name": "Test Compound"},
+            ),
+            BASE_OUTLINE_ID: ([5, 6, 7, 8, 5], {"landuse": "military", "name": "Test Base"}),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
 PARALLEL_COUNT = {
     "id": "count-parkway",
     # Drawn between the two ways and nearer the trail, which is what makes the

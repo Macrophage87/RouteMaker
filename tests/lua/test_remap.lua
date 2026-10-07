@@ -1038,6 +1038,48 @@ check("mtb:scale:imba on asphalt is removed too",
 check("and on concrete:plates",
   M.remap_way({ highway = "path", surface = "concrete:plates", ["mtb:scale"] = "2" },
     { is_trail_class = true })["mtb:scale"] == M.REMOVE)
+
+-- Every hard surface is paved (OWNER-DECISIONS 440): a wooden bridge on the Rock
+-- Creek Trail (way 156659889: cycleway, wood, bridge=yes, mtb:scale=0) loses its
+-- rating, and its deck reaches the graph as a surface Valhalla prices paved.
+local wood_bridge = M.remap_way({ highway = "cycleway", surface = "wood", bridge = "yes",
+  bicycle = "designated", ["mtb:scale"] = "0" }, { is_trail_class = true })
+check("a wooden trail bridge's mtb:scale is removed", wood_bridge["mtb:scale"] == M.REMOVE)
+check("and its deck is priced paved", wood_bridge.surface == "paving_stones",
+  tostring(wood_bridge.surface))
+check("and no access key is written", wood_bridge.bicycle == nil
+  and wood_bridge["bicycle:forward"] == nil and wood_bridge["bicycle:backward"] == nil)
+for _, surface in ipairs({ "wood", "boardwalk", "brick", "bricks" }) do
+  check(surface .. " reaches the graph as paving stones",
+    M.remap_way({ highway = "footway", surface = surface }, { is_trail_class = true }).surface
+      == "paving_stones")
+end
+for _, surface in ipairs({ "metal", "sett", "cobblestone", "unhewn_cobblestone", "tartan",
+    "rubber", "concrete:plates", "paving_stones:lanes", "asphalt", "gravel", "dirt" }) do
+  check(surface .. " keeps its own surface in the graph",
+    M.remap_way({ highway = "footway", surface = surface }, { is_trail_class = true }).surface == nil)
+end
+for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
+    "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
+  check(surface .. " is paved", M.is_paved({ surface = surface }))
+end
+for _, surface in ipairs({ "unpaved", "gravel", "compacted", "dirt", "ground", "woodchips",
+    "grass_paver", "asphalt;unpaved", "" }) do
+  check(surface .. " is not paved", not M.is_paved({ surface = surface }))
+end
+check("no surface is not paved", not M.is_paved({}))
+-- A rated wooden MTB feature (The Boss Trail's "Rollercoaster Wooden Feature",
+-- way 808882074: cycleway, wood, bridge=yes, mtb:scale=3) is singletrack, so it
+-- is closed both ways whatever losing its rating does.
+local feature = M.remap_way({ highway = "cycleway", surface = "wood", bridge = "yes",
+  bicycle = "yes", ["mtb:scale"] = "3" }, { is_trail_class = true, no_bicycle = true })
+check("a rated wooden MTB feature stays closed both ways",
+  feature["bicycle:forward"] == "no" and feature["bicycle:backward"] == "no")
+-- A reviewer surface penalty still wins over the deck's price.
+local penalised_deck = M.remap_way({ highway = "footway", surface = "wood" },
+  { is_trail_class = true, reviewer_surface_penalty = "compacted" })
+check("a reviewer penalty on a wooden deck wins", penalised_deck.surface == "compacted",
+  tostring(penalised_deck.surface))
 check("a dirt trail keeps its rating",
   M.remap_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "2" },
     { is_trail_class = true })["mtb:scale"] == nil)

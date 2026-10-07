@@ -50,6 +50,9 @@ def _no_long_trail_sentinels(settings):
     # And the military-closure sentinels (owner report 2026-10-05) are the region's ways.
     settings.REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = ()
     settings.REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {}
+    # And the secured-compound sentinels (owner report 2026-10-06) are the region's.
+    settings.REBUILD_SENTINEL_SECURED_CLOSED_WAYS = ()
+    settings.REBUILD_SENTINEL_SECURED_MIN_CLOSED = {}
 
 
 @pytest.fixture

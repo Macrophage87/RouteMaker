@@ -46,6 +46,7 @@ from routemaker import (
     ridetime,
     singletrack,
     speed_corrections,
+    surfaces,
     trailaccess,
     zoo,
 )
@@ -102,6 +103,9 @@ CORRIDOR_REPORT_NAME = "named-corridors.md"
 # Every way inside a military area, closed or left open, for the owner (owner report
 # 2026-10-05; `restricted_areas.military_report_csv`).
 MILITARY_REPORT_NAME = "military-closures.csv"
+# And every way inside a secured federal compound (owner report 2026-10-06;
+# `restricted_areas.secured_closures`), the same columns, `facility` for `installation`.
+SECURED_REPORT_NAME = "secured-closures.csv"
 
 
 def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
@@ -656,6 +660,13 @@ class RebuildContext:
     # Open networks inside a base that meet the outside network at two or more points
     # for no listed reason (`restricted_areas.through_networks`); VALIDATE refuses any.
     military_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
+    # The same for a secured federal compound (`restricted_areas.secured_closures`;
+    # owner report 2026-10-06; the rebuild's secured-closures.csv), and its open
+    # networks through; VALIDATE refuses any.
+    secured_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    secured_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
+    # The curated compounds (`restricted_areas.SECURED_AREAS`) the extract has no area for.
+    secured_missing: list[str] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1143,11 +1154,19 @@ def assert_reference_lts4_street(
     return tiers
 
 
-def military_through_networks(context: RebuildContext) -> list[tuple[list[int], list[int]]]:
+def military_through_networks(
+    context: RebuildContext, found: Sequence[restricted_areas.MilitaryWay] | None = None
+) -> list[tuple[list[int], list[int]]]:
     """`restricted_areas.through_networks` over the rebuild's ways: the outside
-    ways it needs are only those that share a node with an open in-base way."""
-    inside = {m.way_id for m in context.military_ways}
-    open_in = {m.way_id for m in context.military_ways if not m.closed}
+    ways it needs are only those that share a node with an open in-base way.
+    `found` is the military rule's ways (the default) or the secured compounds'
+    (`context.secured_ways`); outside is outside both."""
+    if found is None:
+        found = context.military_ways
+    inside = {m.way_id for m in context.military_ways} | {
+        m.way_id for m in getattr(context, "secured_ways", None) or ()
+    }
+    open_in = {m.way_id for m in found if not m.closed}
     by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
     open_nodes = {node for way_id in open_in for node in getattr(by_id.get(way_id), "node_ids", ())}
     node_ids = {}
@@ -1163,7 +1182,7 @@ def military_through_networks(context: RebuildContext) -> list[tuple[list[int], 
         ):
             node_ids[way.osm_id] = way.node_ids
             outside_open.add(way.osm_id)
-    return restricted_areas.through_networks(context.military_ways, node_ids, outside_open)
+    return restricted_areas.through_networks(found, node_ids, outside_open)
 
 
 def assert_military_closures(
@@ -1227,6 +1246,71 @@ def assert_military_closures(
         "military areas: %d ways closed to bicycles, %d left open (military-closures.csv)",
         closed,
         len(context.military_ways) - closed,
+    )
+    return closed
+
+
+def assert_secured_closures(
+    context: RebuildContext,
+    sentinel_ways: Sequence[int],
+    min_closed: Mapping[str, int] | None = None,
+) -> int:
+    """Ways inside a secured federal compound were closed (owner report 2026-10-06):
+    each sentinel way, a James J. Rowley Training Center road or path with no access
+    tag of its own, carries `rm:no_bicycle=secured` where the extract has it; each
+    floored compound (by its `SECURED_AREAS` name) closed at least its floor, so an
+    outline deleted or renumbered upstream fails the build rather than reopening the
+    compound; and no open network inside one meets the public network at two or
+    more points. Returns the number of ways closed."""
+    found = getattr(context, "secured_ways", None) or []
+    closed = sum(1 for m in found if m.closed)
+    by_site = Counter(m.installation for m in found if m.closed)
+    short = {
+        site: (by_site.get(site, 0), floor)
+        for site, floor in (min_closed or {}).items()
+        if by_site.get(site, 0) < floor
+    }
+    if short:
+        missing = getattr(context, "secured_missing", None) or []
+        raise ValidationFailed(
+            "secured federal compounds closed fewer ways than their floor (closed, floor): "
+            f"{short}; curated areas the extract no longer has: {missing or 'none'}. An "
+            "outline was lost, renumbered or renamed upstream, so its roads and paths could "
+            "be routed again (owner report 2026-10-06; restricted_areas.SECURED_AREAS, "
+            "REBUILD_SENTINEL_SECURED_MIN_CLOSED)"
+        )
+    through = getattr(context, "secured_through", None) or []
+    if through:
+        named = [(ways[:5], len(ways), len(entries)) for ways, entries in through[:5]]
+        raise ValidationFailed(
+            "open networks inside a secured federal compound meet the public network at two "
+            f"or more points (first ways, ways, entries): {named}; a route could pass through "
+            "one (owner report 2026-10-06)"
+        )
+    present = {way.osm_id for way in context.ways}
+    wrong = [
+        way_id
+        for way_id in sentinel_ways
+        if way_id in present
+        and context.no_bicycle.get(way_id) != restricted_areas.SECURED_NO_BICYCLE
+    ]
+    missing_ways = [way_id for way_id in sentinel_ways if way_id not in present]
+    if missing_ways:
+        logger.warning(
+            "secured-closure sentinel ways not in the extract (renumbered?): %s", missing_ways
+        )
+    if wrong:
+        raise ValidationFailed(
+            f"ways {wrong} inside the James J. Rowley Training Center are not closed to "
+            "bicycles (rm:no_bicycle=secured): the secured-compound rule did not run or lost "
+            "its areas, so a route could run through the compound again (owner report "
+            "2026-10-06)"
+        )
+    logger.info(
+        "secured federal compounds: %d ways closed to bicycles, %d left open "
+        "(secured-closures.csv)",
+        closed,
+        len(found) - closed,
     )
     return closed
 
@@ -1299,7 +1383,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     where no curated stress row set the tier: the owner's word on a way wins.
     """
     from routemaker.classes import TRAIL_CLASS_HIGHWAY
-    from routemaker.stress import Stress, StressResult
+    from routemaker.stress import MOTOR_RESTRICTED_RULE, Stress, StressResult
 
     if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
         return False
@@ -1310,7 +1394,10 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     current = stress_by_way.get(way.osm_id)
     if current is None or getattr(current, "adjustment", None) is not None:
         return False
-    if current.tier is Stress.LTS1:
+    # Already tier 1 by the classifier's own reading, nothing to correct; but a tier 1
+    # the motor-restriction cap set (OWNER-DECISIONS 444) is this rule's case, and gets
+    # its reason and its count.
+    if current.tier is Stress.LTS1 and not current.rule.startswith(MOTOR_RESTRICTED_RULE):
         return False
     stress_by_way[way.osm_id] = StressResult(
         tier=Stress.LTS1,
@@ -2035,12 +2122,33 @@ def build_handlers(
             placed, areas["military"], reopened=context.bicycle_override_ways
         )
         military_closed = {m.way_id for m in context.military_ways if m.closed}
+        # And a secured federal compound's, by the same rule (owner report 2026-10-06:
+        # the Secret Service's Rowley Training Center), but for the ways the military
+        # rule already judged.
+        context.secured_ways = restricted_areas.secured_closures(
+            placed,
+            areas[restricted_areas.SECURED],
+            reopened=context.bicycle_override_ways,
+            skip={m.way_id for m in context.military_ways},
+        )
+        secured_closed = {m.way_id for m in context.secured_ways if m.closed}
+        context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
+        if context.secured_missing:
+            logger.warning(
+                "secured compounds listed by OSM id (restricted_areas.SECURED_AREAS) not in "
+                "the extract, so not closed (renumbered upstream?): %s",
+                context.secured_missing,
+            )
         context.short_paths_hidden |= {
             m.way_id
-            for m in context.military_ways
+            for m in (*context.military_ways, *context.secured_ways)
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
+        logger.info(
+            "%s",
+            restricted_areas.military_summary(context.secured_ways, "secured federal compounds"),
+        )
         missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
         if missing_pentagon:
             logger.warning(
@@ -2049,13 +2157,15 @@ def build_handlers(
                 missing_pentagon,
             )
         context.military_through = military_through_networks(context)
+        context.secured_through = military_through_networks(context, context.secured_ways)
         # Paved ways with a mountain-bike rating: the remap removes the rating, which
         # Valhalla's parser would price as dirt (lua/routemaker_remap.lua,
         # strip_paved_ratings; the paved Rock Creek Trail in Montgomery County).
+        # Paved is every hard surface, wooden bridges included (OWNER-DECISIONS 440).
         paved_rated = sum(
             1
             for way in context.ways
-            if singletrack.is_paved(way.tags)
+            if surfaces.is_paved(way.tags)
             and any(way.tags.get(key) is not None for key in singletrack.SCALE_KEYS)
         )
         logger.info(
@@ -2065,14 +2175,23 @@ def build_handlers(
         )
         write_reports(
             context.work_dir,
-            {MILITARY_REPORT_NAME: restricted_areas.military_report_csv(context.military_ways)},
+            {
+                MILITARY_REPORT_NAME: restricted_areas.military_report_csv(context.military_ways),
+                SECURED_REPORT_NAME: restricted_areas.military_report_csv(
+                    context.secured_ways, "facility"
+                ),
+            },
             "military-closure",
         )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         routes = route_relations.read_routes(context.source_pbf)
         nobike = trail_closures.closures(
-            context.ways, routes, areas[restricted_areas.PARK], military=military_closed
+            context.ways,
+            routes,
+            areas[restricted_areas.PARK],
+            military=military_closed,
+            secured=secured_closed,
         )
         context.no_bicycle = nobike.reasons
         context.walk_bike = nobike.walk_bike
@@ -2520,6 +2639,11 @@ def build_handlers(
             context,
             _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
             _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
+        )
+        assert_secured_closures(
+            context,
+            _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
         )
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),

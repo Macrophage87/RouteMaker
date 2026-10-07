@@ -115,8 +115,8 @@ export function stressZoomHint(zoom: number | null): string {
     `sidewalks show too, every line solid from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, parking ` +
-    `lots and military bases not at all, but for the numbered public roads and the few streets open to the ` +
-    `public through a base. Further out than zoom ${min} nothing is drawn, and streets with no ` +
+    `lots, military bases and secure government sites, such as prisons and guarded research campuses, not at ` +
+    `all, but for the numbered public roads and the few streets open to the public through them. Further out than zoom ${min} nothing is drawn, and streets with no ` +
     `stress rating are not drawn.`;
   if (zoom !== null) text += ` The map is at zoom ${Math.floor(zoom)}.`;
   return text;

@@ -45,7 +45,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from . import facility, singletrack
+from . import facility, singletrack, surfaces
 
 PRIVATE = "private"
 SAC_SCALE = "sac_scale"
@@ -95,9 +95,9 @@ NATURAL_SURFACES = frozenset(
     }
 )
 LOOSE_EXEMPT_SURFACES = frozenset({"gravel", "fine_gravel", "compacted"})
-HARD_SURFACES = singletrack.PAVED_SURFACES | frozenset(
-    {"sett", "brick", "bricks", "metal", "tartan", "rubber", "cobblestone", "unhewn_cobblestone"}
-)
+# Every hard surface (OWNER-DECISIONS 440, `routemaker.surfaces`); a wooden
+# deck counts only on a bike path's bridge or boardwalk (`is_hard_surface`).
+HARD_SURFACES = surfaces.PAVED_SURFACES
 SMOOTH_ENOUGH = frozenset({"excellent", "good"})
 BAD_SMOOTHNESS = frozenset({"bad", "very_bad", "horrible", "very_horrible", "impassable"})
 TRACKTYPE_FIRM = frozenset({"grade1", "grade2", "grade3"})
@@ -171,10 +171,11 @@ def width_m(tags: dict[str, str]) -> float | None:
 
 
 def is_hard_surface(tags: dict[str, str]) -> bool:
-    surface = tags.get("surface") or ""
-    return surface in HARD_SURFACES or surface.startswith(
-        ("concrete:", "paving_stones:", "asphalt:")
-    )
+    """The hard-surface exemption: paved (`routemaker.surfaces`), but a wooden
+    deck only where it is a cycleway's or a bicycle=designated path's bridge or
+    boardwalk, so a wooden footbridge on a hiking path keeps its closure
+    (OWNER-DECISIONS 440: nothing about access widens)."""
+    return surfaces.is_hard_for_access(tags)
 
 
 def is_natural_surface(tags: dict[str, str]) -> bool:

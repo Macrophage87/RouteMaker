@@ -2,8 +2,8 @@
 # ruff: noqa: E501
 """Mutation pass over the NO-BIKE-PATHS rules (OWNER-DECISIONS 278, 280, 281, 291).
 
-Each mutant changes one line of `routemaker.trailaccess`, `routemaker.zoo` or
-`pipeline.trail_closures`; the focused tests must fail. Run from the repository
+Each mutant changes one line of `routemaker.trailaccess`, `routemaker.zoo`,
+`routemaker.surfaces` or `pipeline.trail_closures`; the focused tests must fail. Run from the repository
 root, one pytest process at a time:
 
     PGDATABASE=routemaker_nobike python scripts/mutants_nobike.py
@@ -21,7 +21,13 @@ REPO = Path(__file__).resolve().parents[1]
 TA = "src/routemaker/trailaccess.py"
 ZOO = "src/routemaker/zoo.py"
 TC = "src/pipeline/trail_closures.py"
-TESTS = ["tests/test_trailaccess.py", "tests/test_zoo.py", "tests/test_trail_closures.py"]
+SURF = "src/routemaker/surfaces.py"
+TESTS = [
+    "tests/test_trailaccess.py",
+    "tests/test_zoo.py",
+    "tests/test_trail_closures.py",
+    "tests/test_surfaces.py",
+]
 
 MUTANTS: list[tuple[str, str, str, str]] = [
     (
@@ -142,11 +148,18 @@ MUTANTS: list[tuple[str, str, str, str]] = [
         "            if other != osm_id:\n                parent[find(osm_id)] = find(other)\n",
         "            pass\n",
     ),
+    # The hard-surface lists moved to `routemaker.surfaces` (OWNER-DECISIONS 440).
     (
         "hard_surface_prefix_dropped",
-        TA,
-        '("concrete:", "paving_stones:", "asphalt:")',
-        '("paving_stones:", "asphalt:")',
+        SURF,
+        'SEALED_PREFIXES = ("concrete:", "paving_stones:", "asphalt:")',
+        'SEALED_PREFIXES = ("paving_stones:", "asphalt:")',
+    ),
+    (
+        "wooden_footbridge_counts_as_hard",
+        SURF,
+        "return surface_of(tags) not in WOOD_SURFACES or is_bike_bridge(tags)",
+        "return True",
     ),
     (
         "sidewalk_not_kept",
@@ -189,8 +202,8 @@ MUTANTS: list[tuple[str, str, str, str]] = [
     (
         "zoo_after_singletrack",
         TC,
-        "        if zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):\n            reason = zoo.NO_BICYCLE\n        elif singletrack.is_singletrack(tags):\n            reason = singletrack.NO_BICYCLE",
-        "        if singletrack.is_singletrack(tags):\n            reason = singletrack.NO_BICYCLE\n        elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):\n            reason = zoo.NO_BICYCLE",
+        "        elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):\n            reason = zoo.NO_BICYCLE\n        elif singletrack.is_singletrack(tags):\n            reason = singletrack.NO_BICYCLE",
+        "        elif singletrack.is_singletrack(tags):\n            reason = singletrack.NO_BICYCLE\n        elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):\n            reason = zoo.NO_BICYCLE",
     ),
     (
         "walk_not_flagged",

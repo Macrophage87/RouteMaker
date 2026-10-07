@@ -34,6 +34,7 @@ from rebuild_fixtures import (
     ALPHA_WEST_ID,
     BARE_PATH_ID,
     BARE_PATH_NEXT_ID,
+    BASE_CYCLEWAY_ID,
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
@@ -49,10 +50,13 @@ from rebuild_fixtures import (
     NAMED_STREET_EAST_ID,
     NAMED_STREET_ID,
     ONE_WAY_ID,
+    OUTSIDE_ROAD_ID,
     PARALLEL_COUNT,
     REGIONAL_ROUTE_ID,
     REPO,
     ROADSIDE_PATH_ID,
+    SECURED_AND_BASE_ID,
+    SECURED_ROAD_ID,
     SEPARATE_ROAD_ID,
     SINGLETRACK_ID,
     TOWPATH_ABOVE_ID,
@@ -67,6 +71,7 @@ from rebuild_fixtures import (
     build_long_trails_extract,
     build_named_bridge_extract,
     build_parallel_extract,
+    build_secured_extract,
     build_toy_extract,
     fake_fetch,
     install_source_extract,
@@ -632,6 +637,61 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     drawn = stored_map_class(context)
     assert drawn[SINGLETRACK_ID] == "hidden"
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
+
+
+def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild(
+    tmp_path, segment_schemas, states, monkeypatch
+) -> None:
+    """The secured-compound rule wired through the rebuild (owner report 2026-10-06;
+    final-review mutants M2): its closures reach the no-bicycle reasons and every
+    graph, the military rule's ways are skipped, the report lists it, the through
+    check counts its ways as inside, and its closed road is not drawn."""
+    from pipeline import restricted_areas
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, SECURED_REPORT_NAME
+
+    calls = []
+    real_through = restricted_areas.through_networks
+
+    def spy(found, node_ids, outside_open, *args, **kwargs):
+        calls.append(({m.way_id for m in found}, set(outside_open)))
+        return real_through(found, node_ids, outside_open, *args, **kwargs)
+
+    monkeypatch.setattr(restricted_areas, "through_networks", spy)
+    source = install_source_extract(tmp_path, build_secured_extract)
+    context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+
+    assert Stage.VALIDATE in report.completed
+    secured = {m.way_id: m for m in context.secured_ways}
+    military = {m.way_id: m for m in context.military_ways}
+    assert secured[SECURED_ROAD_ID].closed
+    assert secured[SECURED_ROAD_ID].installation == "Test Compound"
+    # A way inside both outlines is the base's alone.
+    assert SECURED_AND_BASE_ID in military and SECURED_AND_BASE_ID not in secured
+    assert not military[BASE_CYCLEWAY_ID].closed
+    assert context.no_bicycle[SECURED_ROAD_ID] == restricted_areas.SECURED_NO_BICYCLE
+    assert context.no_bicycle[SECURED_AND_BASE_ID] == restricted_areas.MILITARY_NO_BICYCLE
+    assert OUTSIDE_ROAD_ID not in context.no_bicycle
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SECURED_ROAD_ID in tags:
+            assert tags[SECURED_ROAD_ID].get("rm:no_bicycle") == "secured", variant.value
+    # The report lists it under its compound.
+    rows = list(
+        csv.DictReader((context.work_dir / DISCREPANCY_REPORT_DIR / SECURED_REPORT_NAME).open())
+    )
+    assert [(int(r["way_id"]), r["facility"], r["status"]) for r in rows] == [
+        (SECURED_ROAD_ID, "Test Compound", "closed")
+    ]
+    # The base's through check counts the compound's ways as inside, never as the
+    # public network a route through the base could join.
+    (base_call,) = [c for c in calls if BASE_CYCLEWAY_ID in c[0]]
+    assert SECURED_ROAD_ID not in base_call[1]
+    assert context.military_through == [] and context.secured_through == []
+    # The closed compound road is left off the map; the public street is drawn.
+    drawn = stored_map_class(context)
+    assert drawn[SECURED_ROAD_ID] == "hidden"
+    assert drawn[OUTSIDE_ROAD_ID] == "road"
 
 
 DIALS_IDS = (
