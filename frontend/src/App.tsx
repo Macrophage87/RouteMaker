@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
+import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { INFO_BUTTON_LABEL, INFO_HELP, type InfoRequest } from "./lib/roadInfo.ts";
+import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
@@ -48,7 +51,7 @@ import type { Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
-import { RAIL_STATIONS } from "./lib/railData.ts";
+import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
@@ -263,6 +266,9 @@ export function App() {
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
+  // The road panel's spot (OWNER-DECISIONS 441a), or null while it is closed.
+  const [roadInfo, setRoadInfo] = useState<InfoRequest | null>(null);
+  const closeRoadInfo = useCallback(() => setRoadInfo(null), []);
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
   const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
@@ -747,6 +753,13 @@ export function App() {
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
   };
+  // The keyboard's way to the road panel (OWNER-DECISIONS 441a): the road at the map's center.
+  const roadInfoAtCentre = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const { lng, lat } = map.getCenter();
+    setRoadInfo({ point: [lng, lat], origin: "centre" });
+  };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
   // The Adjust panel's sliders and toggles. Turning the loop on or off renames
@@ -1065,7 +1078,23 @@ export function App() {
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
         {points.length > 0 ? <p className="hint">{editingTips()}</p> : <p className="hint">{emptyPlanHint(preset, loopVias)}</p>}
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
+        <p className="hint">{INFO_HELP}</p>
       </MoreTips>
+      <div className="actions road-info-actions">
+        <button
+          type="button"
+          className="secondary"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="I"
+          onClick={roadInfoAtCentre}
+          onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
+          onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
+          onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
+          onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
+        >
+          {INFO_BUTTON_LABEL}
+        </button>
+      </div>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
           its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}
@@ -1222,6 +1251,14 @@ export function App() {
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
         onStationPoint={placeStation}
+        onRoadInfo={setRoadInfo}
+      />
+      <RoadInfoDialog
+        request={roadInfo}
+        massRide={massMap}
+        station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        onClose={closeRoadInfo}
+        announce={announce}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {narrow && (can.undo || can.redo) && (

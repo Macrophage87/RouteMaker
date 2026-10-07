@@ -60,6 +60,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
+import { LongPress, isInfoKey, type InfoRequest } from "./lib/roadInfo.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -150,6 +151,11 @@ interface Props {
   onFederalData?: (data: FederalData) => void;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
+  /**
+   * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
+   * long press on a phone, or I with the map focused (the map's centre).
+   */
+  onRoadInfo?: (request: InfoRequest) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -180,6 +186,10 @@ const MARKER_CLEAR_PX = 14;
 const CLICK_AFTER_DRAG_MS = 400;
 /** The buzz when a held finger picks the line up. */
 const PICK_UP_BUZZ_MS = 15;
+/** One gesture can ask for the road panel twice (a phone's long press is also its contextmenu). */
+const INFO_REPEAT_MS = 800;
+/** A right-button press that moved this far rotated the map: its contextmenu is not a request. */
+const RIGHT_DRAG_PX = 5;
 const MAX_BOUNDS_PAD = 0.4;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
@@ -348,7 +358,11 @@ export function MapView(props: Props) {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-right");
     const canvas = map.getCanvas();
-    canvas.setAttribute("aria-label", "Map. Use arrow keys to pan and plus or minus to zoom.");
+    canvas.setAttribute(
+      "aria-label",
+      "Map. Use arrow keys to pan and plus or minus to zoom. Press I for what is known about the road at the center.",
+    );
+    canvas.setAttribute("aria-keyshortcuts", "I");
     canvas.addEventListener("focus", () => callbacks.current.onCanvasFocus(true));
     canvas.addEventListener("blur", () => callbacks.current.onCanvasFocus(false));
 
@@ -468,6 +482,45 @@ export function MapView(props: Props) {
       if (result === "drop" && drop && point) callbacks.current.onLineDrop(drop.leg, lonLatAt(point), drop.points);
     };
 
+    // The road panel (OWNER-DECISIONS 441a): a right-click, or a finger held still on the
+    // map off the route line (which a held finger picks up instead). The long press
+    // never prevents a default, so the map pans and pinches under it as ever; a drift,
+    // a second finger or the finger lifting calls it off.
+    let infoAt = 0;
+    const openInfo = (point: { x: number; y: number }, origin: InfoRequest["origin"]) => {
+      const now = performance.now();
+      if (now - infoAt < INFO_REPEAT_MS) return;
+      infoAt = now;
+      // The finger's lift (or the right button's) is not also a tap that adds a point.
+      clickSuppressedUntil = now + INFO_REPEAT_MS;
+      callbacks.current.onRoadInfo?.({ point: lonLatAt(point), origin });
+    };
+    const longPress = new LongPress((at) => openInfo(at, "spot"));
+    // Where the right button went down, while it is held; and a contextmenu that came
+    // with the press (macOS and Linux send it then, Windows on release), waiting for the
+    // release to show whether the press was a click or a drag that rotated the map.
+    let rightDown: { x: number; y: number } | null = null;
+    let menuWaiting = false;
+    // Whether the last right press, released, moved (a rotation): Windows sends its
+    // contextmenu after the release.
+    let rightMoved = false;
+    const onRightDown = (event: MouseEvent) => {
+      if (event.button !== 2) return;
+      rightDown = local(event.clientX, event.clientY);
+      rightMoved = false;
+      menuWaiting = false;
+    };
+    const onRightUp = (event: MouseEvent) => {
+      if (event.button !== 2 || !rightDown) return;
+      const from = rightDown;
+      rightDown = null;
+      const at = local(event.clientX, event.clientY);
+      rightMoved = Math.hypot(from.x - at.x, from.y - at.y) > RIGHT_DRAG_PX;
+      if (!menuWaiting) return;
+      menuWaiting = false;
+      if (!rightMoved) openInfo(from, "spot");
+    };
+
     // Hovering: a handle on the line where a press would grab it, or a
     // station's hover card where a click would open its card - one or the
     // other, as pointerTarget (mapGlue.ts) decides for the press and click.
@@ -522,17 +575,30 @@ export function MapView(props: Props) {
     };
     map.on("touchstart", (event) => {
       if (event.points.length !== 1) {
-        // A second finger is a pinch, never a drag of the line.
+        // A second finger is a pinch, never a drag of the line nor a long press.
+        longPress.cancel();
         if (gesture.active) finish(null);
         return;
       }
       if (event.originalEvent.target !== canvas) return;
       const hit = grabAt(event.point, TOUCH_HIT_PX);
-      if (!hit) return;
+      if (!hit) {
+        // Off the line: a finger held here opens the road panel.
+        if (!anyPopupOpen()) longPress.press(event.point.x, event.point.y);
+        return;
+      }
       grabbed = hit;
       gesture.press("touch", event.point.x, event.point.y);
     });
     const onTouchMove = (event: TouchEvent) => {
+      if (longPress.pending) {
+        const touch = event.touches[0];
+        if (event.touches.length !== 1 || !touch) longPress.cancel();
+        else {
+          const at = local(touch.clientX, touch.clientY);
+          longPress.move(at.x, at.y);
+        }
+      }
       if (!gesture.active) return;
       if (event.touches.length !== 1) {
         finish(null);
@@ -542,11 +608,19 @@ export function MapView(props: Props) {
       if (follow(local(touch.clientX, touch.clientY))) event.preventDefault();
     };
     const onTouchEnd = (event: TouchEvent) => {
+      longPress.cancel();
       if (!gesture.active) return;
       const touch = event.changedTouches[0];
       finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
     };
     const onKey = (event: KeyboardEvent) => {
+      // I, on the focused map: the road at the map's centre (the crosshair shows it).
+      if (event.target === canvas && isInfoKey(event)) {
+        event.preventDefault();
+        const box = canvas.getBoundingClientRect();
+        openInfo({ x: box.width / 2, y: box.height / 2 }, "centre");
+        return;
+      }
       if (event.key !== "Escape") return;
       // Escape calls off a drag; otherwise it closes a via's Remove, and the
       // focus goes back where it was; otherwise a junction's card, likewise.
@@ -557,17 +631,37 @@ export function MapView(props: Props) {
         junctionCard.current?.remove();
       }
     };
-    // A long press on a phone also asks for the browser's context menu.
-    const onContextMenu = (event: Event) => {
-      if (gesture.active) event.preventDefault();
+    // A long press on a phone also asks for the browser's context menu; on the map
+    // itself the menu is the road panel's (a right-click, or a phone's long press,
+    // whichever comes first; openInfo takes one of the two).
+    const onContextMenu = (event: MouseEvent) => {
+      if (gesture.active) {
+        event.preventDefault();
+        return;
+      }
+      if (event.target !== canvas) return;
+      event.preventDefault();
+      longPress.cancel();
+      if (rightDown) {
+        // Sent with the press (macOS, Linux): the release decides (onRightUp).
+        menuWaiting = true;
+        return;
+      }
+      // A right-button drag rotated the map; its contextmenu at the end is not a request.
+      const moved = rightMoved;
+      rightMoved = false;
+      if (moved) return;
+      openInfo(local(event.clientX, event.clientY), "spot");
     };
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mouseup", onRightUp);
     window.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("touchend", onTouchEnd);
     window.addEventListener("touchcancel", onTouchEnd);
     window.addEventListener("keydown", onKey);
     canvas.addEventListener("contextmenu", onContextMenu);
+    canvas.addEventListener("mousedown", onRightDown);
 
     map.on("click", (event) => {
       // A click on a station opens its card, and a click on the line puts
@@ -608,6 +702,9 @@ export function MapView(props: Props) {
       report: (availability) => callbacks.current.onStressAvailability(availability),
       disposed: () => disposed,
     });
+
+    // A pan or zoom that got under way is not a long press.
+    map.on("movestart", () => longPress.cancel());
 
     map.on("load", () => {
       loaded.current = true;
@@ -748,14 +845,17 @@ export function MapView(props: Props) {
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
+      longPress.cancel();
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mouseup", onRightUp);
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
       window.removeEventListener("touchcancel", onTouchEnd);
       window.removeEventListener("keydown", onKey);
       canvas.removeEventListener("mouseleave", onCanvasLeave);
       canvas.removeEventListener("contextmenu", onContextMenu);
+      canvas.removeEventListener("mousedown", onRightDown);
       closePopup(false);
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
