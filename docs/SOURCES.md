@@ -277,3 +277,24 @@ them (OWNER-DECISIONS 152, 153, 155, 162).
   `frontend/src/rail-data/README.md`. What is taken is the fact (which lines stop
   where), not WMATA's text or data, so there is no licence to follow and no credit on
   the map; it is listed here so every source is cited (301).
+
+## Links the map offers (no data taken)
+
+- Credit: none; nothing is read from these sites. They are pages the map links to,
+  named in text only (trademarks; OWNER-DECISIONS 441), each opened in a new tab with no
+  opener or referrer, and only when the rider follows the link (441c).
+- **Google Street View** (OWNER-DECISIONS 441): the road panel's "Open Street View here"
+  is Google's public Maps URL,
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=LAT,LON`
+  (<https://developers.google.com/maps/documentation/urls/get-started>). No Google code,
+  key or request is in the app; the spot is sent to Google only if the rider follows the
+  link, which the panel says beside it.
+- **WMATA station pages** (441b): `https://www.wmata.com/ridertools/station/<slug>`, the
+  slug for each of the 98 Metro stations from the curated table
+  `frontend/src/rail-data/wmata-station-slugs.json`, checked once, read only, against
+  wmata.com on 2026-10-07 under the owner's permission (441f). WMATA's short station names
+  are the pattern ("Rhode Island Av", "Naylor Rd", "U St"); a wrong slug answers 404.
+- **MARC Penn Line timetable** (441d, 441e): Maryland Transit Administration,
+  <https://www.mta.maryland.gov/schedule/timetable/marc-penn>, checked 2026-10-07 (the
+  page lists Perryville to Washington Union Station). Offered at every Penn Line station
+  the map draws; only the Penn Line is drawn.

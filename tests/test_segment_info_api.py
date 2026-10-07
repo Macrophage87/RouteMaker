@@ -221,7 +221,9 @@ class TestAnswer:
             stress_rule="mixed traffic, 20 mph or below, single lane",
             stress_assumed=["maxspeed", "lanes", "parking"],
         )
-        router.answers = {"bicycle": [edge(106, "Q Street Northwest", classification="residential")]}
+        router.answers = {
+            "bicycle": [edge(106, "Q Street Northwest", classification="residential")]
+        }
         body = get(client).json()
         traffic = section(body, "traffic")
         assert traffic["Speed limit"]["value"] == "Not posted in the data; assumed 20 mph or below"
@@ -291,7 +293,9 @@ class TestAnswer:
         self, client, segment_schemas, router
     ) -> None:
         live, _ = segment_schemas
-        insert(live, 111, [SPOT, east(SPOT, 50)], map_class="barred", bike_access_reason="bicycle_no")
+        insert(
+            live, 111, [SPOT, east(SPOT, 50)], map_class="barred", bike_access_reason="bicycle_no"
+        )
         router.down = True
         body = get(client).json()
         assert body["found"] is True and body["title"] == "Unnamed road"
@@ -382,11 +386,17 @@ class TestWords:
                 "legal but avoid: expressway posted 55 mph (Furth: mixed traffic, 35 mph or above)",
                 "Avoid: highway-like road (posted 55 mph)",
             ),
-            ("motor-only classification (motorway_link)", "Avoid: highway-like road (motorway link)"),
+            (
+                "motor-only classification (motorway_link)",
+                "Avoid: highway-like road (motorway link)",
+            ),
             ("override: stress adjustment moco-lts5-georgia-avenue", "Owner-rated corridor"),
             ("named corridor: c1, e2", "Owner-rated corridor"),
             ("trail-class way (footway)", "Path away from traffic"),
-            ("trail-class way (path, not open to bicycles)", "Path away from traffic, not open to bicycles"),
+            (
+                "trail-class way (path, not open to bicycles)",
+                "Path away from traffic, not open to bicycles",
+            ),
             ("separated track alongside", "Separated bike track beside the road"),
             ("bike lane, 35 mph", "Bike lane, 35 mph"),
             (
@@ -394,7 +404,8 @@ class TestWords:
                 "Little motor traffic (access=private), so LTS 2 at most",
             ),
             (
-                "closed to motor traffic: an off-road path (was: mixed traffic, 30 mph, single lane)",
+                "closed to motor traffic: an off-road path"
+                " (was: mixed traffic, 30 mph, single lane)",
                 "Closed to motor traffic, so rated as a path",
             ),
         ],

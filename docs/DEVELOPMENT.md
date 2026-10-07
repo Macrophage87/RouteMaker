@@ -5247,3 +5247,100 @@ and the Mass Ride chart's area, patterns, guide colours and contrast, the narrow
 Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
+
+## The map's road panel (OWNER-DECISIONS 441, 441a-441f; v0.2.1)
+
+**What a rider does.** A right-click on the map (a computer), a finger held still for
+0.6 s (a phone; `lib/roadInfo.ts` `LongPress`, called off by a drift past 10 px, a second
+finger, the finger lifting or the map moving, and never preventing a default, so the map
+pans and pinches as before), I with the map focused, or "Road info at map center" in the
+planner (the crosshair shows the center, as for "Add point at map center"). Each opens
+`RoadInfoDialog.tsx`, the platform's modal `<dialog>`: the focus goes to its heading,
+Escape and Close close it and the focus goes back to what opened it, Tab stays inside, each
+part is a section labelled by its own heading and the figures a description list with the
+source in words under each value; the answer is said briefly through the app's polite
+region. On a phone it is a full-height sheet. The help (More tips) says all three ways, and
+the map's own name says "Press I". A right-button drag that rotates the map is not a
+request (`MapView.tsx`: the contextmenu waits for the release on platforms that send it
+with the press, and a release that moved more than 5 px is a rotation). A held finger on
+the route line still picks the line up; the panel's long press only starts off it.
+
+**What it shows** (`core.segment_info`, GET /api/segment-info?lat=&lon=). The nearest
+row of the live segment table within `SNAP_RADIUS_M` (30 m, 100 ft; "No road here"
+otherwise), a drawn way winning over a hidden one (a mapped sidewalk) up to 15 m nearer.
+Its name and kind come from the standard router's `/locate` at the spot on the way, as the
+route's street names do, matched by OSM way id; the bicycle costing's edges say whether the
+graph lets a bicycle on, and the pedestrian then auto costing name a way it does not. Then:
+the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", whole tiers;
+441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
+"35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
+(posted 55 mph)"), an override's tier before it and its category, its note only where the
+row's display is `map` (a `route_only` note is never shown on a click); lanes each way and
+the speed limit, posted (with `attr_sources`' source) or assumed (the classifier's figure
+from the rule); the count, its publisher and year, or "No count"; the facility class,
+`car_free_when`, the shared surface rule (`is_unpaved`, `is_rough`, a roadside path's
+"probably paved", 403, 440); bike access; and the Mass Ride width and riders a minute on
+the level (`flow.level_riders_per_min`), shown on the Mass Ride map only. "Open Street
+View here" is Google's public URL for the spot clicked, in a new tab with
+`rel="noopener noreferrer"`, named in text only, with the note that the spot is sent to
+Google only if the link is followed. No person is ever named: an owner's row is "Owner
+override" or "Owner-rated corridor".
+
+**Bike access and its reason.** Open or closed is the router's answer when it gives one
+(the graph is the truth routing uses), else the table's (`map_class` barred, or a closing
+reason). The reason is the new column `segment.bike_access_reason`
+(`routemaker.facility.bike_access_reason`, written in WRITE_SEGMENTS): an approved access
+override that reopened or closed the way (`override_open`, `override_closed`), else its
+`rm:no_bicycle` reason (`military`, `secured`, the trail rules, `cbd_sidewalk`, `zoo`,
+`singletrack`, `mtb`, `dismount`), else its own tags (`bicycle_no`,
+`bicycle_use_sidepath`, `private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
+and a test holds every code the rebuild can write to having words. The military and
+secured rules are the err-closed ones (OWNER-DECISIONS 330), and say so.
+
+**An older live table.** Every column newer than the oldest table is optional
+(`OPTIONAL_COLUMNS`, read from `information_schema` and looked for again every 5 minutes
+while one is missing, so a swap is picked up without a restart). The live table of
+2026-10-07 has no capacity, access-reason, trail or roadside columns: the Mass Ride rows
+then say "Available after the next data update", and a closed way "Closed to bicycles;
+the reason is available after the next data update".
+
+**Limits and privacy.** Signed out; refused uncounted when the browser says a foreign page
+sent it (as place search is); 20 per 10 s and 60 a minute per client
+(`ratelimit.SEGMENT_INFO_BURST`, `SEGMENT_INFO`); the place names' router slot
+(`GEOCODE_IN_FLIGHT`, `name_slots`), so a burst of panels never holds a search's slot;
+`Cache-Control: private, max-age=300`. The spot is in the query string, which gunicorn's
+access log leaves out, and the beta's nginx location for reverse look-ups and searches now
+covers `/api/segment-info` too (its error log at `crit` only; `tests/test_beta_overlay.py`
+holds every path the front end sends a query to to that location). Nothing logs the
+coordinates (a test).
+
+**Stations (441b-441f).** A station's tap card (railInteraction.ts) offers its pages under
+Start here / End here / Add as stop: a Metro station's WMATA page from
+`rail-data/wmata-station-slugs.json` (curated and checked, rail-data/README.md) and a MARC
+Penn station's Penn Line timetable; Union Station and New Carrollton offer both. Offered,
+never followed by itself (441c). The road panel lists the pages of the nearest station the
+map shows within 400 m (0.25 mi) of its spot, which is how a keyboard or screen-reader rider
+reaches them.
+
+**Deploying it.** Code, no migration, and one new segment column, which arrives with the
+next rebuild (its DDL is in `SEGMENT_DDL`; until then the endpoint tolerates its absence).
+The front end and the API may ship in either order: an old API answers 404 for the
+endpoint and the panel says the information is not available right now. The beta's nginx
+template changed (the location regex): re-render it with `scripts/beta/render-nginx.sh` on
+the next beta deploy.
+
+**Tests.** `tests/test_segment_info_api.py` (the answer on a real live table with the router
+faked at `segment_info.locate_edges`; no road; a hidden sidewalk nearer than the road; an
+unnamed path; assumed speed and lanes; a closed way's reason; an owner's reopening and
+corridor; the route-only note kept off; a silent router; an old table; no coordinates in
+any log; 400, 403 uncounted, 429; the rule and reason words; `bike_access_reason`),
+`tests/test_beta_overlay.py`, `lib/roadInfo.test.ts`, `lib/stationLinks.test.ts` (every
+Metro station on the map has a slug, no stray, Penn and Union Station, the nearby station),
+and section 21 of the a11y check (15 checks: a right-click opens a modal dialog with the
+focus on its heading, one request with the spot in the query only, labelled sections with
+sources in words, no capacity off the Mass Ride map, the Street View link and its note,
+the polite announcement, the dialog's accessible name, Tab held inside, I on the focused
+map and the canvas's name, Escape back to the map, the button and Close back to it, the
+help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
+opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
+/api/segment-info.
