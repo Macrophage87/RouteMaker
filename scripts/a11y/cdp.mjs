@@ -135,6 +135,7 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  */
 export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   page.routeRequests = 0;
+  page.infoRequests = [];
   // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
   page.tileRequests = { stress: 0, mass: 0 };
   await page.s("Fetch.enable", {
@@ -167,6 +168,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       if (delayMs && n >= (page.delayFrom ?? delayFrom)) await sleep(delayMs);
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
+      type = "application/json";
+    } else if (url.pathname === "/api/segment-info") {
+      // The map's road panel (OWNER-DECISIONS 441a; core/segment_info.py): one fixed road.
+      page.infoRequests.push(url.search);
+      status = 200;
+      body = JSON.stringify(S_SEGMENT_INFO);
       type = "application/json";
     } else if (url.pathname.startsWith("/api/")) {
       body = JSON.stringify({ detail: "not found" });
@@ -552,3 +559,38 @@ export const S_MASS_OUTSIDE_DC = (() => {
 })();
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
+
+/** The road panel's answer (GET /api/segment-info), as core/segment_info.py writes it. */
+export const S_SEGMENT_INFO = {
+  found: true,
+  title: "Connecticut Avenue Northwest",
+  tier: 3,
+  open: true,
+  osm_way_id: 101,
+  distance_m: 2.4,
+  attribution: ["© OpenStreetMap contributors (ODbL)"],
+  sections: [
+    { id: "road", heading: "Road or path", rows: [
+      { label: "Name", value: "Connecticut Avenue Northwest", source: "OpenStreetMap, through RouteMaker's routing graph" },
+      { label: "Kind", value: "Main road", source: "OpenStreetMap, through RouteMaker's routing graph" },
+    ] },
+    { id: "stress", heading: "Traffic stress", rows: [
+      { label: "Level", value: "LTS 3: For experienced cyclists", source: "RouteMaker classifier" },
+      { label: "Why", value: "30 mph, mixed traffic, several lanes, city street", source: "RouteMaker classifier" },
+    ] },
+    { id: "traffic", heading: "Traffic", rows: [
+      { label: "Lanes", value: "2 each way", source: "OpenStreetMap" },
+      { label: "Speed limit", value: "30 mph (48 km/h), posted", source: "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)" },
+      { label: "Traffic volume", value: "18,400 vehicles a day (annual average), 2024 count", source: "DDOT 2024 Traffic Volume, DC Open Data (CC BY 4.0, adapted)" },
+    ] },
+    { id: "riding", heading: "Riding", rows: [
+      { label: "Bike facility", value: "Painted bike lane", source: "OpenStreetMap" },
+      { label: "Surface", value: "Paved", source: "OpenStreetMap" },
+    ] },
+    { id: "access", heading: "Bike access", rows: [{ label: "Bike access", value: "Open to bicycles", source: "OpenStreetMap, through RouteMaker's routing graph" }] },
+    { id: "mass", heading: "Mass Ride capacity", rows: [
+      { label: "Usable width", value: "22 ft (6.7 m)", source: "RouteMaker Mass Ride model" },
+      { label: "Riders a minute", value: "About 150 on the level", source: "RouteMaker Mass Ride model" },
+    ] },
+  ],
+};

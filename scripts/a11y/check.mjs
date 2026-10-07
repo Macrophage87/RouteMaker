@@ -1400,11 +1400,128 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     /^Mass Ride figures are not supported outside DC yet/.test(words.said) && words.narrowest.length > 0 && !words.narrowest.some((t) => /^50 riders|the start/.test(t)), JSON.stringify(words));
   await p.close();
 }
+// ---- 21. The map's road panel (OWNER-DECISIONS 441, 441a): a right-click, the keyboard's I and button, a long press ----
+/** A spot on the bare map canvas (no marker, card or control over it), in page pixels, or null. */
+const bareSpot = (p) =>
+  p.eval(`(() => { const c = document.querySelector('.maplibregl-canvas'); const r = c.getBoundingClientRect();
+    for (let fy = 0.35; fy <= 0.8; fy += 0.05) for (let fx = 0.75; fx >= 0.35; fx -= 0.05) {
+      const x = Math.round(r.left + r.width * fx), y = Math.round(r.top + r.height * fy);
+      if (document.elementFromPoint(x, y) === c) return [x, y]; }
+    return null; })()`);
+const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connecticut Avenue Northwest/.test(document.querySelector('dialog.road-info h2')?.textContent ?? '')";
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const at = await bareSpot(p);
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: at[0], y: at[1] });
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "right", buttons: 2, clickCount: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "right", buttons: 0, clickCount: 1 });
+  const opened = await p.waitFor(infoOpen, 8000);
+  const first = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const h = d?.querySelector('h2');
+    return { modal: d?.matches(':modal') ?? false, focus: document.activeElement === h, where: document.getElementById(d?.getAttribute('aria-describedby') ?? '')?.textContent ?? '' }; })()`);
+  check("road panel: a right-click on the map opens a modal dialog for the road there, the focus on its heading",
+    opened && first.modal && first.focus && first.where === "The road nearest the spot you picked.", JSON.stringify(first));
+  const asked = p.infoRequests[0] ?? "";
+  check("road panel: the API is asked once, for the spot right-clicked, its coordinates in the query only",
+    p.infoRequests.length === 1 && /^\?lat=3\d\.\d{6}&lon=-7\d\.\d{6}$/.test(asked), JSON.stringify(p.infoRequests));
+  const body = await p.eval(`(() => { const d = document.querySelector('dialog.road-info');
+    const sections = [...d.querySelectorAll('section')].map((s) => { const h = document.getElementById(s.getAttribute('aria-labelledby') ?? '');
+      return { id: s.className, heading: h?.textContent ?? '', tag: h?.tagName ?? '',
+        rows: [...s.querySelectorAll('.road-info-row')].map((r) => r.querySelector('dt')?.textContent + ' = ' + r.querySelector('dd')?.textContent) }; });
+    return { sections, mass: !!d.querySelector('.road-info-mass') }; })()`);
+  const rows = body.sections.flatMap((x) => x.rows).join(" | ");
+  check("road panel: each part is a section named by its own heading, the figures terms with the source in words, the stress in words",
+    body.sections.length >= 6 && body.sections.every((x) => x.heading && x.tag === "H3") &&
+      /Level = LTS 3: For experienced cyclistsSource: RouteMaker classifier/.test(rows) && /Speed limit = 30 mph \(48 km\/h\), postedSource: DC Roadway Block/.test(rows) &&
+      /Traffic volume = 18,400 vehicles a day/.test(rows) && /Bike access = Open to bicycles/.test(rows), JSON.stringify(body).slice(0, 600));
+  check("road panel: the Mass Ride capacity is not shown on another ride type's map", !body.mass, JSON.stringify(body.sections.map((x) => x.id)));
+  const sv = await p.eval(`(() => { const a = [...document.querySelectorAll('dialog.road-info a')].find((x) => x.textContent === 'Open Street View here');
+    return { href: a?.href ?? '', target: a?.target, rel: a?.rel, note: document.getElementById(a?.getAttribute('aria-describedby') ?? '')?.textContent ?? '' }; })()`);
+  check("road panel: Open Street View here is Google's public link for the spot, in a new tab, with no opener or referrer, and the note beside it",
+    /^https:\/\/www\.google\.com\/maps\/@\?api=1&map_action=pano&viewpoint=3\d\.\d{6},-7\d\.\d{6}$/.test(sv.href) && sv.target === "_blank" && /noopener/.test(sv.rel) && /noreferrer/.test(sv.rel) &&
+      sv.note === "Opens Google Street View in a new tab; this spot is sent to Google only if you follow the link.", JSON.stringify(sv));
+  const said = await p.eval("[...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).find((t) => /^Road information:/.test(t)) ?? ''");
+  check("road panel: the answer is said through the app's polite region", said === "Road information: Connecticut Avenue Northwest. LTS 3: For experienced cyclists. Open to bicycles.", said);
+  const ax = await axNode(p, "dialog.road-info");
+  check("road panel: a screen reader meets a dialog named for the road", ax?.role === "dialog" && ax?.name === "Connecticut Avenue Northwest", JSON.stringify(ax));
+  await p.shot(`${SHOTS}/road-info_dialog.png`);
+  // Tab stays inside, Escape closes.
+  const inside = [];
+  for (let i = 0; i < 8; i++) {
+    await p.tab();
+    inside.push(await p.eval("!!document.activeElement?.closest('dialog.road-info')"));
+  }
+  check("road panel: Tab stays inside the open dialog", inside.every(Boolean), JSON.stringify(inside));
+  await p.escape();
+  await sleep(300);
+  // The keyboard's way: I on the focused map, for the road at its center.
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.key("i", "KeyI", 73);
+  const byKey = await p.waitFor(infoOpen, 8000);
+  const keyed = await p.eval("({ where: document.querySelector('dialog.road-info .hint')?.textContent ?? '', canvasLabel: document.querySelector('.maplibregl-canvas').getAttribute('aria-label') })");
+  check("road panel: I on the focused map opens it for the road at the center, and the map's name says so",
+    byKey && keyed.where === "The road nearest the center of the map." && /Press I for what is known about the road at the center/.test(keyed.canvasLabel), JSON.stringify(keyed));
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ closed: !document.querySelector('dialog.road-info[open]'), canvas: document.activeElement === document.querySelector('.maplibregl-canvas') })");
+  check("road panel: Escape closes it and the focus goes back to the map", back.closed && back.canvas, JSON.stringify(back));
+  // The button in the planner, and its Close button.
+  await p.eval("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Road info at map center')?.focus(); true");
+  await p.enter();
+  const byButton = await p.waitFor(infoOpen, 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Close')?.click(); true");
+  await sleep(300);
+  const backToButton = await p.eval("document.activeElement?.textContent === 'Road info at map center' && !document.querySelector('dialog.road-info[open]')");
+  check("road panel: Road info at map center opens it, and Close gives the focus back to the button", byButton && backToButton, String(backToButton));
+  const tip = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
+  check("road panel: the help says how to reach it by mouse, by touch and by keyboard",
+    /Right-click the map \(or press and hold on a phone\)/.test(tip) && /press I for the road at the center/.test(tip), tip.slice(0, 300));
+  await p.close();
+}
+{
+  // On the Mass Ride map the panel gives the usable width and riders a minute.
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
+  await p.eval("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Road info at map center')?.click(); true");
+  await p.waitFor(infoOpen, 8000);
+  const mass = await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-mass .road-info-row')].map((r) => r.textContent).join(' | ')");
+  check("road panel: on the Mass Ride map it gives the usable width and riders a minute, US units first",
+    /Usable width22 ft \(6\.7 m\)/.test(mass) && /Riders a minuteAbout 150 on the level/.test(mass), mass);
+  await p.close();
+}
+{
+  // A phone: a finger that pans the map does not open it; a finger held still does, and adds no point.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 390, height: 844, mobile: true, ride: false, junctions: false });
+  const touch = (type, x, y) => p.s("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+  const at = await bareSpot(p);
+  const asked0 = p.infoRequests.length;
+  await touch("touchStart", at[0], at[1]);
+  for (let i = 1; i <= 8; i++) {
+    await touch("touchMove", at[0] - i * 10, at[1]);
+    await sleep(40);
+  }
+  await sleep(700);
+  await touch("touchEnd", at[0] - 80, at[1]);
+  await sleep(400);
+  const panned = await p.eval("!document.querySelector('dialog.road-info[open]')");
+  check("road panel: a finger that pans the map does not open it", panned && p.infoRequests.length === asked0, JSON.stringify({ panned, asked: p.infoRequests.length - asked0 }));
+  const spot = (await bareSpot(p)) ?? at;
+  const pinsBefore = await p.eval("document.querySelectorAll('.pin').length");
+  await touch("touchStart", spot[0], spot[1]);
+  await sleep(900);
+  await touch("touchEnd", spot[0], spot[1]);
+  const held = await p.waitFor(infoOpen, 8000);
+  await sleep(500);
+  const pinsAfter = await p.eval("document.querySelectorAll('.pin').length");
+  check("road panel: a finger held still on the map opens it, and adds no point",
+    held && p.infoRequests.length === asked0 + 1 && pinsAfter === pinsBefore, JSON.stringify({ held, pinsBefore, pinsAfter, asked: p.infoRequests.length - asked0 }));
+  await p.shot(`${SHOTS}/road-info_phone.png`);
+  await p.close();
+}
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 280;
+const EXPECTED = 295;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
