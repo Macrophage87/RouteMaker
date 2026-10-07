@@ -2192,6 +2192,7 @@ def build_handlers(
             areas[restricted_areas.PARK],
             military=military_closed,
             secured=secured_closed,
+            reopened=context.bicycle_override_ways,
         )
         context.no_bicycle = nobike.reasons
         context.walk_bike = nobike.walk_bike

@@ -302,7 +302,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
 test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom (OWNER-DECISIONS 452a)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
-    label: "Not used for routes (Gravel and Mountain Goat may use one): a thin grey dotted line.",
+    label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line.",
   });
   for (const strong of [false, true]) {
     withSwitches(strong, false, () => {

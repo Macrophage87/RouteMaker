@@ -16,6 +16,8 @@ import {
   isInfoKey,
   osmEditUrl,
   placeAtSpot,
+  repeatsInfoAsk,
+  requestAfterClose,
   spotActions,
   segmentInfoUrl,
   shownSections,
@@ -231,4 +233,20 @@ test("a pan, a lift or a second finger calls the long press off", () => {
   press.cancel();
   c.advance(LONG_PRESS_MS);
   assert.equal(fired, 0, "a lift or a second finger");
+});
+
+test("a late close event ends only the request it closed, never a newer one", () => {
+  const old = { point: [-77.03, 38.9] as [number, number], origin: "centre" as const };
+  const newer = { point: [-77.03, 38.9] as [number, number], origin: "centre" as const };
+  assert.equal(requestAfterClose(old, old), null, "the request that closed goes");
+  // Escape, then I at once: the close event lands after the newer request is set.
+  assert.equal(requestAfterClose(newer, old), newer, "the same spot asked again is a new request");
+  assert.equal(requestAfterClose(null, old), null);
+  assert.equal(requestAfterClose(newer, null), newer, "a close with nothing shown clears nothing");
+});
+
+test("only a pointer gesture repeats an ask; I straight after a right-click's panel is a new one", () => {
+  assert.equal(repeatsInfoAsk("spot", 1300, 1000, 800), true, "a long press's contextmenu, 300 ms on");
+  assert.equal(repeatsInfoAsk("spot", 1900, 1000, 800), false);
+  assert.equal(repeatsInfoAsk("centre", 1300, 1000, 800), false, "Escape, then I, 300 ms after the right-click");
 });

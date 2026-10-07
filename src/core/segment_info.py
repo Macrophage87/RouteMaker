@@ -271,10 +271,11 @@ def is_mtb_trail(row: dict) -> bool:
 
 
 def _rank(row: dict) -> int:
-    """0 a way the map draws as one to ride, 1 a mountain-bike trail, 2 a hidden way."""
+    """0 a way the map draws as one to ride, 1 a mountain-bike trail or a barred way
+    (neither drawn as one to ride; the nearer of them wins), 2 a hidden way."""
     if row.get("map_class") == "hidden":
         return 2
-    return 1 if is_mtb_trail(row) else 0
+    return 1 if is_mtb_trail(row) or row.get("map_class") == "barred" else 0
 
 
 def choose(rows: list[dict]) -> dict | None:

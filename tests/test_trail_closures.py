@@ -41,6 +41,16 @@ def test_each_rule_gives_its_reason_and_the_rest_are_left_alone():
     assert result.mtb_only() == {4, 6}, "a future MTB mode rides both"
 
 
+def test_an_override_that_reopens_a_mountain_bike_trail_opens_it_and_ends_mtb_only():
+    mtb = {"highway": "path", "bicycle": "yes", "surface": "dirt"}
+    # Way 7's override wrote bicycle=yes; way 8 carries the same tags from OSM, with
+    # no override, and stays closed as the mountain-bike class.
+    result = tc.closures([way(7, dict(mtb)), way(8, dict(mtb))], {}, [], reopened={7})
+    assert 7 not in result.reasons, "the owner reopened it: open, and drawn to ride"
+    assert result.reasons == {8: "mtb"}
+    assert result.mtb_only() == {8}
+
+
 def test_hiking_routes_and_national_bicycle_routes_come_from_the_relations():
     ways = [way(10, {"highway": "path"}), way(11, {"highway": "path", "surface": "dirt"})]
     routes = {

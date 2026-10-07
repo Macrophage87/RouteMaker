@@ -68,7 +68,7 @@ export const RIDE_RUN_MI = { path: 0.25, road: 2 };
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use one): a thin grey dotted line." };
+  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line." };
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {

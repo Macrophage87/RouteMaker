@@ -608,6 +608,11 @@ class TestWords:
         assert choose([way(1, 1, **hidden), way(2, 3, **mtb)])["osm_way_id"] == 2
         # A normal way nearest is never passed over.
         assert choose([way(3, 2), way(4, 3, **mtb)])["osm_way_id"] == 3
+        # A barred way (a closed hiking trail) is not drawn as one to ride either: it
+        # ranks with the MTB trail, so the nearer of the two is described.
+        assert choose([way(1, 2, **mtb), way(2, 10, map_class="barred")])["osm_way_id"] == 1
+        assert choose([way(1, 2, map_class="barred"), way(2, 10, **mtb)])["osm_way_id"] == 1
+        assert choose([way(1, 2, map_class="barred"), way(2, 10)])["osm_way_id"] == 2
         # Rated singletrack is `mtb_only` too, but hidden, and says so in its own words.
         assert not segment_info.is_mtb_trail(way(5, 1, map_class="hidden", mtb_only=True))
         assert segment_info.is_mtb_trail(way(6, 1, mtb_only=True))

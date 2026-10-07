@@ -870,10 +870,10 @@ export const isMtbTrail = ["==", ["get", "mtb"], true];
 /**
  * The not-for-routes look (452a): a narrow mid-grey line of fine dots (`dash`, in line widths:
  * a dot as long as the line is wide, then a gap twice that), with no casing. #5f6368 is 3.5:1 or
- * more from every surface of the light base map (the darkest, the parks' and woods' greens,
- * about 3.6:1; white roads 6.3:1; mtbTrail.test.ts holds it), and it is not a stress colour in
+ * more from every surface of the light base map (the lowest, scrub's green, 3.54:1; parks'
+ * 3.57:1; white roads 6.05:1; mtbTrail.test.ts holds 3:1), and it is not a stress colour in
  * any palette. With the accessibility switch on (`strong`) the line is wider and darker
- * (#4b5260, the panels' muted text, 4.8:1 or more). The legend's swatch draws it on the base
+ * (#4b5260, the panels' muted text, 4.59:1 or more). The legend's swatch draws it on the base
  * map's earth colour (`legendGround`), so it reads as on the map in a dark panel too.
  */
 export const MTB_TRAIL = {

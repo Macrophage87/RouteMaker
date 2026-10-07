@@ -65,6 +65,27 @@ export interface InfoRequest {
   origin: InfoOrigin;
 }
 
+/**
+ * The panel's request once the dialog showing `closed` has fired its `close` event. The
+ * event is queued as a task after `dialog.close()`, so it can land after a newer request
+ * (Escape, then I at once): that newer one stays open; only the request that closed goes.
+ * The App's state updater calls this, so it compares against the latest request even
+ * when that has not rendered yet.
+ */
+export function requestAfterClose(current: InfoRequest | null, closed: InfoRequest | null): InfoRequest | null {
+  return current === closed ? null : current;
+}
+
+/**
+ * Whether an ask for the road panel is the same gesture asking again (a phone's long press
+ * is also its contextmenu), `lastSpotAt` the last pointer ask's time. Only a pointer gesture
+ * repeats itself: I on the map is always a new ask, even straight after a right-click's
+ * panel was closed with Escape.
+ */
+export function repeatsInfoAsk(origin: InfoOrigin, now: number, lastSpotAt: number, repeatMs: number): boolean {
+  return origin === "spot" && now - lastSpotAt < repeatMs;
+}
+
 export type InfoState =
   | { kind: "loading" }
   | { kind: "ready"; info: SegmentInfo }

@@ -61,7 +61,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
-import { LongPress, isInfoKey, type InfoRequest } from "./lib/roadInfo.ts";
+import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -503,10 +503,12 @@ export function MapView(props: Props) {
     let infoAt = 0;
     const openInfo = (point: { x: number; y: number }, origin: InfoRequest["origin"]) => {
       const now = performance.now();
-      if (now - infoAt < INFO_REPEAT_MS) return;
-      infoAt = now;
-      // The finger's lift (or the right button's) is not also a tap that adds a point.
-      clickSuppressedUntil = now + INFO_REPEAT_MS;
+      if (repeatsInfoAsk(origin, now, infoAt, INFO_REPEAT_MS)) return;
+      if (origin === "spot") {
+        infoAt = now;
+        // The finger's lift (or the right button's) is not also a tap that adds a point.
+        clickSuppressedUntil = now + INFO_REPEAT_MS;
+      }
       callbacks.current.onRoadInfo?.({ point: lonLatAt(point), origin });
     };
     const longPress = new LongPress((at) => openInfo(at, "spot"));

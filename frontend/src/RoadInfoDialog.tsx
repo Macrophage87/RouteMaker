@@ -56,7 +56,8 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
-  onClose: () => void;
+  /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
+  onClose: (closed: InfoRequest | null) => void;
   /**
    * Where the focus goes on close when whatever opened the panel cannot take it back (a
    * long press leaves the focus on the page itself): the map (the a11y review's N6).
@@ -80,6 +81,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
+  // The request the dialog was last opened (or moved) for, which a `close` event closes.
+  const shown = useRef<InfoRequest | null>(null);
   // Whether the press of the click now arriving went down on the backdrop itself. A finger held
   // on the map opens the panel under it, and its lift can come as a click on the new backdrop;
   // that press began on the map, so it does not close what it just opened.
@@ -103,6 +106,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       pressedBackdrop.current = false;
       dialog.showModal?.();
     }
+    shown.current = request;
     headingRef.current?.focus();
     setState({ kind: "loading" });
     setSaid("");
@@ -115,17 +119,22 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       () => undefined,
     );
     return () => controller.abort();
-  }, [request?.point[0], request?.point[1], request?.origin]);
+    // Each request is its own object (App sets a new one per ask), so asking again at the
+    // same spot - Escape, then I on an unmoved map - opens the panel again.
+  }, [request]);
 
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const onDialogClose = () => {
+      // A late `close` (queued after Escape) whose dialog has since reopened for a newer
+      // request: that request, its focus and its fetch are not this event's to end.
+      if (dialog.open) return;
       const back = returnTo.current;
       returnTo.current = null;
       setSaid("");
-      onClose();
+      onClose(shown.current);
       if (back instanceof HTMLElement && back.isConnected && back !== document.body && back !== document.documentElement) {
         back.focus();
         if (document.activeElement === back) return;

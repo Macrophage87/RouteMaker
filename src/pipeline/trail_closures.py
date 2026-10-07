@@ -25,7 +25,13 @@ from routemaker import cbd, facility, singletrack, trailaccess, zoo
 from routemaker.cbd import Polygon
 
 from .extract import Way
-from .restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE, Area, ways_inside
+from .restricted_areas import (
+    MILITARY_NO_BICYCLE,
+    SECURED_NO_BICYCLE,
+    Area,
+    reopened_by_override,
+    ways_inside,
+)
 
 # The hook for per-park rules (OWNER-DECISIONS 291(6): "Tags now, parks after
 # review"). Keyed by the unit's OSM id, a value is the `rm:no_bicycle` reason
@@ -86,10 +92,17 @@ def closures(
     zoo_polygon: list[Polygon] | None = None,
     military: Collection[int] = frozenset(),
     secured: Collection[int] = frozenset(),
+    reopened: Collection[int] = frozenset(),
 ) -> TrailClosures:
     """Every NO-BIKE-PATHS closure, by way, and the ways `military` names (closed
     inside a military area, owner report 2026-10-05) and `secured` names (closed
-    inside a secured federal compound, 2026-10-06) under their own reasons."""
+    inside a secured federal compound, 2026-10-06) under their own reasons.
+
+    `reopened` are the ways an approved access override wrote a bicycle key on. A
+    mountain-bike-class way whose override lets a bicycle through is open, and so
+    not `mtb_only` either: the map draws it as a way to ride, as the router rides it
+    ("err closed", reopened by override with evidence; OWNER-DECISIONS 330). Any
+    other bicycle key already ends the tag rules' closures (`trailaccess.verdict`)."""
     ways = list(ways)
     result = TrailClosures()
     in_park = park_paths(ways, park_areas)
@@ -125,6 +138,8 @@ def closures(
         else:
             way_routes = routes.get(osm_id, trailaccess.NO_ROUTES)
             reason = trailaccess.verdict(tags, way_routes, osm_id in in_park)
+            if reason == trailaccess.MTB and osm_id in reopened and reopened_by_override(tags):
+                reason = None
             if reason is None and osm_id in long_dismount:
                 reason = trailaccess.DISMOUNT
         if reason is not None:

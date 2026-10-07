@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
-import { INFO_HELP, placeAtSpot, type InfoRequest } from "./lib/roadInfo.ts";
+import { INFO_HELP, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
@@ -269,7 +269,10 @@ export function App() {
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
   // The road panel's spot (OWNER-DECISIONS 441a), or null while it is closed.
   const [roadInfo, setRoadInfo] = useState<InfoRequest | null>(null);
-  const closeRoadInfo = useCallback(() => setRoadInfo(null), []);
+  const closeRoadInfo = useCallback(
+    (closed: InfoRequest | null) => setRoadInfo((current) => requestAfterClose(current, closed)),
+    [],
+  );
   // The map is where the focus goes when the road panel's opener cannot take it back (a long press).
   const mapFocus = useCallback(() => mapRef.current?.getCanvas() ?? null, []);
   // Map tools (OWNER-DECISIONS 450) shows the crosshair while it is open.
