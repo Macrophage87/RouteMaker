@@ -102,6 +102,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
       </ul>
       <p className="hint">
         Tap a station to start, end or pass through it there; the route uses its elevator, or its nearest entrance where none is listed.
+        The station's card also links to its WMATA page or the MARC Penn Line timetable, and the road info panel offers them for a station nearby.
       </p>
     </section>
   );
