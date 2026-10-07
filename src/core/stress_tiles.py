@@ -302,11 +302,12 @@ OPTIONAL_PROPERTIES = {
     "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
     # NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): `mtb` marks a trail only a
     # mountain bike rides (kept open for Gravel and Mountain Goat, closed for
-    # the rest) and `rough` a surface that sheds riders. The map does not draw
-    # an `mtb` trail for any ride type (452, superseding 290(b)'s faint drawing;
-    # frontend/src/stressStyle.js, SHOW_MTB_TRAILS); it is still carried for a
-    # future MTB mode. `rough` is not read: such a trail draws as any unpaved
-    # one, with no path rail (290(a)).
+    # the rest) and `rough` a surface that sheds riders. The map draws an `mtb`
+    # trail in its own not-for-routes look, a thin dotted grey line, and in no
+    # routable layer (452a, superseding 452's hiding and 290(b)'s faint drawing;
+    # frontend/src/stressStyle.js, `mtb-trail`); a future MTB mode would draw it
+    # as routable. `rough` is not read: such a trail draws as any unpaved one,
+    # with no path rail (290(a)).
     # Each is true or left out.
     "mtb": MTB_ONLY_COLUMN,
     "rough": ROUGH_COLUMN,

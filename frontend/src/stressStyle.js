@@ -840,40 +840,97 @@ export function subscribeMassRide(listener) {
 }
 
 /**
- * THE MOUNTAIN-BIKE TRAILS (OWNER-DECISIONS 452, 2026-10-07: "Remove the mountain bike
- * trails. MTB mode might be available later."). The stress tiles mark a trail in the
+ * THE MOUNTAIN-BIKE TRAILS (OWNER-DECISIONS 452, 452a). The stress tiles mark a trail in the
  * mountain-bike class with `mtb` (true, or left out: core/stress_tiles.py, from the segment's
  * `mtb_only`, which `pipeline.trail_closures.MTB_ONLY` writes for `routemaker.trailaccess.MTB`).
- * Routing closes them for every ride type but Gravel and Mountain Goat (the off-road graph), and
- * the map draws none of them, for any ride type: every stress, unpaved, surface-unknown and
- * facility layer leaves them out (`mtbHides`). This supersedes 290(b)'s "draw them faint"
- * (FOLLOWUP-MTB-FAINT). Not the tiles' `rough`: that is a rough surface (`is_rough`, paved
- * cobbles among them, 440), not this class, and a rough trail still draws.
+ * Routing closes them for every ride type but Gravel and Mountain Goat (the off-road graph).
+ * 452 hid them; 452a, the owner: "I want people to know where the trails are, but make them
+ * clear that it's not routing." So none of the routable layers (stress, unpaved,
+ * surface-unknown, ring, gap, facility) draws one (`mtbHides`), and they have a look of their
+ * own instead (`mtbTrailLayers`, MTB_TRAIL): a thin mid-grey line of fine dots, with no casing,
+ * no rails and no stress colour, under every routable layer, from MTB_MIN_ZOOM (the zoom the
+ * tiles carry them from, as before). The dots carry the meaning, not the grey: no routable
+ * line on the map is a row of separate dots on nothing. This supersedes 290(b)'s "draw them
+ * faint" (FOLLOWUP-MTB-FAINT). Not the tiles' `rough`: that is a rough surface (`is_rough`,
+ * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
  *
- * SHOW_MTB_TRAILS is the switch for a future mountain-bike mode: true draws them again as
- * any other trail (and drops the legend's "not shown" line, lib/stressLegend.ts). Such a mode
- * would pass `showMtb` to stressFilters rather than flip this for every ride type.
+ * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
+ * other trail, in the routable layers, and the not-for-routes layer draws nothing (and the
+ * legend drops its row, lib/stressLegend.ts). Such a mode would pass `routableMtb` to
+ * stressFilters rather than flip this for every ride type.
  */
-export const SHOW_MTB_TRAILS = false;
+export const MTB_TRAILS_ROUTABLE = false;
 
-/** The filter that takes the mountain-bike trails (the tiles' `mtb`) out of a layer. */
+/** The filter that takes the mountain-bike trails (the tiles' `mtb`) out of a routable layer. */
 export const mtbHides = ["!=", ["get", "mtb"], true];
 
+/** A mountain-bike trail (the tiles' `mtb`). */
+export const isMtbTrail = ["==", ["get", "mtb"], true];
+
 /**
- * Each overlay layer's filter in the ride time `when`, by layer id. Each excludes the
- * mountain-bike trails unless `showMtb` (SHOW_MTB_TRAILS, above). In the Mass Ride map
- * (`mass`) each also excludes the features that carry a capacity (massStyle.js, massHides).
+ * The not-for-routes look (452a): a narrow mid-grey line of fine dots (`dash`, in line widths:
+ * a dot as long as the line is wide, then a gap twice that), with no casing. #5f6368 is 3.5:1 or
+ * more from every surface of the light base map (the darkest, the parks' and woods' greens,
+ * about 3.6:1; white roads 6.3:1; mtbTrail.test.ts holds it), and it is not a stress colour in
+ * any palette. With the accessibility switch on (`strong`) the line is wider and darker
+ * (#4b5260, the panels' muted text, 4.8:1 or more). The legend's swatch draws it on the base
+ * map's earth colour (`legendGround`), so it reads as on the map in a dark panel too.
  */
-export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, showMtb = SHOW_MTB_TRAILS) {
-  const filters = stressFiltersOf(when, showHighLanes, showMtb);
+export const MTB_TRAIL = {
+  color: "#5f6368",
+  strongColor: "#4b5260",
+  width: 1.5,
+  strongWidth: 2,
+  dash: [1, 2],
+  legendGround: "#e2dfda",
+};
+
+/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test). */
+export const MTB_MIN_ZOOM = 14;
+
+/** The not-for-routes line's colour and width, plain or with the accessibility switch on. */
+export function mtbTrailPaint(strong = accessibilityOn()) {
+  return {
+    "line-color": strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color,
+    "line-width": strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width,
+    "line-dasharray": MTB_TRAIL.dash,
+  };
+}
+
+/** The not-for-routes layer (452a): the mountain-bike trails, drawn under every routable layer. */
+export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  return [
+    {
+      id: "mtb-trail",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: MTB_MIN_ZOOM,
+      filter: stressFilters(when)["mtb-trail"],
+      paint: mtbTrailPaint(strong),
+    },
+  ];
+}
+
+/**
+ * Each overlay layer's filter in the ride time `when`, by layer id. Each routable layer
+ * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
+ * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
+ * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
+ * that carry a capacity (massStyle.js, massHides).
+ */
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
+  const filters = stressFiltersOf(when, showHighLanes, routableMtb);
   if (!mass) return filters;
   return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
 }
 
-function stressFiltersOf(when, showHighLanes, showMtb) {
+function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
-  // Every filter is ["all", drawnAt(when), <the mountain-bike cut, unless showMtb>, ...its own clauses].
-  const hidden = showMtb ? [] : [mtbHides];
+  // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
+  const hidden = routableMtb ? [] : [mtbHides];
+  // The not-for-routes line: the mountain-bike trails, or nothing once they are routable.
+  filters["mtb-trail"] = ["all", drawnAt(when), isMtbTrail, ...(routableMtb ? [["boolean", false]] : [])];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1292,6 +1349,8 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
+    // The mountain-bike trails' not-for-routes line (452a), under every routable layer.
+    ...mtbTrailLayers(sourceId, when),
     ...ringLayers(sourceId, when, tiers),
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),

@@ -3454,10 +3454,12 @@ answer's `moved_points` says so.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
-tile property `mtb` (and `rough`), facility `none`. The front end does not draw an
-`mtb` trail at all, for any ride type (OWNER-DECISIONS 452, superseding 290(b)'s faint
-drawing; `stressStyle.js` `SHOW_MTB_TRAILS`), and the legend says so; `rough` draws as any
-unpaved trail does. Routing closes the class
+tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
+trail in no routable layer but in its own not-for-routes look, for every ride type: a thin
+mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
+superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
+`MTB_TRAILS_ROUTABLE`); the legend has a row "Mountain-bike trail: not used for routes" and
+the road panel says the same. `rough` draws as any unpaved trail does. Routing closes the class
 for every preset but Gravel and Mountain Goat. The segment
 table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 (core 0010) is state-only.

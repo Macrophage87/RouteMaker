@@ -1370,13 +1370,15 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const other = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats') })");
   check("capacity: another ride type keeps the traffic stress legend and panel, with no riders-per-minute figures", !other.mass && other.stress && !other.figures, JSON.stringify(other));
   check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
-  // OWNER-DECISIONS 452: the map draws no mountain-bike trail, and the stress legend says so in words, on screen
-  // and not behind the zoom fold or hidden from a screen reader.
-  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers .mtb-hidden'); if (!e) return null;
+  // OWNER-DECISIONS 452a: the mountain-bike trails draw in a not-for-routes look, and the stress legend has a row
+  // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
+  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
+    const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
-      onScreen: e.getClientRects().length > 0, afterLegend: !!((document.querySelector('[aria-label="Traffic stress legend"]')?.compareDocumentPosition(e) ?? 0) & 4) }; })()`);
-  check("legend: it says in words that mountain-bike trails are not shown, in view, after the stress legend and not in a fold (452)",
-    mtb?.text === "Mountain-bike trails are not shown on the map." && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.afterLegend, JSON.stringify(mtb));
+      onScreen: e.getClientRects().length > 0, swatchHidden: svg?.getAttribute('aria-hidden') === 'true',
+      oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
+  check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
+    !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
   await p.close();
 }
 {

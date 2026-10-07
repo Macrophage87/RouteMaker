@@ -2492,8 +2492,9 @@ def build_handlers(
             # private golf-cart path) is not drawn as a bike facility; the base
             # map shows it as it is (OWNER-DECISIONS 278, 290(b)). The
             # mountain-bike class stays, with the tile's `mtb` property, which
-            # the map reads to leave it out (452, superseding 290(b)'s faint
-            # drawing) and a future MTB mode would draw.
+            # the map reads to draw it as not for routes (452a, superseding
+            # 452's hiding and 290(b)'s faint drawing); a future MTB mode would
+            # draw it as routable.
             return facility.MapClass.BARRED
         return base
 

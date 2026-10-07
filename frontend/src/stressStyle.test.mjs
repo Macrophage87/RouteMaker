@@ -8,6 +8,7 @@ import {
   stressCasingLayers,
   gapLayers,
   ringLayers,
+  mtbTrailLayers,
   stressOverlayLayers,
   unpavedLayers,
   unknownSurfaceLayers,
@@ -239,7 +240,11 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const rings = ringLayers("s").map((l) => l.id);
   assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
   const mass = massLayers("s").map((l) => l.id);
-  assert.deepEqual([...ids].sort(), [...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  const mtb = mtbTrailLayers("s").map((l) => l.id);
+  assert.deepEqual(mtb, ["mtb-trail"], "the mountain-bike trails' not-for-routes line (OWNER-DECISIONS 452a)");
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  // The not-for-routes line under everything, so every routable line draws over it.
+  assert.equal(ids[0], "mtb-trail");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.

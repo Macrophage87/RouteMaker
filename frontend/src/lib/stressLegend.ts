@@ -17,11 +17,14 @@ import {
   BESIDE_ROAD_MIN_ZOOM,
   FACILITIES,
   LEGEND_SWATCH_PX,
-  SHOW_MTB_TRAILS,
+  MTB_TRAILS_ROUTABLE,
+  MTB_TRAIL,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
+  accessibilityOn,
   currentTiers,
+  mtbTrailPaint,
   legendWidths,
   unpavedWidth,
 } from "../stressStyle.js";
@@ -57,18 +60,19 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
 export const RIDE_RUN_MI = { path: 0.25, road: 2 };
 
 /**
- * OWNER-DECISIONS 452: the map draws no mountain-bike trail (stressStyle.js, SHOW_MTB_TRAILS), and
- * says so in words, so a rider who cannot see the map does not take a missing trail for one that is not
- * there. Null when they are drawn (a future mountain-bike mode).
+ * OWNER-DECISIONS 452a: the mountain-bike trails draw in a look of their own that says they are not
+ * used for routes (stressStyle.js, MTB_TRAIL), and the legend says so in words in a row of its own,
+ * so a rider who cannot see the map knows what the dotted grey line is. The row's name and words;
+ * null once they are routable (a future mountain-bike mode, MTB_TRAILS_ROUTABLE). Gravel and
+ * Mountain Goat route on them (the off-road graph), and the words say so rather than over-claim.
  */
-export const MTB_NOT_SHOWN: string | null = SHOW_MTB_TRAILS ? null : "Mountain-bike trails are not shown on the map.";
-
-/** MTB_NOT_SHOWN after `text`, with a space, where it applies. */
-const withMtbNote = (text: string): string => (MTB_NOT_SHOWN ? `${text} ${MTB_NOT_SHOWN}` : text);
+export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
+  ? null
+  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use one): a thin grey dotted line." };
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
-  return withMtbNote(`Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}.`);
+  return `Paths on local routes and other connected paths show from zoom ${ride}; mountain-bike trails and every short path show from zoom ${STRESS_ZOOMS.quiet}.`;
 }
 
 /**
@@ -81,7 +85,7 @@ export function rideLayerText(ride: number, quiet: number): string {
     `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
     `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
     `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
-    `and best avoided), shorter paths, the other streets and the junction warnings on the map ` +
+    `and best avoided), mountain-bike trails, shorter paths, the other streets and the junction warnings on the map ` +
     `show from zoom ${quiet}.`
   );
 }
@@ -109,7 +113,7 @@ export function stressZoomNotice(zoom: number | null, shown: boolean): string | 
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
   if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
   if (zoom < STRESS_ZOOMS.quiet) {
-    return withMtbNote(`Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom ${STRESS_ZOOMS.quiet}.`);
+    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
   }
   return null;
 }
@@ -255,6 +259,21 @@ export function UnknownSurfaceSwatch({ tier, widths }: { tier: Tier; widths: { l
   );
 }
 
+/**
+ * The mountain-bike trail's swatch (452a): its fine grey dots at the map's width, on a strip of the base
+ * map's earth colour, as the map draws them, so the dots read in a dark panel too.
+ */
+export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
+  const paint = mtbTrailPaint(strong);
+  const width = paint["line-width"];
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "mtb-trail-swatch" },
+    h("rect", { x: X1, y: 1, width: LEGEND_SWATCH_PX, height: 10, rx: 2, fill: MTB_TRAIL.legendGround }),
+    line(6, paint["line-color"], width, dashPx(MTB_TRAIL.dash, width)),
+  );
+}
+
 type Facility = (typeof FACILITIES)[number];
 
 /** A facility's swatch: its rails, with the casing of LTS 1's line over them. */
@@ -267,10 +286,10 @@ export function FacilitySwatch({ facility, rails, casing }: { facility: Facility
   );
 }
 
-const row = (key: string | number, swatch: ReactElement, short: string, label: string) =>
+const row = (key: string | number, swatch: ReactElement, short: string, label: string, className?: string) =>
   h(
     "li",
-    { key },
+    { key, className },
     swatch,
     h("span", { className: "stress-name" }, short),
     h("span", { className: "stress-label" }, label),
@@ -308,9 +327,9 @@ export function StressLegend({
       ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
+      // 452a: the mountain-bike trails' not-for-routes line, in words in the list, not behind the zoom fold.
+      MTB_LEGEND && row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
     ),
-    // 452: in view, not behind the zoom fold, since it holds at every zoom.
-    MTB_NOT_SHOWN && h("p", { className: "hint mtb-hidden" }, MTB_NOT_SHOWN),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
     facilities.size > 0 &&

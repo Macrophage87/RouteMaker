@@ -36,8 +36,9 @@ from routemaker import flow
 # street zoom; past about 100 ft it is as likely the next street.
 SNAP_RADIUS_M = 30.0
 # A drawn road or path this much further than a hidden way (a sidewalk mapped
-# beside it, a driveway) is still the one meant: the rider clicked what the map
-# shows.
+# beside it, a driveway) or a mountain-bike trail (drawn only as a thin dotted
+# line, not for routes: OWNER-DECISIONS 452a) is still the one meant: the rider
+# clicked what the map shows as a way to ride.
 DRAWN_PREFERENCE_M = 15.0
 # Rows the nearest-neighbour scan reads before the distances are compared.
 CANDIDATES = 24
@@ -154,7 +155,11 @@ ACCESS_WORDS = {
     "cbd_sidewalk": (False, "Closed: a downtown sidewalk where riding is not allowed"),
     "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
     "singletrack": (False, "Closed: mountain-bike singletrack"),
-    "mtb": (False, "Closed: a mountain-bike trail (kept for a future mountain-bike mode)"),
+    "mtb": (
+        False,
+        "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
+        " Mountain Goat ride types (drawn as a thin grey dotted line)",
+    ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
     "sac_scale": (False, "Closed: a rough hiking trail"),
     "informal": (False, "Closed: an informal path"),
@@ -186,6 +191,7 @@ OPTIONAL_COLUMNS = (
     "walk_bike",
     "mass_usable_width_m",
     "bike_access_reason",
+    "mtb_only",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -255,9 +261,27 @@ def nearest_row(lat: float, lon: float) -> dict | None:
     return choose(rows)
 
 
+def is_mtb_trail(row: dict) -> bool:
+    """A mountain-bike-class trail the map draws in its not-for-routes look (OWNER-DECISIONS
+    452a): closed as `mtb`, or `mtb_only` on a way the map draws (rated singletrack, also
+    `mtb_only`, is hidden and says so in its own words)."""
+    if row.get("bike_access_reason") == "mtb":
+        return True
+    return row.get("mtb_only") is True and row.get("map_class") != "hidden"
+
+
+def _rank(row: dict) -> int:
+    """0 a way the map draws as one to ride, 1 a mountain-bike trail, 2 a hidden way."""
+    if row.get("map_class") == "hidden":
+        return 2
+    return 1 if is_mtb_trail(row) else 0
+
+
 def choose(rows: list[dict]) -> dict | None:
-    """The row meant: the nearest within SNAP_RADIUS_M, unless a drawn way (one
-    the map shows) is within DRAWN_PREFERENCE_M of it and the nearest is hidden."""
+    """The row meant: the nearest within SNAP_RADIUS_M, unless the nearest is hidden
+    or a mountain-bike trail and a way the map draws as one to ride (or, past a hidden
+    one, a mountain-bike trail) is within DRAWN_PREFERENCE_M of it. A mountain-bike
+    trail alone near the spot is still described."""
     near = sorted(
         (r for r in rows if r.get("distance_m") is not None and r["distance_m"] <= SNAP_RADIUS_M),
         key=lambda r: r["distance_m"],
@@ -265,10 +289,10 @@ def choose(rows: list[dict]) -> dict | None:
     if not near:
         return None
     first = near[0]
-    if first.get("map_class") == "hidden":
-        drawn = [r for r in near if r.get("map_class") != "hidden"]
-        if drawn and drawn[0]["distance_m"] <= first["distance_m"] + DRAWN_PREFERENCE_M:
-            return drawn[0]
+    reach = first["distance_m"] + DRAWN_PREFERENCE_M
+    better = [r for r in near if _rank(r) < _rank(first) and r["distance_m"] <= reach]
+    if better:
+        return min(better, key=lambda r: (_rank(r), r["distance_m"]))
     return first
 
 
@@ -693,6 +717,10 @@ ACCESS_SHORT = {
     "err_closed": "unclear, so treated as closed",
 }
 
+# A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a): what the map's dotted grey line
+# means, and, honestly, that Gravel and Mountain Goat (the off-road graph) do route on it.
+MTB_SUMMARY = "Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+
 # The parts of the classifier's rule the Lanes line already says.
 _LANE_PARTS = frozenset({"single lane", "urban multilane", "multilane"})
 
@@ -769,7 +797,10 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     if row.get("walk_bike"):
         add("walk", "Walk your bike", "A short stretch")
     reason = row.get("bike_access_reason")
-    if open_ is True:
+    if open_ is not True and is_mtb_trail(row):
+        # OWNER-DECISIONS 452a: said as the map draws it; the off-road graph's ride types do use it.
+        add("bikes", "Bikes", MTB_SUMMARY)
+    elif open_ is True:
         add("bikes", "Bikes", "Allowed")
     elif open_ is False:
         short = ACCESS_SHORT.get(reason) if isinstance(reason, str) else None

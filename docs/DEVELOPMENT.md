@@ -607,25 +607,31 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
-- **Mountain-bike trails (452).** Not drawn, for any ride type (the owner:
-  "Remove the mountain bike trails. MTB mode might be available later.";
-  this supersedes 290 (b)'s faint drawing). The stress tiles mark the class
-  with `mtb` (true or left out; `segment.mtb_only`, written for
+- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
+  own, for every ride type (the owner: "I want people to know where the trails
+  are, but make them clear that it's not routing."; this supersedes 452's
+  hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
+  `mtb` (true or left out; `segment.mtb_only`, written for
   `routemaker.trailaccess.MTB` and rated singletrack, which is hidden anyway).
   `stressFilters` puts `mtbHides` (`["!=", ["get", "mtb"], true]`) into every
-  layer's filter, right after the ride time's drawn-at clause, unless
-  `showMtb`, which defaults to `SHOW_MTB_TRAILS` (false): the switch a future
-  MTB mode turns on. The Mass Ride layers' `isRoad` leaves `mtb` out too. The
-  tiles' `rough` is a rough surface, not this class, and still draws. The
-  legend says "Mountain-bike trails are not shown on the map." in a plain
-  paragraph under the tiers (`.mtb-hidden`, outside the zoom fold), and the
-  zoom notice and notes say it where they used to say the trails show from
-  zoom 14 (`MTB_NOT_SHOWN`, lib/stressLegend.ts). Routing is unchanged, so a
-  Gravel or Mountain Goat route over one still draws its own line there.
-  Server side the class is still `map_class` 'road' and in the tiles from
-  zoom 14; leaving `mtb_only` out of the tile SQL would drop it from the
-  standard tiles without a rebuild (a FORMAT_VERSION bump), and the road
-  panel still treats such a trail as a drawn way.
+  routable layer's filter, right after the ride time's drawn-at clause, and
+  the one layer `mtb-trail` (`mtbTrailLayers`, the bottom of
+  `stressOverlayLayers`, `minzoom` 14) draws them: `MTB_TRAIL`, a 1.5 px
+  #5f6368 line of fine dots (dash [1, 2]), no casing or rails; 2 px #4b5260
+  with the accessibility switch (`mtbTrailPaint`, which `setStressPalette`
+  re-applies). The dots carry the meaning; the grey is 3:1 or more from every
+  base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
+  `routableMtb` is the switch a future MTB mode turns on: the class moves back
+  into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
+  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
+  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
+  `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
+  the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
+  trail, not used for routes (Gravel and Mountain Goat may use it)" and, in
+  `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
+  nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
+  ride the class on the off-road graph, and their route draws over the dots.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

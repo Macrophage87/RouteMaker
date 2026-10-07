@@ -15,6 +15,7 @@ import {
   stressFilters,
   stressLayers,
   stressOverlayLayers,
+  mtbTrailPaint,
   unpavedLayers,
   UNPAVED_DASH,
   accessibilityOn,
@@ -166,6 +167,12 @@ export function setStressPalette(
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+  }
+  // The mountain-bike trails' not-for-routes line (452a): wider and darker with the accessibility switch.
+  if (map.getLayer("mtb-trail")) {
+    const paint = mtbTrailPaint();
+    map.setPaintProperty("mtb-trail", "line-color", paint["line-color"]);
+    map.setPaintProperty("mtb-trail", "line-width", paint["line-width"]);
   }
 }
 

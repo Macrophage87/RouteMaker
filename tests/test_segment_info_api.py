@@ -325,6 +325,61 @@ class TestAnswer:
         assert access["source"] == "RouteMaker classifier"
         assert summary(body)[-1] == "Bikes: Not allowed — military area"
 
+    def test_a_mountain_bike_trail_says_not_used_for_routes(
+        self, client, segment_schemas, router
+    ) -> None:
+        """OWNER-DECISIONS 452a: drawn in the not-for-routes look, and said so; honest that
+        Gravel and Mountain Goat (the off-road graph) do use it."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            120,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            stress_rule="trail-class way (path, not open to bicycles)",
+            is_trail_class=True,
+            is_unpaved=True,
+            bike_access_reason="mtb",
+            mtb_only=True,
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(120, "Wakefield Loop", use="path")]}
+        body = get(client).json()
+        assert body["open"] is False and body["osm_way_id"] == 120
+        assert summary(body)[-1] == (
+            "Bikes: Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+        )
+        access = section(body, "access")["Bike access"]
+        assert access["value"] == (
+            "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
+            " Mountain Goat ride types (drawn as a thin grey dotted line)"
+        )
+
+    def test_the_mtb_property_alone_marks_one(self, client, segment_schemas, router) -> None:
+        live, _ = segment_schemas
+        insert(live, 121, [SPOT, east(SPOT, 50)], is_trail_class=True, mtb_only=True)
+        # Closed on the standard graph, as the class is.
+        router.answers = {"bicycle": [], "pedestrian": [edge(121, use="path")]}
+        body = get(client).json()
+        assert summary(body)[-1] == (
+            "Bikes: Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+        )
+
+    def test_a_normal_way_a_little_further_wins_over_a_nearer_mountain_bike_trail(
+        self, client, segment_schemas, router
+    ) -> None:
+        live, _ = segment_schemas
+        insert(
+            live,
+            122,
+            [north(SPOT, 2), east(north(SPOT, 2), 80)],
+            is_trail_class=True,
+            bike_access_reason="mtb",
+            mtb_only=True,
+        )
+        insert(live, 123, [north(SPOT, 9), east(north(SPOT, 9), 80)])
+        router.answers = {"bicycle": [edge(123, "R Street Northwest")]}
+        assert get(client).json()["osm_way_id"] == 123
+
     def test_an_owner_reopened_way_says_so(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
         insert(live, 108, [SPOT, east(SPOT, 50)], bike_access_reason="override_open")
@@ -531,6 +586,31 @@ class TestWords:
             assert words.startswith(("Open", "Closed")), words
         closed = {k for k, (open_, _w) in segment_info.ACCESS_WORDS.items() if not open_}
         assert closed == set(segment_info.ACCESS_SHORT), closed ^ set(segment_info.ACCESS_SHORT)
+
+    def test_choose_prefers_a_way_to_ride_then_a_mountain_bike_trail_then_a_hidden_one(
+        self,
+    ) -> None:
+        def way(i, d, **kw):
+            return {"osm_way_id": i, "distance_m": d, "map_class": "road", **kw}
+
+        mtb = {"bike_access_reason": "mtb", "mtb_only": True}
+        hidden = {"map_class": "hidden"}
+        choose = segment_info.choose
+        # An MTB trail nearest, a normal way within DRAWN_PREFERENCE_M: the normal way.
+        assert choose([way(1, 2, **mtb), way(2, 12)])["osm_way_id"] == 2
+        # Past DRAWN_PREFERENCE_M the trail the rider clicked is described.
+        assert choose([way(1, 2, **mtb), way(2, 20)])["osm_way_id"] == 1
+        # The only thing near: still described.
+        assert choose([way(1, 5, **mtb)])["osm_way_id"] == 1
+        # A hidden sidewalk nearest: a normal way beats a nearer MTB trail; an MTB trail
+        # beats the hidden way when it is all the map draws there.
+        assert choose([way(1, 1, **hidden), way(2, 3, **mtb), way(3, 10)])["osm_way_id"] == 3
+        assert choose([way(1, 1, **hidden), way(2, 3, **mtb)])["osm_way_id"] == 2
+        # A normal way nearest is never passed over.
+        assert choose([way(3, 2), way(4, 3, **mtb)])["osm_way_id"] == 3
+        # Rated singletrack is `mtb_only` too, but hidden, and says so in its own words.
+        assert not segment_info.is_mtb_trail(way(5, 1, map_class="hidden", mtb_only=True))
+        assert segment_info.is_mtb_trail(way(6, 1, mtb_only=True))
 
     def test_the_summary_why_drops_what_lanes_says(self) -> None:
         assert segment_info.why_short("mixed traffic, 30 mph, urban multilane") == (

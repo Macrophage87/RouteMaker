@@ -8,7 +8,8 @@ import { STRESS_ZOOMS } from "./mapStyle.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
-  MTB_NOT_SHOWN,
+  MTB_LEGEND,
+  MtbTrailSwatch,
   ROADWAY_LANES,
   ROUTE_AT_EVERY_ZOOM,
   StressLegend,
@@ -35,6 +36,8 @@ import {
   setHighStressLanes,
   tiersFor,
   unpavedWidth,
+  MTB_TRAIL,
+  mtbTrailPaint,
 } from "../stressStyle.js";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
@@ -49,7 +52,7 @@ test("at zoom 12-13 the notice says this is the where-to-ride view and what wait
   const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
   assert.equal(
     out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom 14. Mountain-bike trails are not shown on the map.",
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
   );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
@@ -73,7 +76,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14. Mountain-bike trails are not shown on the map.",
+    "Paths on local routes and other connected paths show from zoom 12; mountain-bike trails and every short path show from zoom 14.",
   );
   // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
   assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
@@ -81,7 +84,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
     hint.includes(
       "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
         "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
-        "shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
+        "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
     ),
   );
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
@@ -296,24 +299,43 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
 });
 
-test("the legend says in words, in view at every zoom, that mountain-bike trails are not shown (OWNER-DECISIONS 452)", () => {
-  assert.equal(MTB_NOT_SHOWN, "Mountain-bike trails are not shown on the map.");
-  for (const zoom of [10, 12, 14, 16]) {
-    for (const foldedZoom of [false, true]) {
-      const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
-      const at = html.indexOf(`<p class="hint mtb-hidden">${MTB_NOT_SHOWN}</p>`);
-      assert.ok(at > 0, `zoom ${zoom}, folded ${foldedZoom}: the line is there`);
-      // A plain paragraph after the legend's list, outside the zoom notes' fold, so it is never hidden.
-      assert.ok(at > html.indexOf('aria-label="Traffic stress legend"'), "after the tiers' list");
-      const fold = html.indexOf("<details");
-      assert.ok(fold === -1 || at < fold, "not inside the zoom fold");
-    }
+test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom (OWNER-DECISIONS 452a)", () => {
+  assert.deepEqual(MTB_LEGEND, {
+    short: "Mountain-bike trail",
+    label: "Not used for routes (Gravel and Mountain Goat may use one): a thin grey dotted line.",
+  });
+  for (const strong of [false, true]) {
+    withSwitches(strong, false, () => {
+      for (const zoom of [10, 12, 14, 16]) {
+        for (const foldedZoom of [false, true]) {
+          const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          const list = html.slice(html.indexOf('aria-label="Traffic stress legend"'), html.indexOf("</ul>"));
+          const row = /<li class="mtb-trail">([\s\S]*?)<\/li>/.exec(list);
+          assert.ok(row, `zoom ${zoom}, folded ${foldedZoom}: the row is in the stress legend's list`);
+          const text = row[1].replace(/<svg[\s\S]*?<\/svg>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          assert.equal(text, `${MTB_LEGEND!.short} ${MTB_LEGEND!.label}`);
+          // The swatch is decoration: the words carry it for a screen reader.
+          assert.match(row[1], /^<svg [^>]*aria-hidden="true"/);
+          assert.ok(!html.includes("mtb-hidden") && !html.includes("not shown on the map"), "452's line is gone");
+        }
+      }
+    });
   }
-  // No zoom says they show at some zoom.
-  for (const zoom of [10, 11, 12, 13, 14, 16]) {
-    assert.doesNotMatch(`${stressZoomNotice(zoom, true) ?? ""} ${stressZoomHint(zoom)}`, /mountain-bike trails[^.]*show from/i);
+  // The live zoom notice does not repeat it (the review's nit); the zoom words say where they show from again.
+  assert.doesNotMatch(stressZoomNotice(12, true)!, /not used|not shown/i);
+});
+
+test("the mountain-bike trail's swatch is the map's dots, on the base map's earth colour, wider and darker with the accessibility switch", () => {
+  for (const strong of [false, true]) {
+    const html = renderToStaticMarkup(createElement(MtbTrailSwatch, { strong }));
+    const paint = mtbTrailPaint(strong);
+    assert.ok(html.includes(`fill="${MTB_TRAIL.legendGround}"`), html);
+    const line = /<line ([^>]*?)\/?>/.exec(html)![1];
+    assert.ok(line.includes(`stroke="${paint["line-color"]}"`), line);
+    assert.ok(line.includes(`stroke-width="${paint["line-width"]}"`), line);
+    assert.ok(line.includes(`stroke-dasharray="${dashPx(MTB_TRAIL.dash, paint["line-width"])}"`), line);
+    assert.ok(!html.includes("<line") || html.match(/<line/g)!.length === 1, "one line: no casing or rails");
   }
-  assert.ok(stressZoomHint(14).includes(MTB_NOT_SHOWN!));
 });
 
 test("the legend has a Surface unknown row: LTS 1's casing and line in short dashes, and the words, no color alone (OWNER-DECISIONS 376, A)", () => {
