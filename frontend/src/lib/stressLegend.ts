@@ -167,7 +167,7 @@ export const UNPAVED_LEGEND =
  * A paved path has edge lines; an unpaved trail is brown with a dotted center line; this is neither.
  */
 export const UNKNOWN_SURFACE_LEGEND =
-  "A path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines. A trail beside a road with no surface mapped shows as a paved path.";
+  "A park path or trail away from roads with no surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the LTS 1 colors, with no edge lines. A trail beside a road, or a path built for bicycles (a bike path or a path signed for bicycles), with no surface mapped shows as a paved path.";
 
 /** The bike-facility legend's words, with the lane switch's state. */
 export function facilityLegendHint(showHighLanes: boolean): string {

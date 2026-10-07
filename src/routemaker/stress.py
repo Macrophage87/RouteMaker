@@ -1255,6 +1255,15 @@ def is_unpaved(tags: dict[str, str]) -> bool | None:
     return not surfaces.is_paved_surface(surface)
 
 
+def is_built_bike_facility(tags: dict[str, str]) -> bool:
+    """A path built for bicycles: `highway=cycleway`, or a `path` or `footway` signed
+    `bicycle=designated` (OWNER-DECISIONS 448)."""
+    highway = tags.get("highway")
+    return highway == "cycleway" or (
+        highway in ("path", "footway") and tags.get("bicycle") == "designated"
+    )
+
+
 def inferred_unpaved(tags: dict[str, str]) -> bool | None:
     """`is_unpaved` as the map and the segment table carry it: a way tagged
     `highway=track` with no `surface` is read as unpaved, unless its
@@ -1262,6 +1271,13 @@ def inferred_unpaved(tags: dict[str, str]) -> bool | None:
     trails with no surface tag, PARK-TRAILS-investigation.md, part C): a track
     is a farm, forest or park access way and is gravel or dirt in nearly every
     case, so it draws brown, with the unpaved mark, and stays open to bicycles.
+
+    OWNER-DECISIONS 448 (the Marvin Gaye Trail, 19 of 23 ways `highway=cycleway`
+    with no surface, drawn dashed): a built bike facility, `highway=cycleway` or a
+    `path` or `footway` with `bicycle=designated`, with no `surface` is read as
+    paved (False), like a roadside trail (403). The surface-unknown look stays for
+    other trails with no surface: park footpaths and `path` or `footway` without a
+    bicycle designation. Access is not read here.
 
     Only the stored column, and so the map, the unpaved ranking and the trail
     seek, read it; the classifier's own speed cap for an unpaved rural lane keeps
@@ -1271,4 +1287,6 @@ def inferred_unpaved(tags: dict[str, str]) -> bool | None:
     unpaved = is_unpaved(tags)
     if unpaved is None and tags.get("highway") == "track" and tags.get("tracktype") != "grade1":
         return True
+    if unpaved is None and is_built_bike_facility(tags):
+        return False
     return unpaved
