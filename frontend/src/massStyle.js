@@ -121,14 +121,16 @@ export function massLayerIds() {
 
 /**
  * A feature the Mass Ride map draws at all: a road with a capacity, not a trail or a path
- * (126, 127), not an alley, and not a road the zoomed-out tile carries only for its closed
- * times. A feature with no `rpm` is the stress map's (`massHides`).
+ * (126, 127), not a mountain-bike trail (452; the Mass Ride tiles carry none, and this keeps
+ * it so where the layers read the stress tiles), not an alley, and not a road the zoomed-out
+ * tile carries only for its closed times. A feature with no `rpm` is the stress map's (`massHides`).
  */
 const isRoad = [
   "all",
   ["has", "rpm"],
   ["!=", ["get", "trail"], true],
   ["!=", ["get", "facility"], "path"],
+  ["!=", ["get", "mtb"], true],
   ["!", ["has", "alley"]],
   ["!", ["has", "car_free_only"]],
 ];

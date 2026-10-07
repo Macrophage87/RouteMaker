@@ -302,10 +302,11 @@ OPTIONAL_PROPERTIES = {
     "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
     # NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): `mtb` marks a trail only a
     # mountain bike rides (kept open for Gravel and Mountain Goat, closed for
-    # the rest) and `rough` a surface that sheds riders, for the map to draw
-    # faint (290(b)). The front end does not read them yet: such a trail draws
-    # as any unpaved one, with no path rail (290(a)), so it does not read as a
-    # protected path.
+    # the rest) and `rough` a surface that sheds riders. The map does not draw
+    # an `mtb` trail for any ride type (452, superseding 290(b)'s faint drawing;
+    # frontend/src/stressStyle.js, SHOW_MTB_TRAILS); it is still carried for a
+    # future MTB mode. `rough` is not read: such a trail draws as any unpaved
+    # one, with no path rail (290(a)).
     # Each is true or left out.
     "mtb": MTB_ONLY_COLUMN,
     "rough": ROUGH_COLUMN,

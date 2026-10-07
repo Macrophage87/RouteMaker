@@ -840,19 +840,42 @@ export function subscribeMassRide(listener) {
 }
 
 /**
- * Each overlay layer's filter in the ride time `when`, by layer id. In the Mass Ride map
+ * THE MOUNTAIN-BIKE TRAILS (OWNER-DECISIONS 452, 2026-10-07: "Remove the mountain bike
+ * trails. MTB mode might be available later."). The stress tiles mark a trail in the
+ * mountain-bike class with `mtb` (true, or left out: core/stress_tiles.py, from the segment's
+ * `mtb_only`, which `pipeline.trail_closures.MTB_ONLY` writes for `routemaker.trailaccess.MTB`).
+ * Routing closes them for every ride type but Gravel and Mountain Goat (the off-road graph), and
+ * the map draws none of them, for any ride type: every stress, unpaved, surface-unknown and
+ * facility layer leaves them out (`mtbHides`). This supersedes 290(b)'s "draw them faint"
+ * (FOLLOWUP-MTB-FAINT). Not the tiles' `rough`: that is a rough surface (`is_rough`, paved
+ * cobbles among them, 440), not this class, and a rough trail still draws.
+ *
+ * SHOW_MTB_TRAILS is the switch for a future mountain-bike mode: true draws them again as
+ * any other trail (and drops the legend's "not shown" line, lib/stressLegend.ts). Such a mode
+ * would pass `showMtb` to stressFilters rather than flip this for every ride type.
+ */
+export const SHOW_MTB_TRAILS = false;
+
+/** The filter that takes the mountain-bike trails (the tiles' `mtb`) out of a layer. */
+export const mtbHides = ["!=", ["get", "mtb"], true];
+
+/**
+ * Each overlay layer's filter in the ride time `when`, by layer id. Each excludes the
+ * mountain-bike trails unless `showMtb` (SHOW_MTB_TRAILS, above). In the Mass Ride map
  * (`mass`) each also excludes the features that carry a capacity (massStyle.js, massHides).
  */
-export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide) {
-  const filters = stressFiltersOf(when, showHighLanes);
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, showMtb = SHOW_MTB_TRAILS) {
+  const filters = stressFiltersOf(when, showHighLanes, showMtb);
   if (!mass) return filters;
   return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
 }
 
-function stressFiltersOf(when, showHighLanes) {
+function stressFiltersOf(when, showHighLanes, showMtb) {
   const filters = {};
+  // Every filter is ["all", drawnAt(when), <the mountain-bike cut, unless showMtb>, ...its own clauses].
+  const hidden = showMtb ? [] : [mtbHides];
   for (const tier of TIER_SHAPES) {
-    const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
     const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
     filters[`stress-${tier.tier}`] = own;
@@ -863,7 +886,7 @@ function stressFiltersOf(when, showHighLanes) {
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
   }
   for (const facility of FACILITIES) {
-    const filter = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ...hidden, ["==", facilityAt(when), facility.facility]];
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown

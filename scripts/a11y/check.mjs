@@ -1370,6 +1370,13 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const other = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats') })");
   check("capacity: another ride type keeps the traffic stress legend and panel, with no riders-per-minute figures", !other.mass && other.stress && !other.figures, JSON.stringify(other));
   check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
+  // OWNER-DECISIONS 452: the map draws no mountain-bike trail, and the stress legend says so in words, on screen
+  // and not behind the zoom fold or hidden from a screen reader.
+  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers .mtb-hidden'); if (!e) return null;
+    return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
+      onScreen: e.getClientRects().length > 0, afterLegend: !!((document.querySelector('[aria-label="Traffic stress legend"]')?.compareDocumentPosition(e) ?? 0) & 4) }; })()`);
+  check("legend: it says in words that mountain-bike trails are not shown, in view, after the stress legend and not in a fold (452)",
+    mtb?.text === "Mountain-bike trails are not shown on the map." && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.afterLegend, JSON.stringify(mtb));
   await p.close();
 }
 {
@@ -1686,7 +1693,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 309;
+const EXPECTED = 310;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

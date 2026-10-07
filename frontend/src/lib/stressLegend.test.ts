@@ -8,6 +8,7 @@ import { STRESS_ZOOMS } from "./mapStyle.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
+  MTB_NOT_SHOWN,
   ROADWAY_LANES,
   ROUTE_AT_EVERY_ZOOM,
   StressLegend,
@@ -48,7 +49,7 @@ test("at zoom 12-13 the notice says this is the where-to-ride view and what wait
   const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
   assert.equal(
     out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom 14. Mountain-bike trails are not shown on the map.",
   );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
@@ -72,7 +73,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; mountain-bike trails and every short path show from zoom 14.",
+    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14. Mountain-bike trails are not shown on the map.",
   );
   // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
   assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
@@ -80,7 +81,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
     hint.includes(
       "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
         "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
-        "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
+        "shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
     ),
   );
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
@@ -293,6 +294,26 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   assert.ok(out.includes(stressZoomHint(11)));
   const hidden = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom: 11, shown: false }));
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
+});
+
+test("the legend says in words, in view at every zoom, that mountain-bike trails are not shown (OWNER-DECISIONS 452)", () => {
+  assert.equal(MTB_NOT_SHOWN, "Mountain-bike trails are not shown on the map.");
+  for (const zoom of [10, 12, 14, 16]) {
+    for (const foldedZoom of [false, true]) {
+      const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+      const at = html.indexOf(`<p class="hint mtb-hidden">${MTB_NOT_SHOWN}</p>`);
+      assert.ok(at > 0, `zoom ${zoom}, folded ${foldedZoom}: the line is there`);
+      // A plain paragraph after the legend's list, outside the zoom notes' fold, so it is never hidden.
+      assert.ok(at > html.indexOf('aria-label="Traffic stress legend"'), "after the tiers' list");
+      const fold = html.indexOf("<details");
+      assert.ok(fold === -1 || at < fold, "not inside the zoom fold");
+    }
+  }
+  // No zoom says they show at some zoom.
+  for (const zoom of [10, 11, 12, 13, 14, 16]) {
+    assert.doesNotMatch(`${stressZoomNotice(zoom, true) ?? ""} ${stressZoomHint(zoom)}`, /mountain-bike trails[^.]*show from/i);
+  }
+  assert.ok(stressZoomHint(14).includes(MTB_NOT_SHOWN!));
 });
 
 test("the legend has a Surface unknown row: LTS 1's casing and line in short dashes, and the words, no color alone (OWNER-DECISIONS 376, A)", () => {

@@ -17,6 +17,7 @@ import {
   BESIDE_ROAD_MIN_ZOOM,
   FACILITIES,
   LEGEND_SWATCH_PX,
+  SHOW_MTB_TRAILS,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -55,9 +56,19 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
  */
 export const RIDE_RUN_MI = { path: 0.25, road: 2 };
 
+/**
+ * OWNER-DECISIONS 452: the map draws no mountain-bike trail (stressStyle.js, SHOW_MTB_TRAILS), and
+ * says so in words, so a rider who cannot see the map does not take a missing trail for one that is not
+ * there. Null when they are drawn (a future mountain-bike mode).
+ */
+export const MTB_NOT_SHOWN: string | null = SHOW_MTB_TRAILS ? null : "Mountain-bike trails are not shown on the map.";
+
+/** MTB_NOT_SHOWN after `text`, with a space, where it applies. */
+const withMtbNote = (text: string): string => (MTB_NOT_SHOWN ? `${text} ${MTB_NOT_SHOWN}` : text);
+
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
-  return `Paths on local routes and other connected paths show from zoom ${ride}; mountain-bike trails and every short path show from zoom ${STRESS_ZOOMS.quiet}.`;
+  return withMtbNote(`Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}.`);
 }
 
 /**
@@ -70,7 +81,7 @@ export function rideLayerText(ride: number, quiet: number): string {
     `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
     `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
     `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
-    `and best avoided), mountain-bike trails, shorter paths, the other streets and the junction warnings on the map ` +
+    `and best avoided), shorter paths, the other streets and the junction warnings on the map ` +
     `show from zoom ${quiet}.`
   );
 }
@@ -98,7 +109,7 @@ export function stressZoomNotice(zoom: number | null, shown: boolean): string | 
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
   if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
   if (zoom < STRESS_ZOOMS.quiet) {
-    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
+    return withMtbNote(`Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom ${STRESS_ZOOMS.quiet}.`);
   }
   return null;
 }
@@ -298,6 +309,8 @@ export function StressLegend({
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
     ),
+    // 452: in view, not behind the zoom fold, since it holds at every zoom.
+    MTB_NOT_SHOWN && h("p", { className: "hint mtb-hidden" }, MTB_NOT_SHOWN),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
     facilities.size > 0 &&
