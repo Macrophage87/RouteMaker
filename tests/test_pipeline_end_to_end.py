@@ -692,6 +692,15 @@ def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_
     drawn = stored_map_class(context)
     assert drawn[SECURED_ROAD_ID] == "hidden"
     assert drawn[OUTSIDE_ROAD_ID] == "road"
+    # And the map's road panel can say why (OWNER-DECISIONS 441a; segment.bike_access_reason).
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id, bike_access_reason FROM {context.staging_schema}.segment"
+        )
+        reasons = dict(cursor.fetchall())
+    assert reasons[SECURED_ROAD_ID] == "secured"
+    assert reasons[SECURED_AND_BASE_ID] == "military"
+    assert reasons[OUTSIDE_ROAD_ID] is None
 
 
 DIALS_IDS = (

@@ -375,3 +375,19 @@ def test_a_note_without_an_adjustment_id_is_refused_by_the_table(segment_schemas
                     VALUES (1, 0, ST_GeomFromText('LINESTRING(-77 38.9, -77.01 38.91)', 4326),
                     2, 'x', 'a note')"""
             )
+
+
+def test_the_bike_access_reason_reaches_the_row(segment_schemas) -> None:
+    """The map's road panel says why a way is closed (OWNER-DECISIONS 441a); a row with
+    nothing to say stays null."""
+    _live, staging = segment_schemas
+    rows = [
+        segment_row(
+            way_id, 0, [(-77.0, 38.9), (-77.01, 38.91)], StressResult(Stress.LTS2, "rule"), **extra
+        )
+        for way_id, extra in ((1, {"bike_access_reason": "military"}), (2, {}))
+    ]
+    assert write_segments(staging, rows) == 2
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id, bike_access_reason FROM {staging}.segment ORDER BY 1")
+        assert cursor.fetchall() == [(1, "military"), (2, None)]
