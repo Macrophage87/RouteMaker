@@ -165,9 +165,7 @@ def write_build_config(
             "A second build writing there would write into the directory the first "
             "one promoted, which is the graph being served."
         )
-    path, config = build_config(
-        config_dir, tiles_dir, variant, build_id, concurrency=concurrency
-    )
+    path, config = build_config(config_dir, tiles_dir, variant, build_id, concurrency=concurrency)
     path.parent.mkdir(parents=True, exist_ok=True)
     Path(config["mjolnir"]["tile_dir"]).mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")

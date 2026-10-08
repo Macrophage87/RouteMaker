@@ -33,7 +33,9 @@ def aborted(command) -> CommandFailed:
     return CommandFailed(
         command,
         -signal.SIGABRT,
-        tiles.CommandOutput("Building 182 tiles with 4 threads...\n", "double free or corruption (fasttop)\n"),
+        tiles.CommandOutput(
+            "Building 182 tiles with 4 threads...\n", "double free or corruption (fasttop)\n"
+        ),
     )
 
 
