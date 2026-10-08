@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "decided": "2026-10-05",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 408 and 409 (2026-10-05). Read by the rebuild from its image (routemaker.corridors); nothing is loaded into the database. The VALIDATE sentinel for Connecticut Ave NW (pipeline.lts_sentinels) holds it.",
+  "corridors": [
+    {
+      "id": "connecticut-ave-nw-r-to-calvert",
+      "streets": [
+        "Connecticut Avenue"
+      ],
+      "axis": [
+        [
+          -77.0448435,
+          38.9121337
+        ],
+        [
+          -77.045159,
+          38.9126142
+        ],
+        [
+          -77.0454663,
+          38.9131383
+        ],
+        [
+          -77.0460211,
+          38.9140914
+        ],
+        [
+          -77.0461683,
+          38.9143868
+        ],
+        [
+          -77.0462211,
+          38.9145993
+        ],
+        [
+          -77.0462547,
+          38.9148386
+        ],
+        [
+          -77.046274,
+          38.9150703
+        ],
+        [
+          -77.046299,
+          38.9153491
+        ],
+        [
+          -77.0463255,
+          38.9156493
+        ],
+        [
+          -77.0463474,
+          38.9159968
+        ],
+        [
+          -77.0463979,
+          38.9161841
+        ],
+        [
+          -77.0465,
+          38.916357
+        ],
+        [
+          -77.0466007,
+          38.9165212
+        ],
+        [
+          -77.0466945,
+          38.9166876
+        ],
+        [
+          -77.0469831,
+          38.9172479
+        ],
+        [
+          -77.0472018,
+          38.9176778
+        ],
+        [
+          -77.0474731,
+          38.9182127
+        ],
+        [
+          -77.0475716,
+          38.918399
+        ],
+        [
+          -77.0477385,
+          38.9185529
+        ],
+        [
+          -77.0479905,
+          38.9186331
+        ],
+        [
+          -77.0482366,
+          38.9187004
+        ],
+        [
+          -77.0484666,
+          38.9187688
+        ],
+        [
+          -77.048689,
+          38.9188305
+        ],
+        [
+          -77.0488741,
+          38.9189948
+        ],
+        [
+          -77.0489786,
+          38.9191805
+        ],
+        [
+          -77.049092,
+          38.9193795
+        ],
+        [
+          -77.0494553,
+          38.9199948
+        ],
+        [
+          -77.0497282,
+          38.9204634
+        ],
+        [
+          -77.0499535,
+          38.9208502
+        ],
+        [
+          -77.050146,
+          38.9211842
+        ],
+        [
+          -77.0503916,
+          38.9216075
+        ],
+        [
+          -77.0506382,
+          38.9220287
+        ],
+        [
+          -77.0508929,
+          38.9224698
+        ],
+        [
+          -77.051086,
+          38.9228025
+        ],
+        [
+          -77.0513291,
+          38.923218
+        ],
+        [
+          -77.0514305,
+          38.9233916
+        ],
+        [
+          -77.0515157,
+          38.9235373
+        ],
+        [
+          -77.0518029,
+          38.9240285
+        ]
+      ],
+      "through_max_offset_m": 10.0,
+      "reason": "The owner, 2026-10-05 (OWNER-DECISIONS 408): \"Most of Conn Ave is LTS4. It's the road I'd keep using as an example of LTS4.\" And (409), of the strip picture that rated Dupont Circle to Calvert St LTS 3: \"It's a bit weird here because of a hill. I'd definitely ride down it, but not so much up. However, I'd say it's LTS4 north of R.\" The classifier reads DC's posted 25 mph here (Roadway Block SPEEDLIMITS_OB) and rates a two-way city street of two lanes a direction LTS 3 below 30 mph (stress.urban_two_way_floor), as it rates North Capitol Street's posted 25 (284, 286). The hill (direction-dependent stress) is backlog FOLLOWUP-GRADE-STRESS, not this file.",
+      "entries": [
+        {
+          "id": "r-st-to-calvert-st-through",
+          "role": "through",
+          "along_m": [
+            60,
+            1432
+          ],
+          "tier": 4,
+          "reason": "The owner (409): \"I'd say it's LTS4 north of R.\" From R St NW to Calvert St NW, where the posted speed rises to 30 mph and the classifier already gives LTS 4, both carriageways of the divided part (up to about 8 m from the centre line) and the two-way part over the Taft Bridge.",
+          "evidence": "Connecticut Avenue NW from R St NW (38.9126 N) to Calvert St NW (38.9235 N), about 0.85 mi (1.37 km); the axis is the District's Roadway Block centre line of blocks dc-4632193-0 to dc-4634051-0, extended 60 m past each end. In the 2026-10-03 build these ways are LTS 3, \"mixed traffic, 25 mph, urban multilane, two-way floor\" (posted 25 mph, 2 or 3 lanes a direction, 17,681 to 26,626 vehicles a day); north of Calvert St they are LTS 4 at 30 mph. Reports: REBUILD-BUNDLE-integration.md."
+        }
+      ]
+    }
+  ]
+}

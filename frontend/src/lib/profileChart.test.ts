@@ -56,8 +56,8 @@ import {
   summaryText,
   tierAt,
   tierWords,
-  usableProfile,
-} from "./profileChart.ts";
+  usableProfile, capacitySentences } from "./profileChart.ts";
+import { capacityPair } from "./massCapacity.ts";
 
 const MILE = 1609.344;
 const FT = 3.28084;
@@ -316,10 +316,27 @@ test("the summary gives the elevation range, the steepest section, the climbs an
 test("a Mass Ride's summary names the narrowest point and the major intersections instead of the stress", () => {
   const { route, profile } = build("mass-ride", true);
   const text = summaryText(route, profile);
-  assert.match(text, /The narrowest point carries about 90 riders per minute \(tight\) at mile 0\.7, marked on the chart; the typical stretch about 190\./);
+  // OWNER-DECISIONS 424: labelled as the route view labels it. This route's sections carry no figure, so only the hills' is known.
+  assert.match(text, /Narrowest with the hills: about 90 riders per minute \(tight\), at mile 0\.7, marked on the chart\. Typical with the hills: about 190 riders per minute\./);
+  assert.doesNotMatch(text, /on the flat/);
   assert.match(text, /2 major intersections, 2 needing corkers\./);
   assert.doesNotMatch(text, /not checked|could not be traced|Avoid/);
   assert.doesNotMatch(text, /Traffic stress/);
+});
+
+test("424: the chart summary gives the narrowest on the flat and with the hills, each with its mile, or once at the same spot", () => {
+  const flat = { totalM: 4000, minRpm: 50, minAtM: 0, minToM: 300, typicalRpm: 150, bandM: [], avoidM: 0, unknownM: 0, percents: [] };
+  const two = capacitySentences(capacityPair(flat, { narrowest_riders_per_min: 35, narrowest_m: 2000, typical_riders_per_min: 120 }));
+  assert.deepEqual(two, [
+    "Narrowest on the flat: about 50 riders per minute (bottleneck), at mile 0.0.",
+    "Narrowest with the hills: about 35 riders per minute (bottleneck), at mile 1.2, marked on the chart.",
+    "Typical on the flat: about 150 riders per minute; typical with the hills: about 120 riders per minute.",
+  ]);
+  const one = capacitySentences(capacityPair(flat, { narrowest_riders_per_min: 50, narrowest_m: 100, typical_riders_per_min: 150 }));
+  assert.deepEqual(one, [
+    "Narrowest on the flat and with the hills: about 50 riders per minute (bottleneck), at mile 0.0, marked on the chart.",
+    "Typical on the flat and with the hills: about 150 riders per minute.",
+  ]);
 });
 
 test("the intersections table says each marker's shape and whether corkers are needed", () => {
@@ -454,7 +471,7 @@ test("the scrub never invents a figure: unknown riders are not known, Avoid has 
   assert.match(text, /^Mile 0\.4: level, riders per minute not known\./);
   assert.doesNotMatch(text, /about 0|bottleneck/);
   const avoid = { ...unknown, avoid: [{ from_m: 570, to_m: 630 }] };
-  assert.match(readingAt(route, avoid, 600).text, /^Mile 0\.4: level, Avoid, no carrying capacity\./);
+  assert.match(readingAt(route, avoid, 600).text, /^Mile 0\.4: level, marked Avoid, no capacity given\./);
   assert.equal(ridersWords(profile, 0, 3000, 0), "about 0 riders per minute (bottleneck)");
   assert.equal(ridersWords(profile, null, 3000, 0), "riders per minute not known");
   assert.equal(ridersWords(profile, 100, 3000, -6), "about 100 riders per minute (tight, spaced out for the descent)");
@@ -475,7 +492,7 @@ test("intersections not checked say so; none at all says nothing; a gap ahead is
   assert.doesNotMatch(summary, /No major intersections/);
   assert.match(summaryText(route, { ...profile, crossings: [] }), /No major intersections\./);
   assert.match(summaryText(route, { ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }), /Part of the route could not be traced/);
-  assert.match(summaryText(route, { ...profile, avoid: [{ from_m: 3000, to_m: 3100 }] }), /One stretch is marked Avoid, with no carrying capacity, from mile 1\.9\./);
+  assert.match(summaryText(route, { ...profile, avoid: [{ from_m: 3000, to_m: 3100 }] }), /One stretch is marked Avoid, no capacity given, from mile 1\.9\./);
 });
 
 test("the stress said at a spot: tiers, Avoid, a path and an unpaved stretch as the map has them", () => {
@@ -765,4 +782,13 @@ test("the block width the word AVOID needs: a narrower block says A", () => {
   assert.equal(avoidLabel(36), "AVOID");
   assert.equal(avoidLabel(35.9), "A");
   assert.equal(avoidLabel(30), "A");
+});
+
+test("427: the chart says in words that Mass Ride figures outside DC are not supported, and gives none there", async () => {
+  const { OUTSIDE_DC_FIGURES } = await import("./massCapacity.ts");
+  const { route, profile } = build("mass-ride", true);
+  const outside = { ...profile, outside_dc: [{ from_m: 0, to_m: 400 }] };
+  assert.ok(summaryText(route, outside).includes(OUTSIDE_DC_FIGURES));
+  assert.ok(!summaryText(route, profile).includes(OUTSIDE_DC_FIGURES));
+  assert.equal(ridersWords(outside, 120, 200, 0), "outside DC, no riders-per-minute figure yet");
 });

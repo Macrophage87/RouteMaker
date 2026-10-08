@@ -11,7 +11,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 130676633, Beach Drive Northwest, highway=unclassified, 685 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 130676633, Beach Drive Northwest, highway=unclassified, 685 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 684.7,
+        "line": "-77.041806,38.960668 -77.042196,38.960812 -77.042505,38.960961 -77.042758,38.961110 -77.043112,38.961361 -77.043470,38.961690 -77.044180,38.962561 -77.044355,38.962723 -77.045413,38.963556 -77.046483,38.964525 -77.047179,38.965110"
+      }
     },
     {
       "kind": "access",
@@ -20,7 +26,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 90291940, Beach Drive Northwest, highway=unclassified, 48 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 90291940, Beach Drive Northwest, highway=unclassified, 48 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 48.4,
+        "line": "-77.047179,38.965110 -77.047566,38.965424"
+      }
     },
     {
       "kind": "access",
@@ -29,7 +41,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 90291938, Beach Drive Northwest, highway=unclassified, 448 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 90291938, Beach Drive Northwest, highway=unclassified, 448 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 448.8,
+        "line": "-77.047566,38.965424 -77.047725,38.965580 -77.047858,38.965786 -77.047888,38.965911 -77.047893,38.966062 -77.047857,38.966243 -77.047412,38.967242 -77.047044,38.967896 -77.046710,38.968374 -77.046447,38.968706 -77.046130,38.969069"
+      }
     },
     {
       "kind": "access",
@@ -38,7 +56,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1248259617, Beach Drive Northwest, highway=unclassified, 317 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1248259617, Beach Drive Northwest, highway=unclassified, 317 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 316.9,
+        "line": "-77.046130,38.969069 -77.045762,38.969436 -77.045488,38.969743 -77.045199,38.970141 -77.044852,38.970735 -77.044716,38.970906 -77.044617,38.971001 -77.044427,38.971141 -77.044205,38.971253 -77.044011,38.971326"
+      }
     },
     {
       "kind": "access",
@@ -47,7 +71,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 137999530, Beach Drive Northwest, highway=unclassified, 19 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 137999530, Beach Drive Northwest, highway=unclassified, 19 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 19.0,
+        "line": "-77.044011,38.971326 -77.043800,38.971375"
+      }
     },
     {
       "kind": "access",
@@ -56,7 +86,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 958914394, Beach Drive Northwest, highway=unclassified, 805 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 958914394, Beach Drive Northwest, highway=unclassified, 805 m, bicycle=designated, motor_vehicle=yes, motor_vehicle:conditional=destination @ (Sa 07:00-Su 19:00, PH).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "unclassified",
+        "length_m": 805.3,
+        "line": "-77.043800,38.971375 -77.043488,38.971419 -77.042853,38.971437 -77.042619,38.971458 -77.042257,38.971536 -77.042031,38.971605 -77.041173,38.971928 -77.041041,38.971997 -77.040873,38.972114 -77.040784,38.972206 -77.040668,38.972397 -77.040603,38.972634 -77.040621,38.973216 -77.040598,38.973683 -77.040387,38.974732 -77.040366,38.974970 -77.040387,38.975164 -77.040464,38.975393 -77.040531,38.975520 -77.040699,38.975755 -77.040966,38.976078 -77.041470,38.976603"
+      }
     },
     {
       "kind": "access",
@@ -65,7 +101,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 435217294, Beach Drive Northwest, highway=tertiary, 177 m, bicycle=designated, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 435217294, Beach Drive Northwest, highway=tertiary, 177 m, bicycle=designated, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "tertiary",
+        "length_m": 177.2,
+        "line": "-77.042447,38.982011 -77.042383,38.982144 -77.042308,38.982449 -77.042273,38.982810 -77.042283,38.983026 -77.042330,38.983171 -77.042411,38.983291 -77.042492,38.983382 -77.042640,38.983503"
+      }
     },
     {
       "kind": "access",
@@ -74,7 +116,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1110955925, Beach Drive Northwest, highway=tertiary, 13 m, bicycle=designated, oneway, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1110955925, Beach Drive Northwest, highway=tertiary, 13 m, bicycle=designated, oneway, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "tertiary",
+        "length_m": 12.6,
+        "line": "-77.042640,38.983503 -77.042655,38.983553 -77.042706,38.983601"
+      }
     },
     {
       "kind": "access",
@@ -83,7 +131,13 @@
         "motor_vehicle": "no"
       },
       "reason": "The owner, 2026-09-27: \"There are a couple roads like beach drive in Montgomery County that are closed to car traffic on the weekends. These should be considered off road paths then. (most of beach drive in DC is closed to car traffic permanantly)\". Asked how to make that so, the owner chose, 2026-09-28, \"Our own correction (Recommended)\": \"Allow audited corrections to mark roads car-free (like the access corrections), loaded with your go-ahead.\" Beach Drive NW in the District, one of the ways OSM tags open to cars or closed to them only at weekends, between Joyce Road and the Maryland line; the rest of Beach Drive NW north of Broad Branch Road is already tagged motor_vehicle=no and is not touched, nor is any of Montgomery County's Beach Drive.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1110955926, Beach Drive Northwest, highway=tertiary, 22 m, bicycle=designated, oneway, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)."
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1110955926, Beach Drive Northwest, highway=tertiary, 22 m, bicycle=designated, oneway, no motor_vehicle tag, motor_vehicle:conditional=no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00).",
+      "fingerprint": {
+        "name": "Beach Drive Northwest",
+        "highway": "tertiary",
+        "length_m": 22.0,
+        "line": "-77.042843,38.983615 -77.042706,38.983518 -77.042640,38.983503"
+      }
     }
   ]
 }

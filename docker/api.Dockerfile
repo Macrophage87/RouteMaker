@@ -114,6 +114,12 @@ WORKDIR /app
 # part of the settings contract.
 COPY --chown=root:root manage.py ./manage.py
 COPY --chown=root:root src ./src
+# The one data folder the api reads at request time that is not under src/: the
+# National Zoo's outline and access spur (src/routemaker/zoo.py), read by every
+# plan() to move a point inside the Zoo to its bike racks. Without it every
+# /api/route fails with FileNotFoundError (REBUILD-BUNDLE correctness review 1).
+# tests/test_images.py holds every request-time file to this image's COPY set.
+COPY --chown=root:root fixtures/zoo ./fixtures/zoo
 ENV PYTHONPATH=/app/src
 
 # Read-only to the process that runs it: nothing in the application writes to

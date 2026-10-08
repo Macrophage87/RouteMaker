@@ -327,6 +327,12 @@ def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
     for name, preset in presets.PRESETS.items():
         weekend = presets.variant_for_ride(name, "weekend")
         weekday = presets.variant_for_ride(name, "weekday_rush")
+        if name in presets.OFFROAD_PRESETS:
+            # Gravel and Mountain Goat ride the off-road graph, which has no
+            # weekend twin (OWNER-DECISIONS 291(2)).
+            assert weekday == weekend == "offroad"
+            assert weekend in settings.VALHALLA_UPSTREAMS
+            continue
         assert weekday == preset.variant
         assert weekend == ("weekend" if preset.variant == "standard" else preset.variant)
         assert weekend in settings.VALHALLA_UPSTREAMS

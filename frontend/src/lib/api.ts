@@ -28,6 +28,20 @@ export interface StressSpan {
    * drawn as paved. Spans split where the surface changes.
    */
   unpaved?: boolean | null;
+  /**
+   * A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the section's capacity in riders per
+   * minute on the flat, the lowest along it (its narrowest point), or null where the table has
+   * none for it. Absent on every other ride type, and from an older API or a table built before
+   * the capacity column: the route is then drawn by stress, as it was. A Mass Ride's spans split
+   * where the capacity changes band, so a section is one colour.
+   */
+  rpm?: number | null;
+  /**
+   * A Mass Ride's only: the section is outside the District (border roads count as inside,
+   * OWNER-DECISIONS 420), where Mass Ride figures are not supported yet (427): `rpm` is null and
+   * the line keeps its traffic-stress colour, not the no-figure grey.
+   */
+  outside_dc?: boolean;
 }
 
 /** One sustained climb of the profile (core.api.ProfileClimbOut; OWNER-DECISIONS 322, 328(c)). */
@@ -103,6 +117,8 @@ export interface RouteProfile {
   avoid?: ProfileRange[] | null;
   /** Mass Ride only: the stretches of a leg that could not be traced: width and junctions not known. */
   unchecked?: ProfileRange[] | null;
+  /** Mass Ride only: the stretches outside DC, with no riders a minute (OWNER-DECISIONS 427). */
+  outside_dc?: ProfileRange[] | null;
 }
 
 /**
@@ -162,7 +178,7 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  kind: "stretch" | "junction" | "via";
+  kind: "stretch" | "junction" | "via" | "walk";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -320,7 +336,9 @@ export interface RouteResponse {
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad";
+  /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
+  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;

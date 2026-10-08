@@ -221,6 +221,29 @@ def test_a_withdrawn_variant_is_stopped_not_restarted() -> None:
     assert "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike &&" in hint
     assert "docker compose stop valhalla-weekend" in hint
     assert "restart valhalla-weekend" not in hint and "ebike valhalla-weekend" not in hint
+    # The off-road router kept: its own line, for where it runs, never in the plain restart.
+    assert "docker compose --profile offroad restart valhalla-offroad" in hint
+
+
+def test_the_off_road_router_is_never_in_a_plain_restart() -> None:
+    """REBUILD-BUNDLE operations review, S1: `docker compose restart ... valhalla-offroad`
+    fails with "no such service" where the profile-gated router has no container,
+    and restarts none of the others on the line."""
+    from core.management.commands.rollback_rebuild import RESTART_HINT, restart_hint
+    from pipeline.variants import RESTART_ROUTERS, Variant
+
+    every = {variant: "20260910T080000Z" for variant in Variant}
+    assert RESTART_ROUTERS == (
+        "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+    )
+    assert RESTART_ROUTERS in RESTART_HINT
+    for target in (every, {**every, Variant.WEEKEND: None}, {**every, Variant.OFFROAD: None}):
+        hint = restart_hint(target)
+        plain = hint.split("docker compose restart ", 1)[1].split("&&")[0].split(";")[0]
+        assert "valhalla-offroad" not in plain, hint
+    withdrawn = restart_hint({**every, Variant.OFFROAD: None})
+    assert "docker compose stop valhalla-offroad" in withdrawn
+    assert "--profile offroad restart" not in withdrawn
 
 
 @pytest.mark.django_db(transaction=True)

@@ -110,7 +110,12 @@ class OverrideRefused(ValueError):
 STRESS_REQUIRED_KEYS = frozenset(
     {"tier", "adjustment_id", "category", "visibility", "annotation_status", "display"}
 )
-STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note"}
+STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note", "at_least"}
+# `"at_least": true` makes the row a floor: the way is rated
+# max(the classifier's tier, the row's tier), so a way the classifier already
+# rates at or above the row's tier keeps the classifier's tier and its reason
+# (OWNER-DECISIONS 445a-c: "at least an LTS3", "Bump it up if it would be lower").
+# Absent or false, the row sets the tier, up or down, as before.
 STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
 # Stable, readable, and safe in a URL, a tile attribute and a CSS selector.
 ADJUSTMENT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -152,6 +157,8 @@ def stress_value_problem(value: object) -> str | None:
         return "a stress value's tier is an integer"
     if not STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX:
         return f"tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
+    if "at_least" in value and not isinstance(value["at_least"], bool):
+        return "at_least is true (the tier is a floor) or false, or absent"
     adjustment_id = value["adjustment_id"]
     if (
         not isinstance(adjustment_id, str)
@@ -239,6 +246,10 @@ class Override:
     # The approved row's own reason, for provenance (a stress row's tier is
     # recorded with it); not part of what the row changes.
     reason: str = ""
+    # What the way looked like when the row was written (`pipeline.rematch`),
+    # for finding it again where OSM split or merged it: from the reviewed file
+    # that loaded the row. None for a row typed into the admin.
+    fingerprint: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +275,11 @@ class OverrideReport:
     # taking effect over a checked-in file, which is the thing an operator
     # reading this report wants named.
     fixture_rows_superseded: int = 0
+    # Rows whose way was missing and were re-pointed (`pipeline.rematch`), and
+    # the full report, written to the rebuild's report directory.
+    rematched: int = 0
+    rematch_failed: int = 0
+    rematch_report: object | None = None
 
     @property
     def total(self) -> int:
@@ -289,12 +305,19 @@ class OverrideReport:
         return (
             f"overrides applied: {self.access} access, {self.stress} stress, "
             f"{self.jurisdiction} jurisdiction; {self.fixture_rows_superseded} checked-in "
-            f"crossing rows superseded; {len(unmatched)} approved rows matched no way"
+            f"crossing rows superseded; "
+            + (
+                f"{self.rematched} rows re-matched to new ways by geometry and name, "
+                f"{self.rematch_failed} could not be; "
+                if self.rematch_report is not None
+                else ""
+            )
+            + f"{len(unmatched)} approved rows matched no way"
             + (f" ({named})" if unmatched else "")
         )
 
 
-def load_approved(model=None) -> list[Override]:
+def load_approved(model=None, fingerprints=None) -> list[Override]:
     """Approved rows from the database, as plain values.
 
     Filtered in the query rather than in Python: an unapproved row must not
@@ -303,9 +326,19 @@ def load_approved(model=None) -> list[Override]:
     """
     if model is None:
         from core.models import Override as model
+    if fingerprints is None:
+        from . import rematch
+
+        fingerprints = rematch.load_fingerprints()
 
     return [
-        Override(kind=row.kind, osm_way_id=row.osm_way_id, value=row.value, reason=row.reason or "")
+        Override(
+            kind=row.kind,
+            osm_way_id=row.osm_way_id,
+            value=row.value,
+            reason=row.reason or "",
+            fingerprint=fingerprints.get((row.kind, row.osm_way_id)),
+        )
         for row in model.objects.filter(approved=True).order_by("osm_way_id", "id")
     ]
 
@@ -380,6 +413,11 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
     Up or down: a curated tier below the classifier's is a down-adjustment, and
     allowed. The result carries the adjustment (`StressResult.adjustment`),
     whose direction is taken against the classifier's tier.
+
+    A floor row (`"at_least": true`) only ever raises: where the way's tier is
+    already at or above the row's, the way keeps it, its rule and no
+    adjustment, and the row is not counted as applied. So a floor written
+    against one extract stays right when a later extract rates the road higher.
     """
     from routemaker.stress import StressResult
 
@@ -397,6 +435,13 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             continue
         computed.setdefault(override.osm_way_id, current.tier)
         adjustment = stress_adjustment(override, computed[override.osm_way_id])
+        if (
+            override.value.get("at_least") is True
+            and current.tier is not None
+            and current.tier >= adjustment.tier
+        ):
+            # A floor the way already meets: the classifier's tier stands.
+            continue
         stress_by_way[override.osm_way_id] = StressResult(
             tier=adjustment.tier,
             # The provenance says an override produced it and names the

@@ -116,6 +116,26 @@ BIKE_NONE, BIKE_LANE, BIKE_BUFFERED, BIKE_PROTECTED = 0, 1, 2, 3
 
 DIRECTIONS = ("ib", "ob")
 
+# Reversible lanes (OWNER-DECISIONS 405, 408): the Roadway Block's
+# TOTALTRAVELLANESREVERSIBLE is stale where the reversible operation ended
+# ("Conneticut Avenue Reversible lanes were removed in 2020", DCist 2021-12-15), so a
+# block's reversible lanes count only where a reviewed allowlist of BLOCKKEYs names it
+# (empty until the owner has checked the other blocks against current conditions), and
+# never on a street named here. The Mass Ride width (`routemaker.massflow.DcRules`, built
+# from `settings.MASS_RIDE_DC_*`, whose values a test holds equal to these) reads that rule.
+# Before the rebuild bundle the classifier counted them in the peak direction
+# (OWNER-DECISIONS 179); 408 gave it the width's rule.
+#
+# OWNER-DECISIONS 425 then split the two readings: "Keep counting them, probably in each
+# direction in most cases. These tend to be high stress commuter roads." So the classifier
+# and the crossing stress count a block's reversible lanes in EACH direction (the
+# conservative, stress-averse reading: 16th St NW, Canal Rd, Clara Barton Pkwy, Chain
+# Bridge Rd, Independence Ave), except on a street named here (Connecticut Ave NW, whose
+# lanes 412's override sets): `classifier_reversible`. The Mass Ride width keeps 405's
+# zero-until-checked (`counted_reversible`), where zero is the narrow, safe reading.
+VERIFIED_REVERSIBLE_BLOCKS: frozenset[str] = frozenset()
+ENDED_REVERSIBLE_STREETS: frozenset[str] = frozenset({"CONNECTICUT AVE NW"})
+
 # Roads that are not built yet take no block: OSM's `highway=proposed` is a
 # line on a plan, and review r3 found 17th Street NE 1075230957 and I Street NE
 # 1248940124 taking blocks.
@@ -370,6 +390,9 @@ class RoadFacts:
     # corrections name it by (`withheld_blocks`); the installed block id is
     # built from the ArcGIS row number.
     block_key: str | None = None
+    # Travel lanes a direction that are part-time parking (a lane override,
+    # OWNER-DECISIONS 412): counted for the classifier, left out of the Mass Ride width.
+    part_time_parking_lanes: int | None = None
 
     def to_json(self) -> dict:
         """Only what is present, so a block with little to say costs little."""
@@ -793,6 +816,10 @@ class WayFacts:
     aadt: int | None = None
     aadt_year: int | None = None
     names_agree: bool | None = None
+    # Each block's own record, in the order of `blocks`: the Mass Ride width reads
+    # the blocks one by one (`massflow.usable_width_m`, OWNER-DECISIONS 404), not
+    # this aggregate. Not part of the facts' identity.
+    block_facts: tuple[RoadFacts, ...] = field(default=(), compare=False, repr=False)
 
     @property
     def parking_reach_m(self) -> float | None:
@@ -805,11 +832,40 @@ class WayFacts:
         return self.parking_width_ft * METRES_PER_FOOT
 
 
+def counted_reversible(
+    facts: RoadFacts,
+    verified: frozenset[str] | None = None,
+    ended: frozenset[str] | None = None,
+) -> int:
+    """The block's reversible lanes that count (OWNER-DECISIONS 405, 408): zero unless
+    its BLOCKKEY is in `verified`, and zero on a street in `ended` even then (by
+    default the module's `VERIFIED_REVERSIBLE_BLOCKS` and `ENDED_REVERSIBLE_STREETS`)."""
+    verified = VERIFIED_REVERSIBLE_BLOCKS if verified is None else verified
+    ended = ENDED_REVERSIBLE_STREETS if ended is None else ended
+    count = facts.lanes.get("reversible", 0)
+    if not count or (facts.name or "").strip().upper() in ended:
+        return 0
+    return count if facts.block_key in verified else 0
+
+
+def classifier_reversible(facts: RoadFacts, ended: frozenset[str] | None = None) -> int:
+    """The reversible lanes the LTS classifier and the crossing stress count, in each
+    direction (OWNER-DECISIONS 425): all of them, except on a street in `ended` (by
+    default `ENDED_REVERSIBLE_STREETS`: Connecticut Ave NW, which follows 412). Not the
+    Mass Ride width's rule, which is `counted_reversible`."""
+    ended = ENDED_REVERSIBLE_STREETS if ended is None else ended
+    count = facts.lanes.get("reversible", 0)
+    if not count or (facts.name or "").strip().upper() in ended:
+        return 0
+    return count
+
+
 def lanes_per_direction(facts: RoadFacts) -> int | None:
     """The through lanes a rider meets in one direction on a block, at the
     busiest time: the more of its two directions' lanes, plus the lanes that
-    reverse (Connecticut Avenue's: one each way and two that serve whichever
-    way is the peak is three lanes in the peak direction, not one). The shared
+    reverse (`classifier_reversible`, OWNER-DECISIONS 425: counted in each
+    direction, so one each way and two reversible is three; Connecticut Avenue's
+    count as none, 405, 408, its lanes set by 412's override). The shared
     centre turn lane is not a through lane. A block that gives only a total is
     half of it on a two-way street and all of it on a one-way."""
     lanes = facts.lanes
@@ -817,9 +873,9 @@ def lanes_per_direction(facts: RoadFacts) -> int | None:
         return None
     directional = [count for label, count in lanes.items() if label in ("ib", "ob", "from", "to")]
     if directional and max(directional) > 0:
-        return max(directional) + lanes.get("reversible", 0)
-    if lanes.get("reversible"):
-        return lanes["reversible"]
+        return max(directional) + classifier_reversible(facts)
+    if classifier_reversible(facts):
+        return classifier_reversible(facts)
     total = lanes.get("total")
     if not total:
         return None
@@ -837,11 +893,12 @@ def _labels(along: bool | None) -> tuple[str, str] | None:
 
 def _directional_lanes(facts: RoadFacts, label: str) -> int | None:
     """Through lanes one direction of a block has at its busiest: its own lanes
-    plus the reversible ones. None where the block records none that way."""
+    plus the reversible ones, counted in each direction (`classifier_reversible`,
+    OWNER-DECISIONS 425). None where the block records none that way."""
     count = facts.lanes.get(label)
     if not count:
         return None
-    return count + facts.lanes.get("reversible", 0)
+    return count + classifier_reversible(facts)
 
 
 def _block_bike(
@@ -1017,6 +1074,7 @@ def aggregate(
         aadt=busiest.aadt if busiest else None,
         aadt_year=busiest.aadt_year if busiest else None,
         names_agree=names,
+        block_facts=tuple(facts),
     )
 
 

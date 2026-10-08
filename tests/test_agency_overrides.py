@@ -134,7 +134,12 @@ def test_the_file_keeps_within_the_rows_the_owner_approved(path, item) -> None:
     rows = json.loads(path.read_text())["rows"]
     stress = {int(row["osm_way_id"]) for row in rows if row["kind"] == "stress"}
     access = {int(row["osm_way_id"]) for row in rows if row["kind"] == "access"}
-    assert stress <= {int(way) for way in approved["stress"]}
+    # Decision 282a re-pointed a way OSM had split; the replacements stand in for it.
+    allowed = {int(way) for way in approved["stress"]}
+    for moved in json.loads(path.read_text()).get("superseded", []):
+        if moved["osm_way_id"] in allowed:
+            allowed.update(moved["replaced_by"])
+    assert stress <= allowed
     assert access <= set(approved.get("access", []))
 
 

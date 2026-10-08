@@ -29,6 +29,8 @@
  * against the base map's own fill colours.
  */
 
+import { MASS_SOURCE_ID, massHides, massLayers } from "./massStyle.js";
+
 // The tiers' shapes: what tells them apart without colour. Weight rises with
 // stress (OWNER-DECISIONS 274, 283: "If I didn't see the key, I'd think that
 // LTS4 was lower stress"): ink - the share of the line that is drawn (the dash
@@ -402,6 +404,27 @@ export const UNPAVED_PALETTES = {
 const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true], unpaved, paved];
 
 /**
+ * A path or trail whose surface OpenStreetMap does not give (OWNER-DECISIONS 376, A, from
+ * PARK-TRAILS-investigation.md): a trail-class feature (the tiles' "trail") with no "unpaved"
+ * at all, which the tiles leave out when the surface is unknown ("true" is unpaved, "false"
+ * is paved). Park trails with no surface tag were drawn like a paved path, with a path's
+ * rails and a dark edge; they may be either. It is a style only: nothing is closed.
+ * Roads with no surface tag (nearly every street) are not this; they draw as they always did.
+ * Nor is a trail beside a road (the tiles' "roadside", OWNER-DECISIONS 403: "Most trails near
+ * a road are paved. There are minor exceptions."): it keeps the paved path's look, rails and all.
+ */
+const surfaceUnknown = ["all", ["==", ["get", "trail"], true], ["!", ["has", "unpaved"]], ["!=", ["get", "roadside"], true]];
+
+/**
+ * The surface-unknown line's shape (no colour in it): short, even dashes, a dash as long as
+ * 0.8 of its gap (2 on, 1.5 off, in line widths), which no tier has (LTS 2 is long dashes
+ * with short gaps, LTS 3 almost solid) and the unpaved mark is not (a dotted line drawn over
+ * a solid brown one). It is drawn in LTS 1's own colours, as the line it is, with a dashed
+ * edge of the same length, and with no path rails.
+ */
+export const UNKNOWN_SURFACE_DASH = [2, 1.5];
+
+/**
  * What this browser remembers of the accessibility switch: true (on), false
  * (off, chosen), or null where nothing is stored, the value is not one this
  * page wrote, or storage throws.
@@ -678,7 +701,7 @@ export const BESIDE_ROAD_MIN_ZOOM = 15;
  * stick to mostly the longer trails, it's getting messy."). At z10 and z11 a path
  * was drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
  * side: 9.5 px a line), which is what turned Columbia's pathways into solid
- * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.busy`, which a test holds
+ * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.ride`, which a test holds
  * equal) the line and the rails are scaled, each by its own factor at z10 and at
  * z11, so a long trail reads as a line and not a ribbon (a path is 5.4 px at
  * z10, 6.9 px at z11). The casing's edge is not thinned (scale 1): it is a pixel
@@ -792,24 +815,144 @@ function linePaint(color, width, busy, zoomedOut = null) {
   };
 }
 
-/** Each overlay layer's filter in the ride time `when`, by layer id. */
-export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
+/**
+ * Whether the map is the Mass Ride's (OWNER-DECISIONS 325): set by App from the ride type. The
+ * stress layers - LTS colours, facility rails, trails and the Avoid style - are not drawn then, at
+ * any zoom (417, 417a; lib/mapGlue.ts hides them), and massStyle.js's layers are, from the Mass
+ * Ride tiles. Their filters also take out any feature with a capacity (`massHides`).
+ */
+let massRide = false;
+const massListeners = new Set();
+
+export function massRideOn() {
+  return massRide;
+}
+
+export function setMassRide(on) {
+  if (massRide === on) return;
+  massRide = on;
+  massListeners.forEach((listener) => listener());
+}
+
+export function subscribeMassRide(listener) {
+  massListeners.add(listener);
+  return () => massListeners.delete(listener);
+}
+
+/**
+ * THE MOUNTAIN-BIKE TRAILS (OWNER-DECISIONS 452, 452a). The stress tiles mark a trail in the
+ * mountain-bike class with `mtb` (true, or left out: core/stress_tiles.py, from the segment's
+ * `mtb_only`, which `pipeline.trail_closures.MTB_ONLY` writes for `routemaker.trailaccess.MTB`).
+ * Routing closes them for every ride type but Gravel and Mountain Goat (the off-road graph).
+ * 452 hid them; 452a, the owner: "I want people to know where the trails are, but make them
+ * clear that it's not routing." So none of the routable layers (stress, unpaved,
+ * surface-unknown, ring, gap, facility) draws one (`mtbHides`), and they have a look of their
+ * own instead (`mtbTrailLayers`, MTB_TRAIL): a thin mid-grey line of fine dots, with no casing,
+ * no rails and no stress colour, under every routable layer, from MTB_MIN_ZOOM (the zoom the
+ * tiles carry them from, as before). The dots carry the meaning, not the grey: no routable
+ * line on the map is a row of separate dots on nothing. This supersedes 290(b)'s "draw them
+ * faint" (FOLLOWUP-MTB-FAINT). Not the tiles' `rough`: that is a rough surface (`is_rough`,
+ * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
+ *
+ * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
+ * other trail, in the routable layers, and the not-for-routes layer draws nothing (and the
+ * legend drops its row, lib/stressLegend.ts). Such a mode would pass `routableMtb` to
+ * stressFilters rather than flip this for every ride type.
+ */
+export const MTB_TRAILS_ROUTABLE = false;
+
+/** The filter that takes the mountain-bike trails (the tiles' `mtb`) out of a routable layer. */
+export const mtbHides = ["!=", ["get", "mtb"], true];
+
+/** A mountain-bike trail (the tiles' `mtb`). */
+export const isMtbTrail = ["==", ["get", "mtb"], true];
+
+/**
+ * The not-for-routes look (452a): a narrow mid-grey line of fine dots (`dash`, in line widths:
+ * a dot as long as the line is wide, then a gap twice that), with no casing. #5f6368 is 3.5:1 or
+ * more from every surface of the light base map (the lowest, scrub's green, 3.54:1; parks'
+ * 3.57:1; white roads 6.05:1; mtbTrail.test.ts holds 3:1), and it is not a stress colour in
+ * any palette. With the accessibility switch on (`strong`) the line is wider and darker
+ * (#4b5260, the panels' muted text, 4.59:1 or more). The legend's swatch draws it on the base
+ * map's earth colour (`legendGround`), so it reads as on the map in a dark panel too.
+ */
+export const MTB_TRAIL = {
+  color: "#5f6368",
+  strongColor: "#4b5260",
+  width: 1.5,
+  strongWidth: 2,
+  dash: [1, 2],
+  legendGround: "#e2dfda",
+};
+
+/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test). */
+export const MTB_MIN_ZOOM = 14;
+
+/** The not-for-routes line's colour and width, plain or with the accessibility switch on. */
+export function mtbTrailPaint(strong = accessibilityOn()) {
+  return {
+    "line-color": strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color,
+    "line-width": strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width,
+    "line-dasharray": MTB_TRAIL.dash,
+  };
+}
+
+/** The not-for-routes layer (452a): the mountain-bike trails, drawn under every routable layer. */
+export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  return [
+    {
+      id: "mtb-trail",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: MTB_MIN_ZOOM,
+      filter: stressFilters(when)["mtb-trail"],
+      paint: mtbTrailPaint(strong),
+    },
+  ];
+}
+
+/**
+ * Each overlay layer's filter in the ride time `when`, by layer id. Each routable layer
+ * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
+ * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
+ * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
+ * that carry a capacity (massStyle.js, massHides).
+ */
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
+  const filters = stressFiltersOf(when, showHighLanes, routableMtb);
+  if (!mass) return filters;
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
+}
+
+function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
+  // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
+  const hidden = routableMtb ? [] : [mtbHides];
+  // The not-for-routes line: the mountain-bike trails, or nothing once they are routable.
+  filters["mtb-trail"] = ["all", drawnAt(when), isMtbTrail, ...(routableMtb ? [["boolean", false]] : [])];
   for (const tier of TIER_SHAPES) {
-    const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
-    filters[`stress-${tier.tier}`] = filter;
-    filters[`stress-casing-${tier.tier}`] = filter;
+    const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
+    // LTS 1's line and edge leave the surface-unknown trails to their own layers.
+    const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
+    filters[`stress-${tier.tier}`] = own;
+    filters[`stress-casing-${tier.tier}`] = own;
+    if (tier.tier === 1) filters["stress-unknown"] = filters["stress-unknown-casing"] = [...filter, surfaceUnknown];
     if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
     if (hasRingLayer(tier.tier)) filters[`stress-ring-${tier.tier}`] = [...filter, ["!=", ["get", "unpaved"], true]];
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
   }
   for (const facility of FACILITIES) {
-    const filter = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ...hidden, ["==", facilityAt(when), facility.facility]];
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown
-    // surface, which keeps its rails.
-    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true]);
+    // surface, which keeps its rails on a road that is not a trail, and not on
+    // a trail.
+    //
+    // 376, A: a trail whose surface is not mapped has none either (surfaceUnknown): it may be
+    // either, and drawn like a paved path it read as one.
+    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true], ["!", surfaceUnknown]);
     // A painted lane is not drawn on LTS 4 and Avoid unless the rider asked
     // (a missing tier counts as 0, which draws it, as a rating-less road
     // has no stress to be high). The tile's own tier: a road closed to cars
@@ -830,6 +973,53 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     filter: filters[`stress-${tier.tier}`],
     paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
+}
+
+/**
+ * The surface-unknown trails (OWNER-DECISIONS 376, A): LTS 1's line and edge, both dashed
+ * (UNKNOWN_SURFACE_DASH) so the line does not read as a solid, paved path, with no rails and
+ * no dark continuous edge: the edge is the dashes' own, so a gap shows the base map. The
+ * edge's dash is the line's in its own width, which differs from the line's at z10-11, so it
+ * follows the zoom (`unknownEdgeDash`). A tier other than 1 is drawn as it is (an
+ * override on a trail), by its own layers.
+ */
+function unknownEdgeDash(tier, zoom) {
+  const line = zoom === null ? tier.width : zoomedOutLine(tier, zoom);
+  const casing = zoom === null ? casingWidth(tier) : zoomedOutCasing(tier, zoom);
+  return UNKNOWN_SURFACE_DASH.map((d) => (d * line) / casing);
+}
+
+/** The edge's dash by zoom, for the map: one per zoomed-out grade, then the full widths' (a "step", as the widths are). */
+export function unknownEdgeDashByZoom(tier) {
+  return [
+    "step",
+    ["zoom"],
+    ...zoomedOutStops((zoom) => ["literal", unknownEdgeDash(tier, zoom)]),
+    ["literal", unknownEdgeDash(tier, null)],
+  ];
+}
+
+export function unknownSurfaceLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  const tier = tiers[0];
+  return [
+    {
+      id: "stress-unknown-casing",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: filters["stress-unknown-casing"],
+      paint: { ...casingPaint(tier), "line-dasharray": unknownEdgeDashByZoom(tier) },
+    },
+    {
+      id: "stress-unknown",
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: filters["stress-unknown"],
+      paint: { ...linePaint(tier.color, tier.width, false, (zoom) => zoomedOutLine(tier, zoom)), "line-dasharray": UNKNOWN_SURFACE_DASH },
+    },
+  ];
 }
 
 /**
@@ -1159,12 +1349,18 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
+    // The mountain-bike trails' not-for-routes line (452a), under every routable layer.
+    ...mtbTrailLayers(sourceId, when),
     ...ringLayers(sourceId, when, tiers),
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
     ...gapLayers(sourceId, when, tiers),
+    ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
+    // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn
+    // only in that mode, where every layer above is hidden (lib/mapGlue.ts; OWNER-DECISIONS 417a).
+    ...massLayers(MASS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()),
   ];
 }
 

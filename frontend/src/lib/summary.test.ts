@@ -273,3 +273,23 @@ test("the seek note says what the hills search did, and at the top of the traffi
   assert.equal(seekNote(seek({ chosen: 0 })), "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route.");
   assert.equal(seekNote(seek({})), "Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared.");
 });
+
+test("a point the planner moved into the Zoo's bike racks is said with the route and shown (291(4); spec review S4)", async () => {
+  const { movedPointsNote } = await import("./summary.ts");
+  const note = "This point is inside the National Zoo, where bicycles are not ridden beyond the bike racks by the Harvard Street entrance. The route goes to the racks.";
+  const route = {
+    distance_m: 5000,
+    duration_s: 1200,
+    climb_m: 31,
+    preset: "default",
+    moved_points: [{ index: 1, asked: [-77.049, 38.9296], routed: [-77.0466, 38.9306], reason: "zoo_racks", note }],
+  } as unknown as RouteResponse;
+  const points: LonLat[] = [[-77.03, 38.9], [-77.049, 38.9296]];
+  assert.equal(movedPointsNote(route, 2), `End: ${note}`);
+  assert.ok(announceRoute(route, points).includes(`End: ${note}`), announceRoute(route, points));
+  assert.equal(movedPointsNote({ moved_points: [] } as never), null);
+  assert.equal(movedPointsNote({} as never), null);
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /<p className="notice moved-points" role="note">/);
+});

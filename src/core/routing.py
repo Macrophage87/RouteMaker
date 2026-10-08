@@ -72,13 +72,14 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import validate_schema_name
+from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, flow, intersections, ridetime, trace_junctions
+from routemaker import climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
+from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
 from . import presets
@@ -322,7 +323,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -334,6 +335,27 @@ LEFT JOIN LATERAL (
 ) AS seg ON true
 ORDER BY p.ordinality
 """
+
+# Whether the live segment table has the Mass Ride capacity column
+# (`pipeline.schema.MASS_WIDTH_COLUMN`): written by the first rebuild after the
+# capacity map shipped. Without it a Mass Ride's sections carry no capacity and
+# the map draws them by stress, as it did. Remembered once seen, as above.
+_capacity_column_seen = False
+
+
+def _has_capacity_column(schema: str) -> bool:
+    global _capacity_column_seen
+    if _capacity_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, MASS_WIDTH_COLUMN],
+        )
+        _capacity_column_seen = cursor.fetchone()[0] == 1
+    return _capacity_column_seen
+
 
 # A road closed to motor traffic only at set times is a path for a ride inside
 # the closure, and the road it is otherwise for any other (routemaker.facility).
@@ -388,6 +410,13 @@ class PieceClass(tuple):
     unpaved: bool | None
     lanes: int | None
     oneway: bool | None
+    # The segment's Mass Ride usable width, metres (`pipeline.schema.MASS_WIDTH_COLUMN`:
+    # the ride's own direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS
+    # 404, 406), and the riders a minute on the flat it gives (`rpm`), or None where the
+    # table has none. The route chart reads its width from here, so the chart and the
+    # capacity map always agree (`_flow_stretches`).
+    width_m: float | None
+    rpm: int | None
 
     def __new__(
         cls,
@@ -396,15 +425,18 @@ class PieceClass(tuple):
         unpaved: bool | None = None,
         lanes: int | None = None,
         oneway: bool | None = None,
+        width_m: float | None = None,
     ):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
         pair.lanes = lanes
         pair.oneway = oneway
+        pair.width_m = width_m
+        pair.rpm = round(flow.level_riders_per_min(width_m)) if width_m is not None else None
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway)
+        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m)
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -419,16 +451,19 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     with_facility = _has_facility_columns(schema)
+    with_capacity = _has_capacity_column(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
-        columns="s.facility, s.car_free_when" if with_facility else "NULL",
+        columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
+        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
             else "NULL::smallint AS road_lanes, NULL::boolean AS road_oneway"
         ),
+        capacity_out=f", seg.{MASS_WIDTH_COLUMN}" if with_capacity else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     classes = []
@@ -439,6 +474,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
+            width = row[5] if with_capacity and len(row) > 5 and row[5] is not None else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -448,6 +484,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     unpaved,
                     lanes,
                     oneway,
+                    None if width is None else float(width),
                 )
             )
     return classes
@@ -483,32 +520,53 @@ def totals(classified) -> tuple[dict[str, float], dict[str, float]]:
 MIN_SPAN_M = 10.0
 
 
-def stress_spans(stretches: list[tuple]) -> list[dict]:
+def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved]) in the order
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC]]]) in the order
     ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
     unpaved section in the brown ramp, so a section ends where the surface changes).
+
+    With `capacity` (a Mass Ride on a table that has the capacity column; OWNER-DECISIONS
+    325-327) a section also ends where the capacity changes band, and carries `rpm`: the
+    lowest capacity along it, riders a minute, or null where the segments have none. A
+    stretch marked Avoid (tier 5) is one section whatever its capacity: it shows only
+    "Avoid" (325). A section folded into its neighbour does not lower the neighbour's
+    `rpm`, so a section's figure always lies in the band its colour says. A stretch
+    outside the District (OWNER-DECISIONS 427; border roads are inside, 420) is its own
+    section with `rpm` null and `outside_dc` true: Mass Ride figures are not supported there.
     """
     # Pieces are cut at every shape vertex, so a long stretch of one class
     # arrives as many short pieces: they are joined before anything is judged
     # too short to show.
-    spans: list[list] = []  # [length, tier, facility, unpaved]
+    spans: list[list] = []  # [length, tier, facility, unpaved, band, lowest rpm]
     for stretch in stretches:
         metres, tier, kind = stretch[:3]
         unpaved = stretch[3] if len(stretch) > 3 else None
-        if spans and spans[-1][1:] == [tier, kind, unpaved]:
+        outside = capacity and len(stretch) > 5 and bool(stretch[5])
+        rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
+        band = (
+            "outside"
+            if outside
+            else band_of(rpm)
+            if capacity and rpm is not None and tier != "5"
+            else None
+        )
+        if spans and spans[-1][1:5] == [tier, kind, unpaved, band]:
             spans[-1][0] += metres
+            spans[-1][5] = _lowest(spans[-1][5], rpm)
         else:
-            spans.append([metres, tier, kind, unpaved])
+            spans.append([metres, tier, kind, unpaved, band, rpm])
     folded: list[list] = []
     for span in spans:
-        if folded and (span[0] < MIN_SPAN_M or folded[-1][1:] == span[1:]):
+        if folded and (span[0] < MIN_SPAN_M or folded[-1][1:5] == span[1:5]):
             folded[-1][0] += span[0]
+            if folded[-1][1:5] == span[1:5]:
+                folded[-1][5] = _lowest(folded[-1][5], span[5])
         elif folded and folded[-1][0] < MIN_SPAN_M:
             # The first section was the short one: it takes this one's class.
             folded[-1] = [folded[-1][0] + span[0], *span[1:]]
@@ -516,21 +574,29 @@ def stress_spans(stretches: list[tuple]) -> list[dict]:
             folded.append(list(span))
     out = []
     at = 0.0
-    for length, tier, kind, unpaved in folded:
+    for length, tier, kind, unpaved, _band, rpm in folded:
         start, at = at, at + length
         if out and out[-1]["to_m"] == round(at):
             out[-1]["to_m"] = round(at)
             continue
-        out.append(
-            {
-                "from_m": round(start),
-                "to_m": round(at),
-                "tier": int(tier) if tier != "unknown" else None,
-                "facility": kind if kind != "unknown" else None,
-                "unpaved": unpaved,
-            }
-        )
+        entry = {
+            "from_m": round(start),
+            "to_m": round(at),
+            "tier": int(tier) if tier != "unknown" else None,
+            "facility": kind if kind != "unknown" else None,
+            "unpaved": unpaved,
+        }
+        if capacity:
+            entry["rpm"] = None if tier == "5" else rpm
+            if _band == "outside":
+                entry["outside_dc"] = True
+        out.append(entry)
     return out
+
+
+def _lowest(a: int | None, b: int | None) -> int | None:
+    """The lower of two capacities, ignoring a missing one."""
+    return b if a is None else a if b is None else min(a, b)
 
 
 _ADJUSTMENT_JOIN = """
@@ -764,26 +830,60 @@ WEEKEND_FAILURE_TTL_S = 60
 MIDDLE_TRACE_RESERVE_S = 8
 MIDDLE_MIN_S = 4
 _weekend_failed_at: float | None = None
+# The off-road router (`Variant.OFFROAD`, Gravel and Mountain Goat) is a fifth
+# service and falls back to the standard graph exactly as the weekend one does,
+# on the same timeout and failure memory: a deployment that has not built it
+# yet, or whose router is down, still answers, without the mountain-bike class.
+_offroad_failed_at: float | None = None
+TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value)
 
 
 def _weekend_down() -> bool:
     return _weekend_failed_at is not None and clock() - _weekend_failed_at < WEEKEND_FAILURE_TTL_S
 
 
-def _weekend_is_promoted() -> bool:
-    """Whether a weekend build has been promoted: its settings row exists. A
-    deployment before its first four-graph rebuild, or after a rollback that
-    withdrew the weekend graph, has none."""
+def _offroad_down() -> bool:
+    return _offroad_failed_at is not None and clock() - _offroad_failed_at < WEEKEND_FAILURE_TTL_S
+
+
+def _twin_down(variant: str) -> bool:
+    return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
+
+
+def _promoted_row(variant: str) -> bool:
+    """Whether a build of this variant has been promoted: its settings row
+    exists. A deployment before its first rebuild with the graph, or after a
+    rollback that withdrew it, has none."""
     from core.models import ValhallaUpstream
 
-    return (
-        ValhallaUpstream.objects.filter(variant=Variant.WEEKEND.value).exclude(build_id="").exists()
-    )
+    return ValhallaUpstream.objects.filter(variant=variant).exclude(build_id="").exists()
+
+
+def _weekend_is_promoted() -> bool:
+    return _promoted_row(Variant.WEEKEND.value)
+
+
+def _offroad_is_promoted() -> bool:
+    return _promoted_row(Variant.OFFROAD.value)
+
+
+def _is_promoted(variant: str) -> bool:
+    if variant == Variant.OFFROAD.value:
+        return _offroad_is_promoted()
+    return _weekend_is_promoted()
 
 
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
+
+
+def _mark_twin(variant: str, ok: bool) -> None:
+    global _offroad_failed_at
+    if variant == Variant.OFFROAD.value:
+        _offroad_failed_at = None if ok else clock()
+    else:
+        _mark_weekend(ok)
 
 
 def _climb_of(trip: dict) -> float:
@@ -953,7 +1053,7 @@ def no_busier_than_middle(
     """
     step = Deadline(deadline.at - MIDDLE_TRACE_RESERVE_S, deadline.per_call_s)
     limit = min(deadline.per_call_s, ALTERNATES_TIMEOUT_S, step.at - clock())
-    if variant == Variant.WEEKEND.value:
+    if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if limit < MIDDLE_MIN_S:
         return trip, False
@@ -1005,7 +1105,7 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
     standard graph (correctness review, round 2: the retry made it 30 s).
     """
     limit = deadline.per_call_s
-    if variant == Variant.WEEKEND.value:
+    if variant in TWIN_VARIANTS:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if "alternates" not in request:
         return _call(variant, "route", request, Deadline(deadline.at, limit)), False
@@ -1013,7 +1113,7 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
     try:
         return _call(variant, "route", request, Deadline(deadline.at, alternates_limit)), False
     except RouterUnavailable:
-        if variant == Variant.WEEKEND.value:
+        if variant in TWIN_VARIANTS:
             raise
         logger.warning(
             "the %s router did not answer a request for alternatives in %s s; asking without",
@@ -1092,32 +1192,125 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
         return None
 
 
+# Whether the live segment table has the walk_bike column yet (a table built
+# before NO-BIKE-PATHS has none; the route then carries no walk notes).
+_walk_column_seen = False
+
+
+def _has_walk_column(schema: str) -> bool:
+    global _walk_column_seen
+    if _walk_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = 'walk_bike'",
+            [schema],
+        )
+        _walk_column_seen = cursor.fetchone()[0] == 1
+    return _walk_column_seen
+
+
+def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
+    """The stretches of the route over a short `bicycle=dismount` connector that
+    routing keeps (OWNER-DECISIONS 291(5)): (from, to) in metres along the traced
+    pieces, neighbouring pieces on such ways joined. A table without the column,
+    or a failed query, has none: the route is answered without the note."""
+    if not pieces:
+        return []
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    try:
+        if not _has_walk_column(schema):
+            return []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND walk_bike",
+                [sorted({p.way_id for p in pieces})],
+            )
+            walking = {row[0] for row in cursor.fetchall()}
+    except Exception:  # noqa: BLE001 - a route is answered without its walk notes
+        logger.warning("the walk-your-bike ways could not be read", exc_info=True)
+        return []
+    if not walking:
+        return []
+    spans: list[tuple[float, float]] = []
+    at = 0.0
+    open_from: float | None = None
+    for run in leg_runs:
+        if not isinstance(run, tuple):
+            at += float(run)
+            if open_from is not None:
+                spans.append((open_from, at - float(run)))
+                open_from = None
+            continue
+        for index in range(run[0], run[1]):
+            piece = pieces[index]
+            if piece.way_id in walking:
+                if open_from is None:
+                    open_from = at
+            elif open_from is not None:
+                spans.append((open_from, at))
+                open_from = None
+            at += piece.metres
+        if open_from is not None:
+            spans.append((open_from, at))
+            open_from = None
+    return spans
+
+
 # What a Mass Ride's stretch with no width is (`_flow_stretches`): marked Avoid (325: no
 # carrying capacity, said "Avoid"), or on a leg that could not be traced (neither its
 # width nor its junctions are known, so its intersections were not checked).
 STRETCH_AVOID = "avoid"
 STRETCH_UNTRACED = "untraced"
+# Outside the District (OWNER-DECISIONS 427): Mass Ride figures are not supported there yet,
+# so the stretch has no width and no riders a minute; border roads count as inside (420).
+STRETCH_OUTSIDE_DC = "outside_dc"
+
+
+def _outside_dc(piece) -> bool:
+    """Whether a traced piece lies outside the District (its midpoint; a piece with no
+    position is taken as inside)."""
+    from .mass_tiles import inside_dc
+
+    lon, lat = getattr(piece, "lon", None), getattr(piece, "lat", None)
+    return lon is not None and lat is not None and not inside_dc(lon, lat)
 
 
 def _flow_stretches(
-    leg_runs: list, pieces: list[Piece], classes: list
+    leg_runs: list, pieces: list[Piece], classes: list, capacity: bool = False
 ) -> list[tuple[float, float | None, str | None]]:
     """(metres, physical usable width, note) along the route in the order ridden, as the
-    stress sections are cut (`stress_spans`): the width a Mass Ride's group has
-    (`routemaker.flow.usable_width_m`), None with `STRETCH_AVOID` on a stretch marked
-    Avoid and with `STRETCH_UNTRACED` on a leg that could not be traced."""
+    stress sections are cut (`stress_spans`): the width a Mass Ride's group has, None with
+    `STRETCH_AVOID` on a stretch marked Avoid and with `STRETCH_UNTRACED` on a leg that
+    could not be traced.
+
+    With `capacity` (the live table has `segment.mass_usable_width_m`) the width is the
+    segment's own, as the capacity map colours it (`PieceClass.width_m`: the ride's own
+    direction, parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404, 406), so the
+    chart and the map always agree; a piece on no segment has none. Without the column (a
+    table built before the rebuild bundle) it is `routemaker.flow.usable_width_m`'s
+    estimate from the classifier's lanes."""
     out: list[tuple[float, float | None, str | None]] = []
     for run in leg_runs:
         if isinstance(run, tuple):
             for i in range(run[0], run[1]):
                 klass = classes[i]
-                width = flow.usable_width_m(
-                    klass[0],
-                    klass[1],
-                    getattr(klass, "lanes", None),
-                    getattr(klass, "oneway", None),
-                )
-                note = STRETCH_AVOID if flow.is_avoid(klass[0]) else None
+                avoid = flow.is_avoid(klass[0])
+                outside = _outside_dc(pieces[i])
+                if avoid or outside:
+                    width = None
+                elif capacity:
+                    width = getattr(klass, "width_m", None)
+                else:
+                    width = flow.usable_width_m(
+                        klass[0],
+                        klass[1],
+                        getattr(klass, "lanes", None),
+                        getattr(klass, "oneway", None),
+                    )
+                note = STRETCH_AVOID if avoid else STRETCH_OUTSIDE_DC if outside else None
                 out.append((pieces[i].metres, width, note))
         else:
             out.append((run, None, STRETCH_UNTRACED))
@@ -1341,6 +1534,7 @@ def route_profile(
             "crossings": None,
             "avoid": None,
             "unchecked": None,
+            "outside_dc": None,
             "crossings_complete": None,
         }
         if riders is not None:
@@ -1358,6 +1552,8 @@ def route_profile(
             end_m = sample_m[-1]
             body["avoid"] = _stretch_ranges(flow_stretches, STRETCH_AVOID, end_m)
             body["unchecked"] = _stretch_ranges(flow_stretches, STRETCH_UNTRACED, end_m)
+            # 427: the parts of a Mass Ride outside DC, said in words, with no figure.
+            body["outside_dc"] = _stretch_ranges(flow_stretches, STRETCH_OUTSIDE_DC, end_m)
             body["crossings"] = None if majors is None else [_crossing_out(x) for x in majors]
             body["crossings_complete"] = None if majors is None else bool(majors_complete)
         return body
@@ -1367,7 +1563,12 @@ def route_profile(
 
 
 def describe_route(
-    leg_runs: list, pieces: list[Piece], classes: list, events: list | None, summary: dict
+    leg_runs: list,
+    pieces: list[Piece],
+    classes: list,
+    events: list | None,
+    summary: dict,
+    walks: list[tuple[float, float]] | None = None,
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
@@ -1396,7 +1597,7 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None)
+        return describe.describe_both(legs, events, length or None, walks)
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -1727,6 +1928,36 @@ def target_fields(final_m: float, target_m: float | None, ceiling_m: float | Non
     }
 
 
+ZOO_NOTE = (
+    "This point is inside the National Zoo, where bicycles are not ridden beyond the "
+    "bike racks by the Harvard Street entrance. The route goes to the racks."
+)
+
+
+def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[dict]]:
+    """A trip point inside the Zoo is moved to its bike racks: a route to the
+    Zoo ends at the racks (OWNER-DECISIONS 291(4)). Returns the points and, for
+    each one moved, what the answer reports (`moved_points`)."""
+    out: list[list[float]] = []
+    moved: list[dict] = []
+    for index, (lon, lat) in enumerate(points):
+        target = zoo.redirect(lon, lat)
+        if target is None:
+            out.append([lon, lat])
+            continue
+        out.append([target[0], target[1]])
+        moved.append(
+            {
+                "index": index,
+                "asked": [round(lon, 6), round(lat, 6)],
+                "routed": [round(target[0], 6), round(target[1], 6)],
+                "reason": "zoo_racks",
+                "note": ZOO_NOTE,
+            }
+        )
+    return out, moved
+
+
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -1745,6 +1976,7 @@ def plan(
     if started is None:
         started = clock()
     dials = dials or Dials()
+    points, moved_points = move_zoo_points(points)
     preset = presets.PRESETS[preset_name]
     stress_dial = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -1809,24 +2041,24 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
-    if variant == Variant.WEEKEND.value and (_weekend_down() or not _weekend_is_promoted()):
-        logger.info("the weekend graph is not being served; planning on the standard graph")
+    if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
     try:
         try:
             answer, timed_out = _route(variant, request, deadline)
-            if variant == Variant.WEEKEND.value:
-                _mark_weekend(True)
+            if variant in TWIN_VARIANTS:
+                _mark_twin(variant, True)
         except RouterUnavailable:
             # The weekend graph is a fourth router, and a deployment that has
             # not built it yet - or one whose weekend router is down or hung -
             # still answers a weekend ride, on the standard graph it is the
             # twin of. The answer names the graph it came from, and the failure
             # is remembered for WEEKEND_FAILURE_TTL_S.
-            if variant != Variant.WEEKEND.value:
+            if variant not in TWIN_VARIANTS:
                 raise
-            _mark_weekend(False)
-            logger.warning("the weekend router did not answer; planning on the standard graph")
+            _mark_twin(variant, False)
+            logger.warning("the %s router did not answer; planning on the standard graph", variant)
             variant = Variant.STANDARD.value
             answer, timed_out = _route(variant, request, deadline)
         except RouterRefused as refusal:
@@ -1838,16 +2070,17 @@ def plan(
             # one taken to be missing its tiles and remembered as down; a
             # point the standard graph cannot place either is a real refusal
             # and is reported as one.
-            if variant != Variant.WEEKEND.value or refusal.code not in NO_EDGE_CODES:
+            if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
                 raise
             answer, timed_out = _route(Variant.STANDARD.value, request, deadline)
-            variant = Variant.STANDARD.value
-            _mark_weekend(False)
+            _mark_twin(variant, False)
             logger.warning(
-                "the weekend router placed no edge the standard graph could (code %s); "
+                "the %s router placed no edge the standard graph could (code %s); "
                 "planning on the standard graph",
+                variant,
                 refusal.code,
             )
+            variant = Variant.STANDARD.value
         if timed_out and not calm_seek:
             seek_limited = "timed_out"
     except RouterRefused as refusal:
@@ -2123,12 +2356,21 @@ def plan(
         for run in leg_runs:
             if isinstance(run, tuple):
                 stretches.extend(
-                    (pieces[i].metres, *classes[i], getattr(classes[i], "unpaved", None))
+                    (
+                        pieces[i].metres,
+                        *classes[i],
+                        getattr(classes[i], "unpaved", None),
+                        getattr(classes[i], "rpm", None),
+                        preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                    )
                     for i in range(run[0], run[1])
                 )
             else:
                 stretches.append((run, "unknown", "unknown"))
-        spans = stress_spans(stretches)
+        capacity = preset_name == "mass-ride" and _has_capacity_column(
+            validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+        )
+        spans = stress_spans(stretches, capacity=capacity)
         events = None
         if not over_budget:
             events = _events(refine_context, legs, raw_junctions, deadline)
@@ -2143,17 +2385,20 @@ def plan(
             majors_complete = False
         if events is not None and refine_context.group:
             events = intersections.number_groups(events, stops_m)
+        walks = [] if over_budget else walk_spans(leg_runs, pieces)
         profiled_from = clock()
         mass_ride = preset_name == "mass-ride"
         profile = route_profile(
             legs,
             spans,
-            (lambda: _flow_stretches(leg_runs, pieces, classes)) if mass_ride else None,
+            (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
             majors if mass_ride else None,
             majors_complete,
         )
         profile_s = clock() - profiled_from
-        described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
+        described = describe_route(
+            leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
+        )
         described_full, described_overview = described if described else (None, None)
         joined_at = clock()
         if joined_at - started > budget_s:
@@ -2276,6 +2521,7 @@ def plan(
             "detour": detour,
             "description": described_full,
             "description_overview": described_overview,
+            "moved_points": moved_points,
         }
 
     body = _answer(trip, refined, dodges_of=dodges)

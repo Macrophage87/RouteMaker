@@ -13,6 +13,7 @@ import json
 import pytest
 
 from routemaker import agency_roads as A
+from routemaker import massflow
 from routemaker.stress import Stress, classify
 
 
@@ -96,20 +97,91 @@ def test_lanes_are_kept_by_direction() -> None:
     assert A.lanes_per_direction(facts) == 3
 
 
-def test_reversible_lanes_are_lanes_in_the_peak_direction() -> None:
-    """Connecticut Avenue NW at Cleveland Park: one lane each way and two that
-    reverse, `TOTALTRAVELLANES` of 4. A rider meets three in the peak direction;
-    reading only the directional counts called it a two-lane street."""
+def test_reversible_lanes_count_in_each_direction_for_the_classifier(monkeypatch) -> None:
+    """OWNER-DECISIONS 425: "Keep counting them, probably in each direction in most
+    cases. These tend to be high stress commuter roads." A 16th St NW style block of one
+    lane each way and two that reverse is three lanes in each direction for the
+    classifier and the crossings, verified or not."""
     facts = A.parse_dc_roadway_block(
         dc(
             TOTALTRAVELLANES=4,
             TOTALTRAVELLANESINBOUND=1,
             TOTALTRAVELLANESOUTBOUND=1,
             TOTALTRAVELLANESREVERSIBLE=2,
+            BLOCKKEY="unverified-block",
+            ROUTENAME="16TH ST NW",
         )
     )
     assert facts.lanes == {"ib": 1, "ob": 1, "reversible": 2}
+    assert not A.VERIFIED_REVERSIBLE_BLOCKS
+    assert A.classifier_reversible(facts) == 2
     assert A.lanes_per_direction(facts) == 3
+    assert A._directional_lanes(facts, "ib") == A._directional_lanes(facts, "ob") == 3
+    # Canal Rd's shape: a block that records only reversible lanes.
+    canal = A.parse_dc_roadway_block(
+        dc(
+            TOTALTRAVELLANES=3,
+            TOTALTRAVELLANESINBOUND=0,
+            TOTALTRAVELLANESOUTBOUND=0,
+            TOTALTRAVELLANESREVERSIBLE=3,
+            BLOCKKEY="canal-block",
+            ROUTENAME="CANAL RD NW",
+        )
+    )
+    assert A.lanes_per_direction(canal) == 3
+
+
+def test_the_mass_ride_width_counts_reversible_lanes_only_on_a_verified_block(monkeypatch) -> None:
+    """405 stands for the Mass Ride width (425 changed the classifier only): the layer's
+    reversible count is stale where the operation ended, so the width counts none unless
+    the block's BLOCKKEY is on the reviewed allowlist (empty)."""
+    facts = A.parse_dc_roadway_block(
+        dc(
+            TOTALTRAVELLANESINBOUND=1,
+            TOTALTRAVELLANESOUTBOUND=1,
+            TOTALTRAVELLANESREVERSIBLE=2,
+            BLOCKKEY="verified-block",
+            ROUTENAME="16TH ST NW",
+        )
+    )
+    assert A.counted_reversible(facts) == 0
+    assert massflow.DC_RULES.reversible_lanes(facts) == 0
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({facts.block_key}))
+    assert A.counted_reversible(facts) == 2
+
+
+def test_connecticut_avenue_s_reversible_lanes_never_count(monkeypatch) -> None:
+    """405: "Conneticut Avenue Reversible lanes were removed in 2020." Even an
+    allowlisted Connecticut Avenue NW block counts none."""
+    facts = A.parse_dc_roadway_block(
+        dc(
+            TOTALTRAVELLANESINBOUND=1,
+            TOTALTRAVELLANESOUTBOUND=1,
+            TOTALTRAVELLANESREVERSIBLE=2,
+            BLOCKKEY="ct-block",
+            ROUTENAME="CONNECTICUT AVE NW",
+        )
+    )
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({facts.block_key}))
+    assert "CONNECTICUT AVE NW" in A.ENDED_REVERSIBLE_STREETS
+    assert A.counted_reversible(facts) == 0
+    # Nor for the classifier (425's exception: Connecticut follows 412's lane override).
+    assert A.classifier_reversible(facts) == 0
+    assert A.lanes_per_direction(facts) == 1
+
+
+def test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists() -> None:
+    """One list for both readings (405): the settings the rebuild builds the Mass Ride
+    rules from equal the classifier's."""
+    from django.conf import settings
+
+    from routemaker import massflow
+
+    assert (
+        frozenset(settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS) == A.VERIFIED_REVERSIBLE_BLOCKS
+    )
+    assert frozenset(settings.MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS) == A.ENDED_REVERSIBLE_STREETS
+    assert massflow.DC_RULES.ended_reversible_streets == A.ENDED_REVERSIBLE_STREETS
 
 
 def test_a_block_whose_directions_are_all_zero_has_only_its_total() -> None:
@@ -900,6 +972,7 @@ def test_a_block_with_only_reversible_or_only_shared_lanes_keeps_them() -> None:
         )
     )
     assert reversible.lanes == {"ib": 0, "ob": 0, "reversible": 2}
+    # The classifier counts reversible lanes, unverified too, in each direction (425).
     assert A.lanes_per_direction(reversible) == 2
     shared = A.parse_dc_roadway_block(
         dc(
@@ -1006,9 +1079,17 @@ def test_a_carriageway_takes_its_own_direction_s_lanes() -> None:
     )
 
 
-def test_reversible_lanes_count_in_both_directions_of_the_way() -> None:
-    way = A.aggregate([("a", facts(lanes={"ib": 1, "ob": 1, "reversible": 2}), True)])
+def test_verified_reversible_lanes_count_in_both_directions_of_the_way(monkeypatch) -> None:
+    block = facts(lanes={"ib": 1, "ob": 1, "reversible": 2}, block_key="k")
+    way = A.aggregate([("a", block, True)])
+    # OWNER-DECISIONS 425: verified or not, each direction counts them.
     assert (way.lanes_forward, way.lanes_backward) == (3, 3)
+    monkeypatch.setattr(A, "VERIFIED_REVERSIBLE_BLOCKS", frozenset({"k"}))
+    way = A.aggregate([("a", block, True)])
+    assert (way.lanes_forward, way.lanes_backward) == (3, 3)
+    ct = facts(lanes={"ib": 1, "ob": 1, "reversible": 2}, block_key="k", name="CONNECTICUT AVE NW")
+    way = A.aggregate([("a", ct, True)])
+    assert (way.lanes_forward, way.lanes_backward) == (1, 1), "Connecticut follows 412"
 
 
 def test_a_carriageway_takes_its_own_direction_s_bike_lane() -> None:

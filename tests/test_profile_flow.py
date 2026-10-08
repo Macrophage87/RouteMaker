@@ -237,11 +237,16 @@ class TestFlowFigures:
 
 
 class TestWidth:
-    def test_width_follows_the_lanes_and_direction(self):
-        assert flow.usable_width_m("2", "none", 2, False) == pytest.approx(4 * 3.35)
+    def test_width_is_the_rides_own_side(self):
+        # OWNER-DECISIONS 406 ("We should only plan on our own side of a two way street"):
+        # the estimate is the lanes in one direction, so a two-way street of 2 + 2 lanes is
+        # 2 lanes (6.7 m), not the 4 (13.4 m) this test held before the rebuild bundle, and
+        # a street with no lane count is one lane. `lanes` is already a direction's.
+        assert flow.usable_width_m("2", "none", 2, False) == pytest.approx(2 * 3.35)
         assert flow.usable_width_m("2", "none", 2, True) == pytest.approx(2 * 3.35)
-        assert flow.usable_width_m("2", "none", None, None) == pytest.approx(2 * 3.35)
+        assert flow.usable_width_m("2", "none", None, None) == pytest.approx(3.35)
         assert flow.usable_width_m("2", "none", 1, True) == pytest.approx(3.35)
+        assert flow.usable_width_m("2", "none", 3, False) == pytest.approx(3 * 3.35)
 
     def test_a_path_is_ten_feet_whatever_its_lanes(self):
         assert flow.PATH_WIDTH_M == 3.0
@@ -820,13 +825,87 @@ class TestFlowStretches:
         got = routing._flow_stretches(
             [(0, 4), 500.0], [P(100.0), P(100.0), P(50.0), P(25.0)], classes
         )
+        # The two-way piece is its own side's 2 lanes (406), as the one-way one is: 6.7 m
+        # each (the two-way one was 13.4 m, both directions, before the rebuild bundle).
         assert got == [
             (100.0, pytest.approx(6.7), None),
-            (100.0, pytest.approx(13.4), None),
+            (100.0, pytest.approx(6.7), None),
             (50.0, None, routing.STRETCH_AVOID),
             (25.0, None, None),
             (500.0, None, routing.STRETCH_UNTRACED),
         ]
+
+    def test_a_stretch_outside_dc_has_no_width_and_its_own_note(self):
+        """OWNER-DECISIONS 427: no riders-per-minute figure for the parts of a Mass Ride
+        outside DC (Rosslyn here); a border road, within the tolerance, is inside (420)."""
+
+        class P:
+            def __init__(self, metres, lon, lat):
+                self.metres, self.lon, self.lat = metres, lon, lat
+
+        classes = [routing.PieceClass("2", "none", None, 2, False, 6.0)] * 3
+        pieces = [
+            P(100.0, -77.0365, 38.8977),
+            P(100.0, -77.0720, 38.8960),
+            P(50.0, -77.0365, 38.8977),
+        ]
+        got = routing._flow_stretches([(0, 3)], pieces, classes, capacity=True)
+        assert got == [
+            (100.0, 6.0, None),
+            (100.0, None, routing.STRETCH_OUTSIDE_DC),
+            (50.0, 6.0, None),
+        ]
+        assert routing._stretch_ranges(got, routing.STRETCH_OUTSIDE_DC, 250.0) == [
+            {"from_m": 100, "to_m": 200}
+        ]
+
+    def test_the_district_s_edge_has_the_border_tolerance(self):
+        from core import mass_tiles
+
+        assert mass_tiles.inside_dc(-77.0365, 38.8977)  # the White House
+        assert not mass_tiles.inside_dc(-77.0720, 38.8960)  # Rosslyn, Virginia
+        # A point just outside the drawn edge: inside within the tolerance, outside without it.
+        ring = mass_tiles._dc_polygons()[0][0]
+        (ax, ay), (bx, by) = ring[0], ring[1]
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        inside_near = [
+            (mx + dx, my + dy)
+            for dx, dy in ((0.00012, 0), (-0.00012, 0), (0, 0.00012), (0, -0.00012))
+            if not mass_tiles.inside_dc(mx + dx, my + dy, tolerance_m=0)
+        ]
+        assert inside_near, "one of the four nudges lies outside the edge"
+        lon, lat = inside_near[0]
+        assert mass_tiles.inside_dc(lon, lat)  # about 10 to 13 m out: a border road
+
+    def test_with_the_capacity_column_the_width_is_the_segments_own(self):
+        """The chart reads the width the capacity map colours by (`mass_usable_width_m`,
+        OWNER-DECISIONS 404, 406), never the lanes' estimate, so the two always agree; Avoid
+        still has none (325), and a piece on no segment has none."""
+
+        class P:
+            def __init__(self, metres):
+                self.metres = metres
+
+        classes = [
+            routing.PieceClass("2", "none", None, 2, False, 2.44),
+            routing.PieceClass("1", "path", None, None, None, 2.5),
+            routing.PieceClass("5", "none", None, 3, False, 9.0),
+            routing.PieceClass("3", "none", None, 2, False),
+            ("unknown", "unknown"),
+        ]
+        pieces = [P(100.0), P(80.0), P(50.0), P(40.0), P(25.0)]
+        got = routing._flow_stretches([(0, 5)], pieces, classes, capacity=True)
+        assert got == [
+            (100.0, 2.44, None),
+            (80.0, 2.5, None),
+            (50.0, None, routing.STRETCH_AVOID),
+            (40.0, None, None),
+            (25.0, None, None),
+        ]
+        # The figure is the map's: the section's flat riders a minute come from the same width.
+        assert classes[0].rpm == round(flow.level_riders_per_min(2.44))
+        without = routing._flow_stretches([(0, 1)], pieces[:1], classes[:1])
+        assert without == [(100.0, pytest.approx(6.7), None)], "an older table: the estimate"
 
 
 def road(name, lanes=2, tier=2, oneway=None):

@@ -643,15 +643,15 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 | Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
 | 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
-| 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
+| 12-13 | the ride layer (391, 402a): long and connected traffic-free paths, calm roads in a continuous run of 2 mi (LTS 1 and 2, ended at every junction with a busy road), and roads closed to cars at set times; no road at LTS 3 or above (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`); one feature per class, simplified. On a table without the column, what it drew before: the paths and the roads at LTS 3 and above (`busy_predicate`) | region-wide 6,812 mi against 25,017 before, with 391's 1,787 mi of calm streets (402a's calm roads are 1,642 mi: "Calm roads", below); the Annandale-Alexandria box 83.9 mi against 272.6; z12 over the box 48 KB against 127 KB ("The ride layer", below) |
 | 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
 The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
 metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
 (OWNER-DECISIONS 73; before it, "Zoomed out just show the trails.", 65, and
 "Show roadside trails (Recommended)", 66). The zooms are
-`core.stress_tiles.BUSY_ROADS_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
-(14), paired with `STRESS_ZOOMS.busy` and `.quiet` in
+`core.stress_tiles.RIDE_LAYER_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
+(14), paired with `STRESS_ZOOMS.ride` and `.quiet` in
 `frontend/src/lib/mapStyle.ts` (a test fails while they differ): change both,
 rebuild the api image and the front end, and run the pre-draw. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
@@ -738,7 +738,9 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 5 must reach the api and the pipeline images
+`l`, `b`). FORMAT_VERSION 7 (5 was the long trails; 6 was claimed by both the ride layer
+with the surface-unknown trails and the Mass Ride capacity, on branches that never shipped
+alone; 7 is the rebuild bundle, which carries both) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -749,6 +751,285 @@ before, only thinner (every cached tile is drawn again, as the format
 changed); the next rebuild's pre-draw draws the long trails only. Route
 relations and names are OSM's, cited with the rest of the map's data.
 
+**The ride layer (z12-13, OWNER-DECISIONS 391).** The owner, 2026-10-05, on
+a screenshot of Annandale and Alexandria: "I'm more concerned with the places
+to ride than the places not to." Busy roads: "Hide them until zoom 14." Ride
+layer: "Long and connected paths as well as similar long calm streets." At z12
+and z13 the stress map is a "where to ride" view:
+
+- **Not drawn:** LTS 3, LTS 4, Avoid and the roads bikes may not use, and the
+  junction warning markers. They come in from z14 with the quiet streets. (The
+  only junction markers on the map are a planned route's own, and the route
+  keeps its own busy stretches and junctions at every zoom, so nothing changes
+  there.)
+- **Drawn:** the long and connected traffic-free paths, the calm roads worth a
+  long ride (402, 402a), and the roads closed to cars at set times, whatever their length
+  (377). One feature per class, simplified, as before
+  (`core.stress_tiles.RIDE_LAYER`; `pipeline.schema.ride_layer_predicate`).
+
+The rule reads one new column, `segment.calm_run_m`, written by the rebuild
+(`pipeline.trail_routes.derive_calm_runs`, 12 s on the full table, right after
+`derive_trail_runs`). Its value is the length in metres of:
+
+- for a path or trail the zoomed-out map draws (`trails_predicate`): the
+  connected network of such paths, whatever their names, joined within 100 ft
+  (30 m, `CALM_PATH_GAP_M`; a road crossing does not break a trail), or its
+  named run (`trail_run_m`) if that is longer, so a long named trail keeps
+  whatever its gaps. Short isolated stubs come out under the bar and wait for
+  z14;
+- for a named road at LTS 1 or LTS 2 that is not a trail, of any class: its calm
+  run, the continuous line of such roads it is part of, ended at every junction with
+  a road at LTS 3 or above ("Calm roads", below). A road with no name has no run;
+- null on every other way, and on a mountain-bike trail (a way in a route=mtb
+  relation, one tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`
+  unless paved, or one the no-bike-paths rules call mountain-bike only), so
+  those wait for z14 as well.
+
+The writer marks the candidates (a `calm_run_m` of 0, `trail_routes.is_calm_candidate`)
+and the derive sets them; a road's name is written to `trail_name` for the
+same reason a trail's is. Names and routes are OSM's, cited with the rest of the
+map's data.
+
+**Calm roads (OWNER-DECISIONS 402, 402a).** The owner, 2026-10-05, on the first
+round's calm streets: "For calm streets, I'm thinking more calm roads. Places someone
+would likely want to ride for a while. In the cities that's just too dense." Then: "LTS2
+counts. Suburban streets would rarely qualify because they tend to have a lot of
+intersection stress rather than roadway stress." A road's calm run
+(`pipeline.calm_roads`) is:
+
+- made of the named roads at LTS 1 or LTS 2 the map draws (not a trail, not a
+  mountain-bike way, `map_class` road), of any class: a residential street counts
+  as much as a rural road. An unnamed road has no run and does not join one;
+- continuous, across changes of name: where only two calm roads meet (a way split
+  for a tag, a name that changes) the run always goes on; at a junction of three or
+  more it goes on along the road of its own name if that turns no more than 100
+  degrees (`SAME_NAME_TURN_DEG`), else along the straightest road that turns no more
+  than 45 degrees (`STRAIGHT_ON_DEG`), and the other roads there start runs of their
+  own. A run is a line, not a network, so a grid of quiet streets is many short runs;
+- ended at every stressful junction: any node it shares with a road at LTS 3 or
+  above (Avoid and the roads bikes may not use included; the greater of the tier and
+  the unsmoothed tier, as the junction model reads it), crossed or joined, whatever
+  the control. That is 396's rule ("the crossed or joined road is rated LTS 3 or
+  higher" or "the junction itself carries a stress rating"): the junction model
+  (`routemaker.intersections`) rates a junction of its own only where a road of its
+  `BUSY_TIER` (3) is in it, so on the map's data the one test is both. A bridge or an
+  underpass shares no node with the road it passes and does not end a run.
+
+The junctions are read in SQL from the rows' shared vertices (OSM joins roads at a
+shared node) and the runs put together in Python. A way a busy road crosses in its
+middle is in two runs and keeps the longer. On a copy of the 2026-10-03 build it reads
+473,290 junctions in 34 s, puts 171,316 rows' runs together in 1 s, and peaks at about
+400 MB in a process of its own (the derive reads through a server-side cursor).
+
+**The thresholds** are named constants in `pipeline.schema`, tunable and held by
+tests: `RIDE_PATH_RUN_MI` 0.25 mi (1,320 ft, 0.4 km), the owner's own figure for a
+stub, and `RIDE_ROAD_RUN_MI` 2 mi (3.2 km), the owner's bar for a calm road (402a,
+confirmed by 410: "Let's do 2 mi"), the one setting to move if the owner changes it. Measured read-only: the live table's 1,359,547
+segments copied with a read-only `COPY` into a private database, names read from the
+2026-10-03 source extract, the areas being OpenStreetMap's boundaries of the District
+(relation 162069), Montgomery County (936970) and Baltimore City (133345), a segment
+counting where its middle is. The roads closed to cars (for good or at set times) are
+paths in the layer under both rules and are left out of these figures.
+
+| Area | Before (391): LTS 1 streets, same name, 0.5 mi | After (402a): LTS 1-2 roads, continuous, 2 mi |
+| --- | --- | --- |
+| Region | 4,716 ways, 1,793 mi, about 1,971 runs | 2,398 ways, 1,642 mi (1,319 of it LTS 2), about 555 runs |
+| District of Columbia | 1,214 ways, 184 mi, 241 runs | none |
+| Montgomery County | 106 ways, 26 mi, 37 runs | 49 ways, 38.5 mi, 16 runs |
+| Baltimore City | 137 ways, 9.9 mi, 14 runs | none |
+
+Miles of calm road kept by the new rule at other bars:
+
+| bar | 0.5 mi | 1 mi | 1.5 mi | 2 mi | 2.5 mi | 3 mi | 5 mi |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| region | 11,530 | 4,831 | 2,676 | 1,642 | 1,048 | 658 | 174 |
+| DC | 223 | 33 | 9 | 0 | 0 | 0 | 0 |
+| Montgomery County | 760 | 184 | 81 | 38 | 18 | 10 | 0 |
+| Baltimore | 283 | 38 | 3 | 0 | 0 | 0 | 0 |
+
+At 2 mi the layer's calm roads are rural: in Montgomery County all of them are in the
+Agricultural Reserve (Hawkins Creamery Road 3.5 mi, Elmer School Road 3.2, Peach Tree
+Road 3.1, Griffith Road 2.9, Batchellors Forest Road 2.6, Black Rock Road 2.5,
+Woodfield School Road 2.5). The near misses show what the junction rule does: Oregon
+Avenue NW, along Rock Creek Park, is a 1.99 mi run; Beach Drive in Montgomery County
+(6.8 mi of LTS 1-2) is cut into runs of 1.6 mi at most by the busy roads that cross
+or meet it; Sligo Creek Parkway (5.5 mi of LTS 2)
+into runs of 0.8 mi; Roland Avenue in Baltimore (4.2 mi) into 1.3 mi. The first
+round's DC streets drop out: 4th Street NW (a 1.9 mi run of its name) is 0.8 mi between
+busy crossings, 8th Street NW 1.3 mi, Madison Street NW 0.6 mi. Of the region's named
+calm candidates, 5,164 mi are LTS 1 and 24,485 mi LTS 2.
+
+The paths' rule is unchanged, and so is its bar (region, Annandale-Alexandria box
+-77.20,38.79 to -77.04,38.86): 0.1 mi 5,267 and 74.0; 0.25 mi 5,025 and 66.8; 0.5 mi
+4,725 and 60.3; 1 mi 4,276 and 51.1; 2 mi 3,730 and 47.1 (every candidate path is 5,233
+and 75.3; 152 mi of mountain-bike trail are left out). Before and after pictures of
+central DC, Bethesda and Chevy Chase, the Agricultural Reserve and Baltimore, with the
+same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html
+(`rmdata/demo/reports`). Re-measure on a copy before moving a bar, and update
+`RIDE_RUN_MI` in `frontend/src/lib/stressLegend.ts` with it (a test holds them equal).
+
+The first round's measurement (391's calm streets, LTS 1 of one name chained within 330
+ft, 0.5 mi), against the busy roads it replaced, for the record:
+
+| | Region: ways, miles | Annandale box: ways, miles |
+| --- | --- | --- |
+| z12-13 before (paths, and roads at LTS 3 and above) | 144,190, 25,017 mi (paths 5,454; LTS 3 5,432; LTS 4 12,610; Avoid 1,515) | 3,928, 272.6 mi (paths 75.3; LTS 3 93.4; LTS 4 103.9) |
+| z12-13 after (the ride layer) | 35,961, 6,812 mi (paths 5,019; calm streets 1,787; timed car-free roads of LTS 3 and up 1.7) | 682, 83.9 mi (paths 66.8; calm streets 17.0) |
+| z12 tiles over the box, bytes | before 126,726 (6 tiles) | after 48,188 |
+| z13 tiles over the box, bytes | before 81,637 (12 tiles) | after 29,220 |
+
+
+**VALIDATE** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
+no named candidate may be left at 0 (the derive ran to the end); the path
+sentinels, the W&OD (OSM way 8810729) and the C&O towpath (10595312),
+`settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
+(12.9 km) or more; the road sentinel, Elmer School Road in Montgomery County's
+Agricultural Reserve (OSM way 5968951, in a 3.2 mi calm run),
+`settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
+be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
+rows, 15,000 path rows in a run of 0.25 mi and 1,200 road rows in a calm run of 2 mi
+(about half of the copy's 31,712 and 2,398), must exist. As with the long
+trails, if a later extract splits or replaces a sentinel way, move the sentinel;
+don't drop it.
+
+**Tiles, ETag and fallback.** `core.stress_tiles.level_for(z, optional)` returns
+`RIDE_LAYER` for z12-13 on a live table that has `calm_run_m`, and `BUSY` (what z12-13
+drew before: the paths and the roads at LTS 3 and above, faint, with the front end's
+`FAINT` rules) on one that does not, so a table promoted before this rebuild draws
+today's z12-13 until the data rebuild promotes the column. The ETag names it with
+`k` (`+kcfrmwoesbtl-v7"` with all twelve optional columns, `e` being 403's `roadside` and
+`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 7
+(the rebuild bundle's format, with the surface-unknown properties below and the Mass Ride
+capacity: the tile cache key changes, so run the pre-draw as the steps
+below say). The ride layer has its own partial index,
+`segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
+(a test); the busy-road layer keeps the overview index.
+
+**FORMAT_VERSION 7 and the ETag letters** (resolved in the rebuild bundle). wip/massride-map
+and this branch each moved `FORMAT_VERSION` to 6 and each took the letter `r`. In the bundle
+the format is 7, past both, so neither branch's cached tiles are taken for the other's; `r` is
+`is_rough`'s, the Mass Ride width column (`MASS_WIDTH_COLUMN`) is `w`, `k` is `calm_run_m`'s
+and `e` is `roadside`'s, one letter per column (a test holds them distinct).
+
+**Decision 390 at z12-13.** "Solid is probably fine" for LTS 3 and 4 below zoom
+14 is moot where no busy road is drawn there. On a live table without
+`calm_run_m` the busy roads still draw at z12-13 and are still faint, as they did. The
+solid-below-14 change (390, `SOLID_MIN_ZOOM` 14) is in the rebuild bundle with this, and
+applies to that fallback only.
+
+**What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
+`mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
+"Zoom in to see busy roads and every street. This is the where-to-ride view: connected
+paths and trails and long calm roads. Busy roads, mountain-bike trails and short
+paths show from zoom 14."; and the standing hint, which gives the two runs in feet
+and miles (kilometres in brackets), says the busy roads, mountain-bike trails, shorter
+paths, the other streets and the junction warnings on the map show from zoom 14,
+and that a planned route shows its own busy stretches and junction warnings at every
+zoom. On a table without the column the text is ahead of the tiles until the rebuild.
+
+**Surface unknown (OWNER-DECISIONS 376; PARK-TRAILS-investigation.md).** "A and
+C". *A, style only:* a trail-class feature with no surface tag (the tile carries no
+`unpaved`, since a null is left out; no new property is needed) draws as its own
+line: LTS 1's colours in short even dashes (`UNKNOWN_SURFACE_DASH`, 2 on and 1.5
+off in line widths), the edge dashed to match so the gaps show the base map, and no
+path rails and no continuous dark edge. The dashes are the cue that is not colour,
+and the legend has a "Surface unknown" row in words: "A path or trail with no
+surface mapped in OpenStreetMap, so it may be paved or unpaved: short dashes in the
+LTS 1 colors, with no edge lines. A trail beside a road with no surface mapped
+shows as a paved path." (403, below). Nothing is closed; roads with no surface tag
+(nearly every street) draw as before. *C, a pipeline change:* `routemaker.stress.inferred_unpaved`
+reads `highway=track` with no `surface` as unpaved unless `tracktype=grade1`, so
+the stored `is_unpaved` makes it brown, with the unpaved mark, and open (the
+classifier's own unpaved speed cap still reads the raw tag, so no tier moves; the
+unpaved-surface ranking and the trail seek read the stored column, so a track with
+no surface now counts as unpaved there). *Not B* (no untagged path is closed) *and
+not D* (`SHORT_PATH_M` stays 150 m). The investigation counted about 3,145 such
+tracks (763 mi) region-wide; a rebuild's log is the place to read the real figure.
+
+**Built bike paths with no surface (OWNER-DECISIONS 448).** The owner, 2026-10-07, on
+the Marvin Gaye Trail drawn dashed: "Where did these weird dashed bike paths come from" /
+"They are deemphasizing what should be a main route". 19 of its 23 ways are
+`highway=cycleway` with no surface tag. `routemaker.stress.inferred_unpaved` now reads a
+built bike facility (`highway=cycleway`, or a `path` or `footway` with
+`bicycle=designated`) with no `surface` as paved (False), so the stored `is_unpaved`, the
+tiles' `unpaved=false`, the unpaved ranking and the trail seek treat it as paved, like a
+roadside trail (403); no front-end rule changed, because the tile now carries the
+property. 376 A's dashes stay for other trails with no surface (park footpaths, `path` or
+`footway` without a bicycle designation). Access is untouched. Measured on the
+2026-09-25 extract against the live table: 4,384 ways, 352.5 mi (567 km) of them
+cycleway or designated path with no surface, all stored unknown now; 350.5 mi
+(564 km) are not roadside by their own tags (a way beside a road by geometry already shows
+paved, and the rebuild log has the exact count). The owner is advised to tag these
+`surface=asphalt` or `concrete` in OpenStreetMap too.
+
+**Trails beside a road (OWNER-DECISIONS 403).** The owner, 2026-10-05: "Most trails
+near a road are paved. There are minor exceptions." A trail beside a road with no
+surface mapped keeps the paved path's look, its rails and edge; 376 A's dashes stay for
+the trails away from roads (park trails). The exceptions are for a surface tag in
+OpenStreetMap or a surface override, not for the default. The rebuild writes
+`segment.roadside` (`pipeline.trail_routes.derive_roadside`, after the calm runs), true
+on a drawn trail that is beside a road:
+
+- by its own tags (`routemaker.facility.roadside_by_tags`): `footway`, `path` or
+  `cycleway` = `sidewalk`, `is_sidepath=yes`, or any `is_sidepath:of*`; and
+  `is_sidepath=no` says it is not, whatever the geometry;
+- by its facility: a trail already classed the protected facility beside a road (a
+  designated sidewalk, a physical separation, one along a road that maps its facility
+  `separate`);
+- else by its geometry: at least 60% (`ROADSIDE_FRACTION`) of the points 66 ft (20 m,
+  `ROADSIDE_SAMPLE_M`) apart along it lie within 82 ft (25 m, `ROADSIDE_M`) of a road (a
+  way that is not a trail, drawn or barred; a parking aisle or driveway does not count).
+
+The tiles carry it as `roadside` (true or left out, as `mtb` and `rough` are; ETag letter
+`e`), and the front end's surface-unknown filter (`stressStyle.js`) leaves a roadside
+trail to the paved path's own layers. A table without the column carries nothing, and
+every surface-unknown trail stays dashed until the rebuild. The legend's row says "A
+path or trail away from roads with no surface mapped in OpenStreetMap ... A trail beside a
+road with no surface mapped shows as a paved path."
+
+Measured on the copy (a drawn trail with no surface; the share of samples within each
+distance of a road at least 60%):
+
+| | trail with no surface | by tags or facility | within 50 ft | 66 ft | 82 ft (the rule) | 98 ft | 131 ft |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| region, mi | 1,233 | 18 + 3 | 258 | 366 | 456 | 568 | 757 |
+| DC | 12 | 6 | 9 | 9 | 10 | 10 | 11 |
+| Montgomery County | 198 | 2 | 60 | 77 | 90 | 104 | 142 |
+| Baltimore | 24 | 10 | 11 | 12 | 14 | 15 | 19 |
+
+The rule bears the owner out on the trails whose surface is mapped: 78.5% of the
+roadside ones are paved against 37% of those away from roads (DC 95% against 60%,
+Baltimore 92% against 72%, Montgomery County 81% against 40%). Named trails with no
+surface mapped that go back to the paved look include 0.9 mi of the Capital Crescent
+Trail, 0.35 mi of the Anacostia Riverwalk Trail and the Silver Spring Greenway; ones that
+stay dashed include 1.0 mi of the Marvin Gaye Trail, the North Germantown Greenway Trail,
+the Tree Farm Trail and Baltimore's Stony Run Walking Path (most roadside trails with no
+surface are unnamed sidepaths). The 82 ft bar is a judgment within the table: the count
+keeps climbing past it with no plateau, so the nearer bar is kept and a trail the rule
+is unsure of stays dashed, as 376 A drew it.
+
+**The Mass Ride capacity column** (FOLLOWUP-MASSRIDE-MAP part 1, OWNER-DECISIONS 325-327,
+387). `segment.mass_usable_width_m` is the usable width in metres `routemaker.massflow`
+gives each segment from its way's tags, the classifier's lanes and, in DC, the Roadway Block
+blocks it lies along (the narrower direction, parked cars out; OWNER-DECISIONS 404); `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
+(rounded down to ten; ETag letter `w`, since `r` is the rough surface's), the route's coloured sections carry it for a Mass Ride,
+and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
+came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path
+rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
+`settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
+ride its own direction's lanes less parked cars, from DC's Roadway Block in the District: about 90
+on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the median: reversible lanes count as zero and a 16 ft lane with no parking is read at 11 ft, `settings.MASS_RIDE_DC_*`). Until a
+rebuild has promoted the column, a Mass Ride keeps the stress map: the tiles carry no `rpm`, so the
+map keeps its stress layers (the Mass Ride layers switch on only once a capacity has been seen),
+and its legend and panel are the stress ones, with no error and nothing to do. The grey outside DC
+and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
+and the pipeline images together, as the note above says: build both under one TAG (`docker
+compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
+the api's cache every week. The data takes effect after the next rebuild; the front end and the
+api that read it are safe before it. Every street shows on the Mass Ride map from zoom 14; at zoom 12-13
+only the long calm roads do, because those tiles are the ride layer (391, 402a), which carries no
+busy road; trails, paths and alleys never.
+
 Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
 units a side are half a pixel each at z16. z15-16 are still served, for the
@@ -757,7 +1038,8 @@ contract.
 **How the busy roads draw** (the front end's `stressStyle.js`; the tiles are
 the same whatever the style decides):
 
-- faint - 40% opacity and 60% width (`FAINT`) - at z12-13, and solid from
+- faint - 40% opacity and 60% width (`FAINT`) - at z12-13 (only on a table that still
+  draws busy roads there: from the ride layer's rebuild none is drawn below z14), and solid from
   `SOLID_MIN_ZOOM` (14): "The high LTS roads aren't that important because
   you aren't going to route around them." - "Show them faintly", then "Make
   solid at 14" (OWNER-DECISIONS 76, 77);
@@ -937,6 +1219,36 @@ oldest out first. Rows for an older table or tile format are deleted by the
 next pre-draw or eviction. The table is left out of the nightly dump; it
 refills itself.
 
+**The Mass Ride tiles** (`GET /tiles/mass/{z}/{x}/{y}.pbf`, `core/mass_tiles.py`;
+OWNER-DECISIONS 415, 417, 418) share this cache under their own ETag,
+`W/"mass-<oid>+fmw-<boundary digest>-v2"` (33 characters with a ten-digit oid; never
+equal to a stress tag, so neither tile set's rows are read as the other's). They are
+the Mass Ride map's: the roads with a capacity at z10-14 by band (OWNER-DECISIONS
+421, 422: z10-11 only Wide open, 200 riders a minute and up, in a run of at least
+0.5 mi; z12-13 Good and up, 120 and up; z14 every band), clipped to the District of
+Columbia with the border roads drawn whole (420: a line within 22 m of the boundary),
+empty outside the District's box and past z14. The pre-draw draws them
+too, after the stress tiles: every z10-14 tile the District's box reaches, a few
+hundred (under 300; `tests/test_mass_tiles.py`), on a table that has
+`mass_usable_width_m` (none on an older table), counted in the same run-row line.
+Measured read-only on the live 2026-10-03 table with a stand-in width (2026-10-05, load
+from another agent's run): the z10 tile over DC 1.0-3.0 s and about 100 KB, z11 0.8-6.2 s
+and 96 KB, z12 0.6 s and 73 KB, z13 0.3 s, z14 0.25 s; well inside the pre-draw's 20 s,
+but a cold z10-11 can pass the 2 s on-request draw timeout and be answered 503 with
+Retry-After until the pre-draw has run. Format 2 (2026-10-05, 421, 422) works out the
+Wide open runs over the whole District in each z10-11 query: measured the same way,
+z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tiles
+are new tiles (the tag's `-v2`), drawn by the next pre-draw.
+An eviction keeps both the stress and the Mass Ride tags of the live table
+(`tile_cache.evict(..., also_keep=...)`), so neither evicts the other. Their own
+format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 7: a
+change to one re-draws only its own tiles. A new DC boundary file changes the
+digest, so its tiles are new too; re-run the pre-draw after deploying one. The
+draw slots, the draw timeout, the per-address limit and the Retry-After answers
+are the stress tiles' (below). The edge needs no change: Caddy and the beta's nginx
+send every `/tiles/*` path to the api, and Caddy compresses the vector-tile type
+whatever the path.
+
 Run the pre-draw by hand on a deployment whose live table was promoted before
 the cache existed (the first deploy of this change), after a deploy that
 changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale:
@@ -997,7 +1309,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v5"`, or `+cfmsbtl-v5"` with all seven optional columns) and a repeat
+   (`-v7"`, or `+kcfrmwoesbtl-v7"` with all twelve optional columns) and a repeat
    with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.
@@ -1595,6 +1907,13 @@ hand-run" — and until this command there was no way to fire one. The rebuild i
 a Procrastinate periodic task on its own queue, so the only route to it was
 `python -c` inside the right container with Django set up by hand.
 
+Before firing one for a deploy that changes `lua/`, `valhalla/` or the
+pipeline image, run `scripts/check_tile_build_access.sh` on that commit ("Bicycle
+closures in the tiles", step 1): about 2 s, and it is the only check that sees
+what Valhalla's C++ parser does with the transform's output before a rebuild
+spends hours on it. The rebuild's own VALIDATE gate (step 2) refuses the swap if
+a closure did not hold, and the probes (step 3) follow the router restart.
+
 It **queues** a job and returns; it does not run the rebuild. The `rebuild`
 service is what picks the job up, because that is the container with the
 Valhalla binaries, the data mounts and the eight-hour budget, and it takes it
@@ -1931,6 +2250,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+   docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -2217,6 +2537,133 @@ still do on the closed one. "Still open after the closure" must be 0, and so
 must "shut to the traffic direction as well". It takes about four minutes and
 writes nothing.
 
+## Bicycle closures in the tiles: before, during and after a rebuild
+
+Singletrack (OWNER-DECISIONS 90, 91, 111) is closed to bicycles on every graph,
+and so is OSM's own `bicycle=no`. Until the rebuild after 2026-10-03 neither
+held on a way with a mountain-bike rating: Valhalla 3.5.1's C++ parser reads
+`mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
+the Lua transform and reopens the way from any of them, so 753 singletrack ways
+(286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
+check passed (reports/SINGLETRACK-DIAG-r0). `lua/graph.lua` now strips the
+ratings from whatever upstream's transform leaves closed in either direction.
+Three checks stand between a change to that and a rider on singletrack.
+
+**1. Before the go: the preflight.** On the commit being deployed, from the
+repository root on the host:
+
+```sh
+scripts/check_tile_build_access.sh
+```
+
+It builds a 27-way extract with the pipeline image's own
+`valhalla_build_tiles` and the checkout's `lua/`, serves it on loopback and
+checks each way's bicycle access, direction by direction, then reads the same
+tiles through the rebuild's closure gate. Local image only (`--pull never`), no
+network, 1 GB, a 10-minute cap, the repository read-only; about 2 s. Exit 0:
+every closure held. 1: a case failed, and the line says which. 2: the image has
+no Valhalla. Run it on any deploy that touches `lua/`, `valhalla/` or the
+pipeline image's Valhalla version.
+
+The same test runs under pytest as `tests/test_tile_build_access.py`. It
+**skips** where the Valhalla binaries are not on `PATH`, which is CI and every
+development checkout, so a green CI run says nothing about it. Set
+`ROUTEMAKER_REQUIRE_TILE_BUILD=1` to force it: a missing binary then fails the
+run instead of skipping. That is the documented way to run it inside the
+pipeline image, and the script sets it.
+
+**2. During the rebuild: the closure gate.** VALIDATE, after the tile build and
+before the swap, reads a sample back from every staged graph: up to 40
+singletrack ways and up to 20 rated OSM `bicycle=no` ways, spread evenly by way
+id. It asks each graph once, with a one-shot pedestrian `valhalla_service
+locate`, and reads `access.bicycle` on the probed way's own edges. Pedestrian,
+because a bicycle locate finds no edge on a closed way, which a missed snap
+also produces. Each read has its own 120 s timeout inside the rebuild's budget;
+the four take a few seconds in all. The rebuild fails at VALIDATE, and **does
+not swap**, if:
+
+- any graph is open to bicycles on any probed way: "the weekend graph is open
+  to bicycles on 3 of 60 ways it must keep closed ..., e.g. way 810382238".
+  Something reopened them after the transform. Do not swap by hand; run the
+  preflight on the deployed commit and read `lua/graph.lua` and
+  `remap.strip_ratings_if_closed` against the Valhalla version in the image.
+- a graph that keeps trails (all but no-trail) found **none** of the probed
+  ways: "has no edge on any of the 60 bicycle-closure probes, so the read
+  tested nothing". The probes are no longer on the graph's ways: an extract
+  that changed shape, or a locate that answers differently.
+
+The rated OSM closures are chosen narrowly: `bicycle=no`, `foot` not `no`, an
+`mtb:*` key, and none of the keys upstream lets open a direction over
+`bicycle=no` (`bicycle:forward`/`:backward`, `vehicle:forward`/`:backward`,
+`oneway:bicycle`, `bicycle:conditional` and its `:forward`/`:backward` forms,
+any `cycleway*` key, `bicycle_road`, `cyclestreet`, `service=driveway`), and
+never a bridge the crossings fixture rules on. The
+gate writes its probes to `<DATA_ROOT>/rebuild/reports/bicycle-closure-probes.csv`
+and every singletrack way id to `singletrack-ways.txt` beside it, for step 3.
+
+**3. After the swap and the router restart: the probes.** In `rebuild`, which
+has the script, the reports and the routers' addresses:
+
+```sh
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
+```
+
+The gate's probes against the four **serving** routers, one pedestrian locate
+each. Expect `ok` on every line. Every router but no-trail finds most of the
+probes; no-trail drops trails, singletrack with them, so it finds only the OSM
+closures that are not trails (7 tracks in the 2026-10-03 extract: "7 found,
+ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
+trails usually means it was not restarted onto the new build. Then two trips,
+planned through the api as the planner plans them and map-matched on the router
+that served them. `--host` is the first name in the deployment's
+`DJANGO_ALLOWED_HOSTS`:
+
+```sh
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
+  --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \
+  --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host "$HOST"
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
+  --preset mountain-goat --from=-77.3168,38.8984 --to=-77.3318,38.8798 \
+  --avoid-way 810382238 --host "$HOST"
+```
+
+- Union Station to Penn Station on Default: **0 mi on singletrack**. Before the
+  fix this probe measured 1.27 mi [2.04 km] of it on the live routers
+  (SINGLETRACK-review-r1; that day's answer came from the weekend graph), in
+  the Patapsco valley. The route is about 56 mi; expect it to move to roads and
+  paved trails there.
+- Mountain Goat, end to end along the Cross County Trail's way 810382238
+  (`mtb:scale=2`, singletrack): **0 mi on that way**. Before the fix it rode
+  1.00 mi [1.61 km] of it.
+
+Each prints its distance and the distance on the ways to avoid, and exits 1 if
+that is more than nothing. Each `trip` is an ordinary signed-out request to
+`POST /api/route`, so it writes one rate-limit row and counts against the
+api's per-client limits like any anonymous request ("The public routing API").
+
+What the strip changes besides access, so it is not mistaken for a fault:
+
+- **A way closed in one direction only is held to that.** `bicycle:forward=no`
+  or `bicycle:backward=no` keeps its open direction open and its closed one
+  closed, as upstream's transform reads it. With the rating left on, the
+  parser reopened the closed direction, which stock Valhalla still does. A
+  one-way open in its own direction keeps its rating: the parser keeps its
+  reverse closed anyway.
+- **The rating is also a surface.** The parser classes an edge with a rating as
+  surface `path`: an open dirt path rated `mtb:scale=2` is `path`, unrated
+  `dirt`. Where the rating is stripped the edge is classed by its `surface`
+  tag. A way open both ways, or a one-way open its own way, keeps its ratings
+  and its class: the C&O towpath above lock 21 (`mtb:scale:imba=0`, `dirt`)
+  and the Green Loop Trail (one-way, `mtb:scale=3`, asphalt, `path`) are
+  unchanged.
+- **An untagged footway with a rating is closed**, as every other untagged
+  footway is: way 481109137 (concrete, `mtb:scale=0`) was the one such way in
+  the region, open only through its rating.
+- `rm:no_bicycle` (singletrack, CBD sidewalks) writes `bicycle:forward=no` and
+  `bicycle:backward=no` as well as `bicycle=no`, so no directional grant
+  (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
+  direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
@@ -2228,13 +2675,16 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
 been done: the symptom is a deployment whose routes disagree with its own
 segment table, which reads like a conflation bug rather than a missed restart.
 Run it after every successful rebuild and after a rollback, which moves the same
-symlink back.
+symlink back. Then run the post-swap bicycle-closure probes ("Bicycle closures
+in the tiles", step 3): their `locate` run is also the quickest check that each
+router is serving the new build.
 
 The restart is a few seconds of 502s per variant, taken one at a time. Starting
 the new containers against the new build before stopping the old ones — the
@@ -2255,6 +2705,70 @@ in full, every item in the CSV. Nothing needs running; the rebuild log says
 replaces last week's. A failure to write it is a warning in the log and never
 fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
 ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
+
+### AADT smoothing, named corridors and the override re-match
+
+Three more reports land beside the discrepancy report, in
+`${DATA_ROOT}/rebuild/reports/`, each replaced by every rebuild. Like it, a
+failure to write one is a warning in the log and never fails the rebuild.
+
+- `override-rematch.md` and `.csv` (OWNER-DECISIONS 282): every approved override
+  row whose OSM way is missing from the extract, and what became of it:
+  `rematched` (re-pointed at the ways that now stand for it, by stored geometry
+  and street name, only when unambiguous), `covered` (those ways already carry
+  the same row), `failed` (left unapplied, with the reason; the appliers still
+  count it unmatched), plus `drifted` rows whose way is present but no longer
+  looks like the one the row was written for. The log line is "override
+  re-match: N rows, ...". A row typed into the admin has no fingerprint and can
+  only fail.
+- `aadt-smoothing.csv` (285, 296, 303): one line per traffic count the street's
+  median replaced: the agency's count, the median the link was classified on,
+  the window (ways and length), whether a volume gate lay between them, and the
+  link's tier against the tier on the agency's count. The log line is "AADT
+  smoothing (400 m, ...): N of M counts replaced".
+- `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
+  `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
+  and any entry that matched no way (also a warning in the log: the extract's
+  geometry moved, or the file is wrong).
+
+**What smoothing changes, and what it does not.** Only the link's volume gate
+reads the median, and it only ever lowers a count (303: "Keep it LTS 4, and only
+lower ratings. In most cases, the smoothing is probably bunching by the
+intersection. Given that our routing is a sum of intersection stress and route
+stress, we don't want to double count."). `segment.volume_aadt` stays the
+agency's count, and `segment.stress_unsmoothed_tier` keeps the tier on that
+count where smoothing lowered the link; the junction model reads the greater of
+the two tiers and the agency's count, so the volume bunched at an intersection
+is charged there and only there. On a table from before the column the junction
+reads `stress_tier` alone, until the next rebuild.
+
+**Vetoing the smoothing.** The owner can veto it (296, as recorded: "a
+data-quality fix, not a rule change; the owner can veto it"). The switch is `RebuildContext.smooth_volume` in
+`src/pipeline/run.py`, `True` by default. It is deliberately not an environment
+variable: it is the owner's decision, so it changes in a reviewed commit. To flip
+it, set the default to `False`, commit, rebuild the pipeline image
+(`docker compose build rebuild`, or the release that carries the commit), and the
+next rebuild classifies every link on the agency's count; `aadt-smoothing.csv`
+is then header-only. Undo it the same way.
+
+**A missing corridor folder fails the rebuild.** `routemaker.corridors.load`
+refuses a missing `fixtures/corridors/` (CLASSIFY_STRESS fails with
+`CorridorRefused`), because the image copies `fixtures/` and its absence means a
+broken image; the owner's corridor ratings would otherwise vanish without a
+word. A folder with no file is a warning.
+
+**Rebuild checklist: Harford Road (decision 282a).**
+
+- [ ] Until the owner approves loading
+  `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` and deletes the
+  database's stress row for way 424993005 in the admin, the rebuild reports
+  stress 424993005 as `failed` in `override-rematch.md` and leaves the Harford
+  Road row unapplied. That is expected, not a fault: the generic re-match
+  declines it because the junction was redrawn, and the re-point to ways
+  1562097553, 1562097555 and 1562097556 is in the file, waiting for that
+  approval. After it: load the file (`load_access_overrides`, dry first, then
+  `--confirm`, as in `fixtures/overrides/README.md`), delete row 424993005 in the
+  admin, and the next rebuild applies the three new rows.
 
 ## Deployment actions
 
@@ -2314,13 +2828,13 @@ docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from django_migrations" </dev/null
 ```
 
-The count is the number of applied migrations: **68** on 2026-10-02 (core at
+The count is the number of applied migrations: **69** with the NO-BIKE-PATHS migration (68 on 2026-10-02, core at
 0009); anything else, an error included, is the race. Recover in this order,
 postgis first:
 
 ```sh
 docker compose up -d --no-deps --no-build --force-recreate postgis
-# check again: django_migrations 68, and the live segment count as last seen
+# check again: django_migrations 69 (68 before the NO-BIKE-PATHS migration), and the live segment count as last seen
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \
     -c "select count(*) from django_migrations" </dev/null
 docker compose exec -T postgis psql -U routemaker -d routemaker -At \
@@ -2329,6 +2843,14 @@ docker compose up -d --no-deps --no-build --force-recreate \
     caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend \
     photon api worker rebuild
 ```
+
+**Never name `valhalla-offroad` in an `up` on the small host** (the 10 GB WSL
+machine, or the beta). Naming a service in `up` starts it whatever its profile, so
+it would put a fifth router in memory there; and before the first rebuild that
+builds it, Docker would create `${DATA_ROOT}/tiles/offroad` as root for its bind,
+which the rebuild (uid 10001) then cannot write. Where it does run, start it
+after the routers above with `docker compose --profile offroad up -d --no-deps
+--no-build --force-recreate valhalla-offroad`.
 
 **Never a plain `docker compose up -d` here.** Without `--no-deps` it starts
 `migrate` against whatever postgis has, which on the empty cluster creates a
@@ -2437,6 +2959,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -2501,7 +3024,7 @@ edges". The command prints the lines to run in that case:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
-docker compose stop valhalla-weekend
+docker compose stop valhalla-weekend valhalla-offroad
 ```
 
 The api plans weekend rides on the standard graph while there is no weekend
@@ -2619,7 +3142,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -2770,8 +3293,7 @@ the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-
 index backup may be two releases back. `L` is the short commit t9 is on:
 
 ```sh
-export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
-cd "$REPO"; D=$DATA_ROOT; L=$(git rev-parse --short HEAD)
+cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(git rev-parse --short HEAD)   # D: never exported
 docker tag ghcr.io/macrophage87/routemaker-api:dev ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null
 docker image inspect --format '{{.Id}}' ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null   # the live image's id
 cp $D/frontend/index.html ~/rmdata/frontend-index-$L.html
@@ -2849,8 +3371,7 @@ changes (302), and `calm_search` carries `no_fit` and the `limited` code `"ceili
 ("Long calm plans ..., Rollback", above); the old front end works against the new API.
 
 ```sh
-export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in t9's .env
-cd "$REPO"; D=$DATA_ROOT; L=<the short commit saved in step 0.1>
+cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=<the short commit saved in step 0.1>
 docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
   sh -c "cp /bk/frontend-index-$L.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
@@ -2884,3 +3405,594 @@ of these:
 
 These are not triggers: `dodges.limited: "time"`, `calm_search.limited: "time"` on a long plan, the
 long-pool 503 while another long plan runs, and `candidates` null on most trips.
+
+## Paths bicycles may not ride (NO-BIKE-PATHS)
+
+OWNER-DECISIONS 278, 280, 281 and 290 to 291. Nothing here is live until the
+next rebuild; nothing is written to the live database or an override table.
+
+**What a rebuild now closes.** `pipeline.trail_closures` marks a way
+`rm:no_bicycle=<reason>` and the transform closes it to bicycles (the mark is
+stripped, and the singletrack strip in `lua/graph.lua` covers a rated way). The
+reasons are in `routemaker.trailaccess` (private, sac_scale, informal,
+foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb,
+dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
+The rebuild log line "facility classes: ..." carries the count per reason.
+
+**Five graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
+(`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
+291(2)). It has no weekend twin and falls back to the standard graph, as the
+weekend one does, when it is not promoted or not answering. Start it after the
+first rebuild that builds it: `docker compose --profile offroad up -d --no-deps
+--no-build valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
+Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
+32G the compose check allows.
+
+**The off-road router is behind the compose profile `offroad`.** A plain
+`docker compose up -d` (and the force-recreate lists above, which name services
+explicitly) does not start it, so a small host, such as the 10 GB WSL machine,
+runs four routers as before. The rebuild builds and promotes `tiles/offroad`
+whether or not the router runs (the tiles are built in the rebuild container, from
+the same extract, and the graph is validated there), and the planner answers
+Gravel and Mountain Goat on the standard graph, `variant: "standard"`, while the
+router is not answering: no 500, no change in the request. The planner remembers a
+failure for `WEEKEND_FAILURE_TTL_S` and tries again after. Where there is memory
+for it (1536M of limit; the standard router sits at about 450 MB resident here, over 1.1 GB of tiles), start it with the
+command above after the swap, and `restart` it after later rebuilds as the others.
+A `restart` that names `valhalla-offroad` where it has no container fails ("no such
+service", with or without `--profile offroad`) and restarts none of the other
+routers on the same line, so the four-router restart never names it. Restart it on
+its own line, `docker compose --profile offroad restart valhalla-offroad`, and only
+where it runs.
+
+**The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
+NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
+destination-only (`rm:destination_only`; `bicycle=destination` and
+`access=destination`). A trip point inside the Zoo is moved to the racks and the
+answer's `moved_points` says so.
+
+**Display.** A trail-class way routing does not open to bicycles is
+`map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
+tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
+trail in no routable layer but in its own not-for-routes look, for every ride type: a thin
+mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
+superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
+`MTB_TRAILS_ROUTABLE`); the legend has a row "Mountain-bike trail: not used for routes" and
+the road panel says the same. `rough` draws as any unpaved trail does. Routing closes the class
+for every preset but Gravel and Mountain Goat. The segment
+table has two new columns, `mtb_only` and `walk_bike`; the model's migration
+(core 0010) is state-only.
+
+**Walk your bike.** A `bicycle=dismount` connector under 500 ft (150 m), counting
+the ways that join it, stays and the route description gets a `walk` entry;
+longer ones close.
+
+**NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
+in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
+read, which needs the owner's approval as a fetch.
+
+**The gate.** VALIDATE reads back up to 8 ways of each new reason from every
+graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
+does the same after the swap and now reads the off-road router too.
+
+## The rebuild bundle (wip/rebuild-bundle)
+
+One deploy and one rebuild carry NO-BIKE-PATHS and the singletrack fix, the arterial
+calibration, main's front end and log changes, the route chart, the z12-13 ride layer
+(calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
+and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
+the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
+394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
+reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
+the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
+Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md), the narrower military
+rule and the owner's reopenings (437, 437a-c).
+Nothing in it is live until the rebuild promotes the new table.
+
+Read the post-rebuild before/after with three changes in mind. 425 counts a block's
+reversible lanes in each direction, so it can raise the tiers on 16th St NW, Canal Rd NW,
+Clara Barton Pkwy, Chain Bridge Rd and Independence Ave SE/SW (no measurement of it is
+recorded but Connecticut's, in docs/DEVELOPMENT.md). The military-area rule closes about
+2,170 mi (3,490 km) of roads and paths inside bases region-wide (Quantico, Aberdeen, Fort
+Meade, Fort Belvoir, Andrews and Patuxent River the most; Joint Base Anacostia-Bolling
+about 68 mi (109 km) with the older Bolling outline it overlaps), so routes that used to cut
+through one go round it. Inside a base only a numbered public road, a way signed for
+bicycles (`bicycle=designated`), the Pentagon's listed streets and walkways (437.5) and the
+owner's reopened ways (437.6, 437a-c, 438.2: Jeff Todd Way, Russell Rd, Saint Elizabeths Rd
+SE and its side path, Pentagon Connector Road) stay open, about 41 mi (66 km) in all; a few
+signed paths only the base reaches stay closed (438.1, 439: until the community confirms
+them); "inside" is the share of a way's
+length. `<DATA_ROOT>/rebuild/reports/military-closures.csv` lists every way, closed or left
+open. The same rule closes secured federal compounds OSM does not tag military (owner
+report 2026-10-06; `restricted_areas.SECURED_AREAS` and a government area with its own
+`access` against the public): Goddard, NIST, NIH Bethesda and its Animal Center, the
+Naval Academy's Yard, the James J. Rowley Training Center, the FDA White Oak campus, the
+Nebraska Avenue Complex, the White House grounds, the state prison complex at Jessup
+(446b) and the correctional department's land at Sykesville (447, closed under err closed
+until the owner rules), about 2,560 ways and 156 mi (252 km), `rm:no_bicycle=secured`; the
+public way in to the Goddard Visitor Center (446, 0.82 mi), Goddard's two county roads,
+Brock Bridge Rd's bridge at Jessup and Slacks Rd through the Sykesville land stay open.
+`secured-closures.csv` beside the military report lists
+them (a `facility` column for `installation`). CIA headquarters is `landuse=military` and is in
+the military count. Veirs Mill Rd's former Avoid stretch comes out LTS 3 on its two-lane carriageways and
+LTS 4 on the seven with three or four lanes (433, 437.4), and Saint Elizabeths Rd SE LTS 4
+(437c), as is Jeff Todd Way's roadway at Fort Belvoir (439b; its side path keeps its
+own rating).
+
+The remap also takes `mtb:scale` and `mtb:scale:imba` off every paved way
+(`strip_paved_ratings` in lua/routemaker_remap.lua): Valhalla's parser read the rating as
+the surface, so the paved Rock Creek Trail in Montgomery County (`mtb:scale=0`), the ICC
+Trail and Northwest Branch were priced as dirt and routes avoided them. 172 paved ways
+carry a rating in the 2026-10-03 extract; the rebuild logs the count (`paved ways with an
+mtb rating`). Access does not change. Being a lua change, it needs
+`scripts/check_tile_build_access.sh` (64 cases, 0 failures on wip/pre-rebuild: the bundle's
+48, 14 for hard surfaces and 2 for secured areas) and the full
+graph rebuild, which step I is.
+
+**Images, both under one TAG.** api (also the worker's and migrate's image) and pipeline
+(the `rebuild` service). `docker compose build api rebuild` (or `docker compose build`),
+never `build api` alone: tile format 7 must reach the api and the pipeline together, or the
+weekly pre-draw evicts the api's cache every week (above, "The stress tiles"). The front end
+is not a compose image: it is built and installed separately (docs/DEPLOYMENT.md, "The
+public front end"), and goes last.
+
+**Migration.** core 0010 (`segment.mtb_only`, `walk_bike`) is state only: the segment table
+is unmanaged and created whole by each rebuild. `migrate` records it and runs no SQL. The
+new columns `calm_run_m`, `roadside`, `stress_unsmoothed_tier`, `mass_usable_width_m` and
+`bike_access_reason` (nullable; why a way is closed to bicycles, written by WRITE_SEGMENTS
+and read by the road panel's GET /api/segment-info) need no migration, as `facility` and
+the trail columns did not: the rebuild's DDL creates them (`pipeline.schema.SEGMENT_DDL`)
+and the writer fills all 38 columns. The api reads each one only where the live table has
+it, so the new api is safe on the old table.
+
+**The order.** Run from the deployment checkout, one step at a time, with `</dev/null` on
+every docker command. Steps marked **(owner)** need the owner's OK. Each step names its
+rollback point; "Rollback", below, uses them. This rebuild starts from a **fresh Geofabrik
+extract**, downloaded first (owner-approved, OWNER-DECISIONS 443) so the owner's OSM
+edits of 2026-10-06 are in it, and its date is checked before the rebuild builds from it:
+"Before E", below, checks Geofabrik's date, and step I starts the download (by moving the
+clipped extract aside) and checks what came.
+
+```sh
+D=$(sed -n 's/^DATA_ROOT=//p' .env)            # the deployment's data root, read from .env
+Q() { docker compose exec -T postgis psql -U routemaker -d routemaker -AtX -c "$1" </dev/null; }
+```
+
+Never `export DATA_ROOT`: compose takes the shell's value over `.env`, so a wrong one
+recreates the services on an empty tree. `D` is a plain shell variable, and `Q` a shell
+function: define both again in each new shell, and `ACTOR` (step H) too; an empty `$ACTOR`
+fails `--actor` safely, but it stops the step.
+
+**A. Before the day.** The commit deployed is the reviewed bundle SHA with main as an
+ancestor (the main ruleset fast-forwards only), with the front-end tests and CI green on
+it. Deploy that SHA, not the branch name.
+
+**B. Pre-flight (read-only).** Start between 07:30 and about 23:00 UTC, so the 8 h budget
+(`REBUILD_TIMEOUT_S`) ends before the 07:00 backup; do not recreate `worker` between 07:00
+and 07:30 UTC.
+
+```sh
+free -m; docker ps --format '{{.Names}}' </dev/null; df -h /tmp   # only this stack's containers; /tmp near empty
+ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # 2026-10-03's; this run replaces it ("Before E", 443)
+Q "select count(*) from django_migrations"                       # note it (68 before the bundle)
+Q "select count(*) from live.segment"                            # note it
+Q "select id,task_name,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"
+Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1"
+Q "select kind,count(*) from override where approved group by 1"
+```
+
+If `available` is under 7000 MB, stop photon (`docker compose stop photon`). **(owner)**
+Close the heavy apps on the host and pause Windows Update for the run. C: wants 15 GB free.
+
+**C. Rollback points.** Nothing changes yet; these are what "Rollback" restores.
+
+```sh
+L=$(git rev-parse --short HEAD); echo "$L" > ~/rmdata/pre-bundle-commit.txt
+docker tag ghcr.io/macrophage87/routemaker-api:dev      ghcr.io/macrophage87/routemaker-api:pre-bundle-$L      </dev/null
+docker tag ghcr.io/macrophage87/routemaker-pipeline:dev ghcr.io/macrophage87/routemaker-pipeline:pre-bundle-$L </dev/null
+cp $D/frontend/index.html ~/rmdata/frontend-index-pre-bundle.html   # restored by "Rollback" with busybox
+for v in standard no-trail ebike weekend; do echo "$v $(readlink $D/tiles/$v/current)"; done > ~/tiles-pre-bundle.txt
+Q "select max(id) from override" > ~/override-maxid-pre-bundle.txt
+ls -l $D/backups | tail -1                                        # last night's backup is there
+```
+
+Optional **(owner)**, if a rerun on the 2026-10-03 data might be wanted: copy the old
+merged and clipped extracts aside first (about 970 MB; step I keeps only the clipped one,
+and the download overwrites the merged file and the three state extracts):
+
+```sh
+mkdir -p ~/rmdata/extracts-2026-10-03 && cp -p $D/extracts/merged.osm.pbf $D/extracts/source.osm.pbf ~/rmdata/extracts-2026-10-03/
+```
+
+**D. Hold the weekly tick (S3 of the operations review). (owner: `.env` edit)** Every
+Procrastinate worker runs the periodic deferrer for the whole registry, so the maintenance
+`worker` queues the Tuesday 08:00 UTC `weekly_rebuild` even while `rebuild` is stopped, and
+the job waits `todo`. Recreating `rebuild` (step G) would then start a full rebuild at
+once, before the overrides of step H and the tile-build check of step F; and a tick queued
+behind a hand-fired run promotes a **second** build straight after, whose swap drops
+`live_old`, the pre-bundle rollback target. So pause it first ("Pausing the weekly
+rebuild", above):
+
+```sh
+grep -q '^WEEKLY_REBUILD_PAUSED=' .env || echo 'WEEKLY_REBUILD_PAUSED=1' >> .env
+grep '^WEEKLY_REBUILD_PAUSED=' .env                                # WEEKLY_REBUILD_PAUSED=1
+Q "select id,status,args from procrastinate_jobs where task_name='weekly_rebuild' and status='todo'"
+```
+
+A `todo` row here (after 08:00 UTC on a Tuesday) is the waiting tick. Leave it: with the
+pause in `.env` it ends "paused" as soon as `rebuild` starts in step G, and the check
+there shows it gone. `run_rebuild_now` passes `manual=True`, so the pause does not hold it.
+
+**Before E: a fresh extract (owner-approved download, OWNER-DECISIONS 443).** The owner
+approved downloading a fresh Geofabrik extract for this rebuild ("yes. I approve", 443),
+so that the OSM edits they submitted on 2026-10-06 (the Twinbrook Connector surfaces, the
+bicycle tags of a crossing, Veirs Mill Rd's lanes, limit and side path) are in the
+build; the overrides of H still apply on top, and no Twinbrook surface override is needed.
+The extract on disk is 2026-10-03's and younger than `SOURCE_EXTRACT_MAX_AGE` (six days),
+so the rebuild would reuse it. So step I moves the clipped extract aside just before it
+fires the rebuild: the rebuild's first stage (`FETCH_EXTRACT`, "The source extract",
+above) finds it absent and downloads once, and an automatic retry reuses the new files,
+which are under six days old. Nothing is set in `.env`: leave its
+`SOURCE_EXTRACT_FORCE_REFRESH=` line (from `.env.example`) empty, since a forced refresh
+would download again on every retry. **(owner: confirm about 664 MB.)** The three state
+extracts (PBF) were 21 MB, 215 MB and 428 MB at 2026-10-03, 664 MB (633 MiB) in all; the
+owner was told about 300 MB. The rebuild also writes `merged.osm.pbf` (about 660 MB) and
+`source.osm.pbf` (about 300 MB).
+
+Geofabrik cuts each region's daily file at about 20:21 UTC (the 2026-10-03 files say
+`2026-10-02T20:21:34Z`); an edit made after the cut arrives in the next day's file. So the
+file published early on 2026-10-07 holds edits up to about 2026-10-06 20:21 UTC (16:21
+EDT). First check that Geofabrik's current build is new enough (three small text files):
+
+```sh
+for r in district-of-columbia maryland virginia; do
+  curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
+done                                                             # each at or after the owner's last 2026-10-06 edit
+```
+
+Each `timestamp` (UTC, written `2026-10-06T20\:21\:02Z`) must be at or after the owner's
+last OSM edit of 2026-10-06. Its time is on the owner's changeset list; if that list shows
+local time, EDT is UTC less 4 h, so a 16:00 EDT edit is 20:00 UTC. If any timestamp is
+older, STOP and ask the owner: the run waits for the next day's file. Note the three
+timestamps; step I checks the download against them. Then check that nothing forces a
+refresh:
+
+```sh
+grep '^SOURCE_EXTRACT_FORCE_REFRESH=' .env                        # SOURCE_EXTRACT_FORCE_REFRESH=  (empty), or no line
+```
+
+Nothing has changed yet, and nothing is downloaded until I.
+
+**E. Code and images.**
+
+```sh
+git status --short                                               # empty
+git merge --ff-only <reviewed SHA>
+docker compose build api rebuild </dev/null 2>&1 | tee ~/bundle-build.log
+```
+
+The api build may contact Docker Hub for its base image **(owner OK)**. `lua/` is bound
+live into `rebuild`, but `rebuild` is stopped and paused, so nothing builds early.
+
+**F. The tile-build check** (about 2 s; `lua/graph.lua` and `lua/routemaker_remap.lua`
+changed, "Firing a rebuild by hand"):
+
+```sh
+scripts/check_tile_build_access.sh                               # exit 0 required; the new pipeline image, --network none
+```
+
+**G. Migrate, then recreate** (no job `doing`):
+
+```sh
+docker compose run --rm --no-deps migrate </dev/null                 # applies core 0010 (state only, no SQL)
+Q "select count(*) from django_migrations"                           # one more than in B
+grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: check again just before the recreate
+docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
+docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
+Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
+```
+
+Never a plain `up -d`, and never name `valhalla-offroad` in an `up` on this host ("After a
+host restart", above). Rollback point: the images tagged in C.
+
+**H. Reference data and overrides.** Six files, database rows that take effect only
+once loaded, all **(owner OK: a live DB write)**, each a dry run first and then `--confirm`,
+before the rebuild. In this load order (each later file assumes the earlier ones are in;
+the military file retires two rows the east-of-the-Anacostia file leaves in place), with
+the dry run each prints after `grep -v '^present:'`:
+
+1. `2026-10-05-owner-dupont-underpass.json`, the Dupont Circle underpass (OWNER-DECISIONS
+   414, 416: `bicycle=yes` and LTS 4 on the ten underpass ways OSM tags `bicycle=no`).
+   Dry: 20 create (10 access, 10 stress), no conflict.
+2. `2026-09-30-owner-arterials-east-of-anacostia.json`, the east-of-the-Anacostia
+   arterials again (432, 445-445f): its `retire` list withdraws the five South Capitol St
+   Avoid rows (MLK Jr Ave SE to Mississippi Ave SE), which outrank the new LTS 4 corridor,
+   and 524 more (445, 445f: only the highway-like main carriageways stay Avoid, 248 rows, 445d
+   keeping the four Benning Rd NE ways across the DC 295 interchange; the other roads go
+   back to the classifier, and Minnesota Ave, one Pennsylvania Ave way and all 36 Nannie
+   Helen Burroughs Ave NE ways are re-written as floors, at least LTS 4, 4 and 3
+   (`"at_least": true`: the rebuild keeps the classifier's tier where it is higher), 126
+   new rows, and 445d writes Avoid on the interchange's two ramps, 128 new rows in all).
+   Dry: 529 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 248 present, no absent. VALIDATE refuses a build where
+   the South Capitol stretch is not LTS 4, so this one is not optional.
+3. `2026-09-30-owner-veirs-mill-sidepath.json`, the Veirs Mill sidepath (433): retires the
+   two `bicycle=designated` rows on the north-side sidewalks and closes them
+   (`bicycle=no`). Dry: 2 retire `{'bicycle': 'designated'}`, 2 create `{'bicycle': 'no'}`.
+4. `2026-10-01-owner-moco-lts5-avoid.json`, the Montgomery Planning LTS 5 file (433):
+   retires the 23 Veirs Mill Rd Avoid rows and keeps the other 386. Dry: 23 retire, 386
+   present.
+5. `2026-10-06-owner-military-reopenings.json`, the military reopenings (437.6, 437a-c,
+   438.2, 439b): `bicycle=yes` on Jeff Todd Way (10 ways), Russell Rd (32), Saint
+   Elizabeths Rd SE (2) and its side path (11) and Pentagon Connector Road (25), LTS 4 on
+   Saint Elizabeths Rd SE (retiring its two east-of-the-Anacostia Avoid rows) and on Jeff
+   Todd Way's 15 carriageway ways. Dry: 2 retire (Saint Elizabeths Rd SE 316866053 and
+   1181165198, tier 5), 97 create (80 access `bicycle=yes`, 17 stress tier 4).
+6. `2026-10-06-owner-crosswalk-links.json`, the crosswalk links (442): `bicycle=yes` on
+   four crosswalk and traffic-island ways (way ids only, no names). Dry: 4 create (access,
+   `bicycle=yes`), no conflict.
+
+These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
+`override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
+database, the six files dry-run and loaded in this order, then the five checks below,
+which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all (before 445f, which retires two more rows: now `3|36 4|90 5|250`, retire 529, present 248, still 128 written). A second dry run of each file then printed only
+`present` and `absent` lines. The other override files are already in the live table
+(on the same copy, after the six, their dry runs printed only `present`) and are not
+loaded again, except two: the Baltimore
+facilities file (3 create) waits for the owner (282a, below), and
+`2026-10-02-owner-canal-whitehurst.json` has no rows to load (the rebuild reads it from the
+image). If a dry run here prints other counts, the live table has changed since: stop and
+report.
+
+```sh
+ACTOR=$(Q "select discord_user_id from app_user where is_instance_admin")   # one row
+docker compose exec -T rebuild python3 scripts/install_reference_data.py --data-root /data </dev/null   # harmless; the crossings file is unchanged
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json | grep -v '^present:'
+#   dry: 20 create (10 access, 10 stress), no conflict
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | grep -v '^present:'
+#   dry: 529 retire (the 5 South Capitol rows of 432, 522 of 445 and the 2 Kenilworth Ave NE ways of 445f), 128 create (90 tier 4, 36 tier 3, all floors; 2 tier 5 ramps of 445d), 248 present, no absent
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | grep -v '^present:'
+#   dry: 2 retire {'bicycle': 'designated'}, 2 create {'bicycle': 'no'}
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | grep -v '^present:'
+#   dry: 23 retire (moco-lts5-veirs-mill-road); the other 386 present
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-06-owner-military-reopenings.json | grep -v '^present:'
+#   dry: 2 retire (Saint Elizabeths Rd SE 316866053, 1181165198, tier 5), 97 create (80 access, 17 stress)
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" \
+    < fixtures/overrides/2026-10-06-owner-crosswalk-links.json | grep -v '^present:'
+#   dry: 4 create (access, bicycle=yes), no conflict
+```
+
+Any "disagrees" refusal: stop and report. Then the same six with `--confirm`, in the same
+order:
+
+```sh
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-05-owner-dupont-underpass.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-09-30-owner-arterials-east-of-anacostia.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-09-30-owner-veirs-mill-sidepath.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-06-owner-military-reopenings.json | tail -2
+docker compose exec -T api python manage.py load_access_overrides - --actor "$ACTOR" --confirm \
+    < fixtures/overrides/2026-10-06-owner-crosswalk-links.json | tail -2
+```
+
+Each ends `wrote N of M rows; the rest were already approved`, and each retiring file's
+line before it is its `retired` count. In order: Dupont `wrote 20 of 20`; east of the
+Anacostia `retired 529 rows`, `wrote 128 of 376`; Veirs sidepath `retired 2 rows`, `wrote 2
+of 2`; Montgomery `retired 23 rows`, `wrote 0 of 386`; military `retired 2 rows`, `wrote 97
+of 97`; crosswalk links `wrote 4 of 4`. **Then check H before
+firing I**; a skipped
+or failed load is otherwise found only about 3 h into the rebuild (VALIDATE runs after the
+tile build), or, for the Veirs Mill and military files, never before the swap:
+
+```sh
+Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
+Q "select (value->>'tier')::int, count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' group by 1 order by 1"   # 3|36, 4|90, 5|250: the 445 floors and the Avoid rows that stay, the interchange's six included (445d; Saint Elizabeths Rd's two are retired by the military file, so after it none are left over)
+Q "select count(*) from override where approved and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' and value->>'at_least'='true'"   # 126: the 445a-c floors are minimums ("at_least")
+Q "select count(*) from override where approved and ((kind='access' and value->>'bicycle'='yes' and osm_way_id in (123824236,131756393,20535693,316866053,1184926339,1311964678)) or (kind='access' and value->>'bicycle'='no' and osm_way_id in (468762518,791422825)) or (kind='stress' and (value->>'tier')::int=4 and osm_way_id in (123824236,316866053,232308625)))"   # 11: one Dupont, Jeff Todd, Russell, Saint Elizabeths road and path, Connector Road row, the two Veirs closures, three tier-4 rows (Dupont, Saint Elizabeths, Jeff Todd)
+Q "select count(*) from override where approved and kind='access' and value->>'bicycle'='yes' and osm_way_id in (1189857618,1362344261,1298593479,1189857620)"   # 4: the crosswalk links (442)
+```
+
+Anything else: stop, load the missing file again (dry run, then `--confirm`), and check again.
+
+The api image must be the bundle's (step G): the old loader does not know `retire` and
+would refuse the Veirs Mill file as a conflict, nor `at_least`, and would refuse the
+east-of-the-Anacostia file.
+
+Baltimore's Harford Road (282a): see "Rebuild checklist: Harford Road (decision 282a)",
+above. The Baltimore file is loaded only if the owner approves it, and the owner then
+deletes the stress row for way 424993005 in the admin; without that, `override-rematch.md`
+lists that row as `failed`, which is expected. Rollback point: the override max id saved
+in C (rows above it are this step's).
+
+**I. The rebuild** (about 3-3.5 h on a quiet host; abandoned at 8 h). No lane work meanwhile.
+
+First the fresh extract (443). Just before firing, move the 2026-10-03 clipped extract
+aside inside the running `rebuild` container (it runs as 10001, which owns the directory),
+so the rebuild finds it absent and downloads once. Name it by the date it was built: the
+clipped file carries no timestamp of its own, and its state extracts' header (the first
+command) gives the data's cut, `2026-10-02T20:21:34Z`, built on 2026-10-03.
+**(owner OK: the 443 download starts with this run.)**
+
+```sh
+docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/maryland-latest.osm.pbf </dev/null   # 2026-10-02T20:21:34Z
+docker compose exec -T rebuild mv /data/extracts/source.osm.pbf /data/extracts/source-2026-10-03.osm.pbf </dev/null
+docker compose exec -T rebuild ls -l /data/extracts </dev/null    # no source.osm.pbf; source-2026-10-03.osm.pbf is there
+docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null
+docker compose logs -f rebuild </dev/null
+```
+
+Rollback point, before `run_rebuild_now` only: move the file back
+(`mv /data/extracts/source-2026-10-03.osm.pbf /data/extracts/source.osm.pbf`, the same
+way). The log then shows `rebuilding the source extract: the clipped extract
+/data/extracts/source.osm.pbf is absent` and, about 2-3 min later, `source extract
+rebuilt: /data/extracts/merged.osm.pbf (0.6 GiB) from 3 regions, clipped to
+/data/extracts/source.osm.pbf (0.3 GiB)`. There are no download lines: curl prints nothing
+when it succeeds. Once the second line is there, check what was downloaded in a second
+shell (set `D` again), while the build carries on:
+
+```sh
+for r in district-of-columbia maryland virginia; do
+  docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/$r-latest.osm.pbf </dev/null
+done                                                             # each the timestamp checked before E, or later
+ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # written within the last hour (ls shows local time, EDT)
+```
+
+An older timestamp than the one checked before E, or a `source.osm.pbf` not written within
+the last hour: stop the rebuild (`docker compose stop rebuild </dev/null`, with the owner's
+OK) and report; nothing is promoted. An automatic retry (the job tries up to five times)
+reuses the new files and does not download again; only a retry after a failed download
+downloads. If `rebuilding the source extract` appears a second time in this run, stop the
+rebuild and ask the owner before it goes on.
+
+Watch for `military areas:` (about 21,690 ways closed, 2,168 mi, and about 290 left open,
+41 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
+areas:` line repeats the count, and refuses an installation below its floor
+(`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base),
+`secured federal compounds:` (about 2,561 ways closed, 156.4 mi, and 39 left open, 4.1 mi,
+at 2026-10-03's extract;
+VALIDATE refuses a compound below its floor, `REBUILD_SENTINEL_SECURED_MIN_CLOSED`, a
+Rowley sentinel way not closed; its open-network check cannot refuse yet, since every
+reason a way in a compound stays open is one of its exceptions), no warning
+`secured compounds listed by OSM id ... not in the extract`, no warning
+`Pentagon ways listed open ... not found`,
+`curated bike lanes (fixtures/bike_lanes): 23 ways`, `SOUTH CAPITOL ST BN 38.8309-38.8357 N:
+100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
+`override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
+R St NW), the Mass Ride width line (at least 98% of road and path rows with a width, the
+median road 60-200 riders a minute), the calm-run floors (Elmer School Road at 2 mi), the
+long trails, the closure readback on **five** graphs, and `Stress tile cache pre-drawn:
+11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A
+VALIDATE refusal is terminal and nothing is promoted: keep the code (the new api is safe on
+the old table), hold the front end, and report.
+
+**J. After the swap.** The run row's notice prints the same restart as here.
+
+```sh
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend </dev/null
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate </dev/null
+#   four "ok" lines and "offroad: not running, skipped" where the off-road router is off
+Q "select variant,build_id,previous_build_id from valhalla_upstream order by 1"   # five rows; offroad has no previous on its first build
+Q "select left(version,8),count(*) from stress_tile_cache group by 1"            # W/"stres and W/"mass- rows
+Q "select map_class, stress_tier from live.segment where osm_way_id = 123824236" # the Dupont underpass: road, 4
+Q "select stress_tier, count(*) from live.segment where osm_way_id in (468820704,590525532,455234174,468820714,1528642818) group by 1"  # South Capitol (432): 4 only
+Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (128574906,968550957) group by 1,2"  # Veirs Mill two-lane (433): 3, lane
+Q "select stress_tier, facility, count(*) from live.segment where osm_way_id in (724229765,724229775,1055964463,1055974099,1059851647,697039269,724229779) group by 1,2"  # three and four lanes (437.4): 4, lane
+Q "select count(*) from live.segment where osm_way_id > 1562063477"   # ways newer than urban-areas.json (2026-09-25): they read as rural; note the count
+Q "select (o.value->>'tier')::int, min(s.stress_tier), count(distinct s.osm_way_id) from override o join live.segment s on s.osm_way_id = o.osm_way_id where o.approved and o.kind='stress' and o.value->>'at_least'='true' group by 1 order by 1"   # 3|3|36 and 4|4|90 or so: no floor way below its floor (445a-c)
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (902479602,1276271654,6084740) order by 1"   # Rowley: barred or hidden, never road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (521457474,165477134,78343985) order by 1"   # ICESat Rd, WMAP Rd (446), Brock Bridge Rd bridge (446b): road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (436808063,1021005797,1126815407) order by 1"   # Sykesville land (447): Beef Farm Rd, a track, a service road: barred or hidden, never road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (11537133,1021005795) order by 1"   # Slacks Rd through the Sykesville land (447): road
+Q "select osm_way_id, map_class from live.segment where osm_way_id in (1189857618,1362344261,1298593479,1189857620) order by 1"   # crosswalk links (442): hidden (a crosswalk is not drawn), never barred
+Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id in (131756393,299021476,267730806,316866053,1001796647,346101190,32866298,345398786) order by 1"   # Jeff Todd (4), its side path (1), Russell, Saint Elizabeths (4), its path, South Fern, Connector Road: drawn; North Rotary Rd 345398786: hidden
+Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
+Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
+Q "select bike_access_reason, count(*) from live.segment group by 1 order by 2 desc"   # the road panel's closure reasons (new column): mostly null, then private, bicycle_no, military and the rest; an error here means the rebuild did not write it
+curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
+curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
+curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
+```
+
+The Veirs Mill Rd lines were measured on the 2026-10-03 extract. The owner's 2026-10-06
+edits change its lanes, limit and side path and may split its ways (a split way's new
+pieces read as rural and miss the id-keyed override rows), so other tiers or fewer rows
+there are expected: read `override-rematch.md` for `failed` rows and report; do not roll
+back for this alone. The same goes for the count of ways newer than `urban-areas.json`
+(1,931 at 2026-10-03, so roughly 2,500 now): they lean to a higher tier, the stress-averse
+side; regenerating the list from the fresh extract is for after this run.
+
+If the run row says the pre-draw was cut short, run `docker compose exec -T api python
+manage.py predraw_stress_tiles`. Then the two `trip` probes ("Bicycle closures in the
+tiles", step 3) and verify-release. Leave `valhalla-offroad` off on this host: Gravel and
+Mountain Goat answer with `variant: "standard"`. Check also: a z12 stress tile with no LTS
+3+ road; a z12 `/tiles/mass/` tile over downtown DC holding the busy roads with `rpm`; a
+Mass Ride's route sections carrying `rpm`.
+
+**K. The front end, last** (docs/DEPLOYMENT.md, "The public front end"). Then check the
+Mass Ride map at z10, z12 and z14, the DC mask and the outside-DC notice. Start photon
+again if it was stopped. Rollback point: the `index.html` saved in C.
+
+**L. The weekly schedule (owner).** Decide when to unpause: remove the
+`WEEKLY_REBUILD_PAUSED` line from `.env` (leave `SOURCE_EXTRACT_FORCE_REFRESH=` empty), then
+`docker compose up -d --no-deps --no-build --force-recreate rebuild`. Do it before
+the next Tuesday 08:00 UTC, or leave it paused on purpose. While it stays paused the
+rollback target (`live_old`, the `previous` links) lasts.
+
+**M. The beta (after live is verified).** Check out on the beta the SHA deployed on live
+(step E's reviewed SHA, `git rev-parse --short HEAD` in the deployment checkout), or
+`receive-data.sh` refuses the bundle (its git sha must match the beta's checkout), and use
+that SHA's tagged image; then
+`scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend "$RM_SSH_HOST"
+/data/routemaker-incoming`; it sends `tiles/offroad` too (about 1.1 GB more). On the
+server, receive the bundle, restart the **four** routers (as `receive-data.sh` prints),
+and run `predraw_stress_tiles`. Do **not** start the beta's off-road router: it would take
+the beta over its memory ceiling. No nginx change is needed.
+
+**Rollback.** The old table has none of the new columns, and the new api and front end
+fall back on it (no ride layer at z12-13, no capacity colours, no roadside look, the old
+route chart width estimate).
+
+- **The rebuild refused, or failed before the swap:** nothing changed in the data. Keep
+  the new images (the api is safe on the old table) and keep the pause on.
+- **The data at fault after the swap:** with the **new** rebuild image (the old one
+  ignores the off-road router's links and row):
+
+  ```sh
+  docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null              # dry: back to the saved build; offroad withdrawn
+  docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+  docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend </dev/null
+  docker compose stop valhalla-offroad </dev/null                                     # a no-op where it never ran
+  docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null
+  docker compose exec -T api python manage.py predraw_stress_tiles </dev/null
+  ```
+
+  Keep `WEEKLY_REBUILD_PAUSED=1`, or the next tick promotes the bundle again. The
+  rollback target lasts only until the next swap, so no second rebuild runs before the
+  decision.
+- **The code at fault:** the front end first (`index.html` from C, copied back as the front
+  end's owner, 10001:10001, as in "Rollback, front end first" above; set `D` and `L` again,
+  since C's shell is gone):
+
+  ```sh
+  D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(cat ~/rmdata/pre-bundle-commit.txt)
+  docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out     docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662     sh -c "cp /bk/frontend-index-pre-bundle.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
+  ```
+
+  then the images (the `pre-bundle-$L` tags from C, then `up -d --no-deps --no-build
+  --force-recreate api worker`, check `jobs_in_flight('weekly_rebuild')` is empty, then the
+  same for `rebuild`). Roll the data back first if it is also going back. The old images have the
+  pause (355 is on main). Migration 0010 stays applied, which is harmless. The rows H
+  wrote (ids above the saved max id in `~/override-maxid-pre-bundle.txt`: the 20 Dupont
+  rows, the east-of-the-Anacostia file's 128 new rows, 433's two `bicycle=no` rows, the 97
+  rows of the military file and the four crosswalk rows, 251 in all) stay until the owner
+  deletes them in the admin. The rows H retired are gone; to bring them back, **first**
+  delete these rows, or the old files are refused as a conflict: 433's `bicycle=no` rows on
+  468762518 and 791422825, the military file's tier-4 rows on 316866053 and 1181165198, and
+  the east-of-the-Anacostia file's 128 new rows (its 126 floor rows sit on ways the old file
+  rates tier 5; its two ramp rows are not in the old file). Define `Q` again (as at the head
+  of "The order"), then:
+
+  ```sh
+  M=$(cat ~/override-maxid-pre-bundle.txt)
+  Q "select count(*) from override where id > $M"                                     # 251: every row step H wrote
+  Q "select id, osm_way_id, value->>'tier' from override where id > $M and kind='stress' and value->>'adjustment_id' like 'east-anacostia-%' order by id"   # 128: delete these too (owner, admin) before reloading the old east file
+  ```
+
+  Then load the files as they were at `pre-bundle-$L` (`git show
+  $L:fixtures/overrides/<file>.json`): the east-of-the-Anacostia, Veirs Mill sidepath and
+  Montgomery Planning files. The 2026-10-03 clipped extract is kept as
+  `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
+  was made. The old api ignores an `offroad` row in `valhalla_upstream`.

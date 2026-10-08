@@ -28,6 +28,7 @@ from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
 from core import presets, routing
+from routemaker import flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -50,6 +51,8 @@ CONTRACT_KEYS = {
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
     "facility_m",
     "stress_adjustments",
+    # Additive, NO-BIKE-PATHS: the trip points the planner moved (the Zoo's).
+    "moved_points",
     "dials",
     "hills_seek",
     "hills_avoid",
@@ -232,10 +235,31 @@ class TestAnswer:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None},
-            {"from_m": 900, "to_m": 1300, "tier": 1, "facility": "none", "unpaved": None},
-            {"from_m": 1300, "to_m": 1700, "tier": 4, "facility": "none", "unpaved": None},
-            {"from_m": 1700, "to_m": 2200, "tier": None, "facility": None, "unpaved": None},
+            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None, "rpm": None},
+            {
+                "from_m": 900,
+                "to_m": 1300,
+                "tier": 1,
+                "facility": "none",
+                "unpaved": None,
+                "rpm": None,
+            },
+            {
+                "from_m": 1300,
+                "to_m": 1700,
+                "tier": 4,
+                "facility": "none",
+                "unpaved": None,
+                "rpm": None,
+            },
+            {
+                "from_m": 1700,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            },
         ]
         # The sections agree with the totals.
         by_tier = {}
@@ -311,10 +335,16 @@ class TestAnswer:
     def test_a_mass_ride_has_riders_a_minute_that_a_climb_lowers(
         self, client, segments, router
     ) -> None:
-        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a two-lane street
-        (the segment table has no lanes here: one a direction) carries about 198 riders a
-        minute; a 6% climb of 300 m carries fewer, and the climb's row says by how much."""
+        """OWNER-DECISIONS 328: the flow model is grade-adjusted. Level, a street whose
+        Mass Ride width (`mass_usable_width_m`, the column the capacity map colours by) is
+        6.7 m carries about 198 riders a minute; a 6% climb of 300 m carries fewer, and the
+        climb's row says by how much. The column wins over the lanes' estimate (three lanes
+        a direction here would be 298): the chart and the map agree (394, 404)."""
         heights = [10.0] * 6 + [10.0 + 1.8 * i for i in range(1, 11)] + [28.0] * 4
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET mass_usable_width_m = 6.7, road_lanes = 3"
+            )
         answers = standard_router()
         answers.answers["route"] = route_answer([(VERTICES, 2.2, heights)])
         router(answers)
@@ -390,13 +420,18 @@ class TestAnswer:
         assert profile["crossings"] == [c for c in full["crossings"] if c["kind"] == "flagged"]
         assert profile["crossings_complete"] is False
 
-    def test_a_mass_rides_width_comes_from_the_segments_lanes_and_one_way(
-        self, client, segments, router
+    def test_on_an_older_table_a_mass_rides_width_comes_from_the_segments_lanes(
+        self, client, segments, router, monkeypatch
     ) -> None:
-        """Mutation review, finding 4: `road_lanes` and `road_oneway` reach the width end
-        to end. Way 101 is a 2-lane one-way (6.7 m: 198 a minute; one lane a direction
-        would be 99, two-way 396), way 202 a 2-lane two-way street (13.4 m: 396), and way
-        303 has no segment row (not known). Level all the way, so no grade factor."""
+        """Mutation review, finding 4: on a table built before `mass_usable_width_m`, the
+        estimate's `road_lanes` reach the width end to end. Way 101 is a 2-lane one-way
+        (6.7 m: 198 a minute; one lane a direction would be 99), way 202 a street of 2 lanes
+        a direction, two-way: its own side only (OWNER-DECISIONS 406), 6.7 m, 198 (it was
+        13.4 m, 396, before the rebuild bundle), and way 303 has no segment row (not known).
+        Level all the way, so no grade factor."""
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
+        monkeypatch.setattr(routing, "_capacity_column_seen", False)
         with connection.cursor() as cursor:
             cursor.execute(
                 f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
@@ -414,7 +449,7 @@ class TestAnswer:
         profile = response.json()["profile"]
         at = dict(zip(profile["m"], profile["riders_per_min"], strict=True))
         assert at[450] == 198
-        assert at[1290] == 396
+        assert at[1290] == 198
         assert at[2010] is None
         assert profile["unchecked"] == [] and profile["avoid"] == []
 
@@ -555,7 +590,14 @@ class TestStressBreakdown:
         assert stress["unknown"] == pytest.approx(2200.0)
         assert sum(v for k, v in stress.items() if k != "unknown") == 0
         assert response.json()["stress_spans"] == [
-            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
+            {
+                "from_m": 0,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            }
         ]
         # And the facility breakdown, which must sum to the same distance
         # (mutation review r1, RT15).
@@ -1344,7 +1386,14 @@ class TestTimeBudget:
         assert body["stress_adjustments"] == []
         # And the route is one unknown section, as its totals are.
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
+            {
+                "from_m": 0,
+                "to_m": 2200,
+                "tier": None,
+                "facility": None,
+                "unpaved": None,
+                "rpm": None,
+            }
         ]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
@@ -2531,3 +2580,69 @@ class TestSurfaceOfPieces:
         assert stretches and all(
             e["surface"] == "unpaved" and e["text"].endswith(", unpaved.") for e in stretches
         ), [(e["surface"], e["text"]) for e in stretches]
+
+
+@db
+class TestMassRideCapacitySections:
+    """The Mass Ride's route line is coloured by carrying capacity, riders a minute
+    (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
+    table's `mass_usable_width_m`, for a Mass Ride only and only where the table has it."""
+
+    @staticmethod
+    def capacities(segments, by_way: dict[int, int | None]) -> None:
+        with connection.cursor() as cursor:
+            for way, rpm in by_way.items():
+                cursor.execute(
+                    f"UPDATE {segments}.segment SET mass_usable_width_m = %s WHERE osm_way_id = %s",
+                    [None if rpm is None else rpm / flow.level_riders_per_min(1.0), way],
+                )
+
+    def test_a_mass_ride_carries_the_capacity_and_ends_a_section_where_the_band_does(
+        self, client, segments, router
+    ) -> None:
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        spans = post(client, good_body("mass-ride")).json()["stress_spans"]
+        # The trace's last piece matches no segment: unknown, with no figure.
+        assert [(s["tier"], s["rpm"]) for s in spans] == [(3, 50), (1, 250), (4, 250), (None, None)]
+
+    def test_another_ride_type_carries_none(self, client, segments, router) -> None:
+        self.capacities(segments, {101: 50, 202: 250})
+        router(standard_router())
+        spans = post(client, good_body("default")).json()["stress_spans"]
+        assert spans and all(s["rpm"] is None for s in spans)
+
+    def test_a_table_without_the_column_draws_a_mass_ride_by_stress_as_before(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
+        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        router(standard_router())
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 200
+        spans = response.json()["stress_spans"]
+        assert spans and all(s["rpm"] is None for s in spans)
+        assert [s["tier"] for s in spans][:1] == [3], "still the stress sections"
+
+    def test_a_piece_class_carries_the_capacity_and_still_pickles(self) -> None:
+        import pickle
+
+        width = 120 / flow.level_riders_per_min(1.0)
+        again = pickle.loads(pickle.dumps(routing.PieceClass("2", "path", True, width_m=width)))
+        assert again == ("2", "path") and again.unpaved is True and again.rpm == 120
+        assert again.width_m == pytest.approx(width)
+        assert routing.PieceClass("2", "path").rpm is None
+        assert routing.PieceClass("2", "path").width_m is None
+
+    def test_classify_reads_the_capacity(self, segments) -> None:
+        self.capacities(segments, {101: 50, 202: None})
+        pieces = [routing.Piece(101, -77.045, LAT, 100.0), routing.Piece(202, -77.0375, LAT, 100.0)]
+        monkey = routing._capacity_column_seen
+        try:
+            routing._capacity_column_seen = False
+            classes = routing.classify(pieces, "weekday_offpeak")
+        finally:
+            routing._capacity_column_seen = monkey
+        assert [c.rpm for c in classes] == [50, None]
+        assert all(len(c) == 2 for c in classes)

@@ -308,6 +308,95 @@ def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
     return long
 
 
+# THE RIDE LAYER (OWNER-DECISIONS 391, 2026-10-05): "I'm more concerned with the
+# places to ride than the places not to." At z12-13 the stress map is a "where to
+# ride" view: no LTS 3, LTS 4 or Avoid road is drawn (they come in from z14, with
+# the quiet streets), and what is drawn is
+#
+# - the long and connected traffic-free paths: a path whose connected network
+#   (traffic-free paths within CALM_PATH_GAP_M of one another, so a road crossing
+#   does not break a trail in two) or whose named run (`trail_run_m`) is at least
+#   RIDE_PATH_RUN_MI; short isolated stubs and mountain-bike trails wait for z14;
+# - the calm roads worth a long ride (402, 402a: "For calm streets, I'm thinking
+#   more calm roads. Places someone would likely want to ride for a while. In the
+#   cities that's just too dense." and "LTS2 counts. Suburban streets would rarely
+#   qualify because they tend to have a lot of intersection stress rather than
+#   roadway stress."): a continuous run of named LTS 1 and LTS 2 road, of any class
+#   and across changes of name, that ends at every junction with a road at LTS 3 or
+#   above, of at least RIDE_ROAD_RUN_MI (`pipeline.calm_roads`, which says how a run
+#   goes through a junction); and
+# - the roads closed to cars at set times, whatever their length (as 377 does).
+#
+# `calm_run_m` holds the length of that run or network, in metres, on the ways
+# that are candidates (`pipeline.trail_routes.derive_calm_runs`): 0 on a candidate
+# before it is derived, and null on every other way (a way that is not a path and
+# not a road at LTS 1 or 2, or a mountain-bike trail). Written by the rebuild alone,
+# so a live table from before it has no such column and draws today's z12-13.
+#
+# The thresholds are tunable and measured against the region before review
+# (docs/OPERATIONS.md, "The ride layer (z12-13)").
+CALM_RUN_COLUMN = "calm_run_m"
+# Traffic-free paths within this many metres (100 ft) are one network: a road
+# crossing, a trailhead's parking lot.
+CALM_PATH_GAP_M = 30
+# "short isolated stubs (under about 0.25 mi)".
+RIDE_PATH_RUN_MI = 0.25
+# The calmest tiers a calm road is made of: LTS 1 and LTS 2 ("LTS2 counts").
+CALM_ROAD_MAX_TIER = 2
+# A calm road is a long one at this run, in miles (3.2 km): the owner's proposed bar (402a,
+# "2 mi (3.2 km) continuous as proposed, not yet confirmed"), the one setting to move. Measured
+# on a copy of the live table's rows with names from the 2026-10-03 extract (docs/OPERATIONS.md,
+# "The ride layer (z12-13)"): 1,642 mi in the region, nearly all of it rural (Montgomery County
+# 38 mi, all in the Agricultural Reserve; DC and Baltimore none); at 1 mi, 4,831 mi (DC 33, MoCo
+# 184, Baltimore 38).
+RIDE_ROAD_RUN_MI = 2.0
+
+
+# TRAILS BESIDE A ROAD (OWNER-DECISIONS 403, 2026-10-05): "Most trails near a road are paved.
+# There are minor exceptions." 376 A draws a trail with no surface mapped as a dashed line of its
+# own, with no path rails; a trail beside a road keeps the paved path's look instead, and only a
+# trail away from roads (a park trail) is drawn surface-unknown. The exceptions are left to a
+# surface tag in OSM or a surface override, not to the default. A drawn trail is beside a road
+# (`roadside`) when its own tags say it is a sidepath or a sidewalk (`routemaker.facility.
+# roadside_by_tags`: `footway`, `path` or `cycleway` = sidewalk, `is_sidepath=yes`, any
+# `is_sidepath:of*`; `is_sidepath=no` says it is not, whatever the geometry), when its facility
+# is already the protected one beside a road, or else when at least ROADSIDE_FRACTION of the
+# points ROADSIDE_SAMPLE_M apart along it lie within ROADSIDE_M of a road (a way that is not a
+# trail, drawn or barred: a motorway's own sidepath counts). Measured with the rule
+# (docs/OPERATIONS.md, "Trails beside a road").
+ROADSIDE_COLUMN = "roadside"
+ROADSIDE_M = 25.0
+ROADSIDE_FRACTION = 0.6
+ROADSIDE_SAMPLE_M = 20.0
+
+
+def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
+    """The z12-13 ride layer's condition, on a table with the `calm_run_m`
+    column (`core.stress_tiles.RIDE_LAYER`): a path or trail in a long enough
+    connected network or named run, a road at LTS 1 or 2 in a long enough calm run,
+    and with `has_car_free` any road closed to cars at set times. A way that is
+    neither a path nor such a road has no run (null), so it is not in it."""
+    path_m = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
+    road_m = round(RIDE_ROAD_RUN_MI * METRES_PER_MILE)
+    run = f"COALESCE({CALM_RUN_COLUMN}, 0)"
+    paths = f"({trails_predicate(has_facility)} AND {run} >= {path_m})"
+    roads = f"(stress_tier <= {CALM_ROAD_MAX_TIER} AND NOT is_trail_class AND {run} >= {road_m})"
+    if has_car_free:
+        return f"({paths} OR {roads} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return f"({paths} OR {roads})"
+
+
+# The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
+# ride-layer tile can draw, which are well under a tenth of the table, so a z12
+# tile's scan does not read every street in the box. The query's predicate implies
+# it: each of its terms is a run at or above the shorter of the two bars, or a
+# timed closure.
+_RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_ROAD_RUN_MI) * METRES_PER_MILE)
+RIDE_INDEX_PREDICATE = (
+    f"COALESCE({CALM_RUN_COLUMN}, 0) >= {_RIDE_INDEX_MIN_M} OR cardinality({CAR_FREE_COLUMN}) > 0"
+)
+
+
 # What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
 # `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the paths and trails, and the roads
 # at LTS 3 and above - Avoid (tier 5) and the expressways included. The owner,
@@ -345,7 +434,20 @@ SEEK_INDEX_PREDICATE = (
 # reason BWI has TLS 3 inside the terminal." (80).
 MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
+MTB_ONLY_COLUMN = "mtb_only"
+WALK_BIKE_COLUMN = "walk_bike"
+ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
+# The tier the junction model reads where AADT smoothing lowered the link's
+# (SEGMENT_DDL); absent on a table built before it.
+UNSMOOTHED_TIER_COLUMN = "stress_unsmoothed_tier"
+
+# The Mass Ride map's per-segment usable width, metres (riders a minute follow from it)
+# (`routemaker.massflow`; OWNER-DECISIONS 325-327, 387). Carried in a stress tile
+# as `rpm` where the live table has the column, and left out of one that has not
+# (`core.stress_tiles.OPTIONAL_PROPERTIES`), so a table promoted before it draws the
+# Mass Ride map as it was.
+MASS_WIDTH_COLUMN = "mass_usable_width_m"
 
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
@@ -425,6 +527,15 @@ CREATE TABLE {schema}.segment (
     map_class       text        NOT NULL DEFAULT 'road'
                     CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
     separate_bikeway boolean    NOT NULL DEFAULT false,
+    -- NO-BIKE-PATHS (OWNER-DECISIONS 291): a way the standard graphs close for
+    -- being mountain-bike class or rated singletrack
+    -- (`routemaker.trailaccess.MTB`, `routemaker.singletrack`), kept for a
+    -- future MTB mode, with tile property `mtb` for the map to draw it faint
+    -- (290(b); not read by the front end yet). And a short
+    -- `bicycle=dismount` connector routing keeps, which the route description
+    -- flags "walk your bike here" (`walk_bike`).
+    mtb_only        boolean     NOT NULL DEFAULT false,
+    walk_bike       boolean     NOT NULL DEFAULT false,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated
@@ -455,6 +566,15 @@ CREATE TABLE {schema}.segment (
     -- and nowhere else (the owner: "Only provide the warnings if the route
     -- goes over the road"); `map`: also on a click on the map.
     stress_adjustment_display   text CHECK (stress_adjustment_display IN ('route_only', 'map')),
+    -- The tier on the agency's own count where same-street AADT smoothing
+    -- lowered `stress_tier` (`pipeline.aadt_smoothing`, OWNER-DECISIONS 285,
+    -- 303); null everywhere else. The junction model reads the greater of the
+    -- two, so a count bunched at an intersection is still charged at the
+    -- intersection after the link stops paying it ("we don't want to double
+    -- count"). `volume_aadt` stays the agency's count, never the median. No
+    -- migration: this table is created whole on every rebuild; `core.junctions`
+    -- checks for the column on a table built before it.
+    stress_unsmoothed_tier      smallint CHECK (stress_unsmoothed_tier BETWEEN 1 AND 5),
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL
@@ -483,6 +603,30 @@ CREATE TABLE {schema}.segment (
     -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
     -- ways, 2 where an end is unpaved, 0 otherwise (3 only during the rebuild).
     trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
+    -- The ride layer (`calm_run_m`; OWNER-DECISIONS 391, 402a): the length in metres of
+    -- the connected network or named run of a traffic-free path, or the calm run of a
+    -- named road at LTS 1 or 2 (`pipeline.calm_roads`), which the z12-13 tiles keep it
+    -- for. 0 on such a way until `pipeline.trail_routes.derive_calm_runs` sets it; null
+    -- on every other way and on a mountain-bike trail.
+    calm_run_m      integer,
+    -- A drawn trail beside a road (OWNER-DECISIONS 403; `pipeline.trail_routes.
+    -- derive_roadside`): a sidepath by its tags or by lying along a road. Such a trail
+    -- with no surface mapped is drawn as the paved path it most likely is, not as a
+    -- surface-unknown one. Null only during the rebuild; false on every other way.
+    roadside        boolean,
+    -- The width a mass-ride group has on the way, metres (`routemaker.massflow`;
+    -- OWNER-DECISIONS 325-327, 387). Riders a minute is computed from it by
+    -- `routemaker.flow` when tiles and routes are served (the stress tiles carry `rpm`),
+    -- so tuning the flow constants needs no rebuild.
+    -- Null on a table built before the column existed (the map then draws as it did).
+    mass_usable_width_m real      CHECK (mass_usable_width_m BETWEEN 0 AND 60),
+    -- Why a bicycle may not use the way, or why an owner override reopened it, as a
+    -- short code (`routemaker.facility.bike_access_reason`), for the map's road panel
+    -- (OWNER-DECISIONS 441a; `core.segment_info` words it and asks the router whether
+    -- the graph lets a bicycle on). Null on a way with nothing to say, and on every row
+    -- of a table built before the column existed (the panel then says the reason comes
+    -- with the next data update).
+    bike_access_reason text,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 
@@ -499,6 +643,9 @@ CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
 -- time; this index holds just those rows (core.trailseek.corridor_segments).
 CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {seek};
+-- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
+CREATE INDEX segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {ride};
 
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
@@ -526,7 +673,10 @@ def create_segment_schema(schema: str) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             SEGMENT_DDL.format(
-                schema=schema, overview=OVERVIEW_INDEX_PREDICATE, seek=SEEK_INDEX_PREDICATE
+                schema=schema,
+                overview=OVERVIEW_INDEX_PREDICATE,
+                seek=SEEK_INDEX_PREDICATE,
+                ride=RIDE_INDEX_PREDICATE,
             )
         )
 

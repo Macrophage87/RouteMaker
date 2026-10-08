@@ -12,6 +12,7 @@ These are unittest cases so they run under pytest (CI) and under plain
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -22,6 +23,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+
+import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "boot" / "start-stack.sh"
@@ -887,7 +890,11 @@ class PolicyTests(FakeHost):
 
 class StaticChecks(unittest.TestCase):
     def test_script_waits_for_every_data_root_bind_in_compose(self) -> None:
-        compose = (REPO / "compose.yaml").read_text()
+        # A service behind a compose profile (the off-road router's `offroad`) is
+        # started by hand where there is room, so its binds are not ones boot waits for:
+        # on a host that has not built tiles/offroad the wait would end boot.
+        services = yaml.safe_load((REPO / "compose.yaml").read_text())["services"]
+        compose = json.dumps({k: v for k, v in services.items() if not v.get("profiles")})
         bound = set(re.findall(r"\$\{DATA_ROOT\}/([A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)?)", compose))
         script = SCRIPT.read_text()
         block = re.search(r"REQUIRED_DIRS=\((.*?)\)", script, re.S)

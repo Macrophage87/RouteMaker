@@ -1,0 +1,1577 @@
+{
+  "version": 1,
+  "decided": "2026-10-06",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 437.6, 437a, 437b, 437c, 438.2, 439b. Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "Ways inside military areas that the owner reopens to bicycles with evidence (437: inside a base only an override row, a numbered public road, a way signed for bicycles and the Pentagon's listed ways stay open). Jeff Todd Way at Fort Belvoir, its 10 ways without the SR 619 number (437.6); Russell Rd at Quantico, the 32 ways the rule closes (437a; its two access=private MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Rd SE, its 2 roadway ways, open and LTS 4 (437c), and its 11-way side path (437b). Pentagon Connector Road, its 25 ways in the reservation by way id (438.2; not Fort Meade's Connector Road, which is access=no and stays closed), rated by the classifier. The link from S Eads St into the transit centre is not here: it runs over sidewalk 345398651, which OSM tags access=private, and the owner left it closed pending community review (439). Jeff Todd Way's roadway, its 15 carriageway ways inside the base (the 10 above and the 5 SR 619 ones), is LTS 4 by stress rows (439b); its side path keeps its own rating. Hidden, category other, no public note (no wording approved).",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 131756393,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 131756393, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 69.5 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 69.5,
+        "line": "-77.147203,38.740269 -77.147262,38.740708 -77.147306,38.740888"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 131756713,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 131756713, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=concrete, 52.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.0,
+        "line": "-77.143220,38.731335 -77.142981,38.730906"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 131756714,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 131756714, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 67.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 67.0,
+        "line": "-77.147473,38.740854 -77.147423,38.740645 -77.147381,38.740257"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 131756715,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 131756715, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=concrete, 52.2 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.2,
+        "line": "-77.142827,38.730954 -77.143068,38.731385"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 232308619,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 232308619, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 70.0 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 70.0,
+        "line": "-77.147306,38.740888 -77.147392,38.741123 -77.147553,38.741417 -77.147599,38.741472"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 232308625,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 232308625, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 1100.4 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1100.4,
+        "line": "-77.143068,38.731385 -77.143557,38.732269 -77.143788,38.732593 -77.146617,38.736023 -77.147243,38.736809 -77.147426,38.737086 -77.147531,38.737302 -77.147648,38.737727 -77.147671,38.737939 -77.147662,38.738181 -77.147629,38.738419 -77.147556,38.738721 -77.147231,38.739787 -77.147198,38.740006 -77.147203,38.740269"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 232308636,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 232308636, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 1106.4 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1106.4,
+        "line": "-77.147381,38.740257 -77.147389,38.740018 -77.147435,38.739783 -77.147755,38.738756 -77.147831,38.738442 -77.147865,38.738192 -77.147875,38.737935 -77.147850,38.737706 -77.147726,38.737255 -77.147613,38.737021 -77.147420,38.736731 -77.146789,38.735938 -77.143962,38.732510 -77.143735,38.732209 -77.143585,38.731975 -77.143220,38.731335"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 306059636,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 306059636, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 368.2 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 368.2,
+        "line": "-77.149940,38.744241 -77.149333,38.743428 -77.147753,38.741404"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1098724285,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724285, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 65.8 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 65.8,
+        "line": "-77.147753,38.741404 -77.147573,38.741087 -77.147473,38.740854"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1098724286,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437.6, 2026-10-06, on Jeff Todd Way at Fort Belvoir (the owner shared a May 2023 street-level photo): \"Jeff Todd Way has a quality side path near it. It's not listed, but I wouldn't avoid it.\" Open to bicycles inside the military area. The side path is mapped in OSM (bicycle=designated cycleways 1147219723, 299021475, 232393905, 299021476, 232393906 and 679383213 beside the road, continuing as 679385745, 679385747 and 679385748 to Orville St) and stays open as signed for bicycles; this row opens the roadway beside it.",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724286, Jeff Todd Way, highway=secondary, lanes=2, maxspeed=40 mph, surface=asphalt, 384.1 m, inside Fort Belvoir (closed by the military-area rule, OWNER-DECISIONS 437). The owner's street-level observation is the evidence.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 384.1,
+        "line": "-77.147599,38.741472 -77.149749,38.744243 -77.149880,38.744432"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 20535693,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 20535693, Russell Road, highway=secondary, ref=MCB 1, 1672.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 1672.6,
+        "line": "-77.377299,38.522240 -77.378268,38.521684 -77.378742,38.521363 -77.379177,38.521008 -77.379327,38.520838 -77.379676,38.520410 -77.379965,38.519722 -77.380277,38.518795 -77.380409,38.518493 -77.380756,38.517892 -77.381262,38.517220 -77.382715,38.515426 -77.383072,38.515011 -77.383442,38.514643 -77.383742,38.514392 -77.384049,38.514179 -77.384507,38.513896 -77.385220,38.513578 -77.385838,38.513377 -77.386610,38.513203 -77.386846,38.513179 -77.387740,38.513134 -77.388515,38.513145 -77.388882,38.513195 -77.389282,38.513276 -77.390068,38.513507 -77.390275,38.513607"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 130229063,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 130229063, Russell Road, highway=secondary, lanes=2, surface=asphalt, 187.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 187.3,
+        "line": "-77.306501,38.512669 -77.307046,38.512279 -77.307476,38.512024 -77.307846,38.511823 -77.308211,38.511656"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 130229064,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 130229064, Russell Road, highway=secondary, 56.8 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 56.8,
+        "line": "-77.359081,38.522759 -77.358568,38.522444"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 239145265,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 239145265, Russell Road, highway=secondary, lanes=2, 49.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 49.3,
+        "line": "-77.373058,38.522834 -77.373612,38.522925"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 239145266,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 239145266, Russell Road, highway=secondary, lanes=2, 112.7 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 112.7,
+        "line": "-77.371789,38.522629 -77.373058,38.522834"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 267730802,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 267730802, Russell Road, highway=secondary, lanes=2, surface=asphalt, 98.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 98.3,
+        "line": "-77.310087,38.511018 -77.310206,38.511027 -77.311201,38.510892"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 267730806,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 267730806, Russell Road, highway=secondary, 3601.0 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 3601.0,
+        "line": "-77.316137,38.511466 -77.316901,38.511583 -77.317437,38.511599 -77.318010,38.511571 -77.318432,38.511495 -77.319094,38.511299 -77.319718,38.511080 -77.320304,38.510950 -77.321156,38.510810 -77.322019,38.510726 -77.323018,38.510679 -77.323671,38.510688 -77.324319,38.510753 -77.324891,38.510858 -77.325447,38.511006 -77.325748,38.511107 -77.326352,38.511341 -77.326760,38.511524 -77.327253,38.511761 -77.329467,38.512898 -77.335809,38.516209 -77.336730,38.516616 -77.337692,38.516978 -77.338182,38.517139 -77.339181,38.517422 -77.340305,38.517672 -77.349716,38.519021 -77.352467,38.519398 -77.353065,38.519548 -77.353638,38.519712 -77.353889,38.519797 -77.354561,38.520068"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 532701662,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 532701662, Russell Road, highway=secondary, lanes=2, 110.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 110.6,
+        "line": "-77.373075,38.522679 -77.372497,38.522593 -77.371820,38.522520"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 532701663,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 532701663, Russell Road, highway=secondary, lanes=2, 52.5 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 52.5,
+        "line": "-77.373665,38.522779 -77.373075,38.522679"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 532701664,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 532701664, Russell Road, highway=secondary, ref=MCB 1, lanes=2, 344.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 344.3,
+        "line": "-77.373612,38.522925 -77.374009,38.522992 -77.374635,38.523035 -77.375260,38.522994 -77.375526,38.522963 -77.375815,38.522911 -77.376069,38.522844 -77.376490,38.522697 -77.377047,38.522416 -77.377299,38.522240"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 532701667,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 532701667, Russell Road, highway=secondary, lanes=2, 332.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 332.6,
+        "line": "-77.377299,38.522240 -77.376983,38.522359 -77.376395,38.522619 -77.376189,38.522693 -77.375947,38.522764 -77.375470,38.522852 -77.374949,38.522890 -77.374461,38.522888 -77.374166,38.522863 -77.373665,38.522779"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 827080188,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 827080188, Russell Road, highway=secondary, lanes=2, surface=asphalt, 88.0 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 88.0,
+        "line": "-77.311201,38.510892 -77.311553,38.510864 -77.312211,38.510845"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 827080200,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 827080200, Russell Road, highway=secondary, lanes=2, surface=asphalt, 29.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 29.3,
+        "line": "-77.308211,38.511656 -77.308508,38.511530"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 827080201,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 827080201, Russell Road, highway=secondary, lanes=3, surface=asphalt, 44.8 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 44.8,
+        "line": "-77.305899,38.513132 -77.306267,38.512849"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 827080202,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 827080202, Russell Road, highway=secondary, lanes=2, surface=asphalt, 89.4 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 89.4,
+        "line": "-77.309092,38.511334 -77.309595,38.511183 -77.309912,38.511104 -77.310030,38.511025"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 827080203,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 827080203, Russell Road, highway=secondary, lanes=1, surface=asphalt, 55.3 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 55.3,
+        "line": "-77.308508,38.511530 -77.309092,38.511334"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 828914761,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 828914761, Russell Road, highway=secondary, lanes=1, surface=asphalt, 101.4 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 101.4,
+        "line": "-77.312211,38.510845 -77.313374,38.510901"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 828941252,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 828941252, Russell Road, highway=secondary, lanes=2, surface=asphalt, 44.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 44.6,
+        "line": "-77.314639,38.511127 -77.315134,38.511231"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 828941253,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 828941253, Russell Road, highway=secondary, lanes=3, surface=asphalt, 91.1 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 91.1,
+        "line": "-77.315134,38.511231 -77.316137,38.511466"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 828941255,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 828941255, Russell Road, highway=secondary, lanes=2, surface=asphalt, 113.0 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 113.0,
+        "line": "-77.313374,38.510901 -77.314223,38.511038 -77.314639,38.511127"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 828941256,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 828941256, Russell Road, highway=secondary, lanes=3, surface=asphalt, 28.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 28.6,
+        "line": "-77.306267,38.512849 -77.306501,38.512669"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1078047788,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1078047788, Russell Road, highway=secondary, 163.2 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 163.2,
+        "line": "-77.360720,38.523451 -77.360308,38.523336 -77.359856,38.523175 -77.359489,38.522999 -77.359081,38.522759"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1078047792,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1078047792, Russell Road, highway=secondary, 60.8 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 60.8,
+        "line": "-77.357764,38.521944 -77.358316,38.522280"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1078047793,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1078047793, Russell Road, highway=secondary, 68.5 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 68.5,
+        "line": "-77.357132,38.521578 -77.357764,38.521944"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494292,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494292, Russell Road, highway=secondary, 280.8 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 280.8,
+        "line": "-77.354561,38.520068 -77.354786,38.520227 -77.355080,38.520405 -77.355440,38.520676 -77.355934,38.520971 -77.356562,38.521267 -77.357028,38.521545 -77.357132,38.521578"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494293,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494293, Russell Road, highway=secondary, 134.6 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 134.6,
+        "line": "-77.358316,38.522280 -77.357158,38.521477"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494296,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494296, Russell Road, highway=secondary, 97.4 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 97.4,
+        "line": "-77.356340,38.520960 -77.356148,38.520926 -77.355617,38.520614 -77.355467,38.520449"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494298,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494298, Russell Road, highway=secondary, 76.7 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 76.7,
+        "line": "-77.356234,38.520941 -77.355534,38.520522"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494299,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494299, Russell Road, highway=secondary, 98.7 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 98.7,
+        "line": "-77.356340,38.520960 -77.356246,38.520809 -77.355815,38.520549 -77.355716,38.520497 -77.355467,38.520449"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494300,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494300, Russell Road, highway=secondary, 74.7 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 74.7,
+        "line": "-77.356286,38.520873 -77.355596,38.520474"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494302,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494302, Russell Road, highway=secondary, 276.2 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 276.2,
+        "line": "-77.357158,38.521477 -77.356340,38.520960 -77.355666,38.520557 -77.354839,38.520153 -77.354561,38.520068"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1198494303,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437a, 2026-10-06, on Russell Rd at Marine Corps Base Quantico: \"Russel road even has sharrows. It's not that bad.\" Open to bicycles inside the military area (the owner's observation of shared-lane markings); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1198494303, Russell Road, highway=secondary, 28.5 m, inside Marine Corps Base Quantico (closed by the military-area rule, OWNER-DECISIONS 437). The owner's observation of shared-lane markings is the evidence.",
+      "fingerprint": {
+        "name": "Russell Road",
+        "highway": "secondary",
+        "length_m": 28.5,
+        "line": "-77.358316,38.522280 -77.358568,38.522444"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 316866053,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437c, 2026-10-06, correcting 437b, on Saint Elizabeths Rd SE (St. Elizabeths campus): \"St Elizabeths road is open to bikes, but It's LTS4.\" Open to bicycles inside the military area, and LTS 4.",
+      "evidence": "OSM, 2026-10-03 extract: way 316866053, Saint Elizabeths Road Southeast, highway=secondary, lanes=3, maxspeed=30 mph, surface=asphalt, 812.2 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). Owner decision 437c is the evidence.",
+      "fingerprint": {
+        "name": "Saint Elizabeths Road Southeast",
+        "highway": "secondary",
+        "length_m": 812.2,
+        "line": "-77.002575,38.859953 -77.002791,38.859476 -77.004080,38.856021 -77.004634,38.854682 -77.004957,38.853949 -77.005482,38.853016"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1181165198,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437c, 2026-10-06, correcting 437b, on Saint Elizabeths Rd SE (St. Elizabeths campus): \"St Elizabeths road is open to bikes, but It's LTS4.\" Open to bicycles inside the military area, and LTS 4.",
+      "evidence": "OSM, 2026-10-03 extract: way 1181165198, Saint Elizabeths Road Southeast, highway=secondary, lanes=3, maxspeed=30 mph, surface=asphalt, 59.6 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). Owner decision 437c is the evidence.",
+      "fingerprint": {
+        "name": "Saint Elizabeths Road Southeast",
+        "highway": "secondary",
+        "length_m": 59.6,
+        "line": "-77.005482,38.853016 -77.005763,38.852526"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 316866053,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "saint-elizabeths-road-se",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 437c, 2026-10-06, correcting 437b, on Saint Elizabeths Rd SE (St. Elizabeths campus): \"St Elizabeths road is open to bikes, but It's LTS4.\" Open to bicycles inside the military area, and LTS 4.",
+      "evidence": "OSM, 2026-10-03 extract: way 316866053, Saint Elizabeths Road Southeast, highway=secondary, lanes=3, maxspeed=30 mph, surface=asphalt, 812.2 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). Owner decision 437c gives the tier.",
+      "fingerprint": {
+        "name": "Saint Elizabeths Road Southeast",
+        "highway": "secondary",
+        "length_m": 812.2,
+        "line": "-77.002575,38.859953 -77.002791,38.859476 -77.004080,38.856021 -77.004634,38.854682 -77.004957,38.853949 -77.005482,38.853016"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1181165198,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "saint-elizabeths-road-se",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 437c, 2026-10-06, correcting 437b, on Saint Elizabeths Rd SE (St. Elizabeths campus): \"St Elizabeths road is open to bikes, but It's LTS4.\" Open to bicycles inside the military area, and LTS 4.",
+      "evidence": "OSM, 2026-10-03 extract: way 1181165198, Saint Elizabeths Road Southeast, highway=secondary, lanes=3, maxspeed=30 mph, surface=asphalt, 59.6 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). Owner decision 437c gives the tier.",
+      "fingerprint": {
+        "name": "Saint Elizabeths Road Southeast",
+        "highway": "secondary",
+        "length_m": 59.6,
+        "line": "-77.005482,38.853016 -77.005763,38.852526"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1184926339,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1184926339, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 187.2 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 187.2,
+        "line": "-77.002800,38.859152 -77.003401,38.857535"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1469856110,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1469856110, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 12.2 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 12.2,
+        "line": "-77.002728,38.859344 -77.002768,38.859239"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1469856109,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1469856109, unnamed, highway=footway, bicycle=yes, foot=yes, footway=crossing, surface=concrete, 10.1 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 10.1,
+        "line": "-77.002768,38.859239 -77.002800,38.859152"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1469856111,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1469856111, unnamed, highway=footway, bicycle=yes, foot=yes, footway=crossing, surface=concrete, 14.0 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 14.0,
+        "line": "-77.002682,38.859464 -77.002728,38.859344"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1469856112,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1469856112, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 50.5 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 50.5,
+        "line": "-77.002489,38.859893 -77.002682,38.859464"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1001796646,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1001796646, unnamed, highway=footway, bicycle=yes, foot=yes, footway=crossing, surface=asphalt, 21.9 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 21.9,
+        "line": "-77.003401,38.857535 -77.003473,38.857346"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1001796647,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1001796647, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 306.4 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 306.4,
+        "line": "-77.003473,38.857346 -77.004048,38.855805 -77.004086,38.855625 -77.004393,38.854915 -77.004522,38.854721"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1181165194,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1181165194, unnamed, highway=footway, bicycle=yes, foot=yes, footway=crossing, surface=asphalt, 11.3 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 11.3,
+        "line": "-77.004522,38.854721 -77.004561,38.854624"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1001796648,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1001796648, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 17.9 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 17.9,
+        "line": "-77.004561,38.854624 -77.004623,38.854470"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1181165195,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1181165195, unnamed, highway=footway, bicycle=yes, foot=yes, footway=crossing, surface=asphalt, 9.7 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 9.7,
+        "line": "-77.004623,38.854470 -77.004655,38.854386"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1001796649,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 437b, 2026-10-06, on the side path along Saint Elizabeths Rd SE: \"Saint Elizabeths road has a wide sidepath as well. Few people would bother with the road.\" Open to bicycles inside the military area (437c keeps the roadway open too).",
+      "evidence": "OSM, 2026-10-03 extract: way 1001796649, unnamed, highway=footway, bicycle=yes, foot=yes, footway=sidewalk, surface=concrete, 243.6 m, inside St. Elizabeth's Campus West (closed by the military-area rule, OWNER-DECISIONS 437). The mapped bicycle=yes sidewalk and crossings beside the road, from the I-295 / Malcolm X interchange path north to the campus edge; owner decision 437b is the evidence.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 243.6,
+        "line": "-77.004655,38.854386 -77.004690,38.854049 -77.004798,38.853831 -77.005268,38.853001 -77.005286,38.852948 -77.005229,38.852840 -77.005258,38.852738 -77.005291,38.852696 -77.005354,38.852667 -77.005420,38.852642 -77.005492,38.852644 -77.005543,38.852626 -77.005661,38.852485"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 32866298,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 32866298, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 66.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 66.3,
+        "line": "-77.054019,38.867920 -77.053984,38.867988 -77.053870,38.868123 -77.053643,38.868276 -77.053500,38.868336"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557521,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557521, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 59.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 59.3,
+        "line": "-77.053500,38.868336 -77.052849,38.868503"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557526,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557526, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 58.6 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 58.6,
+        "line": "-77.051695,38.868833 -77.051074,38.869045"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557527,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557527, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 78.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 78.2,
+        "line": "-77.051074,38.869045 -77.050780,38.869163 -77.050543,38.869286 -77.050341,38.869444"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 50557528,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 50557528, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 68.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 68.1,
+        "line": "-77.052433,38.868622 -77.051695,38.868833"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172078,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172078, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 22.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 22.7,
+        "line": "-77.051706,38.868906 -77.051953,38.868835"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172079,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172079, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 139.4 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 139.4,
+        "line": "-77.050093,38.870042 -77.050166,38.869923 -77.050332,38.869568 -77.050426,38.869472 -77.050665,38.869305 -77.051078,38.869118"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172080,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172080, Connector Road, highway=tertiary, lanes=2, maxspeed=25 mph, bicycle=yes, 35.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 35.7,
+        "line": "-77.049994,38.870527 -77.049819,38.870818"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296172081,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296172081, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 59.3 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 59.3,
+        "line": "-77.051078,38.869118 -77.051706,38.868906"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296173435,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296173435, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 62.6 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 62.6,
+        "line": "-77.052790,38.868606 -77.053480,38.868435"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 296173436,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 296173436, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 41.8 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 41.8,
+        "line": "-77.053480,38.868435 -77.053754,38.868332 -77.053889,38.868242"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 345398624,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 345398624, Connector Road, highway=tertiary, oneway=yes, lanes=2, bicycle=yes, 33.0 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 33.0,
+        "line": "-77.051953,38.868835 -77.052310,38.868733"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 345398633,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 345398633, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 29.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 29.7,
+        "line": "-77.052465,38.868689 -77.052790,38.868606"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215556,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215556, Connector Road, highway=tertiary, lanes=2, maxspeed=25 mph, bicycle=yes, 27.9 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 27.9,
+        "line": "-77.050075,38.870128 -77.050024,38.870376"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215557,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215557, Connector Road, highway=tertiary, lanes=3, maxspeed=25 mph, bicycle=yes, 17.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 17.1,
+        "line": "-77.050024,38.870376 -77.049994,38.870527"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 514215558,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 514215558, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 71.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 71.2,
+        "line": "-77.050341,38.869444 -77.050206,38.869614 -77.050120,38.869808 -77.050093,38.870042"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 758995471,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 758995471, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 44.0 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 44.0,
+        "line": "-77.053889,38.868242 -77.054047,38.868111 -77.054187,38.867925"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1022788239,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1022788239, Connector Road, highway=tertiary, maxspeed=25 mph, bicycle=yes, 9.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 9.7,
+        "line": "-77.050093,38.870042 -77.050075,38.870128"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964674,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964674, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 26.8 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 26.8,
+        "line": "-77.054284,38.867709 -77.054297,38.867563 -77.054283,38.867469"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964675,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964675, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 14.2 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 14.2,
+        "line": "-77.052310,38.868733 -77.052465,38.868689"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964676,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964676, Connector Road, highway=tertiary, oneway=yes, 20.1 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 20.1,
+        "line": "-77.054284,38.867709 -77.054052,38.867708"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964678,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964678, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 31.9 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 31.9,
+        "line": "-77.054062,38.867421 -77.054052,38.867708"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1311964679,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1311964679, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 38.4 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 38.4,
+        "line": "-77.052849,38.868503 -77.052433,38.868622"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1365254349,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1365254349, Connector Road, highway=tertiary, oneway=yes, lanes=2, maxspeed=25 mph, bicycle=yes, 25.5 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 25.5,
+        "line": "-77.054187,38.867925 -77.054284,38.867709"
+      }
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1365254351,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 438.2, 2026-10-06, on Pentagon Connector Road (the Pentagon reservation): \"Connector road looks open to bikes\". Open to bicycles inside the military area, matched by way id (not Fort Meade's Connector Road, which is access=no and stays closed); rated by the normal classifier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1365254351, Connector Road, highway=tertiary, oneway=yes, lanes=1, maxspeed=25 mph, bicycle=yes, 23.7 m, inside The Pentagon (closed by the military-area rule, OWNER-DECISIONS 437). The owner's reading of the map is the evidence.",
+      "fingerprint": {
+        "name": "Connector Road",
+        "highway": "tertiary",
+        "length_m": 23.7,
+        "line": "-77.054052,38.867708 -77.054019,38.867920"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756393,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756393, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 69.5 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 69.5,
+        "line": "-77.147203,38.740269 -77.147262,38.740708 -77.147306,38.740888"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756713,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756713, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=concrete, 52.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.0,
+        "line": "-77.143220,38.731335 -77.142981,38.730906"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756714,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756714, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 67.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 67.0,
+        "line": "-77.147473,38.740854 -77.147423,38.740645 -77.147381,38.740257"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131756715,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 131756715, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=concrete, 52.2 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 52.2,
+        "line": "-77.142827,38.730954 -77.143068,38.731385"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308619,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308619, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 70.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 70.0,
+        "line": "-77.147306,38.740888 -77.147392,38.741123 -77.147553,38.741417 -77.147599,38.741472"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308625,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308625, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 1100.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1100.4,
+        "line": "-77.143068,38.731385 -77.143557,38.732269 -77.143788,38.732593 -77.146617,38.736023 -77.147243,38.736809 -77.147426,38.737086 -77.147531,38.737302 -77.147648,38.737727 -77.147671,38.737939 -77.147662,38.738181 -77.147629,38.738419 -77.147556,38.738721 -77.147231,38.739787 -77.147198,38.740006 -77.147203,38.740269"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308636,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 232308636, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 1106.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 1106.4,
+        "line": "-77.147381,38.740257 -77.147389,38.740018 -77.147435,38.739783 -77.147755,38.738756 -77.147831,38.738442 -77.147865,38.738192 -77.147875,38.737935 -77.147850,38.737706 -77.147726,38.737255 -77.147613,38.737021 -77.147420,38.736731 -77.146789,38.735938 -77.143962,38.732510 -77.143735,38.732209 -77.143585,38.731975 -77.143220,38.731335"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 306059636,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 306059636, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 368.2 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 368.2,
+        "line": "-77.149940,38.744241 -77.149333,38.743428 -77.147753,38.741404"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1098724285,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724285, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 65.8 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 65.8,
+        "line": "-77.147753,38.741404 -77.147573,38.741087 -77.147473,38.740854"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1098724286,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open to bicycles by its access row (437.6).",
+      "evidence": "OSM, 2026-10-03 extract: way 1098724286, Jeff Todd Way, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 384.1 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 384.1,
+        "line": "-77.147599,38.741472 -77.149749,38.744243 -77.149880,38.744432"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232308648,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 232308648, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 144.1 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 144.1,
+        "line": "-77.142981,38.730906 -77.142305,38.729722"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 232393907,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 232393907, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 903.4 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 903.4,
+        "line": "-77.136374,38.723271 -77.137428,38.725494 -77.137555,38.725723 -77.137695,38.725914 -77.137880,38.726114 -77.138459,38.726571 -77.140664,38.727941 -77.141148,38.728308 -77.141369,38.728529 -77.141634,38.728852 -77.141754,38.729034 -77.142160,38.729769"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1076054099,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1076054099, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 812.6 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 812.6,
+        "line": "-77.142305,38.729722 -77.141896,38.728982 -77.141771,38.728792 -77.141495,38.728457 -77.141266,38.728227 -77.140766,38.727848 -77.138563,38.726479 -77.138003,38.726038 -77.137694,38.725666 -77.137574,38.725449 -77.136867,38.723993"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1076054100,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1076054100, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=2, maxspeed=40 mph, surface=asphalt, 144.0 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 144.0,
+        "line": "-77.142160,38.729769 -77.142827,38.730954"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1411382767,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "jeff-todd-way-fort-belvoir",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Owner decision 439b, 2026-10-06, on Jeff Todd Way at Fort Belvoir (correcting 439a, which named Connector Road): \"I meant Jeff Todd. It's LTS4\". The roadway is LTS 4; its side path (bicycle=designated cycleways beside it) keeps its own rating (439b, the owner's second street-level photo: \"But that sidepath looks fine\"). Open as a numbered public road (SR 619); this row only sets the tier.",
+      "evidence": "OSM, 2026-10-03 extract: way 1411382767, Jeff Todd Way, ref=SR 619, highway=secondary, oneway=yes, lanes=3, maxspeed=40 mph, surface=asphalt, 94.3 m, one carriageway of the divided road, inside Fort Belvoir. Owner decision 439b gives the tier.",
+      "fingerprint": {
+        "name": "Jeff Todd Way",
+        "highway": "secondary",
+        "length_m": 94.3,
+        "line": "-77.136867,38.723993 -77.136483,38.723200"
+      }
+    }
+  ],
+  "retire": [
+    {
+      "kind": "stress",
+      "osm_way_id": 316866053,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-saint-elizabeths-road-southeast",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 437c (2026-10-06): \"St Elizabeths road is open to bikes, but It's LTS4.\" The Avoid row of the east-of-the-Anacostia file (141) gives way to the tier-4 row in this file; that file no longer carries it."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1181165198,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "east-anacostia-saint-elizabeths-road-southeast",
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "OWNER-DECISIONS 437c (2026-10-06): \"St Elizabeths road is open to bikes, but It's LTS4.\" The Avoid row of the east-of-the-Anacostia file (141) gives way to the tier-4 row in this file; that file no longer carries it."
+    }
+  ]
+}

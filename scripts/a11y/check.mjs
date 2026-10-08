@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_CHOICES, S_DEFAULT, S_MASS, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -780,7 +780,9 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!(document.querySelector('#points-search').compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.querySelector('.toggle').getBoundingClientRect().height) }; })()");
   check("loop first: it is in the Points section, after the search, and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
   check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
-  await p.eval("window.__said = []; const live = document.querySelector('p.visually-hidden[role=status]'); new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
+  // Every live region in the page, not only the first one found: the road panel's dialog holds a
+  // status region of its own (S1) ahead of the page's in the document, and "once" means once in all of them.
+  await p.eval("window.__said = []; const sel = '[role=status], [role=alert], [aria-live]:not([aria-live=off])'; for (const live of document.querySelectorAll(sel)) if (!live.parentElement?.closest(sel)) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
   await p.eval("document.querySelector('.loop-toggle input').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(700);
@@ -1163,9 +1165,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.tab();
   await sleep(250);
   check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
-  // The mouse: hovering moves the same marker.
+  // The mouse: hovering moves the same marker. Under load the map draws it late, so wait for
+  // it (up to 2 s) rather than a fixed pause; the check below is unchanged.
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
-  await sleep(200);
+  await p.waitFor("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout')?.textContent ?? '')", 2000);
   check("chart: hovering the picture moves a marker on the map too, and shows the same sentence", await p.eval("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout').textContent)"), await p.eval("document.querySelector('.pc-readout').textContent"));
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
   await sleep(150);
@@ -1222,7 +1225,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: each guide line is 3:1 or more on the panel", guides.lines.length === 3 && guides.lines.every((s) => contrast(rgb(s), rgb(guides.bg)) >= 3), JSON.stringify(guides.lines.map((s) => contrast(rgb(s), rgb(guides.bg)).toFixed(2))));
   const marks = await p.eval(`(() => ({ caret: !!document.querySelector('.pc-narrowest path'), label: document.querySelector('.pc-narrowest-text')?.textContent, avoid: document.querySelectorAll('.pc-avoid').length, avoidText: document.querySelector('.pc-avoid-text')?.textContent, avoidFill: document.querySelector('.pc-avoid rect')?.getAttribute('fill'), avoidSize: parseFloat(getComputedStyle(document.querySelector('.pc-avoid-text')).fontSize), avoidInk: getComputedStyle(document.querySelector('.pc-avoid-text')).fill, avoidHatch: document.querySelector('.pc-svg pattern[id$="-avoid"] path')?.getAttribute('d'), bottleneckHatch: document.querySelector('.pc-svg pattern[id$="-flow-crosshatch"] path')?.getAttribute('d') }))()`);
   check("mass chart: the narrowest point is marked with a shape and its figure (147)", marks.caret && marks.label === "Narrowest 55", JSON.stringify(marks));
-  check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Avoid (A where narrow): no carrying capacity") && shape.legend.includes("Narrowest point (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
+  check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Marked Avoid (A where narrow): no capacity given") && shape.legend.includes("Narrowest with the hills (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
   check("mass chart: Avoid is magenta with a white word at the chart's 11-unit type and a texture of its own, not the bottleneck's cross-hatch (397)", marks.avoidFill === "#d6008f" && marks.avoidSize === 11 && /255, 255, 255|#fff/i.test(marks.avoidInk) && !!marks.avoidHatch && marks.avoidHatch !== marks.bottleneckHatch, JSON.stringify(marks));
   check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
   check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
@@ -1237,7 +1240,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: I jumps to the next major intersection", /^Mile 1\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   for (let i = 0; i < 10; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
-  check("mass chart: on the Avoid stretch it says Avoid, never a figure", /^Mile 2\.3: level, Avoid, no carrying capacity\. Next: 9th Street Northwest/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("mass chart: on the Avoid stretch it says Avoid, never a figure", /^Mile 2\.3: level, marked Avoid, no capacity given\. Next: 9th Street Northwest/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("End", "End", 35);
   await sleep(100);
   check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
@@ -1265,11 +1268,483 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   }
 }
 
+// ---- 20. The Mass Ride capacity map: riders per minute in place of the LTS breakdown (OWNER-DECISIONS 325-327, 387; its own tiles, 415, 417, 417a; DC only and the outside-DC notice, 418, 418a; the bands by zoom, 421, 422; both narrowest figures, 424) ----
+{
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
+  const route = await p.eval(`(() => { const s = document.querySelector('.summary'); const stats = s.querySelector('.capacity-stats');
+    const fold = [...s.querySelectorAll('details > summary')].map((x) => x.textContent);
+    const terms = (sel) => [...(stats?.querySelectorAll(sel) ?? [])].map((d) => d.querySelector('dt')?.textContent + ' = ' + d.querySelector('dd')?.textContent);
+    return { narrowest: terms('.capacity-narrowest'), typical: terms('.capacity-typical'),
+      stressBar: !!s.querySelector('.stress-bar'), folds: fold, ltsWords: /LTS|traffic stress/i.test(s.querySelector('.stats.capacity-stats')?.parentElement?.textContent ?? '') }; })()`);
+  // OWNER-DECISIONS 424: both figures, on the flat and with the hills, said once at the same spot; the typical as well.
+  check("capacity: the route view says the narrowest points on the flat and with the hills in words, with band and where, and both typical figures",
+    JSON.stringify(route.narrowest) === JSON.stringify(["Narrowest on the flat and with the hills = 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start"]) &&
+      JSON.stringify(route.typical) === JSON.stringify(["Typical on the flat = 150 riders per minute", "Typical with the hills = 190 riders per minute"]), JSON.stringify(route));
+  check("capacity: the stress bar is replaced, and the fold is Riders per minute in place of Stress and facilities",
+    !route.stressBar && route.folds.some((t) => t === "Riders per minute") && !route.folds.some((t) => /^Stress and facilities/.test(t)), JSON.stringify(route.folds));
+  const fold = await p.eval(`(() => { const d = [...document.querySelectorAll('.summary details')].find((x) => x.querySelector('summary')?.textContent === 'Riders per minute'); if (d) d.open = true;
+    const rows = [...(d?.querySelectorAll('.capacity li') ?? [])].map((li) => li.textContent);
+    const avoidRow = [...(d?.querySelectorAll('.capacity li') ?? [])].find((li) => /Marked Avoid/.test(li.textContent));
+    return { rows, hidden: [...(d?.querySelectorAll('.capacity li svg') ?? [])].every((v) => v.getAttribute('aria-hidden') === 'true'), list: d?.querySelector('.capacity ul')?.getAttribute('aria-label'),
+      avoidMark: !!avoidRow?.querySelector('svg .route-avoid-mark'), said: d?.querySelector('.capacity-narrowest-said')?.textContent ?? '' }; })()`);
+  check("capacity: the fold's list gives each band's words, share and length, one row each, its swatches (Avoid's the route's own) hidden from a screen reader, and both narrowest figures",
+    fold.rows.length === 5 && /^Under 60: bottleneck, \d+%, /.test(fold.rows[0]) && /Marked Avoid: no capacity given/.test(fold.rows.join("|")) && fold.hidden && /Share of the route/.test(fold.list) &&
+      fold.avoidMark && fold.said === "Narrowest on the flat and with the hills: 50 riders per minute (bottleneck) on the flat, 55 riders per minute (bottleneck) with the hills, at the start.", JSON.stringify(fold));
+  const lead = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
+  await p.eval("document.querySelector('.route-description summary')?.click(); true");
+  await sleep(200);
+  const lead2 = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
+  check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest on the flat and with the hills: 50 riders per minute \(bottleneck\) on the flat, 55 riders per minute \(bottleneck\) with the hills, at the start\. By distance: /.test(lead || lead2), lead || lead2);
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  // The map has drawn a road with a capacity: the legend is riders per minute.
+  const gotLegend = await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
+  const legend = await p.eval(`(() => { const u = document.querySelector('.mass-legend'); if (!u) return null;
+    return { name: u.getAttribute('aria-label'), rows: [...u.querySelectorAll('li')].map((li) => li.textContent), swatchesHidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
+      heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
+      stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
+  check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
+    gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && legend.rows[4] === "Marked Avoid: no capacity given" && /^Riders per minute at 6 to 8 mph \(10 to 13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
+  check("capacity: its swatches are hidden from a screen reader, the heading and the switch say riders per minute, and no stress legend is there",
+    legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/.test(legend.toggle) && !legend.stressLegend, JSON.stringify(legend));
+  const axLegend = await axNode(p, ".mass-legend");
+  check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6 to 8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
+  const notes = await p.eval("[...document.querySelectorAll('#sheet-layers .hint')].map((h) => h.textContent).join(' | ')");
+  check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/.test(notes) && /DC Open Data, Roadway Block \(CC BY 4\.0, adapted\)/.test(notes) && /© OpenStreetMap contributors/.test(notes), notes.slice(0, 200));
+  // DC only for now (OWNER-DECISIONS 418), in words beside the gray mask, with the boundary's source.
+  const dcOnly = await p.eval(`({ legend: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '',
+    planner: document.querySelector('#route-planner .mass-dc-only')?.textContent ?? '' })`);
+  check("capacity: the legend says in words that Mass Ride planning covers DC only for now, and credits the District's boundary",
+    /^Mass Ride planning covers DC only for now\. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn\.$/.test(dcOnly.legend) && dcOnly.credit === "District of Columbia boundary: © OpenStreetMap contributors (ODbL).", JSON.stringify(dcOnly));
+  check("capacity: the planner says DC only for now in words too, not by the gray map alone", dcOnly.planner === dcOnly.legend && dcOnly.planner !== "", JSON.stringify(dcOnly));
+  // 417, 417a: no trail, protected lane or other stress-map layer at any zoom. Every one of them reads the stress
+  // tiles and the capacity layers read their own. Until the map has seen a capacity the stress map draws (a table
+  // without the column keeps it, accessibility review S2); once the capacity map is on, a zoom asks for Mass Ride
+  // tiles and for no stress tile.
+  const before = { ...p.tileRequests };
+  await p.eval("document.querySelector('.maplibregl-ctrl-zoom-in')?.click(); true");
+  await sleep(1500);
+  const after = { ...p.tileRequests };
+  check("capacity: the Mass Ride map draws from its own tiles, and no stress-map layer (trails, protected lanes, the ride layer) asks for a tile",
+    after.mass > before.mass && after.stress === before.stress, JSON.stringify({ before, after }));
+  // 418a: a route inside DC has no notice.
+  const inside = await p.eval("({ shown: !!document.querySelector('.mass-outside-dc'), said: /outside the area Mass Ride/.test(document.querySelector('.status-line')?.textContent ?? '') })");
+  check("capacity: a Mass Ride inside DC shows and says no outside-DC notice", !inside.shown && !inside.said, JSON.stringify(inside));
+  await p.eval("document.querySelector('.mass-legend').scrollIntoView({ block: 'center' }); true");
+  await sleep(600);
+  await p.shot(`${SHOTS}/capacity_legend.png`, await p.eval("(() => { const r = document.querySelector('#sheet-layers').getBoundingClientRect(); return { x: Math.max(0, r.left), y: 0, width: Math.round(r.width), height: Math.min(900, Math.round(r.height)) }; })()"));
+  // The route line on the map, and the roads under it.
+  await p.key("Escape", "Escape", 27);
+  await sleep(400);
+  await p.shot(`${SHOTS}/capacity_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
+  // OWNER-DECISIONS 421, 422: which bands show at the zoom the map is at, in words, in one status line in the legend
+  // whose words change only when the set of bands does; with the legend off screen, said through the app's region.
+  const bandsLine = "#sheet-layers .mass-bands";
+  const bands = await p.eval(`(() => { const e = document.querySelector('${bandsLine}'); if (!e) return null; e.dataset.a11yMark = '1';
+    return { role: e.getAttribute('role'), text: e.textContent }; })()`);
+  check("capacity: the legend says in words which bands show at this zoom, in a status line",
+    bands?.role === "status" && /^At this zoom the map shows (only wide open roads|wide open and good roads|every road)/.test(bands.text), JSON.stringify(bands));
+  // The legend off screen: the sheet closed by its Back button (Escape closes it only from inside).
+  await p.eval("(() => { const s = document.querySelector('#sheet-layers'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
+  await sleep(250);
+  for (let i = 0; i < 6; i++) {
+    if (/only wide open/.test(await p.eval(`document.querySelector('${bandsLine}')?.textContent ?? ''`))) break;
+    await p.eval("document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); true");
+    await sleep(800);
+  }
+  const zoomedOut = await p.eval(`(() => { const e = document.querySelector('${bandsLine}');
+    const app = [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent).find((t) => /only wide open roads/.test(t)) ?? '';
+    return { same: e?.dataset.a11yMark === '1', text: e?.textContent ?? '', app: app.trim() }; })()`);
+  check("capacity: zoomed out to 10-11 the same status line says Wide open only, where it runs half a mile, and how to see the rest",
+    zoomedOut.same && /^At this zoom the map shows only wide open roads \(200 and up riders per minute\), and only where they run for 0\.5 mi \(0\.8 km\) or more\. Zoom in for good roads from zoom 12, and tight and bottleneck roads from zoom 14\.$/.test(zoomedOut.text), JSON.stringify(zoomedOut));
+  check("capacity: with the legend off screen, the change of bands is said through the app's polite region",
+    zoomedOut.app === zoomedOut.text && zoomedOut.app !== "", JSON.stringify(zoomedOut));
+  await p.close();
+}
+{
+  // Any other ride type, and a rebuilt table's Mass Ride before the map has drawn a capacity: the stress ones.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), stressTiles: "capacity" });
+  await openSheet(p);
+  await sleep(1500);
+  const other = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats') })");
+  check("capacity: another ride type keeps the traffic stress legend and panel, with no riders-per-minute figures", !other.mass && other.stress && !other.figures, JSON.stringify(other));
+  check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
+  // OWNER-DECISIONS 452a: the mountain-bike trails draw in a not-for-routes look, and the stress legend has a row
+  // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
+  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
+    const svg = e.querySelector('svg');
+    return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
+      onScreen: e.getClientRects().length > 0, swatchHidden: svg?.getAttribute('aria-hidden') === 'true',
+      oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
+  check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
+    !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  await p.close();
+}
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), stressTiles: true });
+  await openSheet(p);
+  await sleep(1500);
+  const old = await p.eval("({ mass: !!document.querySelector('.mass-legend'), stress: !!document.querySelector('[aria-label=\"Traffic stress legend\"]'), figures: !!document.querySelector('.capacity-stats'), bar: !!document.querySelector('.stress-bar') })");
+  check("capacity: a Mass Ride on a table without the column (no rpm in the tiles or the route) shows its current styling: the stress legend, bar and no figures", !old.mass && old.stress && !old.figures && old.bar, JSON.stringify(old));
+  // Accessibility review S2: the map it draws is the one that legend describes. The stress layers stay on (they ask
+  // for tiles beyond MapView's one probe), the Mass Ride layers stay off, and DC only is still said beside the mask.
+  const words = await p.eval("({ dcOnly: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '' })");
+  check("capacity: on that table the stress layers stay visible under the stress legend, and the legend still says DC only, with the boundary's credit",
+    p.tileRequests.stress > 1 && p.tileRequests.mass === 0 && /^Mass Ride planning covers DC only for now\./.test(words.dcOnly) && /OpenStreetMap/.test(words.credit),
+    JSON.stringify({ tiles: p.tileRequests, words }));
+  await p.close();
+}
+{
+  // OWNER-DECISIONS 418a: part of a Mass Ride's route outside DC is shown and said, in words.
+  const p = await open({ route: S_MASS_OUTSIDE_DC, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  const notice = "Part of this route is outside the area Mass Ride planning covers (DC only for now).";
+  const out = await p.eval(`(() => { const n = document.querySelector('.summary .mass-outside-dc'); const r = n?.getBoundingClientRect();
+    return { text: n?.textContent ?? '', visible: !!r && r.width > 0 && r.height > 0, said: document.querySelector('.status-line')?.textContent ?? '',
+      live: document.querySelector('.status-line')?.getAttribute('aria-live') }; })()`);
+  check("outside DC: a Mass Ride route that leaves the District shows the notice in words in the route view", out.text === notice && out.visible, JSON.stringify(out));
+  check("outside DC: the route's polite live region says it with the route", out.said.includes(notice) && out.live === "polite", JSON.stringify(out));
+  // 427: no figures for the parts outside DC, said in words in the route view; nothing greyed.
+  const words = await p.eval(`(() => { const s = document.querySelector('.summary'); return { said: s?.querySelector('.capacity-stats ~ .capacity-outside-dc, .capacity-outside-dc')?.textContent ?? '',
+    narrowest: [...(s?.querySelectorAll('.capacity-narrowest dd') ?? [])].map((d) => d.textContent) }; })()`);
+  check("outside DC: the route view says Mass Ride figures are not supported outside DC, and its narrowest figures are DC's (none at the start, none of 50)",
+    /^Mass Ride figures are not supported outside DC yet/.test(words.said) && words.narrowest.length > 0 && !words.narrowest.some((t) => /^50 riders|the start/.test(t)), JSON.stringify(words));
+  await p.close();
+}
+// ---- 21. The map's road panel (OWNER-DECISIONS 441, 441a, 441m): a right-click, the keyboard's I and button, a long press; compact, the details closed, the action row ----
+/** A spot on the bare map canvas (no marker, card or control over it), in page pixels, or null. */
+const bareSpot = (p) =>
+  p.eval(`(() => { const c = document.querySelector('.maplibregl-canvas'); const r = c.getBoundingClientRect();
+    for (let fy = 0.35; fy <= 0.8; fy += 0.05) for (let fx = 0.75; fx >= 0.35; fx -= 0.05) {
+      const x = Math.round(r.left + r.width * fx), y = Math.round(r.top + r.height * fy);
+      if (document.elementFromPoint(x, y) === c) return [x, y]; }
+    return null; })()`);
+const infoOpen = "!!document.querySelector('dialog.road-info[open]') && /Connecticut Avenue Northwest/.test(document.querySelector('dialog.road-info h2')?.textContent ?? '')";
+/**
+ * The road panel's close, waited on rather than slept past: the dialog's `close` event is a queued
+ * task, so a fixed sleep on a loaded box can press the next key before the app has handled it.
+ * `armInfoClose` goes before whatever closes it; its listener is added after the app's, so the flag
+ * is set only once the app's handler has run. `infoClosed` then waits for that, the dialog shut,
+ * and the focus where `focus` says.
+ */
+const armInfoClose = (p) =>
+  p.eval(`(() => { window.__infoClosed = false; document.querySelector('dialog.road-info')?.addEventListener('close',
+    () => setTimeout(() => { window.__infoClosed = true; }, 0), { once: true }); return true; })()`);
+const CANVAS_FOCUSED = "document.activeElement === document.querySelector('.maplibregl-canvas')";
+const infoClosed = (p, focus = CANVAS_FOCUSED, ms = 8000) =>
+  p.waitFor(`window.__infoClosed === true && !document.querySelector('dialog.road-info[open]') && (${focus})`, ms);
+/** What the road panel shows now, for a failure's record: open, aria-busy (still loading) and its heading. */
+const infoNow = (p) =>
+  p.eval(`(() => { const d = document.querySelector('dialog.road-info');
+    return { open: d?.open ?? null, busy: d?.getAttribute('aria-busy') ?? null, heading: d?.querySelector('h2')?.textContent ?? '' }; })()`);
+/** Waits for the API to be asked past `before` (the ask landed), then for the panel to open on the test road. */
+async function infoAsked(p, before, ms = 8000) {
+  const t0 = Date.now();
+  while (p.infoRequests.length <= before && Date.now() - t0 < ms) await sleep(50);
+  const asked = p.infoRequests.length > before;
+  const opened = asked && (await p.waitFor(infoOpen, ms));
+  return { asked, opened };
+}
+/** Opens Map tools (by the zoom buttons; OWNER-DECISIONS 450) if it is closed, and presses one of its two buttons. */
+const mapTool = (p, label) =>
+  p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
+    [...document.querySelectorAll('.map-tools-panel button')].find((b) => b.textContent === ${JSON.stringify(label)})?.click(); return true; })()`);
+/** A test probe: moves the map, the MapLibre map in MapView's ref, found through React's fiber; whether it was found. */
+const jumpMap = (p, lon, lat, zoom) =>
+  p.eval(`(() => { const el = document.querySelector('.map'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    for (let f = key ? el[key] : null; f; f = f.return) {
+      for (let h = f.memoizedState; h && typeof h === 'object' && 'next' in h; h = h.next) {
+        const m = h.memoizedState?.current;
+        if (m && typeof m.jumpTo === 'function' && typeof m.getCenter === 'function') { m.jumpTo({ center: [${lon}, ${lat}], zoom: ${zoom} }); return true; }
+      } }
+    return false; })()`);
+/**
+ * Whether `text` is in the accessibility tree inside a status region inside a dialog (the
+ * a11y review's S1): read from the tree, not the page's text, so a region the modal made
+ * inert (and the tree drops) does not pass.
+ */
+async function saidInDialog(p, text) {
+  const { nodes } = await p.s("Accessibility.getFullAXTree", {});
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const hits = nodes.filter((n) => !n.ignored && n.name?.value === text);
+  for (const hit of hits) {
+    let status = null;
+    for (let n = byId.get(hit.parentId); n; n = byId.get(n.parentId)) {
+      if (!status && n.role?.value === "status") status = n;
+      if (status && n.role?.value === "dialog") return { found: !status.ignored, dialog: n.name?.value ?? "" };
+    }
+  }
+  return { found: false, hits: hits.length };
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const at = await bareSpot(p);
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: at[0], y: at[1] });
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "right", buttons: 2, clickCount: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "right", buttons: 0, clickCount: 1 });
+  const opened = await p.waitFor(infoOpen, 8000);
+  const first = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const h = d?.querySelector('h2');
+    return { modal: d?.matches(':modal') ?? false, focus: document.activeElement === h, where: document.getElementById(d?.getAttribute('aria-describedby') ?? '')?.textContent ?? '' }; })()`);
+  check("road panel: a right-click on the map opens a modal dialog for the road there, the focus on its heading",
+    opened && first.modal && first.focus && first.where === "Main road, nearest the spot you picked", JSON.stringify(first));
+  const asked = p.infoRequests[0] ?? "";
+  check("road panel: the API is asked once, for the spot right-clicked, its coordinates in the query only",
+    p.infoRequests.length === 1 && /^\?lat=3\d\.\d{6}&lon=-7\d\.\d{6}$/.test(asked), JSON.stringify(p.infoRequests));
+  const body = await p.eval(`(() => { const d = document.querySelector('dialog.road-info');
+    const sections = [...d.querySelectorAll('section')].map((s) => { const h = document.getElementById(s.getAttribute('aria-labelledby') ?? '');
+      return { id: s.className, heading: h?.textContent ?? '', tag: h?.tagName ?? '',
+        rows: [...s.querySelectorAll('.road-info-row')].map((r) => r.querySelector('dt')?.textContent + ' = ' + r.querySelector('dd')?.textContent) }; });
+    return { sections, mass: !!d.querySelector('.road-info-mass') }; })()`);
+  const rows = body.sections.flatMap((x) => x.rows).join(" | ");
+  // The compact summary: a list a screen reader reads in order, one short line a fact, no source under each.
+  const brief = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const ul = d.querySelector('ul.road-info-summary');
+    const det = d.querySelector('details.road-info-details');
+    return { tag: ul?.tagName ?? '', lines: [...(ul?.querySelectorAll(':scope > li') ?? [])].map((li) => li.textContent),
+      sourcesInSummary: !!ul?.querySelector('.road-info-source'), detailsOpen: det?.open ?? null,
+      summaryFirst: det?.firstElementChild?.tagName ?? '', summaryText: det?.querySelector('summary')?.textContent ?? '' }; })()`);
+  check("road panel: the summary is a list of short lines in order, no source under each, and no Mass Ride line on another map",
+    brief.tag === "UL" && !brief.sourcesInSummary && JSON.stringify(brief.lines) === JSON.stringify([
+      "Traffic stress: LTS 3 · , For experienced cyclists", "Why: 30 mph, mixed traffic", "Speed: 30 mph (48 km/h), posted",
+      "Lanes: 2 each way", "Traffic: 18,400 a day (DDOT 2024)", "Bike lane: Painted", "Bikes: Allowed"]), JSON.stringify(brief.lines));
+  const sumAx = await axNode(p, "dialog.road-info details > summary");
+  check("road panel: Details and sources is a native disclosure, closed at first, and says so",
+    brief.detailsOpen === false && brief.summaryFirst === "SUMMARY" && brief.summaryText === "Details and sources" && sumAx?.expanded === false,
+    JSON.stringify({ ...brief, lines: undefined, sumAx }));
+  check("road panel: each part is a section named by its own heading, the figures terms with the source in words, the stress in words",
+    body.sections.length >= 6 && body.sections.every((x) => x.heading && x.tag === "H3") &&
+      /Level = LTS 3: For experienced cyclistsSource: RouteMaker classifier/.test(rows) && /Speed limit = 30 mph \(48 km\/h\), postedSource: DC Roadway Block/.test(rows) &&
+      /Traffic volume = 18,400 vehicles a day/.test(rows) && /Bike access = Open to bicycles/.test(rows), JSON.stringify(body).slice(0, 600));
+  check("road panel: the Mass Ride capacity is not shown on another ride type's map", !body.mass, JSON.stringify(body.sections.map((x) => x.id)));
+  const row = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const ul = d.querySelector('ul.road-info-buttons');
+    const link = (t) => { const a = [...(ul?.querySelectorAll('a.road-info-button') ?? [])].find((x) => x.textContent === t);
+      return { href: a?.href ?? '', target: a?.target, rel: a?.rel, note: document.getElementById(a?.getAttribute('aria-describedby') ?? '')?.textContent ?? '' }; };
+    return { names: [...(ul?.querySelectorAll('a') ?? [])].map((a) => a.textContent), last: d.querySelector('.road-info-body').lastElementChild?.className ?? '',
+      sv: link('Street View'), osm: link('Edit in OSM') }; })()`);
+  const sv = row.sv;
+  check("road panel: Street View is Google's public link for the point on the road the panel describes (441o), in a new tab, with no opener or referrer, its privacy note its description",
+    sv.href === "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=38.910000,-77.040000" && sv.target === "_blank" && /noopener/.test(sv.rel) && /noreferrer/.test(sv.rel) &&
+      sv.note === "Opens in a new tab; Google gets this spot only if you follow the link.", JSON.stringify(sv));
+  check("road panel: the bottom row is Street View then Edit in OSM (no Change LTS before the editor exists); Edit in OSM opens the way in OpenStreetMap's editor, with its note",
+    JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM"]) && row.last === "road-info-actions" &&
+      row.osm.href === "https://www.openstreetmap.org/edit?way=101" && row.osm.target === "_blank" && /noopener/.test(row.osm.rel) && /noreferrer/.test(row.osm.rel) &&
+      row.osm.note === "Opens OpenStreetMap's editor for this way. Needs an OpenStreetMap account; don't copy from Google Street View.", JSON.stringify(row));
+  const said = await saidInDialog(p, "Connecticut Avenue Northwest: LTS 3, for experienced cyclists.");
+  check("road panel: the answer is said in one short sentence by a status region inside the dialog, in the accessibility tree (not the page's region the modal makes inert; S1)",
+    said.found && said.dialog === "Connecticut Avenue Northwest", JSON.stringify(said));
+  const ax = await axNode(p, "dialog.road-info");
+  check("road panel: a screen reader meets a dialog named for the road", ax?.role === "dialog" && ax?.name === "Connecticut Avenue Northwest", JSON.stringify(ax));
+  await p.shot(`${SHOTS}/road-info_dialog.png`);
+  // Tab stays inside, Escape closes.
+  const inside = [];
+  for (let i = 0; i < 8; i++) {
+    await p.tab();
+    inside.push(await p.eval("!!document.activeElement?.closest('dialog.road-info')"));
+  }
+  check("road panel: Tab stays inside the open dialog", inside.every(Boolean), JSON.stringify(inside));
+  // And backwards: Shift+Tab from the heading goes round to the last control, still inside (the a11y review's N9).
+  await p.eval("document.querySelector('dialog.road-info h2').focus(); true");
+  await p.tab(true);
+  const backwards = await p.eval("({ inside: !!document.activeElement?.closest('dialog.road-info'), text: document.activeElement?.textContent ?? '' })");
+  check("road panel: Shift+Tab from the heading goes round to the dialog's last control, Edit in OSM", backwards.inside && backwards.text === "Edit in OSM", JSON.stringify(backwards));
+  await armInfoClose(p);
+  await p.escape();
+  const shutFirst = await infoClosed(p, "true");
+  // The keyboard's way: I on the focused map, for the road at its center.
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  const canvasFirst = await p.waitFor(CANVAS_FOCUSED, 5000);
+  // What had the focus when I went down, and the API's asks, so a failure says which half failed.
+  const keyFocus = await p.eval("document.activeElement?.className ?? ''");
+  const askedBeforeKey = p.infoRequests.length;
+  // Where the key went, for a failure's record: the target, whether the map took it (its
+  // default prevented), and the time since the page's last road-panel ask.
+  await p.eval(`(() => { window.__keys = []; const at = performance.now();
+    addEventListener('keydown', (e) => { const rec = { key: e.key, target: e.target?.className ?? e.target?.nodeName ?? '', ms: Math.round(performance.now() - at), focus: document.hasFocus() };
+      window.__keys.push(rec); setTimeout(() => { rec.prevented = e.defaultPrevented; }, 0); }, { capture: true }); return true; })()`);
+  await p.key("i", "KeyI", 73);
+  const keyAsk = await infoAsked(p, askedBeforeKey);
+  const byKey = keyAsk.opened;
+  const keyed = await p.eval("({ where: document.querySelector('dialog.road-info .road-info-kind')?.textContent ?? '', canvasLabel: document.querySelector('.maplibregl-canvas').getAttribute('aria-label') })");
+  Object.assign(keyed, { shutFirst, canvasFirst, keyFocus, ...keyAsk, asked: p.infoRequests.length - askedBeforeKey, now: byKey ? undefined : await infoNow(p), keys: byKey ? undefined : await p.eval("window.__keys") });
+  check("road panel: I on the focused map opens it for the road at the center, and the map's name says so",
+    byKey && keyed.where === "Main road, nearest the map center" && /Press I for what is known about the road at the center/.test(keyed.canvasLabel), JSON.stringify(keyed));
+  await armInfoClose(p);
+  await p.escape();
+  await infoClosed(p);
+  const back = await p.eval("({ closed: !document.querySelector('dialog.road-info[open]'), canvas: document.activeElement === document.querySelector('.maplibregl-canvas') })");
+  check("road panel: Escape closes it and the focus goes back to the map", back.closed && back.canvas, JSON.stringify(back));
+  // Map tools (OWNER-DECISIONS 450): one small visible button with the map's zoom buttons, a disclosure
+  // of plain buttons holding the two map-center actions; nothing of them in the planner.
+  const tools = await p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); const r = t?.getBoundingClientRect();
+    const corner = t?.closest('.maplibregl-ctrl-top-right'); const zoomIn = corner?.querySelector('.maplibregl-ctrl-zoom-in');
+    return { name: t?.textContent ?? '', expanded: t?.getAttribute('aria-expanded') ?? '', w: Math.round(r?.width ?? 0), h: Math.round(r?.height ?? 0),
+      underZoom: !!(zoomIn && t && (zoomIn.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING)), inMap: !!t?.closest('.map[role=region]'),
+      panelHidden: document.querySelector('.map-tools-panel')?.hidden ?? null,
+      planner: [...document.querySelectorAll('.panel button')].filter((b) => /map center/.test(b.textContent)).length }; })()`);
+  check("map tools: one Map tools button, at least 44 px, after the map's zoom buttons in the map's corner, closed, and no map-center button in the planner (450)",
+    tools.name === "Map tools" && tools.expanded === "false" && tools.w >= 44 && tools.h >= 44 && tools.underZoom && tools.inMap && tools.panelHidden === true && tools.planner === 0, JSON.stringify(tools));
+  await p.eval("document.querySelector('.map-tools-toggle').focus(); true");
+  await p.enter();
+  await sleep(200);
+  const toolsOpen = await p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); const panel = document.getElementById(t.getAttribute('aria-controls') ?? '');
+    return { expanded: t.getAttribute('aria-expanded'), focus: document.activeElement === t, shown: !!panel && !panel.hidden && panel.getBoundingClientRect().height > 0,
+      buttons: [...(panel?.querySelectorAll('button') ?? [])].map((b) => b.textContent), menus: document.querySelectorAll('.map-tools [role^=menu]').length }; })()`);
+  const toolsAx = await axNode(p, ".map-tools-toggle");
+  const stops = [];
+  for (let i = 0; i < 2; i++) {
+    await p.tab();
+    stops.push(await p.eval("document.activeElement?.textContent ?? ''"));
+  }
+  check("map tools: Enter opens it and it says so (expanded); its two plain buttons, not an ARIA menu, are the next Tab stops",
+    toolsOpen.expanded === "true" && toolsOpen.focus && toolsOpen.shown && toolsAx?.role === "button" && toolsAx?.expanded === true && toolsOpen.menus === 0 &&
+      JSON.stringify(toolsOpen.buttons) === JSON.stringify(["Add point at map center", "Road info at map center"]) &&
+      JSON.stringify(stops) === JSON.stringify(["Add point at map center", "Road info at map center"]), JSON.stringify({ toolsOpen, toolsAx, stops }));
+  await p.escape();
+  await sleep(200);
+  const toolsShut = await p.eval("(() => { const t = document.querySelector('.map-tools-toggle'); return { expanded: t.getAttribute('aria-expanded'), focus: document.activeElement === t, hidden: document.querySelector('.map-tools-panel').hidden }; })()");
+  check("map tools: Escape closes it and the focus goes back to Map tools", toolsShut.expanded === "false" && toolsShut.focus && toolsShut.hidden, JSON.stringify(toolsShut));
+  // Road info at map center from Map tools, by keyboard, and the panel's Close.
+  await p.enter();
+  await sleep(200);
+  await p.tab();
+  await p.tab();
+  const askedBeforeButton = p.infoRequests.length;
+  await p.enter();
+  const buttonAsk = await infoAsked(p, askedBeforeButton);
+  const byButton = buttonAsk.opened;
+  const buttonNow = byButton ? undefined : await infoNow(p);
+  await armInfoClose(p);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Close')?.click(); true");
+  await infoClosed(p, "document.activeElement === document.querySelector('.map-tools-toggle')");
+  const backToButton = await p.eval("(() => { const t = document.querySelector('.map-tools-toggle'); return { focus: document.activeElement === t, expanded: t.getAttribute('aria-expanded'), closed: !document.querySelector('dialog.road-info[open]') }; })()");
+  check("road panel: Map tools' Road info at map center opens it, and Close gives the focus back to Map tools",
+    byButton && backToButton.focus && backToButton.expanded === "false" && backToButton.closed, JSON.stringify({ ...backToButton, ...buttonAsk, now: buttonNow }));
+  // The top row (OWNER-DECISIONS 441n): real buttons under the heading that put the spot in the plan, then close.
+  const askedBeforeTop = p.infoRequests.length;
+  await mapTool(p, "Road info at map center");
+  const topAsk = await infoAsked(p, askedBeforeTop);
+  const top = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const ul = d.querySelector('ul.road-info-place');
+    const after = (a, b) => !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return { tags: [...(ul?.querySelectorAll('li > *') ?? [])].map((b) => b.tagName + ':' + b.textContent + ':' + (b.getAttribute('aria-disabled') ?? '')),
+      underHeading: after(d.querySelector('h2'), ul) && after(ul, d.querySelector('ul.road-info-summary')), pins: document.querySelectorAll('.pin').length }; })()`);
+  check("road panel: under the heading, Set as start, Set as end and Add as stop are real buttons, available on a two-point plan",
+    topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:"]) && top.underHeading,
+    JSON.stringify({ ...top, ...topAsk, now: topAsk.opened ? undefined : await infoNow(p) }));
+  await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-place button')].find((b) => b.textContent === 'Add as stop')?.focus(); true");
+  await armInfoClose(p);
+  await p.enter();
+  await infoClosed(p, "document.activeElement?.textContent === 'Map tools'");
+  const placed = await p.eval(`({ closed: !document.querySelector('dialog.road-info[open]'), pins: document.querySelectorAll('.pin').length,
+    focus: document.activeElement?.textContent ?? '', said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).find((t) => / set here\.$/.test(t)) ?? '' })`);
+  check("road panel: Add as stop puts the spot in the plan as a stop, says so, closes, and gives the focus back",
+    placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Map tools", JSON.stringify(placed));
+  const tip = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
+  check("road panel: the help says how to reach it by mouse, by touch and by keyboard (I and Map tools, and browse mode), and where the details are",
+    /Right-click the map \(or press and hold on a phone\) for a short summary/.test(tip) && /Details and sources/.test(tip) && /press I for the road at the center/.test(tip) &&
+      /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/.test(tip) && /With NVDA or JAWS, I reaches the map only in focus mode/.test(tip), tip.slice(0, 600));
+  // An unavailable top-row button (the a11y review's T1): on an empty plan Set as end gives its reason as its
+  // description, and pressing it neither closes the panel nor adds a point.
+  await p.eval("document.querySelector('.point-tools button:last-child')?.textContent === 'Clear' && document.querySelector('.point-tools button:last-child').click(); true");
+  await sleep(500);
+  const askedBeforeEnd = p.infoRequests.length;
+  await mapTool(p, "Road info at map center");
+  const endAsk = await infoAsked(p, askedBeforeEnd);
+  const endAx = await axNode(p, "dialog.road-info .road-info-place li:nth-child(2) > button");
+  await p.eval("document.querySelector('dialog.road-info .road-info-place li:nth-child(2) > button').focus(); true");
+  await p.enter();
+  await sleep(400);
+  const end = await p.eval(`(() => { const b = document.querySelector('dialog.road-info .road-info-place li:nth-child(2) > button');
+    return { text: b?.textContent ?? '', disabled: b?.getAttribute('aria-disabled') ?? '', open: !!document.querySelector('dialog.road-info[open]'), focus: document.activeElement === b,
+      pins: document.querySelectorAll('.pin').length, why: document.querySelector('dialog.road-info .road-info-place-why')?.textContent ?? '' }; })()`);
+  check("road panel: on an empty plan Set as end is unavailable, its reason its description, and pressing it does nothing",
+    endAsk.opened && end.text === "Set as end" && end.disabled === "true" && endAx?.description === "Set a start first." && end.open && end.focus && end.pins === 0,
+    JSON.stringify({ end, endAx, ...endAsk, now: endAsk.opened ? undefined : await infoNow(p) }));
+  check("road panel: the reasons line names each button with its reason, so browse mode does not read the same reason twice (N1)",
+    end.why === "Set as end: Set a start first. Add as stop: Set a start first.", end.why);
+  await armInfoClose(p);
+  await p.escape();
+  await infoClosed(p, "true");
+  // A station near the spot: the keyboard's way to its pages (441b), its name in view beside short
+  // links whose accessible names stay specific (441q; the a11y review's T1 and N2).
+  const jumped = await jumpMap(p, -77.007417, 38.897774, 16);
+  await sleep(600);
+  const askedBeforeStation = p.infoRequests.length;
+  await mapTool(p, "Road info at map center");
+  const stationAsk = await infoAsked(p, askedBeforeStation);
+  const st = await p.eval(`(() => { const box = document.querySelector('dialog.road-info .road-info-stations'); const label = box?.querySelector('.road-info-station-name');
+    return { name: label?.textContent ?? '', named: !!label?.id && box?.querySelector('ul')?.getAttribute('aria-labelledby') === label.id,
+      links: [...(box?.querySelectorAll('a') ?? [])].map((a) => [a.textContent, a.href, a.target, a.rel].join(' ')) }; })()`);
+  const stAx = [await axNode(p, "dialog.road-info .road-info-stations li:nth-child(1) > a"), await axNode(p, "dialog.road-info .road-info-stations li:nth-child(2) > a")];
+  check("road panel: near Union Station it names the station in view, then Station site and MARC timetable, real links in a new tab with specific names",
+    jumped && st.name === "Nearby station: Union Station" && st.named &&
+      JSON.stringify(st.links) === JSON.stringify([
+        "Station site https://www.wmata.com/ridertools/station/union-station _blank noopener noreferrer",
+        "MARC timetable https://www.mta.maryland.gov/schedule/timetable/marc-penn _blank noopener noreferrer"]) &&
+      stAx[0]?.role === "link" && stAx[0]?.name === "Union Station site, WMATA, opens in a new tab" &&
+      stAx[1]?.role === "link" && stAx[1]?.name === "MARC timetable, Penn Line, MTA Maryland, opens in a new tab",
+    JSON.stringify({ jumped, st, stAx, ...stationAsk, now: stationAsk.opened ? undefined : await infoNow(p) }));
+  await p.close();
+}
+{
+  // On the Mass Ride map the panel gives the usable width and riders a minute.
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
+  await mapTool(p, "Road info at map center");
+  await p.waitFor(infoOpen, 8000);
+  const mass = await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-mass .road-info-row')].map((r) => r.textContent).join(' | ')");
+  const room = await p.eval("document.querySelector('dialog.road-info .road-info-line-mass')?.textContent ?? ''");
+  check("road panel: on the Mass Ride map the summary gives the room, and the details the usable width and riders a minute, US units first",
+    room === "Room for: About 150 riders a minute" && /Usable width22 ft \(6\.7 m\)/.test(mass) && /Riders a minuteAbout 150 on the level/.test(mass), JSON.stringify({ room, mass }));
+  await p.close();
+}
+{
+  // A phone: a finger that pans the map does not open it; a finger held still does, and adds no point.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 390, height: 844, mobile: true, ride: false, junctions: false });
+  const touch = (type, x, y) => p.s("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+  const at = await bareSpot(p);
+  const asked0 = p.infoRequests.length;
+  await touch("touchStart", at[0], at[1]);
+  for (let i = 1; i <= 8; i++) {
+    await touch("touchMove", at[0] - i * 10, at[1]);
+    await sleep(40);
+  }
+  await sleep(700);
+  await touch("touchEnd", at[0] - 80, at[1]);
+  await sleep(400);
+  const panned = await p.eval("!document.querySelector('dialog.road-info[open]')");
+  check("road panel: a finger that pans the map does not open it", panned && p.infoRequests.length === asked0, JSON.stringify({ panned, asked: p.infoRequests.length - asked0 }));
+  const spot = (await bareSpot(p)) ?? at;
+  const pinsBefore = await p.eval("document.querySelectorAll('.pin').length");
+  await touch("touchStart", spot[0], spot[1]);
+  await sleep(900);
+  await touch("touchEnd", spot[0], spot[1]);
+  const holdAsk = await infoAsked(p, asked0);
+  const held = holdAsk.opened;
+  await sleep(500);
+  const pinsAfter = await p.eval("document.querySelectorAll('.pin').length");
+  check("road panel: a finger held still on the map opens it, and adds no point",
+    held && p.infoRequests.length === asked0 + 1 && pinsAfter === pinsBefore,
+    JSON.stringify({ held, pinsBefore, pinsAfter, asked: p.infoRequests.length - asked0, now: held ? undefined : await infoNow(p) }));
+  // The owner's "I have to scroll": on a phone the common case fits, the action row on screen, nothing to scroll.
+  const fit = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const r = d.getBoundingClientRect();
+    const row = d.querySelector('.road-info-actions')?.getBoundingClientRect();
+    const big = [...d.querySelectorAll('a.road-info-button, .road-info-place button')].every((a) => a.getBoundingClientRect().height >= 44);
+    return { scroll: d.scrollHeight - d.clientHeight, top: Math.round(r.top), bottom: Math.round(r.bottom), rowBottom: Math.round(row?.bottom ?? 9999), vh: innerHeight, big }; })()`);
+  check("road panel: on a phone the compact panel fits the screen without scrolling, the top and bottom rows' buttons 44px tall",
+    fit.scroll <= 1 && fit.top >= 0 && fit.bottom <= fit.vh && fit.rowBottom <= fit.vh && fit.big, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/road-info_phone.png`);
+  // Closed after a long press, the focus goes to the map, not the page (the a11y review's N6).
+  await armInfoClose(p);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Close')?.click(); true");
+  await infoClosed(p);
+  const afterHold = await p.eval("({ closed: !document.querySelector('dialog.road-info[open]'), canvas: document.activeElement === document.querySelector('.maplibregl-canvas') })");
+  check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
+  await p.close();
+}
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 258;
+const EXPECTED = 310;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

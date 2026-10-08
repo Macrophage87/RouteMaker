@@ -44,12 +44,11 @@ from pipeline.promotion import (
     rollback,
     rollback_target,
 )
-from pipeline.variants import Variant
+from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
 
 RESTART_HINT = (
     "The routers keep serving the build they started against, so finish the "
-    "rollback on the deploy host: docker compose restart valhalla-standard "
-    "valhalla-no-trail valhalla-ebike valhalla-weekend"
+    f"rollback on the deploy host: {RESTART_ROUTERS}; {RESTART_OFFROAD_WHERE_IT_RUNS}"
 )
 
 
@@ -57,16 +56,25 @@ def restart_hint(target) -> str:
     """What finishes this rollback on the host. A withdrawn variant (on its
     first build) is stopped, not restarted: restarted on a tiles directory with
     no `current` it would stay up and answer every ride "no suitable edges"
-    (OPS review, 2026-09-28)."""
+    (OPS review, 2026-09-28).
+
+    The off-road router is never in the restart list: it is behind the compose
+    profile `offroad`, and a `restart` naming a service with no container fails
+    and restarts nothing (REBUILD-BUNDLE operations review, S1). Kept, it gets
+    the "where it runs" line; withdrawn, it is stopped, and `docker compose
+    stop` of a service with no container is a no-op."""
     withdrawn = [variant for variant in Variant if target.get(variant) is None]
     if not withdrawn:
         return RESTART_HINT
-    kept = " ".join(f"valhalla-{v.value}" for v in Variant if v not in withdrawn)
+    kept = " ".join(
+        f"valhalla-{v.value}" for v in Variant if v not in withdrawn and v is not Variant.OFFROAD
+    )
     stopped = " ".join(f"valhalla-{v.value}" for v in withdrawn)
+    tail = "" if Variant.OFFROAD in withdrawn else f"; {RESTART_OFFROAD_WHERE_IT_RUNS}"
     return (
         "The routers keep serving the build they started against, so finish the "
         f"rollback on the deploy host: docker compose restart {kept} && docker compose "
-        f"stop {stopped} (withdrawn: its rides are planned on the standard graph)"
+        f"stop {stopped} (withdrawn: its rides are planned on the standard graph){tail}"
     )
 
 

@@ -535,6 +535,25 @@ details.how summary {
   display: block;
 }
 
+/* The Mass Ride map's riders-per-minute legend and the route's list of them
+   (lib/massLegend.ts; OWNER-DECISIONS 325-327). A swatch is the band's own line:
+   its width, dash and halo, as the map draws it. */
+.mass-legend li {
+  grid-template-columns: 60px 1fr;
+}
+
+.mass-swatch {
+  display: block;
+}
+
+.capacity .stress-list li {
+  grid-template-columns: 60px 1fr auto auto;
+}
+
+.capacity-lead {
+  margin: 0 0 6px;
+}
+
 /* The Mass Ride map's federal-land legend and popup (lib/federalLegend.ts,
    federalInteraction.ts). The popup shares the rail cards' look. */
 .federal-legend li {
@@ -757,7 +776,7 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The point "Add point at map center" would place, while it has focus. */
+/* The map's center, which Map tools' two actions use, while it is open. */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -1199,6 +1218,229 @@ dialog.ride-types::backdrop {
   }
 }
 
+/* The map's road panel (OWNER-DECISIONS 441a; RoadInfoDialog.tsx): a modal dialog like
+   the ride-type picker; compact, so the common case fits a phone without scrolling (a
+   sheet from the bottom there). The summary is a plain list, one line a fact; the
+   details are a native disclosure. Nothing is said by colour. */
+dialog.road-info {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+dialog.road-info::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.road-info-body {
+  padding: 12px 16px 14px;
+}
+
+.road-info-body header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.road-info-body h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.road-info-kind {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+/* The top row (OWNER-DECISIONS 441n): real buttons, compact, wrapping on a phone. */
+.road-info-place {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.road-info-place button {
+  min-height: 44px;
+  padding: 4px 10px;
+}
+
+.road-info-place-why {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+}
+
+.road-info-summary {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.road-info-line {
+  overflow-wrap: anywhere;
+}
+
+.road-info-label {
+  font-weight: 600;
+}
+
+.road-info-actions {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+/* The bottom row (OWNER-DECISIONS 441m): links drawn as buttons, edged at 3:1 like a
+   secondary button, each touch target at least 44px tall. */
+.road-info-buttons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.road-info-body a.road-info-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 6px 14px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.road-info-body a.road-info-button:hover {
+  text-decoration: underline;
+}
+
+.road-info-notes {
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+}
+
+/* A nearby station: its name in view, then its short links (OWNER-DECISIONS 441q). */
+.road-info-stations {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.road-info-station-name {
+  margin: 0;
+}
+
+.road-info-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.road-info-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.road-info-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 24px;
+}
+
+.road-info-body h3 {
+  margin: 12px 0 6px;
+  font-size: 1rem;
+}
+
+.road-info-body dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.road-info-row {
+  display: grid;
+  grid-template-columns: minmax(7.5em, 32%) 1fr;
+  gap: 4px 12px;
+}
+
+.road-info-row dt {
+  font-weight: 600;
+}
+
+.road-info-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.road-info-source {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.road-info-status {
+  margin: 10px 0 0;
+}
+
+.road-info-credit-short {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+}
+
+.road-info-body a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.station-links ul,
+ul.station-links {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+}
+
+.station-links a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  dialog.road-info {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100dvh;
+    margin: auto 0 0;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .road-info-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* The route's stressful junctions (OWNER-DECISIONS 172): warning markers on the
    map, and the list in the route summary. Orange is "higher stress", red "very
    high"; the colours and their dark outlines are lib/intersectionMarkers.ts's. */
@@ -1581,10 +1823,6 @@ button.secondary,
 }
 
 /* Points */
-.point-add button {
-  flex: 1 1 100%;
-}
-
 .point-tools {
   margin-top: 8px;
 }
@@ -2340,4 +2578,55 @@ details.zoom-notes {
   .pc-avoid-inner {
     stroke: Canvas;
   }
+}
+
+/* Map tools (OWNER-DECISIONS 450; MapTools.tsx): one small control under the zoom buttons,
+   at least 44px, opening a column of two plain buttons under it. The map is the light
+   flavour in both themes, so it keeps the map controls' light colours; forced colours
+   give it the system's. */
+.map-tools-ctrl {
+  background: transparent;
+}
+
+.map-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.map-tools button {
+  min-height: 44px;
+  min-width: 44px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #16181d;
+  background: #ffffff;
+  border: 1px solid #6b7280;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 10%);
+  text-align: left;
+}
+
+.map-tools button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.map-tools button:focus-visible {
+  outline: 3px solid var(--map-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--map-focus-inner);
+}
+
+.map-tools-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.map-tools-panel[hidden] {
+  display: none;
 }

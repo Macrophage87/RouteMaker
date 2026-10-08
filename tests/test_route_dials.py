@@ -355,7 +355,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 4
+        assert len(configs) == 5
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -431,6 +431,8 @@ class TestTheWeekendGraph:
             if presets.PRESETS[name].variant == "standard"
             else presets.PRESETS[name].variant
         )
+        if name in presets.OFFROAD_PRESETS:
+            expected = "offroad"
         assert body["variant"] == expected
         base = settings.VALHALLA_UPSTREAMS[expected]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
@@ -1650,6 +1652,7 @@ class TestStressSpansThroughThePlan:
             "tier": 1,
             "facility": "path",
             "unpaved": None,
+            "rpm": None,
         }
         assert spans[-1] == {
             "from_m": 2200,
@@ -1657,4 +1660,54 @@ class TestStressSpansThroughThePlan:
             "tier": None,
             "facility": None,
             "unpaved": None,
+            "rpm": None,
         }
+
+
+@db
+class TestTheOffroadGraph:
+    """Gravel and Mountain Goat ride the off-road graph, where the mountain-bike
+    class is open (OWNER-DECISIONS 291(2)); it falls back to the standard graph
+    as the weekend one does."""
+
+    @pytest.mark.parametrize("name", ["gravel", "mountain-goat"])
+    @pytest.mark.parametrize("when", ["weekday_offpeak", "weekend"])
+    def test_these_rides_take_the_offroad_graph_at_any_time(
+        self, name, when, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": when}).json()
+        assert body["variant"] == "offroad"
+        base = settings.VALHALLA_UPSTREAMS["offroad"]
+        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+
+    def test_other_rides_never_do(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body("default"), "when": "weekday_offpeak"}).json()
+        assert body["variant"] == "standard"
+        assert all("offroad" not in url for url, _ in fake.calls)
+
+    def test_an_offroad_router_that_does_not_answer_falls_back_to_standard(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["offroad"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        response = post(client, {**good_body("gravel"), "when": "weekday_offpeak"})
+        assert response.status_code == 200
+        assert response.json()["variant"] == "standard"
+        assert routing._offroad_down()
+
+    def test_an_offroad_graph_not_yet_promoted_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, {**good_body("mountain-goat"), "when": "weekday_offpeak"}).json()
+        assert body["variant"] == "standard"
+        assert all("offroad" not in url for url, _ in fake.calls)

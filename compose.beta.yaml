@@ -358,13 +358,13 @@ services:
       resources:
         limits: { memory: 768M, cpus: "2" }
 
-  # --- placeholder: the off-road router, which comes with NO-BIKE ---------------
-  # Not started (profile `offroad`), and there is no valhalla/valhalla-offroad.json
-  # in this release, so nothing refers to it yet. When the release that carries the
-  # config lands: ship tiles/offroad in the bundle, add `offroad` to the api's
-  # VALHALLA_* environment as that release documents, and start it with
+  # --- the off-road router (NO-BIKE, in the rebuild bundle) ----------------------
+  # Not started (profile `offroad`). valhalla/valhalla-offroad.json is in the
+  # release and ship-data.sh sends tiles/offroad with the bundle, but starting it
+  # here would take the beta over its memory ceiling (see the header), so the api
+  # answers Gravel and Mountain Goat on the standard graph. Only after re-checking
+  # that budget, start it with
   #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad
-  # after re-checking the memory budget (see the header).
   valhalla-offroad:
     <<: *beta-yield
     profiles: ["offroad"]

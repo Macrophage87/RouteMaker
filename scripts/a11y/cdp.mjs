@@ -135,6 +135,9 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  */
 export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   page.routeRequests = 0;
+  page.infoRequests = [];
+  // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
+  page.tileRequests = { stress: 0, mass: 0 };
   await page.s("Fetch.enable", {
     patterns: [{ urlPattern: "*/api/*" }, { urlPattern: "*/tiles/*" }, { urlPattern: "*/basemap/*" }, { urlPattern: "*/auth/*" }],
   });
@@ -145,9 +148,19 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
     let status = 404;
     let body = "";
     let type = "text/plain";
-    if (url.pathname.startsWith("/tiles/stress/")) {
+    if (url.pathname.startsWith("/tiles/mass/")) {
+      // The Mass Ride map's own tiles (core/mass_tiles.py): roads with a capacity on a rebuilt
+      // table, and empty on one without the column.
+      page.tileRequests.mass += 1;
       status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
+      if (stressTiles === "capacity") body = capacityTile();
+    } else if (url.pathname.startsWith("/tiles/stress/")) {
+      page.tileRequests.stress += 1;
+      status = stressTiles ? 200 : 503;
+      type = "application/x-protobuf";
+      // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
+      if (stressTiles === "capacity") body = capacityTile();
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
       const n = page.routeRequests;
@@ -155,6 +168,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       if (delayMs && n >= (page.delayFrom ?? delayFrom)) await sleep(delayMs);
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
+      type = "application/json";
+    } else if (url.pathname === "/api/segment-info") {
+      // The map's road panel (OWNER-DECISIONS 441a; core/segment_info.py): one fixed road.
+      page.infoRequests.push(url.search);
+      status = 200;
+      body = JSON.stringify(S_SEGMENT_INFO);
       type = "application/json";
     } else if (url.pathname.startsWith("/api/")) {
       body = JSON.stringify({ detail: "not found" });
@@ -171,6 +190,61 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   });
 }
 
+// ---- A stress tile with the Mass Ride capacity (core/stress_tiles.py, `rpm`) ----
+
+const varint = (n) => {
+  const out = [];
+  let v = n;
+  while (v > 127) {
+    out.push((v & 127) | 128);
+    v = Math.floor(v / 128);
+  }
+  out.push(v);
+  return Buffer.from(out);
+};
+const field = (number, wire, payload) => Buffer.concat([varint(number * 8 + wire), payload]);
+const bytesField = (number, buf) => field(number, 2, Buffer.concat([varint(buf.length), buf]));
+const uint = (number, n) => field(number, 0, varint(n));
+const zigzag = (n) => (n << 1) ^ (n >> 31);
+
+/**
+ * One vector tile with a layer "stress": four roads across it at capacities 40, 90, 150 and 300
+ * riders a minute (one in each band) and one marked Avoid (tier 5), each with a `tier` and an `rpm`.
+ */
+export function capacityTile() {
+  const keys = ["tier", "rpm"];
+  const values = [];
+  const valueIndex = (n) => {
+    let i = values.indexOf(n);
+    if (i < 0) {
+      values.push(n);
+      i = values.length - 1;
+    }
+    return i;
+  };
+  const roads = [
+    { y: 600, tier: 3, rpm: 40 },
+    { y: 1300, tier: 3, rpm: 90 },
+    { y: 2000, tier: 2, rpm: 150 },
+    { y: 2700, tier: 4, rpm: 300 },
+    { y: 3400, tier: 5, rpm: 300 },
+  ];
+  const features = roads.map(({ y, tier, rpm }) => {
+    const geometry = Buffer.concat([varint(9), varint(zigzag(0)), varint(zigzag(y)), varint(10), varint(zigzag(4096)), varint(zigzag(0))]);
+    const tags = Buffer.concat([varint(0), varint(valueIndex(tier)), varint(1), varint(valueIndex(rpm))]);
+    return Buffer.concat([bytesField(2, tags), uint(3, 2), bytesField(4, geometry)]);
+  });
+  const layer = Buffer.concat([
+    uint(15, 2),
+    bytesField(1, Buffer.from("stress")),
+    ...features.map((f) => bytesField(2, f)),
+    ...keys.map((k) => bytesField(3, Buffer.from(k))),
+    ...values.map((v) => bytesField(4, uint(4, v))),
+    uint(5, 4096),
+  ]);
+  return bytesField(3, layer);
+}
+
 export async function axNode(page, selector) {
   const { root } = await page.s("DOM.getDocument", { depth: 0 });
   const { nodeId } = await page.s("DOM.querySelector", { nodeId: root.nodeId, selector });
@@ -185,9 +259,9 @@ export async function axNode(page, selector) {
     expanded: prop("expanded"),
     checked: prop("checked") === "true" ? true : prop("checked") === "false" ? false : prop("checked"),
     disabled: prop("disabled"),
-    valuetext: prop("valuetext"),
     /** Left out of the accessibility tree (aria-hidden, display: none and the like). */
     ignored: n.ignored === true,
+    valuetext: prop("valuetext"),
   };
 }
 
@@ -453,5 +527,83 @@ export const S_MASS = (() => {
   r.description_overview = [head[0], head[2], group(false), ...tail];
   return r;
 })();
+/**
+ * A Mass Ride on a rebuilt table (OWNER-DECISIONS 325-327, 387): its sections carry riders per
+ * minute, one in each band, and a stretch marked Avoid.
+ */
+export const S_MASS_CAPACITY = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS));
+  r.stress_spans = [
+    { from_m: 0, to_m: 300, tier: 2, facility: "none", unpaved: null, rpm: 50 },
+    { from_m: 300, to_m: 1500, tier: 3, facility: "none", unpaved: null, rpm: 90 },
+    { from_m: 1500, to_m: 2700, tier: 3, facility: "none", unpaved: null, rpm: 190 },
+    { from_m: 2700, to_m: 3400, tier: 4, facility: "none", unpaved: null, rpm: 590 },
+    { from_m: 3400, to_m: 3600, tier: 5, facility: "none", unpaved: null, rpm: null },
+    { from_m: 3600, to_m: 4660, tier: 2, facility: "none", unpaved: null, rpm: 150 },
+  ];
+  return r;
+})();
+/**
+ * The same Mass Ride with its start across the Potomac in Rosslyn, Virginia: part of the route is
+ * outside the District, which Mass Ride planning covers alone for now (OWNER-DECISIONS 418a).
+ */
+export const S_MASS_OUTSIDE_DC = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
+  r.geometry.coordinates = [[-77.072, 38.896], ...r.geometry.coordinates];
+  // 427: the API gives the part outside DC no figure, and says where it is.
+  r.stress_spans[0] = { ...r.stress_spans[0], rpm: null, outside_dc: true };
+  r.profile.outside_dc = [{ from_m: 0, to_m: 300 }];
+  // The API never puts a narrowest point (either figure) in the outside part: with the hills it is in DC too.
+  r.profile.flow = { ...r.profile.flow, narrowest_m: 600 };
+  return r;
+})();
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
+
+/** The road panel's answer (GET /api/segment-info), as core/segment_info.py writes it. */
+export const S_SEGMENT_INFO = {
+  found: true,
+  title: "Connecticut Avenue Northwest",
+  tier: 3,
+  open: true,
+  osm_way_id: 101,
+  distance_m: 2.4,
+  // The nearest point on the way: the Street View link opens here (OWNER-DECISIONS 441o).
+  on_way: [-77.04, 38.91],
+  kind: "Main road",
+  summary: [
+    { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },
+    { id: "why", label: "Why", value: "30 mph, mixed traffic" },
+    { id: "speed", label: "Speed", value: "30 mph (48 km/h), posted" },
+    { id: "lanes", label: "Lanes", value: "2 each way" },
+    { id: "traffic", label: "Traffic", value: "18,400 a day (DDOT 2024)" },
+    { id: "bike_lane", label: "Bike lane", value: "Painted" },
+    { id: "bikes", label: "Bikes", value: "Allowed" },
+    { id: "mass", label: "Room for", value: "About 150 riders a minute" },
+  ],
+  attribution: ["© OpenStreetMap contributors (ODbL)"],
+  sections: [
+    { id: "road", heading: "Road or path", rows: [
+      { label: "Name", value: "Connecticut Avenue Northwest", source: "OpenStreetMap, through RouteMaker's routing graph" },
+      { label: "Kind", value: "Main road", source: "OpenStreetMap, through RouteMaker's routing graph" },
+    ] },
+    { id: "stress", heading: "Traffic stress", rows: [
+      { label: "Level", value: "LTS 3: For experienced cyclists", source: "RouteMaker classifier" },
+      { label: "Why", value: "30 mph, mixed traffic, several lanes, city street", source: "RouteMaker classifier" },
+    ] },
+    { id: "traffic", heading: "Traffic", rows: [
+      { label: "Lanes", value: "2 each way", source: "OpenStreetMap" },
+      { label: "Speed limit", value: "30 mph (48 km/h), posted", source: "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)" },
+      { label: "Traffic volume", value: "18,400 vehicles a day (annual average), 2024 count", source: "DDOT 2024 Traffic Volume, DC Open Data (CC BY 4.0, adapted)" },
+    ] },
+    { id: "riding", heading: "Riding", rows: [
+      { label: "Bike facility", value: "Painted bike lane", source: "OpenStreetMap" },
+      { label: "Surface", value: "Paved", source: "OpenStreetMap" },
+    ] },
+    { id: "access", heading: "Bike access", rows: [{ label: "Bike access", value: "Open to bicycles", source: "OpenStreetMap, through RouteMaker's routing graph" }] },
+    { id: "mass", heading: "Mass Ride capacity", rows: [
+      { label: "Usable width", value: "22 ft (6.7 m)", source: "RouteMaker Mass Ride model" },
+      { label: "Riders a minute", value: "About 150 on the level", source: "RouteMaker Mass Ride model" },
+    ] },
+  ],
+};

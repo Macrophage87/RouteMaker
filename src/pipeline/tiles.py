@@ -669,6 +669,127 @@ def sample_cycle_lane(
     return None if lane == NO_CYCLE_LANE else lane
 
 
+# --- Bicycle closures, read back ------------------------------------------------
+
+# How near a probe point a way's edge must lie. The point is a vertex-to-vertex
+# midpoint of the way's own geometry, so its edge passes within centimetres; the
+# answer is narrowed to that way's id in any case, so a neighbour inside the
+# radius cannot answer for it.
+CLOSURE_LOCATE_RADIUS_M = 5
+
+
+@dataclass(frozen=True)
+class ClosureProbe:
+    """A point on a way the graph must keep closed to bicycles."""
+
+    way_id: int
+    lon: float
+    lat: float
+    # Why the way is closed (`rm:no_bicycle`), where the gate knows: the
+    # off-road graph reopens `mtb` on purpose and is not held to those probes.
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class ClosureReadback:
+    """What one graph says about a set of closure probes.
+
+    `open_to_bicycles` is every probed way with an edge, in either direction,
+    that a bicycle may use. `found` counts the probed ways the pedestrian
+    locate found an edge of at all: a way with no edge is closed to bicycles
+    too (upstream's transform dropped it, as it does a `foot=no` way nothing
+    else may use), but a read in which nothing was found has tested nothing.
+    """
+
+    probed: int
+    found: int
+    open_to_bicycles: tuple[int, ...]
+
+
+def closure_locate_request(probes: Sequence[ClosureProbe]) -> dict:
+    """One `/locate` for every probe, with pedestrian costing.
+
+    Pedestrian, not bicycle: a bicycle locate finds no edge on a way closed to
+    bicycles, which a missed snap also produces, so it cannot tell the closure
+    from a probe in the wrong place. A pedestrian locate finds the way's edges
+    whatever their bicycle access, and `edge.access.bicycle` then says what a
+    bicycle may do on each (SINGLETRACK-review-r0, finding 7).
+    """
+    return {
+        "locations": [
+            {"lon": probe.lon, "lat": probe.lat, "radius": CLOSURE_LOCATE_RADIUS_M}
+            for probe in probes
+        ],
+        "costing": "pedestrian",
+        "verbose": True,
+    }
+
+
+def _locate_response(stdout: str) -> list:
+    """The `/locate` answer on a one-shot stdout: the first JSON array in it.
+
+    Every bracket is a candidate until one decodes to an array, as in
+    `valhalla_exception`, so a stray line ahead of the answer with a brace or a
+    bracket in it is stepped over rather than mistaken for it.
+    """
+    decoder = json.JSONDecoder()
+    position = 0
+    while (start := stdout.find("[", position)) >= 0:
+        try:
+            response, _end = decoder.raw_decode(stdout, start)
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+        if isinstance(response, list):
+            return response
+        position = start + 1
+    raise ValueError(f"valhalla_service returned no locate answer on stdout: {stdout[:200]!r}")
+
+
+def read_closures(
+    run: Callable[[Sequence[str]], CommandOutput],
+    config_path: Path,
+    probes: Sequence[ClosureProbe],
+) -> ClosureReadback:
+    """Ask a built graph, in one one-shot `locate`, whether any probe is open.
+
+    One call per graph whatever the number of probes, so the cost is one
+    service start and a tile read per probe: a second or two. The caller bounds
+    the number of probes and the command's time.
+    """
+    if not probes:
+        return ClosureReadback(probed=0, found=0, open_to_bicycles=())
+    request = closure_locate_request(probes)
+    output = run(["valhalla_service", str(config_path), "locate", json.dumps(request)])
+    return closure_readback(probes, _locate_response(output.stdout))
+
+
+def closure_readback(probes: Sequence[ClosureProbe], response: list) -> ClosureReadback:
+    """Read a `/locate` answer to `closure_locate_request(probes)`.
+
+    Shared by the gate and by the post-swap probe, which asks the serving
+    routers the same question over HTTP (scripts/probe_bicycle_closures.py).
+    Each probe is answered by its own way's edges only, so a neighbour inside
+    the radius cannot answer for it.
+    """
+    if len(response) != len(probes):
+        raise ValueError(f"valhalla answered {len(probes)} locations with {len(response)}")
+    found = 0
+    open_ways: list[int] = []
+    for probe, answer in zip(probes, response, strict=True):
+        edges = [
+            edge
+            for edge in ((answer or {}).get("edges") or [])
+            if (edge.get("edge_info") or {}).get("way_id") == probe.way_id
+        ]
+        if not edges:
+            continue
+        found += 1
+        if any(((edge.get("edge") or {}).get("access") or {}).get("bicycle") for edge in edges):
+            open_ways.append(probe.way_id)
+    return ClosureReadback(probed=len(probes), found=found, open_to_bicycles=tuple(open_ways))
+
+
 # --- The disk gate ---------------------------------------------------------------
 
 

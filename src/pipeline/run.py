@@ -19,6 +19,7 @@ fails at the loading stage rather than quietly substituting nothing for them.
 from __future__ import annotations
 
 import functools
+import itertools
 import json
 import logging
 import re
@@ -27,7 +28,7 @@ import sqlite3
 import subprocess
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,37 +36,57 @@ from typing import TypeVar
 
 from routemaker import (
     agency_roads,
+    bike_lanes,
     cbd,
+    corridors,
     divided,
     facility,
+    lane_overrides,
+    massflow,
     ridetime,
     singletrack,
     speed_corrections,
+    surfaces,
+    trailaccess,
+    zoo,
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, is_rough, is_unpaved
+from routemaker.stress import classify, inferred_unpaved, is_rough
 
 from . import (
+    aadt_smoothing,
     borders,
     conflation,
     discrepancies,
     elevation,
     extract,
+    lts_sentinels,
+    mass_capacity,
     overrides,
     promotion,
     reconcile,
+    rematch,
     restricted_areas,
     retention,
+    route_relations,
     source,
     states,
     tiles,
+    trail_closures,
     trail_routes,
     variants,
     writers,
 )
 from .rebuild import RebuildTimedOut, Stage
-from .schema import METRES_PER_MILE, ROUTE_LONG_BICYCLE, Z10_UNPAVED_RUN_MI, Z11_PAVED_RUN_MI
+from .schema import (
+    METRES_PER_MILE,
+    RIDE_PATH_RUN_MI,
+    RIDE_ROAD_RUN_MI,
+    ROUTE_LONG_BICYCLE,
+    Z10_UNPAVED_RUN_MI,
+    Z11_PAVED_RUN_MI,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +95,31 @@ MAX_RECORDED_BLOCKS = 12
 # Where each rebuild writes the DC-against-OSM discrepancy report (OWNER-DECISIONS
 # 191), under its work directory: `<DATA_ROOT>/rebuild/reports/` on the host.
 DISCREPANCY_REPORT_DIR = "reports"
+REMATCH_REPORT_NAME = "override-rematch"
+# Beside it: each count the street's median replaced, and what the owner's named
+# corridors did (ARTERIAL review r0, SF4).
+SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
+CORRIDOR_REPORT_NAME = "named-corridors.md"
+# Every way inside a military area, closed or left open, for the owner (owner report
+# 2026-10-05; `restricted_areas.military_report_csv`).
+MILITARY_REPORT_NAME = "military-closures.csv"
+# And every way inside a secured federal compound (owner report 2026-10-06;
+# `restricted_areas.secured_closures`), the same columns, `facility` for `installation`.
+SECURED_REPORT_NAME = "secured-closures.csv"
+
+
+def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
+    """Write report files under `<work_dir>/reports/` (`<DATA_ROOT>/rebuild/
+    reports/` on the host), replacing last week's. A report, not a stage's
+    output: a failure is logged and never fails the rebuild."""
+    try:
+        out_dir = work_dir / DISCREPANCY_REPORT_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            (out_dir / name).write_text(text)
+    except OSError:
+        logger.exception("%s report could not be written", what)
+
 
 # What one of the two validation reads answers with; see `_read_back`.
 _Read = TypeVar("_Read")
@@ -166,6 +212,50 @@ WEEKEND_SENTINEL_EXPECTED = "separated"
 # the permit list of a ride that never entered the park. `assign_way` returns
 # every fraction and says the caller decides; this is the decision.
 MIN_JURISDICTION_FRACTION = 0.10
+
+# The bicycle-closure gate (VALIDATE; SINGLETRACK-review-r0, finding 2a).
+#
+# Valhalla's C++ parser reopened 753 singletrack ways and 27 rated OSM closures
+# after the transform had closed them, every Lua check passed, and the build was
+# promoted. So VALIDATE reads a sample of them back from every staged graph,
+# with a pedestrian `/locate` and each edge's `access.bicycle`, and a graph
+# that leaves any of them open to bicycles is not swapped in.
+#
+# Bounded on purpose: at most this many probes of each kind, read in one
+# one-shot `valhalla_service locate` per graph (four in all), each under its own
+# timeout as well as the rebuild's deadline. That is a few seconds per rebuild.
+CLOSURE_GATE_SINGLETRACKS = 40
+CLOSURE_GATE_OSM_CLOSURES = 20
+# And, for the NO-BIKE-PATHS rules (OWNER-DECISIONS 291), this many ways of each
+# reason: every rule must reach the tiles, not only the singletrack one. A way
+# whose reason the graph reopens on purpose (`trail_closures.OFFROAD_KEEPS`) is
+# probed on the other graphs only.
+CLOSURE_GATE_PER_REASON = 8
+CLOSURE_GATE_READ_TIMEOUT_S = 120
+# Written under the rebuild's reports directory for the post-swap probe
+# (scripts/probe_bicycle_closures.py; docs/OPERATIONS.md, "Bicycle closures in
+# the tiles"): the gate's own probe points, and every singletrack way id.
+CLOSURE_PROBES_REPORT = "bicycle-closure-probes.csv"
+SINGLETRACK_REPORT = "singletrack-ways.txt"
+# Keys upstream's transform reads ahead of, or over, plain `bicycle=no`, so a
+# rated OSM closure carrying one may be open by upstream's own reading and is
+# not one the gate can hold the graph to. `service=driveway` with no `access`
+# opens every mode over the bicycle tag, and any `cycleway*` key may set a
+# direction or both. A conditional grant is resolved onto the directional keys
+# by the remap itself (`M.remap_conditional_access`), so `bicycle=no` +
+# `bicycle:conditional=yes @ (...)` is open in the tile by design.
+_OPENS_OVER_BICYCLE_NO = (
+    "bicycle:forward",
+    "bicycle:backward",
+    "bicycle:conditional",
+    "bicycle:forward:conditional",
+    "bicycle:backward:conditional",
+    "vehicle:forward",
+    "vehicle:backward",
+    "oneway:bicycle",
+    "bicycle_road",
+    "cyclestreet",
+)
 
 
 def _smallint(value: float | None) -> int | None:
@@ -435,11 +525,15 @@ class ReferenceData:
                 path,
             )
             return ()
+        # Owner-known lane counts where the layer is stale (OWNER-DECISIONS 412).
+        overrides = lane_overrides.load()
         return tuple(
             conflation.RoadFeature(
                 feature_id=row["id"],
                 coordinates=[tuple(c) for c in row["coordinates"]],
-                facts=agency_roads.RoadFacts.from_json(row["facts"]),
+                facts=lane_overrides.apply(
+                    agency_roads.RoadFacts.from_json(row["facts"]), row["coordinates"], overrides
+                ),
             )
             for row in json.loads(path.read_text())
         )
@@ -509,6 +603,18 @@ class RebuildContext:
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # Whether a count is replaced by its street's median before classification
+    # (`pipeline.aadt_smoothing`; OWNER-DECISIONS 285, 296: a data-quality fix
+    # the owner can veto, which this is). To veto: set this default to False,
+    # commit, and rebuild the pipeline image; the next rebuild classifies every
+    # link on the agency's count (docs/OPERATIONS.md, "AADT smoothing, named
+    # corridors and the override re-match").
+    smooth_volume: bool = True
+    # The counts as the agencies gave them, kept when smoothing replaced any, and
+    # what smoothing and the named corridors did (for the rebuild report).
+    aadt_raw_by_way: dict[int, conflation.Match] = field(default_factory=dict)
+    smoothing_report: aadt_smoothing.SmoothingReport | None = None
+    corridor_report: corridors.CorridorReport | None = None
     # The owner's facility class per way (`routemaker.facility`), and the ride
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
@@ -524,8 +630,19 @@ class RebuildContext:
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
     singletracks: set[int] = field(default_factory=set)
+    # Every `rm:no_bicycle` reason of the NO-BIKE-PATHS rules (routemaker.trailaccess,
+    # routemaker.zoo, pipeline.trail_closures), cbd_sidewalk and singletrack
+    # included, by way; the short dismount connectors routing keeps and the route
+    # description flags; the Zoo spur (destination-only); and the ways a future
+    # mountain-bike mode would ride.
+    no_bicycle: dict[int, str] = field(default_factory=dict)
+    walk_bike: set[int] = field(default_factory=set)
+    destination_only: set[int] = field(default_factory=set)
+    mtb_only: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
     speed_corrected: set[int] = field(default_factory=set)
+    # Ways classified with a curated bike lane (`routemaker.bike_lanes`; OWNER-DECISIONS 433).
+    bike_lanes_marked: set[int] = field(default_factory=set)
     # The ways the stress map leaves out by their length or their place
     # (pipeline.restricted_areas): the short unnamed paths
     # (facility.short_paths_to_hide), the roads inside a military base, every
@@ -534,6 +651,22 @@ class RebuildContext:
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
+    # Every way inside a military area, and whether the rule closed it
+    # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
+    military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
+    # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
+    bicycle_override_ways: frozenset[int] = frozenset()
+    # Open networks inside a base that meet the outside network at two or more points
+    # for no listed reason (`restricted_areas.through_networks`); VALIDATE refuses any.
+    military_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
+    # The same for a secured federal compound (`restricted_areas.secured_closures`;
+    # owner report 2026-10-06; the rebuild's secured-closures.csv), and its open
+    # networks through; VALIDATE refuses any.
+    secured_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    secured_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
+    # The curated compounds (`restricted_areas.SECURED_AREAS`) the extract has no area for.
+    secured_missing: list[str] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -763,6 +896,56 @@ LONG_TRAIL_SENTINEL_RUN_M = round(Z10_UNPAVED_RUN_MI * METRES_PER_MILE)
 LONG_TRAIL_FLOOR_RUN_M = round(Z11_PAVED_RUN_MI * METRES_PER_MILE)
 
 
+# The ride layer's sentinel and floors (OWNER-DECISIONS 391, 402a; the same idea as the
+# long trails'): the path sentinels (the W&OD and the C&O, which are long trails too) must
+# come out in a connected network or run of at least LONG_TRAIL_SENTINEL_RUN_M, the road
+# sentinel in a calm run of at least the road bar, and the table must hold at least
+# `settings.REBUILD_CALM_RUN_FLOORS` path rows in a run of the path bar and road rows in a
+# calm run of the road bar.
+CALM_PATH_RUN_M = round(RIDE_PATH_RUN_MI * METRES_PER_MILE)
+CALM_ROAD_RUN_M = round(RIDE_ROAD_RUN_MI * METRES_PER_MILE)
+
+
+def assert_calm_runs(
+    summary,
+    path_sentinels: Sequence[int],
+    street_sentinels: Sequence[int],
+    floors: Sequence[int],
+) -> None:
+    """The z12-13 "where to ride" layer's runs came out of the rebuild: `calm_run_m`
+    is written by this rebuild alone and the tiles filter on it silently, so a pass
+    that lost the names or the geometry would promote a z12-13 map holding nothing
+    but the roads closed to cars."""
+    if summary.unset_named:
+        raise ValidationFailed(
+            f"{summary.unset_named} named ride-layer candidates are still at calm_run_m 0: "
+            "the calm-run derive did not run to the end"
+        )
+    wanted = [(way, LONG_TRAIL_SENTINEL_RUN_M, "path") for way in path_sentinels]
+    wanted += [(way, CALM_ROAD_RUN_M, "road") for way in street_sentinels]
+    for way, minimum, kind in wanted:
+        if way not in summary.sentinels:
+            raise ValidationFailed(
+                f"the calm-run {kind} sentinel way {way} is not in the segment table; if the "
+                "extract split or replaced it, move the sentinel "
+                "(settings.REBUILD_SENTINEL_CALM_PATH_WAYS or _STREET_WAYS), don't drop it"
+            )
+        if summary.sentinels[way] < minimum:
+            raise ValidationFailed(
+                f"the calm-run {kind} sentinel way {way} came out at a run of "
+                f"{summary.sentinels[way]} m, not {minimum} m or more: the names or the "
+                "geometry were lost, and z12-13 would drop the long paths and calm roads"
+            )
+    path_floor, street_floor = floors
+    if summary.path_rows < path_floor or summary.street_rows < street_floor:
+        raise ValidationFailed(
+            f"{summary.path_rows} path rows are in a run of {CALM_PATH_RUN_M} m or more and "
+            f"{summary.street_rows} road rows in a calm run of {CALM_ROAD_RUN_M} m or more, under "
+            f"the floors of {path_floor} and {street_floor} (settings.REBUILD_CALM_RUN_FLOORS): "
+            "the ride layer did not come out of the rebuild"
+        )
+
+
 def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[int]) -> None:
     """The zoomed-out map's long trails came out of the rebuild (OWNER-DECISIONS
     375): the columns are written by this rebuild alone and the tiles filter on
@@ -798,6 +981,395 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
         )
 
 
+def is_rated_osm_closure(tags: dict[str, str]) -> bool:
+    """A way OSM itself closes to bicycles that carries an `mtb:*` rating, read
+    narrowly enough that upstream's transform certainly keeps it closed.
+
+    The ratings are what the parser reopened such a way from. `bicycle=no` with
+    `foot` not `no` (a `foot=no` way nothing else may use is dropped outright,
+    so it has no edge to read), and none of the keys upstream lets open a
+    direction over `bicycle=no`.
+    """
+    if tags.get("bicycle") != "no" or tags.get("foot") == "no":
+        return False
+    if not any(key.startswith("mtb:") for key in tags):
+        return False
+    if any(key in tags for key in _OPENS_OVER_BICYCLE_NO):
+        return False
+    if tags.get("service") == "driveway":
+        return False
+    return not any(key.startswith("cycleway") for key in tags)
+
+
+def probe_point(coordinates: Sequence[tuple[float, float]]) -> tuple[float, float] | None:
+    """The midpoint of a way's longest segment: on the way's own line, and as
+    far from its end nodes, where other ways' edges meet it, as it can be."""
+    best: tuple[float, tuple[float, float]] | None = None
+    for (lon1, lat1), (lon2, lat2) in itertools.pairwise(coordinates):
+        length = (lon2 - lon1) ** 2 + (lat2 - lat1) ** 2
+        if length > 0 and (best is None or length > best[0]):
+            best = (length, ((lon1 + lon2) / 2, (lat1 + lat2) / 2))
+    return None if best is None else best[1]
+
+
+def _spread(ids, limit: int) -> list[int]:
+    """At most `limit` of `ids`, evenly spaced through them in id order, so the
+    sample is the same for the same extract and reaches across the region."""
+    ordered = sorted(ids)
+    if len(ordered) <= limit:
+        return ordered
+    step = len(ordered) / limit
+    return [ordered[int(index * step)] for index in range(limit)]
+
+
+def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
+    """The gate's sample: singletrack (the rule's own ways) and rated OSM
+    closures, each bounded, each with a point on its own line."""
+    reference = context.require_reference()
+    by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
+
+    def walkable(osm_id: int) -> bool:
+        way = by_id.get(osm_id)
+        return way is not None and way.tags.get("foot") != "no"
+
+    singles = [osm_id for osm_id in context.singletracks if walkable(osm_id)]
+    osm = [
+        way.osm_id
+        for way in context.ways
+        if way.osm_id not in context.singletracks
+        and way.osm_id not in reference.bridge_bicycle_legal
+        and is_rated_osm_closure(way.tags)
+    ]
+    probes = []
+    single_ids = _spread(singles, CLOSURE_GATE_SINGLETRACKS)
+    chosen = single_ids + _spread(osm, CLOSURE_GATE_OSM_CLOSURES)
+    reasons = {osm_id: singletrack.NO_BICYCLE for osm_id in single_ids}
+    # The new rules' ways, by reason: walkable, and not a bridge a fixture opens.
+    by_reason: dict[str, list[int]] = {}
+    no_bicycle = getattr(context, "no_bicycle", None) or {}
+    destination_only = getattr(context, "destination_only", None) or set()
+    for osm_id, reason in no_bicycle.items():
+        if reason in (singletrack.NO_BICYCLE, cbd.NO_BICYCLE) or osm_id in chosen:
+            continue
+        if osm_id in reference.bridge_bicycle_legal or osm_id in destination_only:
+            continue
+        if walkable(osm_id):
+            by_reason.setdefault(reason, []).append(osm_id)
+    for reason, ids in sorted(by_reason.items()):
+        for osm_id in _spread(ids, CLOSURE_GATE_PER_REASON):
+            chosen.append(osm_id)
+            reasons[osm_id] = reason
+    for osm_id in chosen:
+        point = probe_point(by_id[osm_id].coordinates)
+        if point is not None:
+            probes.append(tiles.ClosureProbe(osm_id, point[0], point[1], reasons.get(osm_id, "")))
+    return probes
+
+
+def write_closure_reports(out_dir: Path, probes, singletracks) -> None:
+    """What the post-swap probe reads (scripts/probe_bicycle_closures.py)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / CLOSURE_PROBES_REPORT).write_text(
+        "way_id,lon,lat,reason\n"
+        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason}\n" for p in probes)
+    )
+    (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
+
+
+def assert_bicycle_closures_reached_the_tiles(readbacks: dict) -> None:
+    """No staged graph may leave a sampled closure open to bicycles.
+
+    And each graph that keeps trails must have found some of them: a read that
+    finds no edge for any probe passes vacuously, which is what a locate in the
+    wrong place or a changed response would look like. The no-trail graph drops
+    every trail-class way, singletrack included, so it is held to the first
+    rule only.
+    """
+    missing = [v.value for v in variants.Variant if v not in readbacks]
+    if missing:
+        raise ValidationFailed(
+            f"no bicycle-closure read-back for {', '.join(missing)}, so nothing says "
+            "those graphs keep singletrack closed"
+        )
+    for variant, readback in readbacks.items():
+        if readback.open_to_bicycles:
+            shown = ", ".join(str(w) for w in readback.open_to_bicycles[:REPORTED_VIOLATIONS])
+            raise ValidationFailed(
+                f"the {variant.value} graph is open to bicycles on "
+                f"{len(readback.open_to_bicycles)} of {readback.probed} ways it must keep "
+                f"closed (singletrack or OSM's own bicycle=no), e.g. way {shown}: "
+                "something reopened them after the transform, as Valhalla's parser did "
+                "from their mtb:* ratings (lua/graph.lua, remap.strip_ratings_if_closed)"
+            )
+        if variant is not variants.Variant.NO_TRAIL and readback.probed and not readback.found:
+            raise ValidationFailed(
+                f"the {variant.value} graph has no edge on any of the {readback.probed} "
+                "bicycle-closure probes, so the read tested nothing"
+            )
+    logger.info(
+        "bicycle closures held in every graph: %s",
+        ", ".join(
+            f"{variant.value} {readback.found}/{readback.probed} found"
+            for variant, readback in readbacks.items()
+        ),
+    )
+
+
+def assert_reference_lts4_street(
+    context: RebuildContext,
+    street: str,
+    min_share: float,
+    north_of_lat: float,
+    north_min_share: float,
+) -> lts_sentinels.StreetTiers | None:
+    """The owner's reference LTS 4 road came out LTS 4 (OWNER-DECISIONS 408, 409;
+    `pipeline.lts_sentinels`). Off with an empty street; skipped, with a warning, on a
+    rebuild with no agency street layer installed (it classifies from OSM alone)."""
+    if not street:
+        return None
+    reference = context.require_reference()
+    if not reference.road_blocks:
+        logger.warning(
+            "no agency street layer is installed, so the reference LTS 4 road (%s) is not checked",
+            street,
+        )
+        return None
+    ids = lts_sentinels.block_ids(reference.road_blocks, street)
+    if not ids:
+        raise ValidationFailed(
+            f"the installed Roadway Block has no block named {street}, so the owner's "
+            "reference LTS 4 road (OWNER-DECISIONS 408) cannot be checked"
+        )
+    tiers = lts_sentinels.street_tiers(context.staging_schema, street, ids, north_of_lat)
+    found = lts_sentinels.problems(tiers, min_share, north_min_share)
+    if found:
+        raise ValidationFailed("; ".join(found))
+    logger.info(
+        "%s: %.0f%% LTS 4, %.0f%% north of %.4f N",
+        street,
+        100 * tiers.share,
+        100 * tiers.north_share,
+        north_of_lat,
+    )
+    return tiers
+
+
+def military_through_networks(
+    context: RebuildContext, found: Sequence[restricted_areas.MilitaryWay] | None = None
+) -> list[tuple[list[int], list[int]]]:
+    """`restricted_areas.through_networks` over the rebuild's ways: the outside
+    ways it needs are only those that share a node with an open in-base way.
+    `found` is the military rule's ways (the default) or the secured compounds'
+    (`context.secured_ways`); outside is outside both."""
+    if found is None:
+        found = context.military_ways
+    inside = {m.way_id for m in context.military_ways} | {
+        m.way_id for m in getattr(context, "secured_ways", None) or ()
+    }
+    open_in = {m.way_id for m in found if not m.closed}
+    by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
+    open_nodes = {node for way_id in open_in for node in getattr(by_id.get(way_id), "node_ids", ())}
+    node_ids = {}
+    outside_open = set()
+    for way in context.ways:
+        if way.osm_id in open_in:
+            node_ids[way.osm_id] = way.node_ids
+        elif (
+            way.osm_id not in inside
+            and way.node_ids
+            and not open_nodes.isdisjoint(way.node_ids)
+            and restricted_areas.open_to_bicycles(way.tags)
+        ):
+            node_ids[way.osm_id] = way.node_ids
+            outside_open.add(way.osm_id)
+    return restricted_areas.through_networks(found, node_ids, outside_open)
+
+
+def assert_military_closures(
+    context: RebuildContext,
+    sentinel_ways: Sequence[int],
+    min_closed: Mapping[str, int] | None = None,
+) -> int:
+    """Ways inside a military area were closed (owner report 2026-10-05): each
+    sentinel way, a Joint Base Anacostia-Bolling walkway or service road with no
+    access tag of its own, carries `rm:no_bicycle=military` where the extract has
+    it. A sentinel the extract no longer has is warned about, not refused (OSM
+    renumbers ways); the closure gate reads a sample of the reason's ways back
+    from every graph. Returns the number of ways closed."""
+    closed = sum(1 for m in context.military_ways if m.closed)
+    by_site = Counter(m.installation for m in context.military_ways if m.closed)
+    # A floor's key is one installation's OSM name, or a tuple of names counted
+    # together: overlapping outlines (Bolling's old outline inside JBAB) split their
+    # ways by which area holds most of each, and that tie-break can move with any
+    # OSM edit, so only their sum is held.
+    short = {}
+    for site, floor in (min_closed or {}).items():
+        names = (site,) if isinstance(site, str) else tuple(site)
+        count = sum(by_site.get(name, 0) for name in names)
+        if count < floor:
+            short[site] = (count, floor)
+    if short:
+        raise ValidationFailed(
+            "military areas closed fewer ways than their floor (closed, floor): "
+            f"{short}; an installation's outline was lost or renamed upstream, so its "
+            "roads and paths could be routed again (OWNER-DECISIONS 437; "
+            "REBUILD_SENTINEL_MILITARY_MIN_CLOSED)"
+        )
+    if context.military_through:
+        named = [
+            (ways[:5], len(ways), len(entries)) for ways, entries in context.military_through[:5]
+        ]
+        raise ValidationFailed(
+            "open networks inside a military area meet the public network at two or more "
+            f"points (first ways, ways, entries): {named}; a route could pass through a base "
+            "(OWNER-DECISIONS 437)"
+        )
+    present = {way.osm_id for way in context.ways}
+    wrong = [
+        way_id
+        for way_id in sentinel_ways
+        if way_id in present
+        and context.no_bicycle.get(way_id) != restricted_areas.MILITARY_NO_BICYCLE
+    ]
+    missing = [way_id for way_id in sentinel_ways if way_id not in present]
+    if missing:
+        logger.warning(
+            "military-closure sentinel ways not in the extract (renumbered?): %s", missing
+        )
+    if wrong:
+        raise ValidationFailed(
+            f"ways {wrong} inside Joint Base Anacostia-Bolling are not closed to bicycles "
+            "(rm:no_bicycle=military): the military-area rule did not run or lost its areas, "
+            "so a route could run through a base again (owner report 2026-10-05)"
+        )
+    logger.info(
+        "military areas: %d ways closed to bicycles, %d left open (military-closures.csv)",
+        closed,
+        len(context.military_ways) - closed,
+    )
+    return closed
+
+
+def assert_secured_closures(
+    context: RebuildContext,
+    sentinel_ways: Sequence[int],
+    min_closed: Mapping[str, int] | None = None,
+) -> int:
+    """Ways inside a secured federal compound were closed (owner report 2026-10-06):
+    each sentinel way, a James J. Rowley Training Center road or path with no access
+    tag of its own, carries `rm:no_bicycle=secured` where the extract has it; each
+    floored compound (by its `SECURED_AREAS` name) closed at least its floor, so an
+    outline deleted or renumbered upstream fails the build rather than reopening the
+    compound; and no open network inside one meets the public network at two or
+    more points. Returns the number of ways closed."""
+    found = getattr(context, "secured_ways", None) or []
+    closed = sum(1 for m in found if m.closed)
+    by_site = Counter(m.installation for m in found if m.closed)
+    short = {
+        site: (by_site.get(site, 0), floor)
+        for site, floor in (min_closed or {}).items()
+        if by_site.get(site, 0) < floor
+    }
+    if short:
+        missing = getattr(context, "secured_missing", None) or []
+        raise ValidationFailed(
+            "secured federal compounds closed fewer ways than their floor (closed, floor): "
+            f"{short}; curated areas the extract no longer has: {missing or 'none'}. An "
+            "outline was lost, renumbered or renamed upstream, so its roads and paths could "
+            "be routed again (owner report 2026-10-06; restricted_areas.SECURED_AREAS, "
+            "REBUILD_SENTINEL_SECURED_MIN_CLOSED)"
+        )
+    through = getattr(context, "secured_through", None) or []
+    if through:
+        named = [(ways[:5], len(ways), len(entries)) for ways, entries in through[:5]]
+        raise ValidationFailed(
+            "open networks inside a secured federal compound meet the public network at two "
+            f"or more points (first ways, ways, entries): {named}; a route could pass through "
+            "one (owner report 2026-10-06)"
+        )
+    present = {way.osm_id for way in context.ways}
+    wrong = [
+        way_id
+        for way_id in sentinel_ways
+        if way_id in present
+        and context.no_bicycle.get(way_id) != restricted_areas.SECURED_NO_BICYCLE
+    ]
+    missing_ways = [way_id for way_id in sentinel_ways if way_id not in present]
+    if missing_ways:
+        logger.warning(
+            "secured-closure sentinel ways not in the extract (renumbered?): %s", missing_ways
+        )
+    if wrong:
+        raise ValidationFailed(
+            f"ways {wrong} inside the James J. Rowley Training Center are not closed to "
+            "bicycles (rm:no_bicycle=secured): the secured-compound rule did not run or lost "
+            "its areas, so a route could run through the compound again (owner report "
+            "2026-10-06)"
+        )
+    logger.info(
+        "secured federal compounds: %d ways closed to bicycles, %d left open "
+        "(secured-closures.csv)",
+        closed,
+        len(found) - closed,
+    )
+    return closed
+
+
+def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
+    """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
+    out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
+    street layer installed, as the reference LTS 4 road is."""
+    stretches = [lts_sentinels.Stretch.of(row) for row in rows]
+    if not stretches:
+        return []
+    reference = context.require_reference()
+    if not reference.road_blocks:
+        logger.warning(
+            "no agency street layer is installed, so the owner's stretches are not checked"
+        )
+        return []
+    found, read = [], []
+    for stretch in stretches:
+        ids = lts_sentinels.block_ids(reference.road_blocks, stretch.street)
+        if not ids:
+            found.append(
+                f"the installed Roadway Block has no block named {stretch.street}, so "
+                f"{stretch.decision} cannot be checked"
+            )
+            continue
+        tiers = lts_sentinels.stretch_tiers(context.staging_schema, stretch, ids)
+        read.append(tiers)
+        found.extend(lts_sentinels.stretch_problems(tiers))
+        logger.info(
+            "%s %.4f-%.4f N: %.0f%% at tier %d (%s)",
+            stretch.street,
+            stretch.south_lat,
+            stretch.north_lat,
+            100 * tiers.share,
+            stretch.tier,
+            stretch.decision,
+        )
+    if found:
+        raise ValidationFailed("; ".join(found))
+    return read
+
+
+def assert_mass_capacity(
+    summary, min_share: float | None = None, median_range: Sequence[float] | None = None
+) -> None:
+    """The Mass Ride capacity column came out of the rebuild (OWNER-DECISIONS 325-327,
+    387): present on nearly every road and path row, in a plausible range
+    (`pipeline.mass_capacity`). The map colours by it and falls back silently
+    without it, so a pass that lost it would promote the old map unannounced."""
+    found = mass_capacity.problems(
+        summary,
+        mass_capacity.MIN_SHARE if min_share is None else min_share,
+        tuple(mass_capacity.MEDIAN_RANGE_RPM if median_range is None else median_range),
+    )
+    if found:
+        raise ValidationFailed("; ".join(found))
+
+
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
     """Make a road closed to motor traffic for good tier 1, as the weekend graph
     makes a weekend closure; True when it did.
@@ -811,7 +1383,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     where no curated stress row set the tier: the owner's word on a way wins.
     """
     from routemaker.classes import TRAIL_CLASS_HIGHWAY
-    from routemaker.stress import Stress, StressResult
+    from routemaker.stress import MOTOR_RESTRICTED_RULE, Stress, StressResult
 
     if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
         return False
@@ -822,7 +1394,10 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     current = stress_by_way.get(way.osm_id)
     if current is None or getattr(current, "adjustment", None) is not None:
         return False
-    if current.tier is Stress.LTS1:
+    # Already tier 1 by the classifier's own reading, nothing to correct; but a tier 1
+    # the motor-restriction cap set (OWNER-DECISIONS 444) is this rule's case, and gets
+    # its reason and its count.
+    if current.tier is Stress.LTS1 and not current.rule.startswith(MOTOR_RESTRICTED_RULE):
         return False
     stress_by_way[way.osm_id] = StressResult(
         tier=Stress.LTS1,
@@ -877,6 +1452,7 @@ def build_handlers(
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
+    sample_closures: Callable[[], dict] | None = None,
 ) -> dict[Stage, Callable[[], None]]:
     """The real handler set, one per stage, with the external dependencies
     injected so the wiring is testable without Valhalla.
@@ -890,6 +1466,11 @@ def build_handlers(
     lookup, the override loader, the disk measurement and the 3DEP fetch - and
     each default is the production implementation.
     """
+    # The closure gate's reads carry their own timeout on top of the deadline,
+    # so a wedged read fails VALIDATE in minutes rather than at hour eight.
+    closure_run = run or functools.partial(
+        _run_command, deadline=context.deadline, timeout=CLOSURE_GATE_READ_TIMEOUT_S
+    )
     run = run or functools.partial(_run_command, deadline=context.deadline)
     state_at = state_at or _state_at
     load_overrides = load_overrides or overrides.load_approved
@@ -898,6 +1479,7 @@ def build_handlers(
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
+    sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
     def fetch_extract() -> None:
         """Produce this week's extract, or reuse the one on disk, then read it.
@@ -1077,6 +1659,21 @@ def build_handlers(
             # Terminal, like a refused override: a fifth attempt reads the
             # same extract and finds the same boundaries.
             raise ValidationFailed(str(missing)) from missing
+        # Each count the volume gates read is its street's median where the street
+        # disagrees (OWNER-DECISIONS 285, 296), after the states are known
+        # because a street is smoothed within its own jurisdiction.
+        smoothed_rule: set[int] = set()
+        if context.smooth_volume:
+            context.aadt_raw_by_way = dict(context.aadt_by_way)
+            context.aadt_by_way, context.smoothing_report = aadt_smoothing.smooth(
+                context.ways, context.aadt_by_way, state_of.get
+            )
+            logger.info("%s", context.smoothing_report.summary())
+            smoothed_rule = {
+                item.way_id
+                for item in context.smoothing_report.replaced
+                if aadt_smoothing.crosses_volume_gate(item.raw, item.smoothed)
+            }
         # One-way ways that are a carriageway of a divided road, which item
         # 109's one-way relief does not apply to.
         started = time.monotonic()
@@ -1095,6 +1692,10 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # And the curated bike lanes (OWNER-DECISIONS 433, Veirs Mill Road): a painted
+        # lane the map is missing, for the classifier and the facility class only.
+        lanes = bike_lanes.load()
+        laned: set[int] = set()
         # The agency's street layer, over the way's own tags: a posted speed,
         # lanes, one-way, bike lane and parking it records take precedence (in
         # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
@@ -1135,20 +1736,49 @@ def build_handlers(
             tags, applied = speed_corrections.corrected(tags, speeds.get(way.osm_id))
             if applied:
                 used.add(way.osm_id)
-            context.stress_by_way[way.osm_id] = classify(
-                tags,
-                aadt=match.aadt if match else None,
-                # The agency, not the precedence tier: the tier is what
-                # `conflate` ranked two counts with and says nothing about who
-                # published the winner.
-                aadt_source=match.agency if match else None,
-                aadt_year=match.year if match else None,
-                urban=way.osm_id in reference.urban_way_ids,
-                jurisdiction=state_of.get(way.osm_id),
-                divided=way.osm_id in divided_ways,
-                separate_facility=way.osm_id in separate_roads,
-                parking_width_m=facts.parking_reach_m if facts is not None else None,
-            )
+            tags, lane_applied = bike_lanes.corrected(tags, lanes.get(way.osm_id))
+            if lane_applied:
+                laned.add(way.osm_id)
+                context.class_tags_by_way[way.osm_id] = tags
+
+            def classified(aadt, tags=tags, way=way, match=match, facts=facts):
+                return classify(
+                    tags,
+                    aadt=aadt,
+                    # The agency, not the precedence tier: the tier is what
+                    # `conflate` ranked two counts with and says nothing about
+                    # who published the winner.
+                    aadt_source=match.agency if match else None,
+                    aadt_year=match.year if match else None,
+                    urban=way.osm_id in reference.urban_way_ids,
+                    jurisdiction=state_of.get(way.osm_id),
+                    divided=way.osm_id in divided_ways,
+                    separate_facility=way.osm_id in separate_roads,
+                    parking_width_m=facts.parking_reach_m if facts is not None else None,
+                )
+
+            context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
+            if match is not None and match.raw_aadt is not None:
+                # Smoothed (OWNER-DECISIONS 285, 303): the link is classified on
+                # the street's median, but the segment publishes what the agency
+                # counted, and the tier on that count is kept for the junction
+                # model, which charges the volume bunched at the intersection
+                # (ARTERIAL review r0, SF1).
+                unsmoothed = classified(match.raw_aadt)
+                current = context.stress_by_way[way.osm_id]
+                context.stress_by_way[way.osm_id] = replace(
+                    current,
+                    volume_aadt=match.raw_aadt,
+                    unsmoothed_tier=unsmoothed.tier if unsmoothed.tier > current.tier else None,
+                    rule=current.rule
+                    + (", street volume (median)" if way.osm_id in smoothed_rule else ""),
+                )
+            if lane_applied:
+                # The owner's reading of the curated lane (433, 437.4): LTS 4 on three
+                # or more lanes a direction or at 45 mph and more.
+                context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
+                    context.stress_by_way[way.osm_id], tags
+                )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
                     context.stress_by_way[way.osm_id],
@@ -1174,12 +1804,50 @@ def build_handlers(
             )
         if reported:
             write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
+        # The owner's named corridors (OWNER-DECISIONS 286, 294-296), over the
+        # classified tiers and under the override rows. A way's recorded bike
+        # lane (the agency overlay) exempts it, as an OSM one does.
+        context.corridor_report = corridors.apply(
+            corridors.load(),
+            context.ways,
+            context.stress_by_way,
+            tags_of=context.class_tags_by_way,
+            separate_roads=separate_roads,
+        )
+        logger.info("%s", context.corridor_report.summary())
+        # Per way, beside the re-match report; with the veto the smoothing file
+        # is header-only, so last week's list does not stand in for this one.
+        write_reports(
+            context.work_dir,
+            {
+                SMOOTHING_REPORT_NAME: (
+                    context.smoothing_report or aadt_smoothing.SmoothingReport()
+                ).to_csv(context.stress_by_way),
+                CORRIDOR_REPORT_NAME: context.corridor_report.to_markdown(),
+            },
+            "AADT smoothing and named-corridor",
+        )
+        if context.corridor_report.unmatched_entries:
+            logger.warning(
+                "owner's named-corridor entries matched no way (fixtures/corridors): %s; the "
+                "extract's geometry has moved, or the file is wrong",
+                ", ".join(context.corridor_report.unmatched_entries),
+            )
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)
         if unused:
             # Posted since, or gone from the extract: either way the row is no
             # longer what sets the way's speed, which a reviewer should know.
             logger.warning("curated speed limits not applied (posted, or no such way): %s", unused)
+        context.bike_lanes_marked = laned
+        logger.info("curated bike lanes (fixtures/bike_lanes): %d ways", len(laned))
+        unused_lanes = sorted(set(lanes) - laned)
+        if unused_lanes:
+            # Mapped since (the owner's OSM edit), or gone from the extract.
+            logger.warning(
+                "curated bike lanes not applied (a cycleway tag now, or no such way): %s",
+                unused_lanes,
+            )
 
     def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
         """The DC-against-OSM discrepancy report for the owner, each rebuild
@@ -1285,6 +1953,19 @@ def build_handlers(
                 sorted(authorities_for(assignments, MIN_JURISDICTION_FRACTION))
             )
 
+    def write_rematch_report(report) -> None:
+        """`<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`: every
+        override row whose way was missing, and what became of it. A report, not
+        a stage's output: it never fails the rebuild."""
+        write_reports(
+            context.work_dir,
+            {
+                f"{REMATCH_REPORT_NAME}.md": report.to_markdown(),
+                f"{REMATCH_REPORT_NAME}.csv": report.to_csv(),
+            },
+            "override re-match",
+        )
+
     def apply_overrides() -> None:
         """The audited corrections, applied where each kind belongs.
 
@@ -1311,6 +1992,25 @@ def build_handlers(
                 f"approved override rows carry kinds no applier handles: {unhandled}; "
                 f"the handled kinds are {sorted(overrides.HANDLED_KINDS)} ({rows_named})"
             )
+        # A row whose way left the extract is re-pointed at the ways that now
+        # stand for it, where that is unambiguous (OWNER-DECISIONS 282); every
+        # row that was missing is in the report, and a failed one stays as it
+        # was, so the appliers below still list its way as unmatched.
+        started = time.monotonic()
+        rows, rematch_report = rematch.resolve(rows, context.ways_by_id)
+        logger.info("%s (%.1f s)", rematch_report.summary(), time.monotonic() - started)
+        for entry in rematch_report.entries:
+            level = logging.WARNING if entry.outcome in ("failed", "drifted") else logging.INFO
+            logger.log(
+                level,
+                "override %s on way %s: %s %s %s",
+                entry.kind,
+                entry.old_way_id,
+                entry.outcome,
+                list(entry.new_way_ids) or "",
+                entry.reason,
+            )
+        write_rematch_report(rematch_report)
         try:
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
@@ -1342,6 +2042,7 @@ def build_handlers(
             if reference is not None and way_id in reference.bridge_bicycle_legal
         }
         context.bicycle_override_directions = superseded
+        context.bicycle_override_ways = frozenset(superseding)
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]
@@ -1369,6 +2070,9 @@ def build_handlers(
             jurisdiction=jurisdiction,
             unmatched_way_ids=missing,
             fixture_rows_superseded=len(superseded),
+            rematched=len(rematch_report.rematched),
+            rematch_failed=len(rematch_report.failed),
+            rematch_report=rematch_report,
         )
         logger.info("%s", context.override_report.summary())
 
@@ -1409,9 +2113,93 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
-        context.short_paths_hidden |= restricted_areas.roads_inside(placed, areas["military"])
+        # And closed to bicycles, everything inside a military area (by the share of
+        # its length) but a numbered public road, a way signed for bicycles, the
+        # Pentagon's listed ways and what an owner's override reopens (owner report
+        # 2026-10-05, "err closed on bike access", OWNER-DECISIONS 330, 437); what is
+        # left open is drawn, and a closed road is left off the map (88).
+        context.military_ways = restricted_areas.military_closures(
+            placed, areas["military"], reopened=context.bicycle_override_ways
+        )
+        military_closed = {m.way_id for m in context.military_ways if m.closed}
+        # And a secured federal compound's, by the same rule (owner report 2026-10-06:
+        # the Secret Service's Rowley Training Center), but for the ways the military
+        # rule already judged.
+        context.secured_ways = restricted_areas.secured_closures(
+            placed,
+            areas[restricted_areas.SECURED],
+            reopened=context.bicycle_override_ways,
+            skip={m.way_id for m in context.military_ways},
+        )
+        secured_closed = {m.way_id for m in context.secured_ways if m.closed}
+        context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
+        if context.secured_missing:
+            logger.warning(
+                "secured compounds listed by OSM id (restricted_areas.SECURED_AREAS) not in "
+                "the extract, so not closed (renumbered upstream?): %s",
+                context.secured_missing,
+            )
+        context.short_paths_hidden |= {
+            m.way_id
+            for m in (*context.military_ways, *context.secured_ways)
+            if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
+        }
+        logger.info("%s", restricted_areas.military_summary(context.military_ways))
+        logger.info(
+            "%s",
+            restricted_areas.military_summary(context.secured_ways, "secured federal compounds"),
+        )
+        missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
+        if missing_pentagon:
+            logger.warning(
+                "Pentagon ways listed open (OWNER-DECISIONS 437.5) not found open in the "
+                "reservation, so closed (renumbered upstream?): %s",
+                missing_pentagon,
+            )
+        context.military_through = military_through_networks(context)
+        context.secured_through = military_through_networks(context, context.secured_ways)
+        # Paved ways with a mountain-bike rating: the remap removes the rating, which
+        # Valhalla's parser would price as dirt (lua/routemaker_remap.lua,
+        # strip_paved_ratings; the paved Rock Creek Trail in Montgomery County).
+        # Paved is every hard surface, wooden bridges included (OWNER-DECISIONS 440).
+        paved_rated = sum(
+            1
+            for way in context.ways
+            if surfaces.is_paved(way.tags)
+            and any(way.tags.get(key) is not None for key in singletrack.SCALE_KEYS)
+        )
+        logger.info(
+            "paved ways with an mtb rating, priced paved in the graph (the remap drops the "
+            "rating): %d",
+            paved_rated,
+        )
+        write_reports(
+            context.work_dir,
+            {
+                MILITARY_REPORT_NAME: restricted_areas.military_report_csv(context.military_ways),
+                SECURED_REPORT_NAME: restricted_areas.military_report_csv(
+                    context.secured_ways, "facility"
+                ),
+            },
+            "military-closure",
+        )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
+        routes = route_relations.read_routes(context.source_pbf)
+        nobike = trail_closures.closures(
+            context.ways,
+            routes,
+            areas[restricted_areas.PARK],
+            military=military_closed,
+            secured=secured_closed,
+            reopened=context.bicycle_override_ways,
+        )
+        context.no_bicycle = nobike.reasons
+        context.walk_bike = nobike.walk_bike
+        context.destination_only = nobike.destination_only
+        context.mtb_only = nobike.mtb_only()
+        context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
+        context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -1424,22 +2212,25 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
-            if cbd.barred_sidewalk(way.tags, way.coordinates):
-                context.cbd_sidewalks.add(way.osm_id)
-            if singletrack.is_singletrack(way.tags):
-                context.singletracks.add(way.osm_id)
+            if nobike.reasons.get(way.osm_id) == trailaccess.MTB:
+                # No path rail on a trail only a mountain bike rides.
+                context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
-            "barred to bicycles, %d singletrack ways avoided",
+            "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
+            "walk-your-bike connectors kept, %d destination-only",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
             len(beside),
             len(context.cbd_sidewalks),
             len(context.singletracks),
+            dict(sorted(nobike.counts().items())),
+            len(nobike.walk_bike),
+            len(nobike.destination_only),
         )
 
     def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:
@@ -1606,10 +2397,13 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                if way.osm_id in context.cbd_sidewalks:
-                    derived["no_bicycle"] = cbd.NO_BICYCLE
-                if way.osm_id in context.singletracks:
-                    derived["no_bicycle"] = singletrack.NO_BICYCLE
+                reason = context.no_bicycle.get(way.osm_id)
+                if reason is not None and not (
+                    variant is variants.Variant.OFFROAD and reason in trail_closures.OFFROAD_KEEPS
+                ):
+                    derived["no_bicycle"] = reason
+                if way.osm_id in context.destination_only:
+                    derived["destination_only"] = zoo.DESTINATION_ONLY
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -1692,7 +2486,26 @@ def build_handlers(
             return facility.MapClass.BARRED
         if osm_id in context.short_paths_hidden or osm_id in context.singletracks:
             return facility.MapClass.HIDDEN
-        return facility.map_class(tags)
+        base = facility.map_class(tags)
+        reason = context.no_bicycle.get(osm_id)
+        if reason is not None and reason != trailaccess.MTB and base is facility.MapClass.ROAD:
+            # A trail the NO-BIKE-PATHS rules close (the Zoo's, a hiking path, a
+            # private golf-cart path) is not drawn as a bike facility; the base
+            # map shows it as it is (OWNER-DECISIONS 278, 290(b)). The
+            # mountain-bike class stays, with the tile's `mtb` property, which
+            # the map reads to draw it as not for routes (452a, superseding
+            # 452's hiding and 290(b)'s faint drawing); a future MTB mode would
+            # draw it as routable.
+            return facility.MapClass.BARRED
+        return base
+
+    def dc_blocks_of(osm_id: int) -> tuple:
+        """The District Roadway Block records a way lies along, for its Mass Ride
+        width (OWNER-DECISIONS 404); none outside DC or where no block reached it."""
+        facts = context.road_facts_by_way.get(osm_id)
+        if facts is None or facts.agency != agency_roads.DC_AGENCY:
+            return ()
+        return facts.block_facts
 
     def write_segments() -> None:
         from .schema import schema_exists
@@ -1705,6 +2518,14 @@ def build_handlers(
 
         reference = context.require_reference()
         classify_facilities()
+        dc_rules = massflow.DcRules(
+            wide_lane_ft=_setting("MASS_RIDE_DC_WIDE_LANE_FT"),
+            wide_lane_cap_ft=_setting("MASS_RIDE_DC_WIDE_LANE_CAP_FT"),
+            verified_reversible_blocks=frozenset(
+                _setting("MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS")
+            ),
+            ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
+        )
         rows: list[dict] = []
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
@@ -1719,8 +2540,26 @@ def build_handlers(
             car_free_when = sorted(context.car_free_by_way.get(way.osm_id, ()))
             # Only a way the zoomed-out map draws is named for a run or judged as
             # a bridge (operations review N-2: a street's name is never read).
-            long_trail = not mountain_bike and trail_routes.is_zoomed_out_trail(
-                way_facility, trail, car_free_when
+            zoomed_out_trail = trail_routes.is_zoomed_out_trail(way_facility, trail, car_free_when)
+            long_trail = not mountain_bike and zoomed_out_trail
+            way_map_class = map_class_of(way.osm_id, way.tags).value
+            # The z12-13 ride layer (OWNER-DECISIONS 391): a path or an LTS 1 street
+            # that can be in a long enough run; its length is derived after the rows
+            # are written (`trail_routes.derive_calm_runs`), from 0 here.
+            calm_candidate = trail_routes.is_calm_candidate(
+                zoomed_out_trail=zoomed_out_trail,
+                mountain_bike=mountain_bike,
+                mtb_only=way.osm_id in context.mtb_only,
+                is_trail_class=trail,
+                stress_tier=int(stress.tier),
+                map_class=way_map_class,
+            )
+            # Why a bicycle may not use it, or why an override reopened it, for the map's
+            # road panel (OWNER-DECISIONS 441a); the router says whether it may.
+            access_reason = facility.bike_access_reason(
+                way.tags,
+                no_bicycle=context.no_bicycle.get(way.osm_id),
+                overridden=way.osm_id in context.bicycle_override_ways,
             )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
@@ -1731,32 +2570,47 @@ def build_handlers(
                         stress,
                         sinuosity=sinuosity([Point(lon, lat) for lon, lat in piece]),
                         is_trail_class=trail,
-                        is_unpaved=is_unpaved(way.tags),
+                        is_unpaved=inferred_unpaved(way.tags),
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
                         facility=way_facility,
                         car_free_when=car_free_when,
-                        map_class=map_class_of(way.osm_id, way.tags).value,
+                        map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
+                        mtb_only=way.osm_id in context.mtb_only,
+                        walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
+                        mass_usable_width_m=massflow.usable_width_rounded(
+                            way.tags,
+                            getattr(stress, "lanes", None),
+                            dc_blocks_of(way.osm_id),
+                            dc_rules,
+                        ),
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
                         trail_name=trail_routes.way_name(
                             way.tags, context.route_names.get(way.osm_id)
                         )
-                        if long_trail
+                        if long_trail or calm_candidate
                         else None,
+                        calm_run_m=0 if calm_candidate else None,
+                        roadside=facility.roadside_start(
+                            way.tags, way_facility, drawn_trail=trail and way_map_class == "road"
+                        ),
                         trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
                         trail_bridge=3
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
+                        bike_access_reason=access_reason,
                     )
                 )
         context.rows = rows
         writers.write_segments(context.staging_schema, rows)
         trail_routes.derive_trail_runs(context.staging_schema)
+        trail_routes.derive_calm_runs(context.staging_schema)
+        trail_routes.derive_roadside(context.staging_schema)
 
     def validate() -> None:
         if set(context.build_logs) != set(variants.Variant):
@@ -1784,6 +2638,28 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        assert_reference_lts4_street(
+            context,
+            _setting("REBUILD_SENTINEL_LTS4_STREET"),
+            _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
+        )
+        assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
+        assert_military_closures(
+            context,
+            _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
+        )
+        assert_secured_closures(
+            context,
+            _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
+        )
+        assert_mass_capacity(
+            mass_capacity.capacity_summary(context.staging_schema),
+            median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
+        )
         sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
         assert_long_trails(
             trail_routes.long_trail_summary(
@@ -1792,6 +2668,22 @@ def build_handlers(
             sentinel_ways,
             _setting("REBUILD_LONG_TRAIL_FLOORS"),
         )
+
+        calm_path_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_PATH_WAYS"))
+        calm_street_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_STREET_WAYS"))
+        assert_calm_runs(
+            trail_routes.calm_run_summary(
+                context.staging_schema,
+                (*calm_path_sentinels, *calm_street_sentinels),
+                CALM_PATH_RUN_M,
+                CALM_ROAD_RUN_M,
+            ),
+            calm_path_sentinels,
+            calm_street_sentinels,
+            _setting("REBUILD_CALM_RUN_FLOORS"),
+        )
+
+        assert_bicycle_closures_reached_the_tiles(sample_closures())
 
     def swap() -> None:
         context.swap_outcome = promotion.perform_swap(
@@ -1918,10 +2810,39 @@ def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
     )
 
 
+def _closures_across_variants(context: RebuildContext, run) -> dict:
+    """Read the gate's probes back from every variant's staged graph, after
+    writing them where the post-swap probe will look for them."""
+    probes = closure_probes(context)
+    try:
+        write_closure_reports(
+            context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
+        )
+    except OSError:
+        logger.warning("bicycle-closure probe list not written", exc_info=True)
+    readbacks = {}
+    for variant in variants.Variant:
+        config_path = context.build_configs.get(variant)
+        if config_path is None:
+            continue
+        held = [
+            probe
+            for probe in probes
+            if not (
+                variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+            )
+        ]
+        readbacks[variant] = _read_back(
+            functools.partial(tiles.read_closures, run, config_path, held)
+        )
+    return readbacks
+
+
 def _run_command(
     command: Sequence[str],
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
+    timeout: float | None = None,
 ) -> tiles.CommandOutput:
     """Run one of the pipeline's binaries, inside whatever time budget remains.
 
@@ -1944,11 +2865,11 @@ def _run_command(
     text is the argv and the exit status and whose captured output nothing was
     reading. See that class.
     """
-    timeout = None
     if deadline is not None:
-        timeout = deadline - clock()
-        if timeout <= 0:
+        remaining = deadline - clock()
+        if remaining <= 0:
             raise RebuildTimedOut(f"no time left to run {command[0]}")
+        timeout = remaining if timeout is None else min(timeout, remaining)
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, check=True, timeout=timeout

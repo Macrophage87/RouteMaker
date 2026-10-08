@@ -210,20 +210,28 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         )
         tiles, zooms = cursor.fetchone()
     assert tiles > 0 and zooms == 5, (tiles, zooms)
-    assert f"{tiles} drawn" in run.detail, run.detail
+    # And the Mass Ride tiles over the District (core.mass_tiles, 415), in the same count.
+    from core import mass_tiles
+
+    mass = mass_tiles.etag_for(*stress_tiles.live_table())
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM stress_tile_cache WHERE version = %s", [mass])
+        (mass_count,) = cursor.fetchone()
+    assert mass_count == len(mass_tiles.tiles_over_dc()), mass_count
+    assert f"{tiles + mass_count} drawn" in run.detail, run.detail
 
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.segment")
         assert cursor.fetchone()[0] == 5
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.border_crossing")
         assert cursor.fetchone()[0] == 1
-    assert ValhallaUpstream.objects.count() == 4
+    assert ValhallaUpstream.objects.count() == 5
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id
-    assert len(binaries.commands("valhalla_build_tiles")) == 4
-    assert len(binaries.commands("valhalla_service")) == 6, (
-        "four grade reads, the derived tag read and the weekend sentinel read"
+    assert len(binaries.commands("valhalla_build_tiles")) == 5
+    assert len(binaries.commands("valhalla_service")) == 7, (
+        "five grade reads, the derived tag read and the weekend sentinel read"
     )
     assert (root / "elevation" / "N38" / "N38W078.hgt").is_file()
 
@@ -259,7 +267,10 @@ def test_the_run_row_says_which_approved_overrides_were_in_force(
     with caplog.at_level(logging.INFO, logger="pipeline.run"):
         app.tasks["weekly_rebuild"].func(timestamp=0)
 
-    expected = OverrideReport(stress=1, unmatched_way_ids=(424242,)).summary()
+    # The row has no fingerprint, so the re-match could not re-point it (decision 282).
+    expected = OverrideReport(
+        stress=1, unmatched_way_ids=(424242,), rematch_failed=1, rematch_report=object()
+    ).summary()
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert run.succeeded
     assert expected in run.detail, run.detail

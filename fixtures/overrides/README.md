@@ -77,6 +77,7 @@ in a reviewed commit.
 | File | Decision |
 |---|---|
 | `2026-09-26-owner-bicycle-access.json` | Key Bridge's Virginia approaches and the 11th Street local span's south landing, including its run onto Martin Luther King Jr Avenue SE, are legal to ride (owner, 2026-09-26, in two answers; the file grew from six rows to twelve and reloading it adds only the new ones). See `fixtures/crossings/README.md`. Needs the crossings of 2026-09-26 installed first (above). |
+| `2026-10-05-owner-dupont-underpass.json` | The Dupont Circle underpass of Connecticut Ave NW, N St to R St, and its portal ramps (OWNER-DECISIONS 416): ten ways, all OSM `bicycle=no`. "Bikes can pass underneath. There's no sign to say they are prohibited. Underneath is LTS4." A `bicycle=yes` access row and a tier-4 stress row each (hidden, category other). The surface roadway and service lanes around the circle are not in it (414). |
 
 ## Stress rows, and the files of 2026-09-27
 
@@ -106,6 +107,11 @@ particular stretch of road might be adjusted, perhaps hidden"):
   ("we could down adjust a road if this is the better route among similar
   routes"). The direction, `up`, `down` or `same`, is not in the file; the
   rebuild takes it against the classifier's tier.
+- `at_least` (optional): `true` makes the row a floor. The rebuild rates the way
+  max(the classifier's tier, `tier`), so a way the classifier already rates at or
+  above it keeps its own tier and reason (OWNER-DECISIONS 445a-c: "at least an
+  LTS3", "Bump it up if it would be lower"). Absent or `false`, the row sets the
+  tier.
 - `adjustment_id`: lower-case words joined by hyphens, at most 64 characters,
   stable across rebuilds, and shared by every way of one stretch. Rows sharing
   one must agree on everything but the way.
@@ -168,6 +174,12 @@ as a hidden adjustment named `way-<id>`.
   tags as a plain sidewalk, made `bicycle=designated` (ways 468762518 and
   791422825; "Local override (Recommended)", 2026-09-30) until the owner
   retags it upstream. `segregated=no` is not an access key and is left out.
+  Since 2026-10-05 (decision 433) the file closes the two ways instead
+  (`bicycle=no`): they are the north-side sidewalks, and the owner says "Drop
+  the north side, it's a cliff. Does not appear to exist."; the path the owner
+  reported is on the south side and is not in OSM (the owner maps it
+  upstream). The `bicycle=designated` rows are under `retire`, so loading the
+  file withdraws them and writes the closing rows in one step.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and
@@ -208,20 +220,93 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
   route an area, so no access row can open one.
 
-- `2026-09-30-owner-arterials-east-of-anacostia.json`: 779 stress rows at
-  tier 5 (Avoid), hidden, no public_note, category other, annotation
-  approved, one adjustment per corridor. The owner (OWNER-DECISIONS 141): "I d
-  put most of the Arterials east of the Anacostia river as avoid"; asked which
-  to strike (144): struck "11th St SE", "Ridge Rd SE", "River bridges";
-  everything else, South Capitol St SW included, approved to load as Avoid.
-  The District's trunk, primary and secondary ways east of the river (812 in
-  the draft, 57.4 mi) less 11th Street SE (7 ways), Ridge Road SE (13), the
-  four ways that cross the river (Benning Road's and the Douglass Bridge's
-  spans, both Whitney Young Memorial Bridge ways), and the nine ways the
-  2026-09-27 file already curates: three of MLK Jr Ave SE at 4, a different
-  tier, which the loader would refuse, and six of Pennsylvania Ave SE already
-  at 5. Overpass bridges away from the river stay in. Load it after the
+- `2026-09-30-owner-arterials-east-of-anacostia.json`: stress rows for the
+  trunk, primary and secondary ways east of the Anacostia River, hidden, no
+  public_note, annotation approved, one adjustment per road. The owner
+  (OWNER-DECISIONS 141): "I d put most of the Arterials east of the Anacostia
+  river as avoid"; asked which to strike (144): struck "11th St SE", "Ridge Rd
+  SE", "River bridges"; everything else approved to load as Avoid (772 rows,
+  53.6 mi, 86.3 km, after the nine ways the 2026-09-27 file curates and the
+  river bridges). Overpass bridges away from the river stay in. Load it after the
   2026-09-27 file.
+  Cut back on 2026-10-06 (OWNER-DECISIONS 445): "I think I was too harsh with
+  some of the east of the river options. Set the ones that look like normal
+  roads back to whatever their LTS was." Now **376 rows, 529 retired** (445f, 2026-10-07, took out two Kenilworth Avenue NE ways, below):
+  - 250 rows stay tier 5 (Avoid, 19.7 mi, 31.8 km) on the main carriageways
+    of Suitland Parkway SE (trunk and primary), Pennsylvania Avenue SE (trunk),
+    Branch Avenue SE (trunk), Kenilworth Avenue NE (primary, less the two ways 445f retires), Indian Head
+    Highway, South Capitol Street and South Capitol Street SW and SE (outside the stretch
+    of 432), and East Capitol Street NE and SE (primary; "East Cap is a highway
+    past the river. I don't think any map should plan with that."), and, by 445d, six
+    ways of the Benning Rd NE / Kenilworth Avenue Freeway (DC 295) interchange
+    (0.79 mi, 1.28 km): Benning Road Northeast ways 962622875, 135146257, 135146261
+    and 135146277 (both carriageways and both bridges; 135146277 had been retired by
+    445, so it is kept) and the ramps 926566914 and 6056218. The owner: "there's a
+    stretch around here that I'd avoid 38.8961758,-76.9518693", ending at
+    38.8976873,-76.9499615 ("the last you could pull off to a different spot", logged in
+    OWNER-DECISIONS' "Record of owner words used in 444/445"; Foote
+    Street NE on Kenilworth Avenue NE, way 203015546). Benning Road
+    beyond the interchange and the freeway ramps (barred) are unchanged.
+  - 445f (2026-10-07, "the map changes were in the exact opposite direction as they should
+    have been on kenilworth."): Kenilworth Avenue NE ways 203015546 and 130808357 (0.22 mi, 350 m) run
+    north-east of the Foote Street NE turn-off, the side the owner did not mean, so they
+    are retired and the classifier rates them. The ramps 926566914 and 6056218 and Benning
+    Road across the interchange stay Avoid. The roughly 35 m of 203015546 between the
+    turn-off and the ramp follow the classifier unless OSM splits the way.
+  - The side lanes beside those roads are retired (2.3 mi, 3.7 km), after the North Capitol
+    Street precedent (284, 286, 295: the highway-like roadway is Avoid, its side
+    lanes are ordinary streets): East Capitol Street NE's four secondary ways, Kenilworth
+    Avenue NE's 26 secondary ways and Branch Avenue SE's one-way slip 468835493.
+  - 90 rows are LTS 4 floors (`"at_least": true`), ids ending `-lts4`: Minnesota Avenue SE and NE, all 89
+    ways (445a, "Minnesota ave is probably LTS4 in many parts, not avoid ... It's
+    known for people to speed on it", 4.4 mi, 7.1 km), and Pennsylvania Avenue SE's one
+    non-trunk way (445b, 0.08 mi, 130 m).
+  - 36 rows are LTS 3 floors (`"at_least": true`), ids ending `-lts3`: every main
+    carriageway way of Nannie Helen Burroughs Avenue NE (445c, "at least an LTS3",
+    2.4 mi, 3.9 km; the classifier rated 5 of them 2, 30 of them 3 and one 4).
+  - The floors are minimums: on a fresh extract a way the classifier rates higher
+    keeps the higher tier, and one it rates lower is raised to the floor.
+  - Every other row is retired: 524 in all, 126 of them replaced by the floor rows
+    on the same ways (27.2 mi, 43.8 km of road, 398 ways, goes back to the
+    classifier, which had it at LTS 2 to 4). Loading the file again withdraws the
+    rows already loaded, then writes the 376 (docs/OPERATIONS.md, the rebuild
+    bundle's step H).
+  Five South Capitol Street rows (Martin Luther King Jr Ave SE
+  to Mississippi Ave SE, ways 468820704, 590525532, 455234174, 468820714 and
+  1528642818, about 0.34 mi (0.55 km)) were taken out on 2026-10-05 for
+  OWNER-DECISIONS 432 ("Change south captiol street from MLK ave to Missisipi
+  ave to LTS4. There's no other routes through there."): that stretch is LTS 4
+  by the named corridor `fixtures/corridors/2026-10-05-owner-south-capitol-mlk-to-mississippi.json`;
+  they are under `retire` too, and VALIDATE refuses a build where the stretch
+  is not LTS 4. Saint Elizabeths Road SE: the military reopenings file below
+  retires its other two Avoid rows (316866053, 1181165198) and carries the road
+  at LTS 4 (437c); this file's three remaining Saint Elizabeths Road SE rows are
+  retired by 445.
+
+- `2026-10-06-owner-military-reopenings.json`: ways inside military areas the
+  owner reopens to bicycles with evidence. Inside a base only an override row, a
+  numbered public road, a way signed for bicycles (`bicycle=designated`) and the
+  Pentagon's listed ways stay open (OWNER-DECISIONS 437; `pipeline.restricted_areas`),
+  so these are `bicycle=yes` access rows: Jeff Todd Way at Fort Belvoir, the 10 ways
+  without the SR 619 number, 2.07 mi (3.34 km) (437.6: "Jeff Todd Way has a quality
+  side path near it. It's not listed, but I wouldn't avoid it."; the side path is
+  mapped, as `bicycle=designated` cycleways, and stays open as signed for bicycles);
+  Russell Road at Quantico, the 32 ways the rule closes, 5.38 mi (8.66 km)
+  (437a: "Russel road even has sharrows. It's not that bad."; its two `access=private`
+  MCB 1 ways further west stay closed by their own tags); Saint Elizabeths Road SE,
+  its 2 roadway ways, 0.54 mi (872 m), open and with a tier-4 stress row (437c), and
+  its 11-way side path, 0.55 mi (885 m), the mapped `bicycle=yes` sidewalk and
+  crossings (437b). It retires the two east-of-the-Anacostia Avoid rows on the road.
+  Load it after the east-of-the-Anacostia file (docs/OPERATIONS.md, step H).
+
+- `2026-10-06-owner-crosswalk-links.json`: four crosswalk and traffic-island ways
+  (1189857618, 1362344261, 1298593479, 1189857620) that link a `bicycle=designated`
+  side path to a `bicycle=designated` paved trail, opened with `bicycle=yes` access rows
+  (OWNER-DECISIONS 442; evidence: surveyed by the owner, bicycles use this crossing to
+  join the paved trail). Way ids only, with no road or place names and no fingerprints,
+  by owner decision 442; so a row whose way OSM splits is listed `failed` in the rematch
+  report and must be re-pointed by hand. Other crosswalks that link designated bike paths with no bicycle
+  tag are the backlog's (PLAN, FOLLOWUP-CROSSWALK-LINKS). Load it in step H.
 
 ## The agency-data files of 2026-10-01
 
@@ -246,6 +331,11 @@ files.
   Montgomery County Planning Department"; docs/OPERATIONS.md, "Licences, and the
   credits every map must carry"); a deployment that drops the rows drops the
   line with them.
+  Since 2026-10-05 (decision 433, "It's not an avoid. It might not be great,
+  but it's not that bad.") the 23 Veirs Mill Road rows
+  (`moco-lts5-veirs-mill-road`, 1.96 carriageway-mi) are under `retire`, and
+  the file holds 386 ways, 42.6 mi: loading it withdraws them, and the painted
+  lane is marked in `fixtures/bike_lanes/` for the classifier to rate.
 - `2026-10-01-owner-baltimore-facilities.json` ("Load Baltimore facilities",
   OWNER-DECISIONS 182): 256 stress rows, the tier the classifier gives with the
   City of Baltimore's recorded bike lane, buffered, separated or contraflow lane
@@ -311,3 +401,54 @@ discrepancy report lists the ways as not applied, "owner override".
   4 again, not 3; the Whitehurst Freeway, a motorway, is LTS 4 either way and now
   reads OSM's speed. 17 ways are listed in the discrepancy report as owner
   overrides.
+
+## Fingerprints, and ways OSM splits (decision 282)
+
+An override names a way by OSM id, and ids do not last: a mapper splits or merges the way
+and the next extract no longer has it. Every row therefore carries a `fingerprint` of the
+way it was written for, `{"name", "highway", "length_m", "line"}` (`line` is the
+simplified polyline as `lon,lat` pairs; `pipeline.rematch.fingerprint_of`). The database
+row holds none, so the rebuild reads it from its image's copy of these files by kind and
+way id (`rematch.load_fingerprints`); `load_access_overrides` checks a fingerprint and
+keeps it in the file. A row typed into the admin has none and cannot be re-matched.
+`scripts/analysis/backfill_override_fingerprints.py --pbf <extract> [--write]` adds them
+read-only from an extract; new files should carry them from the start.
+
+When an approved row's way is missing from the extract, APPLY_OVERRIDES
+(`rematch.resolve`) looks for the ways of the same street name and highway class that
+now lie along the stored line (within 20 ft (6 m), 90% of each way's length, 90% of the
+line covered, each within 30 degrees of the line's direction, and together within a
+factor of 1.25 of its length) and applies the row to all of them, but only when that is
+unambiguous: not when two ways run side by side along it (also on a line shorter than
+49 ft (15 m)), nor when another way of that name overlaps it
+beyond an end-on neighbour, nor when a target already carries a different row. Every
+row that was missing is listed with its outcome (`rematched`, `covered`, `failed` and
+why) in `<DATA_ROOT>/rebuild/reports/override-rematch.md` and `.csv`, and summarised in
+the log line and the run row. A failed row is left as it was, so it is still counted as
+matching no way; nothing is dropped quietly. Rows whose way is present but no longer
+looks like its fingerprint are listed as `drifted` and still apply.
+
+A file may also `retire` rows a later decision withdraws: a top-level list of
+`{"kind", "osm_way_id", "value", "reason"}`, each the row as it was loaded and the
+decision that withdraws it. `load_access_overrides` deletes each approved or proposed
+row of that kind, way and exact value (audited as a delete with that reason) before it
+plans the file's own rows, so a replacing row on the same way is not refused as a
+conflict; a row already gone is `absent`. Dry by default like the rest. Used by the
+2026-09-30 east-of-the-Anacostia file (decision 432), the Veirs Mill sidepath file and
+the Montgomery Planning LTS 5 file (433).
+
+A file that re-points a row at new ways keeps the old way in a top-level `superseded`
+list, with `replaced_by` and the old way's fingerprint, because the row already loaded
+in the database still names it: delete that row in the admin when loading the file
+(the new rows carry the same value, so until then the re-match reports it `covered` or
+`failed`, never twice applied).
+
+- `2026-10-01-owner-baltimore-facilities.json`, Harford Road (decision 282a): way
+  424993005 (43 ft, 13.2 m) was redrawn in the 2026-10-03 extract as 213 ft (64.8 m) of
+  new ways: 1562097553 and 1562097555, the two carriageways of a short divided section,
+  and 1562097556 continuing north. Its row is re-pointed at all three, at 39.3468 N,
+  76.5662 W, each checked against
+  Open Baltimore record 634 (Harford Rd, Montebello Ter to Echodale Ave): the three lie
+  within 9.3, 6.3 and 5.7 m of its line (`tests/data/open_baltimore_record_634.json`).
+  The generic re-match declines this one, as it should: the junction was redrawn, so
+  other Harford Road ways overlap the old line without lying along it.

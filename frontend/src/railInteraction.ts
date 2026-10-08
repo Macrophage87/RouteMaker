@@ -2,13 +2,17 @@
  * Hovering and tapping the rail stations: a hover shows the station's name
  * and lines; a tap (or click) opens the same with "Start here", "End here"
  * and "Add as stop", which put the point on the station's elevator - the bike
- * entrance - or on the tapped elevator itself (owner, 2026-09-27).
+ * entrance - or on the tapped elevator itself (owner, 2026-09-27), and the link
+ * to the station's WMATA page or the MARC Penn Line timetable (OWNER-DECISIONS
+ * 441b-441e; lib/stationLinks.ts).
  */
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
 import type { LonLat } from "./lib/geo.ts";
 import { focusBackTarget } from "./lib/mapGlue.ts";
 import { RailCards } from "./lib/railCards.ts";
+import { stationLinksElement } from "./lib/stationLinks.ts";
+import { WMATA_SLUGS } from "./lib/railData.ts";
 import { RAIL_LAYERS, STATION_MIN_ZOOM, railHitFrom, stationNear, type RailHit } from "./lib/railLayer.ts";
 import {
   bikeEntrance,
@@ -147,6 +151,9 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
         actions.append(button);
       }
       content.append(actions);
+      // The station's own page, offered, never followed by itself (OWNER-DECISIONS 441b-441e).
+      const links = stationLinksElement(station, WMATA_SLUGS);
+      if (links) content.append(links);
       content.addEventListener("keydown", (event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();

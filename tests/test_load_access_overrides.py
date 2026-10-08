@@ -12,6 +12,7 @@ all the second time.
 
 from __future__ import annotations
 
+import collections
 import io
 import json
 from pathlib import Path
@@ -146,25 +147,141 @@ EAST_ALREADY_CURATED = {
 }
 
 
+# OWNER-DECISIONS 445d: Benning Road NE's carriageways across the DC 295 interchange and its
+# two primary_link ramps stay Avoid (the freeway and its motorway_link ramps are barred).
+INTERCHANGE_445D = {962622875, 135146257, 135146261, 135146277, 926566914, 6056218}
+
+
 class TestTheArterialsEastOfTheAnacostiaFile:
     """OWNER-DECISIONS 141 (b) and 144."""
 
     def rows(self) -> list[dict]:
         return json.loads(EAST_FILE.read_text())["rows"]
 
-    def test_it_parses_as_approved_hidden_tier_5_rows(self) -> None:
+    def test_it_parses_as_approved_hidden_rows_with_the_decided_tiers(self) -> None:
+        """OWNER-DECISIONS 445, 445d, 445f: 250 stay Avoid, 90 are floored at 4, 36 at 3."""
         from core.management.commands.load_access_overrides import parse_file
 
         rows = parse_file(EAST_FILE.read_text(), EAST_FILE.name)
-        assert len(rows) == 779
+        assert len(rows) == 376
+        by_tier = {5: 0, 4: 0, 3: 0}
         for row in rows:
             assert row["kind"] == "stress"
             value = row["value"]
-            assert value["tier"] == 5
+            by_tier[value["tier"]] += 1
             assert value["visibility"] == "hidden"
             assert value["annotation_status"] == "approved"
             assert "public_note" not in value
             assert value["adjustment_id"].startswith("east-anacostia-")
+            # 445a-c are floors ("at least"), applied as max(classifier, tier).
+            assert value.get("at_least", False) is (value["tier"] != 5)
+            if value["tier"] != 5:
+                assert value["adjustment_id"].endswith(f"-lts{value['tier']}")
+                assert (
+                    value["category"] == "driver_behaviour"
+                    or "pennsylvania" in value["adjustment_id"]
+                )
+        assert by_tier == {5: 250, 4: 90, 3: 36}
+
+    def test_the_avoid_rows_are_only_the_main_carriageways_of_the_highway_like_roads(self) -> None:
+        """445, 445a-c: Avoid only on the named roads, none of their side lanes; Minnesota
+        Ave and Pennsylvania Ave's non-trunk way are tier 4, Nannie Helen Burroughs tier 3."""
+        roads = {
+            "Suitland Parkway Southeast",
+            "Pennsylvania Avenue Southeast",
+            "Branch Avenue Southeast",
+            "Kenilworth Avenue Northeast",
+            "Indian Head Highway",
+            "South Capitol Street",
+            "South Capitol Street Southwest",
+            "South Capitol Street Southeast",
+            "East Capitol Street Northeast",
+            "East Capitol Street Southeast",
+            "Benning Road Northeast",  # 445d: the DC 295 interchange only, and its two ramps
+            None,
+        }
+        for row in self.rows():
+            fingerprint, tier = row["fingerprint"], row["value"]["tier"]
+            name = fingerprint["name"]
+            if tier == 5:
+                assert name in roads, name
+                if name is None or name == "Benning Road Northeast":
+                    assert row["osm_way_id"] in INTERCHANGE_445D
+                    assert "445d" in row["reason"] and "38.8976873,-76.9499615" in row["reason"]
+                if name == "Pennsylvania Avenue Southeast":
+                    assert fingerprint["highway"] == "trunk"
+                if name == "Branch Avenue Southeast":
+                    assert fingerprint["highway"] == "trunk"
+                    assert row["osm_way_id"] != 468835493  # the 1-lane slip beside 1508430121
+                if name == "Kenilworth Avenue Northeast":
+                    assert fingerprint["highway"] == "primary"  # its secondary lanes are side lanes
+                if name == "East Capitol Street Northeast":
+                    assert fingerprint["highway"] == "primary"  # the secondary lane is a side lane
+            elif tier == 4:
+                assert name.startswith("Minnesota Avenue") or (
+                    name == "Pennsylvania Avenue Southeast" and fingerprint["highway"] == "primary"
+                )
+            else:
+                assert name == "Nannie Helen Burroughs Avenue Northeast"
+                assert "classifier tier" in row["evidence"] or "tier now" in row["evidence"]
+
+    def test_everything_else_is_retired_by_the_value_that_was_loaded(self) -> None:
+        """The 524 rows of 445 and 445f and the 5 of 432 are under `retire`, tier 5, the old value;
+        no row of the file is both kept at Avoid and retired."""
+        document = json.loads(EAST_FILE.read_text())
+        retire = document["retire"]
+        assert len(retire) == 529
+        assert all(r["value"]["tier"] == 5 for r in retire)
+        assert all("OWNER-DECISIONS 4" in r["reason"] for r in retire)
+        ways = {r["osm_way_id"] for r in retire}
+        assert len(ways) == 529
+        avoid = {r["osm_way_id"] for r in document["rows"] if r["value"]["tier"] == 5}
+        assert not avoid & ways
+        # a floor row replaces the Avoid row on the same way, which is retired first
+        assert {r["osm_way_id"] for r in document["rows"] if r["value"]["tier"] != 5} <= ways
+        names = {
+            r["value"]["adjustment_id"]
+            for r in retire
+            if r["osm_way_id"] in {r2["osm_way_id"] for r2 in document["rows"]}
+        }
+        assert all(
+            n.startswith(
+                ("east-anacostia-minnesota", "east-anacostia-pennsylvania", "east-anacostia-nannie")
+            )
+            for n in names
+        )
+        # 445d keeps the four Benning ways (bridge 135146277 among them) and adds two ramps
+        assert not ways & INTERCHANGE_445D
+        assert len(avoid) - 2 + 522 + 2 == 772
+        # 445f: Kenilworth Avenue NE's two main-road ways are retired, not kept
+        assert {203015546, 130808357} <= ways
+        assert not {203015546, 130808357} & avoid
+        assert {135146277, 962622875, 135146257, 135146261} <= avoid
+        assert {926566914, 6056218} <= avoid
+
+    def test_the_floors_only_raise_at_the_rebuild(self) -> None:
+        """445a-c are minimums: a way the classifier rates above its floor keeps its
+        tier (Nannie Helen Burroughs way 892133099 was 4), one rated below is raised."""
+        from pipeline.overrides import Override, apply_stress
+        from routemaker.stress import Stress, StressResult
+
+        rows = {r["osm_way_id"]: r for r in self.rows()}
+        nhb = [w for w, r in rows.items() if r["value"]["tier"] == 3]
+        minnesota = [w for w, r in rows.items() if r["value"]["tier"] == 4]
+        assert 892133099 in nhb and 52050893 in nhb
+        overrides = [
+            Override("stress", w, rows[w]["value"]) for w in (892133099, 52050893, minnesota[0])
+        ]
+        classified = {
+            892133099: StressResult(Stress.LTS4, "classifier"),
+            52050893: StressResult(Stress.LTS2, "classifier"),
+            minnesota[0]: StressResult(Stress.AVOID, "classifier"),
+        }
+        assert apply_stress(classified, overrides) == (1, [])
+        assert classified[892133099].tier is Stress.LTS4
+        assert classified[892133099].rule == "classifier"
+        assert classified[52050893].tier is Stress.LTS3
+        assert classified[minnesota[0]].tier is Stress.AVOID, "a floor never lowers"
 
     def test_the_struck_and_curated_ways_are_left_out(self) -> None:
         ways = {row["osm_way_id"] for row in self.rows()}
@@ -173,15 +290,25 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         curated = {r["osm_way_id"] for r in json.loads(STRESS_FILE.read_text())["rows"]}
         assert not ways & curated
 
-    def test_every_row_quotes_items_141_and_144(self) -> None:
+    def test_every_row_quotes_its_decision(self) -> None:
         document = json.loads(EAST_FILE.read_text())
         assert "PROPOSED" not in json.dumps(document)
         for row in self.rows():
-            assert (
-                "I d put most of the Arterials east of the Anacostia river as avoid"
-                in row["reason"]
-            )
-            assert '"River bridges"' in row["reason"]
+            if row["osm_way_id"] in INTERCHANGE_445D:
+                assert "OWNER-DECISIONS 445d" in row["reason"]
+                assert "38.8961758,-76.9518693" in row["reason"]
+            elif row["value"]["tier"] == 5:
+                assert (
+                    "I d put most of the Arterials east of the Anacostia river as avoid"
+                    in row["reason"]
+                )
+                assert '"River bridges"' in row["reason"]
+                assert "OWNER-DECISIONS 445" in row["reason"]
+            else:
+                assert any(f"OWNER-DECISIONS 445{x}" in row["reason"] for x in "abc")
+        for text in (document["status"], document["annotations"]):
+            assert "445" in text
+        assert "North Capitol" in document["annotations"]
 
     def test_it_loads_beside_the_curated_tiers_without_a_conflict(self, admin) -> None:
         from core.models import Override
@@ -189,7 +316,7 @@ class TestTheArterialsEastOfTheAnacostiaFile:
         load(str(STRESS_FILE), "--actor", str(admin.discord_user_id), "--confirm")
         before = Override.objects.count()
         out = load(str(EAST_FILE), "--actor", str(admin.discord_user_id))
-        assert out.count("create: way ") == 779
+        assert out.count("create: way ") == 376
         assert Override.objects.count() == before
 
 
@@ -737,3 +864,294 @@ def test_a_file_of_block_corrections_only_has_nothing_to_load(admin, tmp_path) -
     empty.write_text(json.dumps({"version": 1, "rows": [], "agency_blocks": []}))
     with pytest.raises(CommandError, match="has no rows"):
         load(str(empty), "--actor", str(admin.discord_user_id))
+
+
+# --- Retiring rows a later decision withdraws (OWNER-DECISIONS 432, 433) ----------
+
+DESIGNATED = {"kind": "access", "osm_way_id": 42, "value": {"bicycle": "designated"}}
+
+
+def write_file(tmp_path, rows, retire, name="retire.json") -> str:
+    path = tmp_path / name
+    path.write_text(json.dumps({"version": 1, "rows": rows, "retire": retire}))
+    return str(path)
+
+
+@pytest.mark.django_db
+class TestRetire:
+    def test_a_retired_row_is_deleted_audited_and_its_replacement_loaded(self, admin, tmp_path):
+        """433: the north sidewalk's bicycle=designated row is withdrawn and the way
+        closed in one load, which a plain file would refuse as a conflict."""
+        from core.models import AuditLogEntry, Override
+
+        actor = str(admin.discord_user_id)
+        load(
+            write_rows(tmp_path, [{**DESIGNATED, "reason": "r", "evidence": "e"}]),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        (old,) = Override.objects.all()
+        closing = {
+            "kind": "access",
+            "osm_way_id": 42,
+            "value": {"bicycle": "no"},
+            "reason": "433",
+            "evidence": "e",
+        }
+        with pytest.raises(CommandError, match="disagrees"):
+            load(write_rows(tmp_path, [closing]), "--actor", actor)
+        path = write_file(tmp_path, [closing], [{**DESIGNATED, "reason": "OWNER-DECISIONS 433"}])
+        dry = load(path, "--actor", actor)
+        assert f"retire: way 42 {{'bicycle': 'designated'}} (override {old.pk})" in dry
+        assert "create: way 42" in dry and Override.objects.count() == 1
+        load(path, "--actor", actor, "--confirm")
+        (new,) = Override.objects.all()
+        assert new.value == {"bicycle": "no"} and new.approved and new.pk != old.pk
+        deleted = AuditLogEntry.objects.get(action="delete", object_id=str(old.pk))
+        assert "retired" in deleted.detail and "OWNER-DECISIONS 433" in deleted.detail
+        assert ACTOR_NOTE in deleted.detail
+        # Again: nothing to retire, the new row present.
+        again = load(path, "--actor", actor, "--confirm")
+        assert "absent: way 42" in again and "present: way 42" in again
+        assert Override.objects.count() == 1
+
+    def test_only_the_exact_value_is_retired(self, admin, tmp_path):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        load(
+            write_rows(
+                tmp_path,
+                [{**DESIGNATED, "value": {"bicycle": "yes"}, "reason": "r", "evidence": "e"}],
+            ),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        load(
+            write_file(tmp_path, [], [{**DESIGNATED, "reason": "x"}]), "--actor", actor, "--confirm"
+        )
+        assert [o.value for o in Override.objects.all()] == [{"bicycle": "yes"}]
+
+    def test_a_stress_row_is_retired_and_a_retire_only_file_loads(self, admin, tmp_path):
+        """433's 23 Montgomery Planning rows: retired, nothing new loaded."""
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        value = {**ADJUSTMENT, "annotation_status": "approved"}
+        stress = [
+            {"kind": "stress", "osm_way_id": w, "value": value, "reason": "r", "evidence": "e"}
+            for w in (7, 8)
+        ]
+        load(write_rows(tmp_path, stress), "--actor", actor, "--confirm")
+        out = load(
+            write_file(
+                tmp_path, [], [{"kind": "stress", "osm_way_id": 7, "value": value, "reason": "433"}]
+            ),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        assert "retired 1 rows" in out
+        assert [o.osm_way_id for o in Override.objects.all()] == [8]
+
+    def test_a_way_retired_twice_in_one_file_is_refused(self, admin, tmp_path):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        load(
+            write_rows(tmp_path, [{**DESIGNATED, "reason": "r", "evidence": "e"}]),
+            "--actor",
+            actor,
+            "--confirm",
+        )
+        entry = {**DESIGNATED, "reason": "433"}
+        with pytest.raises(CommandError, match="retired twice"):
+            load(write_file(tmp_path, [], [entry, entry]), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 1, "nothing was retired"
+
+    def test_every_matching_row_is_retired(self, admin, tmp_path):
+        """Two approved rows with the same value on one way (loaded by hand, or from
+        two files): the entry retires both, not only the first."""
+        from core.models import Override
+
+        for _ in range(2):
+            Override.objects.create(
+                kind="access",
+                osm_way_id=42,
+                value={"bicycle": "designated"},
+                reason="r",
+                evidence="e",
+                approved=True,
+            )
+        Override.objects.create(
+            kind="access", osm_way_id=43, value={"bicycle": "designated"}, reason="r", evidence="e"
+        )
+        out = load(
+            write_file(tmp_path, [], [{**DESIGNATED, "reason": "433"}]),
+            "--actor",
+            str(admin.discord_user_id),
+            "--confirm",
+        )
+        assert "retired 2 rows" in out
+        assert [o.osm_way_id for o in Override.objects.all()] == [43]
+
+    @pytest.mark.parametrize(
+        "entry, problem",
+        [
+            ({"kind": "access", "osm_way_id": 1, "value": {"bicycle": "yes"}}, "reason"),
+            (
+                {"kind": "other", "osm_way_id": 1, "value": {"bicycle": "yes"}, "reason": "r"},
+                "kind",
+            ),
+            (
+                {"kind": "access", "osm_way_id": 0, "value": {"bicycle": "yes"}, "reason": "r"},
+                "osm_way_id",
+            ),
+            ({"kind": "access", "osm_way_id": 1, "value": {}, "reason": "r"}, "value"),
+        ],
+    )
+    def test_a_malformed_retire_entry_is_refused(self, admin, tmp_path, entry, problem):
+        with pytest.raises(CommandError, match=problem):
+            load(write_file(tmp_path, [], [entry]), "--actor", str(admin.discord_user_id))
+
+
+class TestTheRetiringFiles:
+    """The checked-in files that retire rows (OWNER-DECISIONS 432, 433)."""
+
+    def test_432_retires_the_five_south_capitol_avoid_rows(self):
+        from core.management.commands.load_access_overrides import parse_retired
+
+        text = EAST_FILE.read_text()
+        retired = parse_retired(text, EAST_FILE.name)
+        south_capitol = {468820704, 590525532, 455234174, 468820714, 1528642818}
+        assert south_capitol <= {r["osm_way_id"] for r in retired}
+        five = [r for r in retired if r["osm_way_id"] in south_capitol]
+        assert all(r["value"]["tier"] == 5 and "432" in r["reason"] for r in five)
+        assert not {r["osm_way_id"] for r in json.loads(text)["rows"]} & south_capitol
+
+    def test_445_retires_the_rows_loaded_before_and_loads_the_floors(self, admin, tmp_path):
+        """OWNER-DECISIONS 445-445c: the 772 Avoid rows (and the five of 432) are in the
+        database; loading the file retires 529 and writes 376 (445d: the four Benning ways were
+        loaded and stay, the two ramps are new), no conflict."""
+        from core.management.commands.load_access_overrides import parse_retired
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        retired = parse_retired(EAST_FILE.read_text(), EAST_FILE.name)
+        loaded = [{**r, "reason": "141", "evidence": "e"} for r in retired]
+        kept = [
+            r
+            for r in json.loads(EAST_FILE.read_text())["rows"]
+            if r["value"]["tier"] == 5 and r["osm_way_id"] not in (926566914, 6056218)
+        ]
+        # the database holds the two 445f ways too (they are in `retire`)
+        loaded += [{**r, "reason": "141", "evidence": "e"} for r in kept]
+        load(write_rows(tmp_path, loaded), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 529 + 248
+        dry = load(str(EAST_FILE), "--actor", actor)
+        assert dry.count("retire: way ") == 529
+        assert dry.count("create: way ") == 128
+        assert "disagrees" not in dry
+        load(str(EAST_FILE), "--actor", actor, "--confirm")
+        tiers = collections.Counter(o.value["tier"] for o in Override.objects.all())
+        assert tiers == {5: 250, 4: 90, 3: 36}
+
+    def test_433_retires_the_23_veirs_mill_moco_rows_and_keeps_the_rest(self):
+        from core.management.commands.load_access_overrides import parse_file, parse_retired
+
+        moco = REPO / "fixtures" / "overrides" / "2026-10-01-owner-moco-lts5-avoid.json"
+        text = moco.read_text()
+        retired = parse_retired(text, moco.name)
+        assert len(retired) == 23
+        assert {r["value"]["adjustment_id"] for r in retired} == {"moco-lts5-veirs-mill-road"}
+        rows = parse_file(text, moco.name)
+        assert len(rows) == 386
+        assert not any(r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road" for r in rows)
+        assert all("433" in r["reason"] for r in retired)
+
+    def test_437_reopens_the_military_ways_and_retires_saint_elizabeths_avoid_rows(
+        self, admin, tmp_path
+    ):
+        """OWNER-DECISIONS 437.6, 437a-c, 438.2: 80 bicycle=yes rows (Pentagon Connector
+        Road's 25 among them) and Jeff Todd Way's roadway at
+        tier 4 (439b, 15 rows) and Saint Elizabeths Rd SE
+        at tier 4, which first withdraws the two Avoid rows the east-of-the-Anacostia
+        file loaded on 2026-09-30 (that file no longer carries them)."""
+        from core.management.commands.load_access_overrides import parse_retired
+        from core.models import Override
+
+        path = REPO / "fixtures" / "overrides" / "2026-10-06-owner-military-reopenings.json"
+        text = path.read_text()
+        retired = parse_retired(text, path.name)
+        assert {r["osm_way_id"] for r in retired} == {316866053, 1181165198}
+        actor = str(admin.discord_user_id)
+        # The two rows as the live database holds them since the 2026-09-30 load.
+        old = [{**r, "reason": "141", "evidence": "e"} for r in retired]
+        load(write_rows(tmp_path, old), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 2
+        dry = load(str(path), "--actor", actor)
+        assert dry.count("retire: way ") == 2 and dry.count("create: way ") == 97
+        assert "disagrees" not in dry and Override.objects.count() == 2
+        load(str(path), "--actor", actor, "--confirm")
+        assert Override.objects.count() == 97
+        tiers = set(
+            Override.objects.filter(
+                kind="stress", osm_way_id__in=[316866053, 1181165198]
+            ).values_list("value__tier", flat=True)
+        )
+        assert tiers == {4}
+        jeff = Override.objects.filter(kind="stress", osm_way_id__in=[232308625, 232393907])
+        assert set(jeff.values_list("value__tier", flat=True)) == {4}
+        # Connector Road keeps the classifier's rating (439b corrects 439a).
+        assert not Override.objects.filter(kind="stress", osm_way_id=32866298).exists()
+
+
+CROSSWALK_LINKS = REPO / "fixtures" / "overrides" / "2026-10-06-owner-crosswalk-links.json"
+CROSSWALK_WAYS = {1189857618, 1362344261, 1298593479, 1189857620}
+
+
+@pytest.mark.django_db
+class TestTheCrosswalkLinksFile:
+    """OWNER-DECISIONS 442 (1): four crosswalk and traffic-island ways opened to
+    bicycles with bicycle=yes (not designated), by way id only."""
+
+    def test_it_opens_the_four_ways_and_nothing_else(self, admin):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        dry = load(str(CROSSWALK_LINKS), "--actor", actor)
+        assert dry.count("create: way ") == 4
+        assert "disagrees" not in dry and Override.objects.count() == 0
+        load(str(CROSSWALK_LINKS), "--actor", actor, "--confirm")
+        rows = Override.objects.filter(approved=True)
+        assert {r.osm_way_id for r in rows} == CROSSWALK_WAYS
+        assert {(r.kind, json.dumps(r.value, sort_keys=True)) for r in rows} == {
+            ("access", '{"bicycle": "yes"}')
+        }
+        assert all("442" in r.reason for r in rows)
+
+    def test_it_names_no_road_or_place(self):
+        """Owner decision 442: way ids only, no road or place names, no fingerprint, and
+        evidence that says only what was surveyed."""
+        document = json.loads(CROSSWALK_LINKS.read_text())
+        assert all("fingerprint" not in row for row in document["rows"])
+        text = CROSSWALK_LINKS.read_text()
+        names = (
+            "Road",
+            "Street",
+            "Avenue",
+            "Drive",
+            "Parkway",
+            "Creek",
+            "Trail ",
+            " Rd",
+            " St ",
+            " Ave",
+        )
+        for word in names:
+            assert word not in text, word
+        # Nothing about who rides it, or how often.
+        for phrase in (" rides", "ride's", "privacy", "regularly", "private"):
+            assert phrase not in text, phrase

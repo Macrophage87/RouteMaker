@@ -32,6 +32,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   credit form per <https://www.openstreetmap.org/copyright>.
 - Retrieved: weekly; the extract's date is the rebuild's (`check_operations`).
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures).
+- Also: **the District of Columbia's boundary** on the Mass Ride map (OWNER-DECISIONS 418,
+  418a: the grey outside DC, the capacity tiles' clip, the route's "outside DC" notice). It is the
+  extract's `boundary=administrative`, `admin_level=4`, `ISO3166-2=US-DC` relation, joined into rings
+  by the rebuild's own `pipeline.states` code and simplified to about 30 ft (10 m) by
+  `scripts/build_dc_boundary.py`; nothing was downloaded for it. Written 2026-10-05 from the
+  2026-10-03 extract (`district-of-columbia-latest.osm.pbf`; the merged extract gives the same
+  bytes): 1 polygon, 163 vertices, 3,630 bytes, about 68.3 sq mi (177 km², land and water).
+  The two copies, `frontend/src/massride-data/dc-boundary.json` (the map) and
+  `src/core/geodata/dc-boundary.geojson` (the tiles), are the same bytes
+  (`tests/test_mass_tiles.py`). Credit: the line above, on the map, and "District of Columbia
+  boundary: © OpenStreetMap contributors (ODbL)." under the Mass Ride legend.
 
 ## Protomaps base map
 
@@ -76,8 +87,24 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   - **Roadway Block** (District Department of Transportation / DC GIS), item
     `6fcba8618ae744949630da3ea12d90eb`, retrieved 2026-10-01, sha256
     `45066cff69065adeb0fb3ba3376abaaf58862bd37e3baba63d92062e68bb8108`; posted speed,
-    lanes, one-way streets, bike lanes, parking and fallback counts in the District.
-    `fixtures/datasets/README.md`.
+    lanes, one-way streets, bike lanes, parking and fallback counts in the District;
+    and, since OWNER-DECISIONS 404, the Mass Ride capacity map's usable widths in the
+    District (travel-lane, bike-lane and parking widths and lanes by direction,
+    `routemaker.massflow`), credited on the Mass Ride legend in the credit line's own
+    words with OpenStreetMap beside it. `fixtures/datasets/README.md`. The block's
+    reversible-lane count is NOT trusted for the Mass Ride width (OWNER-DECISIONS
+    405): the District ended Connecticut Avenue NW's reversible lanes in 2020, so the
+    layer's count is stale there, and reversible lanes count as zero for the width
+    everywhere unless a reviewed block is allowlisted. The LTS classifier and the
+    crossing stress do count them, in each direction (OWNER-DECISIONS 425: "These tend
+    to be high stress commuter roads"), except on Connecticut Avenue NW. The reason, and the owner's source for
+    it: DCist, "Say goodbye to reversible lanes on Connecticut Avenue and hello to a
+    bike-friendly redesign", 2021-12-15 (dcist.com), credited here. Connecticut Avenue
+    NW north of Calvert St is then given three travel lanes each way by the owner's own
+    knowledge (OWNER-DECISIONS 412, 2026-10-05: "Connect is 3 but one is sometimes used
+    for parking, though double and even triple parking also happens."), overriding the
+    layer's 1 + 1 plus 2 reversible: `fixtures/lane_overrides/`. The owner is the source;
+    the Dupont Circle underpass's bike access and LTS 4 are decision 416.
   - **Metro Stations Regional** (<https://opendata.dc.gov/datasets/metro-stations-regional>;
     ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51`) and
     **Metro Station Entrances (Regional)** (the same service, layer 111), retrieved
@@ -200,12 +227,26 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
 
 ## The Mass Ride flow model (pending: FOLLOWUP-FLOW-CALIBRATION)
 
-- Credit: on the chart's source line, "Riders per minute: estimated from OpenStreetMap
-  lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill
-  adjustment not yet checked)." OpenStreetMap is credited as the map's data already
-  (above); the DC Bike Party counts are the owner's (PLAN item 173).
+- Credit: on the chart's source line, "Riders per minute: estimated from road widths (in
+  DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC
+  Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet
+  checked)." The chart reads the segment's usable width (`mass_usable_width_m`), which in
+  DC is the District Department of Transportation's Roadway Block (above) and elsewhere
+  OpenStreetMap's lanes and widths; the DC Bike Party counts are the owner's (PLAN item 173).
 - What: `routemaker.flow`, the riders-a-minute figure of the Mass Ride route chart
-  (OWNER-DECISIONS 328, 332) and, once built, the capacity map (387 part 1).
+  (OWNER-DECISIONS 328, 332) and of the capacity map (387 part 1).
+- The named corridors' ratings (`fixtures/corridors/`): North Capitol Street (OWNER-DECISIONS
+  284, 286, 295, 296), Connecticut Avenue NW R St to Calvert St (408, 409, 411, 413) and
+  South Capitol Street, Martin Luther King Jr Ave SE to Mississippi Ave SE, LTS 4 (432:
+  "There's no other routes through there"; its axis is DC Open Data's Roadway Block centre
+  line, CC BY 4.0) are the owner's own local knowledge, cited by decision in each file; not a
+  published source.
+- The curated bike lanes (`fixtures/bike_lanes/`): Veirs Mill Road's painted lane (OWNER-DECISIONS
+  433, "Yes, it should be marked") is the owner's own local knowledge, cited by decision in the
+  file, until it is mapped in OpenStreetMap; not a published source.
+- The military areas the rebuild closes to bicycles (`pipeline.restricted_areas`) are
+  OpenStreetMap's own `landuse=military` and `military=*` polygons (© OpenStreetMap
+  contributors, ODbL), read from the same extract as the ways.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
   `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item
@@ -236,3 +277,28 @@ them (OWNER-DECISIONS 152, 153, 155, 162).
   `frontend/src/rail-data/README.md`. What is taken is the fact (which lines stop
   where), not WMATA's text or data, so there is no licence to follow and no credit on
   the map; it is listed here so every source is cited (301).
+
+## Links the map offers (no data taken)
+
+- Credit: none; nothing is read from these sites. They are pages the map links to,
+  named in text only (trademarks; OWNER-DECISIONS 441), each opened in a new tab with no
+  opener or referrer, and only when the rider follows the link (441c).
+- **Google Street View** (OWNER-DECISIONS 441): the road panel's "Street View" button
+  is Google's public Maps URL,
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=LAT,LON`
+  (<https://developers.google.com/maps/documentation/urls/get-started>). No Google code,
+  key or request is in the app; the spot is sent to Google only if the rider follows the
+  link, which the panel says beside it.
+- **OpenStreetMap's editor** (OWNER-DECISIONS 441m): the road panel's "Edit in OSM" button
+  is `https://www.openstreetmap.org/edit?way=<id>`, the way the panel describes. Editing
+  needs the rider's own OpenStreetMap account; the panel says not to copy from Google
+  Street View (OpenStreetMap's licence forbids it).
+- **WMATA station pages** (441b): `https://www.wmata.com/ridertools/station/<slug>`, the
+  slug for each of the 98 Metro stations from the curated table
+  `frontend/src/rail-data/wmata-station-slugs.json`, checked once, read only, against
+  wmata.com on 2026-10-07 under the owner's permission (441f). WMATA's short station names
+  are the pattern ("Rhode Island Av", "Naylor Rd", "U St"); a wrong slug answers 404.
+- **MARC Penn Line timetable** (441d, 441e): Maryland Transit Administration,
+  <https://www.mta.maryland.gov/schedule/timetable/marc-penn>, checked 2026-10-07 (the
+  page lists Perryville to Washington Union Station). Offered at every Penn Line station
+  the map draws; only the Penn Line is drawn.

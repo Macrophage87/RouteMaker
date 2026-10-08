@@ -75,6 +75,17 @@ def test_a_refused_validation_read_is_terminal_rather_than_retried(tmp_path) -> 
         assert isinstance(raised.value, terminal_causes()), "and a rebuild is not the answer"
 
 
+def test_a_broken_corridor_or_lane_fixture_is_terminal() -> None:
+    """The fixture is in the image, so a retry meets the same file after re-running
+    the stages before CLASSIFY_STRESS (REBUILD-BUNDLE operations review, nit)."""
+    from config.procrastinate import terminal_causes
+    from routemaker.corridors import CorridorRefused
+    from routemaker.lane_overrides import LaneOverrideRefused
+
+    assert issubclass(CorridorRefused, terminal_causes())
+    assert issubclass(LaneOverrideRefused, terminal_causes())
+
+
 def test_a_command_that_failed_for_any_other_reason_stays_retryable(tmp_path) -> None:
     """The other door has to keep the class it had. A binary that was killed, a
     config it could not read, a volume that went away: those are the failures a

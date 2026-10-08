@@ -1,6 +1,6 @@
 # Rail stations on the public map
 
-Five small fixtures the front end bundles. `src/lib/railData.ts` imports them
+Six small fixtures the front end bundles. `src/lib/railData.ts` imports them
 as text, so they travel inside the app's own hashed script under `/assets/`:
 no request of their own, nothing that can fail to load separately, and nothing
 new for the edge - Caddy's `@frontend` rule and the Content-Security-Policy are
@@ -18,6 +18,7 @@ licence, URL and refresh procedure; these are those records.
 | `metro-entrances.geojson` | 260 station entrances, 86 of them elevators (`DESCRIPTION` "Metro Station Elevator" / "Metro Station Entrance"), `NAME`, `EXIT_TO_ST`, `LINE`, `CAPTUREYEAR`, `GIS_ID` | Open Data DC, "Metro Station Entrances (Regional)"; layer `.../MapServer/111` | **CC BY 4.0** | the same line |
 | `metro-line-corrections.json` | lines added to `LINE` for two service changes the layer predates (below) | WMATA's own announcements, cited per change | this project's (facts, with sources) | - |
 | `marc-penn-stations.geojson` | the MARC Penn Line's 9 stations from Washington Union Station to Baltimore Penn Station inclusive, and the elevators OSM maps at them | OpenStreetMap, via the project's own extract, by `scripts/build_marc_penn_stations.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `wmata-station-slugs.json` | each Metro station's WMATA station page slug, keyed by `NAME` above (OWNER-DECISIONS 441b) | this project's, each slug checked read-only against <https://www.wmata.com/ridertools/station/> on 2026-10-07 (441f); below | this project's (facts: a link, not WMATA's data) | - (the station card's link names WMATA in text) |
 | `metro-osm-elevators.geojson` | 15 OSM elevators at the 7 Metro stations DC lists no elevator for | OpenStreetMap, via the same extract, by `scripts/check_metro_elevators.py --write` | **ODbL 1.0** (as above) | as above |
 
 Both Open Data DC files are exactly the bytes the query below returned
@@ -178,3 +179,19 @@ map does not read it - it draws the Penn Line in gold, `PENN_COLOUR` in
 `src/lib/railStations.ts` (owner, 2026-09-28: a Purple Line opens soon) - and
 it is kept as provenance: it records what OSM says, so a refresh shows if the
 route's own colour changes.
+
+## The station page links (OWNER-DECISIONS 441b-441f)
+
+`wmata-station-slugs.json` maps each of the 98 `NAME`s in `metro-stations.geojson` to the
+slug of its page at `https://www.wmata.com/ridertools/station/<slug>`. Curated, never
+derived from a name at runtime (441b): WMATA's slugs follow its own short names ("Addison
+Rd", "Branch Av", "Gallery Place", "U St", "Vienna", "Woodley Park"), which differ from
+DC's for about a third of the stations. Every slug was fetched once on 2026-10-07 (read
+only, the owner's permission of 441f) and answered with its station's page; a slug that is
+wrong answers 404, which is how `benning-road`, `branch-ave`, `georgia-av`,
+`grosvenor`, `lenfant-plaza` and `navy-yard` were found wrong and replaced.
+`lib/stationLinks.test.ts` holds the table to every Metro station the map draws, with no
+stray name and no slug twice. A renamed station in a refreshed `metro-stations.geojson`
+fails that test until its slug is checked and added. MARC Penn Line stations offer
+<https://www.mta.maryland.gov/schedule/timetable/marc-penn> (441d, 441e), which needs no
+table.

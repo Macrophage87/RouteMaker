@@ -36,6 +36,23 @@ def _no_long_trail_sentinels(settings):
     no bridge is left unjudged runs in every rebuild either way."""
     settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS = ()
     settings.REBUILD_LONG_TRAIL_FLOORS = (0, 0)
+    # The ride layer's (OWNER-DECISIONS 391; `pipeline.run.assert_calm_runs`), likewise.
+    settings.REBUILD_SENTINEL_CALM_PATH_WAYS = ()
+    settings.REBUILD_SENTINEL_CALM_STREET_WAYS = ()
+    settings.REBUILD_CALM_RUN_FLOORS = (0, 0)
+    # And the Mass Ride capacity's median road is a region's, not a toy extract's
+    # (the share and the plausible range of a road's figure are still checked).
+    settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (0, 5000)
+    # And the reference LTS 4 road (OWNER-DECISIONS 408) is the region's Connecticut Ave NW.
+    settings.REBUILD_SENTINEL_LTS4_STREET = ""
+    # And the owner's rated stretches (OWNER-DECISIONS 432) are the region's.
+    settings.REBUILD_SENTINEL_STRETCHES = ()
+    # And the military-closure sentinels (owner report 2026-10-05) are the region's ways.
+    settings.REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = ()
+    settings.REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {}
+    # And the secured-compound sentinels (owner report 2026-10-06) are the region's.
+    settings.REBUILD_SENTINEL_SECURED_CLOSED_WAYS = ()
+    settings.REBUILD_SENTINEL_SECURED_MIN_CLOSED = {}
 
 
 @pytest.fixture
@@ -84,10 +101,14 @@ def _weekend_router_state(monkeypatch):
         yield
         return
     _REAL_WEEKEND_CHECK.setdefault("check", routing._weekend_is_promoted)
+    _REAL_WEEKEND_CHECK.setdefault("offroad", routing._offroad_is_promoted)
     monkeypatch.setattr(routing, "_weekend_is_promoted", lambda: True)
+    monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: True)
     routing._weekend_failed_at = None
+    routing._offroad_failed_at = None
     yield
     routing._weekend_failed_at = None
+    routing._offroad_failed_at = None
 
 
 _REAL_WEEKEND_CHECK: dict = {}
@@ -139,3 +160,4 @@ def weekend_rows_read(monkeypatch):
     from core import routing
 
     monkeypatch.setattr(routing, "_weekend_is_promoted", _REAL_WEEKEND_CHECK["check"])
+    monkeypatch.setattr(routing, "_offroad_is_promoted", _REAL_WEEKEND_CHECK["offroad"])

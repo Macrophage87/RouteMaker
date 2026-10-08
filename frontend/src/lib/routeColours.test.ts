@@ -80,7 +80,8 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   for (const on of [false, true]) {
     setAccessibility(on, { remember: false });
     try {
-      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
+      // A Mass Ride's Avoid ("mavoid") is the route's Avoid too (397), with the same mark.
+      for (const c of routeClasses()) assert.equal(c.mark, c.key === "5" || c.key === "mavoid" ? ROUTE_AVOID_MARK : undefined, `${c.key}${on ? " (high contrast)" : ""}`);
       const features = sectionFeatures(routeSections(LINE, [span(0, 300, 3), span(300, 600, 5), span(600, 900, 5, "none")].map((s, i) => (i === 2 ? { ...s, unpaved: true } : s)))).features;
       assert.deepEqual(features.map((f) => [f.properties.key, f.properties.avoid, f.properties.unpaved]), [["3", false, false], ["5", true, false], ["u5", false, true]]);
     } finally {
@@ -121,10 +122,10 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   assert.match(swatch, /strokeDasharray=\{routeMarkDash\(row\.width\)\}/);
 });
 
-test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, then not rated", () => {
+test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, the Mass Ride's four bands and Avoid, then not rated", () => {
   assert.deepEqual(
     routeClasses().map((c) => c.key),
-    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "unknown"],
+    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "m0", "m1", "m2", "m3", "mavoid", "unknown"],
   );
   for (const c of routeClasses()) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
 });

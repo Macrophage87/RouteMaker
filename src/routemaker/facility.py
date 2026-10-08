@@ -208,6 +208,43 @@ BESIDE_FRACTION = 0.6
 _EARTH_M = 6_371_008.8
 
 
+# What a trail's own tags say about lying beside a road (OWNER-DECISIONS 403: "Most trails
+# near a road are paved."): a sidewalk (`footway`, `path` or `cycleway` = sidewalk, whatever
+# the bicycle access), `is_sidepath=yes`, or any `is_sidepath:of*` naming the road.
+SIDEPATH_OF_PREFIX = "is_sidepath:of"
+
+
+def roadside_by_tags(tags: dict[str, str]) -> bool | None:
+    """True where a trail's tags say it is a sidepath beside a road, False where they say
+    it is not (`is_sidepath=no`, which the geometry does not overrule), None where they do
+    not say (the rebuild then asks the geometry: `pipeline.trail_routes.derive_roadside`)."""
+    sidepath = tags.get("is_sidepath")
+    if sidepath == "no":
+        return False
+    if sidepath == "yes":
+        return True
+    if SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
+        return True
+    if any(key.startswith(SIDEPATH_OF_PREFIX) for key in tags):
+        return True
+    return None
+
+
+def roadside_start(tags: dict[str, str], facility_class: str, *, drawn_trail: bool) -> bool | None:
+    """The `segment.roadside` the rebuild writes before the geometry is asked: False on a
+    way that is not a trail the map draws, the tags' answer where they give one, True on a
+    trail already classed the protected facility beside a road, and None (ask the
+    geometry) otherwise."""
+    if not drawn_trail:
+        return False
+    by_tags = roadside_by_tags(tags)
+    if by_tags is not None:
+        return by_tags
+    if facility_class == Facility.PROTECTED.value:
+        return True
+    return None
+
+
 def declares_separate(tags: dict[str, str]) -> bool:
     return any(tags.get(key) == "separate" for key in CYCLEWAY_KEYS)
 
@@ -319,6 +356,24 @@ def short_path_candidate(tags: dict[str, str]) -> bool:
     )
 
 
+# `bicycle_road=yes` / `cyclestreet=yes`: a road signed for bicycles, which
+# Valhalla's transform opens to them whatever the class (`pipeline.run`'s
+# `_OPENS_OVER_BICYCLE_NO`). OWNER-DECISIONS 442: the car-free piece of Beach
+# Drive (way 24976160, `highway=pedestrian`, `bicycle_road=yes`, no bicycle tag)
+# stayed routable but dropped off the stress map.
+BICYCLE_ROAD_KEYS = ("bicycle_road", "cyclestreet")
+
+
+def is_bicycle_road(tags: dict[str, str]) -> bool:
+    """A way signed as a bicycle road, with no bicycle tag that says otherwise.
+
+    For the map only: what is drawn as open, never what routing opens.
+    """
+    if tags.get("bicycle") is not None:
+        return False
+    return any(tags.get(key) == "yes" for key in BICYCLE_ROAD_KEYS)
+
+
 def map_class(tags: dict[str, str]) -> MapClass:
     """How the stress map draws a way, by its own tags; a road inside a
     military base is found by its place (`pipeline.military`). BARRED: a
@@ -343,7 +398,20 @@ def map_class(tags: dict[str, str]) -> MapClass:
         # A private path (inside the Pentagon's fence) is no one's; a public
         # one is a trail, whatever its facility.
         opened = tags.get("bicycle") in PUBLIC_WAY or tags.get("foot") in PUBLIC_WAY
-        return MapClass.HIDDEN if closed and not opened else MapClass.ROAD
+        if closed and not opened:
+            return MapClass.HIDDEN
+        # A trail a bicycle may not ride (a footway with no bicycle tag, a path
+        # tagged `bicycle=no`, steps) is not drawn as a bike path: it is left
+        # to the base map like a road a bicycle may not use (OWNER-DECISIONS
+        # 278, 290(b)). A short `bicycle=dismount` connector stays: routing
+        # keeps it, and the route says to walk.
+        if (
+            tags.get("bicycle") != "dismount"
+            and not trail_open_to_bicycle(tags)
+            and not is_bicycle_road(tags)
+        ):
+            return MapClass.BARRED
+        return MapClass.ROAD
     if highway is None:
         return MapClass.ROAD
     bicycle = tags.get("bicycle")
@@ -360,6 +428,46 @@ def map_class(tags: dict[str, str]) -> MapClass:
     if alley:
         return MapClass.ALLEY
     return MapClass.ROAD
+
+
+def bike_access_reason(
+    tags: dict[str, str],
+    *,
+    no_bicycle: str | None = None,
+    overridden: bool = False,
+) -> str | None:
+    """Why a bicycle may not use a way, or why it was reopened, as one short code
+    for the map's road panel (`segment.bike_access_reason`; OWNER-DECISIONS 441a;
+    `core.segment_info.ACCESS_WORDS` words it). None on a way with nothing to say.
+
+    `no_bicycle` is the way's `rm:no_bicycle` reason (military, secured, a trail
+    rule, the CBD sidewalks; `pipeline.trail_closures`), `overridden` whether an
+    approved access override wrote a bicycle key on it. An override is named
+    first, closed or open by the tag it left, unless a closure rule still closed
+    the way; then the rule's reason, then what the way's own tags say. Whether the
+    graph lets a bicycle on the way is the router's to say: this is only the why.
+    """
+    bicycle = tags.get("bicycle")
+    if overridden and no_bicycle is None:
+        if bicycle in BICYCLE_ALLOWED or bicycle == "dismount":
+            return "override_open"
+        if bicycle in BARRING_BICYCLE:
+            return "override_closed"
+    if no_bicycle is not None:
+        return no_bicycle
+    if bicycle in BICYCLE_ALLOWED:
+        return None
+    if bicycle == "no":
+        return "bicycle_no"
+    if bicycle == "use_sidepath":
+        return "bicycle_use_sidepath"
+    if bicycle == "private" or any(tags.get(k) in NO_PUBLIC_ACCESS for k in ("access", "vehicle")):
+        return "private"
+    if tags.get("highway") in BARRED_HIGHWAY:
+        return "motorway"
+    if tags.get("motorroad") == "yes":
+        return "motorroad"
+    return None
 
 
 def has_separate_bikeway(tags: dict[str, str]) -> bool:

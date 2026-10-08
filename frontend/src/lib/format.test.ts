@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   AVOID_MAX_SPAN_M,
   FEET_BELOW_M,
+  METRES_PER_MILE,
   SEEK_MAX_SPAN_M,
   formatClimb,
   formatDistance,
@@ -11,6 +12,7 @@ import {
   formatExtra,
   formatPerMile,
   formatRoughDistance,
+  formatRunMiles,
   formatSeconds,
   formatSpeed,
   milesFigure,
@@ -146,3 +148,11 @@ test("a rule's range says miles or pounds first, metric in brackets (the a11y re
   assert.equal(milesRange(0.7, 621, 1_000, 1_000_000), "0.7 to 621 miles (1 to 1,000 km)");
   assert.equal(poundsRange(150, 309, 68, 140), "150 to 309 pounds (68 to 140 kg)");
 });
+
+test("a run for the map's explanations: a quarter mile in feet, not rounded to 0.3 mi; half a mile and up as a distance", () => {
+  assert.equal(formatRunMiles(0.25), "1,320 ft (0.4 km)");
+  assert.equal(formatRunMiles(0.5), "0.5 mi (0.8 km)");
+  assert.equal(formatRunMiles(1), "1.0 mi (1.6 km)");
+  assert.equal(formatRunMiles(2.5), formatDistance(2.5 * METRES_PER_MILE));
+});
+

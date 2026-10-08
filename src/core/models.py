@@ -61,6 +61,12 @@ class Segment(models.Model):
     is_unpaved = models.BooleanField(null=True)
     is_rough = models.BooleanField(default=False)
     lit = models.BooleanField(null=True)
+    # NO-BIKE-PATHS (OWNER-DECISIONS 291): closed on the standard graphs for being
+    # mountain-bike class or singletrack, kept for a future MTB mode; and a short
+    # `bicycle=dismount` connector routing keeps ("walk your bike here"). The
+    # table is unmanaged, so these arrive with a rebuild (pipeline.schema).
+    mtb_only = models.BooleanField(default=False)
+    walk_bike = models.BooleanField(default=False)
 
     class Meta:
         managed = False  # DDL comes from the pipeline; see Operations in the plan.

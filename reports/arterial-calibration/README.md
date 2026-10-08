@@ -1,0 +1,15 @@
+# Arterial calibration and override re-match: live-extract checks
+
+Read-only runs of `scripts/analysis/arterial_verify.py` over the 2026-10-03 extract
+(`source.osm.pbf`), roads only, with the rebuild's own conflation and classifier:
+
+- `smoothing.md`, `arterial-verify-summary.json`: the AADT smoothing's region-wide effect
+  (decision 296), lower-only per decision 303 ("Keep it LTS 4, and only lower ratings. In most cases, the smoothing is probably bunching by the intersection. Given that our routing is a sum of intersection stress and route stress, we don't want to double count."), and 1st Street NW way 483241819 (LTS 3 to LTS 2).
+- `north-capitol.md`: every way of the named corridor against the owner's targets
+  (0 mismatches).
+- `rematch-live.md`, `.csv`, `override-rematch-summary.json`: all 232 access and 1,551
+  stress rows of the fixtures at origin/main (what the live database was loaded from;
+  this is not a read of the database, and a row typed into the admin, which has no
+  fingerprint, is not covered), run through the
+  re-match against that extract: one is missing today, Harford Road way 424993005, and the
+  re-match declines it with its reason; the working tree's 1,785 rows all apply.

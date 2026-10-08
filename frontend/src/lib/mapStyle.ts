@@ -8,11 +8,13 @@
  * without the package installed.
  */
 import { BASEMAP } from "../stressStyle.js";
+import { MASS_SOURCE_ID } from "../massStyle.js";
 import CREDITS_DATA from "./credits.json" with { type: "json" };
 import { protocolUrl } from "./stressProtocol.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
+export { MASS_SOURCE_ID };
 export const SPRITE_FLAVOR = "light";
 /** The zoom the map opens at, over central DC (MapView.tsx); the rail stations show from it. */
 export const OPENING_ZOOM = 11.2;
@@ -104,15 +106,33 @@ export function stressSource(origin: string) {
 }
 
 /**
+ * The Mass Ride map's own tiles (core/mass_tiles.py; OWNER-DECISIONS 415, 417, 418): every road
+ * with a capacity, inside the District, at every zoom the stress tiles are asked for. Only Mass
+ * Ride mode draws from it; a source no visible layer reads fetches nothing.
+ */
+export function massSource(origin: string) {
+  return {
+    type: "vector" as const,
+    tiles: [protocolUrl(`${origin}/tiles/mass/{z}/{x}/{y}.pbf`)],
+    minzoom: STRESS_ZOOMS.min,
+    maxzoom: STRESS_ZOOMS.max,
+  };
+}
+
+/**
  * The zooms the stress tiles are drawn at, and where each level of detail
  * starts (core/stress_tiles.py, whose levels tests/test_stress_tiles.py holds
  * equal to these). The owner, 2026-09-29: "Zoom less than 12, show just bike
  * paths and the metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet
- * streets." (OWNER-DECISIONS 73). Below `min` nothing is drawn; from `min`
- * only the traffic-free paths and trails; from `busy` the roads at LTS 3 and
- * above (BUSY_ROADS_MIN_ZOOM in core/stress_tiles.py); from `quiet` the quiet
- * streets and every segment (QUIET_STREETS_MIN_ZOOM). `max` is the source's
+ * streets." (OWNER-DECISIONS 73), and on 2026-10-05, of 12 and 13: "I'm more
+ * concerned with the places to ride than the places not to." (391). Below
+ * `min` nothing is drawn; from `min` only the long traffic-free paths and
+ * trails; from `ride` the "where to ride" layer: the long and connected
+ * paths and the long calm roads, and no busy road
+ * (RIDE_LAYER_MIN_ZOOM in core/stress_tiles.py); from `quiet` every segment:
+ * the busy roads at LTS 3 and above, the quiet streets, and the rest
+ * (QUIET_STREETS_MIN_ZOOM). `max` is the source's
  * maxzoom: the deepest tile the map asks for, all of them drawn ahead after
  * each rebuild (core/tile_cache.py), and z15-16 are drawn from the z14 tile.
  */
-export const STRESS_ZOOMS = { min: 10, busy: 12, quiet: 14, max: 14 } as const;
+export const STRESS_ZOOMS = { min: 10, ride: 12, quiet: 14, max: 14 } as const;

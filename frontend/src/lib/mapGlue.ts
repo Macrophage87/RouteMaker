@@ -11,16 +11,23 @@ import {
   stressCasingLayers,
   gapLayers,
   ringLayers,
+  unknownSurfaceLayers,
   stressFilters,
   stressLayers,
   stressOverlayLayers,
+  mtbTrailPaint,
   unpavedLayers,
   UNPAVED_DASH,
+  accessibilityOn,
+  massRideOn,
+  setMassRide,
 } from "../stressStyle.js";
+import { massLayerIds, massLayers } from "../massStyle.js";
 import type { When } from "./dials.ts";
-import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
+import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
+import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
-import { ROUTE_AVOID_MARK_DASH, routePaint, routeSections, sectionFeatures } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, sectionFeatures, type RouteClassKey } from "./routeColours.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -32,6 +39,34 @@ export interface OverlayMap {
   setLayoutProperty(id: string, name: string, value: string): void;
   setFilter(id: string, filter: unknown): void;
   setPaintProperty(id: string, name: string, value: unknown): void;
+  /** MapLibre's; a stand-in may leave it out (the base map's path names then stay as they are). */
+  getFilter?(id: string): unknown;
+}
+
+/**
+ * Whether an overlay layer shows: with the overlay's switch on, a Mass Ride layer only in that
+ * mode and every other (stress-map) layer only out of it (OWNER-DECISIONS 417, 417a: no trail,
+ * protected bike lane or other facility layer at any zoom on the Mass Ride map).
+ */
+export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn()): boolean {
+  return visible && (MASS_IDS.has(id) ? mass : !mass);
+}
+
+const MASS_IDS = new Set<string>(massLayerIds());
+
+/**
+ * The base map's layer that names minor roads and paths (@protomaps/basemaps
+ * `roads_labels_minor`). In Mass Ride mode it names no path (417a: no trail-name labels); out
+ * of it, as the package drew it.
+ */
+export const BASEMAP_PATH_LABEL_LAYER = "roads_labels_minor";
+export const MASS_PATH_LABEL_FILTER = ["in", "kind", "minor_road", "other"];
+const basemapLabelFilter = new WeakMap<object, unknown>();
+
+function setBasemapPathLabels(map: OverlayMap, mass: boolean): void {
+  if (!map.getFilter || !map.getLayer(BASEMAP_PATH_LABEL_LAYER)) return;
+  if (!basemapLabelFilter.has(map)) basemapLabelFilter.set(map, map.getFilter(BASEMAP_PATH_LABEL_LAYER));
+  map.setFilter(BASEMAP_PATH_LABEL_LAYER, mass ? MASS_PATH_LABEL_FILTER : basemapLabelFilter.get(map));
 }
 
 /**
@@ -42,12 +77,38 @@ export interface OverlayMap {
 export function addStressOverlay(map: OverlayMap, origin: string, visible: boolean, when?: When): boolean {
   if (map.getSource(STRESS_SOURCE_ID)) return false;
   map.addSource(STRESS_SOURCE_ID, stressSource(origin));
+  // The Mass Ride map's own tiles (core/mass_tiles.py), read only by its layers.
+  if (!map.getSource(MASS_SOURCE_ID)) map.addSource(MASS_SOURCE_ID, massSource(origin));
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
-  const layout = { visibility: visible ? "visible" : "none" };
-  for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when)) {
-    map.addLayer({ ...layer, layout }, firstSymbol);
+  for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
+    // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.
+    const shown = overlayLayerShown(layer.id, visible);
+    map.addLayer({ ...layer, layout: { ...layer.layout, visibility: shown ? "visible" : "none" } }, firstSymbol);
   }
+  setBasemapPathLabels(map, massRideOn());
   return true;
+}
+
+/**
+ * The map becomes (or stops being) the Mass Ride's (OWNER-DECISIONS 325, 417, 417a, 418): every
+ * stress-map layer is hidden and the capacity layers show, the base map names no path, and the
+ * grey mask outside the District shows (lib/dcBoundary.ts); or the reverse. In place.
+ * `visible` is the overlay's switch (the mask follows the ride type alone, `area`: it says where
+ * Mass Ride planning works whether or not the colours are on, and whether or not the tiles carry
+ * a capacity yet). `on` is the capacity map itself, switched on only once the tiles carry one
+ * (App's `massMap`): on an older table a Mass Ride keeps the stress layers its legend describes
+ * (accessibility review S2). Before the map has its layers there is nothing to set: the overlay
+ * and the mask are added in the mode then.
+ */
+export function setMassMode(map: OverlayMap | null, on: boolean, when: When, visible: boolean, area: boolean = on): void {
+  setMassRide(on);
+  if (!map) return;
+  setStressWhen(map, when);
+  setStressVisibility(map, visible);
+  setBasemapPathLabels(map, on);
+  // The grey outside DC follows the ride type, not the tiles: on a table built before the capacity
+  // column a Mass Ride keeps the stress layers (`on` false) and still says, and shows, DC only.
+  setDcMaskVisibility(map, area);
 }
 
 /**
@@ -91,17 +152,27 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
-  for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
+  // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
+  const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
+  for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
     map.setPaintProperty(layer.id, "line-width", layer.paint["line-width"]);
     // A casing is a ring around a faint line (stressStyle.js, FAINT), so its gap follows the line's width.
     if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
+    // The surface-unknown edge's dashes are in its own width, which the switch changes (stressStyle.js, unknownSurfaceLayers).
+    if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+  }
+  // The mountain-bike trails' not-for-routes line (452a): wider and darker with the accessibility switch.
+  if (map.getLayer("mtb-trail")) {
+    const paint = mtbTrailPaint();
+    map.setPaintProperty("mtb-trail", "line-color", paint["line-color"]);
+    map.setPaintProperty("mtb-trail", "line-width", paint["line-width"]);
   }
 }
 
@@ -115,6 +186,36 @@ export interface RouteSectionsMap {
 export const ROUTE_STRESS_SOURCE_ID = "route-stress";
 
 export const ROUTE_UNPAVED_LAYER_ID = "route-unpaved";
+
+/** The route-section classes drawn dashed, which cannot share the solid layer (a dash array is not data-driven): a Mass Ride's. */
+export function dashedRouteKeys(): RouteClassKey[] {
+  return routeClasses()
+    .filter((c) => c.dash)
+    .map((c) => c.key);
+}
+
+/** The solid section layer's filter: every section but the dashed ones (drawn by routeDashLayers). */
+export function solidRouteFilter(): unknown {
+  return ["!", ["in", ["get", "key"], ["literal", dashedRouteKeys()]]];
+}
+
+/**
+ * The dashed route sections of a Mass Ride (OWNER-DECISIONS 327: the under-60 and 60-to-120 bands
+ * are dashed, short and long, the cue that is not colour; and Avoid's dash-dot): one layer a class,
+ * over the solid layer, the section's halo showing in the gaps as the overlay's casing does.
+ */
+export function routeDashLayers(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
+  return routeClasses()
+    .filter((c) => c.dash)
+    .map((c) => ({
+      id: `route-dash-${c.key}`,
+      type: "line" as const,
+      source: sourceId,
+      filter: ["==", ["get", "key"], c.key],
+      layout: { "line-join": "round" as const },
+      paint: { "line-color": c.color, "line-width": c.width, "line-dasharray": [...(c.dash as readonly number[])], "line-opacity": 0 },
+    }));
+}
 
 /**
  * The dotted mark over the route's unpaved sections (OWNER-DECISIONS 302), as the
@@ -172,12 +273,14 @@ export function setRouteSections(
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
+  for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
 }
 
 /** Show or hide every overlay layer that is on the map. */
 export function setStressVisibility(map: OverlayMap, visible: boolean): void {
   for (const { id } of stressOverlayLayers(STRESS_SOURCE_ID)) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+    // Every layer follows the mode as well as the switch (overlayLayerShown).
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", overlayLayerShown(id, visible) ? "visible" : "none");
   }
 }
 
@@ -485,14 +588,41 @@ export function watchForFacilities(map: FacilityMap, seen: (kinds: ReadonlySet<s
   map.on("idle", check);
 }
 
+/**
+ * Whether the tiles on screen carry the Mass Ride capacity (`rpm`): the Mass Ride tiles
+ * (core/mass_tiles.py), which only Mass Ride mode loads, or the stress tiles (core/stress_tiles.py),
+ * which every other mode does. A table promoted before the capacity column has none: the legend
+ * and panel say so by this.
+ */
+export function capacityOnMap(map: FacilityMap): boolean {
+  return [MASS_SOURCE_ID, STRESS_SOURCE_ID].some(
+    (id) => !!map.getSource(id) && map.querySourceFeatures(id, { sourceLayer: STRESS_TILE_LAYER, filter: ["has", "rpm"] }).length > 0,
+  );
+}
+
+/** Report once the map has drawn a feature with a capacity (remembered: it is a property of the table, not the view). */
+export function watchForCapacity(map: FacilityMap, seen: () => void): void {
+  const check = () => {
+    if (!capacityOnMap(map)) return;
+    map.off("idle", check);
+    seen();
+  };
+  map.on("idle", check);
+}
+
 /** The parts of a MapLibre map the zoom watch uses. */
 export interface ZoomMap {
   getZoom(): number;
-  on(event: "zoomend", listener: () => void): unknown;
+  on(event: "zoomend", listener: (event?: { originalEvent?: unknown }) => void): unknown;
 }
 
-/** Report the zoom now and after every change, for the legend's zoom notes. */
-export function watchZoom(map: ZoomMap, zoom: (z: number) => void): void {
-  zoom(map.getZoom());
-  map.on("zoomend", () => zoom(map.getZoom()));
+/**
+ * Report the zoom now and after every change, for the legend's zoom notes, and whether the rider
+ * made the change: MapLibre's zoom buttons, keyboard, wheel and touch handlers give `zoomend` the
+ * input event as `originalEvent`, and the app's own moves (the first fit to a route, a place search's
+ * fly-to) have none. A sentence about the zoom is said only for the rider's (accessibility review S4).
+ */
+export function watchZoom(map: ZoomMap, zoom: (z: number, byRider: boolean) => void): void {
+  zoom(map.getZoom(), false);
+  map.on("zoomend", (event) => zoom(map.getZoom(), event?.originalEvent != null));
 }

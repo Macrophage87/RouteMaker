@@ -9,6 +9,7 @@
 import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
 import { presetLabel } from "./presets.ts";
+import { capacityDescription, capacitySummary } from "./massCapacity.ts";
 import { HIGH_STRESS_LANE_MIN_TIER, highStressLanesOn } from "../stressStyle.js";
 
 export const DESCRIPTION_HEADING = "Route description";
@@ -158,7 +159,7 @@ export function chevron(open: boolean): string {
  * group's crossings under it: `entryLines`).
  */
 export function descriptionText(
-  route: Pick<RouteResponse, "preset" | "distance_m"> & Described,
+  route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans" | "profile">>,
   view: DescriptionView = "overview",
 ): string {
   const shown = viewFor(route, view);
@@ -166,7 +167,18 @@ export function descriptionText(
   // Which view it is, said only where there is a choice of two.
   const which = hasOverview(route) ? (shown === "full" ? " Full detail." : " Overview, short stretches merged.") : "";
   const head = `RouteMaker ${presetLabel(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
-  return [head, ...entryLines(entries)].join("\n") + "\n";
+  const lead = capacityLead(route);
+  return [head, ...(lead ? [lead] : []), ...entryLines(entries)].join("\n") + "\n";
+}
+
+/**
+ * A Mass Ride's lead sentence (OWNER-DECISIONS 325: riders per minute in place of the LTS breakdown): the
+ * narrowest points, on the flat and with the hills (424), and the share of the distance in each band, in words. Null on every other ride type, and
+ * where the route has no capacity figures (an older table), which keep the description as it was.
+ */
+export function capacityLead(route: Partial<Pick<RouteResponse, "stress_spans" | "profile">>): string | null {
+  const summary = capacitySummary(route.stress_spans);
+  return summary ? capacityDescription(summary, route.profile?.flow) : null;
 }
 
 /** The most of the description the GPX file carries in full; beyond it, the overview. */
@@ -178,7 +190,7 @@ export const GPX_FULL_MAX_CHARS = 4000;
  * for a device to show (GPX_FULL_MAX_CHARS), else the overview (never the
  * rider's screen view: a file is read elsewhere). Empty where there is none.
  */
-export function gpxDescriptionText(route: Described): string {
+export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans">>): string {
   const full = descriptionEntries(route, "full");
   if (full === null) return "";
   const lines = entryLines;
@@ -186,7 +198,8 @@ export function gpxDescriptionText(route: Described): string {
   const useFull = !hasOverview(route) || fullText.length <= GPX_FULL_MAX_CHARS;
   const entries = useFull ? full : (descriptionEntries(route, "overview") ?? full);
   const label = hasOverview(route) ? (useFull ? "Route description, full detail:" : "Route description, overview:") : "Route description:";
-  return [label, ...lines(entries)].join("\n");
+  const lead = capacityLead(route);
+  return [label, ...(lead ? [lead] : []), ...lines(entries)].join("\n");
 }
 
 /** "routemaker-default-12_1-miles-description.txt", beside the GPX file's name. */

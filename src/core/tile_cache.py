@@ -65,7 +65,7 @@ def get(version: str, z: int, x: int, y: int) -> bytes | None:
     return None if row is None else bytes(row[0])
 
 
-def put(version: str, z: int, x: int, y: int, body: bytes) -> None:
+def put(version: str, z: int, x: int, y: int, body: bytes, also_keep: tuple[str, ...] = ()) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             "INSERT INTO stress_tile_cache (version, z, x, y, body, created_at) "
@@ -74,13 +74,14 @@ def put(version: str, z: int, x: int, y: int, body: bytes) -> None:
             [version, z, x, y, body],
         )
     if z > PREDRAW_MAX_ZOOM and random.randrange(EVICT_EVERY) == 0:  # noqa: S311
-        evict(version)
+        evict(version, also_keep=also_keep)
 
 
-def evict(version: str, max_bytes: int = MAX_BYTES) -> int:
+def evict(version: str, max_bytes: int = MAX_BYTES, also_keep: tuple[str, ...] = ()) -> int:
     """Delete stale rows, and the oldest on-request tiles past `max_bytes`.
 
-    "Stale" is every version but `version`, which is right only while one
+    "Stale" is every version but `version` and `also_keep` (the Mass Ride tiles' tag for
+    the same table, core.mass_tiles, which shares this cache), which is right only while one
     version is being served. Two races make it wrong for a moment, and both
     only cost draws, never a wrong tile (a row is only ever read back under
     its own version): a request that drew from the old table just before a
@@ -91,7 +92,9 @@ def evict(version: str, max_bytes: int = MAX_BYTES) -> int:
     pre-draw, or first requests, fill them again.
     """
     with connection.cursor() as cursor:
-        cursor.execute("DELETE FROM stress_tile_cache WHERE version <> %s", [version])
+        cursor.execute(
+            "DELETE FROM stress_tile_cache WHERE NOT version = ANY(%s)", [[version, *also_keep]]
+        )
         stale = cursor.rowcount
         cursor.execute(
             """
@@ -173,7 +176,10 @@ def predraw(
     budget_s: float = PREDRAW_BUDGET_S,
     workers: int | None = None,
 ) -> Predrawn:
-    """Draw every z10-`max_zoom` tile over the coverage box not yet cached.
+    """Draw every z10-`max_zoom` tile over the coverage box not yet cached, and then
+    every Mass Ride tile over the District's box (core.mass_tiles, OWNER-DECISIONS 415):
+    187 more at 2026-10-03's counts (z10 4, z11 6, z12 12, z13 35, z14 130), drawn only
+    from a table with the capacity column.
 
     Stops when `budget_s` is spent, counting what it did not reach, which is
     drawn on first request instead. Each draw runs under
@@ -187,7 +193,9 @@ def predraw(
     arithmetic for draws on request; what it takes is a database core per draw,
     which is what the setting bounds.
     """
-    from . import stress_tiles
+    from pipeline.schema import MASS_WIDTH_COLUMN
+
+    from . import mass_tiles, stress_tiles
 
     if workers is None:
         workers = settings.STRESS_PREDRAW_WORKERS
@@ -196,15 +204,22 @@ def predraw(
     if oid is None:
         return Predrawn(0, 0)
     version = stress_tiles.etag_for(oid, optional)
-    evict(version)
+    mass_version = mass_tiles.etag_for(oid, optional)
+    evict(version, also_keep=(mass_version,))
     deadline = time.monotonic() + budget_s
-    tiles = tiles_in_coverage(max_zoom)
+    # (draw, version, z, x, y): the stress tiles, then the Mass Ride tiles.
+    tiles = [(stress_tiles.render, version, *t) for t in tiles_in_coverage(max_zoom)]
+    if MASS_WIDTH_COLUMN in optional:
+        tiles += [
+            (mass_tiles.render, mass_version, *t)
+            for t in mass_tiles.tiles_over_dc(min(max_zoom, mass_tiles.MAX_ZOOM))
+        ]
     counts = {"drawn": 0, "cached": 0, "timed_out": 0, "reached": 0}
     lock = threading.Lock()
     stop = threading.Event()
     queue = iter(tiles)
 
-    def take() -> tuple[int, int, int] | None:
+    def take() -> tuple | None:
         with lock:
             if stop.is_set():
                 return None
@@ -222,16 +237,16 @@ def predraw(
 
     def draw_until_done() -> None:
         while (tile := take()) is not None:
-            z, x, y = tile
-            if get(version, z, x, y) is not None:
+            draw, tag, z, x, y = tile
+            if get(tag, z, x, y) is not None:
                 count("cached")
                 continue
             try:
-                drawn_oid, body = stress_tiles.render(
+                drawn_oid, body = draw(
                     z, x, y, optional, timeout_ms=stress_tiles.PREDRAW_TIMEOUT_MS
                 )
             except stress_tiles.DrawTimedOut:
-                logger.warning("stress tile %d/%d/%d timed out in the pre-draw", z, x, y)
+                logger.warning("%s tile %d/%d/%d timed out in the pre-draw", tag, z, x, y)
                 count("timed_out")
                 continue
             if drawn_oid != oid:
@@ -240,7 +255,7 @@ def predraw(
                 count("reached", -1)
                 stop.set()
                 return
-            put(version, z, x, y, body)
+            put(tag, z, x, y, body)
             count("drawn")
 
     def on_its_own_connection() -> None:

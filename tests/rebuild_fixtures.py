@@ -121,6 +121,19 @@ ALPHA_BRIDGE_ID = 2102
 REGIONAL_ROUTE_ID = 2200
 MOUNTAIN_BIKE_ID = 2300
 NAMED_STREET_ID = 2400
+# The ride layer's (OWNER-DECISIONS 391, 402a) and the surface rules' (376, 403): a second
+# way of the street's name and a third of another name carrying straight on, which are one
+# calm run of 3.5 km (2.2 mi) across the change of name; a track with no surface, and a
+# grade1 track with none; a path with no surface and no name, away from roads; a
+# traffic-free path of no name touching the unnamed path, so they are one network; and a
+# cycleway with no surface 10 m beside Gamma Street, a roadside trail.
+NAMED_STREET_EAST_ID = 2401
+NAMED_ROAD_ON_ID = 2402
+TRACK_NO_SURFACE_ID = 2500
+TRACK_GRADE1_ID = 2501
+BARE_PATH_ID = 2502
+BARE_PATH_NEXT_ID = 2503
+ROADSIDE_PATH_ID = 2504
 
 
 def build_long_trails_extract(path: Path) -> None:
@@ -144,6 +157,19 @@ def build_long_trails_extract(path: Path) -> None:
             32: (-77.040, 38.900),
             41: (-77.050, 38.890),
             42: (-77.040, 38.890),
+            43: (-77.030, 38.890),
+            44: (-77.010, 38.890),
+            # The roadside cycleway, 10 m north of Gamma Street.
+            45: (-77.048, 38.89009),
+            46: (-77.042, 38.89009),
+            # Two tracks, and two unnamed paths that meet.
+            51: (-77.020, 38.920),
+            52: (-77.010, 38.920),
+            53: (-77.020, 38.910),
+            54: (-77.010, 38.910),
+            55: (-77.095, 38.900),
+            56: (-77.090, 38.900),
+            57: (-77.085, 38.900),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -165,6 +191,13 @@ def build_long_trails_extract(path: Path) -> None:
                 {"highway": "path", "bicycle": "yes", "surface": "dirt", "name": "Rocky Loop"},
             ),
             (NAMED_STREET_ID, [41, 42], {"highway": "residential", "name": "Gamma Street"}),
+            (NAMED_STREET_EAST_ID, [42, 43], {"highway": "residential", "name": "Gamma Street"}),
+            (NAMED_ROAD_ON_ID, [43, 44], {"highway": "residential", "name": "Delta Road"}),
+            (TRACK_NO_SURFACE_ID, [51, 52], {"highway": "track"}),
+            (TRACK_GRADE1_ID, [53, 54], {"highway": "track", "tracktype": "grade1"}),
+            (BARE_PATH_ID, [55, 56], {"highway": "path", "bicycle": "yes"}),
+            (BARE_PATH_NEXT_ID, [56, 57], {"highway": "path", "bicycle": "yes"}),
+            (ROADSIDE_PATH_ID, [45, 46], {"highway": "cycleway"}),
         ]
         # osmium reads a file whose ways are in id order.
         for way_id, way_nodes, tags in sorted(ways, key=lambda way: way[0]):
@@ -481,6 +514,70 @@ def build_dials_extract(path: Path) -> None:
         writer.close()
 
 
+SECURED_ROAD_ID = 3000
+SECURED_AND_BASE_ID = 3002
+BASE_CYCLEWAY_ID = 3003
+OUTSIDE_ROAD_ID = 3005
+SECURED_OUTLINE_ID = 3100
+BASE_OUTLINE_ID = 3101
+
+
+def build_secured_extract(path: Path) -> None:
+    """A secured federal compound beside a military base, their outlines overlapping
+    (owner report 2026-10-06; `restricted_areas.secured_closures`), all inside the
+    District's box.
+
+    The compound is a government area with its own `access=private` (the tag rule, as
+    Goddard is found). Inside it, an untagged service road that ends on a cycleway
+    signed for bicycles inside the base (open there); inside both outlines, a street
+    the base's rule judges; south of both, a public street.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            # The compound's outline, and the base's, 0.003 degrees over it.
+            1: (-77.080, 38.920),
+            2: (-77.070, 38.920),
+            3: (-77.070, 38.930),
+            4: (-77.080, 38.930),
+            5: (-77.073, 38.920),
+            6: (-77.065, 38.920),
+            7: (-77.065, 38.930),
+            8: (-77.073, 38.930),
+            # The compound's service road, ending where the base's cycleway starts.
+            10: (-77.0770, 38.924),
+            11: (-77.0715, 38.924),
+            12: (-77.0660, 38.924),
+            # The street inside both outlines.
+            13: (-77.0728, 38.927),
+            14: (-77.0702, 38.927),
+            # The public street south of both.
+            15: (-77.085, 38.915),
+            16: (-77.060, 38.915),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            SECURED_ROAD_ID: ([10, 11], {"highway": "service"}),
+            SECURED_AND_BASE_ID: ([13, 14], {"highway": "residential"}),
+            BASE_CYCLEWAY_ID: ([11, 12], {"highway": "cycleway", "bicycle": "designated"}),
+            OUTSIDE_ROAD_ID: ([15, 16], {"highway": "residential", "name": "Outside Street"}),
+            SECURED_OUTLINE_ID: (
+                [1, 2, 3, 4, 1],
+                {"landuse": "government", "access": "private", "name": "Test Compound"},
+            ),
+            BASE_OUTLINE_ID: ([5, 6, 7, 8, 5], {"landuse": "military", "name": "Test Base"}),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
 PARALLEL_COUNT = {
     "id": "count-parkway",
     # Drawn between the two ways and nearer the trail, which is what makes the
@@ -686,7 +783,13 @@ class FakeBinaries:
         admin: str = "built",
         timezone: str = "built",
         download: Callable[[Path], None] | None = None,
+        # Ways a `locate` read reports open to bicycles whatever their tags:
+        # what a graph the C++ parser reopened them in would answer.
+        reopened: frozenset[int] = frozenset(),
     ) -> None:
+        self.reopened = frozenset(reopened)
+        # The extract each build config was built from, for `locate`.
+        self.built_from: dict[str, Path] = {}
         self.grade = grade
         self.cycle_lane = cycle_lane
         self.weekend_cycle_lane = weekend_cycle_lane
@@ -758,6 +861,7 @@ class FakeBinaries:
                 destination.write_bytes(source.read_bytes())
             return CommandOutput("", "")
         if name == "valhalla_build_tiles":
+            self.built_from[command[2]] = Path(command[-1])
             config = json.loads(Path(command[2]).read_text())
             tile_dir = Path(config["mjolnir"]["tile_dir"])
             tile_dir.mkdir(parents=True, exist_ok=True)
@@ -768,6 +872,11 @@ class FakeBinaries:
             config = json.loads(Path(command[2]).read_text())
             Path(config["mjolnir"]["tile_extract"]).write_bytes(b"tar")
             return CommandOutput("", "")
+        if name == "valhalla_service" and command[2] == "locate":
+            return CommandOutput(
+                json.dumps(self.locate(command[1], json.loads(command[3]))),
+                "2026/09/17 [INFO] Tile extract successfully loaded with tile count: 12\n",
+            )
         if name == "valhalla_service":
             _config, action, request = command[1:4]
             assert action == "trace_attributes", action
@@ -799,6 +908,35 @@ class FakeBinaries:
             )
         raise AssertionError(f"the pipeline ran a binary the tests do not stand in for: {command}")
 
+    def locate(self, config: str, request: dict) -> list[dict]:
+        """A pedestrian `/locate` against the extract this config was built
+        from: each location answers with the edges of the way it lies on
+        (within a few metres), one per direction, and a bicycle may use them
+        unless the way carries `rm:no_bicycle` or `bicycle=no` - or this
+        instance was told the graph reopened it. A `foot=no` way has no edge,
+        as upstream's transform drops it."""
+        assert request["costing"] == "pedestrian" and request["verbose"] is True, request
+        ways = _extract_ways(self.built_from[config])
+        answers = []
+        for location in request["locations"]:
+            edges = []
+            for way_id, tags, coordinates in ways:
+                if tags.get("foot") == "no" or not _near(location, coordinates):
+                    continue
+                closed = "rm:no_bicycle" in tags or tags.get("bicycle") == "no"
+                bicycle = way_id in self.reopened or not closed
+                edges += [
+                    {
+                        "edge_info": {"way_id": way_id},
+                        "edge": {"forward": forward, "access": {"bicycle": bicycle}},
+                    }
+                    for forward in (True, False)
+                ]
+            answers.append(
+                {"edges": edges or None, "input_lon": location["lon"], "input_lat": location["lat"]}
+            )
+        return answers
+
     def make_database(self, path: Path, key: str, state: str) -> None:
         """Leave what this instance was told the database build leaves.
 
@@ -816,6 +954,44 @@ class FakeBinaries:
 
     def commands(self, name: str) -> list[list[str]]:
         return [c for c in self.calls if Path(c[0]).name == name]
+
+
+def _extract_ways(path: Path) -> list[tuple[int, dict[str, str], list[tuple[float, float]]]]:
+    """Every way in an extract, with its tags and node locations."""
+
+    class Ways(osmium.SimpleHandler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ways: list = []
+
+        def way(self, way) -> None:
+            coordinates = [(n.lon, n.lat) for n in way.nodes if n.location.valid()]
+            self.ways.append((way.id, {tag.k: tag.v for tag in way.tags}, coordinates))
+
+    handler = Ways()
+    handler.apply_file(str(path), locations=True)
+    return handler.ways
+
+
+def _near(location: dict, coordinates: list[tuple[float, float]], metres: float = 5.0) -> bool:
+    """Whether a location lies within `metres` of a way's line."""
+    import itertools
+    import math
+
+    scale = math.cos(math.radians(location["lat"]))
+    px, py = location["lon"] * scale * 111_320, location["lat"] * 110_540
+    for (lon1, lat1), (lon2, lat2) in itertools.pairwise(coordinates):
+        ax, ay = lon1 * scale * 111_320, lat1 * 110_540
+        bx, by = lon2 * scale * 111_320, lat2 * 110_540
+        dx, dy = bx - ax, by - ay
+        share = (
+            0.0
+            if dx == dy == 0
+            else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+        )
+        if math.hypot(px - (ax + share * dx), py - (ay + share * dy)) <= metres:
+            return True
+    return False
 
 
 CONTRAFLOW_ONE_WAY_ID = 1200

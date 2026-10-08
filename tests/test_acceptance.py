@@ -31,7 +31,7 @@ STDLIB = set(sys.stdlib_module_names)
 @pytest.fixture(scope="module")
 def SERVICES() -> dict:
     """The rendered stack from the shipped example, the way the deploy tests read it."""
-    return render(REPO / ".env.example")["services"]
+    return render(REPO / ".env.example", "offroad")["services"]
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +92,22 @@ def test_the_restart_the_checklist_issues_is_the_one_the_commands_print(acceptan
     from core.management.commands import rollback_rebuild, run_rebuild_now
 
     for hint in (run_rebuild_now.RESTART_HINT, rollback_rebuild.RESTART_HINT):
-        assert "docker compose restart " + " ".join(acceptance.ROUTERS) in hint
+        assert "docker compose restart " + " ".join(acceptance.DEFAULT_ROUTERS) in hint
+        assert "docker compose --profile offroad restart valhalla-offroad" in hint
+
+
+def test_the_default_routers_are_the_ones_a_plain_up_runs(acceptance, SERVICES):
+    """Every restart names these; a profile-gated router in a plain `restart`
+    fails the whole line where it has no container (operations review S1)."""
+    plain = sorted(
+        n
+        for n, s in SERVICES.items()
+        if "valhalla" in (s.get("image") or "") and not s.get("profiles")
+    )
+    assert sorted(acceptance.DEFAULT_ROUTERS) == plain
+    from pipeline.variants import DEFAULT_ROUTERS
+
+    assert sorted(DEFAULT_ROUTERS) == plain
 
 
 def test_the_data_root_directories_are_read_from_the_prepare_script(acceptance, SERVICES):
@@ -213,7 +228,7 @@ def test_a_dry_run_lists_every_item_and_runs_nothing(acceptance, monkeypatch, ca
         "docker compose up -d --no-build",
         "run_rebuild_now",
         "scripts/install_reference_data.py --data-root /data",
-        "docker compose restart " + " ".join(acceptance.ROUTERS),
+        "docker compose restart " + " ".join(acceptance.DEFAULT_ROUTERS),
         "pg_restore --list",
         "rollback_rebuild",
     ):

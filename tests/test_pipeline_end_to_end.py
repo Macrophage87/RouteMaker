@@ -32,6 +32,9 @@ from rebuild_fixtures import (
     ALPHA_BRIDGE_ID,
     ALPHA_EAST_ID,
     ALPHA_WEST_ID,
+    BARE_PATH_ID,
+    BARE_PATH_NEXT_ID,
+    BASE_CYCLEWAY_ID,
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
@@ -43,15 +46,23 @@ from rebuild_fixtures import (
     GIB,
     LUA_LOADED_LOG,
     MOUNTAIN_BIKE_ID,
+    NAMED_ROAD_ON_ID,
+    NAMED_STREET_EAST_ID,
     NAMED_STREET_ID,
     ONE_WAY_ID,
+    OUTSIDE_ROAD_ID,
     PARALLEL_COUNT,
     REGIONAL_ROUTE_ID,
     REPO,
+    ROADSIDE_PATH_ID,
+    SECURED_AND_BASE_ID,
+    SECURED_ROAD_ID,
     SEPARATE_ROAD_ID,
     SINGLETRACK_ID,
     TOWPATH_ABOVE_ID,
     TOWPATH_BELOW_ID,
+    TRACK_GRADE1_ID,
+    TRACK_NO_SURFACE_ID,
     WEEKEND_CLOSED_ID,
     FakeBinaries,
     box,
@@ -60,6 +71,7 @@ from rebuild_fixtures import (
     build_long_trails_extract,
     build_named_bridge_extract,
     build_parallel_extract,
+    build_secured_extract,
     build_toy_extract,
     fake_fetch,
     install_source_extract,
@@ -625,6 +637,133 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     drawn = stored_map_class(context)
     assert drawn[SINGLETRACK_ID] == "hidden"
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
+
+
+def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild(
+    tmp_path, segment_schemas, states, monkeypatch
+) -> None:
+    """The secured-compound rule wired through the rebuild (owner report 2026-10-06;
+    final-review mutants M2): its closures reach the no-bicycle reasons and every
+    graph, the military rule's ways are skipped, the report lists it, the through
+    check counts its ways as inside, and its closed road is not drawn."""
+    from pipeline import restricted_areas
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, SECURED_REPORT_NAME
+
+    calls = []
+    real_through = restricted_areas.through_networks
+
+    def spy(found, node_ids, outside_open, *args, **kwargs):
+        calls.append(({m.way_id for m in found}, set(outside_open)))
+        return real_through(found, node_ids, outside_open, *args, **kwargs)
+
+    monkeypatch.setattr(restricted_areas, "through_networks", spy)
+    source = install_source_extract(tmp_path, build_secured_extract)
+    context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+
+    assert Stage.VALIDATE in report.completed
+    secured = {m.way_id: m for m in context.secured_ways}
+    military = {m.way_id: m for m in context.military_ways}
+    assert secured[SECURED_ROAD_ID].closed
+    assert secured[SECURED_ROAD_ID].installation == "Test Compound"
+    # A way inside both outlines is the base's alone.
+    assert SECURED_AND_BASE_ID in military and SECURED_AND_BASE_ID not in secured
+    assert not military[BASE_CYCLEWAY_ID].closed
+    assert context.no_bicycle[SECURED_ROAD_ID] == restricted_areas.SECURED_NO_BICYCLE
+    assert context.no_bicycle[SECURED_AND_BASE_ID] == restricted_areas.MILITARY_NO_BICYCLE
+    assert OUTSIDE_ROAD_ID not in context.no_bicycle
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SECURED_ROAD_ID in tags:
+            assert tags[SECURED_ROAD_ID].get("rm:no_bicycle") == "secured", variant.value
+    # The report lists it under its compound.
+    rows = list(
+        csv.DictReader((context.work_dir / DISCREPANCY_REPORT_DIR / SECURED_REPORT_NAME).open())
+    )
+    assert [(int(r["way_id"]), r["facility"], r["status"]) for r in rows] == [
+        (SECURED_ROAD_ID, "Test Compound", "closed")
+    ]
+    # The base's through check counts the compound's ways as inside, never as the
+    # public network a route through the base could join.
+    (base_call,) = [c for c in calls if BASE_CYCLEWAY_ID in c[0]]
+    assert SECURED_ROAD_ID not in base_call[1]
+    assert context.military_through == [] and context.secured_through == []
+    # The closed compound road is left off the map; the public street is drawn.
+    drawn = stored_map_class(context)
+    assert drawn[SECURED_ROAD_ID] == "hidden"
+    assert drawn[OUTSIDE_ROAD_ID] == "road"
+    # And the map's road panel can say why (OWNER-DECISIONS 441a; segment.bike_access_reason).
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id, bike_access_reason FROM {context.staging_schema}.segment"
+        )
+        reasons = dict(cursor.fetchall())
+    assert reasons[SECURED_ROAD_ID] == "secured"
+    assert reasons[SECURED_AND_BASE_ID] == "military"
+    assert reasons[OUTSIDE_ROAD_ID] is None
+
+
+DIALS_IDS = (
+    WEEKEND_CLOSED_ID,
+    SEPARATE_ROAD_ID,
+    BESIDE_TRAIL_ID,
+    CBD_SIDEWALK_ID,
+    CBD_CYCLE_TRACK_ID,
+    SINGLETRACK_ID,
+    TOWPATH_ABOVE_ID,
+    TOWPATH_BELOW_ID,
+    DIVIDED_NORTH_ID,
+    DIVIDED_SOUTH_ID,
+    ONE_WAY_ID,
+)
+
+
+def test_validate_reads_singletrack_back_from_every_graph_before_the_swap(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The bicycle-closure gate (SINGLETRACK-review-r0, finding 2a), through the
+    rebuild: one pedestrian locate per staged graph, the singletrack among the
+    probes, and the probes left where the post-swap check reads them."""
+    from pipeline.run import CLOSURE_PROBES_REPORT, DISCREPANCY_REPORT_DIR, SINGLETRACK_REPORT
+
+    source = install_source_extract(tmp_path, build_dials_extract)
+    binaries = FakeBinaries()
+    context, report = run_pipeline(
+        source, tmp_path, binaries=binaries, urban=DIALS_IDS, skip=NOT_SWAPPED
+    )
+
+    assert Stage.VALIDATE in report.completed
+    reads = [c for c in binaries.commands("valhalla_service") if c[2] == "locate"]
+    assert sorted(c[1] for c in reads) == sorted(str(p) for p in context.build_configs.values())
+    for command in reads:
+        request = json.loads(command[3])
+        assert request["costing"] == "pedestrian"
+        assert len(request["locations"]) == 1, "the fixture has one singletrack way"
+    reports = context.work_dir / DISCREPANCY_REPORT_DIR
+    assert (reports / SINGLETRACK_REPORT).read_text() == f"{SINGLETRACK_ID}\n"
+    assert (
+        (reports / CLOSURE_PROBES_REPORT)
+        .read_text()
+        .splitlines()[1]
+        .startswith(f"{SINGLETRACK_ID},")
+    )
+
+
+def test_a_graph_that_reopens_singletrack_is_not_swapped_in(
+    tmp_path, segment_schemas, states
+) -> None:
+    """What the 2026-10-03 build did: every Lua check passed and Valhalla's
+    parser reopened the singletrack from its rating. The rebuild now stops at
+    VALIDATE, names the way, and the swap never runs."""
+    source = install_source_extract(tmp_path, build_dials_extract)
+    binaries = FakeBinaries(reopened=frozenset({SINGLETRACK_ID}))
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, tmp_path, binaries=binaries, urban=DIALS_IDS)
+
+    assert caught.value.stage is Stage.VALIDATE
+    assert f"way {SINGLETRACK_ID}" in str(caught.value.cause)
+    assert not any((tmp_path / "tiles").glob("*/current")), "nothing was promoted"
 
 
 def test_the_district_default_and_a_divided_road_reach_the_classifier(
@@ -4215,7 +4354,9 @@ def test_the_rebuild_writes_the_long_trail_columns(
     assert west[2] == pytest.approx(1730, rel=0.02)
     assert (west[3], east[3], deck[3]) == (0, 0, 1), "the wooden bridge is judged paved"
 
-    assert rows[NAMED_STREET_ID][0] is None, "a street's name is never written"
+    # A street's name is written only for the ride layer's calm-street runs (391): this one is
+    # LTS 1, so it has its name; test_the_rebuild_writes_the_ride_layer_and_the_track_surface.
+    assert rows[NAMED_STREET_ID][0] == "Gamma Street"
 
 
 def test_a_rebuild_that_loses_the_long_trails_is_refused(
@@ -4229,3 +4370,191 @@ def test_a_rebuild_that_loses_the_long_trails_is_refused(
         run_pipeline(source, tmp_path)
     assert caught.value.stage is Stage.VALIDATE
     assert f"sentinel way {ALPHA_WEST_ID}" in str(caught.value.cause)
+
+
+def ride_rows(schema: str) -> dict[int, tuple]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT osm_way_id, stress_tier, is_unpaved, trail_name, calm_run_m, roadside "
+            f"FROM {schema}.segment ORDER BY osm_way_id, ordinal"
+        )
+        return {way: tuple(rest) for way, *rest in cursor}
+
+
+def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
+    tmp_path, segment_schemas, states, settings
+) -> None:
+    """OWNER-DECISIONS 391, 402a, 403 and 376 C, through the real stages: a mountain-bike
+    trail has no calm run, the regional route is in a long network, two unnamed paths that
+    meet are one network, a street's two same-named ways and the road of another name that
+    carries straight on are one calm run, a track with no surface is stored unpaved unless
+    it is grade1, and a trail beside a road is roadside where one away from roads is not.
+    The sentinels and floors are this extract's."""
+    settings.REBUILD_SENTINEL_CALM_PATH_WAYS = (REGIONAL_ROUTE_ID,)
+    settings.REBUILD_SENTINEL_CALM_STREET_WAYS = (NAMED_STREET_ID,)
+    settings.REBUILD_CALM_RUN_FLOORS = (1, 1)
+    source = install_source_extract(tmp_path, build=build_long_trails_extract)
+    _context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+    assert report.completed
+    rows = ride_rows(settings.SEGMENT_SCHEMA_STAGING)
+
+    assert rows[MOUNTAIN_BIKE_ID][3] is None, "a mountain-bike trail never has a calm run"
+    assert rows[REGIONAL_ROUTE_ID][3] >= 12_875
+    bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
+    assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
+    west, east, on = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID], rows[NAMED_ROAD_ON_ID]
+    assert west[0] == 1 and on[0] <= 2, "the roads are calm"
+    assert west[2] == "Gamma Street" and on[2] == "Delta Road"
+    assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
+    assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"
+    assert rows[ROADSIDE_PATH_ID][1] is False, "a cycleway with no surface is stored paved (448)"
+    assert rows[BARE_PATH_ID][4] is False, "a trail away from roads is not"
+    assert west[4] is False, "nor is a road"
+
+    assert rows[TRACK_NO_SURFACE_ID][1] is True, "a track with no surface is inferred unpaved"
+    assert rows[TRACK_GRADE1_ID][1] is None, "grade1 is not"
+    assert rows[BARE_PATH_ID][1] is None, "a path with no surface stays unknown"
+    assert rows[REGIONAL_ROUTE_ID][1] is False
+
+
+def test_the_mass_ride_capacity_reaches_the_segment_table(workspace, states) -> None:
+    """The writer's wiring through the real stages (OWNER-DECISIONS 325-327, 387): every
+    row carries the usable width `routemaker.massflow` gives its way's tags, the
+    classifier's lanes and its District blocks (OWNER-DECISIONS 404), and VALIDATE read
+    the column back."""
+    from routemaker import massflow
+    from routemaker.agency_roads import DC_AGENCY
+
+    source, root = workspace
+    context, report = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert report.completed
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT osm_way_id, mass_usable_width_m FROM {context.staging_schema}.segment"
+        )
+        stored = dict(cursor.fetchall())
+    assert stored and all(rpm is not None for rpm in stored.values())
+    for way in context.ways:
+        if way.osm_id in stored:
+            lanes = getattr(context.stress_by_way[way.osm_id], "lanes", None)
+            facts = context.road_facts_by_way.get(way.osm_id)
+            blocks = facts.block_facts if facts and facts.agency == DC_AGENCY else ()
+            assert stored[way.osm_id] == pytest.approx(
+                massflow.usable_width_rounded(way.tags, lanes, blocks), abs=0.01
+            ), way.osm_id
+
+
+def test_a_rebuild_that_loses_the_capacity_is_refused(workspace, states, monkeypatch) -> None:
+    """The sentinel (as the long trails' is): a pass that wrote no capacity would promote
+    the old Mass Ride map unannounced, since the tiles fall back without the column."""
+    from routemaker import massflow
+
+    monkeypatch.setattr(massflow, "usable_width_rounded", lambda *args, **kwargs: None)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root)
+    assert caught.value.stage is Stage.VALIDATE
+    assert "carry a capacity" in str(caught.value.cause)
+
+
+def test_a_rebuild_whose_median_road_is_implausible_is_refused(workspace, states, settings) -> None:
+    settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (5000, 6000)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root)
+    assert caught.value.stage is Stage.VALIDATE
+    assert "units or constants" in str(caught.value.cause)
+
+
+def test_the_districts_lane_widths_reach_the_mass_ride_column(workspace, states) -> None:
+    """OWNER-DECISIONS 404 (3): way 100 lies along a District block of one 10 ft lane
+    each way with a 5 ft bike lane beside parking each way, so its Mass Ride width is
+    the block's, 10 ft + 5 ft - the 3.5 ft door zone = 11.5 ft (3.51 m), not OSM's."""
+    from routemaker import massflow
+
+    source, root = workspace
+    block = street_block(
+        "dc-1",
+        {
+            "speed_mph": {"ob": 25},
+            "lanes": {"ib": 1, "ob": 1},
+            "way": "both",
+            "lane_width_ft": 10.0,
+            "bike": {"ib": 1, "ob": 1},
+            "bike_width_ft": 5.0,
+            "bike_beside_parking": ["ib", "ob"],
+            "parking_lanes": 2,
+            "parking_width_ft": 8.0,
+        },
+    )
+    context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    assert context.road_facts_by_way[100].block_facts
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT mass_usable_width_m FROM {context.staging_schema}.segment "
+            "WHERE osm_way_id = 100"
+        )
+        widths = [row[0] for row in cursor.fetchall()]
+    assert widths == [pytest.approx(11.5 * 0.3048, abs=0.01)]
+    osm_only = massflow.usable_width_rounded(
+        next(way.tags for way in context.ways if way.osm_id == 100)
+    )
+    assert osm_only != pytest.approx(widths[0], abs=0.01)
+
+
+def reference_road_block(speed_mph: int) -> dict:
+    """Way 100's block (named as the way is, so it conflates), standing in for the owner's
+    reference LTS 4 road: two lanes each way and a busy count, so 30 mph is LTS 4 and 25 mph
+    LTS 3 (stress.urban_two_way_floor)."""
+    return street_block(
+        "dc-ct",
+        {
+            "speed_mph": {"ob": speed_mph},
+            "lanes": {"ib": 2, "ob": 2},
+            "way": "both",
+            "aadt": 20000,
+            "aadt_year": 2020,
+            "parking_lanes": 0,
+        },
+    )
+
+
+def lts4_sentinel_on(settings) -> None:
+    settings.REBUILD_SENTINEL_LTS4_STREET = "TEST ROAD"
+    settings.REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.85
+
+
+def test_the_reference_lts4_road_passes_validate_when_it_is_lts4(workspace, states, settings):
+    """OWNER-DECISIONS 408, 409, through the real stages: the street's rows are found by
+    their block and read back from the staging table."""
+    lts4_sentinel_on(settings)
+    source, root = workspace
+    context, report = run_pipeline(
+        source, root, roadway=[reference_road_block(30)], skip=NOT_SWAPPED
+    )
+    assert report.completed
+    assert int(context.stress_by_way[100].tier) == 4
+
+
+def test_a_rebuild_whose_reference_lts4_road_came_out_calmer_is_refused(
+    workspace, states, settings
+) -> None:
+    lts4_sentinel_on(settings)
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, roadway=[reference_road_block(25)])
+    assert caught.value.stage is Stage.VALIDATE
+    assert "TEST ROAD" in str(caught.value.cause)
+    assert "Most of Conn Ave is LTS4" in str(caught.value.cause)
+
+
+def test_a_reference_street_the_roadway_block_does_not_have_is_refused(
+    workspace, states, settings
+) -> None:
+    lts4_sentinel_on(settings)
+    settings.REBUILD_SENTINEL_LTS4_STREET = "NOT A STREET NW"
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, roadway=[reference_road_block(30)])
+    assert caught.value.stage is Stage.VALIDATE
+    assert "no block named NOT A STREET NW" in str(caught.value.cause)

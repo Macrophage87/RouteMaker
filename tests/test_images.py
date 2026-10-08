@@ -25,6 +25,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -856,4 +857,197 @@ def test_the_access_log_format_is_one_argument_gunicorn_parses(tmp_path) -> None
     assert "--access-logformat" in argv, argv
     assert argv[argv.index("--access-logformat") + 1] == access_log_format(), (
         f"the shell splits the format into more than one argument: {argv}"
+    )
+
+
+# --- files the api reads at run time -------------------------------------------
+
+# Module-level paths into the repository that only the rebuild (the pipeline
+# image, which copies `fixtures` whole) or an operator's management command reads.
+# Each entry says why the api's request path never opens it. A new path constant
+# in an api-side module that is in neither the api image's COPY set nor this table
+# fails the test below, so a reader added later has to make that choice in writing.
+PIPELINE_ONLY_PATHS = {
+    "fixtures/cbd": "routemaker.cbd's polygons are read by the rebuild's tag remap; "
+    "the api imports cbd only for its load() and in_polygons() helpers (via zoo)",
+    "fixtures/lane_overrides": "read when the rebuild loads DC Roadway Block (412)",
+    "fixtures/overrides": "agency_roads reads it during the rebuild's conflation; "
+    "load_access_overrides takes its file on stdin",
+    "fixtures/speed": "speed corrections are applied by the rebuild",
+    "fixtures/corridors": "named corridors are applied by the rebuild's classifier",
+    "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
+}
+
+PATH_CONSTANT = re.compile(
+    r'Path\(__file__\)\.resolve\(\)\.(parents\[(?P<up>\d)\]|parent)(?P<rest>(?:\s*/\s*"[^"]+")+)'
+)
+
+
+def api_copied_paths() -> list[str]:
+    """Repository paths the api image copies, relative to the repository root."""
+    dockerfile = Dockerfile(REPO / "docker" / "api.Dockerfile")
+    return [source.rstrip("/") for sources, _ in dockerfile.copies() for source in sources]
+
+
+def request_time_path_constants() -> dict[str, str]:
+    """{repository-relative path: module file} for every `Path(__file__)` constant
+    in the api-side source (everything under src/ except the pipeline package)."""
+    found: dict[str, str] = {}
+    for module in sorted((REPO / "src").rglob("*.py")):
+        relative = module.relative_to(REPO)
+        if relative.parts[1] == "pipeline":
+            continue
+        for match in PATH_CONSTANT.finditer(module.read_text()):
+            base = module.parent if match["up"] is None else module.parents[int(match["up"])]
+            target = base.joinpath(*re.findall(r'"([^"]+)"', match["rest"])).resolve()
+            try:
+                found[target.relative_to(REPO).as_posix()] = relative.as_posix()
+            except ValueError:  # outside the repository: not an image question
+                continue
+    return found
+
+
+def test_every_file_the_api_reads_is_in_the_api_image() -> None:
+    """The Zoo outline lived in fixtures/zoo, which the api image did not copy, so
+    every route request failed on the new image while the suite, run from the
+    repository tree, passed (REBUILD-BUNDLE correctness review, finding 1)."""
+    copied = api_copied_paths()
+    constants = request_time_path_constants()
+    assert "fixtures/zoo" in constants, "the scan no longer sees zoo.py's path constant"
+    missing = {
+        path: module
+        for path, module in constants.items()
+        if path != "."  # BASE_DIR, the repository root itself
+        and not any(path == c or path.startswith(c + "/") for c in copied)
+        and not any(path == p or path.startswith(p + "/") for p in PIPELINE_ONLY_PATHS)
+    }
+    assert not missing, (
+        f"{missing}: read by api-side code, but docker/api.Dockerfile copies only {copied}. "
+        "COPY it into the api image, or add it to PIPELINE_ONLY_PATHS with the reason "
+        "the api never opens it"
+    )
+    stale = [p for p in PIPELINE_ONLY_PATHS if p not in constants]
+    assert not stale, f"PIPELINE_ONLY_PATHS names paths no module reads any more: {stale}"
+
+
+def lay_out_the_api_image(root: Path) -> None:
+    """Copy what docker/api.Dockerfile COPYs, and nothing else, under `root`."""
+    for source in api_copied_paths():
+        origin = REPO / source
+        if not origin.exists():
+            continue
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if origin.is_dir():
+            shutil.copytree(origin, target, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copy2(origin, target)
+
+
+def test_the_zoo_move_runs_from_the_api_image_layout(tmp_path) -> None:
+    """Run, not read: lay out what the api image copies (and nothing else), then
+    move a point inside the Zoo to the racks the way every plan() does."""
+    lay_out_the_api_image(tmp_path)
+    code = (
+        "from routemaker import zoo; "
+        "inside = zoo.redirect(-77.0490, 38.9296); "
+        "outside = zoo.redirect(-77.03, 38.90); "
+        "assert inside == zoo.racks(), inside; assert outside is None, outside; "
+        "from pathlib import Path; "
+        "Path('src/core/geodata/dc-boundary.geojson').read_text(); print('ok')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env={"PYTHONPATH": str(tmp_path / "src"), "PATH": os.environ.get("PATH", "")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0 and result.stdout.strip() == "ok", result.stderr
+
+
+# Settings paths that are not image content: the data volume and the Valhalla config
+# the rebuild writes and the api reads from a shared mount, and the rebuild's input.
+NOT_IMAGE_CONTENT = {
+    ".": "BASE_DIR, the repository root itself",
+    "data": "DATA_ROOT and everything under it is a mounted volume",
+    "valhalla": "VALHALLA_CONFIG_DIR is the shared config mount",
+    "fixtures/crossings": "REBUILD_CROSSINGS_FIXTURE is read by the rebuild only",
+}
+
+# Run in the copied layout: import what the api serves, then list every path-valued
+# module attribute (a Path, or a string holding the layout's root; one level of list,
+# tuple, set or dict) that lies inside the layout, whatever way it was written.
+AUDIT_PATHS = """
+import json, os, sys
+from pathlib import Path
+os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
+import django
+django.setup()
+import config.urls  # every view module the api serves
+root = str(Path.cwd().resolve())
+def paths(value, depth=0):
+    if isinstance(value, Path):
+        yield value
+    elif isinstance(value, str) and root in value:
+        yield Path(value)
+    elif depth < 2 and isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            yield from paths(item, depth + 1)
+    elif depth < 2 and isinstance(value, dict):
+        for item in [*value.keys(), *value.values()]:
+            yield from paths(item, depth + 1)
+found = {}
+for module in list(sys.modules.values()):
+    file = getattr(module, "__file__", None)
+    if not file or not str(Path(file).resolve()).startswith(root + os.sep + "src"):
+        continue
+    for name, value in list(vars(module).items()):
+        if name.startswith("__"):
+            continue
+        for path in paths(value):
+            try:
+                relative = path.resolve().relative_to(root).as_posix()
+            except ValueError:
+                continue
+            found[relative] = module.__name__ + "." + name
+print(json.dumps(found))
+"""
+
+
+def test_every_path_the_api_modules_hold_is_in_the_api_image(tmp_path) -> None:
+    """Run, not scanned: in the copied layout, import the api's URL configuration (every
+    view, `pipeline.variants` and `pipeline.schema` with it) and list each path the
+    modules hold. The text scan above sees `Path(__file__).resolve().parents[N] / "x"`;
+    this one sees `BASE_DIR / "fixtures"`, `.joinpath`, an unresolved path, one derived
+    from another constant, and a reader in a pipeline module the api imports."""
+    lay_out_the_api_image(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c", AUDIT_PATHS],
+        cwd=tmp_path,
+        env={
+            "PYTHONPATH": str(tmp_path / "src"),
+            "PATH": os.environ.get("PATH", ""),
+            "KEY_ENCRYPTION_KEY": "test",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    held = json.loads(result.stdout.strip().splitlines()[-1])
+    assert "fixtures/zoo/national-zoo.geojson" in held, "the audit no longer sees zoo.py"
+    copied = api_copied_paths()
+    allowed = {**PIPELINE_ONLY_PATHS, **NOT_IMAGE_CONTENT}
+    missing = {
+        path: owner
+        for path, owner in held.items()
+        if not any(path == c or path.startswith(c + "/") for c in copied)
+        and not any(path == a or path.startswith(a + "/") for a in allowed)
+    }
+    assert not missing, (
+        f"{missing}: held by modules the api imports, but docker/api.Dockerfile copies "
+        f"only {copied}. COPY it, or name it in PIPELINE_ONLY_PATHS / NOT_IMAGE_CONTENT "
+        "with the reason the api never opens it"
     )

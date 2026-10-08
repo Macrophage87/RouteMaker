@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "decided": "2026-10-06",
+  "decided_by": "the deployment owner",
+  "status": "OWNER-DECISIONS 442 (1). Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "Four crosswalk and traffic-island ways (1189857618, 1362344261, 1298593479, 1189857620) opened to bicycles with bicycle=yes access rows (not designated). Way ids only: no road or place names and no fingerprint lines, by owner decision 442. Without a fingerprint a row cannot be re-matched if OSM splits its way; the rebuild's override-rematch report then lists it as failed (FOLLOWUP-CROSSWALK-LINKS).",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 1189857618,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 442, 2026-10-06: open these crosswalk and traffic-island ways, which link a bicycle=designated side path to a bicycle=designated paved trail, to bicycles.",
+      "evidence": "OSM, 2026-10-03 extract: way 1189857618, highway=footway, footway=crossing, crossing=traffic_signals, foot=yes, no bicycle tag, so closed to bicycles by its class. Surveyed by the owner: bicycles use this crossing to join the paved trail (owner decision 442). Way ids only, with no fingerprint, by owner decision 442."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1362344261,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 442, 2026-10-06: open these crosswalk and traffic-island ways, which link a bicycle=designated side path to a bicycle=designated paved trail, to bicycles.",
+      "evidence": "OSM, 2026-10-03 extract: way 1362344261, highway=footway, footway=traffic_island, no bicycle tag, so closed to bicycles by its class. Surveyed by the owner: bicycles use this crossing to join the paved trail (owner decision 442). Way ids only, with no fingerprint, by owner decision 442."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1298593479,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 442, 2026-10-06: open these crosswalk and traffic-island ways, which link a bicycle=designated side path to a bicycle=designated paved trail, to bicycles.",
+      "evidence": "OSM, 2026-10-03 extract: way 1298593479, highway=footway, footway=crossing, crossing=traffic_signals, foot=yes, no bicycle tag, so closed to bicycles by its class. Surveyed by the owner: bicycles use this crossing to join the paved trail (owner decision 442). Way ids only, with no fingerprint, by owner decision 442."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 1189857620,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision 442, 2026-10-06: open these crosswalk and traffic-island ways, which link a bicycle=designated side path to a bicycle=designated paved trail, to bicycles.",
+      "evidence": "OSM, 2026-10-03 extract: way 1189857620, highway=footway, footway=crossing, crossing=uncontrolled, no bicycle tag, so closed to bicycles by its class. Surveyed by the owner: bicycles use this crossing to join the paved trail (owner decision 442). Way ids only, with no fingerprint, by owner decision 442."
+    }
+  ]
+}

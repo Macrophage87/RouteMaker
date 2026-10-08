@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
+import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { MapTools } from "./MapTools.tsx";
+import { INFO_HELP, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
+import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
@@ -12,7 +16,7 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
-import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
+import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
@@ -48,10 +52,20 @@ import type { Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
-import { RAIL_STATIONS } from "./lib/railData.ts";
+import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
-import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import {
+  CAPACITY_FOLD_TITLE,
+  CAPACITY_LEGEND_TITLE,
+  capacitySummary,
+  isMassRide,
+  massBandsChangeSaid,
+  massBandsSaid,
+} from "./lib/massCapacity.ts";
+import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
+import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
 import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -215,6 +229,10 @@ export function App() {
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
+  // The stress tiles carry the Mass Ride capacity (a table built before the column does not): the Mass Ride
+  // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
+  const [capacityTiles, setCapacityTiles] = useState(false);
+  const massMap = isMassRide(preset) && capacityTiles;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
@@ -249,6 +267,16 @@ export function App() {
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
+  // The road panel's spot (OWNER-DECISIONS 441a), or null while it is closed.
+  const [roadInfo, setRoadInfo] = useState<InfoRequest | null>(null);
+  const closeRoadInfo = useCallback(
+    (closed: InfoRequest | null) => setRoadInfo((current) => requestAfterClose(current, closed)),
+    [],
+  );
+  // The map is where the focus goes when the road panel's opener cannot take it back (a long press).
+  const mapFocus = useCallback(() => mapRef.current?.getCanvas() ?? null, []);
+  // Map tools (OWNER-DECISIONS 450) shows the crosshair while it is open.
+  const toolsCrosshair = useCallback((on: boolean) => setCrosshair((c) => (c.button === on ? c : { ...c, button: on })), []);
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
   const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
@@ -293,7 +321,6 @@ export function App() {
   const panelRef = useRef<HTMLElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const addRef = useRef<HTMLButtonElement>(null);
   const planButtonRef = useRef<HTMLButtonElement>(null);
   const routeHeadingRef = useRef<HTMLHeadingElement>(null);
   const pointsHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -429,13 +456,13 @@ export function App() {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
 
-  // After Remove, the focus goes to the next Remove button, or to Add.
+  // After Remove, the focus goes to the next Remove button, or (none left) to the search.
   useEffect(() => {
     const index = focusAfterRemove.current;
     if (index === null) return;
     focusAfterRemove.current = null;
     const target = removeRefs.current[Math.min(index, points.length - 1)];
-    (target ?? addRef.current)?.focus();
+    (target ?? pointsSearchRef.current?.querySelector<HTMLElement>("input"))?.focus();
   }, [points]);
 
   // The latest points, for handlers the map holds on to between renders.
@@ -452,6 +479,22 @@ export function App() {
   useEffect(() => {
     if (noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
   }, [notice, announce]);
+
+  // Which bands the Mass Ride map shows changes with the zoom (OWNER-DECISIONS 421). The legend's status
+  // line says it; while the Map layers sheet is not on screen it is said through the app-level region
+  // instead, and only when the set of bands changes (not at every zoom step, nor on coming to the map).
+  const massBands = massMap && stressVisible ? massBandsSaid(zoom) : null;
+  const massBandsBefore = useRef<string | null>(null);
+  const layersShownNow = useRef(false);
+  layersShownNow.current = view === "layers" && panelOpen;
+  // Only for a zoom the rider made: after the first fit to a route, or a place search's fly-to, the
+  // route's or the place's own sentence is what matters (accessibility review S4).
+  const zoomByRider = useRef(false);
+  useEffect(() => {
+    const said = massBandsChangeSaid(massBandsBefore.current, massBands, layersShownNow.current);
+    massBandsBefore.current = massBands;
+    if (said && zoomByRider.current) announce(said);
+  }, [massBands, announce]);
 
   const syncHistory = useCallback(
     () => setCan({ undo: history.current.canUndo, redo: history.current.canRedo }),
@@ -633,6 +676,25 @@ export function App() {
     announce(stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias]);
 
+  // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
+  // right-clicked or held (or the map's center by keyboard), as the search's choice places a
+  // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
+  const placeSpot = useCallback((choice: PlaceChoice, point: LonLat) => {
+    cancelLocateNotice();
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    if (choice === "via" && pointsRef.current.length >= MAX_POINTS) {
+      setNotice(maxPointsNotice());
+      return;
+    }
+    setNotice(null);
+    const placed = placeAtSpot(pointsRef.current, point, choice, loopVias);
+    commit(placed.next);
+    announce(placed.said);
+  }, [commit, announce, loopVias]);
+
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
@@ -716,6 +778,13 @@ export function App() {
     if (!map) return;
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
+  };
+  // The keyboard's way to the road panel (OWNER-DECISIONS 441a): the road at the map's center.
+  const roadInfoAtCentre = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const { lng, lat } = map.getCenter();
+    setRoadInfo({ point: [lng, lat], origin: "centre" });
   };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
@@ -883,7 +952,7 @@ export function App() {
   // A route is on screen: the points are compact unless the rider is editing them.
   const routeShownForPoints = shown !== null;
   const compactPoints = routeShownForPoints && points.length >= 2 && !editPoints;
-  // A route arriving while the focus is in the search, Add point at map center or the tools hides
+  // A route arriving while the focus is in the search or the point tools hides
   // them: the focus goes to "Edit points" rather than dropping to the page (lib/sidebar.ts
   // rescueCompactFocus; the review's B1). After the sheet-order effect above, which may put the
   // focus back on the element it had.
@@ -983,22 +1052,12 @@ export function App() {
           {compactPoints ? "Edit points" : "Done editing points"}
         </button>
       )}
+      {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
+      {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
-      <div className="actions point-add">
-        <button
-          type="button"
-          ref={addRef}
-          onClick={addAtCentre}
-          onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
-          onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
-          onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
-          disabled={points.length >= MAX_POINTS}
-        >
-          Add point at map center
-        </button>
-      </div>
+      {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
+          zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
       {/* The compact row: Reverse, Undo, Redo and Clear. */}
       <div className="actions point-tools">
         {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
@@ -1033,6 +1092,7 @@ export function App() {
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
         {points.length > 0 ? <p className="hint">{editingTips()}</p> : <p className="hint">{emptyPlanHint(preset, loopVias)}</p>}
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
+        <p className="hint">{INFO_HELP}</p>
       </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
@@ -1175,15 +1235,39 @@ export function App() {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
           watchForFacilities(map, setFacilitiesShown);
-          watchZoom(map, setZoom);
+          watchForCapacity(map, () => setCapacityTiles(true));
+          watchZoom(map, (z, byRider) => {
+            zoomByRider.current = byRider;
+            setZoom(z);
+          });
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
+        massCapacity={massMap}
+        massArea={isMassRide(preset)}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
         onStationPoint={placeStation}
+        onRoadInfo={setRoadInfo}
+        tools={
+          <MapTools
+            onAddPoint={addAtCentre}
+            addDisabled={points.length >= MAX_POINTS}
+            onRoadInfo={roadInfoAtCentre}
+            onCrosshair={toolsCrosshair}
+          />
+        }
+      />
+      <RoadInfoDialog
+        request={roadInfo}
+        massRide={massMap}
+        station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        onClose={closeRoadInfo}
+        fallbackFocus={mapFocus}
+        plan={{ count: points.length, loop: loopVias }}
+        onPlace={placeSpot}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {narrow && (can.undo || can.redo) && (
@@ -1269,7 +1353,7 @@ export function App() {
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
                   (Mass Ride's alone), rail stations; then the full legend. */}
               <section aria-labelledby="layers-heading">
-                <h3 id="layers-heading">Traffic stress</h3>
+                <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
                   <label className="toggle">
                     <input
@@ -1278,7 +1362,7 @@ export function App() {
                       checked={stressVisible}
                       onChange={(event) => setStressVisible(event.target.checked)}
                     />
-                    Show traffic stress on the map
+                    {massMap ? "Show riders per minute on the map" : "Show traffic stress on the map"}
                   </label>
                 )}
                 {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -1289,7 +1373,7 @@ export function App() {
                 )}
                 {/* Shown with or without the stress map: it also changes the route's facility totals
                     and description (the a11y review's SF4). */}
-                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
                 <AccessibilitySwitch
                   on={accessibilityOn()}
                   source={accessibilitySource()}
@@ -1319,7 +1403,24 @@ export function App() {
                   Legend
                 </h3>
                 {stress === "available" ? (
-                  <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                  massMap ? (
+                    <>
+                      <MassLegend />
+                      <MassZoomNotes zoom={zoom} shown={stressVisible} />
+                    </>
+                  ) : (
+                    <>
+                      <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+                      {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
+                          outside DC still shows, so its words and its credit do too (accessibility review S2). */}
+                      {isMassRide(preset) && (
+                        <>
+                          <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
+                          <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
+                        </>
+                      )}
+                    </>
+                  )
                 ) : (
                   <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
                 )}
@@ -1457,10 +1558,17 @@ function RouteSummary({
   pickerCount: number;
 }) {
   useStressStyle();
-  const segments = stressSegments(route.stress_m);
+  // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
+  const capacity = capacitySummary(route.stress_spans);
+  const segments = capacity ? [] : stressSegments(route.stress_m);
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
+  // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
+  // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
+  const outsideDc = outsideDcNote(route);
+  // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
+  const moved = movedPointsNote(route, points.length);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
   // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
@@ -1469,6 +1577,16 @@ function RouteSummary({
   const junctions = route.intersections == null ? null : junctionItems(route).length;
   return (
     <div className="summary">
+      {moved && (
+        <p className="notice moved-points" role="note">
+          {moved}
+        </p>
+      )}
+      {outsideDc && (
+        <p className="notice mass-outside-dc" role="note">
+          {outsideDc}
+        </p>
+      )}
       {detour && (
         <p className={`notice detour detour-${detour.level}`} role="note">
           {detour.text}
@@ -1505,6 +1623,7 @@ function RouteSummary({
         </div>
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
+      <CapacityStats route={route} />
       {segments.length > 0 && (
         <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
           <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
@@ -1538,6 +1657,13 @@ function RouteSummary({
           <ElevationChart route={route} profile={profile} onScrub={onScrub} />
         </Fold>
       )}
+      {capacity && (
+        // A Mass Ride's fold is about riders per minute, in place of the stress and facility figures (OWNER-DECISIONS 325).
+        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open}>
+          <CapacityFigures route={route} />
+        </Fold>
+      )}
+      {!capacity && (
       <Fold title={ROUTE_FOLDS.facilities.title} heading={ROUTE_FOLDS.facilities.title} open={ROUTE_FOLDS.facilities.open}>
         {segments.length > 0 && (
           <figure className="stress" aria-labelledby="stress-detail-caption">
@@ -1558,6 +1684,7 @@ function RouteSummary({
         )}
         <FacilityBreakdown route={route} part="figures" />
       </Fold>
+      )}
       <RouteDescription route={route} fold />
       {junctions !== null && (
         <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>

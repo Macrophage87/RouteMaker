@@ -607,6 +607,31 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
+- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
+  own, for every ride type (the owner: "I want people to know where the trails
+  are, but make them clear that it's not routing."; this supersedes 452's
+  hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
+  `mtb` (true or left out; `segment.mtb_only`, written for
+  `routemaker.trailaccess.MTB` and rated singletrack, which is hidden anyway).
+  `stressFilters` puts `mtbHides` (`["!=", ["get", "mtb"], true]`) into every
+  routable layer's filter, right after the ride time's drawn-at clause, and
+  the one layer `mtb-trail` (`mtbTrailLayers`, the bottom of
+  `stressOverlayLayers`, `minzoom` 14) draws them: `MTB_TRAIL`, a 1.5 px
+  #5f6368 line of fine dots (dash [1, 2]), no casing or rails; 2 px #4b5260
+  with the accessibility switch (`mtbTrailPaint`, which `setStressPalette`
+  re-applies). The dots carry the meaning; the grey is 3:1 or more from every
+  base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
+  `routableMtb` is the switch a future MTB mode turns on: the class moves back
+  into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
+  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
+  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
+  `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
+  the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
+  trail, not used for routes (Gravel and Mountain Goat may use it)" and, in
+  `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
+  nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
+  ride the class on the off-road graph, and their route draws over the dots.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -833,6 +858,265 @@ validity and a few known places), and the browser check section 9 of
 `scripts/a11y/check.mjs` (`scripts/a11y/run.sh`: the section, switch, legend at 320
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
+
+### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
+
+"The focus is on carrying capacity, not LTS here ... The headline color should be riders per
+minute." In Mass Ride mode the map and the route line are coloured by riders per minute, and the
+LTS colours and the path, protected-lane and painted-lane rails are not drawn. Part 1 is the
+capacity map; part 2 is the route chart (it needs the elevation chart, 322, 323) and part 3 is
+the rider-marked hazards, which wait for the peer-review backend. Hazards are not built: the
+seam is `hazardLayers()` in `frontend/src/massStyle.js` (an empty list, in its place in the draw
+order), and nothing asks for hazards.
+
+* **The model** (`src/routemaker/massflow.py`, the plan's headline throughput; the working
+  model, OWNER-DECISIONS 394, sources pending FOLLOWUP-FLOW-CALIBRATION): riders a minute =
+  60 x 0.37 riders per m2 x 0.7 utilisation x usable width x 1.9 m/s, so 29.5 riders a minute
+  for every metre of usable width: 99 for an 11 ft (3.35 m) lane. The flat, straight,
+  clear-road figure; the climbs, signals and surface of part 2 reduce it.
+* **Usable width** (OWNER-DECISIONS 404; `massflow.usable_width_m`, one function; the table
+  cases are `tests/test_mass_capacity.py` `TestTheDistrictsWidths`). The width a corked group
+  has in the direction it rides. The corkers hold the cross streets at each junction, not the
+  oncoming traffic, and a DC Bike Party keeps to its own side, so:
+  - a two-way street gives the ride its own direction's travel lanes and the painted lane on
+    its side (not the oncoming lanes, not a centre turn lane); a segment is drawn once for both
+    directions, so it carries the NARROWER direction's width (a ride flows at its narrowest
+    point; a divided road's carriageway is a one-way way and gets its own lanes);
+  - a one-way street gives every travel lane and every painted lane running with it (a
+    contraflow lane is not counted; a bare `cycleway=lane` on a one-way is one lane);
+  - a street of one shared lane (DC's "bidirectional" lane, OSM `lanes=1` two-way) is the ride's;
+  - parked cars are never usable width (404 (1)), and a painted lane beside parking keeps a door
+    zone out, `DOOR_ZONE_M` 3.5 ft (1.07 m); no margin is taken beside a travel lane;
+  - protected lanes are never usable (127).
+
+  **In DC** (404 (3)) the way's Roadway Block records decide it (`WayFacts.block_facts`, handed
+  over by `pipeline.run.write_segments`; the narrowest block along the way): lanes by direction
+  times the block's lane width (`TOTALTRAVELLANEWIDTH` / `TOTALTRAVELLANES`, which the parser
+  divides), plus the painted bike lanes at their width (5 ft where none), less door zones. DC
+  records parking lanes apart from travel lanes, so the parked cars are out of that width by
+  construction (curb to curb less parking). Reversible lanes count as ZERO (405, the safe,
+  narrower reading): DC's `TOTALTRAVELLANESREVERSIBLE` is stale where the lanes were removed
+  (Connecticut Ave NW's ended in 2020; DCist, 2021-12-15, credited in docs/SOURCES.md), so a
+  block's reversible lanes count only where the reviewed allowlist
+  (`settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS`, BLOCKKEYs, empty for now) names it, half
+  (rounded down) to each direction, and never on a street in
+  `MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW). The 57 blocks DC still records
+  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md for the owner to check. A
+  block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
+  (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
+  shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
+  classifier's LTS reading of DC lanes (179) counts reversible lanes in each direction
+  (OWNER-DECISIONS 425, `agency_roads.classifier_reversible`), except on Connecticut Ave NW,
+  whose lanes 412's override sets; the width keeps 405's zero. See "Reversible lanes and the
+  reference LTS 4 road". Bus lanes are in DC's
+  counts and are counted. A block with no
+  lanes, or a lane width outside 6 to 20 ft, gives nothing and the way falls back to OSM.
+  **Elsewhere**, and as that fallback: a mapped `width` (2.4 to 40 m, curb to curb) less the
+  parked cars (`parking_width_m`: from `parking:<side>` or `parking:lane:<side>`, 8 ft (2.4 m) a
+  side parallel, 4.5 m angled, 5 m end-on, half on the kerb half; none for `no`, `separate`,
+  `on_kerb`, `street_side` and the no-parking values) and door zones, halved on a two-way way;
+  otherwise the lanes in each direction (`lanes:forward`/`lanes:backward`, else half of `lanes`,
+  else the classifier's through lanes a direction, else half the class default) times 11 ft,
+  plus the painted lane on that side less a door zone where OSM says parking there.
+
+  Worked examples, ft (m), riders a minute: DC two-way 2 + 2 lanes of 10.5 ft, parking both
+  sides: 21 ft (6.40 m) a direction, 189. DC one lane each way of 8 ft between parked cars:
+  8 ft (2.44 m), 72. DC one-way 3 lanes of 11 ft, no parking: 33 ft (10.06 m), 297. DC 10 ft
+  lane and a 5 ft bike lane beside parking, each way: 10 + 5 - 3.5 = 11.5 ft (3.51 m), 103.
+  Connecticut Ave NW north of Calvert St (1 + 1 and 2 reversible, 10 ft; before the 412 lane
+  override): 10 ft (3.05 m), 90, the reversible lanes being zero (405). With the override, 3 + 3
+  lanes less the part-time parking lane is 2 lanes of DC's 9 ft: 18 ft (5.49 m), 162. A DC lane of 18 ft with no parking: 11 ft, 99. A block with no lane
+  width: OSM's, e.g. an untagged residential street, 11 ft (3.35 m), 99. OSM 30 ft curb-to-curb
+  with `parking:both=lane`: (30 - 2 x 7.9) / 2 = 7.1 ft (2.17 m), 64.
+* **One model with the elevation chart.** There is one `src/routemaker/flow.py`, the elevation
+  chart's (the rebuild bundle dropped wip/massride-map's verbatim copy); `massflow` takes its
+  constants, `level_riders_per_min` and band edges from it. The WIDTH is `massflow`'s: the
+  column `segment.mass_usable_width_m` is the source of truth. The route chart reads it per
+  piece (`core.routing.PieceClass.width_m`, `_flow_stretches(..., capacity=True)`), the route's
+  coloured sections take their `rpm` from the same width, and the tiles' `rpm` too, so the
+  chart, the route line and the map always agree. `flow.usable_width_m` is now only the
+  estimate for a table built before the column, and reads one direction's lanes (406).
+  The column is the flat-ground (level) figure only: the grade adjustment depends on direction
+  and on distance into a climb, so the route chart applies it, not the tiles. The legend says
+  "on the flat".
+* **The column.** `segment.mass_usable_width_m real` (metres; `pipeline.schema.MASS_WIDTH_COLUMN`; revised
+  from riders a minute on the coordinator's call: the column is physical width, and `routemaker.flow` turns it
+  into riders when tiles and routes are served, so tuning the flow constants needs no rebuild and the map
+  and chart cannot disagree), written by the segment writer for every row from the way's tags and the classifier's lanes
+  (`pipeline.run.write_segments`), with the way's District blocks since 404: the width a ride
+  has in its narrower direction, parked cars out. Nullable: a table built before it has none,
+  and nothing breaks.
+* **The tile property** (`core.stress_tiles`): `rpm`, an optional property in the same way as
+  `facility` and the long-trail columns (`OPTIONAL_PROPERTIES`), computed in the tile SQL from the width and `flow`'s constant (`RPM_PER_METRE_SQL`), rounded down to a multiple of 10
+  (`RPM_STEP`) so the band edges (60, 120, 200) never move and the zoomed-out levels, which merge
+  every segment of one value into one feature, are not split a feature per integer. ETag letter
+  `w` (`r` is the rough surface's; the tag is `+kcfrmwoesbtl` on a full table). FORMAT_VERSION 7
+  (the rebuild bundle).
+* **The VALIDATE sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
+  least 98% of the road rows and of the path rows carry a figure; no road row is under 44 or over
+  1,181 riders a minute; and the median road lies in `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`,
+  60 to 200 since 404 (90 to 260 while a two-way street counted both directions; a model in the
+  wrong units, or with a zero constant, is a refused build). The tests'
+  toy extracts set the median range wide (`tests/conftest.py`).
+* **The route.** `core.routing.classify` reads the column where the live table has it
+  (`PieceClass.rpm`), and for a Mass Ride `stress_spans` ends a section where the capacity changes
+  band and gives each `rpm`, the lowest along it (a stretch marked Avoid is one section with null).
+  Another ride type, and a table without the column, carry no figures, and the route is drawn by
+  stress as it was. A section folded away for being under 10 m does not lower its neighbour's
+  figure, so a section's figure always lies in the band its colour says.
+* **The front end.** `frontend/src/massStyle.js` (bands, layers, filters), `lib/massCapacity.ts`
+  (the narrowest point, the shares, the words), `lib/massLegend.ts` (the legend and the route's
+  list), and the route line's classes in `lib/routeColours.ts` (`m0` to `m3`, `mavoid`; the dashed
+  ones have a layer of their own each, `lib/mapGlue.ts` `routeDashLayers`). The capacity layers
+  are on the map always and drawn only in Mass Ride mode (`setMassMode`), from the Mass Ride
+  tiles below, not the stress tiles. In that mode EVERY stress-map layer is hidden, at every zoom
+  (`overlayLayerShown`; OWNER-DECISIONS 417: "Mass rides should mainly only show capacity and
+  federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail PBL etc should not
+  be shown at any zoom in mass ride."): the LTS colours, the path, protected-lane and painted-lane
+  rails, the trails and surface marks, the z10-11 long trails and the z12-13 ride layer's calm
+  roads. The base map's `roads_labels_minor` names no path then (`MASS_PATH_LABEL_FILTER`: no
+  trail-name labels); the base map itself, the federal-land overlay, the rail stations and the
+  planned route with its markers stay. Every other ride type is unchanged. (`massHides` is still
+  on the stress layers' filters in that mode; it no longer matters, as they are hidden.)
+  **The fallback:** a table without the column gives empty Mass Ride tiles, so the capacity
+  layers draw nothing, and the legend and panel (which learn it from the map, `watchForCapacity`,
+  now from either tile set, and from the route's sections) are the stress ones, never an error;
+  the map then shows no road colours at all in Mass Ride mode (the stress layers stay hidden).
+  The bundle's rebuild writes the column, so this is only a table promoted before it.
+* **The Mass Ride tiles** (`GET /tiles/mass/{z}/{x}/{y}.pbf`, `core.mass_tiles`; OWNER-DECISIONS
+  415, 418). The stress tiles' z12-13 is the ride layer (391), which holds only the long calm
+  roads, and the owner asked for the busy roads' capacity there too ("Busy roads should yes.").
+  So the Mass Ride map has its own tile set, read only in that mode (`mapStyle.ts` `massSource`,
+  source id `mass`; a source no visible layer reads fetches nothing, so the stress map never
+  loads them and the Mass Ride map loads no stress tile past MapView's one probe). Layer
+  `stress`, properties `tier` and `rpm` (the stress tiles' own `rpm` expression); every public
+  road with a capacity, no trail, path or alley (`map_class = 'road'`, not trail class, facility
+  not `path`). z10-13 merged by (tier, rpm) and simplified, as the stress tiles' zoomed-out
+  levels; z14 one feature per segment, buffer 64; past z14 empty (the map draws z15-16 from z14).
+  The stress tiles and their ride layer are unchanged, and so is their FORMAT_VERSION (7).
+* **Focus by zoom** (421, 422: "Maybe focus on higher capacity roads at large zooms", "The focus
+  option sounds good.", "Looks like a good start!"). z10-11: only Wide open (200 and up), and only
+  a block in at least 0.5 mi (0.8 km) of continuous Wide open road, so the isolated blocks that
+  pass 200 on a turn lane or a wide approach are not specks; z12-13: Good and Wide open (120 and
+  up); z14 on: every band; Avoid at every zoom. The settings are `core.mass_tiles`
+  (`WIDE_OPEN_RPM`, `GOOD_RPM`, `GOOD_MIN_ZOOM`, `EVERY_BAND_MIN_ZOOM`, `WIDE_RUN_MI`,
+  `min_rpm_for`), mirrored by `massStyle.js` (`MASS_BANDS[].minzoom`, which the band layers carry
+  too, `MASS_WIDE_RUN_MI`, `massBandsAt`); `tests/test_mass_tiles.py` holds them equal. **The run
+  is computed in the tiles, not the pipeline:** the band is the tiles' own rounded `rpm`
+  expression, so the run and the colour can never disagree; the District's Wide open road is
+  small (about 74 mi, 120 km); only the ten z10-11 tiles over the District (4 at z10, 6 at z11) need it, and the
+  pre-draw draws them; so no column, schema change or rebuild. A run is the total length of the
+  Wide open lines (clipped as drawn) that share a vertex, `ST_ClusterDBSCAN(ST_Points(clipped), 0, 1)`
+  (so a run goes on through a junction, OWNER-DECISIONS 423, and not across a bridge over a road),
+  found over the whole District in each z10-11 tile's query (the `wide`, `clustered` and
+  `in_run` CTEs), so a tile's edge never cuts a run. Measured read-only on the live table with a
+  stand-in width: z10 0.7-0.8 s warm (5.5 s the very first, cold), z11 0.45-0.6 s, z12 0.26 s.
+  **In words** (`lib/massCapacity.ts` `massBandsSaid`): the legend has one persistent
+  `role="status"` line (`.mass-bands`, as the federal-land section's status) whose words name
+  the bands shown, the floor and the run, and what zooming in adds; they change only when the
+  set of bands changes, so zooming within a level says nothing. With the Map layers sheet off
+  screen, a change of bands is said through the app's polite region instead (`App.tsx`,
+  `massBandsChangeSaid`), and never on arriving at the map or switching the colours on.
+* **Border roads** (420: "Border roads are inside DC"). Western, Eastern and Southern Ave run
+  along the line, and the boundary is simplified to about 30 ft, so a point within
+  `DC_EDGE_TOLERANCE_M`, 22 m (72 ft), of the District counts as inside: the simplification's
+  error (0.0001 degree, up to 11.1 m, and the 1e-5 degree grid) plus 10 m, half a four-lane road
+  with parking (every vertex of the three roads outside the simplified boundary is within 19.5 m
+  of it on the 2026-10-03 build). The tiles keep a line whole when it is wholly within the
+  tolerance (a buffer of the boundary in UTM 18N, EPSG:26918) and cut every other line at the
+  boundary itself, so a Maryland or Virginia street that meets the line gets no stub; the
+  District's box grows by the tolerance for the empty-tile test and the pre-draw. The planner's
+  notice uses the same tolerance (`lib/dcBoundary.ts` `nearDc`, `metresToDcEdge`). The grey
+  mask and its dashed edge stay on the boundary.
+* **DC only** (418, 418a: "Grey out everywhere outside DC on that map too as we don't support it
+  yet."; "Yes" to a warning). The District's boundary is OpenStreetMap's admin_level=4 US-DC
+  relation, written by `scripts/build_dc_boundary.py` (with the rebuild's `pipeline.states` ring
+  code; 163 vertices, simplified to about 30 ft) to two identical files,
+  `src/core/geodata/dc-boundary.geojson` and `frontend/src/massride-data/dc-boundary.json`
+  (`tests/test_mass_tiles.py` holds them equal; credited in docs/SOURCES.md and under the
+  legend). The tiles clip every line to it in SQL (`ST_Intersection` where a line is not covered,
+  lines only), and a tile that misses the District's box is empty without a query. The map greys
+  everything outside it in Mass Ride mode (`lib/dcBoundary.ts` `DC_MASK_LAYERS`: the coverage
+  mask's grey at 0.5 opacity, and a dashed dark edge so the boundary is not told by shading
+  alone), over the base map and under its labels and the overlays. In words: the legend and the
+  planner say "Mass Ride planning covers DC only for now. Outside the District of Columbia the
+  map is grayed out and no riders-per-minute figures are drawn." (`MASS_DC_ONLY`). A Mass Ride
+  route with any vertex, or any stretch's middle, outside the boundary gets "Part of this route
+  is outside the area Mass Ride planning covers (DC only for now)." (`outsideDcNote`; a point
+  within the border tolerance counts as inside, below): shown in
+  the route view (`.mass-outside-dc`, role note) and said with the route's sentence in the
+  route's polite live region (`summary.ts` `announceRoute`). Other ride types never get it.
+* **Zooms in Mass Ride mode.** Roads in DC show their riders per minute from zoom 10, busy
+  roads included, by band (focus by zoom, above; `MASS_ZOOM_HINT`); below zoom 10 the legend
+  says to zoom in. The legend keeps
+  "6-8 mph" (404). Trails, paths, protected bike lanes, bike lanes and alleys are never drawn in
+  this mode.
+* **Colours** (327): red #d7191c 4 px short dash, orange #f28e2b 5.5 px long dash, green #1a9850 7
+  px solid, purple #6a3d9a 8.5 px solid; each outlined by a halo 3:1 from it (dark under the red,
+  orange and green, white under the purple), which shows in the dash gaps. Avoid: near-black
+  #14040a on coral #ee3b2c, dash-dot, labelled AVOID. The widths thin out below zoom 16.
+* **The colour-blind check** (327: "the implementation must verify it under CVD simulation").
+  `frontend/src/massStyle.test.ts`, with the repo's own simulator and CIEDE2000
+  (`testSupport/colourVision.ts`, Machado 2009 at severity 1.0). A pair of bands whose colours
+  are under 20 apart for any vision must differ in a cue besides colour (width by 1.5 px or more,
+  or dash), and the red and the green must differ in both. The colour distances, CIEDE2000:
+
+  | pair | normal | protan | deutan | tritan |
+  |---|---|---|---|---|
+  | under 60 / 60-120 | 29.7 | 29.0 | 17.6 | 18.8 |
+  | under 60 / 120-200 (red / green) | 70.0 | 21.4 | 10.8 | 63.1 |
+  | under 60 / 200+ | 39.4 | 47.3 | 54.6 | 33.6 |
+  | 60-120 / 120-200 | 49.6 | 9.6 | 20.1 | 59.8 |
+  | 60-120 / 200+ | 59.7 | 62.2 | 65.1 | 38.1 |
+  | 120-200 / 200+ | 52.0 | 52.6 | 45.8 | 41.4 |
+
+  Red and green are 10.8 apart for a deuteranope and 21.4 for a protanope; they differ in width
+  (4 against 7 px) and dash (dashed against solid). Orange and green are 9.6 apart for a
+  protanope; they differ in width (5.5 against 7 px) and dash.
+* **Measured, before 404** (read-only against the live table, 2026-10-05, the whole-street,
+  OSM-only rule): roads median 198; band shares of road length 0.0% under 60, 25.5% 60-120,
+  69.6% 120-200, 4.9% 200+; three quarters of road rows took a class default. Superseded.
+* **Measured, after 404** (offline, from the installed Roadway Block,
+  `$DATA_ROOT/reference/roadway.json`, 13,833 DC blocks, 1,179.5 mi, weighted by
+  block length; no database). 1,158.5 mi take the District's width and 21.0 mi fall back to OSM.
+  Bands (riders a minute, as the tiles round them): under 60 0.1 mi (0.0%), 60-120 801.0 mi
+  (69.1%), 120-200 251.6 mi (21.7%), 200+ 105.8 mi (9.1%); median 90. By DC functional class
+  (under 60 / 60-120 / 120-200 / 200+): 1 interstate 0 / 0 / 38 / 62%, 2 freeway 0 / 6 / 23 /
+  71%, 3 principal arterial 0 / 9 / 53 / 37%, 4 minor arterial 0 / 54 / 32 / 14%, 5 collector
+  0 / 77 / 18 / 5%, 7 local 0 / 84 / 15 / 1%. The ride's own direction (406) is what moves most
+  of DC from good to tight, against a reading of the whole street (0.0 / 9.0 / 58.5 / 32.5%) the
+  owner has ruled out. The region outside DC is not
+  re-measured here (no live reads): an untagged two-lane street is now 99 (was 198).
+* **Measured, after 405 and 407 (3)** (the same offline method). Reversible lanes at zero and
+  the 16 ft lane capped at 11 ft move 0.0 / 69.2 / 21.7 / 9.1% to 0.0 / 71.6 / 19.3 / 9.1%
+  (under 60 0.1 mi; 60-120 830.6 mi, 120-200 224.1 mi, 200+ 105.0 mi of 1,159.8 mi on DC's width);
+  the cap alone moves 24.5 mi (453 blocks) and the reversible lanes 3.4 mi, in DC's 7.5 mi of
+  them. The median road is unchanged, so the sentinel's 60 to 200 stands. By DC functional class
+  (under 60 / 60-120 / 120-200 / 200+): 1: 0 / 0 / 38 / 62%, 2: 0 / 10 / 19 / 71%, 3: 0 / 12 / 51 /
+  37%, 4: 0 / 54 / 32 / 14%, 5: 0 / 79 / 16 / 5%, 7: 0 / 87 / 12 / 1%.
+* **Provisional (OWNER-DECISIONS 406, 407).** The ride's own direction only (406: the oncoming
+  side is never counted, and no text in the app suggests using it), the 3.5 ft door zone, the 8 ft
+  OSM parking default and the 16 ft to 11 ft cap (407) are provisional: revisit them with
+  FOLLOWUP-FLOW-CALIBRATION.
+* **Why red is all but empty, and why that is not a bug.** The band edge of 60 riders a minute
+  is 2.03 m (6.7 ft) of usable width at 29.5 a metre: narrower than any travel lane. Before 404
+  it was unreachable by construction for a road: the least a road got was one 11 ft lane (99) or
+  a mapped width of at least 2.4 m (70). The tile SQL (`floor(round(width x 29.5) / 10) x 10`),
+  the band filters (`massStyle.js`, `min` inclusive) and the edges are right: a 2.0 m row is 59,
+  tiled 50, red. Now a road reaches red where a direction has under 6.7 ft: one DC block (46th Pl
+  NE, a 6 ft lane) and an OSM street whose mapped width, less parked cars, leaves under that a
+  direction (a 30 ft street parked both sides is 64, tight; a 26 ft one is 46, red). Paths are
+  often under 60 but are not drawn. Red bottlenecks will mostly come from part 2's reductions
+  (grade, turns, signals) on the route chart.
+* **Tests.** `tests/test_mass_capacity.py` (the model, the sentinel, the sections),
+  `tests/test_stress_tiles.py::TestMassCapacity` (the tile property, the fallback, the ETag),
+  `tests/test_route_api.py::TestMassRideCapacitySections`, `tests/test_pipeline_end_to_end.py` (the
+  column written, and a build that loses it refused), and on the front end
+  `src/massStyle.test.ts`, `src/lib/massCapacity.test.ts`, `src/lib/mapGlue.test.ts`; for the
+  Mass Ride map's own tiles, the DC mask and the zoom focus (415-422), `tests/test_mass_tiles.py`
+  and `src/lib/dcBoundary.test.ts`; for both narrowest figures (424) the "424" tests in
+  `src/lib/massCapacity.test.ts` and `src/lib/profileChart.test.ts`, and for the parts outside DC (427) the "427"
+  test in `src/lib/massCapacity.test.ts`, `tests/test_profile_flow.py` and `tests/test_mass_capacity.py`; in the browser, section 20 of scripts/a11y/check.mjs.
 
 ## What migrations do and do not create
 
@@ -3144,7 +3428,9 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
-valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`); starting them against the
+valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the
+off-road router runs, `docker compose --profile offroad restart valhalla-offroad`:
+a `restart` naming a service with no container fails and restarts none of the rest); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes
 a completed swap: schema, tiles and settings table together.
@@ -3340,6 +3626,19 @@ file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
 
 Setting `CI=1` turns the suite's missing-interpreter skips into failures.
 
+The Lua suites prove what the transform hands Valhalla, not what the tile says:
+Valhalla's C++ parser reads tags off that table afterwards, and its reading of
+`mtb:*` ratings reopened every rated singletrack way while both suites passed
+(docs/OPERATIONS.md, "Bicycle closures in the tiles"). `tests/test_tile_build_access.py`
+builds and serves real tiles to check that. It needs `valhalla_build_tiles`,
+`valhalla_service` and `osmium`, so it **skips** here and in CI, and `CI=1` does
+not change that. `ROUTEMAKER_REQUIRE_TILE_BUILD=1` does: a missing binary then
+fails the run. Run it in the pipeline image, where it cannot skip:
+
+```sh
+scripts/check_tile_build_access.sh
+```
+
 ## Running the suite twice at once
 
 **A private `PGDATABASE` is enough on its own.** Each Postgres database is its
@@ -3456,7 +3755,7 @@ Tests: `lib/sidebar.test.ts`.
   heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
   dialog or on the place search's list (`sheetEscape`). When a route arrives and the
-  points compact, a focus in the search, Add point at map center or the tools goes to
+  points compact, a focus in the search or the point tools goes to
   "Edit points" (`rescueCompactFocus`), so it is never left in a hidden element.
 - **Live regions.** The route's (`.status-line`) and the points' (`said`) are outside
   the panel, so a bar sheet or the phone's hidden sheet does not silence them; the
@@ -3528,16 +3827,20 @@ Tests: `lib/sidebar.test.ts`.
   while the planner shows; the notice lives in the Map layers sheet) and the planner's
   High contrast shortcut (`HighContrastShortcut`, described by the switch's hint and its
   from-link note, with no ids the switch uses).
-- **The browser check** (scripts/a11y/check.mjs, 258 checks with the route chart, section 17 for the loop box
-  and the Plan button, section 18 for Use my location) opens the Ride settings and the "Junctions to watch" fold on every page it
+- **The browser check** (scripts/a11y/check.mjs, 280 checks with the route chart, section 17 for the loop box
+  and the Plan button, section 18 for Use my location, and section 20 for the Mass Ride capacity map: its
+  legend, bands by zoom and their status line, the DC-only words and mask, the outside-DC notice, both
+  narrowest figures, the outside-DC words, and a table without the capacity column keeping the stress map; 325-327, 387, 417,
+  417a, 418, 418a, 421, 422, 424, 427) opens the Ride settings and the "Junctions to watch" fold on every page it
   checks, and the Map layers sheet or the Directions fold where a section needs them.
   A closed fold's rows cannot take the focus, as for a rider, so a check that focuses
   a junction row must open the fold first.
 
 ### Use my location (OWNER-DECISIONS 395)
 
-Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) are on
-their own branch, wip/privacy-logs (OWNER-DECISIONS 401). A "Use my location" button sits beside the search box (`.place-search-row`, in
+Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) were on
+their own branch, wip/privacy-logs (OWNER-DECISIONS 401), which the rebuild bundle has merged; there the
+fifth (off-road) router carries the same `long_request` (31fd734). A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -3656,6 +3959,56 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 0.09: its exclusion rounds stopped after three (two rounds in a row did not improve
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
+
+## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
+
+What shipped, and where to look. The server side and the measurements are in
+docs/OPERATIONS.md, "The ride layer (z12-13)".
+
+- **Pipeline.** `pipeline.schema` holds the constants (`RIDE_PATH_RUN_MI`,
+  `RIDE_ROAD_RUN_MI`, `CALM_ROAD_MAX_TIER`, `CALM_PATH_GAP_M`; 403's `ROADSIDE_M`,
+  `ROADSIDE_FRACTION`, `ROADSIDE_SAMPLE_M`),
+  `ride_layer_predicate` and the partial index; `pipeline.trail_routes` holds
+  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE
+  summary (`calm_run_summary`); `pipeline.run.assert_calm_runs` is the check, and the
+  tests' autouse fixture (`tests/conftest.py`) blanks its sentinels and floors as it does the
+  long trails'. `routemaker.stress.inferred_unpaved` is 376 C.
+- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE), `tests/test_stress.py`
+  (the track rule), `tests/test_stress_tiles.py` (`TestRideLayer`, which adds the column back:
+  every other test of that file runs on a table without it, the fallback, so they hold
+  today's z12-13 and each is one `DROP COLUMN` from the new one), and the front end's
+  `stressStyle.test.mjs`, `stressPatterns.test.ts`, `stressLegend.test.ts` and
+  `format.test.ts`. The `STRESS_ZOOMS` parity test reads `ride` and `quiet`; the legend's
+  `RIDE_RUN_MI` is held equal to the schema's constants.
+- **Style.** `stressStyle.js` has `unknownSurfaceLayers` (two layers,
+  `stress-unknown-casing` and `stress-unknown`, drawn after the casings and before the
+  tier lines; `setStressPalette` repaints them, and their edge's dash with them, since the
+  dash is in the edge's own width, which the High contrast switch changes). LTS 1's
+  `stress-1`, `stress-casing-1` and the path rails leave a feature with `trail` true and
+  no `unpaved` to them. The dashes are the cue that is not colour; the legend row says
+  so in words.
+- **Calm roads (402, 402a).** `pipeline.calm_roads` is the road half of the calm runs:
+  `_JUNCTIONS` (SQL) lists, for each named LTS 1-2 candidate row, its ends and every
+  vertex it shares with another candidate or with a road at LTS 3 or above, with the
+  distance along the row and the bearings either side; `runs_of` (pure Python, a
+  union-find over the pieces between junctions, `pairs` deciding which ends go on into
+  which) gives each row the longest run it is in. `derive` reads the junctions through a
+  server-side cursor and writes the runs with one `UPDATE ... FROM unnest`. The pure part
+  is tested without a database (`tests/test_trail_routes.py`: `turn_deg`, `pairs`,
+  `runs_of`); the derive on shared vertices built in metres (`road`, `busy`), so two roads
+  given one point share it exactly as OSM ways share a node.
+- **Trails beside a road (403).** `routemaker.facility.roadside_by_tags` and
+  `roadside_start` (what the writer stores before the geometry: True, False or None),
+  `pipeline.trail_routes.derive_roadside` (the geometry, in SQL, on the rows left None),
+  the `roadside` column and tile property (`core.stress_tiles.OPTIONAL_PROPERTIES`, ETag
+  `e`), and the front end's `surfaceUnknown` filter in `stressStyle.js`, which leaves a
+  feature with `roadside` true to the paved path's layers. `tests/test_stress_tiles.py`
+  drops the column in its fixture (a table from before it) and `TestRoadside` adds it.
+- **Measuring.** The figures in docs/OPERATIONS.md were taken on a private copy of the live
+  table (read-only `COPY` out of the live database, never a write to it), with names from
+  the source extract read by osmium and the old and new derives run on the copy.
+- **Not done here:** decision 390 (solid LTS 3 and 4 below zoom 14), which is its own
+  change; on a table with `calm_run_m` it is moot at z12-13.
 
 ## Long calm trips, the target distance and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 271)
 
@@ -4414,6 +4767,285 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   in and back, the name and description, Escape, the saved number absent from the page and
   its accessibility tree after save and reopen), and `scripts/mutants_a11y.py`'s weight entries.
 
+## Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409, 411-414, 416, 419, 425)
+
+**Two reversible-lane rules, one list** (425 split them). For the Mass Ride width,
+`routemaker.agency_roads.counted_reversible(facts)` gives the reversible lanes of a District
+block that count: none unless the block's BLOCKKEY is on `VERIFIED_REVERSIBLE_BLOCKS` (empty),
+and none on a street in `ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW, whose reversible
+operation ended in 2020; DCist 2021-12-15) even then; `massflow.DcRules.reversible_lanes`
+delegates to it (405: zero is the narrow, safe reading). For the LTS classifier and the
+crossing stress, `classifier_reversible(facts)` counts every block's reversible lanes in each
+direction, except on a street in `ENDED_REVERSIBLE_STREETS` (OWNER-DECISIONS 425: "Keep
+counting them, probably in each direction in most cases. These tend to be high stress commuter
+roads."; 16th St NW, Canal Rd, Clara Barton Pkwy, Chain Bridge Rd, Independence Ave). So one
+lane each way and two reversible is three each way; a block with only reversible lanes gives
+that count. Between 408 and 425 the classifier used the width's rule, which lowered lanes, and
+the junction crossing cost, on roads whose reversible lanes still run. `settings.MASS_RIDE_DC_*`
+must equal the module's lists
+(`test_agency_roads.test_the_classifier_and_the_mass_ride_width_share_the_reversible_lists`).
+
+Effect on the 2026-10-03 inputs, before the lane override below: Connecticut Ave NW north
+of Calvert St (1 + 1 lanes, 2 reversible) read one lane a direction, not three; at 30 mph
+and 17,000 to 28,000 vehicles a day the single-lane row plus the volume bump was still
+LTS 4. Decision 412 now gives that road three lanes each way (next section).
+
+**Connecticut Ave NW's lanes (412, 413, 414, 416).** North of Calvert St the street has
+three travel lanes each way today ("Connect is 3 but one is sometimes used for parking,
+though double and even triple parking also happens."): the old reversible lanes became
+ordinary lanes. `fixtures/lane_overrides/2026-10-05-owner-connecticut-lanes.json`, read by
+`routemaker.lane_overrides` as `pipeline.run.load_road_blocks` loads the District's blocks
+(the one place a block's geometry and facts are together), sets a Connecticut Ave NW block
+whose middle is at or north of 38.9235 N (Calvert St NW) to 3 + 3 (never fewer than DC
+records), drops its reversible count (405's zero holds everywhere else) and marks one lane
+a direction as part-time parking (`RoadFacts.part_time_parking_lanes`). The classifier and
+crossing stress (`road_lanes`) count all three. The Mass Ride width
+(`massflow._dc_block_width_m`) leaves the parking lane out: two lanes on the ride's own
+side at DC's per-lane width, 9 ft, so 18 ft (5.49 m), 162 riders a minute (it was one
+lane, 9 ft, 81, under 405's zero). Double and triple parking is a known hazard, not
+modelled. It covers 44 of the layer's 61 Connecticut Ave NW blocks (the 2026-10-03 data):
+those recording reversible lanes, and those north of Calvert St recording 2 + 2 or 3 + 2
+(the far north, past 38.9625 N, reads 2 + 2 in the layer and now 3 + 3 by the owner's
+"north of Calvert St", confirmed by 419: "The 3 conneticut lanes end at chevy chase circle"). Blocks south of Calvert St, including R St to Calvert St and the Dupont
+underpass, are untouched. 413: K St to Dupont Circle stays LTS 3; the 411 corridor runs
+from R St north.
+
+**The Dupont Circle underpass (414, 416).** Between N St and R St the commuter traffic is
+in the underpass, so the surface roadway and the service lanes around the circle are lower
+stress (414): they are not in the 411 corridor and keep the classifier's tier (LTS 3 on the
+2026-10-03 build). OSM tags the underpass's ten ways (the tunnel, layer -1, and its portal
+ramps) `bicycle=no`, so the build bars them. The owner (416): "Bikes can pass underneath.
+There's no sign to say they are prohibited. Underneath is LTS4." The access and stress rows
+of `fixtures/overrides/2026-10-05-owner-dupont-underpass.json` set `bicycle=yes` and tier 4
+on those ten ways (hidden, category other, no public note). Load them with
+`load_overrides` before the rebuild (fixtures/overrides/README.md).
+
+**Connecticut Ave NW, R St to Calvert St (409).** Rated LTS 3 because DC posts it 25 mph:
+`stress.urban_two_way_floor` steps a two-way city street of two lanes a direction to LTS 4
+only from 30 mph. The owner's "LTS4 north of R" is a named corridor
+(`fixtures/corridors/2026-10-05-owner-connecticut-north-of-r.json`): the axis is DC's
+centre line of blocks dc-4632193-0 to dc-4634051-0 extended 60 m past each end, the through
+lanes within 10 m (the divided part's carriageways are up to about 8 m out), `along_m`
+60 to 1,432. `tests/data/connecticut_ways.json` is the 2026-10-03 extract's ways there;
+`test_corridors.test_connecticut_is_lts4_from_r_st_to_calvert_st_and_nowhere_else` holds
+the 22 ways it lifts. Direction on a hill is FOLLOWUP-GRADE-STRESS, not here.
+
+**The sentinel (408).** `pipeline.lts_sentinels`: the street's blocks by the agency's name
+(`settings.REBUILD_SENTINEL_LTS4_STREET`, "CONNECTICUT AVE NW"), its segment rows by
+`attr_sources->'blocks'` (the classifier records up to 12 matched blocks a way), lengths by
+row (both carriageways of a divided stretch), a row's latitude at its middle, LTS 4 meaning
+tier 4 or Avoid. VALIDATE (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
+overall or under 95% north of 38.9126 N (R St NW). Skipped, with a warning, when no agency
+street layer is installed; refused when the layer has no block of that name; off with an
+empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 build: 49%
+overall (6.62 mi of rows, K St to Dupont Circle posted 20 and 25 mph is LTS 3) and 72% north
+of R St; with the corridor about 67% and 99%. Tests: `tests/test_lts_sentinels.py`, and the
+end-to-end pass, refuse and missing-street cases in `tests/test_pipeline_end_to_end.py`.
+
+## Arterial calibration and the override re-match (2026-10-04)
+
+OWNER-DECISIONS 282, 284-286, 294-296 and 303. Three pieces, each in its own
+module, all applied by the rebuild (`pipeline.run`); docs/OPERATIONS.md, "AADT
+smoothing, named corridors and the override re-match", has the reports and the
+switches.
+
+### Same-street AADT smoothing (`pipeline.aadt_smoothing`)
+
+After the states are known and before CLASSIFY_STRESS reads a count, each count
+is compared with the length-weighted median of the counts of the same street
+(the name without its quadrant, `routemaker.streets.street_key`, in the same
+state) whose way midpoints lie within 1,312 ft (400 m), where that window holds
+at least 3 ways and 820 ft (250 m) of road. Service and trail ways neither vote
+nor are smoothed. Lower only (303): a count is replaced only where the median is
+lower, so a tier can fall and never rise. The link is classified on the median;
+the segment row publishes the agency's count (`volume_aadt`) and, where the tier
+fell, the tier on that count (`stress_unsmoothed_tier`, from
+`StressResult.unsmoothed_tier`), which `core.junctions.roads_by_way` reads as
+`GREATEST(stress_tier, stress_unsmoothed_tier)`. Anything that sets the tier
+afresh (an override row, a named corridor, a closure to motor traffic) drops it.
+The case it was built for: 1st St NW way 483241819, DDOT 10,665 between blocks at
+7,520, LTS 3 to LTS 2 as a link (285), while the Q St junction is still rated
+LTS 3 on 10,665. Tests: `tests/test_aadt_smoothing.py`,
+`tests/test_arterial_stage.py`, and the segment-table reads in
+`tests/test_junctions.py` and `tests/test_writers.py`.
+
+### Named corridors (`routemaker.corridors`, `fixtures/corridors/`)
+
+The owner's named stretches, matched by street name and position on an axis
+(through within 23 ft (7 m) of it, side within 66 ft (20 m), within 40 degrees
+of its direction, at least half the way's length in the entry's range), never by
+way id. Applied at the end of CLASSIFY_STRESS, under the approved override rows.
+Protected lanes, separate bikeways, path-class facilities and trail-class ways
+are exempt (294). `load` refuses a missing folder. Tests:
+`tests/test_corridors.py`, on the real North Capitol Street ways.
+
+### The override re-match (`pipeline.rematch`)
+
+Each override row in `fixtures/overrides/` carries a fingerprint (name, highway
+class, length, a simplified line). At APPLY_OVERRIDES a row whose way is missing
+is re-pointed only when every test holds: same name and class; each candidate at
+least 90% within 20 ft (6 m) of the stored line and running within 30 degrees
+of its direction; together covering 90% of it and adding up to its length
+within a factor of 1.25; no two candidates side by side (their stretches of the
+line overlap by no more than 49 ft (15 m), nor by half the shorter one, so this
+holds on a line under 49 ft (15 m) too); no same-name way overlapping it by more
+than an end-on neighbour; no collision with another row. Anything else fails,
+with its reason, and the row stays as it was. Tests:
+`tests/test_override_rematch.py`.
+
+### Mutants
+
+`scripts/mutants_arterial.py` runs a mutation pass over the three modules, the
+corridor fixture and the stage wiring, against whole test files, one process at
+a time (`--check` only checks that every mutant applies). It includes the
+boundary mutants of ARTERIAL review r0 (each re-match, corridor and smoothing
+threshold moved past its tested edge); every one is killed.
+
+### Floor rows (OWNER-DECISIONS 445a-c)
+
+A stress override row can be a floor (`"at_least": true` beside its `tier`;
+`pipeline.overrides`): the rebuild rates the way max(the classifier's tier, the row's
+tier), and where the classifier already meets it, the way keeps its own tier and reason and
+the row is not counted as applied. The east-of-the-Anacostia file's Minnesota Ave,
+Pennsylvania Ave SE (non-trunk) and Nannie Helen Burroughs Ave NE rows are floors
+(445a-c). Without the key a row sets the tier, up or down, as before.
+
+## Military areas (owner report 2026-10-05; OWNER-DECISIONS 330, 437)
+
+`pipeline.restricted_areas.military_closures` runs in CLASSIFY_FACILITIES, after APPLY_OVERRIDES,
+over every highway way and the `landuse=military` / `military=*` areas of the source extract.
+
+- **Inside** is the share of a way's length inside the areas, at least `INSIDE_FRACTION` (0.5),
+  by `_Shapes` (shapely: the outer rings less the inner ones; overlapping areas are unioned so no
+  stretch counts twice; a stretch along the boundary is not inside). The cemetery, parking and
+  park rules still count vertices (`_inside`).
+- **Open inside a base**, and nothing else (437): a way an approved access override wrote a
+  bicycle key on (`RebuildContext.bicycle_override_ways`, from `overrides.apply_access`), a
+  numbered public road (`public_route`), the Pentagon's listed ways inside its reservation
+  (`PENTAGON_OPEN_WAYS`), and `bicycle=designated` with no closing `access`, `vehicle` or
+  `bicycle` key (`motor_vehicle=no` does not close a shared-use path), unless
+  `DESIGNATED_BASE_ONLY` lists its id (438.1, 439: closed with its own reason). A way's own
+  `access=yes`/`permissive` or `bicycle=yes`/`permissive` is listed as
+  `WHY_TAGGED_OPEN` and closed.
+- Closed ways are `rm:no_bicycle=military` (first in `trail_closures.ORDER`, on every graph);
+  closed roads are left off the map. `military-closures.csv` lists every way with its share.
+- **VALIDATE** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
+  installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name, or a tuple of names held
+  as one sum where outlines overlap, as Bolling's old outline and JBAB do; empty in the test
+  settings), and `through_networks`: an open network inside a base that meets the bicycle-open
+  network outside at two or more nodes refuses the build unless every way in it is open for a
+  listed reason (`THROUGH_EXCEPTIONS`). A listed Pentagon way not seen open is warned about.
+
+Tests: `tests/test_military_closures.py`, with `tests/data/military_through.json` (Fort Belvoir
+and Fort Detrick, the open-by-tag ways that formed the through networks before 437, and their
+outside neighbours) and `tests/data/military_edges.json` (Telegraph Rd, Russell Rd, South Fern St
+and Saint Elizabeths Rd SE with their outlines clipped round them); the tile-build cases for a
+closed tier-3/4 road with directional grants are in `tests/test_tile_build_access.py`.
+
+## Secured federal compounds (owner report 2026-10-06; OWNER-DECISIONS 330, 446-446c, 447)
+
+`pipeline.restricted_areas.secured_closures` runs beside `military_closures`, on the same
+read of the source extract's areas, and judges every way inside a secured federal compound
+by the military rule.
+
+- **A secured compound** (`area_kind` returns `SECURED`, checked after `MILITARY`): an area
+  `SECURED_AREAS` names by OSM id, or, by the tag rule (`is_secured_area`), a government
+  area (`landuse=government`, `office=government` or `government=*`, not a building) whose
+  own `access` is in `SECURED_ACCESS` (no, private, military, restricted, permit).
+  `SECURED_AREAS` stays a short curated list of campuses whose internal roads and paths
+  would look open and routable on the map (446c), each filed under a name of its own that
+  holds if OSM renames it. At the 2026-10-03 extract the tag rule catches Goddard alone.
+  `access=private` on a commercial, industrial or residential area is not caught.
+- **Inside and open:** inside as for a base (at least `INSIDE_FRACTION` of the way's
+  length). Open only for an approved override's bicycle permission, a numbered public road,
+  a public road the outline takes in (`SECURED_PUBLIC_WAYS`: Good Luck Rd, Soil
+  Conservation Rd, Brock Bridge Rd's bridge at Jessup, Slacks Rd at Sykesville), the
+  public way in to the Goddard Visitor Center (`SECURED_VISITOR_WAYS`, 446) and a way
+  signed for bicycles. A listed way
+  is open only while its own tags do not close it, and a listed id renumbered upstream
+  closes (err closed). A way inside both a base and a compound is the base's (`skip`).
+- Closed ways are `rm:no_bicycle=secured`, after `military` in `trail_closures.ORDER`, on
+  every graph; closed roads are left off the map. `secured-closures.csv` lists every way
+  (the military report's columns, `facility` for `installation`), and `secured_missing`
+  warns about a listed outline the extract no longer has.
+- **Through networks:** `run.military_through_networks` runs a second time over the secured
+  ways. Every reason a secured way can be open today is in `THROUGH_EXCEPTIONS` (override,
+  numbered route, the listed public roads, the Visitor Center ways, signed for bicycles),
+  so this check cannot refuse a build yet; it guards an open reason added later.
+- **VALIDATE** (`run.assert_secured_closures`): the Rowley sentinel ways
+  (`REBUILD_SENTINEL_SECURED_CLOSED_WAYS`, closed where the extract has them; a missing one
+  is warned about) and a floor per compound (`REBUILD_SENTINEL_SECURED_MIN_CLOSED`, by its
+  `SECURED_AREAS` name, or OSM's for Goddard), about three quarters of the 2026-10-03
+  count, so an outline lost or renumbered upstream fails the build instead of reopening the
+  compound.
+
+The correctional department's land at Sykesville (w736540664, "Sykesville correctional
+land") is listed under the err-closed default (447) while the owner's answer is pending:
+60 ways, 7.3 mi (11.7 km) closed, floor 45; Slacks Rd, the county road through it, stays
+open. Take the entry out of `SECURED_AREAS` and its floor out of settings if the owner
+says to open it.
+
+Tests: `tests/test_secured_areas.py`, on real ways (`tests/data/secured_areas.json`,
+`tests/data/secured_goddard_jessup.json`, `tests/data/secured_sykesville.json`); the
+wiring through the rebuild stages (report, skip, through check, map) in
+`tests/test_pipeline_end_to_end.py`
+(`test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild`).
+
+## Car-free bike roads on the map (OWNER-DECISIONS 442)
+
+`facility.map_class` draws a trail-class way signed `bicycle_road=yes` or `cyclestreet=yes`
+(`BICYCLE_ROAD_KEYS`) with no bicycle tag as a road (`facility.is_bicycle_road`), as on the
+car-free piece of Beach Drive (way 24976160, `highway=pedestrian`), which had read as a
+trail a bicycle may not ride and was left off the map. The map only: the facility class,
+which routing reads, and access are unchanged, and the closed-access check (`access` or
+`vehicle` closing it with no bicycle or foot tag reopening it) runs first, so a private one
+stays hidden. Tests: `tests/test_facility.py`.
+
+## Hard surfaces (OWNER-DECISIONS 440)
+
+`routemaker.surfaces` is the one definition of a paved surface. `is_paved` is the
+map's and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
+graph's (`lua/routemaker_remap.lua`, `M.PAVED_SURFACES` and `M.PAVED_PREFIXES`, kept
+equal by `tests/test_surfaces.py`): road paving and its `:` variants, wood and
+`boardwalk`, metal and `metal_grid`, brick, bricks, sett, tartan, rubber, cobblestone and
+unhewn cobblestone. The two cobblestones are also rough (`stress.is_rough`), so a road
+on them floors at LTS 2 as a dirt one does.
+
+Two narrower readings keep access where it was:
+
+- `is_sealed`, road paving only, is what lets a rated way out of singletrack
+  (`singletrack.is_paved`). A wooden ladder, berm or skinny rated `mtb:scale` 1 or more
+  is a mountain-bike feature whatever its class: The Boss Trail's wooden features are
+  `highway=cycleway`, and the jump lines `bicycle=designated`. A wooden trail bridge
+  rated 0 (the Rock Creek Trail's) was never singletrack.
+- `is_hard_for_access` is the no-bike-path rules' hard-surface exemption
+  (`trailaccess.is_hard_surface`): every paved surface but wood, which counts only on a
+  bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
+  a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
+
+Valhalla 3.5.1 prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
+`paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
+penalty (which still wins). A paved way's mountain-bike rating comes off as before
+(`M.strip_paved_ratings`), now on a wooden deck too, which only ever removes the
+parser's access grant; a rated wooden feature is closed by `rm:no_bicycle=singletrack`.
+`scripts/check_tile_build_access.sh` reads each hard surface's price in a real tile.
+
+## Roads closed or restricted to motor traffic (owner report 2026-10-06, the WB&A Trail)
+
+`stress.motor_restriction` caps the tier of a road whose motor traffic is barred or
+limited, so the class's default speed (35 mph on an unclassified road) does not set it.
+The most specific of `motorcar`, `motor_vehicle` and `vehicle` decides; with none of
+them, `access` decides where the way's own bicycle tag keeps bicycles on it. `no`,
+`agricultural` and `forestry` cap at LTS 1; `private`, `destination`, `permit` and
+`delivery` at LTS 2; a posted limit above 30 mph raises the cap one tier. It only lowers,
+is skipped where a traffic count is known, and leaves a way closed to bicycles too to
+the tables, since there is no ride on it to rate (444): a `bicycle` tag outside
+`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...), or, with no
+bicycle tag, an `access` or `vehicle` that is not a public value. It changes no access: the rule text says why the tier is low, and
+the rough-surface floor still applies after it. Bragers Road (way 11507607) on the
+WB&A Trail is the test case.
+
 ## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 
 The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
@@ -4501,14 +5133,23 @@ measurement.
   open. `flow.BAND_EDGES` and `flow.BAND_WORDS` are the one source: the front end's
   `FLOW_BANDS` is held to them by `tests/test_profile_flow.py`.
 
-**The flow API** (for `wip/massride-map`, which keeps a copy of this module and stores a
-per-segment physical width, `segment.mass_usable_width_m`; adopt this on rebase):
+**The flow API** (one module since the rebuild bundle: `routemaker.flow` is shared by the
+route chart, `routemaker.massflow`, the route's sections and the tiles):
 
-- `usable_width_m(tier, facility, lanes, oneway) -> float | None`: the physical width,
-  metres. `tier` may be the router's text key ("1"-"5", "unknown") or the pipeline's int
-  (1-5, None); tier 5 (Avoid) and unrated give None. `lanes` is through lanes a direction.
-  This is what the column stores; riders are made from it when served, so a change to a
-  constant reaches the map without a rebuild.
+- The width a group has is the segment table's `mass_usable_width_m`
+  (`routemaker.massflow.usable_width_m`, written by the rebuild: the ride's own direction,
+  parked cars out, DC's Roadway Block first; OWNER-DECISIONS 404-407). The route chart reads
+  it per piece (`core.routing.PieceClass.width_m`; `_flow_stretches` with `capacity`, which is
+  true for a Mass Ride on a table that has the column), so the chart and the capacity map
+  always agree. Riders are made from the width when served, so a change to a constant
+  reaches the map and the chart without a rebuild.
+- `usable_width_m(tier, facility, lanes, oneway) -> float | None`: the ESTIMATE, metres,
+  used only on a table without the column. `tier` may be the router's text key ("1"-"5",
+  "unknown") or the pipeline's int (1-5, None); tier 5 (Avoid) and unrated give None.
+  `lanes` is through lanes a direction, and the estimate is that one direction's lanes x
+  11 ft (406: own side only; `oneway` no longer doubles it). Before the bundle it took both
+  directions of a two-way road, so `tests/test_profile_flow.py`'s two-way cases changed
+  from 13.4 m to 6.7 m (2 + 2 lanes) and from 6.7 m to 3.35 m (no lane count).
 - `level_riders_per_min(width_m) -> float`: the level figure (unrounded). The tiles'
   `RPM_PER_METRE_SQL` is `level_riders_per_min(1.0)`, as now.
 - `grade_factor(grade, climbed_m=0) -> float`: `speed_ratio x spacing_ratio`, 0.3 to 1; 1
@@ -4521,10 +5162,8 @@ per-segment physical width, `segment.mass_usable_width_m`; adopt this on rebase)
   per sample, from `(metres, width)` stretches in the order ridden; `stretch_index` and
   `climbed_along` are its parts.
 - `BAND_EDGES`, `BAND_WORDS`, `band_index`, `is_avoid`, `tier_number`.
-- The names massride-map already uses (`DENSITY_PER_M2`, `UTILISATION`, `PACE_MS`,
-  `LANE_WIDTH_M`, `level_riders_per_min`, `usable_width_m("1", "none", ...)`, `BAND_EDGES`,
-  `BAND_WORDS`, `band_index`) are unchanged; what changes is that `usable_width_m` gives
-  None for tier 5 and takes int tiers, and `per_sample` returns unrounded floats.
+- `massflow` uses `UTILISATION`, `PACE_MS`, `LANE_WIDTH_M`, `level_riders_per_min`,
+  `BAND_EDGES` and `BAND_WORDS`; the tiles' SQL uses `level_riders_per_min(1.0)`.
 
 **Major junctions** (333 as 396 redefines it) are
 `routemaker.intersections.major_crossings`: every flagged event (a junction with a stress
@@ -4625,7 +5264,7 @@ tiers and Avoid, the band parity with the front end, the thinning, the route pro
 builder with Avoid, untraced and unchecked, and the 396 major junctions and the fallback),
 `tests/test_route_api.py` (the contract key, the answer's profile, a Mass Ride's riders,
 and a 2-lane one-way's width end to end), `lib/profileChart.test.ts`, the sidebar tests
-(`chartFoldOpen`), and section 19 of the a11y check (43 checks: the fold, the slider's
+(`chartFoldOpen`), and section 19 of the a11y check (45 checks: the fold, the slider's
 role, name, key-hint description and value text, the summary, the patterns and the strip's
 path, the arrow, C, Home and End keys, a hover leaving the spoken value alone, the map
 marker, the position kept, the tables and their names, a phone's collapsed fold and fit,
@@ -4633,3 +5272,136 @@ and the Mass Ride chart's area, patterns, guide colours and contrast, the narrow
 Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
+
+## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m-441q, 450; v0.2.1)
+
+**What a rider does.** A right-click on the map (a computer), a finger held still for
+0.6 s (a phone; `lib/roadInfo.ts` `LongPress`, called off by a drift past 10 px, a second
+finger, the finger lifting or the map moving, and never preventing a default, so the map
+pans and pinches as before), I with the map focused, or "Road info at map center" in Map
+tools (450; `MapTools.tsx`): one small button, at least 44 px, in a map control under the
+zoom buttons, a disclosure (`aria-expanded`, two plain buttons, not an ARIA menu) holding
+"Add point at map center" and "Road info at map center"; Escape closes it and the focus
+goes back to it, as it does before either action runs, and the crosshair shows the center
+while it is open. The two were wide planner buttons before 450. Each way opens
+`RoadInfoDialog.tsx`, the platform's modal `<dialog>`: the focus goes to its heading,
+Escape and Close close it and the focus goes back to what opened it, Tab stays inside.
+It opens compact (the owner: "a bit wordy and I have to scroll"), so the common case fits
+a phone without scrolling: the name and kind ("Main road, nearest the spot you picked"),
+then a top row of real buttons (441n), "Set as start", "Set as end" (not in a loop) and
+"Add as stop", which put the spot (the map's center by keyboard) in the plan as the search's
+Start / Destination / Stop choice does (`applyPlace`: loop-aware, the coverage check, the
+cap; an unavailable one is `aria-disabled` with its reason beside it and as its
+description), say "Stop 2 set here." and the like, and close the panel, the focus going
+back to what opened it (the map, after a long press); then the API's `summary` as a list, one short line a fact with no source under it
+("Traffic stress: LTS 3 · For experienced cyclists", "Why", "Speed", "Lanes", "Traffic:
+22,000 a day (DDOT 2024)", "Bike lane", "Surface" off a plain paved road, "Bikes: Allowed"
+or "Not allowed — military area", and "Room for: About 160 riders a minute" on the Mass Ride map
+only); a line with nothing useful is left out, but bike access is always said. A nearby
+station's pages follow, then a closed native `<details>` "Details and sources" with every
+section (a heading each, the figures a description list with the source in words), the
+way's OSM id and distance, and the credit; then the bottom action row (441m), links drawn
+as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
+(`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
+OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
+release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
+passes it yet. A polite status region inside the dialog (always rendered, empty until the
+answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
+cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
+silent, since the modal makes everything outside it inert. On a phone it is a sheet from
+the bottom. The help (More tips) names all four ways (right-click, hold, I, Map tools) and
+says that NVDA and JAWS pass I to the map only in focus mode; the map's own name says
+"Press I" (and only the canvas has `aria-keyshortcuts="I"`). A right-button drag that rotates the map is not a
+request (`MapView.tsx`: the contextmenu waits for the release on platforms that send it
+with the press, and a release that moved more than 5 px is a rotation). A held finger on
+the route line still picks the line up; the panel's long press only starts off it.
+
+**What it shows** (`core.segment_info`, GET /api/segment-info?lat=&lon=). The nearest
+row of the live segment table within `SNAP_RADIUS_M` (30 m, 100 ft; "No road here"
+otherwise), a drawn way winning over a hidden one (a mapped sidewalk) up to 15 m nearer.
+Its name and kind come from the standard router's `/locate` at the spot on the way, as the
+route's street names do, matched by OSM way id; the bicycle costing's edges say whether the
+graph lets a bicycle on, and the pedestrian then auto costing name a way it does not. Then:
+the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", whole tiers;
+441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
+"35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
+(posted 55 mph)"), an override's tier before it and its category, its note only where the
+row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each
+way" or, where `road_oneway` is true (a one-way street, or one carriageway of a divided
+road), "in this direction", since `road_lanes` counts one direction; and
+the speed limit, posted (with `attr_sources`' source) or assumed (the classifier's figure
+from the rule); the count, its publisher and year, or "No count"; the facility class,
+`car_free_when`, the shared surface rule (`is_unpaved`, `is_rough`, a roadside path's
+"probably paved", 403, 440); bike access; and the Mass Ride width and riders a minute on
+the level (`flow.level_riders_per_min`), shown on the Mass Ride map only. The answer's
+`kind` and `summary` (`summary_rows`: `{id, label, value}`, no sources) are the compact
+lines; the sections stay the full record. "Street View" is Google's public URL for the nearest point on the way (the answer's
+`on_way`, `[lon, lat]`, 441o; the spot itself when no road is found), in a new tab with
+`rel="noopener noreferrer"`, named in text only, with the note that the spot is sent to
+Google only if the link is followed. No person is ever named: an owner's row is "Owner
+override" or "Owner-rated corridor".
+
+**Bike access and its reason.** Open or closed is the router's answer when it gives one
+(the graph is the truth routing uses), else the table's (`map_class` barred, or a closing
+reason). The reason is the new column `segment.bike_access_reason`
+(`routemaker.facility.bike_access_reason`, written in WRITE_SEGMENTS): an approved access
+override that reopened or closed the way (`override_open`, `override_closed`), else its
+`rm:no_bicycle` reason (`military`, `secured`, the trail rules, `cbd_sidewalk`, `zoo`,
+`singletrack`, `mtb`, `dismount`), else its own tags (`bicycle_no`,
+`bicycle_use_sidepath`, `private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
+and a test holds every code the rebuild can write to having words. The military and
+secured rules are the err-closed ones (OWNER-DECISIONS 330), and say so.
+
+**An older live table.** Every column newer than the oldest table is optional
+(`OPTIONAL_COLUMNS`, read from `information_schema` and looked for again every 5 minutes
+while one is missing, so a swap is picked up without a restart). The live table of
+2026-10-07 has no capacity, access-reason, trail or roadside columns: the Mass Ride rows
+then say "Available after the next data update", and a closed way "Closed to bicycles;
+the reason is available after the next data update".
+
+**Limits and privacy.** Signed out; refused uncounted when the browser says a foreign page
+sent it (as place search is); 20 per 10 s and 60 a minute per client
+(`ratelimit.SEGMENT_INFO_BURST`, `SEGMENT_INFO`); the place names' router slot
+(`GEOCODE_IN_FLIGHT`, `name_slots`), so a burst of panels never holds a search's slot;
+`Cache-Control: private, max-age=300`. The spot is in the query string, which gunicorn's
+access log leaves out, and the beta's nginx location for reverse look-ups and searches now
+covers `/api/segment-info` too (its error log at `crit` only; `tests/test_beta_overlay.py`
+holds every path the front end sends a query to to that location). Nothing logs the
+coordinates (a test).
+
+**Stations (441b-441f).** A station's tap card (railInteraction.ts) offers its pages under
+Start here / End here / Add as stop: a Metro station's WMATA page from
+`rail-data/wmata-station-slugs.json` (curated and checked, rail-data/README.md) and a MARC
+Penn station's Penn Line timetable; Union Station and New Carrollton offer both. Offered,
+never followed by itself (441c). The road panel lists the pages of the nearest station the
+map shows within 0.25 mi (400 m) of its spot, which is how a keyboard or screen-reader rider
+reaches them: the station's name in view ("Nearby station: Dupont Circle"), then the short
+links "Station site" and "MARC timetable" (441q), whose accessible names stay specific and
+hold the visible words ("Dupont Circle station site, WMATA, opens in a new tab"; "MARC
+timetable, Penn Line, MTA Maryland, opens in a new tab").
+
+**Deploying it.** Code, no migration, and one new segment column, which arrives with the
+next rebuild (its DDL is in `SEGMENT_DDL`; until then the endpoint tolerates its absence).
+The front end and the API may ship in either order: an old API answers 404 for the
+endpoint and the panel says the information is not available right now. The beta's nginx
+template changed (the location regex): re-render it with `scripts/beta/render-nginx.sh` on
+the next beta deploy.
+
+**Tests.** `tests/test_segment_info_api.py` (the answer on a real live table with the router
+faked at `segment_info.locate_edges`; no road; a hidden sidewalk nearer than the road; an
+unnamed path; assumed speed and lanes; a closed way's reason; an owner's reopening and
+corridor; the route-only note kept off; a silent router; an old table; no coordinates in
+any log; 400, 403 uncounted, 429; the rule and reason words; `bike_access_reason`),
+`tests/test_beta_overlay.py`, `lib/roadInfo.test.ts`, `lib/stationLinks.test.ts` (every
+Metro station on the map has a slug, no stray, Penn and Union Station, the nearby station),
+and section 21 of the a11y check (29 checks since the v0.2.1 fix round, among them Map tools
+by keyboard, the answer read from the accessibility tree inside the dialog, Shift+Tab, an
+unavailable top-row button, the station links near Union Station and the focus after a long
+press; the first 15: a right-click opens a modal dialog with the
+focus on its heading, one request with the spot in the query only, labelled sections with
+sources in words, no capacity off the Mass Ride map, the Street View link and its note,
+the polite announcement, the dialog's accessible name, Tab held inside, I on the focused
+map and the canvas's name, Escape back to the map, the button and Close back to it, the
+help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
+opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
+/api/segment-info.

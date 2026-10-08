@@ -11,9 +11,9 @@ import osmium
 import pytest
 from django.db import connection, utils
 
-from pipeline import trail_routes
-from pipeline.run import ValidationFailed, assert_long_trails
-from pipeline.schema import TRAIL_RUN_GAP_M
+from pipeline import calm_roads, trail_routes
+from pipeline.run import ValidationFailed, assert_calm_runs, assert_long_trails
+from pipeline.schema import CALM_PATH_GAP_M, TRAIL_RUN_GAP_M
 from pipeline.writers import segment_row, write_segments
 from routemaker.stress import Stress, StressResult
 
@@ -608,3 +608,538 @@ class TestValidation:
         bridge(staging, 1, "Lone Bridge", 0, 50)
         with pytest.raises(ValidationFailed, match="trail_bridge 3"):
             assert_long_trails(self.summary(staging, ()), (), (0, 0))
+
+
+# ---- THE CALM RUNS (OWNER-DECISIONS 391, 402, 402a) ----------------------------------------
+
+STREET = "mixed traffic, 25 mph, single lane, low volume"
+DEG_PER_METRE_LAT = 1 / 110_574
+
+
+def calm_piece(
+    schema, way, name, start_m, length_m, *, path=False, calm=0, lat=LAT, trail_run=None
+) -> None:
+    """A candidate for the ride layer: a street (LTS 1, no facility) or, with `path`, a path,
+    `length_m` metres east of -77.0, `start_m` along, with `calm_run_m` `calm` (0: a candidate
+    the derive has not reached; None: not one)."""
+    west = -77.0 + start_m * DEG_PER_METRE
+    east = west + length_m * DEG_PER_METRE
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, facility, trail_name, calm_run_m, trail_run_m) VALUES "
+            "(%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, %s, %s, %s, %s, "
+            "%s, %s)",
+            [
+                way, west, lat, east, lat, "Y" if path else STREET, path,
+                "path" if path else "none", name, calm, trail_run,
+            ],
+        )  # fmt: skip
+
+
+def road(schema, way, name, *points, tier=1, calm=0, unsmoothed=None, map_class="road") -> None:
+    """A road through `points`, (east, north) in metres from (-77.0, LAT), at `tier`, a calm
+    candidate (`calm` 0) or not (None). The same metres give the same vertex, so two roads
+    given one point share it, as OSM's ways share a node."""
+    coords = [(-77.0 + x * DEG_PER_METRE, LAT + y * DEG_PER_METRE_LAT) for x, y in points]
+    wkt = "LINESTRING(" + ",".join(f"{lon!r} {lat!r}" for lon, lat in coords) + ")"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, facility, trail_name, calm_run_m, "
+            "stress_unsmoothed_tier, map_class) VALUES "
+            "(%s, 0, ST_GeomFromText(%s, 4326), %s, %s, false, 'none', %s, %s, %s, %s)",
+            [way, wkt, tier, STREET, name, calm, unsmoothed, map_class],
+        )
+
+
+def busy(schema, way, *points, tier=3, map_class="road") -> None:
+    """A road at LTS 3 or above: never a candidate, and the junctions with it are stressful."""
+    road(schema, way, "Busy Pike", *points, tier=tier, calm=None, map_class=map_class)
+
+
+def calm_runs(schema) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id, calm_run_m FROM {schema}.segment ORDER BY 1")
+        return dict(cursor.fetchall())
+
+
+def test_the_gap_and_the_turns_are_named_constants() -> None:
+    # A path network chains across a road crossing (100 ft). A calm road's run goes on along
+    # its own name through a turn of up to 100 degrees, along another name up to 45.
+    assert CALM_PATH_GAP_M == 30
+    assert (calm_roads.SAME_NAME_TURN_DEG, calm_roads.STRAIGHT_ON_DEG) == (100.0, 45.0)
+    # The junction model's busy tier (396): the one test of a stressful junction.
+    assert calm_roads.BUSY_TIER == 3
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "candidate"),
+    [
+        # A path or trail the zoomed-out map draws, a road at LTS 1 or LTS 2 ("LTS2 counts").
+        ({"zoomed_out_trail": True}, True),
+        ({"stress_tier": 1}, True),
+        ({"stress_tier": 2}, True),
+        ({"zoomed_out_trail": True, "stress_tier": 2}, True),
+        # Never a mountain-bike trail, in either way of knowing it, nor an undrawn way.
+        ({"zoomed_out_trail": True, "mountain_bike": True}, False),
+        ({"zoomed_out_trail": True, "mtb_only": True}, False),
+        ({"stress_tier": 1, "mountain_bike": True}, False),
+        ({"stress_tier": 2, "mtb_only": True}, False),
+        ({"zoomed_out_trail": True, "map_class": "hidden"}, False),
+        ({"zoomed_out_trail": True, "map_class": "barred"}, False),
+        ({"stress_tier": 1, "map_class": "alley"}, False),
+        # A road at LTS 3 or above is not a calm road; a trail-class way the map does not
+        # draw (a footway with no bicycle access, say) is not a path.
+        ({"stress_tier": 3}, False),
+        ({"stress_tier": 5}, False),
+        ({"stress_tier": 1, "is_trail_class": True}, False),
+        ({"stress_tier": 2, "is_trail_class": True}, False),
+    ],
+)
+def test_which_ways_can_be_in_the_ride_layer(kwargs, candidate) -> None:
+    base = {
+        "zoomed_out_trail": False,
+        "mountain_bike": False,
+        "mtb_only": False,
+        "is_trail_class": False,
+        "stress_tier": 9,
+        "map_class": "road",
+    }
+    assert trail_routes.is_calm_candidate(**{**base, **kwargs}) is candidate
+
+
+# The pure part: how a run goes through a junction.
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "turn"),
+    [
+        (0.0, 180.0, 0.0),  # in from the north, out to the south: straight on
+        (90.0, 270.0, 0.0),
+        (0.0, 90.0, 90.0),  # a right angle
+        (350.0, 170.0, 0.0),  # across north
+        (10.0, 150.0, 40.0),
+        (0.0, 0.0, 180.0),  # back the way it came
+        (None, 90.0, 180.0),  # two vertices in one place: no bearing, a full turn
+        (90.0, None, 180.0),
+    ],
+)
+def test_the_turn_at_a_junction(a, b, turn) -> None:
+    assert calm_roads.turn_deg(a, b) == pytest.approx(turn)
+
+
+def test_two_ends_always_go_on_and_one_never_does() -> None:
+    # A way split for a tag, a name that changes, a sharp bend: where only two calm roads
+    # meet the run goes on, whatever the angle.
+    assert calm_roads.pairs([(0, 0.0, 1), (3, 10.0, 2)]) == [(0, 3)]
+    assert calm_roads.pairs([(0, 0.0, 1)]) == []
+    assert calm_roads.pairs([]) == []
+
+
+def test_at_a_crossing_the_straight_roads_go_on() -> None:
+    # A four-way junction of Main (east-west) and Cross (north-south): each goes straight on.
+    ends = [(0, 270.0, 1), (2, 90.0, 1), (4, 0.0, 2), (6, 180.0, 2)]
+    assert sorted(calm_roads.pairs(ends)) == [(0, 2), (4, 6)]
+
+
+def test_the_own_name_goes_on_round_a_corner_before_a_straighter_other_name() -> None:
+    # Oak comes in from the west and turns north; Pine carries straight on east. Oak's own
+    # name wins at 90 degrees (within SAME_NAME_TURN_DEG); Pine starts a run of its own.
+    ends = [(0, 270.0, 1), (2, 0.0, 1), (4, 90.0, 2)]
+    assert calm_roads.pairs(ends) == [(0, 2)]
+    # Past the same-name limit, the straight road of another name goes on instead.
+    ends = [(0, 270.0, 1), (2, 270.0 - 180 + 110, 1), (4, 90.0, 2)]
+    assert calm_roads.pairs(ends) == [(0, 4)]
+
+
+def test_another_name_goes_on_only_nearly_straight() -> None:
+    # A T of three names: the stem meets the bar at a right angle, so only the bar goes on,
+    # and a road of another name 50 degrees off straight is not the same run.
+    ends = [(0, 270.0, 1), (2, 90.0, 2), (4, 180.0, 3)]
+    assert calm_roads.pairs(ends) == [(0, 2)]
+    ends = [(0, 270.0, 1), (2, 40.0, 2), (4, 155.0, 3)]
+    assert calm_roads.pairs(ends) == []
+    ends = [(0, 270.0, 1), (2, 135.0, 2), (4, 180.0, 3)]  # 45 degrees: at the limit
+    assert calm_roads.pairs(ends) == [(0, 2)]
+
+
+def test_each_end_goes_on_into_one_other_at_most() -> None:
+    # Three roads of one name almost in a line: the straightest pair goes on, the third ends.
+    ends = [(0, 270.0, 1), (2, 90.0, 1), (4, 95.0, 1)]
+    assert calm_roads.pairs(ends) == [(0, 2)]
+
+
+def junction(row, node, at_m, back=None, fwd=None, busy=False, name=1):
+    return calm_roads.Junction(row, node, at_m, back, fwd, busy, name)
+
+
+def test_runs_join_at_a_calm_node_and_end_at_a_busy_one() -> None:
+    # Row 1 runs from node 10 to 11 (500 m), row 2 from 11 to 12 (700 m): one run of 1,200 m.
+    calm = [
+        junction(1, 10, 0.0, fwd=90.0),
+        junction(1, 11, 500.0, back=270.0),
+        junction(2, 11, 0.0, fwd=90.0),
+        junction(2, 12, 700.0, back=270.0),
+    ]
+    assert calm_roads.runs_of(calm) == {1: 1200, 2: 1200}
+    # A busy road meets them at node 11: two runs.
+    stressful = [*calm[:2], calm[2]._replace(busy=True), calm[3]]
+    assert calm_roads.runs_of(stressful) == {1: 500, 2: 700}
+
+
+def test_a_row_a_busy_road_crosses_keeps_its_longer_side() -> None:
+    # Row 1 is crossed at 300 m (node 21, a busy road's vertex): its sides are 300 and 900 m.
+    rows = [
+        junction(1, 20, 0.0, fwd=90.0),
+        junction(1, 21, 300.0, back=270.0, fwd=90.0, busy=True),
+        junction(1, 22, 1200.0, back=270.0),
+    ]
+    assert calm_roads.runs_of(rows) == {1: 900}
+
+
+# Through the derive, on the staging schema.
+
+
+@db
+class TestCalmRoads:
+    """A calm road's run (OWNER-DECISIONS 402a): continuous LTS 1 and 2 road, across names,
+    ended at every junction with a road at LTS 3 or above."""
+
+    def test_same_named_rows_that_meet_are_one_run(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        road(staging, 1, "Lakeview Drive", (0, 0), (800, 0))
+        road(staging, 2, "LAKEVIEW DRIVE", (800, 0), (1300, 0))
+        road(staging, 3, "Lakeview Drive", (1400, 0), (1800, 0))  # 100 m on: not touching
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1300, abs=5)
+        assert got[3] == pytest.approx(400, abs=5), "a gap ends a run: it is continuous"
+
+    def test_a_run_goes_on_across_a_change_of_name_and_counts_lts_2(self, segment_schemas):
+        _live, staging = segment_schemas
+        road(staging, 1, "River Road", (0, 0), (1500, 0))
+        road(staging, 2, "Seneca Road", (1500, 0), (2600, 100), tier=2)
+        road(staging, 3, "Elm Street", (2600, 100), (3600, 100))
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == got[3] == pytest.approx(3604, abs=10)
+
+    def test_a_busy_road_crossing_at_a_shared_node_breaks_the_run(self, segment_schemas):
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (500, 0), (1500, 0))
+        busy(staging, 9, (500, -200), (500, 0), (500, 200))
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == pytest.approx(1000, abs=5), "the longer side of the crossing"
+        assert got[9] is None, "the busy road is not a candidate"
+
+    def test_joining_a_busy_road_ends_the_run_whatever_the_name(self, segment_schemas):
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (500, 0))
+        road(staging, 2, "Oak Street", (500, 0), (1500, 0))
+        busy(staging, 9, (500, 0), (500, 400))  # a T: the busy road joins at the node
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert (got[1], got[2]) == (pytest.approx(500, abs=5), pytest.approx(1000, abs=5))
+
+    @pytest.mark.parametrize(
+        ("tier", "unsmoothed", "map_class", "breaks"),
+        [
+            (3, None, "road", True),
+            (4, None, "road", True),
+            (5, None, "road", True),  # Avoid
+            (4, None, "barred", True),  # a road bikes may not use is still a busy junction
+            (2, 3, "road", True),  # smoothed to LTS 2, but the junction model reads 3 (285)
+            (2, None, "road", False),  # a junction of calm roads does not
+            (2, None, "hidden", False),  # nor a driveway or a parking aisle
+        ],
+    )
+    def test_which_junctions_are_stressful(
+        self, segment_schemas, tier, unsmoothed, map_class, breaks
+    ) -> None:
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (500, 0), (1500, 0))
+        road(
+            staging, 9, "Side Road", (500, -200), (500, 0), (500, 200),
+            tier=tier, calm=None, unsmoothed=unsmoothed, map_class=map_class,
+        )  # fmt: skip
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging)[1] == pytest.approx(1000 if breaks else 1500, abs=5)
+
+    def test_a_road_passing_over_without_a_shared_node_does_not_break_it(self, segment_schemas):
+        # A bridge or an underpass: the busy road crosses the line but shares no vertex.
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (1500, 0))
+        busy(staging, 9, (500, -200), (500, 200))
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging)[1] == pytest.approx(1500, abs=5)
+
+    def test_a_grid_is_many_short_runs_not_one_network(self, segment_schemas) -> None:
+        # Main Street east-west and Cross Street north-south meet at (500, 0): each goes
+        # straight on, and neither is lengthened by the other.
+        _live, staging = segment_schemas
+        road(staging, 1, "Main Street", (0, 0), (500, 0))
+        road(staging, 2, "Main Street", (500, 0), (1000, 0))
+        road(staging, 3, "Cross Street", (500, -300), (500, 0))
+        road(staging, 4, "Cross Street", (500, 0), (500, 300))
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1000, abs=5)
+        assert got[3] == got[4] == pytest.approx(600, abs=5)
+
+    def test_a_road_keeps_its_name_round_a_corner(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Lane", (0, 0), (500, 0))
+        road(staging, 2, "Oak Lane", (500, 0), (500, 400))  # turns north, keeps its name
+        road(staging, 3, "Pine Lane", (500, 0), (1000, 0))  # straight on, another name
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(900, abs=5)
+        assert got[3] == pytest.approx(500, abs=5)
+
+    def test_the_turn_is_measured_on_the_ground_not_in_degrees(self, segment_schemas) -> None:
+        # Elm Street runs north and Ash Street bends 40 degrees east on the ground: straight on
+        # (under STRAIGHT_ON_DEG), so the run goes on. In degrees of lon/lat at this latitude the
+        # same bend reads about 47 degrees, which would have broken it (correctness review, nit 4).
+        _live, staging = segment_schemas
+        road(staging, 1, "Elm Street", (0, 0), (0, 500))
+        road(staging, 2, "Ash Street", (0, 500), (321, 883))
+        road(staging, 3, "Fir Street", (0, 500), (-500, 500))  # a third road, so the turn decides
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1000, abs=5)
+        assert got[3] == pytest.approx(500, abs=5)
+
+    def test_the_back_bearing_is_on_the_ground_too(self, segment_schemas) -> None:
+        # The same bend, with Ash Street drawn the other way so that its row ENDS at the
+        # junction: the bearing back along it, 40 degrees east of north on the ground (about
+        # 47 in degrees of lon/lat), is the one that decides.
+        _live, staging = segment_schemas
+        road(staging, 1, "Elm Street", (0, 0), (0, 500))
+        road(staging, 2, "Ash Street", (321, 883), (0, 500))
+        road(staging, 3, "Fir Street", (0, 500), (-500, 500))
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == pytest.approx(1000, abs=5)
+        assert got[3] == pytest.approx(500, abs=5)
+
+    def test_an_unnamed_road_has_no_run_and_does_not_join_one(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        road(staging, 1, "Birch Road", (0, 0), (500, 0))
+        road(staging, 2, None, (500, 0), (1000, 0))  # a service road: stays 0
+        road(staging, 3, "Birch Road", (1000, 0), (1500, 0))
+        road(staging, 4, "Birch Road", (1500, 0), (2000, 0), calm=None)  # not a candidate
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == pytest.approx(500, abs=5) and got[3] == pytest.approx(500, abs=5)
+        assert got[2] == 0
+        assert got[4] is None, "a way that is not a candidate stays null"
+
+    def test_a_road_that_is_hidden_has_no_run(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Maple Street", 0, 900)
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {staging}.segment SET map_class = 'alley'")
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging) == {1: 0}
+
+    def test_connected_paths_are_one_network_whatever_their_names(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Alpha Trail", 0, 600, path=True)
+        calm_piece(staging, 2, None, 600, 500, path=True)  # unnamed, touching
+        calm_piece(staging, 3, "Beta Trail", 1100 + CALM_PATH_GAP_M - 10, 400, path=True)
+        calm_piece(staging, 4, "Gamma Trail", 1500 + 2 * CALM_PATH_GAP_M, 300, path=True)
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == got[3] and got[1] == pytest.approx(1500, abs=30)
+        assert got[4] == pytest.approx(300, abs=20), "an isolated stub is its own"
+
+    def test_a_path_keeps_its_named_run_if_that_is_longer(self, segment_schemas) -> None:
+        # trail_run_m chains by name across 400 m, which the network's 30 m does not.
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Delta Trail", 0, 600, path=True, trail_run=2400)
+        calm_piece(staging, 2, "Delta Trail", 600 + 300, 600, path=True, trail_run=2400)
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == got[2] == 2400
+
+    def test_roads_and_paths_do_not_chain_together(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Rose Lane", 0, 600)
+        calm_piece(staging, 2, "Rose Lane", 600, 600, path=True)
+        trail_routes.derive_calm_runs(staging)
+        got = calm_runs(staging)
+        assert got[1] == pytest.approx(600, abs=20) and got[2] == pytest.approx(600, abs=20)
+
+    def test_it_returns_what_it_set_and_a_schema_name_is_validated(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Rose Lane", 0, 600)
+        calm_piece(staging, 2, None, 0, 600, path=True)
+        calm_piece(staging, 3, "Rose Lane", 600, 600, calm=None)
+        assert trail_routes.derive_calm_runs(staging) == (1, 1)
+        with pytest.raises(ValueError):
+            trail_routes.derive_calm_runs("live; DROP SCHEMA public")
+        with pytest.raises(ValueError):
+            calm_roads.junctions_sql("live; DROP SCHEMA public")
+
+    def test_an_empty_table_sets_nothing(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        assert trail_routes.derive_calm_runs(staging) == (0, 0)
+
+
+@db
+class TestAssertCalmRuns:
+    """VALIDATE's check on the ride layer's column (the same idea as `assert_long_trails`)."""
+
+    def summary(self, staging, sentinels=(), path_floor=400, street_floor=3219):
+        return trail_routes.calm_run_summary(staging, sentinels, path_floor, street_floor)
+
+    def test_a_good_table_passes(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 7, "Alpha Trail", 0, 13_500, path=True)
+        calm_piece(staging, 8, "Elmer School Road", 0, 3500, lat=LAT + 0.1)
+        trail_routes.derive_calm_runs(staging)
+        got = self.summary(staging, (7, 8))
+        assert (got.path_rows, got.street_rows, got.unset_named) == (1, 1, 0)
+        assert_calm_runs(got, (7,), (8,), (1, 1))
+
+    def test_a_sentinel_that_is_missing_or_short_stops_the_build(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 7, "Alpha Trail", 0, 1000, path=True)
+        calm_piece(staging, 8, "Elmer School Road", 0, 3000, lat=LAT + 0.1)
+        trail_routes.derive_calm_runs(staging)
+        got = self.summary(staging, (7, 8, 9))
+        with pytest.raises(ValidationFailed, match="path sentinel way 9 is not in"):
+            assert_calm_runs(got, (9,), (), (0, 0))
+        with pytest.raises(ValidationFailed, match="path sentinel way 7 came out"):
+            assert_calm_runs(got, (7,), (), (0, 0))  # 1 km, not the 8 mi a trail sentinel is
+        with pytest.raises(ValidationFailed, match="road sentinel way 8 came out"):
+            assert_calm_runs(got, (), (8,), (0, 0))  # 3 km, under the 2 mi (3.2 km) bar
+
+    def test_the_floors_stop_the_build(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 7, "Alpha Trail", 0, 1000, path=True)
+        trail_routes.derive_calm_runs(staging)
+        got = self.summary(staging, (), 400, 800)
+        assert_calm_runs(got, (), (), (1, 0))
+        with pytest.raises(ValidationFailed, match="floors of 2 and 0"):
+            assert_calm_runs(got, (), (), (2, 0))
+        with pytest.raises(ValidationFailed, match="floors of 1 and 1"):
+            assert_calm_runs(got, (), (), (1, 1))
+
+    def test_a_derive_that_did_not_run_stops_the_build(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        calm_piece(staging, 7, "Lakeview Drive", 0, 1000)  # still 0: never derived
+        got = self.summary(staging)
+        assert got.unset_named == 1
+        with pytest.raises(ValidationFailed, match="did not run to the end"):
+            assert_calm_runs(got, (), (), (0, 0))
+
+
+# ---- TRAILS BESIDE A ROAD (OWNER-DECISIONS 403) ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tags", "said"),
+    [
+        ({"highway": "footway", "footway": "sidewalk"}, True),
+        ({"highway": "path", "path": "sidewalk", "bicycle": "yes"}, True),
+        ({"highway": "cycleway", "cycleway": "sidewalk"}, True),
+        ({"highway": "cycleway", "is_sidepath": "yes"}, True),
+        ({"highway": "cycleway", "is_sidepath:of": "secondary"}, True),
+        ({"highway": "cycleway", "is_sidepath:of:name": "Veirs Mill Road"}, True),
+        ({"highway": "cycleway", "is_sidepath": "no"}, False),
+        ({"highway": "cycleway", "is_sidepath": "no", "footway": "sidewalk"}, False),
+        ({"highway": "cycleway"}, None),  # the geometry decides
+        ({"highway": "path", "surface": "asphalt"}, None),
+    ],
+)
+def test_what_a_trails_tags_say_about_a_road_beside_it(tags, said) -> None:
+    from routemaker import facility
+
+    assert facility.roadside_by_tags(tags) is said
+
+
+@pytest.mark.parametrize(
+    ("tags", "facility_class", "drawn", "start"),
+    [
+        ({"highway": "cycleway"}, "path", True, None),  # ask the geometry
+        ({"highway": "cycleway"}, "protected", True, True),  # already the facility beside a road
+        ({"highway": "cycleway", "is_sidepath": "no"}, "protected", True, False),
+        ({"highway": "cycleway", "is_sidepath": "yes"}, "path", True, True),
+        ({"highway": "cycleway", "is_sidepath": "yes"}, "path", False, False),  # not drawn
+        ({"highway": "residential"}, "none", False, False),  # a road is never a roadside trail
+    ],
+)
+def test_what_the_rebuild_writes_before_the_geometry(tags, facility_class, drawn, start) -> None:
+    from routemaker import facility
+
+    assert facility.roadside_start(tags, facility_class, drawn_trail=drawn) is start
+
+
+def trail(schema, way, *points, roadside=None) -> None:
+    """A drawn trail with no surface, through `points` (metres, as `road` takes them)."""
+    coords = [(-77.0 + x * DEG_PER_METRE, LAT + y * DEG_PER_METRE_LAT) for x, y in points]
+    wkt = "LINESTRING(" + ",".join(f"{lon!r} {lat!r}" for lon, lat in coords) + ")"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, facility, roadside) VALUES "
+            "(%s, 0, ST_GeomFromText(%s, 4326), 1, 'Y', true, 'path', %s)",
+            [way, wkt, roadside],
+        )
+
+
+def roadsides(schema) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id, roadside FROM {schema}.segment ORDER BY 1")
+        return dict(cursor.fetchall())
+
+
+@db
+class TestRoadside:
+    def test_a_trail_along_a_road_is_beside_it_and_one_away_is_not(self, segment_schemas):
+        _live, staging = segment_schemas
+        road(staging, 1, "Veirs Mill Road", (0, 0), (2000, 0), tier=4, calm=None)
+        trail(staging, 2, (0, 12), (1000, 12))  # 12 m off the centreline, all along
+        trail(staging, 3, (0, 24), (1000, 24))  # 24 m: still within ROADSIDE_M
+        trail(staging, 4, (0, 40), (1000, 40))  # 40 m: a trail of its own
+        trail(staging, 5, (0, 12), (500, 12), (500, 400), (1000, 400))  # leaves the road
+        trail(staging, 6, (3000, 0), (4000, 0))  # a park trail far from any road
+        assert trail_routes.derive_roadside(staging) == 2
+        got = roadsides(staging)
+        assert (got[2], got[3], got[4], got[5], got[6]) == (True, True, False, False, False)
+        assert got[1] is False, "the road itself is not a roadside trail"
+
+    def test_the_tags_answer_stands(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        road(staging, 1, "Veirs Mill Road", (0, 0), (2000, 0), tier=4, calm=None)
+        trail(staging, 2, (0, 12), (1000, 12), roadside=False)  # is_sidepath=no
+        trail(staging, 3, (3000, 0), (4000, 0), roadside=True)  # footway=sidewalk
+        trail_routes.derive_roadside(staging)
+        got = roadsides(staging)
+        assert (got[2], got[3]) == (False, True)
+
+    def test_only_a_road_counts_as_the_road_beside_it(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        trail(staging, 1, (0, 0), (2000, 0), roadside=False)  # another trail
+        road(staging, 2, None, (0, -500), (2000, -500), calm=None, map_class="hidden")
+        trail(staging, 3, (0, 12), (1000, 12))
+        trail(staging, 4, (0, -488), (1000, -488))  # beside a parking aisle, not a road
+        trail_routes.derive_roadside(staging)
+        got = roadsides(staging)
+        assert (got[3], got[4]) == (False, False)
+
+    def test_a_schema_name_is_validated(self) -> None:
+        with pytest.raises(ValueError):
+            trail_routes.roadside_sql("live; DROP SCHEMA public")
+
+    def test_the_constants(self) -> None:
+        from pipeline import schema
+
+        assert (schema.ROADSIDE_M, schema.ROADSIDE_FRACTION, schema.ROADSIDE_SAMPLE_M) == (
+            25.0,
+            0.6,
+            20.0,
+        )

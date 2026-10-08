@@ -49,7 +49,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing
+from . import geocode, presets, ratelimit, routing, segment_info
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +370,17 @@ class StressSpanOut(Schema):
         description=(
             "Whether the section's segments are unpaved (OWNER-DECISIONS 302: the route"
             " line draws it in the brown ramp); null: not known."
+        ),
+    )
+    rpm: int | None = Field(
+        default=None,
+        description=(
+            "A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the lowest carrying capacity "
+            "along the section, in riders per minute on the flat at 6-8 mph, from the segment "
+            "table's mass_usable_width_m. Sections of a Mass Ride end where the capacity changes "
+            "band (under 60, 60-120, 120-200, 200 and up), and a stretch marked Avoid is one "
+            "section with null. Null on every section of any other ride type, and of a Mass "
+            "Ride on a table built before the column, which the map then draws by stress."
         ),
     )
 
@@ -743,13 +754,15 @@ class DescriptionEntryOut(Schema):
     220: blind cyclists, many riding as tandem stokers, need the route in words).
     Stretches, one street at one stress tier and facility, run end to end from 0;
     a `junction` is a flagged junction that is not a turn, at a point, and a
-    `via` is where a via point is reached (`Stop 1`, as the points list calls it).
+    `via` is where a via point is reached (`Stop 1`, as the points list calls it);
+    a `walk` is a short stretch to walk the bicycle over (a kept
+    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via"]
+    kind: Literal["stretch", "junction", "via", "walk"]
     from_m: int
     to_m: int
     from_mi: float
@@ -790,6 +803,17 @@ class DescriptionEntryOut(Schema):
             "(OWNER-DECISIONS 275); null where that is `text`."
         ),
     )
+
+
+class MovedPointOut(Schema):
+    """A trip point the planner moved (OWNER-DECISIONS 291(4)): one inside the
+    National Zoo goes to its bike racks, so a route to the Zoo ends there."""
+
+    index: int = Field(description="The point's place in `points`, from 0.")
+    asked: list[float] = Field(description="[lon, lat] as asked.")
+    routed: list[float] = Field(description="[lon, lat] as routed.")
+    reason: Literal["zoo_racks"]
+    note: str = Field(description="One plain sentence to show the rider.")
 
 
 class ProfileClimbOut(Schema):
@@ -915,7 +939,7 @@ class ProfileOut(Schema):
 
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
     geometry: LineString
     distance_m: float
     duration_s: float
@@ -956,6 +980,7 @@ class RouteBody(Schema):
     # junctions, never across a stop. Both lists are sent so the client switches
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
+    moved_points: list[MovedPointOut] = Field(default_factory=list)
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
@@ -1522,3 +1547,93 @@ def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
         logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
     return _places(response, found, REVERSE_MAX_AGE_S)
+
+
+# --- What is known about the road at a map spot -------------------------------------
+#
+# GET /api/segment-info (OWNER-DECISIONS 441, 441a; core.segment_info): read only, signed
+# out, counted per client like place names, refused when a foreign page sent it (as the
+# place search is), and sharing the place names' router slot. The spot is in the query
+# string, which no access log records (OWNER-DECISIONS 395), and is never logged here.
+
+SEGMENT_INFO_MAX_AGE_S = 300
+
+
+class SegmentInfoIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class InfoRowOut(Schema):
+    label: str
+    value: str
+    source: str | None = Field(default=None, description="Where the value came from, in words.")
+
+
+class InfoSectionOut(Schema):
+    id: Literal["road", "stress", "traffic", "riding", "access", "mass"]
+    heading: str
+    rows: list[InfoRowOut]
+
+
+class InfoSummaryOut(Schema):
+    id: str = Field(description="What the line is: stress, why, speed, lanes, traffic, ...")
+    label: str
+    value: str
+
+
+class SegmentInfoOut(Schema):
+    found: bool = Field(description="Whether a road or path is within reach of the spot.")
+    title: str = Field(
+        description="The way's name, 'Unnamed road' or 'Unnamed path', or 'No road here'."
+    )
+    tier: int | None = Field(default=None, description="Traffic stress, 1-4, or 5 for Avoid.")
+    open: bool | None = Field(
+        default=None, description="Whether a bicycle may use it; null when not known."
+    )
+    osm_way_id: int | None = None
+    distance_m: float | None = Field(default=None, description="How far the way is from the spot.")
+    on_way: list[float] | None = Field(
+        default=None,
+        description="The nearest point on the way, [lon, lat]: where the Street View link opens.",
+    )
+    kind: str | None = Field(default=None, description="The kind of way, in a few words.")
+    summary: list[InfoSummaryOut] = Field(
+        default_factory=list,
+        description="The panel's compact lines, one short fact each; sources are in sections.",
+    )
+    sections: list[InfoSectionOut]
+    attribution: list[str]
+
+
+SEGMENT_INFO_ATTRIBUTION = ("© OpenStreetMap contributors (ODbL)",)
+
+
+@api.get(
+    "/segment-info",
+    response={
+        200: SegmentInfoOut,
+        400: ErrorOut,
+        403: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: ErrorOut,
+    },
+    summary="What is known about the road or path nearest a spot",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.SEGMENT_INFO),
+    ratelimit.rate_limited(ratelimit.SEGMENT_INFO_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
+    found = segment_info.segment_info(params.lat, params.lon)
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})

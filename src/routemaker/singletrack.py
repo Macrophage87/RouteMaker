@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 
+from . import surfaces
 from .classes import TRAIL_CLASS_HIGHWAY
 
 SCALE_KEYS = ("mtb:scale", "mtb:scale:imba")
@@ -34,12 +35,15 @@ NO_BICYCLE = "singletrack"
 _GRADE = re.compile(r"^\s*(\d+)")
 
 
-PAVED_SURFACES = frozenset({"asphalt", "concrete", "paved", "paving_stones", "chipseal"})
+# Road paving only, not every hard surface (OWNER-DECISIONS 440): a rated
+# wooden ladder, berm or skinny is a mountain-bike feature and stays closed,
+# whatever its class or bicycle tag (`routemaker.surfaces`, `is_sealed`).
+PAVED_SURFACES = surfaces.SEALED_SURFACES
 
 
 def is_paved(tags: dict[str, str]) -> bool:
-    surface = tags.get("surface") or ""
-    return surface in PAVED_SURFACES or surface.startswith("concrete:")
+    """Whether a rating no longer makes the way singletrack: road paving."""
+    return surfaces.is_sealed(tags)
 
 
 def grade(value: str | None) -> int | None:

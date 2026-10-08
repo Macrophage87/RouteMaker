@@ -1,0 +1,22 @@
+{
+  "live_rows": {
+    "access": 232,
+    "stress": 1551
+  },
+  "live_rematch": "override re-match: 1783 rows, 1783 with a fingerprint; 0 re-matched, 0 already covered, 1 failed (stress 424993005)",
+  "tree_override_summary": "overrides applied: 232 access, 1553 stress, 0 jurisdiction; 0 checked-in crossing rows superseded; 0 rows re-matched to new ways by geometry and name, 0 could not be; 0 approved rows matched no way",
+  "harford": {
+    "1562097553": [
+      1,
+      "override: stress adjustment baltimore-track-harford-rd-lts1"
+    ],
+    "1562097555": [
+      1,
+      "override: stress adjustment baltimore-track-harford-rd-lts1"
+    ],
+    "1562097556": [
+      1,
+      "override: stress adjustment baltimore-track-harford-rd-lts1"
+    ]
+  }
+}

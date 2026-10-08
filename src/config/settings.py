@@ -221,6 +221,7 @@ VALHALLA_UPSTREAMS = {
     "no-trail": os.environ.get("VALHALLA_NO_TRAIL_URL", "http://valhalla-no-trail:8002"),
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
+    "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
 }
 
 
@@ -360,6 +361,105 @@ REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341
 # what that extract gives (12,503 and 4,402 rows, measured on a full-size copy).
 REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 10595312)
 REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
+# The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
+# long trails above are paths in a connected network of 8 mi or more, so they are the path
+# sentinels; and a calm road (the road sentinel: Elmer School Road in Montgomery County's
+# Agricultural Reserve, OSM way 5968951, in a 3.2 mi calm run in the 2026-10-03 extract) must
+# come out at the ride layer's road bar. The floors are the path rows in a run of
+# RIDE_PATH_RUN_MI and the road rows in a calm run of RIDE_ROAD_RUN_MI, about half of what that
+# extract gives (30,972 and 2,398 rows, measured on a copy of the live table's rows;
+# docs/OPERATIONS.md, "The ride layer (z12-13)"). The setting keeps its STREET name.
+REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 10595312)
+REBUILD_SENTINEL_CALM_STREET_WAYS = (5968951,)
+REBUILD_CALM_RUN_FLOORS = (15000, 1200)
+# The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
+# `pipeline.run.assert_mass_capacity`): VALIDATE reads it back, and the median road
+# (riders a minute) must lie in this range - a ride has its own direction's lanes
+# (OWNER-DECISIONS 404), so a two-lane street or a one-way street is about 100, a DC
+# residential street of 8 ft lanes about 72 (docs/DEVELOPMENT.md, "The Mass Ride
+# capacity map").
+REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (60, 200)
+# The District Roadway Block assumptions behind the Mass Ride width
+# (`routemaker.massflow.DcRules`; OWNER-DECISIONS 405 and 407, provisional until
+# FOLLOWUP-FLOW-CALIBRATION): a block recording a lane width of at least the first
+# figure, feet, and no parking lane is read at the second (a likely shared parking
+# and driving lane). Reversible lanes count as zero (the layer's count is stale:
+# Connecticut Ave NW's ended in 2020, DCist 2021-12-15) except on the BLOCKKEYs
+# of the reviewed allowlist, which is empty until the owner has checked blocks
+# against current conditions; the streets named in the last setting never count.
+# The owner's reference LTS 4 road (OWNER-DECISIONS 408, 409; `pipeline.lts_sentinels`):
+# VALIDATE refuses a build where less than the first share of the street's segment rows
+# (found by the DC Roadway Block blocks of this ROUTENAME) is LTS 4 or Avoid, or less than
+# the second share north of the latitude (R St NW): "Most of Conn Ave is LTS4" and "I'd say
+# it's LTS4 north of R." The 2026-10-03 build gave 49% and 72% (R St to Calvert St was
+# LTS 3 at a posted 25 mph); with the R St to Calvert St corridor (fixtures/corridors/)
+# about 67% and 99%. An empty street turns the check off (the test suite's toy extracts).
+REBUILD_SENTINEL_LTS4_STREET = "CONNECTICUT AVE NW"
+REBUILD_SENTINEL_LTS4_MIN_SHARE = 0.6
+REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.9126
+REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
+# Stretches the owner gave a tier (`pipeline.run.assert_owner_stretches`): VALIDATE refuses
+# a build where less than the share of a stretch's segment rows (found by the DC Roadway
+# Block blocks of the ROUTENAME, a row by the latitude of its middle) is at exactly the
+# tier. (ROUTENAME, south latitude, north latitude, tier, minimum share, decision.)
+# South Capitol St, Martin Luther King Jr Ave SE to Mississippi Ave SE, LTS 4 (432:
+# "There's no other routes through there"), by the named corridor in fixtures/corridors/.
+REBUILD_SENTINEL_STRETCHES = (
+    ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
+)
+# Ways inside Joint Base Anacostia-Bolling that VALIDATE requires closed to bicycles
+# (`pipeline.run.assert_military_closures`; the owner's report of a route through the
+# base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
+# in the 2026-10-03 extract. One the extract no longer has is warned about.
+REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = (193043941, 97677540, 99419868)
+# The fewest ways VALIDATE accepts closed in each large installation (by its OSM name),
+# about three quarters of the 2026-10-03 extract's count under OWNER-DECISIONS 437: an
+# outline lost or renamed upstream would otherwise reopen a whole base silently. A
+# tuple of names is one floor for their sum: nearly every way of the old Bolling Air
+# Force Base outline lies equally inside JBAB, so which name it gets is a tie-break an
+# OSM edit (or deleting the old outline) can move; only the two together are held.
+REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
+    "Marine Corps Base Quantico": 1600,  # 2,175 closed
+    "Aberdeen Proving Ground": 1550,  # 2,082
+    "Fort Belvoir": 1800,  # 2,391
+    "Fort George G Meade": 1500,  # 2,053
+    "Joint Base Andrews": 2200,  # 2,951
+    "Fort Detrick": 470,  # 625
+    ("Bolling Air Force Base", "Joint Base Anacostia Bolling"): 800,  # 674 + 397 = 1,071
+    "The Pentagon": 500,  # 675
+    # CIA headquarters, Langley: `landuse=military` in OSM (way 186034091). The owner,
+    # 2026-10-06: "As is the CIA headquarters".
+    "Central Intelligence Agency": 225,  # 303
+}
+# Ways inside the Secret Service's James J. Rowley Training Center that VALIDATE
+# requires closed to bicycles (`pipeline.run.assert_secured_closures`; the owner's
+# report, 2026-10-06: "a secure secret service compound is also showing trails"): a
+# footway, a track and a service road with no access tag of their own, in the
+# 2026-10-03 extract. One the extract no longer has is warned about.
+REBUILD_SENTINEL_SECURED_CLOSED_WAYS = (902479602, 1276271654, 6084740)
+# The fewest ways VALIDATE accepts closed in each secured federal compound (by the
+# name `restricted_areas.SECURED_AREAS` files it under, or OSM's for one the tag rule
+# finds), about three quarters of the 2026-10-03 extract's count: an outline deleted
+# or renumbered upstream would otherwise reopen a compound silently.
+REBUILD_SENTINEL_SECURED_MIN_CLOSED = {
+    "Goddard Space Flight Center": 525,  # 686 (702 less the Visitor Center's way in, 446)
+    "National Institute of Standards and Technology": 350,  # 464
+    "National Institutes of Health, Bethesda": 330,  # 441
+    "United States Naval Academy": 205,  # 276
+    "FDA White Oak Campus": 160,  # 215
+    "James J. Rowley Training Center": 80,  # 105
+    "The White House grounds": 83,  # 111
+    "Nebraska Avenue Complex": 43,  # 58
+    "National Institutes of Health Animal Center": 20,  # 26
+    # The state prison complex at Jessup (OWNER-DECISIONS 446b).
+    "Jessup correctional complex": 89,  # 119
+    # The correctional department's land at Sykesville (447: closed, err closed).
+    "Sykesville correctional land": 45,  # 60
+}
+MASS_RIDE_DC_WIDE_LANE_FT = 16.0
+MASS_RIDE_DC_WIDE_LANE_CAP_FT = 11.0
+MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS: frozenset = frozenset()
+MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS = frozenset({"CONNECTICUT AVE NW"})
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

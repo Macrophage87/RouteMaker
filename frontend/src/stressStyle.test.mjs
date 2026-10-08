@@ -1,14 +1,20 @@
 // Run with: npm test (from frontend/), or node --test frontend/src/stressStyle.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { massFilters, massLayers } from "./massStyle.js";
 import {
   BASEMAP,
   stressLayers,
   stressCasingLayers,
   gapLayers,
   ringLayers,
+  mtbTrailLayers,
   stressOverlayLayers,
   unpavedLayers,
+  unknownSurfaceLayers,
+  UNKNOWN_SURFACE_DASH,
+  UNPAVED_DASH,
+  facilityWidth,
   legend,
   FACILITIES,
   facilityLayers,
@@ -228,10 +234,21 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const rails = facilityLayers("s").map((l) => l.id);
   const marks = unpavedLayers("s").map((l) => l.id);
   const gaps = gapLayers("s").map((l) => l.id);
+  const unknown = unknownSurfaceLayers("s").map((l) => l.id);
+  assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
   assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
   const rings = ringLayers("s").map((l) => l.id);
   assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
-  assert.deepEqual([...ids].sort(), [...rings, ...rails, ...tiers, ...casings, ...gaps, ...marks].sort(), "each layer once");
+  const mass = massLayers("s").map((l) => l.id);
+  const mtb = mtbTrailLayers("s").map((l) => l.id);
+  assert.deepEqual(mtb, ["mtb-trail"], "the mountain-bike trails' not-for-routes line (OWNER-DECISIONS 452a)");
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  // The not-for-routes line under everything, so every routable line draws over it.
+  assert.equal(ids[0], "mtb-trail");
+  assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
+  assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
+  // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
+  assert.deepEqual(ids.slice(-mass.length), mass);
   // The rings under everything, so a rail still shows over them.
   assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
@@ -244,7 +261,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
   const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
   assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
-  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, "s");
+  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py).
+  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? "mass" : "s");
 });
 
 test("the ring (OWNER-DECISIONS 371) is drawn on paved and unknown-surface roads only, never on an unpaved one", () => {
@@ -343,12 +361,13 @@ function drawnBy(when, properties) {
     .sort();
 }
 
+// A path of known (paved) surface: the surface-unknown one is drawn as its own (OWNER-DECISIONS 376).
 const ASPATH = ["facility-path", "stress-1", "stress-casing-1"];
 
 test("a road closed to cars for good draws as an off-road path in every ride time", () => {
   // The tiles carry it as a path already (routemaker.facility, the rebuild).
   const beachDrive = { tier: 1, facility: "path", trail: false };
-  const trail = { tier: 1, facility: "path", trail: true };
+  const trail = { tier: 1, facility: "path", trail: true, unpaved: false };
   for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) {
     assert.deepEqual(drawnBy(when, beachDrive), ASPATH);
     assert.deepEqual(drawnBy(when, beachDrive), drawnBy(when, trail));
@@ -385,10 +404,15 @@ test("a path's rails are a path's width when a closure makes a road one", () => 
 
 test("stressFilters covers every overlay layer, and a style with them validates", () => {
   const filters = stressFilters("weekend");
-  assert.deepEqual(Object.keys(filters).sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
+  // The Mass Ride's layers have their own filters (massStyle.js, massFilters), which do not follow the ride time.
+  assert.deepEqual([...Object.keys(filters), ...Object.keys(massFilters())].sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
   const style = {
     version: 8,
-    sources: { stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] } },
+    sources: {
+      stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
+      // The Mass Ride layers' own tiles (core/mass_tiles.py).
+      mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+    },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };
   assert.deepEqual(spec.validateStyleMin(style), []);
@@ -445,7 +469,7 @@ test("a busy road beside a separately mapped bike lane is hidden until z15 and t
     for (const zoom of [15, 16, 18]) assert.equal(drawnAtZoom(f, zoom)[`stress-${tier}`].opacity, FAINT.opacity, `z${zoom}`);
   }
   // The cycle track beside it, a trail of its own, is drawn full at every zoom.
-  const track = { tier: 1, facility: "protected", trail: true };
+  const track = { tier: 1, facility: "protected", trail: true, unpaved: false };
   for (const zoom of [10, 12, 14]) {
     const lines = drawnAtZoom(track, zoom);
     assert.deepEqual(Object.keys(lines).sort(), ["facility-protected", "stress-1", "stress-casing-1"]);
@@ -542,3 +566,73 @@ test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps 
   // Its colour when paved: the expression is the surface's (OWNER-DECISIONS 302).
   assert.deepEqual(avoidLayer.paint["line-color"], ["case", ["==", ["get", "unpaved"], true], DEFAULT_TIERS[4].unpavedColor, DEFAULT_TIERS[4].color]);
 });
+
+// ---- surface unknown (OWNER-DECISIONS 376, A: PARK-TRAILS-investigation.md) ------------------
+
+test("a trail with no surface mapped draws as its own dashed line: no rails, no solid edge, not brown (376, A)", () => {
+  const unknown = { tier: 1, facility: "path", trail: true };
+  for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) {
+    assert.deepEqual(drawnBy(when, unknown), ["stress-unknown", "stress-unknown-casing"], `${when}: neither the path rails nor the tier's solid line and edge`);
+    // The surface known is as it was: a paved path has its rails and edge, an unpaved one is brown with its mark.
+    assert.deepEqual(drawnBy(when, { ...unknown, unpaved: false }), ASPATH);
+    assert.deepEqual(drawnBy(when, { ...unknown, unpaved: true }), ["stress-1", "stress-casing-1", "stress-unpaved-1"]);
+    // A road with no surface tag (nearly every street) is not one: it draws as it did.
+    assert.deepEqual(drawnBy(when, { tier: 1, facility: "none", trail: false }), ["stress-1", "stress-casing-1"]);
+    // A road closed to cars for good, with no surface tag, keeps its rails (it is not a trail).
+    assert.deepEqual(drawnBy(when, { tier: 1, facility: "path", trail: false }), ASPATH);
+    // A protected trail the tiles do not call roadside keeps its protected-lane rails over its dashes.
+    assert.deepEqual(drawnBy(when, { tier: 1, facility: "protected", trail: true }), ["facility-protected", "stress-unknown", "stress-unknown-casing"]);
+    // 403: a trail beside a road with no surface mapped draws as the paved path it most likely is.
+    assert.deepEqual(drawnBy(when, { ...unknown, roadside: true }), ASPATH, `${when}: a roadside path keeps its rails`);
+    assert.deepEqual(
+      drawnBy(when, { tier: 1, facility: "protected", trail: true, roadside: true }),
+      drawnBy(when, { tier: 1, facility: "protected", trail: true, unpaved: false }),
+      `${when}: a sidepath keeps its protected-lane look`,
+    );
+    // Its surface, where mapped, still decides: an unpaved roadside trail is brown with its mark.
+    assert.deepEqual(drawnBy(when, { ...unknown, roadside: true, unpaved: true }), ["stress-1", "stress-casing-1", "stress-unpaved-1"]);
+    // A tier other than 1 (an override on a trail) is drawn as it is: nothing is left undrawn.
+    assert.deepEqual(drawnBy(when, { tier: 2, facility: "path", trail: true }), ["stress-2", "stress-casing-2", "stress-gap-2"]);
+  }
+  // At z10-11 a merged feature carries the same properties, and the ride time still decides whether a timed road is drawn.
+  const timed = { tier: 1, facility: "path", trail: true, car_free_only: "weekend" };
+  assert.deepEqual(drawnBy("weekend", timed), ["stress-unknown", "stress-unknown-casing"]);
+  assert.deepEqual(drawnBy("weekday_offpeak", timed), []);
+});
+
+test("the surface-unknown line is told apart by shape: short even dashes no tier, rail or mark has, and its edge dashed to match, plain and strong", () => {
+  assert.equal(UNKNOWN_SURFACE_DASH.length % 2, 0);
+  const [on, off] = UNKNOWN_SURFACE_DASH;
+  assert.ok(on >= off && on <= 2 * off, "dashes with real gaps: neither near-solid nor dots");
+  const others = [...tiersFor("blended").map((t) => t.dash), ...FACILITIES.map((f) => f.dash), UNPAVED_DASH];
+  assert.ok(!others.some((d) => JSON.stringify(d) === JSON.stringify(UNKNOWN_SURFACE_DASH)));
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const tiers = tiersFor(palette, strong);
+      const [edge, line] = unknownSurfaceLayers("s", undefined, tiers);
+      assert.deepEqual([edge.id, line.id], ["stress-unknown-casing", "stress-unknown"]);
+      assert.deepEqual(line.paint["line-dasharray"], UNKNOWN_SURFACE_DASH);
+      const f = { tier: 1, facility: "path", trail: true };
+      // The line is LTS 1's own colour and width; its edge LTS 1's casing: only the shape says "unknown".
+      assert.equal(paintValue(line, "line-color", f, 14), tiers[0].color);
+      assert.equal(paintValue(edge, "line-color", f, 14), tiers[0].casing);
+      for (const zoom of [10, 11, 12, 14]) {
+        const lineWidth = paintValue(line, "line-width", f, zoom);
+        const edgeWidth = paintValue(edge, "line-width", f, zoom);
+        assert.ok(edgeWidth > lineWidth, `z${zoom}: the edge shows beyond the line`);
+        // The edge's dashes are the line's in pixels, so each dash has its edge and each gap shows the base map.
+        const edgeDash = paintValue(edge, "line-dasharray", f, zoom);
+        UNKNOWN_SURFACE_DASH.forEach((d, i) => assert.ok(Math.abs(edgeDash[i] * edgeWidth - d * lineWidth) < 1e-9, `z${zoom} ${palette} ${strong}: ${edgeDash} x ${edgeWidth} against ${d} x ${lineWidth}`));
+      }
+    }
+  }
+});
+
+test("no layer of a surface-unknown trail draws the path rails or the dark continuous edge", () => {
+  const layers = stressOverlayLayers("s");
+  const unknown = { tier: 1, facility: "path", trail: true };
+  const drawn = layers.filter((l) => draws(l, unknown)).map((l) => l.id);
+  assert.ok(!drawn.includes("facility-path") && !drawn.includes("stress-casing-1") && !drawn.includes("stress-1"), drawn.join());
+  assert.ok(drawn.includes("stress-unknown") && drawn.includes("stress-unknown-casing"));
+});
+

@@ -34,6 +34,7 @@ import {
   ROUTE_CASING_WIDTH,
   ROUTE_HALO_WIDTH,
   ROUTE_LINE_WIDTH,
+  isMassClass,
   isUnpavedClass,
   routeCasing,
   routeClasses,
@@ -197,7 +198,9 @@ function worstDelta(a: string, b: string): { delta: number; vision: string } {
 function cvdRouteDrawn(): Record<string, { color: string; mark?: string }> {
   return withSwitch(true, () => {
     const out: Record<string, { color: string; mark?: string }> = {};
-    for (const c of routeClasses()) if (!isUnpavedClass(c.key)) out[c.short] = { color: c.color, ...(c.mark ? { mark: c.mark } : {}) };
+    // The stress route's classes: a Mass Ride's capacity classes are a palette of their own, held to
+    // their own rules (massCapacity.test.ts, massStyle.test.ts), as before the rebuild bundle.
+    for (const c of routeClasses()) if (!isUnpavedClass(c.key) && !isMassClass(c.key)) out[c.short] = { color: c.color, ...(c.mark ? { mark: c.mark } : {}) };
     return out;
   });
 }
@@ -320,7 +323,11 @@ for (const { name, on } of REACHABLE) {
   test(`${name}${on ? " (accessibility on)" : ""}: every route class is at least 3:1 from the halo under it`, () => {
     withSwitch(on, () => {
       const classes = routeClasses();
-      assert.equal(classes.length, 12, "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302) and the unrated");
+      assert.equal(
+        classes.length,
+        17,
+        "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
+      );
       const failures: string[] = [];
       for (const c of classes) {
         const ratio = contrastRatio(c.color, c.halo);

@@ -70,6 +70,62 @@ def test_a_stress_override_replaces_the_tier_and_says_so() -> None:
     assert classified[1].assumed == ("maxspeed",), "the provenance of the inputs survives"
 
 
+FLOOR = {
+    "tier": 3,
+    "at_least": True,
+    "adjustment_id": "a-floor",
+    "category": "driver_behaviour",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only",
+}
+
+
+@pytest.mark.parametrize(
+    ("computed", "expected", "applied"),
+    [
+        (Stress.LTS1, Stress.LTS3, 1),
+        (Stress.LTS2, Stress.LTS3, 1),
+        (Stress.LTS3, Stress.LTS3, 0),
+        (Stress.LTS4, Stress.LTS4, 0),
+        (Stress.AVOID, Stress.AVOID, 0),
+    ],
+)
+def test_a_floor_row_only_raises(computed, expected, applied) -> None:
+    """OWNER-DECISIONS 445c: "at least an LTS3" - max(classifier, floor)."""
+    classified = {1: StressResult(computed, "the classifier's reason")}
+    assert apply_stress(classified, [Override("stress", 1, dict(FLOOR))]) == (applied, [])
+    assert classified[1].tier is expected
+    if applied:
+        assert classified[1].rule == "override: stress adjustment a-floor"
+        assert classified[1].adjustment.direction == "up"
+    else:
+        assert classified[1].rule == "the classifier's reason", "the classifier's tier stands"
+        assert classified[1].adjustment is None
+
+
+def test_a_row_without_at_least_still_sets_the_tier_down() -> None:
+    value = {k: v for k, v in FLOOR.items() if k != "at_least"}
+    classified = {1: StressResult(Stress.LTS4, "mixed traffic")}
+    assert apply_stress(classified, [Override("stress", 1, value)]) == (1, [])
+    assert classified[1].tier is Stress.LTS3
+    assert classified[1].adjustment.direction == "down"
+
+
+@pytest.mark.parametrize("bad", ["yes", 1, None])
+def test_at_least_is_a_boolean(bad) -> None:
+    from pipeline.overrides import stress_value_problem
+
+    assert stress_value_problem(dict(FLOOR)) is None
+    assert stress_value_problem({**FLOOR, "at_least": False}) is None
+    assert "at_least" in stress_value_problem({**FLOOR, "at_least": bad})
+    with pytest.raises(OverrideRefused, match="at_least"):
+        apply_stress(
+            {1: StressResult(Stress.LTS1, "x")},
+            [Override("stress", 1, {**FLOOR, "at_least": bad})],
+        )
+
+
 def test_a_stress_override_keeps_the_agency_audit_of_the_inputs() -> None:
     """M42 (review r1): a curated row sets the tier, and the record of which agency,
     OSM or default supplied each input the classifier read stays on the segment."""
@@ -919,6 +975,23 @@ class TestACarFreeRoadIsTier1:
         assert stress[1].rule.startswith("closed to motor traffic")
         assert (stress[1].assumed, stress[1].volume_source) == (("maxspeed",), "ddot")
 
+    def test_a_tier_1_from_the_motor_restriction_cap_still_takes_this_reason(self) -> None:
+        # 444's cap rates a `motor_vehicle=no` road LTS 1 itself; the car-free rule
+        # still states why (and counts it), and leaves a tier 1 of its own alone.
+        from pipeline.run import car_free_tier_1
+        from routemaker.stress import MOTOR_RESTRICTED_RULE
+
+        way = Way(1, highway="residential", motor_vehicle="no")
+        capped = f"{MOTOR_RESTRICTED_RULE} (motor_vehicle=no), LTS 1 at most"
+        stress = {1: StressResult(Stress.LTS1, capped)}
+        assert car_free_tier_1(way, stress) is True
+        assert stress[1].tier is Stress.LTS1
+        assert stress[1].rule.startswith("closed to motor traffic")
+        assert capped in stress[1].rule
+        assert car_free_tier_1(way, stress) is False, "already this rule's"
+        quiet = {1: StressResult(Stress.LTS1, "mixed traffic, 20 mph")}
+        assert car_free_tier_1(way, quiet) is False
+
     def test_a_curated_tier_wins(self) -> None:
         from pipeline.run import car_free_tier_1
 
@@ -1014,25 +1087,33 @@ def test_the_montana_ave_ne_file_is_approved_at_tier_3() -> None:
         assert "public_note" not in row["value"]
 
 
-def test_the_veirs_mill_sidepath_file_designates_the_two_sidewalks() -> None:
-    """The owner, 2026-09-30 (OWNER-DECISIONS 115): "Local override (Recommended)"
-    for the Veirs Mill Road sidepath between the Rock Creek Trail and the
-    Twinbrook Connector Trail, tagged in OSM as a plain sidewalk."""
+def test_the_veirs_mill_north_sidewalks_are_closed_and_the_designation_retired() -> None:
+    """The owner, 2026-10-05 (OWNER-DECISIONS 433): "Drop the north side, it's a cliff.
+    Does not appear to exist." The 2026-09-30 rows (114, 115: "Local override
+    (Recommended)") made the north-side sidewalks a sidepath; the reported path is on
+    the south side and not in OSM. So the rows are retired on load and the two ways
+    closed to bicycles (err closed, 330)."""
     import json
 
-    from core.management.commands.load_access_overrides import parse_file
+    from core.management.commands.load_access_overrides import parse_file, parse_retired
     from routemaker.facility import Facility, facility
 
     path = BEACH_DRIVE_NW.with_name("2026-09-30-owner-veirs-mill-sidepath.json")
-    document = json.loads(path.read_text())
-    assert "Local override (Recommended)" in document["status"]
-    rows = parse_file(path.read_text(), path.name)
+    text = path.read_text()
+    document = json.loads(text)
+    assert "Local override (Recommended)" in document["status"] and "433" in document["status"]
+    rows = parse_file(text, path.name)
     assert {r["osm_way_id"] for r in rows} == {468762518, 791422825}
     for row in rows:
-        assert row["kind"] == "access" and row["value"] == {"bicycle": "designated"}
-        assert "Local override (Recommended)" in row["reason"]
-    # As the rebuild reads the way once the row is applied: a sidepath.
+        assert row["kind"] == "access" and row["value"] == {"bicycle": "no"}
+        assert "OWNER-DECISIONS 433" in row["reason"] and "cliff" in row["reason"]
+    retired = parse_retired(text, path.name)
+    assert {(r["osm_way_id"], json.dumps(r["value"])) for r in retired} == {
+        (468762518, '{"bicycle": "designated"}'),
+        (791422825, '{"bicycle": "designated"}'),
+    }
+    # As the rebuild reads the way once the row is applied: no sidepath, closed.
     way = Way(468762518, highway="footway", footway="sidewalk", surface="concrete")
-    assert facility(way.tags) is Facility.NONE, "the control"
-    apply_access([way], [Override("access", 468762518, {"bicycle": "designated"})])
-    assert facility(way.tags) is Facility.PROTECTED
+    apply_access([way], [Override("access", 468762518, {"bicycle": "no"})])
+    assert facility(way.tags) is not Facility.PROTECTED
+    assert way.tags["bicycle"] == "no"

@@ -408,7 +408,7 @@ export function ElevationChart({
                   <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
                   <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
                 </svg>
-                Avoid (A where narrow): no carrying capacity
+                Marked Avoid (A where narrow): no capacity given
               </li>
             )}
             {narrowest && (
@@ -416,7 +416,7 @@ export function ElevationChart({
                 <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M3 5H21L12 20Z" className="pc-narrowest-key" />
                 </svg>
-                Narrowest point (downward triangle)
+                Narrowest with the hills (downward triangle)
               </li>
             )}
             <li>
@@ -459,7 +459,7 @@ export function ElevationChart({
       )}
       <p className="hint pc-source">
         {kind === "mass"
-          ? "Elevation: USGS 3DEP. Riders per minute: estimated from OpenStreetMap lane counts and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
+          ? "Elevation: USGS 3DEP. Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
           : "Elevation: USGS 3DEP."}
       </p>
       <details className="pc-table-fold">

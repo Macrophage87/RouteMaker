@@ -353,6 +353,13 @@ function M.remap_way(tags, derived)
   -- value, so the split finds nothing to copy there.
   M.split_both(tags, out)
 
+  -- A hard surface Valhalla would price rough reaches the graph as paved
+  -- (OWNER-DECISIONS 440, `M.GRAPH_SURFACE`).
+  local graph_surface = M.GRAPH_SURFACE[tags.surface or ""]
+  if graph_surface then
+    out.surface = graph_surface
+  end
+
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
   end
@@ -380,6 +387,14 @@ function M.remap_way(tags, derived)
   -- Only narrows. Singletrack is closed rather than charged: upstream sets a
   -- trail's use from its highway class and ignores `service` there, so the
   -- tier-5 entry charge cannot reach it, and `highway` may not be rewritten.
+  --
+  -- `bicycle=no` alone does not close every way. Upstream lets a directional
+  -- key decide its own direction over plain `bicycle`, so the directions are
+  -- closed too, last, below (`M.close_both_directions`). And a way that carries
+  -- a mountain-bike rating, as nearly every singletrack way does, is reopened
+  -- by Valhalla's C++ parser after the transform: lua/graph.lua strips the
+  -- ratings from whatever upstream's transform leaves closed
+  -- (`M.strip_ratings_if_closed`).
   if derived.no_bicycle then
     out.bicycle = "no"
   end
@@ -518,7 +533,199 @@ function M.remap_way(tags, derived)
     out.access = M.CEMETERY_ACCESS
   end
 
+  -- The Zoo's access spur (`rm:destination_only`, routemaker.zoo; OWNER-DECISIONS
+  -- 291(4)): open to a bicycle, but only to reach a point on or beside it. Like a
+  -- cemetery's ways, `access=destination` is upstream's destination-only, so a
+  -- route may enter only to end there; and `bicycle=destination` opens the
+  -- footways and sidewalks the spur runs over, which upstream closes by class
+  -- (or by `bicycle=no`). The spur is the one place this remap widens a bicycle
+  -- tag, and only for the ways the rebuild names.
+  if derived.destination_only then
+    if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
+      out.access = M.CEMETERY_ACCESS
+    end
+    out.bicycle = "destination"
+  end
+
+  -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).
+  M.strip_paved_ratings(tags, out)
+
+  -- Last, so no line above can grant a direction back: the conditional-access
+  -- resolution writes `bicycle:forward` / `:backward` from OSM's own
+  -- `bicycle=no` + `bicycle:conditional=yes @ ...`.
+  if derived.no_bicycle then
+    M.close_both_directions(out)
+  end
+
   return out
+end
+
+-- A paved way's mountain-bike rating comes off before the tile build.
+--
+-- Valhalla 3.5.1's PBF parser reads `mtb:scale` and `mtb:scale:imba` as the
+-- edge's surface: `mtb:scale=0` prices it as dirt, 2 and up as the roughest
+-- class, whatever its `surface` says. So the paved Rock Creek Trail in
+-- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; way
+-- 851669430 among them), the ICC Trail and
+-- Northwest Branch were priced as dirt and avoided, though the segment table
+-- rates them paved and LTS 1. `routemaker.singletrack` already says a paved
+-- trail is not singletrack whatever its rating; this takes the same paved test
+-- (`M.PAVED_SURFACES`) to the graph. 172 road-paved ways carried a rating in the
+-- 2026-10-03 extract.
+--
+-- Paved is every hard surface (OWNER-DECISIONS 440), as `routemaker.surfaces`
+-- defines it and tests/test_surfaces.py keeps equal: road paving and its `:`
+-- variants, wood, metal, brick, sett, tartan, rubber and cobblestone. So a
+-- wooden bridge on the Rock Creek Trail (`mtb:scale=0`) is priced as its deck
+-- and not as dirt. A rated wooden MTB feature loses its rating too, and stays
+-- closed: `routemaker.singletrack` reads only road paving as leaving
+-- singletrack, so `rm:no_bicycle` closes it below, and taking a rating off
+-- only ever removes the parser's grant.
+--
+-- Access is not changed. The parser grants bicycle access from any rating, but
+-- graph.lua already strips the ratings from every way upstream leaves closed
+-- (`M.strip_ratings_if_closed`), so on a closed way the rating was never what
+-- decided access, and on an open one it grants nothing new. `sac_scale` is left
+-- alone: upstream reads it as an access grant on a way with no bicycle tag, and
+-- it does not set the surface. `mtb:scale:uphill` and `mtb:description` stay as
+-- they are.
+M.PAVED_SURFACES = { asphalt = true, concrete = true, paved = true,
+  paving_stones = true, chipseal = true, wood = true, boardwalk = true,
+  cobblestone = true, unhewn_cobblestone = true, metal = true, metal_grid = true,
+  brick = true, bricks = true, sett = true, tartan = true, rubber = true }
+M.PAVED_PREFIXES = { "concrete:", "paving_stones:", "asphalt:" }
+M.PAVED_RATING_KEYS = { "mtb:scale", "mtb:scale:imba" }
+
+function M.is_paved(tags)
+  local surface = tags.surface or ""
+  if M.PAVED_SURFACES[surface] == true then return true end
+  for _, prefix in ipairs(M.PAVED_PREFIXES) do
+    if surface:sub(1, #prefix) == prefix then return true end
+  end
+  return false
+end
+
+-- The surface the graph is handed where Valhalla would price a paved one rough.
+--
+-- Valhalla 3.5.1's parser reads `surface=wood` and `boardwalk` as `compacted`,
+-- the gravel class, and `brick` / `bricks` as `paved_rough`, the cobblestone
+-- class (tests/test_tile_build_access.py, which reads the tile). OWNER-DECISIONS
+-- 440 counts all of them paved and only cobblestone rough, so they reach the
+-- graph as `paving_stones`, which the parser prices `paved`, the class of sett
+-- and paving stones: a deck or a brick path has seams a road's asphalt does
+-- not. Metal, tartan, rubber, sett and the `:` variants already price paved or
+-- better, and cobblestone stays `paved_rough`. A reviewer surface penalty,
+-- written after this, reads the way's own tag and wins.
+M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
+  brick = "paving_stones", bricks = "paving_stones" }
+
+--- Write REMOVE for each rating key a paved way carries; returns whether any.
+function M.strip_paved_ratings(tags, out)
+  if not M.is_paved(tags) then return false end
+  local any = false
+  for _, key in ipairs(M.PAVED_RATING_KEYS) do
+    if tags[key] ~= nil then
+      out[key] = M.REMOVE
+      any = true
+    end
+  end
+  return any
+end
+
+-- `rm:no_bicycle` closes both directions, whatever else the way says.
+--
+-- `bicycle=no` is not upstream's last word on a direction. Its transform reads
+-- `bicycle:forward`, then `vehicle:forward`, over plain `bicycle`, and before
+-- that `oneway:bicycle=no`, `cycleway=opposite*` and the `cycleway:*` lane
+-- tables can each set a direction open. So a singletrack way OSM also tags
+-- `bicycle:forward=yes`, `oneway=yes` + `oneway:bicycle=no` or
+-- `cycleway=opposite_lane` kept that direction open under `bicycle=no` alone
+-- (SINGLETRACK-review-r0, finding 8). No singletrack or CBD sidewalk carries
+-- any of them today; the NO-BIKE-PATHS rules will reach ways that do.
+--
+-- Writing both directional keys is the whole remedy. Upstream applies them
+-- after every one of those grants (graph_upstream.lua's `:forward` and
+-- `:backward` overrides follow the oneway and cycleway handling), and nothing
+-- after them sets bicycle access true: the later lines only swap the two
+-- directions (`oneway=-1`, `oneway:bicycle=-1`) or close them.
+function M.close_both_directions(out)
+  out["bicycle:forward"] = "no"
+  out["bicycle:backward"] = "no"
+end
+
+-- Mountain-bike ratings reopen a closed way, in Valhalla's C++ and not its Lua.
+--
+-- Valhalla 3.5.1's PBF parser reads `mtb:scale`, `mtb:scale:imba`,
+-- `mtb:scale:uphill` and `mtb:description` itself, after the Lua transform has
+-- run, and any of them, whatever its value, `0` included, sets bicycle access
+-- on the way, in each direction a one-way leaves to bicycles (a one-way's reverse
+-- stays closed). It overrides `bicycle=no`, `bicycle=none`,
+-- `access=no` and `vehicle=no`, on a path, footway, track or service road
+-- alike. Upstream's graph.lua never reads these keys (only bare `mtb`, which
+-- does not reopen anything), so neither this remap's suites nor
+-- `supported_keys.txt`, which is extracted from that file, could see it. Only a
+-- real tile build shows it (tests/test_tile_build_access.py).
+--
+-- That is why `rm:no_bicycle=singletrack` (OWNER-DECISIONS 90, 91, 111) never
+-- reached the live graphs. `routemaker.singletrack` picks a way *by* its
+-- `mtb:scale` rating, the remap writes `bicycle=no`, and the parser opens the
+-- way again from the same rating. 753 of the 920 singletrack ways (461 km) were
+-- routable in the 2026-10-03 build. The other 167 were closed only because
+-- they also carry `foot=no`, so upstream's transform drops them before the
+-- parser gets to them. 27 OSM-tagged `bicycle=no` / `access=no` rated ways had
+-- been reopened the same way.
+--
+-- So lua/graph.lua calls this on the table upstream's transform returns, which
+-- is the last thing the parser sees. Upstream has already settled access by
+-- then, so its own `bike_forward` and `bike_backward` say whether the way is
+-- closed, with no second reading of the access tags to drift from it. Where
+-- either direction is closed, every `mtb:*` key is removed, and the tile
+-- carries exactly the access upstream's transform decided.
+--
+-- One direction closed counts as closed. With the rating left on, the parser
+-- reopens a direction `bicycle:forward=no` or `bicycle:backward=no` closed,
+-- which is what stock Valhalla does. Without it, the tile holds
+-- upstream's reading: the closed direction stays closed and the open one stays
+-- open. "Closed" is anything but "true", as the parser reads it: a value
+-- upstream's tables do not know leaves `bike_forward` unset, which the parser
+-- takes as no access.
+--
+-- What the rating costs where it is removed: besides access, the parser also
+-- reads a rating as the edge's surface. An open dirt path rated `mtb:scale=2`
+-- gets the surface class `path`, and `dirt` without the rating. So the
+-- strip is not made where access does not need it.
+--
+-- A one-way open to bicycles in its own direction keeps its ratings: the
+-- parser keeps a one-way's reverse closed whatever the rating
+-- (tests/test_tile_build_access.py), so there is nothing for it to reopen, and
+-- stripping cost a rated one-way its surface class (SINGLETRACK-review-r1, the
+-- Green Loop Trail, ways 1324891525 and 1324891526, `oneway=yes`,
+-- `mtb:scale=3`). That trail is asphalt, so since fix round 2 its `mtb:scale`
+-- comes off in the remap anyway and it is priced paved (`M.strip_paved_ratings`). Upstream's output says it is that case without a
+-- second reading of the access tags: `oneway` is "true", and the direction the
+-- one-way runs - `bike_forward`, or `bike_backward` where `oneway_reverse` is
+-- "true" (`oneway=-1`, which upstream has already swapped) - is "true". A
+-- one-way closed in its own direction is stripped like any closure. A way open
+-- both ways is untouched too: the C&O towpath keeps its `mtb:scale:imba=0`.
+M.MTB_RATING_PREFIX = "mtb:"
+
+--- Remove every `mtb:*` key from upstream's output when either direction is
+-- closed to bicycles, but for a one-way's own reverse. Takes and changes the
+-- table upstream's `ways_proc` returned; returns whether it removed anything.
+function M.strip_ratings_if_closed(kv)
+  if kv.bike_forward == "true" and kv.bike_backward == "true" then return false end
+  if kv.oneway == "true" then
+    local own = kv.oneway_reverse == "true" and kv.bike_backward or kv.bike_forward
+    if own == "true" then return false end
+  end
+  local keys = {}
+  for key in pairs(kv) do
+    if type(key) == "string" and key:sub(1, #M.MTB_RATING_PREFIX) == M.MTB_RATING_PREFIX then
+      keys[#keys + 1] = key
+    end
+  end
+  for _, key in ipairs(keys) do kv[key] = nil end
+  return #keys > 0
 end
 
 -- Directional conditional access, for the parkway reversal.

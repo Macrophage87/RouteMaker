@@ -43,6 +43,19 @@ already approved with the same tier and different adjustment fields is
 updated in place (`update`, audited as a change); a different tier is a
 conflict. `load_overrides` is the same command under the name that says so.
 
+A row may carry a `fingerprint` of its way (`pipeline.rematch`), checked here and kept in
+the file: the database row does not hold it, and the rebuild reads it from the image's
+copy of the file, to re-match the row if OSM splits or merges the way.
+
+A file may also `retire` rows a later decision withdraws: a top-level list of
+`{"kind", "osm_way_id", "value", "reason"}`, the row as it was loaded and the
+decision that withdraws it. Each approved or proposed row of that kind, way and
+exact value is deleted (audited as a delete, with the file's reason), before the
+file's own rows are planned, so a row that replaces it on the same way is not
+refused as a conflict. One already gone is `absent`, so a second run is a no-op.
+A row whose value differs is left alone: only what the file names is withdrawn.
+A file may retire rows and load none.
+
 The file may be read from standard input (`-`), because the api image carries
 `src/` and not `fixtures/`:
 
@@ -69,6 +82,7 @@ KINDS = frozenset({"access", "stress"})
 def parse_file(text: str, label: str) -> list[dict]:
     """The file's rows, validated, or CommandError naming what is wrong."""
     from pipeline.overrides import ACCESS_KEYS, stress_value_problem
+    from pipeline.rematch import fingerprint_problem
 
     try:
         document = json.loads(text)
@@ -82,6 +96,9 @@ def parse_file(text: str, label: str) -> list[dict]:
         # reads its `agency_blocks` from the image, and there is nothing to load
         # (fixtures/overrides/README.md). Accepted so every file in the directory
         # can be passed to this command, as docs/OPERATIONS.md has it.
+        return []
+    if rows == [] and document.get("retire"):
+        # A file that only withdraws rows (OWNER-DECISIONS 433's MoCo rows).
         return []
     if not isinstance(rows, list) or not rows:
         raise CommandError(f"{label} has no rows")
@@ -127,7 +144,57 @@ def parse_file(text: str, label: str) -> list[dict]:
         for field in ("reason", "evidence"):
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise CommandError(f"{where}: {field} is required")
+        if "fingerprint" in row:
+            # Not loaded into the row: the rebuild reads it from the image's copy of
+            # this file (pipeline.rematch), but a malformed one is refused here too.
+            problem = fingerprint_problem(row["fingerprint"])
+            if problem:
+                raise CommandError(f"{where}: {problem}")
     return rows
+
+
+def parse_retired(text: str, label: str) -> list[dict]:
+    """The file's `retire` entries, validated (the module docstring), or CommandError."""
+    document = json.loads(text)
+    entries = document.get("retire", [])
+    if not isinstance(entries, list):
+        raise CommandError(f"{label}: retire must be a list")
+    seen: set[tuple[str, int]] = set()
+    for index, entry in enumerate(entries):
+        where = f"{label} retire {index}"
+        if not isinstance(entry, dict):
+            raise CommandError(f"{where} is not an object")
+        if entry.get("kind") not in KINDS:
+            raise CommandError(f"{where}: kind must be one of {sorted(KINDS)}")
+        way_id = entry.get("osm_way_id")
+        if not isinstance(way_id, int) or isinstance(way_id, bool) or way_id <= 0:
+            raise CommandError(f"{where}: osm_way_id must be a positive integer")
+        if (entry["kind"], way_id) in seen:
+            raise CommandError(f"{where}: way {way_id} is retired twice")
+        seen.add((entry["kind"], way_id))
+        if not isinstance(entry.get("value"), dict) or not entry["value"]:
+            raise CommandError(f"{where}: value must be the retired row's value")
+        if not isinstance(entry.get("reason"), str) or not entry["reason"].strip():
+            raise CommandError(f"{where}: reason (the decision that withdraws it) is required")
+    return entries
+
+
+def plan_retired(entries: list[dict]) -> list[tuple[str, dict, object]]:
+    """(`retire`, entry, row) for each row the entry names, or (`absent`, entry, None)."""
+    from core.models import Override
+
+    steps = []
+    for entry in entries:
+        found = list(
+            Override.objects.filter(kind=entry["kind"], osm_way_id=entry["osm_way_id"]).order_by(
+                "id"
+            )
+        )
+        matches = [o for o in found if o.value == entry["value"]]
+        if not matches:
+            steps.append(("absent", entry, None))
+        steps.extend(("retire", entry, o) for o in matches)
+    return steps
 
 
 def resolve_actor(discord_user_id: int, *, attempt: bool):
@@ -163,10 +230,11 @@ def resolve_actor(discord_user_id: int, *, attempt: bool):
     return user
 
 
-def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
+def plan(rows: list[dict], retiring: frozenset = frozenset()) -> list[tuple[str, dict, object]]:
     """(action, file row, existing row or None) per file row; refuses conflicts.
 
-    `create` - no matching row; `approve` - a matching unapproved row exists;
+    Rows whose primary key is in `retiring` (the file withdraws them) are not
+    consulted. `create` - no matching row; `approve` - a matching unapproved row exists;
     `present` - a matching approved row exists, nothing to do; `update` - a
     stress row approved with the same tier and other adjustment fields, which
     the file's replace (the tier is the decision; the fields explain it).
@@ -175,9 +243,13 @@ def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
 
     steps = []
     for row in rows:
-        same_way = list(
-            Override.objects.filter(kind=row["kind"], osm_way_id=row["osm_way_id"]).order_by("id")
-        )
+        same_way = [
+            o
+            for o in Override.objects.filter(
+                kind=row["kind"], osm_way_id=row["osm_way_id"]
+            ).order_by("id")
+            if o.pk not in retiring
+        ]
         match = next((o for o in same_way if o.value == row["value"]), None)
         if row["kind"] == "stress":
             approved = [o for o in same_way if o.approved]
@@ -246,16 +318,19 @@ class Command(BaseCommand):
         else:
             label, text = path, Path(path).read_text()
         rows = parse_file(text, label)
-        if not rows:
+        retired = parse_retired(text, label)
+        if not rows and not retired:
             self.stdout.write(
                 f"{label} has no rows to load: its agency_blocks are read by the rebuild "
                 "from the image"
             )
             return
         actor = resolve_actor(options["actor"], attempt=options["confirm"])
-        steps = plan(rows)
+        retire_steps = plan_retired(retired)
+        retiring = frozenset(o.pk for action, _, o in retire_steps if action == "retire")
+        steps = plan(rows, retiring)
 
-        for action, row, existing in steps:
+        for action, row, existing in [*retire_steps, *steps]:
             target = f" (override {existing.pk})" if existing else ""
             self.stdout.write(f"{action}: way {row['osm_way_id']} {row['value']}{target}")
         if not options["confirm"]:
@@ -264,6 +339,22 @@ class Command(BaseCommand):
 
         source = f"{COMMAND} from {label}; {ACTOR_NOTE}"
         with transaction.atomic():
+            for action, entry, existing in retire_steps:
+                if action != "retire":
+                    continue
+                pk = existing.pk
+                existing.delete()
+                record(
+                    actor,
+                    "delete",
+                    "override",
+                    pk,
+                    AuditLogEntry.Outcome.ALLOWED,
+                    detail=(
+                        f"retired; way {entry['osm_way_id']} {json.dumps(entry['value'])}; "
+                        f"{entry['reason']}; {source}"
+                    ),
+                )
             for action, row, existing in steps:
                 if action == "present":
                     continue
@@ -330,4 +421,7 @@ class Command(BaseCommand):
                     detail=f"approved; way {row['osm_way_id']}; {source}{replaced}",
                 )
         written = sum(1 for action, _, _ in steps if action != "present")
+        gone = sum(1 for action, _, _ in retire_steps if action == "retire")
+        if retire_steps:
+            self.stdout.write(f"retired {gone} rows")
         self.stdout.write(f"wrote {written} of {len(steps)} rows; the rest were already approved")

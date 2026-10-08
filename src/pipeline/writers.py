@@ -67,6 +67,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             list(row.get("car_free_when", ())),
             row.get("map_class", "road"),
             row.get("separate_bikeway", False),
+            row.get("mtb_only", False),
+            row.get("walk_bike", False),
             row.get("road_speed_mph"),
             row.get("road_lanes"),
             row.get("road_oneway"),
@@ -75,6 +77,11 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("trail_name"),
             row.get("trail_route", 0),
             row.get("trail_bridge", 0),
+            row.get("calm_run_m"),
+            row.get("roadside", False),
+            _tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),
+            row.get("mass_usable_width_m"),
+            row.get("bike_access_reason"),
         )
         for row in rows
     ]
@@ -85,7 +92,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -105,6 +112,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         car_free,
                         map_class,
                         separate_bikeway,
+                        mtb_only,
+                        walk_bike,
                         road_speed_mph,
                         road_lanes,
                         road_oneway,
@@ -113,6 +122,11 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         trail_name,
                         trail_route,
                         trail_bridge,
+                        calm_run_m,
+                        roadside,
+                        unsmoothed_tier,
+                        mass_capacity,
+                        access_reason,
                     ),
                 )
                 for (
@@ -134,6 +148,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     car_free,
                     map_class,
                     separate_bikeway,
+                    mtb_only,
+                    walk_bike,
                     road_speed_mph,
                     road_lanes,
                     road_oneway,
@@ -142,6 +158,11 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     trail_name,
                     trail_route,
                     trail_bridge,
+                    calm_run_m,
+                    roadside,
+                    unsmoothed_tier,
+                    mass_capacity,
+                    access_reason,
                 ) in batch
             )
             cursor.execute(
@@ -150,15 +171,20 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_assumed, volume_source, volume_aadt, volume_year,
                      sinuosity, is_trail_class, is_unpaved, is_rough, lit, facility,
                      car_free_when, map_class, separate_bikeway,
-                     road_speed_mph, road_lanes, road_oneway,
+                     mtb_only, walk_bike, road_speed_mph, road_lanes, road_oneway,
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
-                     trail_name, trail_route, trail_bridge)
+                     trail_name, trail_route, trail_bridge, calm_run_m, roadside,
+                     stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason)
                     VALUES {args}"""
             )
             written += len(batch)
     return written
+
+
+def _tier_or_none(tier) -> int | None:
+    return int(tier) if tier is not None else None
 
 
 def _adjustment_columns(stress: StressResult) -> tuple:

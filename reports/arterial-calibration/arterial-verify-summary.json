@@ -1,0 +1,26 @@
+{
+  "north_capitol_mismatches": [],
+  "north_capitol_tiers": {
+    "4": 25,
+    "5": 10,
+    "3": 5
+  },
+  "first_st_nw": {
+    "before": [
+      3,
+      "mixed traffic, 25 mph, single lane, high volume"
+    ],
+    "after": [
+      2,
+      "mixed traffic, 25 mph, single lane, street volume (median)"
+    ],
+    "raw": 10665,
+    "smoothed": 7520
+  },
+  "smoothing_replaced": 2197,
+  "smoothing_km_by_region": {
+    "DC": 1.2893894800016361,
+    "Virginia": 7.512721366882973
+  },
+  "corridor": "named corridors: 40 ways matched, 35 re-tiered, 0 exempt (protected lane, separate bikeway or path)"
+}

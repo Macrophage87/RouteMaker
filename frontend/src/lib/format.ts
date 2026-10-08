@@ -65,6 +65,18 @@ export function formatDistance(metres: number): string {
 }
 
 /**
+ * A radius said aloud as a friendly figure ("Use my location", OWNER-DECISIONS
+ * 395): below a tenth of a mile, the nearest 10 ft (at least 10), so 15 m is
+ * "50 ft (15 m)" and not a falsely precise "49 ft"; miles from there on.
+ */
+export function formatRadius(metres: number): string {
+  if (!usable(metres) || metres >= FEET_BELOW_M) return formatDistance(metres);
+  const feet = Math.max(10, Math.round((metres * FEET_PER_METRE) / 10) * 10);
+  const metric = metres >= 100 ? Math.round(metres / 10) * 10 : Math.max(1, Math.round(metres));
+  return `${feet} ft (${metric} m)`;
+}
+
+/**
  * A place on a chart's distance axis, miles first, kilometres in brackets, short enough to label a tick:
  * "0 mi (0 km)", "4 mi (6.4 km)", "26 mi (42 km)" (the route chart, OWNER-DECISIONS 322).
  */
@@ -75,15 +87,15 @@ export function formatAxisDistance(metres: number): string {
 }
 
 /**
- * A radius said aloud as a friendly figure ("Use my location", OWNER-DECISIONS
- * 395): below a tenth of a mile, the nearest 10 ft (at least 10), so 15 m is
- * "50 ft (15 m)" and not a falsely precise "49 ft"; miles from there on.
+ * A run of road or path for the map's explanations, given in miles: feet (and kilometres) below
+ * half a mile, so a quarter mile reads "1,320 ft (0.4 km)" and not the "0.3 mi" that
+ * `formatDistance`'s one decimal rounds it to, which is not the bar; from half a mile as
+ * `formatDistance` says it.
  */
-export function formatRadius(metres: number): string {
-  if (!usable(metres) || metres >= FEET_BELOW_M) return formatDistance(metres);
-  const feet = Math.max(10, Math.round((metres * FEET_PER_METRE) / 10) * 10);
-  const metric = metres >= 100 ? Math.round(metres / 10) * 10 : Math.max(1, Math.round(metres));
-  return `${feet} ft (${metric} m)`;
+export function formatRunMiles(miles: number): string {
+  const metres = miles * METRES_PER_MILE;
+  if (miles < 0.5) return `${Math.round(miles * 5280).toLocaleString("en-US")} ft (${(metres / 1000).toFixed(1)} km)`;
+  return formatDistance(metres);
 }
 
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
@@ -130,6 +142,12 @@ export function formatClimb(metres: number): string {
 export function formatSpeed(kmh: number): string {
   if (!usable(kmh)) return DASH;
   return `${Math.round(kmh / KMH_PER_MPH)} mph (${Math.round(kmh)} km/h)`;
+}
+
+/** A range of speeds from mph: "6 to 8 mph (10 to 13 km/h)", said as a range by a screen reader (not "6 minus 8"), miles first (the Mass Ride map's 6 to 8 mph, OWNER-DECISIONS 326). */
+export function formatSpeedRange(lowMph: number, highMph: number): string {
+  if (!usable(lowMph) || !usable(highMph)) return DASH;
+  return `${Math.round(lowMph)} to ${Math.round(highMph)} mph (${Math.round(lowMph * KMH_PER_MPH)} to ${Math.round(highMph * KMH_PER_MPH)} km/h)`;
 }
 
 /** A whole number of seconds, for "trying again in ...": "1 second", "5 seconds". */

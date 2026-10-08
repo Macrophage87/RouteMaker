@@ -159,16 +159,16 @@ test("the empty-plan hint: start then stops in a loop; the toggle offered only w
 test("the lone-start hint: a stop next in a loop; the toggle offered only where the ride type has one", () => {
   assert.equal(
     loneStartHint("default", true),
-    'Now click the map to add a stop, or use "Add point at map center". The ride comes back to the start.',
+    'Now click the map to add a stop, or use "Add point at map center" in Map tools. The ride comes back to the start.',
   );
   assert.equal(
     loneStartHint("default", false),
-    'Now click the map where you want to finish, or use "Add point at map center". To finish back at the start' +
+    'Now click the map where you want to finish, or use "Add point at map center" in Map tools. To finish back at the start' +
       ' instead, check "Make it a loop" under the search.',
   );
   assert.equal(
     loneStartHint("mass-ride", false),
-    'Now click the map where you want to finish, or use "Add point at map center".',
+    'Now click the map where you want to finish, or use "Add point at map center" in Map tools.',
   );
   assert.doesNotMatch(loneStartHint("mass-ride", false), /loop/i);
 });

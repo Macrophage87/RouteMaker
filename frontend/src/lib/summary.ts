@@ -3,6 +3,7 @@ import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
+import { outsideDcNote } from "./dcBoundary.ts";
 import {
   formatClimb,
   formatDistance,
@@ -252,9 +253,22 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     `${head}${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]
+  return [figures, movedPointsNote(route, points.length), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * What the planner says of a trip point it moved (the API's `moved_points`): one inside the National Zoo
+ * goes to the bike racks by the Harvard Street entrance (OWNER-DECISIONS 291(4)), so the route does not end
+ * where the rider put it. Shown in the route view and said with the route (REBUILD-BUNDLE spec review S4).
+ * "End: This point is inside the National Zoo, ... The route goes to the racks." Null where none moved.
+ */
+export function movedPointsNote(route: Pick<RouteResponse, "moved_points">, count = 0): string | null {
+  const moved = route.moved_points ?? [];
+  if (moved.length === 0) return null;
+  const n = Math.max(count, ...moved.map((m) => m.index + 1));
+  return moved.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
 }
 
 /** "2 other routes to choose from, under Routes to choose from." */

@@ -919,6 +919,64 @@ check("singletrack is bicycle=no",
 check("an unmarked dirt path is not",
   M.remap_way({ highway = "path", surface = "dirt" }, { is_trail_class = true, stress_tier = 1 }).bicycle == nil)
 
+-- rm:no_bicycle closes each direction too, so no directional grant upstream
+-- reads ahead of plain `bicycle` can reopen one (M.close_both_directions).
+local cct = {
+  highway = "path", bicycle = "yes", foot = "yes", surface = "dirt", ["mtb:scale"] = "2",
+  ["bicycle:forward"] = "yes", oneway = "yes", ["oneway:bicycle"] = "no", cycleway = "opposite",
+}
+local closed_cct = M.remap_way(cct, { no_bicycle = "singletrack", is_trail_class = true, stress_tier = 1, facility = "path" })
+check("closed singletrack closes the forward direction", closed_cct["bicycle:forward"] == "no",
+  tostring(closed_cct["bicycle:forward"]))
+check("and the backward direction", closed_cct["bicycle:backward"] == "no",
+  tostring(closed_cct["bicycle:backward"]))
+local closed_cbd = M.remap_way({ highway = "footway", footway = "sidewalk", ["bicycle:backward"] = "yes" },
+  { no_bicycle = "cbd_sidewalk", is_trail_class = true })
+check("so does a CBD sidewalk", closed_cbd["bicycle:forward"] == "no" and closed_cbd["bicycle:backward"] == "no")
+local open_cct = M.remap_way(cct, { is_trail_class = true, stress_tier = 1, facility = "path" })
+check("without the mark no direction is written",
+  open_cct["bicycle:forward"] == nil and open_cct["bicycle:backward"] == nil)
+check("the remap leaves the ratings to graph.lua, which reads upstream's verdict",
+  closed_cct["mtb:scale"] == nil)
+
+-- M.strip_ratings_if_closed, on tables shaped like upstream's output.
+local function stripped(kv) M.strip_ratings_if_closed(kv); return kv end
+local rated = function(fwd, bwd)
+  return { bike_forward = fwd, bike_backward = bwd, ["mtb:scale"] = "2", ["mtb:scale:imba"] = "1",
+    ["mtb:scale:uphill"] = "1", ["mtb:description"] = "rocky", mtb = "yes", surface = "dirt" }
+end
+local both_closed = stripped(rated("false", "false"))
+for _, key in ipairs({ "mtb:scale", "mtb:scale:imba", "mtb:scale:uphill", "mtb:description" }) do
+  check("closed both ways loses " .. key, both_closed[key] == nil)
+end
+check("but keeps bare mtb, which reopens nothing", both_closed.mtb == "yes")
+check("and every other key", both_closed.surface == "dirt" and both_closed.bike_forward == "false")
+check("forward closed alone is closed", stripped(rated("false", "true"))["mtb:scale"] == nil)
+check("backward closed alone is closed", stripped(rated("true", "false"))["mtb:scale"] == nil)
+local function one_way(fwd, bwd, reverse)
+  local kv = rated(fwd, bwd)
+  kv.oneway = "true"
+  kv.oneway_reverse = reverse and "true" or "false"
+  return stripped(kv)
+end
+check("a one-way open its own way keeps its ratings (the parser keeps its reverse closed)",
+  one_way("true", "false")["mtb:scale"] == "2" and one_way("true", "false")["mtb:description"] == "rocky")
+check("and so does oneway=-1, which upstream has already swapped",
+  one_way("false", "true", true)["mtb:scale"] == "2")
+check("a one-way closed its own way is stripped", one_way("false", "false")["mtb:scale"] == nil)
+check("so is oneway=-1 closed its own way", one_way("true", "false", true)["mtb:scale"] == nil)
+check("and a forward-only closure on a way that is not one-way",
+  stripped(rated("false", "true"))["mtb:scale"] == nil)
+check("a direction upstream left unset is closed, as the parser reads it",
+  stripped(rated(nil, "true"))["mtb:scale"] == nil)
+local open_both = stripped(rated("true", "true"))
+check("open both ways keeps every rating", open_both["mtb:scale"] == "2" and open_both["mtb:scale:imba"] == "1"
+  and open_both["mtb:scale:uphill"] == "1" and open_both["mtb:description"] == "rocky")
+check("reports what it did",
+  M.strip_ratings_if_closed(rated("false", "false")) == true
+    and M.strip_ratings_if_closed({ bike_forward = "false", bike_backward = "false" }) == false
+    and M.strip_ratings_if_closed(rated("true", "true")) == false)
+
 -- OWNER-DECISIONS 104: a CBD sidewalk is barred to bicycles, and nothing else is.
 check("a CBD sidewalk is bicycle=no",
   M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },
@@ -947,6 +1005,102 @@ check("and none on another key is still one",
   not M.access_is_unrestricted({ oneway = "yes", ["bicycle:forward"] = "none" }))
 check("and the exception does not excuse another key's restriction",
   not M.access_is_unrestricted({ oneway = "yes", ["bicycle:backward"] = "none", access = "private" }))
+
+-- OWNER-DECISIONS 291(4): the Zoo's destination-only spur.
+local spur = M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "no" },
+  { destination_only = true, is_trail_class = true })
+check("a destination-only way is opened to bicycles", spur.bicycle == "destination")
+check("and is destination-only for access", spur.access == "destination")
+check("a stricter access tag is kept on it",
+  M.remap_way({ highway = "service", access = "private" },
+    { destination_only = true }).access == nil)
+check("an unmarked footway is not opened",
+  M.remap_way({ highway = "footway" }, { is_trail_class = true }).bicycle == nil)
+
+-- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
+-- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
+-- 851669430 among others, as the 2026-10-03 extract tags it).
+local rock_creek = {
+  highway = "cycleway", name = "Rock Creek Trail", surface = "paved", smoothness = "good",
+  bicycle = "designated", foot = "designated", motor_vehicle = "no", segregated = "no",
+  ["mtb:scale"] = "0", sac_scale = "hiking", trail_visibility = "excellent",
+}
+local paved_out = M.remap_way(rock_creek, { is_trail_class = true })
+check("a paved trail's mtb:scale is removed", paved_out["mtb:scale"] == M.REMOVE)
+check("and sac_scale is left alone", paved_out.sac_scale == nil)
+check("and no access key is written", paved_out.bicycle == nil and paved_out.access == nil
+  and paved_out["bicycle:forward"] == nil and paved_out["bicycle:backward"] == nil
+  and paved_out.foot == nil)
+check("nor the surface", paved_out.surface == nil)
+check("mtb:scale:imba on asphalt is removed too",
+  M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:imba"] = "1" },
+    { is_trail_class = true })["mtb:scale:imba"] == M.REMOVE)
+check("and on concrete:plates",
+  M.remap_way({ highway = "path", surface = "concrete:plates", ["mtb:scale"] = "2" },
+    { is_trail_class = true })["mtb:scale"] == M.REMOVE)
+
+-- Every hard surface is paved (OWNER-DECISIONS 440): a wooden bridge on the Rock
+-- Creek Trail (way 156659889: cycleway, wood, bridge=yes, mtb:scale=0) loses its
+-- rating, and its deck reaches the graph as a surface Valhalla prices paved.
+local wood_bridge = M.remap_way({ highway = "cycleway", surface = "wood", bridge = "yes",
+  bicycle = "designated", ["mtb:scale"] = "0" }, { is_trail_class = true })
+check("a wooden trail bridge's mtb:scale is removed", wood_bridge["mtb:scale"] == M.REMOVE)
+check("and its deck is priced paved", wood_bridge.surface == "paving_stones",
+  tostring(wood_bridge.surface))
+check("and no access key is written", wood_bridge.bicycle == nil
+  and wood_bridge["bicycle:forward"] == nil and wood_bridge["bicycle:backward"] == nil)
+for _, surface in ipairs({ "wood", "boardwalk", "brick", "bricks" }) do
+  check(surface .. " reaches the graph as paving stones",
+    M.remap_way({ highway = "footway", surface = surface }, { is_trail_class = true }).surface
+      == "paving_stones")
+end
+for _, surface in ipairs({ "metal", "sett", "cobblestone", "unhewn_cobblestone", "tartan",
+    "rubber", "concrete:plates", "paving_stones:lanes", "asphalt", "gravel", "dirt" }) do
+  check(surface .. " keeps its own surface in the graph",
+    M.remap_way({ highway = "footway", surface = surface }, { is_trail_class = true }).surface == nil)
+end
+for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
+    "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
+  check(surface .. " is paved", M.is_paved({ surface = surface }))
+end
+for _, surface in ipairs({ "unpaved", "gravel", "compacted", "dirt", "ground", "woodchips",
+    "grass_paver", "asphalt;unpaved", "" }) do
+  check(surface .. " is not paved", not M.is_paved({ surface = surface }))
+end
+check("no surface is not paved", not M.is_paved({}))
+-- A rated wooden MTB feature (The Boss Trail's "Rollercoaster Wooden Feature",
+-- way 808882074: cycleway, wood, bridge=yes, mtb:scale=3) is singletrack, so it
+-- is closed both ways whatever losing its rating does.
+local feature = M.remap_way({ highway = "cycleway", surface = "wood", bridge = "yes",
+  bicycle = "yes", ["mtb:scale"] = "3" }, { is_trail_class = true, no_bicycle = true })
+check("a rated wooden MTB feature stays closed both ways",
+  feature["bicycle:forward"] == "no" and feature["bicycle:backward"] == "no")
+-- A reviewer surface penalty still wins over the deck's price.
+local penalised_deck = M.remap_way({ highway = "footway", surface = "wood" },
+  { is_trail_class = true, reviewer_surface_penalty = "compacted" })
+check("a reviewer penalty on a wooden deck wins", penalised_deck.surface == "compacted",
+  tostring(penalised_deck.surface))
+check("a dirt trail keeps its rating",
+  M.remap_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "2" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("and so does a trail with no surface tag",
+  M.remap_way({ highway = "path", ["mtb:scale"] = "1" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("gravel is not paved",
+  M.remap_way({ highway = "path", surface = "gravel", ["mtb:scale"] = "0" },
+    { is_trail_class = true })["mtb:scale"] == nil)
+check("mtb:scale:uphill and mtb:description stay",
+  (function()
+    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:uphill"] = "1",
+      ["mtb:description"] = "x" }, { is_trail_class = true })
+    return o["mtb:scale:uphill"] == nil and o["mtb:description"] == nil
+  end)())
+check("a closed paved singletrack-rated way stays closed",
+  (function()
+    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale"] = "3" },
+      { is_trail_class = true, no_bicycle = "park_path" })
+    return o["mtb:scale"] == M.REMOVE and o.bicycle == "no"
+  end)())
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -11,6 +11,7 @@
  * a change to the map's palette reaches the route too.
  */
 import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleKey } from "../stressStyle.js";
+import { MASS_AVOID, MASS_BANDS, bandIndex, dashInWidths } from "../massStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
@@ -18,7 +19,13 @@ import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MA
 
 export { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
-export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown";
+export type MassClassKey = "m0" | "m1" | "m2" | "m3" | "mavoid";
+export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown" | MassClassKey;
+
+/** A Mass Ride's classes (massStyle.js): the capacity bands, and a stretch marked Avoid with no capacity colour. */
+export const MASS_CLASS_KEYS: readonly MassClassKey[] = ["m0", "m1", "m2", "m3", "mavoid"];
+
+export const isMassClass = (key: RouteClassKey): key is MassClassKey => (MASS_CLASS_KEYS as readonly string[]).includes(key);
 
 /** Whether a class is one of the unpaved browns. */
 export const isUnpavedClass = (key: RouteClassKey): boolean => key.startsWith("u") && key !== "unknown";
@@ -50,6 +57,8 @@ export interface RouteClass {
   ringWidth?: number;
   /** The dash-dot down the middle of a paved Avoid section (ROUTE_AVOID_MARK), the cue that is not colour; none elsewhere. */
   mark?: string;
+  /** A Mass Ride class's dash, in line widths (the cue besides colour); absent for a solid line. */
+  dash?: readonly number[];
 }
 
 /**
@@ -74,6 +83,12 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   u4: 5.5,
   u5: 6,
   unknown: 5,
+  // A Mass Ride's: the capacity bands' own widths, rising with the capacity (OWNER-DECISIONS 327).
+  m0: MASS_BANDS[0].width,
+  m1: MASS_BANDS[1].width,
+  m2: MASS_BANDS[2].width,
+  m3: MASS_BANDS[3].width,
+  mavoid: MASS_AVOID.width,
 };
 
 /** The halo under the unrated grey: a near-black neutral, 6.0:1 from #9aa0a6 and 6.2:1 from the cvd grey. */
@@ -112,7 +127,7 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
  * Avoid keeps its dotted unpaved mark instead, which already sets it apart from every paved class.
  */
 const avoidOnTheRoute = (c: RouteClass): RouteClass =>
-  c.key === "5"
+  c.key === "5" || c.key === "mavoid"
     ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO, mark: ROUTE_AVOID_MARK }
     : c.key === "u5"
       ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO }
@@ -161,6 +176,29 @@ export function routeClasses(): readonly RouteClass[] {
       width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
+    // A Mass Ride's classes: the capacity bands and Avoid (massStyle.js). Drawn when the API's spans carry `rpm`.
+    ...MASS_BANDS.map((band: (typeof MASS_BANDS)[number], i: number) => ({
+      key: `m${i}` as RouteClassKey,
+      short: band.short,
+      label: `${band.name.charAt(0).toUpperCase()}${band.name.slice(1)}: ${band.short.toLowerCase()} riders per minute`,
+      color: band.color,
+      halo: band.halo,
+      width: band.width,
+      haloWidth: band.width + ROUTE_HALO_EXTRA,
+      ...(band.dashPx ? { dash: dashInWidths(band) as number[] } : {}),
+    })),
+    {
+      key: "mavoid" as RouteClassKey,
+      short: "Avoid",
+      label: "Marked Avoid: no capacity given",
+      // The route's own Avoid is the one magenta with the white dash-dot on a Mass Ride too
+      // (OWNER-DECISIONS 397, `avoidOnTheRoute`), as the route chart draws it; the capacity map's
+      // general Avoid roads keep MASS_AVOID's look (massStyle.js).
+      color: MASS_AVOID.color,
+      halo: MASS_AVOID.casing,
+      width: MASS_AVOID.width,
+      haloWidth: MASS_AVOID.width + ROUTE_HALO_EXTRA,
+    },
     // The unrated grey is a mid colour: a dark neutral halo of its own stands under it. It was LTS 1's
     // casing, until 357 softened that to a green the grey is not 3:1 on (2.86:1).
     {
@@ -192,7 +230,19 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
  * traffic-free path at LTS 1's when it has no tier; else traffic-free before its
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
-export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">>): RouteClass {
+export function spanClass(
+  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm" | "outside_dc">>,
+  capacity = false,
+): RouteClass {
+  // A Mass Ride's section (`capacity`: the route's sections carry riders per minute, usesCapacity): by
+  // capacity band, or Avoid alone for a stretch marked Avoid; a section with no capacity is the unknown
+  // grey (OWNER-DECISIONS 325, 327).
+  // Outside DC (427) a Mass Ride's section has no figure and is not greyed: it keeps its stress colour.
+  if (capacity && !span.outside_dc) {
+    if (span.tier === 5) return classByKey("mavoid") as RouteClass;
+    const band = bandIndex(span.rpm);
+    return (band !== null ? classByKey(`m${band}` as RouteClassKey) : classByKey("unknown")) as RouteClass;
+  }
   if (span.unpaved === true) {
     const tier = span.tier ?? (span.facility === "path" ? 1 : null);
     const brown = tier !== null ? classByKey(`u${tier}` as RouteClassKey) : undefined;
@@ -215,7 +265,13 @@ export interface RouteSection {
   ring?: string;
   ringWidth?: number;
   mark?: string;
+  dash?: readonly number[];
   coordinates: LonLat[];
+}
+
+/** Whether a route's sections are drawn by capacity: any carries a figure (a Mass Ride on a table that has the column). */
+export function usesCapacity(spans: readonly StressSpan[] | undefined): boolean {
+  return !!spans && spans.some((span) => typeof span.rpm === "number");
 }
 
 function usableSpans(spans: readonly StressSpan[] | undefined): spans is readonly StressSpan[] {
@@ -252,6 +308,7 @@ export function routeSections(
   const drawn = along[along.length - 1];
   if (!(drawn > 0)) return null;
   const scale = drawn / spans[spans.length - 1].to_m;
+  const capacity = usesCapacity(spans);
 
   const sections: RouteSection[] = [];
   let vertex = 1; // the next vertex not yet passed
@@ -275,12 +332,12 @@ export function routeSections(
       points.push(finish);
     }
     start = finish;
-    const cls = spanClass(span);
+    const cls = spanClass(span, capacity);
     const previous = sections[sections.length - 1];
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, ...(cls.ring ? { ring: cls.ring, ringWidth: cls.ringWidth } : {}), ...(cls.mark ? { mark: cls.mark } : {}), ...(cls.dash ? { dash: cls.dash } : {}), coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -321,8 +378,9 @@ export interface RouteLegendRow extends RouteClass {
 export function routeLegend(spans: readonly StressSpan[] | undefined): RouteLegendRow[] {
   if (!usableSpans(spans)) return [];
   const metres = new Map<RouteClassKey, number>();
+  const capacity = usesCapacity(spans);
   for (const span of spans) {
-    const key = spanClass(span).key;
+    const key = spanClass(span, capacity).key;
     metres.set(key, (metres.get(key) ?? 0) + (span.to_m - span.from_m));
   }
   return routeClasses().filter((c) => metres.has(c.key)).map((c) => ({ ...c, metres: metres.get(c.key) ?? 0 }));
