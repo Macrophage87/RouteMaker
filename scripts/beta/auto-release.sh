@@ -396,6 +396,13 @@ deploy() { # tag new-sha gate-file
 	step "migrations check" bc exec -T api ./manage.py migrate --check </dev/null || return 1
 	step "collectstatic" bc exec -T api ./manage.py collectstatic --noinput </dev/null || return 1
 	smoke || { say "FAILED: the smoke tests"; return 1; }
+	if [ "$(kv predraw "$gate_file")" = 1 ]; then
+		# A tile FORMAT_VERSION changed (OWNER-DECISIONS 436): the cache is keyed on it, so the
+		# new tiles are drawn now (step 8). The release is already live and healthy, so a pre-draw
+		# that fails or runs out of budget is a warning, not a rollback: what is left is drawn on request.
+		say "step: pre-draw the tiles (a tile FORMAT_VERSION changed)"
+		predraw || say "WARNING: the pre-draw did not finish cleanly; the release is live and tiles not yet drawn are drawn on request. Re-run step 8 of docs/BETA-RUNBOOK.md by hand if you want them all warm."
+	fi
 	return 0
 }
 
@@ -472,7 +479,7 @@ pass() {
 	free=$(df -P -k "$cd_dir/backups" | awk 'NR == 2 { print $4 }')
 	[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
 	if [ "$dry_run" = 1 ]; then
-		say "dry run: would deploy $tag ($new) over $cur: frontend=$(kv frontend "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file")"
+		say "dry run: would deploy $tag ($new) over $cur: frontend=$(kv frontend "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file") predraw=$(kv predraw "$gate_file")"
 		rm -f "$gate_file"; finish dry-run "$tag would be deployed"; return 0
 	fi
 

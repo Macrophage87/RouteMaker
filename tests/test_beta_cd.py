@@ -211,10 +211,27 @@ def test_a_release_that_needs_the_owner_stops(path: str) -> None:
     assert any(path in reason for reason in result["reasons"])
 
 
-def test_a_new_stress_tile_format_stops_and_other_stress_tile_code_deploys() -> None:
+@pytest.mark.parametrize("path", ["src/core/stress_tiles.py", "src/core/mass_tiles.py"])
+def test_a_new_tile_format_deploys_and_asks_for_the_predraw(path: str) -> None:
     old = "X = 1\nFORMAT_VERSION = 5\n"
-    assert _gate({"src/core/stress_tiles.py": (old, old.replace("5", "6"))})["verdict"] == "stop"
-    assert _gate({"src/core/stress_tiles.py": (old, old + "Y = 2\n")})["verdict"] == "deploy"
+    bumped = _gate({path: (old, old.replace("5", "6"))})
+    assert bumped["verdict"] == "deploy" and bumped["predraw"]
+    assert any("FORMAT_VERSION changed (5 to 6)" in note for note in bumped["notes"])
+    other = _gate({path: (old, old + "Y = 2\n")})
+    assert other["verdict"] == "deploy" and not other["predraw"]
+
+
+def test_the_predraw_flag_is_off_for_anything_else() -> None:
+    result = _gate({"src/core/api.py": ("a", "b"), "src/core/tile_cache.py": ("a", "b")})
+    assert result["verdict"] == "deploy" and not result["predraw"]
+
+
+def test_the_offroad_router_config_never_restarts_the_beta_routers() -> None:
+    path = "valhalla/valhalla-offroad.json"
+    runtime = _gate({path: (_vjson(), _vjson(loki__logging__long_request=1))})
+    assert runtime["verdict"] == "deploy" and not runtime["routers_restart"]
+    build = _gate({path: (_vjson(), _vjson(mjolnir__hierarchy=False))})
+    assert build["verdict"] == "stop"
 
 
 def test_valhalla_runtime_settings_restart_the_routers_and_build_settings_stop() -> None:
@@ -407,6 +424,7 @@ case "$*" in
   *pg_stat_activity*) echo 0 ;;
   *"migrate --check"*) [ -n "${STUB_PENDING:-}" ] && [ ! -f "$STUB_MIGRATED" ] && exit 1 ;;
   *"migrate --noinput"*) touch "$STUB_MIGRATED" ;;
+  *predraw_stress_tiles*) exit "${STUB_PREDRAW_RC:-0}" ;;
 esac
 exit 0
 """
@@ -465,6 +483,8 @@ class Beta:
                 "scripts/beta/smoke-test.sh": STUB_SMOKE,
                 "scripts/check_beta_compose.py": STUB_CHECKER,
                 "src/core/a.py": "x = 1\n",
+                "src/core/stress_tiles.py": "FORMAT_VERSION = 7\n",
+                "src/core/mass_tiles.py": "FORMAT_VERSION = 2\n",
                 "frontend/package-lock.json": "{}\n",
             },
         )
@@ -714,6 +734,55 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert "up-to-date: v0.2.0" in beta.status()
     # the deploy's report outlives the idle pass after it
     assert "result: deployed: v0.2.0" in (beta.cd / "last-release-report.txt").read_text()
+
+
+@pytest.mark.parametrize(
+    "path, text",
+    [
+        ("src/core/stress_tiles.py", "FORMAT_VERSION = 8\n"),
+        ("src/core/mass_tiles.py", "FORMAT_VERSION = 3\n"),
+    ],
+)
+def test_a_tile_format_release_deploys_and_then_runs_the_predraw(
+    beta: Beta, path: str, text: str
+) -> None:
+    sha = beta.release("v0.2.0", {path: text})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    assert not (beta.cd / "hold" / "v0.2.0").exists()
+    assert git(beta.src, "rev-parse", "HEAD") == sha
+    _order(
+        beta.calls(),
+        "up -d api worker",
+        "smoke --local",
+        "exec -T worker ./manage.py predraw_stress_tiles",
+    )
+    assert beta.calls().count("predraw_stress_tiles") == 1
+    assert "predraw exit 0" in (beta.state / "predraw.log").read_text()
+
+
+def test_a_predraw_that_fails_after_a_tile_format_deploy_warns_and_does_not_roll_back(
+    beta: Beta,
+) -> None:
+    sha = beta.release("v0.2.0", {"src/core/stress_tiles.py": "FORMAT_VERSION = 8\n"})
+    done = beta.agent(
+        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PREDRAW_RC="1"
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert git(beta.src, "rev-parse", "HEAD") == sha
+    assert not (beta.cd / "failed" / "v0.2.0").exists()
+    assert "WARNING: the pre-draw did not finish cleanly" in done.stdout
+    assert "predraw exit 1" in (beta.state / "predraw.log").read_text()
+    assert beta.calls().count("up -d api worker") == 1  # no rollback restart
+
+
+def test_a_code_release_runs_no_predraw(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "deployed: v0.2.0" in beta.status()
+    assert "predraw" not in beta.calls()
 
 
 def test_a_failed_smoke_test_after_a_migration_restores_the_snapshot(beta: Beta) -> None:

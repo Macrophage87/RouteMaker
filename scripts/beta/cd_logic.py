@@ -118,8 +118,12 @@ STOP_PREFIXES: Sequence[tuple] = (
 # Paths that never affect the server (documentation, reports, CI): ignored entirely.
 INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/")
 INERT_SUFFIXES = (".md",)
+OFFROAD_CONFIG = "valhalla/valhalla-offroad.json"
 COMPOSE_FILES = ("compose.yaml", "compose.beta.yaml")
-STRESS_TILES = "src/core/stress_tiles.py"
+# A FORMAT_VERSION change in either tile module needs no data from home: the tile cache is
+# keyed on the version, so the release deploys and the agent runs the pre-draw (OWNER-DECISIONS
+# 436). The one pre-draw command (predraw_stress_tiles) draws both the stress and the Mass Ride tiles.
+TILE_FORMAT_FILES = ("src/core/stress_tiles.py", "src/core/mass_tiles.py")
 FORMAT_VERSION = re.compile(r"(?m)^FORMAT_VERSION\s*=\s*(\S+)")
 AGENT_FILES = (
     "scripts/beta/auto-release.sh",
@@ -225,6 +229,7 @@ def gate(
         "migrations": False,
         "compose_changed": False,
         "routers_restart": False,
+        "predraw": False,
         "agent_changed": False,
         "changed_files": 0,
         "notes": [],
@@ -259,20 +264,27 @@ def gate(
                     f"{path}: a graph-build setting changed ({', '.join(keys[:5])}): "
                     "rebuild the graphs at home"
                 )
+            elif kind == "runtime" and path == OFFROAD_CONFIG:
+                # valhalla-offroad is never started on the beta (compose profile `offroad`).
+                result["notes"].append(
+                    f"{path}: runtime settings only ({', '.join(keys[:5])}); "
+                    "the offroad router does not run on the beta, so no restart"
+                )
             elif kind == "runtime":
                 result["routers_restart"] = True
                 result["notes"].append(
                     f"{path}: runtime settings only ({', '.join(keys[:5])}); the routers restart"
                 )
-        if path == STRESS_TILES:
+        if path in TILE_FORMAT_FILES:
             old_v = FORMAT_VERSION.search(show("old", path) or "")
             new_v = FORMAT_VERSION.search(show("new", path) or "")
             old_n = old_v.group(1) if old_v else None
             new_n = new_v.group(1) if new_v else None
             if old_n != new_n:
-                reasons.append(
-                    f"{path}: FORMAT_VERSION changed ({old_n} to {new_n}): the stress tiles "
-                    "change format (owner's go, then the step 8 pre-draw)"
+                result["predraw"] = True
+                result["notes"].append(
+                    f"{path}: FORMAT_VERSION changed ({old_n} to {new_n}); the tiles are "
+                    "pre-drawn after the deploy"
                 )
         if MIGRATION.match(path):
             text = show("new", path)
@@ -415,6 +427,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "migrations",
             "compose_changed",
             "routers_restart",
+            "predraw",
             "agent_changed",
         ):
             print(f"{key}={int(result[key])}")

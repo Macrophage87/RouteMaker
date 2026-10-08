@@ -939,13 +939,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers |
+| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to  restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 page, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
 | a compose `image:` line, `docker/valhalla*`, `docker/photon*`, `docker/postgis*` | a third-party image to pull, maybe a data mismatch | **stops** |
 | `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
-| `FORMAT_VERSION` in `src/core/stress_tiles.py` | a new stress-tile format | **stops** (the owner's go, then the step 8 pre-draw) |
+| `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |
 
    A stop writes its reasons to `$RM_STATE/cd/hold/<tag>` and the agent does nothing else for that
@@ -962,7 +962,10 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    last by rename, as the uid that owns `$RM_DATA/frontend`'s files, in the postgis image already on
    the host, no network); `up -d api worker`; photon and the routers if the gate said so; `/healthz`;
    `migrate --check` and `collectstatic` in the api; `smoke-test.sh --local` (retried once after a
-   minute). Every log line is a step name, a commit id or a PASS/FAIL line; `.env` is never printed.
+   minute). If the gate saw a tile `FORMAT_VERSION` change (`core.stress_tiles` or `core.mass_tiles`), the
+   step 8 pre-draw (`predraw_stress_tiles`, both tile sets) then runs and the pass waits for it (log:
+   `$RM_STATE/predraw.log`); the release is already live by then, so a pre-draw that fails or runs out
+   of its budget is a WARNING in the report and not a rollback. Every log line is a step name, a commit id or a PASS/FAIL line; `.env` is never printed.
 7. **Any failure after the stop rolls back by itself** (rollback A/C as above, without sudo): stop the
    api and worker, check out the previous release, `TAG` back, the compose gate; the database from
    the pre-release snapshot **only if a migration ran** (`restore-dump`, which keeps the database as
@@ -1012,7 +1015,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `export RM_CD_WINDOW=02-06` | any hour | local hours in which a deploy may start. The image build is not capped (step 6 of the install); a window keeps it to quiet hours |
-| `export RM_CD_NPM=registry` | `off` | **owner decision**: fetch `node_modules` from the npm registry (`npm ci --ignore-scripts` from the pinned lockfile, in the pinned node image) when a release changes the front end and no offline copy is here |
+| `export RM_CD_NPM=registry` | `off` | **leave it off** (OWNER-DECISIONS 436: no npm download on the server). It is the switch that would let the agent fetch `node_modules` from the npm registry; the owner has decided against it, so a release that changes the front end waits for `node_modules` sent from home |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
 | `export RM_CD_GITHUB_REPO=owner/name` | `Macrophage87/RouteMaker` | where the check runs are read |
@@ -1026,7 +1029,8 @@ default. While either is missing, a release that changes `frontend/` waits (stat
 - `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<sha256 of frontend/package-lock.json>/node_modules`
   (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
   `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
-  A copy is reused for every release with the same lockfile. Or the owner sets `RM_CD_NPM=registry`.
+  A copy is reused for every release with the same lockfile. There is no download fallback: the
+  release waits until the copy arrives (`RM_CD_NPM` stays `off`).
 
 The build is the same as `ship-data.sh --build-frontend`: `npm test`, `tsc --noEmit` and `vite build`
 in the pinned image with `--network none`, `VITE_BETA=1` and the recorded report link (kept in
