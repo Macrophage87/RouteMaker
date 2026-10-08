@@ -1,5 +1,6 @@
 /**
- * "Map tools" (OWNER-DECISIONS 450): one small visible button with the map's zoom buttons
+ * "Map tools" (OWNER-DECISIONS 450; on the page only in accessibility mode, 455: App renders it
+ * only then, and the mode's link moves the focus here when it turns the mode on): one small visible button with the map's zoom buttons
  * that opens a short disclosure holding the two map-center actions, "Add point at map
  * center" and "Road info at map center". They were two wide buttons in the planner, which
  * pointer riders rarely need; they stay the keyboard's and a screen reader's way to add a
@@ -12,7 +13,7 @@
  * tools; so does choosing one of them, before the action runs, so the road panel gives the
  * focus back to Map tools when it closes. The crosshair shows the map's center while open.
  */
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { ADD_AT_CENTRE_LABEL, INFO_BUTTON_LABEL, MAP_TOOLS_LABEL } from "./lib/roadInfo.ts";
 
 interface Props {
@@ -24,17 +25,22 @@ interface Props {
   onRoadInfo: () => void;
   /** Show (or hide) the map's crosshair, the spot both act on. */
   onCrosshair: (on: boolean) => void;
+  /** The Map tools button, for App to give the focus to when accessibility mode is turned on. */
+  toggleRef?: RefObject<HTMLButtonElement | null>;
 }
 
-export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair }: Props) {
+export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, toggleRef: outerRef }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
+  const ownRef = useRef<HTMLButtonElement>(null);
+  const toggleRef = outerRef ?? ownRef;
   const panelId = useId();
 
   useEffect(() => {
     onCrosshair(open);
   }, [open, onCrosshair]);
+  // Turned off with it open: the crosshair goes with it.
+  useEffect(() => () => onCrosshair(false), [onCrosshair]);
 
   // A press anywhere else closes it, as the focus leaving it does (onBlur below).
   useEffect(() => {

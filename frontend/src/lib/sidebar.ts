@@ -84,10 +84,11 @@ export const FEWER_TIPS = "Fewer tips";
  * The one line over the points, until there is a start; the full how-to is behind "More tips" (emptyPlanHint).
  * The keyboard's way in is said here too, as loneStartHint says it (the a11y review's S6).
  */
-export function searchLede(loop: boolean): string {
-  return loop
-    ? "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start."
-    : "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.";
+export function searchLede(loop: boolean, accessMode = false): string {
+  // Map tools exists only in accessibility mode (455): off, the line says how to get it.
+  const how = accessMode ? "Search, click the map, or use Add point at map center in Map tools" : "Search or click the map";
+  const end = loop ? "start, then stops. The ride comes back to the start." : "start, then end. Later clicks add stops.";
+  return `${how}: ${end}${accessMode ? "" : " For the keyboard, turn on accessibility mode."}`;
 }
 
 /** The Ride line's visible action: Edit while closed, Done while open. Its state is read from aria-expanded. */

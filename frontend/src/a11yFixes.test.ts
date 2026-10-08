@@ -237,3 +237,31 @@ test("the toggle rows (loop, avoid gravel, the ride times) are 24 px targets, no
   const rule = css.match(/\n\.toggle \{([^}]*)\}/)?.[1] ?? "";
   assert.match(rule, /min-height: 24px;/);
 });
+
+test("App: the accessibility mode link is the first thing in the page, before the skip link and the map (455)", () => {
+  const access = app.indexOf('className="access-link"');
+  assert.ok(access > 0 && access < app.indexOf('className="skip-link"'), "before the skip link");
+  assert.match(app, /<a\s+className="access-link"\s+href="#accessibility-mode"\s+onClick=\{\(event\) => \{\s*event\.preventDefault\(\);\s*toggleAccessMode\(true\);/);
+  assert.match(app, /\{accessModeLabel\(accessMode\)\}\s*<\/a>/);
+  // Hidden until it has the focus, as the skip link is.
+  assert.match(declared(".access-link"), /transform:\s*translateY\(-200%\)/);
+  assert.match(declared(".access-link:focus"), /transform:\s*none/);
+  assert.match(declared(".access-link:focus-visible"), /transform:\s*none/);
+});
+
+test("App: Map tools is rendered only in accessibility mode; the toggle is in More tips too (455)", () => {
+  assert.match(app, /tools=\{\s*accessMode \? \(\s*<MapTools/);
+  assert.match(app, /\) : null\s*\}\s*\/>/);
+  const tips = app.slice(app.indexOf("<MoreTips>"), app.indexOf("</MoreTips>"));
+  assert.match(tips, /infoHelp\(accessMode\)/);
+  assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
+  assert.match(tips, /\{accessModeLabel\(accessMode\)\}/);
+});
+
+test("App: turning the mode on or off is said in the live region, kept, and focuses Map tools from the link (455)", () => {
+  const fn = app.slice(app.indexOf("const toggleAccessMode"), app.indexOf("const toggleAccessMode") + 500);
+  assert.match(fn, /writeAccessMode\(next\)/);
+  assert.match(fn, /announce\(accessModeSaid\(next\)\)/);
+  assert.match(fn, /focusToolsNext\.current = next && focusTools/);
+  assert.match(app, /if \(accessMode && focusToolsNext\.current\) toolsToggleRef\.current\?\.focus\(\)/);
+});

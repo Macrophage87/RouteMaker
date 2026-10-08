@@ -158,19 +158,36 @@ test("the empty-plan hint: start then stops in a loop; the toggle offered only w
 
 test("the lone-start hint: a stop next in a loop; the toggle offered only where the ride type has one", () => {
   assert.equal(
-    loneStartHint("default", true),
+    loneStartHint("default", true, true),
     'Now click the map to add a stop, or use "Add point at map center" in Map tools. The ride comes back to the start.',
   );
   assert.equal(
-    loneStartHint("default", false),
+    loneStartHint("default", false, true),
     'Now click the map where you want to finish, or use "Add point at map center" in Map tools. To finish back at the start' +
       ' instead, check "Make it a loop" under the search.',
   );
   assert.equal(
-    loneStartHint("mass-ride", false),
+    loneStartHint("mass-ride", false, true),
     'Now click the map where you want to finish, or use "Add point at map center" in Map tools.',
   );
-  assert.doesNotMatch(loneStartHint("mass-ride", false), /loop/i);
+  assert.doesNotMatch(loneStartHint("mass-ride", false, true), /loop/i);
+});
+
+test("accessibility mode off: the hints say to turn it on, not to use Map tools that is not there (455)", () => {
+  for (const hint of [
+    loneStartHint("default", true),
+    loneStartHint("default", false),
+    loneStartHint("mass-ride", false),
+  ]) {
+    assert.match(hint, /turn on accessibility mode/);
+    assert.doesNotMatch(hint, /Map tools/);
+  }
+  const tips = editingTips();
+  assert.match(tips, /turn on accessibility mode \(the first link on the page\), then use "Add point at map center" in Map tools/);
+  assert.match(editingTips(true), /use "Add point at map center" in Map tools; Ctrl\+Z/);
+  assert.doesNotMatch(editingTips(true), /accessibility mode/);
+  assert.match(emptyPlanHint("default", false), /turn on accessibility mode/);
+  assert.doesNotMatch(emptyPlanHint("default", false, true), /accessibility mode/);
 });
 
 test("the toggle's hint with a start alone talks of no end point", () => {
