@@ -147,7 +147,7 @@ export function editingTips(accessMode = false): string {
 
 /** The hint with the start alone, with the keyboard's way to place the next point. */
 export function loneStartHint(preset: PresetId, loop: boolean, accessMode = false): string {
-  const keys = accessMode ? 'or use "Add point at map center" in Map tools' : "or turn on accessibility mode to add a point from the keyboard";
+  const keys = accessMode ? 'or use "Add point at map center" in Map tools' : "or, for keyboard or screen reader use, turn on accessibility mode";
   if (loop) return `Now click the map to add a stop, ${keys}. The ride comes back to the start.`;
   if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
   return (

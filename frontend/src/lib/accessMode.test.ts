@@ -3,9 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACCESS_MODE_KEY,
-  ACCESS_OFF_LABEL,
-  ACCESS_ON_LABEL,
-  accessModeLabel,
+  ACCESS_LABEL,
   accessModeSaid,
   mapToolsWays,
   readAccessMode,
@@ -48,11 +46,8 @@ test("writing works without storage: it reports false and does not throw", () =>
   assert.equal(writeAccessMode(true, refusing), false);
 });
 
-test("the toggle's name is what pressing it does; the announcement says where it went", () => {
-  assert.equal(accessModeLabel(false), "Turn on accessibility mode");
-  assert.equal(accessModeLabel(true), "Turn off accessibility mode");
-  assert.equal(ACCESS_ON_LABEL, accessModeLabel(false));
-  assert.equal(ACCESS_OFF_LABEL, accessModeLabel(true));
+test("the switch's name is constant (aria-pressed carries the state); the announcement says where it went", () => {
+  assert.equal(ACCESS_LABEL, "Accessibility mode");
   assert.match(accessModeSaid(true), /^Accessibility mode on\./);
   assert.match(accessModeSaid(false), /^Accessibility mode off\./);
 });

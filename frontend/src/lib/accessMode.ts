@@ -2,7 +2,7 @@
  * Accessibility mode (OWNER-DECISIONS 455, replacing 450's always-visible Map tools): off
  * unless a rider turned it on, remembered on this device. On, "Map tools" (MapTools.tsx) is
  * by the map's zoom buttons, with Add point at map center and Road info at map center, for
- * riders on a keyboard or a screen reader. A link, the page's first stop and hidden until it
+ * riders on a keyboard or a screen reader. A switch (a button with aria-pressed), the page's first stop and hidden until it
  * has the focus, turns it on or off; the same toggle is in "More tips". The keyboard's
  * shortcuts (I, the arrows, + and -) work in either state.
  *
@@ -12,18 +12,13 @@
 
 export const ACCESS_MODE_KEY = "routemaker.accessMode";
 
-export const ACCESS_ON_LABEL = "Turn on accessibility mode";
-export const ACCESS_OFF_LABEL = "Turn off accessibility mode";
+/** The control's name in both states (a switch: the state is aria-pressed, not the name). */
+export const ACCESS_LABEL = "Accessibility mode";
 export const ACCESS_ON_SAID = "Accessibility mode on. Map tools is by the map's zoom buttons.";
 export const ACCESS_OFF_SAID = "Accessibility mode off. Map tools is hidden.";
 /** The "More tips" line beside the toggle. */
 export const ACCESS_HELP =
-  "Accessibility mode adds Map tools by the map's zoom buttons, with Add point at map center and Road info at map center. It is also the first link on the page, and is kept on this device.";
-
-/** The toggle's name for the state it is in: what pressing it does. */
-export function accessModeLabel(on: boolean): string {
-  return on ? ACCESS_OFF_LABEL : ACCESS_ON_LABEL;
-}
+  "Accessibility mode adds Map tools by the map's zoom buttons, with Add point at map center and Road info at map center. It is also the first button on the page, and is kept on this device.";
 
 /** What a screen reader hears after a press, with the state it went to. */
 export function accessModeSaid(on: boolean): string {
@@ -76,8 +71,8 @@ export function mapToolsWays(on: boolean): { addPoint: string; roadAndAdd: strin
         roadAndAdd: "open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
       }
     : {
-        addPoint: 'turn on accessibility mode (the first link on the page), then use "Add point at map center" in Map tools',
+        addPoint: 'turn on accessibility mode (the first button on the page), then use "Add point at map center" in Map tools',
         roadAndAdd:
-          "turn on accessibility mode (the first link on the page) and open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
+          "turn on accessibility mode (the first button on the page) and open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
       };
 }

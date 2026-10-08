@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
-import { ACCESS_HELP, accessModeLabel, accessModeSaid, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { ACCESS_HELP, ACCESS_LABEL, accessModeSaid, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -476,7 +476,7 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
-  // Turn accessibility mode on or off, say so, and keep it. From the page's first link, turning it on puts
+  // Turn accessibility mode on or off, say so, and keep it. From the page's first button, turning it on puts
   // the focus on Map tools (focusTools); off, the focus stays on the link, which is always there.
   const toggleAccessMode = useCallback(
     (focusTools: boolean) => {
@@ -1116,8 +1116,8 @@ export function App() {
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
         <p className="hint">{infoHelp(accessMode)}</p>
         <p className="hint">{ACCESS_HELP}</p>
-        <button type="button" className="link access-toggle" onClick={() => toggleAccessMode(false)}>
-          {accessModeLabel(accessMode)}
+        <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
+          {ACCESS_LABEL}
         </button>
       </MoreTips>
       </div>
@@ -1235,17 +1235,10 @@ export function App() {
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
-          switch (OWNER-DECISIONS 455). A link, as the owner asked; it does not change the address. */}
-      <a
-        className="access-link"
-        href="#accessibility-mode"
-        onClick={(event) => {
-          event.preventDefault();
-          toggleAccessMode(true);
-        }}
-      >
-        {accessModeLabel(accessMode)}
-      </a>
+          switch (OWNER-DECISIONS 455, 455a): a button with aria-pressed and a constant name. */}
+      <button type="button" className="access-link" aria-pressed={accessMode} onClick={() => toggleAccessMode(true)}>
+        {ACCESS_LABEL}
+      </button>
       <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
         {SKIP_LINK_TEXT}
       </a>

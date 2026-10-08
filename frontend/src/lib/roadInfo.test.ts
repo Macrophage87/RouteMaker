@@ -134,7 +134,7 @@ test("the help says where the summary and the details are", () => {
   assert.match(INFO_HELP, /Details and sources/);
   assert.match(INFO_HELP, /press I for the road at the center/);
   // Map tools and both its actions by name (OWNER-DECISIONS 450), and the screen readers' browse mode (the a11y review's N7).
-  assert.match(infoHelp(false), /press I for the road at the center of the map, or turn on accessibility mode \(the first link on the page\) and open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/);
+  assert.match(infoHelp(false), /press I for the road at the center of the map, or turn on accessibility mode \(the first button on the page\) and open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/);
   assert.equal(infoHelp(true), INFO_HELP);
   assert.match(INFO_HELP, /open Map tools \(by the map's zoom buttons\) for Road info at map center and Add point at map center/);
   assert.match(INFO_HELP, /With NVDA or JAWS, I reaches the map only in focus mode/);

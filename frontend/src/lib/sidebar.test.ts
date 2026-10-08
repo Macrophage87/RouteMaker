@@ -199,8 +199,8 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
-  assert.equal(searchLede(false), "Search or click the map: start, then end. Later clicks add stops. For the keyboard, turn on accessibility mode.");
-  assert.equal(searchLede(true), "Search or click the map: start, then stops. The ride comes back to the start. For the keyboard, turn on accessibility mode.");
+  assert.equal(searchLede(false), "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode.");
+  assert.equal(searchLede(true), "Search or click the map: start, then stops. The ride comes back to the start. For keyboard or screen reader use, turn on accessibility mode.");
   // I works only on the focused map: no button claims it (the a11y review's S2); the map's canvas still does.
   assert.doesNotMatch(app, /aria-keyshortcuts="I"/);
   const tools = src("../MapTools.tsx");

@@ -71,23 +71,23 @@ const focused = (p) =>
     return [e.tagName.toLowerCase(), e.id ? "#" + e.id : "", e.className && typeof e.className === "string" ? "." + e.className.split(" ").join(".") : "",
       e.dataset?.junctionIndex !== undefined ? "[" + e.dataset.junctionIndex + "]" : "", " " + (e.getAttribute("aria-label") || e.textContent || "").trim().slice(0, 40)].join(""); })()`);
 
-// ---- 1. Focus order: the accessibility mode link first (455), then the skip link, which skips the map ----
+// ---- 1. Focus order: the accessibility mode switch first (455), then the skip link, which skips the map ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
   await p.eval("document.activeElement?.blur(); true");
   const accessHidden = await p.eval("(() => { const e = document.querySelector('.access-link'); const r = e.getBoundingClientRect(); return r.bottom <= 0; })()");
   await p.tab();
   const first = await focused(p);
-  // Accessibility mode (OWNER-DECISIONS 455): its link is the very first stop, hidden until it has the focus.
-  const access = await p.eval("(() => { const e = document.querySelector('.access-link'); const r = e.getBoundingClientRect(); return { focused: document.activeElement === e, visible: r.top >= 0 && r.bottom <= innerHeight && r.width > 40, name: e.textContent, tag: e.tagName, first: [...document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')].find((x) => x.tabIndex >= 0) === e }; })()");
-  check("accessibility mode: its link is the first Tab stop and first in the page's order, and it shows", access.focused && access.visible && access.first && access.tag === "A" && access.name === "Turn on accessibility mode", JSON.stringify(access));
+  // Accessibility mode (OWNER-DECISIONS 455): its switch is the very first stop, hidden until it has the focus.
+  const access = await p.eval("(() => { const e = document.querySelector('.access-link'); const r = e.getBoundingClientRect(); return { focused: document.activeElement === e, visible: r.top >= 0 && r.bottom <= innerHeight && r.width > 40, name: e.textContent, pressed: e.getAttribute('aria-pressed'), tag: e.tagName, first: [...document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')].find((x) => x.tabIndex >= 0) === e }; })()");
+  check("accessibility mode: its switch is the first Tab stop and first in the page's order, and it shows", access.focused && access.visible && access.first && access.tag === "BUTTON" && access.name === "Accessibility mode" && access.pressed === "false", JSON.stringify(access));
   await p.shot(`${SHOTS}/access-link_focused.png`, { x: 0, y: 0, width: 420, height: 90 });
   await p.tab();
   const second = await focused(p);
   const skip = await p.eval("(() => { const e = document.querySelector('.skip-link'); const r = e.getBoundingClientRect(); return { focused: document.activeElement === e, visible: r.top >= 0 && r.bottom <= innerHeight && r.width > 40 }; })()");
   check("focus order: the next Tab stop is the skip link, and it shows", skip.focused && skip.visible, JSON.stringify({ first, second }));
   await p.shot(`${SHOTS}/skip-link_focused.png`, { x: 0, y: 0, width: 420, height: 90 });
-  check("accessibility mode: its link is off screen until it has the focus", accessHidden === true, String(accessHidden));
+  check("accessibility mode: its switch is off screen until it has the focus", accessHidden === true, String(accessHidden));
   const hash = await p.eval("location.hash");
   await p.enter();
   await sleep(150);
@@ -1586,50 +1586,50 @@ async function saidInDialog(p, text) {
   check("road panel: Escape closes it and the focus goes back to the map", back.closed && back.canvas, JSON.stringify(back));
   // Accessibility mode (OWNER-DECISIONS 455): Map tools is not on the page until the mode is turned on.
   const offState = await p.eval(`({ tools: document.querySelectorAll('.map-tools, .map-tools-toggle, .map-tools-ctrl .map-tools-panel').length,
-    stored: localStorage.getItem('routemaker.accessMode'), link: document.querySelector('.access-link')?.textContent ?? '',
+    stored: localStorage.getItem('routemaker.accessMode'), link: document.querySelector('.access-link')?.getAttribute('aria-pressed') ?? '',
     crosshair: !!document.querySelector('.crosshair') })`);
   check("accessibility mode: off by default, so no Map tools, nothing kept and the link offers to turn it on",
-    offState.tools === 0 && offState.stored === null && offState.link === "Turn on accessibility mode" && !offState.crosshair, JSON.stringify(offState));
+    offState.tools === 0 && offState.stored === null && offState.link === "false" && !offState.crosshair, JSON.stringify(offState));
   const tipsOff = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
   check("accessibility mode: with it off, the help says to turn it on before Map tools, and the keys still work (I, arrows)",
-    /press I for the road at the center of the map, or turn on accessibility mode \(the first link on the page\) and open Map tools/.test(tipsOff) &&
-      /move the map with the arrow keys and turn on accessibility mode \(the first link on the page\), then use "Add point at map center" in Map tools/.test(tipsOff) &&
+    /press I for the road at the center of the map, or turn on accessibility mode \(the first button on the page\) and open Map tools/.test(tipsOff) &&
+      /move the map with the arrow keys and turn on accessibility mode \(the first button on the page\), then use "Add point at map center" in Map tools/.test(tipsOff) &&
       /Accessibility mode adds Map tools/.test(tipsOff), tipsOff.slice(0, 900));
   await p.eval("document.querySelector('.access-link').focus(); true");
   await p.enter();
   await sleep(300);
   const onState = await p.eval(`({ toggle: document.querySelector('.map-tools-toggle')?.textContent ?? '', focus: document.activeElement === document.querySelector('.map-tools-toggle'),
     expanded: document.querySelector('.map-tools-toggle')?.getAttribute('aria-expanded'), stored: localStorage.getItem('routemaker.accessMode'),
-    link: document.querySelector('.access-link').textContent, hash: location.hash.length > 1, tips: document.querySelector('.access-toggle')?.textContent ?? '' })`);
+    link: document.querySelector('.access-link').getAttribute('aria-pressed'), hash: location.hash.length > 1, tips: document.querySelector('.access-toggle')?.getAttribute('aria-pressed') ?? '' })`);
   check("accessibility mode: Enter on the link turns it on, Map tools appears closed and takes the focus, the link and the tips toggle now offer to turn it off, and it is kept",
-    onState.toggle === "Map tools" && onState.focus && onState.expanded === "false" && onState.stored === "on" && onState.link === "Turn off accessibility mode" &&
-      onState.tips === "Turn off accessibility mode" && onState.hash, JSON.stringify(onState));
+    onState.toggle === "Map tools" && onState.focus && onState.expanded === "false" && onState.stored === "on" && onState.link === "true" &&
+      onState.tips === "true" && onState.hash, JSON.stringify(onState));
   const saidOn = await p.eval("[...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).join(' | ')");
   check("accessibility mode: turning it on is announced in the page's live region", /Accessibility mode on\./.test(saidOn), saidOn);
   // A later visit on a device that kept it on (each test page has its own storage, so the value is seeded) starts with it on.
   {
     const q = await open({ ride: false, junctions: false, accessMode: true });
-    const kept = await q.eval(`({ toggle: document.querySelector('.map-tools-toggle')?.textContent ?? '', link: document.querySelector('.access-link').textContent })`);
+    const kept = await q.eval(`({ toggle: document.querySelector('.map-tools-toggle')?.textContent ?? '', link: document.querySelector('.access-link').getAttribute('aria-pressed') })`);
     check("accessibility mode: remembered on this device - a new page starts with Map tools and the link offering to turn it off",
-      kept.toggle === "Map tools" && kept.link === "Turn off accessibility mode", JSON.stringify(kept));
+      kept.toggle === "Map tools" && kept.link === "true", JSON.stringify(kept));
     await q.close();
   }
   await p.eval("document.querySelector('.access-link').focus(); true");
   await p.enter();
   await sleep(300);
   const offAgain = await p.eval(`({ tools: document.querySelectorAll('.map-tools, .map-tools-toggle').length, stored: localStorage.getItem('routemaker.accessMode'),
-    link: document.querySelector('.access-link').textContent, focus: document.activeElement === document.querySelector('.access-link'),
+    link: document.querySelector('.access-link').getAttribute('aria-pressed'), focus: document.activeElement === document.querySelector('.access-link'),
     said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).join(' | '), crosshair: !!document.querySelector('.crosshair') })`);
   check("accessibility mode: Enter on the link again turns it off - Map tools goes, the focus stays on the link, it says so",
-    offAgain.tools === 0 && offAgain.stored === "off" && offAgain.link === "Turn on accessibility mode" && offAgain.focus && /Accessibility mode off\./.test(offAgain.said) && !offAgain.crosshair, JSON.stringify(offAgain));
+    offAgain.tools === 0 && offAgain.stored === "off" && offAgain.link === "false" && offAgain.focus && /Accessibility mode off\./.test(offAgain.said) && !offAgain.crosshair, JSON.stringify(offAgain));
   // The toggle in "More tips" does the same and leaves the focus where it is.
   await p.eval("document.querySelector('.access-toggle').focus(); true");
   await p.enter();
   await sleep(300);
-  const viaTips = await p.eval(`({ tools: document.querySelectorAll('.map-tools-toggle').length, label: document.querySelector('.access-toggle').textContent,
-    focus: document.activeElement === document.querySelector('.access-toggle'), link: document.querySelector('.access-link').textContent, stored: localStorage.getItem('routemaker.accessMode') })`);
+  const viaTips = await p.eval(`({ tools: document.querySelectorAll('.map-tools-toggle').length, label: document.querySelector('.access-toggle').getAttribute('aria-pressed'),
+    focus: document.activeElement === document.querySelector('.access-toggle'), link: document.querySelector('.access-link').getAttribute('aria-pressed'), stored: localStorage.getItem('routemaker.accessMode') })`);
   check("accessibility mode: the toggle in More tips turns it on too, and keeps the focus on itself",
-    viaTips.tools === 1 && viaTips.label === "Turn off accessibility mode" && viaTips.focus && viaTips.link === "Turn off accessibility mode" && viaTips.stored === "on", JSON.stringify(viaTips));
+    viaTips.tools === 1 && viaTips.label === "true" && viaTips.focus && viaTips.link === "true" && viaTips.stored === "on", JSON.stringify(viaTips));
   // Map tools (OWNER-DECISIONS 450): one small visible button with the map's zoom buttons, a disclosure
   // of plain buttons holding the two map-center actions; nothing of them in the planner.
   const tools = await p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); const r = t?.getBoundingClientRect();

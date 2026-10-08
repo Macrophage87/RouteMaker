@@ -184,7 +184,7 @@ test("accessibility mode off: the hints say to turn it on, not to use Map tools 
     assert.doesNotMatch(hint, /Map tools/);
   }
   const tips = editingTips();
-  assert.match(tips, /turn on accessibility mode \(the first link on the page\), then use "Add point at map center" in Map tools/);
+  assert.match(tips, /turn on accessibility mode \(the first button on the page\), then use "Add point at map center" in Map tools/);
   assert.match(editingTips(true), /use "Add point at map center" in Map tools; Ctrl\+Z/);
   assert.doesNotMatch(editingTips(true), /accessibility mode/);
   assert.match(emptyPlanHint("default", false), /turn on accessibility mode/);
