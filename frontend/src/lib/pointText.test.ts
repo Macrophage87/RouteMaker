@@ -6,6 +6,7 @@ import { LOOP_LABEL, LOOP_START_NAME, loopView } from "./loop.ts";
 import { markerDeps } from "./mapGlue.ts";
 import {
   addedSaid,
+  editingTips,
   emptyPlanHint,
   insertedSaid,
   loopChangeSaid,
