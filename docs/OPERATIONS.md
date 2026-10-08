@@ -1572,6 +1572,48 @@ the whole rebuild again including the swap — whose `DROP SCHEMA live_old`
 destroys the schema a rollback would have put back. Five retries of a timed-out
 rebuild would have dismantled its own rollback target, one attempt at a time.
 
+## Tile build threads
+
+Each graph is built by one `valhalla_build_tiles` run, and the five run one
+after another (standard, no-trail, ebike, weekend, offroad). How many threads a
+run uses is `mjolnir.concurrency` in that variant's
+`<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
+writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **2**).
+The serving configs' own `"concurrency": 4` is not what a build uses.
+
+Why it is a setting: Valhalla 3.5.1 can abort a multi-threaded tile build with
+
+```
+double free or corruption (fasttop)
+```
+
+on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log,
+usually a few seconds after `Building <n> tiles with <threads> threads...`. Each
+build thread frees its spatialite connections to the admin and timezone
+databases when it finishes, that cleanup calls a libxml2 function that is not
+thread-safe, and two threads finishing together can free the same memory.
+Upstream fixed it in 3.6.0 ([valhalla/valhalla#5005](https://github.com/valhalla/valhalla/pull/5005),
+reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
+race, not bad data: the same inputs build on the next try, and which graph it
+hits is luck.
+
+Two things keep it from failing a rebuild:
+
+- **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
+  and less memory. **1 cannot hit it at all**, and is the setting to use if
+  aborts keep happening; it makes the tile stage slower, so watch it against
+  the eight-hour budget above.
+- **One retry of the crashed graph.** A `valhalla_build_tiles` that dies with
+  SIGABRT is run once more, for that graph only, logged as
+  `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1`.
+  The rerun starts from scratch in the same build directory (Valhalla purges
+  the tile directory first) and gets whatever is left of the budget. Any other
+  failure, or a second abort, fails the rebuild as before.
+
+To change it: set `REBUILD_TILE_CONCURRENCY=1` (or another whole number of at
+least 1) in `.env` and recreate the rebuild service with no rebuild job `todo`
+or `doing`. The value a build actually used is in its `build-config.json`.
+
 ## The source extract
 
 The rebuild's first stage produces the map it builds from, rather than expecting

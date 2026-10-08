@@ -98,7 +98,12 @@ def build_dir(tiles_dir: Path, variant: Variant, build_id: str) -> Path:
 
 
 def build_config(
-    config_dir: Path, tiles_dir: Path, variant: Variant, build_id: str
+    config_dir: Path,
+    tiles_dir: Path,
+    variant: Variant,
+    build_id: str,
+    *,
+    concurrency: int | None = None,
 ) -> tuple[Path, dict]:
     """The config a tile build runs with: the serving config, retargeted.
 
@@ -109,7 +114,15 @@ def build_config(
     and this process's path for the same directory differ only when the tests
     run outside a container, which is why the rewrite is by suffix rather than
     by prefix.
+
+    `concurrency`, when given, replaces `mjolnir.concurrency` - the number of
+    threads valhalla_build_tiles builds with. It is a build setting and not a
+    serving one (REBUILD_TILE_CONCURRENCY, docs/OPERATIONS.md "Tile build
+    threads"): Valhalla 3.5.1 can abort a multi-threaded build with "double
+    free or corruption", and fewer threads is fewer chances of it.
     """
+    if concurrency is not None and concurrency < 1:
+        raise ValueError(f"tile build concurrency must be at least 1, not {concurrency!r}")
     serving = json.loads(serving_config_path(config_dir, variant).read_text())
     container_current = f"/data/tiles/{variant.value}/{CURRENT}"
     destination = build_dir(tiles_dir, variant, build_id)
@@ -123,12 +136,21 @@ def build_config(
                 "a build writing there would overwrite another variant's graph"
             )
         config[section][key] = str(destination / value[len(container_current) + 1 :])
+    if concurrency is not None:
+        config["mjolnir"]["concurrency"] = concurrency
 
     path = destination / "build-config.json"
     return path, config
 
 
-def write_build_config(config_dir: Path, tiles_dir: Path, variant: Variant, build_id: str) -> Path:
+def write_build_config(
+    config_dir: Path,
+    tiles_dir: Path,
+    variant: Variant,
+    build_id: str,
+    *,
+    concurrency: int | None = None,
+) -> Path:
     """Write the build config, claiming this variant's build directory.
 
     The claim is what makes a build id mean one build: the directory must not
@@ -143,7 +165,9 @@ def write_build_config(config_dir: Path, tiles_dir: Path, variant: Variant, buil
             "A second build writing there would write into the directory the first "
             "one promoted, which is the graph being served."
         )
-    path, config = build_config(config_dir, tiles_dir, variant, build_id)
+    path, config = build_config(
+        config_dir, tiles_dir, variant, build_id, concurrency=concurrency
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     Path(config["mjolnir"]["tile_dir"]).mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
