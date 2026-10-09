@@ -814,8 +814,10 @@ work, and let a pass that is already running end: `"$RM_STATE/cd/bin/auto-releas
 (plain `pause` does not stop a running pass; it says if one is running). Then check
 `... status` before touching anything. If it (or `pause`) shows `IN PROGRESS`, a stopped pass left a
 deploy half done: the api and worker may be stopped and the checkout part-way to the new tag, and a
-paused agent does not roll it back. Do not ship over it: either `... resume`, let one pass roll it
-back (`... run` does it at once; that pass then ends), check `... status` again and pause again; or put
+paused agent does not roll it back. `pause` says whether it is safe to work by hand, and its
+verdict decides. If it says it is not yet safe, do not ship. Either let one pass roll the deploy
+back, with the three commands back to back so the timer cannot start another pass in between
+(`... resume; ... run; ... pause --wait "shipping by hand"`), then check `... status` again; or put
 it right by hand and record what is running with `... mark-deployed --force vX.Y.Z`. Otherwise a later
 pass would roll your work back (with a database restore from its snapshot if it had migrated).
 When you are done, tell it what is running (`... mark-deployed vX.Y.Z` for a release, nothing for
