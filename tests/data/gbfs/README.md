@@ -13,3 +13,8 @@ enlarge it, refresh it in bulk or ship it with the application.
 
 What the operator publishes, as of the sample: no `geofencing_zones` feed; one pricing
 plan, the e-bike single ride, which names no out-of-dock fee.
+
+Two of the sampled stations had been silent for hours when the sample was taken (their
+`last_reported` is 3.7 and 8.5 hours before the newest). Tests read the sample as of
+`FEED_NOW` in `tests/test_gbfs.py` (a few seconds after the newest report), never as of
+today, so those two stay "not reported in 30 minutes" whenever the suite runs.

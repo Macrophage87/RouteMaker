@@ -1903,7 +1903,9 @@ async function saidInDialog(p, text) {
   check("stations: nothing is chosen at first, and every button is at least 44 px tall", lists.every((l) => l.buttons.every((b) => b.pressed === "false" && b.h >= 44)), JSON.stringify(lists.map((l) => l.buttons.map((b) => b.h))));
   check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, nearest first."), JSON.stringify(lists.map((l) => l.status)));
   check("stations: the words name no programme, no points and no operator", !/angel|points|lyft|capital/i.test(lists.map((l) => l.text).join(" ")), "");
-  check("stations: the lists were asked for the start and the end, by POST, with no point in the address", p.stationRequests.length === 2 && p.stationRequests.every((r) => r.search === "") && p.stationRequests[0].action === "pickup" && p.stationRequests[1].action === "dropoff", JSON.stringify(p.stationRequests));
+  // Vite's dev server runs React's strict mode, which mounts every effect twice; the set of questions is what is held.
+  const asked = [...new Set(p.stationRequests.map((r) => `${r.action} ${r.point}`))];
+  check("stations: the lists were asked for the start and the end, by POST, with no point in the address", p.stationRequests.every((r) => r.search === "") && asked.length === 2 && asked.includes("pickup -77.04,38.91") && asked.includes("dropoff -77.01,38.89"), JSON.stringify(asked));
 
   // Keyboard: Tab reaches the buttons in order, and Enter chooses; the plan is made again with it.
   const before = p.routeRequests;
@@ -1971,7 +1973,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 319;
+const EXPECTED = 358;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

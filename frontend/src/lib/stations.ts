@@ -9,6 +9,7 @@
  * words are generic ("Nearby stations"): no programme name, no mark.
  */
 import type { Dials } from "./dials.ts";
+import { formatStationDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
@@ -37,30 +38,8 @@ export interface NearbyStationsAnswer {
   credit: string;
 }
 
-const METRES_PER_MILE = 1609.344;
-const FEET_PER_METRE = 3.28084;
-/** Below a tenth of a mile the distance is in feet. */
-const FEET_BELOW_M = 161;
-
-function roundTo(value: number, step: number): number {
-  return Math.round(value / step) * step;
-}
-
-/**
- * "0.2 mi (320 m)": miles to a tenth, metres in brackets to the nearest 10; short distances
- * in feet ("300 ft (90 m)"); a kilometre or more in kilometres ("1.4 mi (2.3 km)").
- */
-export function stationDistance(metres: number): string {
-  if (!Number.isFinite(metres) || metres < 0) return "distance unknown";
-  if (metres < FEET_BELOW_M) {
-    const feet = metres >= 30 ? roundTo(metres * FEET_PER_METRE, 10) : Math.round(metres * FEET_PER_METRE);
-    const metric = metres >= 100 ? roundTo(metres, 10) : Math.round(metres);
-    return `${feet} ft (${metric} m)`;
-  }
-  const miles = (metres / METRES_PER_MILE).toFixed(1);
-  const metric = metres < 995 ? `${roundTo(metres, 10)} m` : `${(metres / 1000).toFixed(1)} km`;
-  return `${miles} mi (${metric})`;
-}
+/** "0.2 mi (320 m)": the one formatter of units is lib/format.ts. */
+export const stationDistance = formatStationDistance;
 
 /** What a screen reader hears for one station, and what its button says: "Station name, 82% full, 0.2 mi (320 m)". */
 export function stationLabel(station: Pick<NearbyStation, "name" | "percent_full" | "distance_m">): string {

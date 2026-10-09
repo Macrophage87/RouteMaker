@@ -844,6 +844,8 @@ export function App() {
     if (said) announce(said);
     setPreset(id);
     setDials(next);
+    // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
+    setStationPins({});
   };
   const chooseStation = (action: StationAction, station: NearbyStation | null, point: LonLat) => {
     setStationPins((pins) => ({

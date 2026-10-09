@@ -2645,6 +2645,8 @@ details.zoom-notes {
 
 .map-tools-panel[hidden] {
   display: none;
+}
+
 /* Bikeshare (FOLLOWUP-BIKESHARE): the dock markers on the map, the plan in the route
    panel, and the bike choice. Text and shape carry the meaning; no operator mark or
    brand colour is used (OWNER-DECISIONS 300, 301). */

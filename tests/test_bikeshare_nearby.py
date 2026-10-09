@@ -156,7 +156,7 @@ def test_a_stale_nearest_dock_is_passed_over_with_a_note_and_the_next_is_used() 
 
 
 def test_a_stale_dock_cannot_end_a_ride_either() -> None:
-    snap = street(dock("Start", 0, 6, 4), dock("Silent", 3000, 0, 9, age=7200))
+    snap = street(dock("Start", 0, 6, 0), dock("Silent", 3000, 0, 9, age=7200))
     with pytest.raises(NoBikeshare, match="No dock within"):
         plan(east(0), east(3000), snap)
 
