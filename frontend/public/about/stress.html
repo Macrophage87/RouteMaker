@@ -94,6 +94,7 @@
       <li><a href="#junctions">Junction warnings</a></li>
       <li><a href="#mass-ride">Mass Ride</a></li>
       <li><a href="#planned">Half steps and the stress chart (planned)</a></li>
+      <li><a href="#why-differ">Sources and why we differ</a></li>
       <li><a href="#report">Reporting a wrong rating</a></li>
       <li><a href="#sources">Sources</a></li>
     </ul>
@@ -290,10 +291,30 @@
     <p>Each road's level is its stress number, 1 to 5. A half step is 1.5, 2.5 and so
     on. The route description will get a chart of stress along the route, like the
     elevation chart, so short busy stretches and bad crossings stand out.</p>
-    <p>The chart will show what the router actually charges for each stretch, per
-    mile, averaged over about 0.1 mile [160 m], with each junction's cost added where
-    it is. 1 means a quiet street, and higher numbers mean more stress, on the same
-    scale as the table above. Its details are still to be confirmed.</p>
+    <p>The chart will show calm miles per actual mile, including intersections.
+    1 means all calm riding, and higher numbers mean more stress. Each point is the
+    average over about 1 mile [1.6 km] around it (shorter at the ends of the route),
+    and every crossing's cost counts in each stretch of a mile that contains it. So an
+    LTS 2 street that crosses many busy roads can read higher than a straight LTS 3
+    one. The route summary will also give the total in calm miles. The size of the
+    window is a single setting.</p>
+    <p>The costs of crossings are also being revised: a worse price for the hardest
+    crossings, a price for changing lanes to turn left, and a bit more in rush hour and
+    a bit less at off hours and weekends. These are planned, and the numbers are not
+    final. Its details are still to be confirmed.</p>
+  </section>
+
+  <section>
+    <h2 id="why-differ">Sources and why we differ</h2>
+    <p>The levels come from the Level of Traffic Stress method (Mekuria, Furth and
+    Nixon, 2012, and Furth's later versions), local plans from Montgomery County, and
+    studies of where cyclists in Portland, Eugene and Copenhagen choose to ride. We
+    differ on purpose in a few places. We add an Avoid level. We treat a road as closed
+    to bicycles when it is unclear whether they are allowed. We steer most people toward
+    trails and calm streets more than the studies suggest. The planned crossing and
+    rush-hour costs are our own choices, drawn from small studies. The
+    full list, with links to each source and the reason for each difference, is the
+    page <code>docs/stress/literature.md</code> in the RouteMaker repository.</p>
   </section>
 
   <section>

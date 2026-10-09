@@ -37,6 +37,8 @@ score adds junction costs to it.
 | [routing-costs.md](routing-costs.md) | Valhalla's graph tags and request knobs, the slider, each preset's values, RouteMaker's ranking (calm search, LTS 4 hold, strict order, worth rule), the junction model |
 | [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints, and the planned rolling stress score |
 | [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (planned), the Mass Ride map |
+| [intersections.md](intersections.md) | The junction cost model as built (which roads count, crossing, left, merge and slip costs, caps, orange and red), and the planned revision (467, 468, 468a) |
+| [literature.md](literature.md) | The research consulted, what RouteMaker took from each source, and where and why it differs |
 | [layers.md](layers.md) | The z12-13 ride layer (calm roads, long paths), Mass Ride capacity, and how stress feeds them |
 
 Source reports this set was checked against (not in the repository):

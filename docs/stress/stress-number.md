@@ -1,9 +1,11 @@
 # The stress number
 
-[Index](README.md). Owner decisions 461 ("Just turn that into a number for stress"),
+[Index](README.md) Sources: [literature.md](literature.md). Junctions: [intersections.md](intersections.md).. Owner decisions 461 ("Just turn that into a number for stress"),
 461a ("Then just have the half steps be midpoints"), 461b ("there should be a rolling
-stress score that includes intersection stress") and 461c ("There's a cost to traveling
-on a road and a cost to the intersection that's a sort of hidden number. Use that.").
+stress score that includes intersection stress"), 461c ("There's a cost to traveling
+on a road and a cost to the intersection that's a sort of hidden number. Use that."),
+461d (the metric is calm miles per actual mile, intersections included) and 461e (a
+window of about a mile).
 **No routing behavior changes.** Everything here is read from today's weights
 ([routing-costs.md](routing-costs.md)). What is not built yet is marked **planned**.
 
@@ -169,15 +171,25 @@ That way, spikes show up." 461c: build it from the costs the routing already cha
 
 ### Definition
 
-Along a route of preset P, for a window of length `w` centered on the point at distance
-`x`:
+The metric (461d) is **calm miles per actual mile, including intersections**. 1.0 is
+all calm riding; higher is more stress. Along a route of preset P, for a window of
+length `w` centered on the point at distance `x`:
 
-    R(x) = ( sum over segments in the window of  meters x M(segment) )
-         + ( sum over junctions in the window of  cost_m x weight_P )
-         + ( sum over Avoid entries in the window of  entry_m )
+    R(x) = ( sum over segments in the window of  length x M(segment) )
+         + ( sum over junctions in the window of  calm miles of the junction )
+         + ( sum over Avoid entries in the window of  entry calm miles )
          ------------------------------------------------------------
-                                   w
+                          actual length of the window
 
+- The window (461e) is about **1 mi [1.6 km]**, length-weighted and centered on each
+  point. It is shorter at the route's ends (the window is cut at the route's start and
+  end, and the divisor is the cut length). Each intersection's calm miles are counted
+  once in every window that contains it. So a junction raises the line over the mile
+  around it instead of spiking, and an LTS 2 street that crosses many busy roads can
+  read higher than a straight LTS 3 one. The window is **one setting**, so it can be
+  tuned.
+- The **route total** is also given in calm miles (and calm km): the sum of the
+  numerator over the whole route.
 - `M(segment)` is that segment's own routing cost per meter, divided by a quiet meter's
   (`quiet_cost_per_m`, `refine.py:174-181`). This is what the router charges for it
   (461c: no separate stress-to-score mapping), with its roadway stress, facility class
@@ -202,8 +214,10 @@ Along a route of preset P, for a window of length `w` centered on the point at d
   and 2.23; Cargo with passengers 5.0 and 17.5; Trailmaxxing 6 and 11; Mass Ride 1). That
   is a per-level stress-to-score mapping, which departs from 461c, so the chart marks it
   as an estimate. Whether to allow it at all is an **owner question**.
-- `cost_m` is the junction model's cost (`intersections.cost_of`, after factors, merges
-  and the cap) in meters. `weight_P` is the intersection weight at the preset's
+- A junction's calm miles are its crossing cost (`intersections.cost_of`, see [intersections.md](intersections.md), after factors,
+  merges and the cap), which is a distance-equivalent penalty, times the preset's
+  intersection weight (1,200 ft is about 0.23 calm mi). In the formulas below the cost
+  is written `cost_m`, in meters. `weight_P` is the intersection weight at the preset's
   position. At the top of the slider, the worth rule's exchange applies instead: a red
   junction counts 5 x 2 x its cost, an orange one 5 x 1, an unflagged one 0
   (`stress_weight_m`, `refine.py:428-441`).
@@ -212,6 +226,12 @@ Along a route of preset P, for a window of length `w` centered on the point at d
 - The scale matches the multiplier. **1.0 is a quiet street**, and higher is more
   stress. Quiet meters per meter, or calm miles per mile.
 - A route shorter than the window uses its whole length.
+- **Intersection costs are being revised (planned).** Decision 468 (option C) adds a
+  severe tier for unsignalised LTS 4 and Avoid junctions, with a cap of about 2 mi
+  [3.2 km], prices a merge for the lane changes before a left turn, and shows costs in
+  calm miles; 468a adds a time-of-day factor, higher in weekday rush hours and a little
+  lower off hours and weekends (proposed x1.25 and x0.85; the owner is to confirm with
+  the sample). This section's junction figures are today's and will change then.
 
 ### Words as a guide
 
@@ -230,53 +250,27 @@ marker at their point in today's orange or red, so averaging never hides a very
 high-stress crossing. A screen reader gets a text summary: the highest window, where it
 is, and what is in it.
 
-### Window and blend: two options
+### Worked example (Default, made-up route, 2 mi [3.2 km])
 
-**Option A, spread over the window (recommended).** A junction's cost counts in full in
-every window that contains it. The spike is a plateau one window wide, with height
-`1 + cost / w` above the background. It is symmetric, it uses one window for roads and
-junctions alike, and it reads directly as "this 0.1 mi costs R times a quiet street".
+An LTS 2 street (M = 1) for the whole route, with one crossing at 1.0 mi: straight
+across an LTS 4 road from a stop, 35 mph (x1.0), 2 lanes each way (x1.1), no count,
+3,000 x 1.1 = 3,300 ft, about 0.625 calm mi at weight 1.0 (today's figures).
+Window 1 mi [1.6 km].
 
-**Option B, short decay.** Roads are averaged over the window as in A. A junction's cost
-is instead spread over the distance ridden after it, decaying exponentially with length
-`λ`: `cost / λ x e^(-(x - x_j)/λ)`. The area is the same as in A. The peak is sharper,
-its height depends on the choice of `λ`, and it falls only after the junction.
-
-Proposed default window: **0.1 mi [161 m], length-weighted.** Owner to confirm the window
-and the blend.
-
-### Worked example (Default, made-up route, 0.5 mi [805 m])
-
-The example uses the fallback values, so that its sums can be checked by hand. With each
-segment's own cost, the LTS 3 street would count its own figure in the 2.88-5.79 range,
-and the quiet streets their own figures near 1.
-
-| From - to (mi) | What | M or cost |
+| Window centered at | Window | R |
 |---|---|---|
-| 0.00-0.20 | LTS 2 street | 1 |
-| 0.20-0.25 | LTS 3 street, 0.05 mi [80 m] | 4.3 |
-| 0.25-0.50 | LTS 1 street | 1 |
-| at 0.35 | Straight across an LTS 4 road from a stop: 35 mph (x1.0), 2 lanes each way (x1.1), no count | 3,000 x 1.1 = 3,300 ft [1,006 m], red; weight 1.0 at 70 |
+| 0.0 mi (route start) | 0 to 0.5, cut at the start | 1.0 |
+| 0.5 to 1.5 mi | holds the crossing | (1.0 + 0.625) / 1.0 = **1.625**, a plateau 1 mi wide |
+| 2.0 mi (route end) | 1.5 to 2.0, cut at the end | 1.0 |
 
-Window 0.1 mi [161 m]:
+The route total is 2 + 0.625 = **2.625 calm mi** [4.2 calm km] over 2 mi. With
+the junction counted once in every window around it, the crossing raises the line over
+the whole mile rather than spiking. A faint step line of each segment's own value can be
+drawn behind the score, so a short stretch is still seen at its true level, and each
+junction keeps its own marker.
 
-| Window centered at | Option A | Option B (λ = 0.025 mi [40 m]) |
-|---|---|---|
-| 0.10 mi | 1.0 | 1.0 |
-| 0.225 mi (holds all the LTS 3) | (40 + 80 x 4.3 + 40) / 161 = **2.65**, LTS 3 words | 2.65 |
-| 0.30 to 0.40 mi | (161 + 1,006) / 161 = **7.25**, a plateau 0.1 mi wide, red marker at 0.35 | 1.0 before 0.35 |
-| just after 0.35 mi | 7.25 | 1 + 1,006 / 40 = **26** |
-| 0.375 mi (0.025 mi [40 m] on) | 7.25 | 1 + 25 x e^-1 = 10.2 |
-| 0.40 mi (0.05 mi [80 m] on) | 7.25 | 1 + 25 x e^-2 = 4.4 |
-| 0.45 mi (0.1 mi [161 m] on) | 1.0 | 1.5 |
-
-The LTS 3 stretch, shorter than the window, shows at 2.65, under its own 4.3. The plateau
-is therefore labeled with what it holds ("0.05 mi of LTS 3"). A plain step line of the
-stress number can be drawn faintly behind the score, so a short stretch is still seen at
-its true level.
-
-**Recommendation: option A** with a 0.1 mi window and each segment's own cost, plus the
-junction markers and the faint step line. All of section 4 is **planned. Owner to confirm the window and the
-blend.** Two questions are also open: Mass Ride's chart (its routing charges no
-junction cost; the proposal is to show the model's cost at weight 1, labeled "not used
-to choose the route"), and 4.5's entry charge (section 3).
+**Recommendation:** one 1 mi window, each segment's own cost, plus the junction
+markers and the faint step line. All of section 4 is **planned**. Two questions are
+also open: Mass Ride's chart (its routing charges no junction cost; the proposal is to
+show the model's cost at weight 1, labeled "not used to choose the route"), and 4.5's
+entry charge (section 3).

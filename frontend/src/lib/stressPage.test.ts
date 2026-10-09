@@ -44,6 +44,15 @@ test("it has the landmarks a screen reader moves by, and a skip link to the cont
   for (const [, id] of page.matchAll(/href="#([^"]+)"/g)) assert.match(page, new RegExp(`id="${id}"`), `#${id}`);
 });
 
+// Each level's map colors in words, pinned verbatim (the mutation re-check's N6b).
+const MAP_WORDS = [
+  "On the map: a thin, solid light green line with a dark green edge.",
+  "On the map: long green dashes with a dark blue edge.",
+  "On the map: short yellow dashes on orange, with a black edge.",
+  "On the map: very long orange dashes on red, with a black edge, in a wider line.",
+  "On the map: red dashes and dots on black, the widest line.",
+];
+
 test("every swatch is hidden from a screen reader, and each level is named in the road panel's words beside it", () => {
   const swatches = [...page.matchAll(/<svg[^>]*>/g)].map((m) => m[0]);
   assert.equal(swatches.length, 5);
@@ -59,6 +68,7 @@ test("each level is said whole, with a stop after its name, the legend's words m
     assert.ok(name.endsWith(`${PANEL_WORDS[i]}.`), name);
     assert.match(item, /<\/strong> Map legend: "/, "the legend's words are labelled as such");
     // The accessibility review's SF2: the color of each swatch in words, for a pilot's "the orange one".
+    assert.ok(item.endsWith(MAP_WORDS[i]), `${i}: ${item}`);
     assert.match(item, /On the map: [^.]*\b(green|blue|yellow|orange|red|black)\b[^.]*\.$/, item);
   });
   assert.match(text, /The High contrast switch/, "the control's own label (accessibilitySwitch.ts)");
@@ -84,8 +94,14 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
 });
 
+test("it says where it differs from the literature, and links the full list", () => {
+  assert.match(page, /<h2 id="why-differ">Sources and why we differ<\/h2>/);
+  assert.match(text, /docs\/stress\/literature\.md/);
+  assert.match(text, /We add an Avoid level/);
+});
+
 test("US units first, metric in brackets", () => {
-  assert.match(text, /0\.1 mile \[160 m\]/);
+  assert.match(text, /1 mile \[1\.6 km\]/);
   assert.match(text, /1,200 feet \[370 m\]/);
   assert.doesNotMatch(text, /\b\d+ (m|km)\b(?![^[]*\])/, "a metric figure outside brackets");
   // And every US figure has its metric (the accessibility review's N6): "20 mph" alone fails.
