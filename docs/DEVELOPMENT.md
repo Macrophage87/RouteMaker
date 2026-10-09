@@ -1900,6 +1900,37 @@ table, within its ranges, for the owner to move:
 | Cap | `MAX_CROSSING_FT` | 4,500 ft | |
 | Junctions within 45 m along the route | `MERGE_WITHIN_M`, `MERGED_SHARE` | one junction: a divided road's carriageway crossings counted once with the refuge credit (one way crossed twice: once, no credit), then the costliest event and half of each other's cost, a turn and a crossing of the same road included; the colour never above the worst single event's | item 185: "A merge must never raise the colour of one road's crossing"; review r2: a right onto an arterial and a left off it 30 m later had cost less than the left alone |
 
+**Option C, current values (OWNER-DECISIONS 467, 468, 468a; 2026-10-09).** The table
+above is the model as first proposed (2026-10-01); these constants replaced it. Costs are
+said in calm miles, US first, km in brackets (5,280 ft = 1 calm mi). The ordinary tiers are
+at the top of the literature's ranges; the severe tier (unsignalised, LTS 4 or Avoid) is
+above the literature, the owner's choice (467: "intersections that I'd detour 2 miles to
+avoid, though rare").
+
+| Constant | Was | Now | Calm miles [km] |
+|---|---|---|---|
+| `STOPPED_CROSSING_FT` LTS 3 / 4 / Avoid | 1,200 / 3,000 / 3,000 | 1,600 / 4,000 / 4,000 | 0.30 / 0.76 / 0.76 [0.49 / 1.22 / 1.22] |
+| `SIGNALISED_CROSSING_FT` LTS 3 / 4 / Avoid | 150 / 300 / 300 | 150 / 600 / 600 | 0.03 / 0.11 / 0.11 [0.05 / 0.18 / 0.18] |
+| `LEFT_ACROSS_ONCOMING_FT` LTS 3 / 4 / Avoid | 600 / 1,500 / 1,500 | 800 / 4,000 / 4,000 | 0.15 / 0.76 / 0.76 [0.24 / 1.22 / 1.22] (a left off an unsignalised LTS 4 road costs as much as crossing it from a stop) |
+| `SLIP_LANE_FT` | 800 | 1,000 | 0.19 [0.30] |
+| `MERGE_MILES_PER_LANE` LTS 3 / 4 / Avoid | 250 ft a lane (all) | 0.15 / 0.30 / 0.30 mi a lane | 792 / 1,584 / 1,584 ft a lane, x the speed rise below |
+| Merge speed rise (the severe speed factors, never below 1) | none | 1.2 at 40 mph, 1.4 at 45, 1.6 above | |
+| `BOX_TURN_CAP_FT` (a left at a signal, whole) | 500 | 750 | 0.14 [0.23]; not applied where OSM maps a bike box: the router data carries no such tag |
+| Severe tier speed factors (LTS 4, Avoid) | 1.1 / 1.2 / 1.3 at 40 / 45 / above | 1.2 / 1.4 / 1.6 | |
+| Severe tier lane factors | 1.1 / 1.25 | 1.25 (two lanes a direction) / 1.6 (three or more) | |
+| Rural factor (45 mph and over) | stopped side only | also a left off a severe road | |
+| `UNKNOWN_SPEED_SEVERE_MPH` | none | 45 mph for an LTS 4 / Avoid road with no speed, for cost only, never said | |
+| `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
+| `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
+| `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 2,900 | 0.55 [0.88] |
+| `TIME_FACTORS` (468a) | none | rush x1.25, weekday off-peak x1.0, weekend x0.85 | on busy-road junctions only |
+
+The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`). 468a
+asks for evening and night at x0.85 too; there is no evening setting, so the whole weekday
+off-peak is x1.0. `debug_junctions: true` on a route request adds `junctions_debug`, every
+junction event with its cost, calm miles, severity, ride-time factor and whether the speed
+was assumed. The answer's `intersections` rows carry `calm_mi` and `calm_km`.
+
 **Which slip lanes are crossed** (item 195, `core.junctions.crossed_links`). The
 owner: "Flag only when you cross it (Recommended)"; "no marker when the rider
 rides straight past it along the road". From the arms at the node and the
