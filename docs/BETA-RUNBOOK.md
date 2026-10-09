@@ -811,9 +811,15 @@ The tooling is the same each time. Ask the owner which kind it is.
 
 If continuous deployment is installed (next section), pause it first so no pass starts while you
 work, and let a pass that is already running end: `"$RM_STATE/cd/bin/auto-release.sh" pause --wait "shipping by hand"`
-(plain `pause` does not stop a running pass; it says if one is running). When you are done, tell
-it what is running (`... mark-deployed vX.Y.Z` for a release, nothing for data only), then
-`... resume`. `mark-deployed` also reads the report link from `$RM_DATA/frontend/beta-build.txt`,
+(plain `pause` does not stop a running pass; it says if one is running). Then check
+`... status` before touching anything. If it (or `pause`) shows `IN PROGRESS`, a stopped pass left a
+deploy half done: the api and worker may be stopped and the checkout part-way to the new tag, and a
+paused agent does not roll it back. Do not ship over it: either `... resume`, let one pass roll it
+back (`... run` does it at once; that pass then ends), check `... status` again and pause again; or put
+it right by hand and record what is running with `... mark-deployed --force vX.Y.Z`. Otherwise a later
+pass would roll your work back (with a database restore from its snapshot if it had migrated).
+When you are done, tell it what is running (`... mark-deployed vX.Y.Z` for a release, nothing for
+data only), then `... resume`. `mark-deployed` also reads the report link from `$RM_DATA/frontend/beta-build.txt`,
 so if that ship used another `--report-url`, the agent's next front-end build keeps it (check with
 `... status`, or set it with `... set-report-url URL|none`).
 
@@ -917,6 +923,10 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
   landmarks, the headings, the beta notice, where Dismiss puts the focus), update the handout in
   the same release and send it to the testers again once the release is deployed.
+- The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
+  handout's section 7 (what testers hear during a deploy, and how long to wait): resend the
+  handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
+  (the sender's notes at its top say how).
 
 ```sh
 # at home, on the owner's go:
@@ -936,7 +946,8 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 1. Nothing at all if the agent is paused, BROKEN (a rollback failed earlier), another pass is
    still running (`flock`), or a setting makes no sense (`RM_CD_WINDOW` not `HH-HH`, or with the
    same hour twice: an `error` in `status`). If a pass was stopped mid-deploy (it left
-   `$RM_STATE/cd/in-progress`, step 7), this pass first rolls that deploy back. A pass that would
+   `$RM_STATE/cd/in-progress`, step 7), this pass first rolls that deploy back, if it had touched
+   the stack (if not, it drops the record and goes on); while paused, not even that. A pass that would
    deploy also waits while a stress-tile pre-draw runs, outside the deploy window if one is set,
    with less than 1 GiB free for the snapshot, or with less than `RM_CD_DOCKER_FREE_GIB` (3 GiB)
    free on Docker's root.
@@ -971,8 +982,9 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | a file name with a space, a quote, a backslash, or a control or non-ASCII character | a path the gate cannot be sure of | **stops** (check it by hand) |
 
    A release whose only changes are ignored ones (documentation, CI), or a new tag on the deployed
-   commit, is recorded as deployed without touching the stack: the checkout and `TAG` move and the
-   running api image is tagged with the new `TAG`.
+   commit, is recorded as deployed without touching the stack, if the running api image
+   (`ghcr.io/macrophage87/routemaker-api:<the deployed TAG>`) is on the host (if not, it is a full
+   deploy): the checkout and `TAG` move and the running api image is tagged with the new `TAG`.
 
    A stop writes its reasons to `$RM_STATE/cd/hold/<tag>` and the agent does nothing else for that
    tag. Ship it by hand ("Shipping an update later", with `pause` first), then `mark-deployed <tag>`.
@@ -984,7 +996,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    purpose: the api build is not capped (BuildKit runs in the daemon), so it uses the memory the api
    and worker had instead of the other sites' headroom, and the front-end build runs with
    `--memory 1536m` and `--oom-score-adj 1000`, so a host short of memory kills it first. The cost
-   is a few minutes of downtime per release: set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
+   is downtime: roughly 10-20 minutes per release (the api build, up to 3 tries; the front-end
+   test and build; the snapshot; `/healthz` and the smoke tests), longer when a build fails before
+   the rollback, and much less when the owner has loaded the api image from home. During it nginx
+   still serves the page, so testers see it open, but planning a route says "Router unavailable",
+   place search and the road information say they are "not available right now", and Sign in
+   shows nginx's bare "502 Bad Gateway" page (the handout's section 7 tells testers to wait about
+   20 minutes). Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
    database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no
    sudo); save the front end's top-level files (`index.html`, `beta-build.txt`) there; `git checkout --detach` the tag; `TAG=` in `.env` by `sed`; the
@@ -1009,11 +1027,18 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 
    **A pass stopped mid-deploy.** Each step is written to `$RM_STATE/cd/in-progress` before it
    runs. If the pass is stopped (systemd's `TimeoutStartSec`, a reboot, `systemctl --user stop`, a
-   logout without linger, a kill), the next pass rolls that deploy back from the steps written there
-   and marks the tag failed (`retry <tag>` to try it again); if that rollback fails, BROKEN. A pass
-   stopped during the pre-draw has already recorded the release, so nothing is rolled back. Do not
-   stop a pass mid-deploy on purpose: `pause --wait` and let it end. Without linger, a logout can
-   stop one; the crontab line below does not depend on a login.
+   logout without linger, a kill), the next pass rolls that deploy back from the steps written there,
+   if it had touched the stack, and marks the tag failed (`retry <tag>` to try it again); if that
+   rollback fails, BROKEN. A pass stopped before the stop (while exporting the tree) touched nothing:
+   the next pass drops the record and carries on. A pass stopped during the pre-draw has already
+   recorded the release, so nothing is rolled back. While the agent is paused nothing rolls it back:
+   `status` and `pause` say so (`IN PROGRESS`), and `mark-deployed` refuses to drop that record
+   without `--force` ("Shipping an update later"). Do not stop a pass mid-deploy on purpose:
+   `pause --wait` and let it end. Without linger, a logout can stop one; the crontab line below does
+   not depend on a login. Stopping a pass kills the docker CLI, not a container the daemon already
+   runs: a `migrate` one-off can go on running for a while (`scripts/beta/beta-compose.sh ps -a` in `$RM_SRC` shows it).
+   A reboot stops it; otherwise let it finish before a pass rolls back, since a restore with the
+   migration still connected fails and leaves the agent BROKEN (it errs closed).
 
 What it never does: touch nginx, use sudo, receive or install a data bundle, touch Photon's index or
 the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove an
@@ -1091,6 +1116,7 @@ journalctl --user -u routemaker-beta-cd --since today  # the passes, if the jour
 "$A" retry v0.2.0                 # try a held or failed tag again, once its cause is fixed
 "$A" hold v0.2.0 "why"            # keep a tag from being deployed
 "$A" mark-deployed v0.2.0         # after shipping by hand, or to clear BROKEN once the owner has looked
+"$A" mark-deployed --force v0.2.0 # the same over a half-done deploy's record (IN PROGRESS), once the owner has put the stack right by hand
 systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altogether
 ```
 
@@ -1100,7 +1126,8 @@ systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altoge
 the old front end's top-level files (`index.html`, `beta-build.txt`) are in `$RM_STATE/cd/backups/frontend.pre-release-<time>/`, and the previous
 tag is in `$RM_STATE/cd/previous-tag`. Pause the agent first (`pause --wait`); once the checkout and `TAG` are back,
 `"$A" hold <the newer tag> "rolled back by hand"` (or the next pass would deploy it again),
-`"$A" mark-deployed <the previous tag>`, then `"$A" resume`. A later release (a higher tag) is the
+`"$A" mark-deployed <the previous tag>` (with `--force` if `status` showed `IN PROGRESS`: the
+hand rollback replaces the agent's), then `"$A" resume`. A later release (a higher tag) is the
 usual way forward.
 
 **Upgrading the agent.** A release that changes the agent says so in its report; once it is

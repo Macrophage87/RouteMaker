@@ -1458,9 +1458,7 @@ def test_a_docs_only_release_whose_compose_gate_fails_is_not_recorded(beta: Beta
 
 def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> None:
     sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
-    done = beta.agent(
-        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_GATE_FAIL=sha[:12]
-    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_GATE_FAIL=sha[:12])
     assert done.returncode == 1, done.stdout + done.stderr
     assert "FAILED: the compose gate" in done.stdout
     assert "rolled-back" in beta.status()
@@ -1606,3 +1604,27 @@ def test_prune_drops_a_half_written_dump(beta: Beta) -> None:
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert "deployed: v0.2.0" in beta.status(), done.stdout
     assert not list(backups.glob("*.part"))
+
+
+def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
+    """Re-check r3: accessibility SF (the handout), operations N1 and spec SF1 (the runbook)."""
+    handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
+    tester = handout[handout.index("cut here: send everything below") :]
+    section7 = tester[tester.index("7. Reporting a problem") :]
+    for needed in (
+        "Router unavailable",
+        "not available right now",
+        "502 Bad Gateway",
+        "half an hour",
+    ):
+        assert needed in section7, needed
+    assert "nightly" not in tester.lower() and "every night" not in tester.lower()
+    runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
+    by_hand = runbook[
+        runbook.index("## Shipping an update later") : runbook.index("**New data only**")
+    ]
+    assert "IN PROGRESS" in by_hand and "mark-deployed --force" in by_hand
+    assert by_hand.index("status") < by_hand.index("mark-deployed --force")
+    cd = runbook[runbook.index("## Continuous deployment") :]
+    assert "10-20 minutes" in cd and "a few minutes of downtime" not in cd
+    assert "resend the\n  handout" in cd or "resend the handout" in cd

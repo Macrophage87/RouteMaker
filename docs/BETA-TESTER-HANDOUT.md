@@ -8,6 +8,10 @@ For the sender (do not send this part)
   many browsers block or warn about those, and they end up in history.
 - The passwords are in the file make-htpasswd.sh wrote (docs/BETA-RUNBOOK.md, step 9a). Delete
   that file (shred -u) once every tester has theirs.
+- Section 7's paragraph about updates gives no hours. If the beta's agent has an update window
+  (RM_CD_WINDOW in the server's vars.sh), you may add a sentence there with those hours, for
+  example "If your beta has an update window, it is between 2 and 6 in the morning." Without
+  one, updates can come at any hour, so do not promise nights.
 
 ---------------------------- cut here: send everything below ----------------------------
 
@@ -89,3 +93,9 @@ Tell the person who gave you access. It helps to include:
 - the browser and device, and the screen reader if you use one.
 
 If the beta notice shows a "Report a problem" link, you can use that instead.
+
+Now and then the beta is updated to a new version. For about 10 to 20 minutes the page still
+opens, but planning a route says "Router unavailable", place search and the road information
+say they are "not available right now", and Sign in shows a bare "502 Bad Gateway" page (the
+browser's Back button takes you back to your route). That is the update, not something you did.
+Wait about 20 minutes and try again. Report it only if it lasts more than half an hour.
