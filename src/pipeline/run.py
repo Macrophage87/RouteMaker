@@ -3216,9 +3216,8 @@ def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
 def _closures_across_variants(context: RebuildContext, run) -> dict:
     """Read the gate's probes back from every variant's staged graph, after
     writing them where the post-swap probe will look for them."""
-    probes = (
-        context.closure_probes if context.closure_probes is not None else closure_probes(context)
-    )
+    held = getattr(context, "closure_probes", None)
+    probes = held if held is not None else closure_probes(context)
     try:
         write_closure_reports(
             context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
