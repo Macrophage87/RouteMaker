@@ -10,6 +10,7 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
+import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
 import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
@@ -780,4 +781,53 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */
+export type StationsResult = { ok: true; answer: NearbyStationsAnswer } | { ok: false; message: string };
+
+function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
+  if (typeof body !== "object" || body === null) return false;
+  const r = body as Record<string, unknown>;
+  return (
+    (r.action === "pickup" || r.action === "dropoff") &&
+    (r.availability === "live" || r.availability === "stale" || r.availability === "unknown") &&
+    Array.isArray(r.stations)
+  );
+}
+
+/**
+ * The three nearest stations to a point to take a bike from (at least 3/4 full) or return one to
+ * (at most 1/4 full). A POST, so the point is in the body and not in an address. Nothing about the
+ * rider goes with it but the point, and the answer is kept nowhere.
+ */
+export async function requestStations(
+  point: LonLat,
+  action: StationAction,
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {},
+): Promise<StationsResult> {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  let response: Response;
+  try {
+    response = await fetchImpl("/api/bikeshare/stations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ point, action }),
+      signal: options.signal,
+    });
+  } catch {
+    return { ok: false, message: "The station list did not load. Check your connection and try again." };
+  }
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (response.ok && looksLikeStations(body)) return { ok: true, answer: body };
+  if (response.status === 429) return { ok: false, message: "Too many requests just now. Try again in a minute." };
+  if (response.status === 503) {
+    return { ok: false, message: "Station availability is not available right now. Try again shortly." };
+  }
+  return { ok: false, message: "The station list is not available right now." };
 }

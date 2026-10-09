@@ -54,6 +54,15 @@ class FakeNetwork:
         return (DATA / f"{name}.json").read_bytes()
 
 
+# When the sampled feeds were read, in epoch seconds: a few seconds after the newest
+#  of the sample. Two stations in it had been silent for hours.
+FEED_NOW = 1791098700
+
+
+def feed_wall() -> float:
+    return float(FEED_NOW)
+
+
 class Clock:
     def __init__(self) -> None:
         self.now = 1000.0
@@ -403,7 +412,7 @@ def test_alerts_are_the_operators_own_summaries() -> None:
 
 def test_a_snapshot_is_built_from_the_discovered_feeds() -> None:
     net = FakeNetwork()
-    snap = gbfs.Gbfs(net, Clock()).snapshot()
+    snap = gbfs.Gbfs(net, Clock(), wall=feed_wall).snapshot()
     assert len(snap.stations) == 27
     assert snap.status is not None and snap.free_bikes is not None and snap.pricing is not None
     assert snap.alerts == []
@@ -422,7 +431,7 @@ def test_a_snapshot_is_built_from_the_discovered_feeds() -> None:
 
 def test_the_snapshot_is_kept_about_sixty_seconds_and_then_fetched_again() -> None:
     net, clock = FakeNetwork(), Clock()
-    cache = gbfs.Gbfs(net, clock)
+    cache = gbfs.Gbfs(net, clock, wall=feed_wall)
     first = cache.snapshot()
     clock.now += gbfs.CACHE_TTL_S - 1
     assert cache.snapshot() is first
@@ -435,7 +444,7 @@ def test_the_snapshot_is_kept_about_sixty_seconds_and_then_fetched_again() -> No
 
 def test_a_failed_refresh_serves_the_last_snapshot_for_a_short_grace_only() -> None:
     net, clock = FakeNetwork(), Clock()
-    cache = gbfs.Gbfs(net, clock)
+    cache = gbfs.Gbfs(net, clock, wall=feed_wall)
     cache.snapshot()
     net.down = True
     clock.now += gbfs.CACHE_TTL_S + 1
@@ -449,7 +458,7 @@ def test_a_failed_refresh_serves_the_last_snapshot_for_a_short_grace_only() -> N
 def test_a_failed_refresh_is_not_tried_again_at_once() -> None:
     net, clock = FakeNetwork(), Clock()
     net.down = True
-    cache = gbfs.Gbfs(net, clock)
+    cache = gbfs.Gbfs(net, clock, wall=feed_wall)
     with pytest.raises(gbfs.Unavailable):
         cache.snapshot()
     asked = len(net.calls)
@@ -464,24 +473,24 @@ def test_a_failed_refresh_is_not_tried_again_at_once() -> None:
 
 def test_an_optional_feed_that_fails_is_unknown_not_empty() -> None:
     net = FakeNetwork(fail={"station_status", "free_bike_status"})
-    snap = gbfs.Gbfs(net, Clock()).snapshot()
+    snap = gbfs.Gbfs(net, Clock(), wall=feed_wall).snapshot()
     assert snap.status is None and snap.free_bikes is None
     assert snap.failed == {"station_status", "free_bike_status"}
     assert snap.pricing is not None  # the rest is still read
 
 
 def test_without_the_station_list_there_is_no_snapshot() -> None:
-    cache = gbfs.Gbfs(FakeNetwork(fail={"station_information"}), Clock())
+    cache = gbfs.Gbfs(FakeNetwork(fail={"station_information"}), Clock(), wall=feed_wall)
     with pytest.raises(gbfs.Unavailable):
         cache.snapshot()
-    cache = gbfs.Gbfs(FakeNetwork(drop={"station_information"}), Clock())
+    cache = gbfs.Gbfs(FakeNetwork(drop={"station_information"}), Clock(), wall=feed_wall)
     with pytest.raises(gbfs.Unavailable):
         cache.snapshot()
 
 
 def test_a_feed_discovery_does_not_list_is_not_fetched() -> None:
     net = FakeNetwork(drop={"free_bike_status", "system_pricing_plans"})
-    snap = gbfs.Gbfs(net, Clock()).snapshot()
+    snap = gbfs.Gbfs(net, Clock(), wall=feed_wall).snapshot()
     assert snap.free_bikes is None and snap.pricing is None
     assert {"free_bike_status", "system_pricing_plans", "geofencing_zones"} <= snap.unlisted
     assert not any(net.by_url[u] == "free_bike_status" for u in net.calls[1:])
@@ -494,7 +503,7 @@ def test_garbage_from_a_feed_is_a_failed_feed() -> None:
                 return b"<html>not json</html>"
             return super().__call__(url, timeout)
 
-    snap = gbfs.Gbfs(Garbage(), Clock()).snapshot()
+    snap = gbfs.Gbfs(Garbage(), Clock(), wall=feed_wall).snapshot()
     assert snap.status is None and "station_status" in snap.failed
 
 
@@ -520,25 +529,29 @@ def test_geofencing_zones_are_read_where_the_operator_publishes_them() -> None:
                 return json.dumps(zones).encode()
             return super().__call__(url, timeout)
 
-    snap = gbfs.Gbfs(WithZones(), Clock()).snapshot()
+    snap = gbfs.Gbfs(WithZones(), Clock(), wall=feed_wall).snapshot()
     assert snap.zones is not None and "geofencing_zones" not in snap.unlisted
     assert not snap.zones.allows_ending(-77.010, 38.90)
 
 
-def test_nothing_is_written_anywhere() -> None:
-    """The cache is in memory only: the module has no file, database or export."""
+def test_nothing_is_written_but_the_one_shared_row() -> None:
+    """The module has no file, export or history: the one thing it writes is the shared live
+    copy, a single row replaced in place (tests/test_bikeshare_shared.py counts the rows)."""
     source = (Path(gbfs.__file__)).read_text()
     for forbidden in (
         "open(",
         "write_text",
         "write_bytes",
         "sqlite",
-        "connection",
         "pickle",
         "shelve",
         "cache.set",
+        "bulk_create",
+        ".create(",
+        "INSERT",
     ):
         assert forbidden not in source.replace("_OPENER.open(", ""), forbidden
+    assert source.count("update_or_create(") == 2  # save and mark_failed, both on key "current"
 
 
 def test_a_dock_out_of_service_takes_and_gives_no_bikes() -> None:
@@ -575,5 +588,5 @@ def test_a_listed_feed_that_is_not_zones_is_a_failed_feed_not_an_empty_one() -> 
                 return b'{"data": {"stations": []}}'
             return super().__call__(url, timeout)
 
-    snap = gbfs.Gbfs(NotZones(), Clock()).snapshot()
+    snap = gbfs.Gbfs(NotZones(), Clock(), wall=feed_wall).snapshot()
     assert snap.zones is None and "geofencing_zones" in snap.failed

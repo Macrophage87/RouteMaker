@@ -108,6 +108,11 @@ class Decision:
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
+# The nearest bikeshare stations (POST /api/bikeshare/stations, OWNER-DECISIONS 466a): the list is
+# asked for when a start or an end is placed or moved, so a minute of dragging a point can ask
+# for several; it reads the shared one-minute copy of the operator's feed, never the feed itself.
+BIKESHARE_STATIONS = Limit(scope="bikeshare-stations", requests=60, window_s=60)
+
 # The stress tiles, counted apart from routing so that looking at the map never
 # spends the routing budget (nor routing the tiles'). PLAN's 60 per minute is a
 # figure for requests a person makes one at a time; a map makes them by the

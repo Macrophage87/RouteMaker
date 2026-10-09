@@ -135,6 +135,9 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  */
 export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
   page.routeRequests = 0;
+  // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
+  page.routeBodies = [];
+  page.stationRequests = [];
   page.infoRequests = [];
   // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
   page.tileRequests = { stress: 0, mass: 0 };
@@ -163,11 +166,19 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       if (stressTiles === "capacity") body = capacityTile();
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
+      page.routeBodies.push(request.postData ?? "");
       const n = page.routeRequests;
       // page.delayFrom, where a check sets it, is the request the delay starts at.
       if (delayMs && n >= (page.delayFrom ?? delayFrom)) await sleep(delayMs);
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
+      type = "application/json";
+    } else if (url.pathname === "/api/bikeshare/stations" && request.method === "POST") {
+      // The nearest stations to pick up from or return to (core/bikeshare.py nearby_stations).
+      const asked = JSON.parse(request.postData ?? "{}");
+      page.stationRequests.push({ search: url.search, ...asked });
+      status = 200;
+      body = JSON.stringify(asked.action === "dropoff" ? S_STATIONS_DROPOFF : S_STATIONS_PICKUP);
       type = "application/json";
     } else if (url.pathname === "/api/segment-info") {
       // The map's road panel (OWNER-DECISIONS 441a; core/segment_info.py): one fixed road.
@@ -614,6 +625,34 @@ export const S_BIKESHARE_EBIKE = (() => {
 })();
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
+
+/**
+ * The nearest-stations answers (POST /api/bikeshare/stations, core/api.py NearbyStationsOut):
+ * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to.
+ */
+const station = (id, name, lon, lat, percent, metres, bikes, docks) => ({
+  station_id: id, name, lon, lat, percent_full: percent, distance_m: metres, bikes, ebikes: 1, docks,
+});
+export const S_STATIONS_PICKUP = {
+  action: "pickup",
+  availability: "live",
+  credit: "Capital Bikeshare",
+  stations: [
+    station("fx-001", "Columbus Circle / Union Station", -77.0063, 38.8973, 82, 320, 9, 2),
+    station("fx-002", "Union Station Plaza", -77.0058, 38.8979, 78, 450, 7, 2),
+    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4),
+  ],
+};
+export const S_STATIONS_DROPOFF = {
+  action: "dropoff",
+  availability: "live",
+  credit: "Capital Bikeshare",
+  stations: [
+    station("fx-011", "20th & O St NW / Dupont South", -77.0436, 38.9096, 10, 150, 1, 9),
+    station("fx-012", "Dupont Circle", -77.0431, 38.9101, 25, 400, 3, 9),
+    station("fx-013", "Connecticut Ave & R St NW", -77.0442, 38.9111, 0, 1100, 0, 11),
+  ],
+};
 
 /** The road panel's answer (GET /api/segment-info), as core/segment_info.py writes it. */
 export const S_SEGMENT_INFO = {

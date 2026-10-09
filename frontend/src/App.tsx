@@ -49,6 +49,8 @@ import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
 import { BikeshareSummary } from "./BikeshareSummary.tsx";
+import { NearbyStations } from "./NearbyStations.tsx";
+import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf, routeCredits } from "./lib/bikeshare.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials, Ending } from "./lib/dials.ts";
@@ -193,7 +195,14 @@ export function App() {
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
   const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
-  const planDials = useMemo(() => withWeight(dials, weight), [dials, weight]);
+  // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
+  // forgotten when its point moves; added to the request only, never to the link.
+  const [stationPins, setStationPins] = useState<Pins>({});
+  const stationChoice = useMemo(() => activePins(preset, points, stationPins), [preset, points, stationPins]);
+  const planDials = useMemo(
+    () => withStations(withWeight(dials, weight), stationChoice),
+    [dials, weight, stationChoice],
+  );
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -836,6 +845,13 @@ export function App() {
     setPreset(id);
     setDials(next);
   };
+  const chooseStation = (action: StationAction, station: NearbyStation | null, point: LonLat) => {
+    setStationPins((pins) => ({
+      ...pins,
+      [action]: station ? { id: station.station_id, name: station.name, at: point } : undefined,
+    }));
+    announce(chosenSaid(action, station));
+  };
   const confirmLong = () => {
     const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
     const upTo = confirmedUpTo(Math.max(asked, spanKm(points)));
@@ -1076,10 +1092,11 @@ export function App() {
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
       {preset === "bikeshare" && (
         <p className="hint">
-          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you. Remove any stops
+          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station below. Remove any stops
           to plan one.
         </p>
       )}
+      {preset === "bikeshare" && <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />}
       {routeShownForPoints && points.length >= 2 && (
         <button
           type="button"

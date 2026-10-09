@@ -5448,18 +5448,28 @@ map and the canvas's name, Escape back to the map, the button and Close back to 
 help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
 opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
 /api/segment-info.
-## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301)
+## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
 
 `POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and
 optionally `ending` (`dock`, or `outside_dock` for an e-bike) plans a walk, a ride dock to dock and
 a walk. Two points only. The answer is the ride leg's route body, with the walks, docks,
 availability, fee information and notes under `bikeshare` (`core.api.BikesharePlanOut`).
 
-- `core/gbfs.py`: the operator's official GBFS feeds. In-memory snapshot, `CACHE_TTL_S` 60 s, a
-  `STALE_GRACE_S` of 120 s when a refresh fails, `FAILURE_PAUSE_S` 15 s before trying again; only
-  `https` on `ALLOWED_HOSTS`, redirects included; nothing is written, republished or exported, and
-  a request carries no user data (no cookie, no address, no body). A feed that fails is "unknown",
-  never "empty": no `station_status` means availability is unknown and the plan says so.
+- `core/gbfs.py`: the operator's official GBFS feeds. One live copy for the whole deployment, not one
+  per api worker: a worker looks at its own memory (`CACHE_TTL_S` 60 s), then at the shared copy
+  (`DatabaseStore`: the single row of `core.models.BikeshareFeedCache`, replaced in place at each
+  refresh, with a PostgreSQL advisory lock so only one worker reads the feeds while the others wait up
+  to `SHARED_WAIT_S` for its row), and only then reads the feeds. A `STALE_GRACE_S` of 120 s serves the
+  last copy when a refresh fails, and `FAILURE_PAUSE_S` 15 s (noted in the row, so every worker
+  honours it) before trying again; only `https` on `ALLOWED_HOSTS`, redirects included; no history is
+  kept (no earlier reading, no row per station or reading), nothing is republished or exported, and a
+  request carries no user data (no cookie, no address, no body). A feed that fails is "unknown", never
+  "empty": no `station_status` means availability is unknown and the plan says so. `StationStatus`
+  keeps `num_bikes_disabled`, `num_docks_disabled`, `is_renting`, `is_returning` and `last_reported`;
+  a station whose `last_reported` is more than `STATION_STALE_S` (30 min) before the reading
+  (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
+  `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
+  and never touch the network.
 - `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
   renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
   e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
@@ -5477,8 +5487,10 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
   checked on 2026-10-04 (Union Station to the Capitol area, 1.04 km). The graph's stress remap can
   make a cycleway cost like a path closed to pedestrians for bicycles only; walking uses Valhalla's
   own pedestrian costing and is not routed by stress.
-- Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py` (fixtures in
-  `tests/data/gbfs`, a sample and not a dataset), `frontend/src/lib/bikeshare.test.ts`, section 13 of
+- Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py`,
+  `tests/test_bikeshare_shared.py` (the shared copy), `tests/test_bikeshare_nearby.py` (the nearest
+  stations, stale stations, a chosen station) (fixtures in `tests/data/gbfs`, a sample and not a
+  dataset), `frontend/src/lib/bikeshare.test.ts`, `frontend/src/lib/stations.test.ts`, section 22 of
   `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.
 
 Source citation and licence notes (OWNER-DECISIONS 301, 304, 305): the map attribution and the route
@@ -5489,3 +5501,34 @@ only, short in-memory caching, no republishing, no logos, no implied affiliation
 Out-of-dock endings stay off for good: the operator's no-parking zones exist only inside its app, with no
 public map or feed, so using them would breach the licence. The plan says so in plain words and links
 https://capitalbikeshare.com/how-it-works/ebike for the current parking rules. No fee is built in.
+
+### The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a)
+
+When a rider is choosing where to undock, the Bikeshare panel lists the 3 stations nearest the start
+that are **at least 3/4 full** (bikes / (bikes + free docks) >= 0.75, installed, renting, reporting in
+the last 30 minutes); when choosing where to dock, the 3 nearest to the end that are **at most 1/4 full**
+(<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
+reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
+question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
+programme; nothing is ranked beyond distance, and the rider chooses.
+
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
+  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
+  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
+  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+  no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
+  no station list; with no availability feed `availability` is `unknown` and the list is empty.
+- A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
+  id; Bikeshare only; not a drop-off with the `outside_dock` ending). The plan starts or ends there in
+  place of the nearest docks; if the station can no longer serve (no bike of the type, not renting,
+  full, silent for 30 minutes) the answer is 422 `no_bikeshare` saying why, never a silent swap.
+- Front end: `NearbyStations.tsx` under the points while the ride type is Bikeshare, a pick-up list
+  once a start is placed and a drop-off list once an end is. Each station is a real `<button>` named
+  exactly as it is read, "Station name, 82% full, 0.2 mi (320 m)" (`lib/stations.ts` `stationLabel`, US
+  units first, metric in brackets), with `aria-pressed` for the chosen one (also marked in text, not by
+  colour alone) and a polite status line (loading, how many, none, an error). Pressing the chosen
+  station again hands the choice back. A chosen station is session state in `App` (`stationPins`),
+  forgotten when its point moves or the ride type changes, added to the request by
+  `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
+- Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
+  section 22 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).

@@ -145,6 +145,8 @@ WhenName = Literal[ridetime.WHENS]  # type: ignore[valid-type]
 CarryingName = Literal[presets.CARRYING_CARGO, presets.CARRYING_PEOPLE]
 BikeName = Literal[presets.BIKE_CLASSIC, presets.BIKE_EBIKE]
 EndingName = Literal[bikeshare.ENDING_DOCK, bikeshare.ENDING_OUTSIDE]
+# The operator's station id: short text from its own feed, never trusted beyond its length.
+StationId = Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class RouteIn(Schema):
@@ -250,6 +252,23 @@ class RouteIn(Schema):
             " Absent: dock."
         ),
     )
+    pickup_station: StationId | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 466a): the id of the station the rider chose to take"
+            " a bike from, from POST /api/bikeshare/stations. The plan starts there; if it can no"
+            " longer start a ride (no bike of the type, not renting, not reporting) the answer is"
+            " 422 `no_bikeshare` saying why. Absent: the nearest docks are tried."
+        ),
+    )
+    dropoff_station: StationId | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 466a): the id of the station the rider chose to"
+            " return the bike to. The plan ends there, with the same refusal as `pickup_station`."
+            " Not with the `outside_dock` ending. Absent: the nearest docks are tried."
+        ),
+    )
     target_distance_m: StrictInt | None = Field(
         default=None,
         ge=presets.TARGET_DISTANCE_MIN_M,
@@ -300,8 +319,18 @@ class RouteIn(Schema):
                 raise ValueError("Bikeshare does not plan loops")
             if self.ending == bikeshare.ENDING_OUTSIDE and (self.bike or "classic") != "ebike":
                 raise ValueError("only an e-bike can end outside a dock")
-        elif self.bike is not None or self.ending is not None:
-            raise ValueError("bike and ending apply to the Bikeshare ride type only")
+            if self.dropoff_station and self.ending == bikeshare.ENDING_OUTSIDE:
+                raise ValueError("a chosen drop-off station means ending at a dock")
+        elif (
+            self.bike is not None
+            or self.ending is not None
+            or self.pickup_station is not None
+            or self.dropoff_station is not None
+        ):
+            raise ValueError(
+                "bike, ending, pickup_station and dropoff_station apply to the Bikeshare ride"
+                " type only"
+            )
         return self
 
     @field_validator("system_weight_kg")
@@ -1417,6 +1446,118 @@ def route(request, body: RouteIn, response: HttpResponse):
         ratelimit.release(held)
 
 
+# --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
+#
+# POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
+# full (to take a bike) or at most 1/4 full (to return one), from the operator's live feed.
+# A POST, with the point in the body and not the address, so a visitor's position is in no
+# URL or log line; it is used for this one answer and kept nowhere. Nothing is ranked beyond
+# distance: the rider chooses, and the plan can be asked to use the chosen station
+# (`pickup_station`, `dropoff_station` on POST /api/route).
+
+
+class NearbyStationsIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    point: LonLat = Field(description="[lon, lat]: where the rider will take or return a bike.")
+    action: Literal["pickup", "dropoff"] = Field(
+        description=(
+            "`pickup`: stations at least 3/4 full that are renting. `dropoff`: stations at most"
+            " 1/4 full that are taking bikes back."
+        )
+    )
+
+    @field_validator("point")
+    @classmethod
+    def inside_coverage(cls, point: list[float]) -> list[float]:
+        west, south, east, north = settings.COVERAGE_BBOX
+        lon, lat = point
+        if not (west <= lon <= east and south <= lat <= north):
+            raise ValueError("the point is outside the area this map covers")
+        return point
+
+
+class NearbyStationOut(Schema):
+    station_id: str
+    name: str
+    lon: float
+    lat: float
+    percent_full: int = Field(description="Bikes as a percentage of bikes and free docks.")
+    distance_m: float = Field(description="Straight line from the point.")
+    bikes: int = Field(description="Bikes available, e-bikes included.")
+    ebikes: int
+    docks: int = Field(description="Free docks.")
+
+
+class NearbyStationsOut(Schema):
+    action: Literal["pickup", "dropoff"]
+    availability: Literal["live", "stale", "unknown"] = Field(
+        description="`unknown`: the operator's availability feed could not be read; none listed."
+    )
+    stations: list[NearbyStationOut] = Field(
+        description="Up to three, nearest first; fewer or none where fewer fit."
+    )
+    credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+
+
+@api.post(
+    "/bikeshare/stations",
+    response={
+        200: NearbyStationsOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The three nearest stations to pick up from (3/4 full) or return to (1/4 full)",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.BIKESHARE_STATIONS),
+    json_body_only,
+    errors_as_json,
+)
+def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        snapshot = gbfs.client.snapshot()
+    except gbfs.Unavailable:
+        refusal = JsonResponse(
+            {
+                "error": "Bikeshare station data is not available right now. Try again shortly.",
+                "code": "bikeshare_unavailable",
+            },
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        refusal["Cache-Control"] = "no-store"
+        return refusal
+    found = bikeshare.nearby_stations(body.point, body.action, snapshot)
+    availability = "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
+    return Status(
+        200,
+        {
+            "action": body.action,
+            "availability": availability,
+            "stations": [
+                {
+                    "station_id": s.station_id,
+                    "name": s.name,
+                    "lon": s.lon,
+                    "lat": s.lat,
+                    "percent_full": s.percent_full,
+                    "distance_m": s.distance_m,
+                    "bikes": s.bikes,
+                    "ebikes": s.ebikes,
+                    "docks": s.docks,
+                }
+                for s in found
+            ],
+            "credit": gbfs.CREDIT,
+        },
+    )
+
+
 def _stress_of(body: RouteIn) -> int:
     """The traffic slider's position a request plans at."""
     if body.stress is not None:
@@ -1457,7 +1598,11 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         snapshot,
         services,
         profile.speed_kmh,
+        pickup_station=body.pickup_station,
+        dropoff_station=body.dropoff_station,
     )
+
+
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):
     started = getattr(request, "routing_started", None)
     if body.preset == presets.BIKESHARE:

@@ -2715,3 +2715,53 @@ details.zoom-notes {
 .bikeshare-bike .hint {
   display: block;
 }
+
+/* The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466a). The chosen one
+   is told apart by a text badge and a heavier border, never by colour alone. */
+.nearby-stations {
+  margin: 0 0 12px;
+}
+.nearby-stations h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.station-status {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+.station-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.station-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.station-choice {
+  flex: 1 1 auto;
+  min-height: 44px;
+  text-align: left;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  white-space: normal;
+}
+.station-choice.chosen,
+.station-choice[aria-pressed="true"] {
+  border: 3px solid var(--text);
+  font-weight: 700;
+}
+.station-chosen {
+  align-self: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.station-refresh {
+  min-height: 44px;
+}

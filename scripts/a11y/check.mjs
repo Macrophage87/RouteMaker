@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_BIKESHARE, S_BIKESHARE_EBIKE, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -1851,7 +1851,10 @@ async function saidInDialog(p, text) {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const attribution = await p.eval("document.querySelector('.maplibregl-ctrl-attrib')?.textContent ?? ''");
   const panel = await p.eval("document.querySelector('p.route-credit')?.textContent ?? ''");
-  check("bikeshare: an ordinary route shows no bikeshare citation, on the map or in the panel", !/Capital Bikeshare/.test(attribution + panel) && (await p.eval("document.querySelectorAll('.dock-marker').length === 0")), attribution.slice(-120));
+  // The citation is one of the map's own credits (credits.json), so it is in the attribution
+  // always; the panel's route credit and the dock markers are only where a plan is.
+  check("bikeshare: an ordinary route has no bikeshare citation in the panel and no dock markers", !/Capital Bikeshare/.test(panel) && (await p.eval("document.querySelectorAll('.dock-marker').length === 0")), panel.slice(-120));
+  check("bikeshare: an ordinary route has no nearby-stations lists and asks for none", (await p.eval("document.querySelectorAll('.nearby-stations').length")) === 0 && p.stationRequests.length === 0);
   await p.close();
 }
 {
@@ -1876,6 +1879,90 @@ async function saidInDialog(p, text) {
   const spill = await p.eval("(() => { const e = document.querySelector('.bikeshare'); return { client: e.clientWidth, scroll: e.scrollWidth }; })()");
   check("bikeshare at 375 px: nothing spills sideways", spill.scroll <= spill.client + 1, JSON.stringify(spill));
   await p.shot(`${SHOTS}/bikeshare_375.png`);
+  await p.close();
+}
+
+// ---- 23. The nearest stations to pick up from and return to (OWNER-DECISIONS 466, 466a) ----
+{
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link });
+  await sleep(600);
+  const lists = await p.eval(`(() => [...document.querySelectorAll('section.nearby-stations')].map((s) => ({
+    heading: s.querySelector('h3')?.textContent,
+    labelled: document.getElementById(s.getAttribute('aria-labelledby'))?.tagName,
+    list: s.querySelector('ul.station-list')?.tagName,
+    buttons: [...s.querySelectorAll('ul.station-list > li > button')].map((b) => ({ text: b.textContent, pressed: b.getAttribute('aria-pressed'), tag: b.tagName, type: b.type, h: Math.round(b.getBoundingClientRect().height) })),
+    status: s.querySelector('[role=status]')?.textContent,
+    text: s.textContent,
+  })))()`);
+  check("stations: a pick-up list and a drop-off list, each a section named by its own heading", lists.length === 2 && lists[0].heading === "Nearby stations to pick up a bike" && lists[1].heading === "Nearby stations to return a bike" && lists.every((l) => l.labelled === "H3"), JSON.stringify(lists.map((l) => l.heading)));
+  check("stations: each list is a real list of three real buttons", lists.every((l) => l.list === "UL" && l.buttons.length === 3 && l.buttons.every((b) => b.tag === "BUTTON" && b.type === "button")), JSON.stringify(lists.map((l) => l.buttons.length)));
+  check("stations: each button is read as name, percentage full and distance, miles first with metres in brackets", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full, 0.2 mi (320 m)" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full, 0.9 mi (1.5 km)" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full, 490 ft (150 m)", JSON.stringify([lists[0].buttons[0].text, lists[1].buttons[0].text]));
+  const named = await axNode(p, ".station-choice");
+  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full, 0.2 mi (320 m)", JSON.stringify(named));
+  check("stations: nothing is chosen at first, and every button is at least 44 px tall", lists.every((l) => l.buttons.every((b) => b.pressed === "false" && b.h >= 44)), JSON.stringify(lists.map((l) => l.buttons.map((b) => b.h))));
+  check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, nearest first."), JSON.stringify(lists.map((l) => l.status)));
+  check("stations: the words name no programme, no points and no operator", !/angel|points|lyft|capital/i.test(lists.map((l) => l.text).join(" ")), "");
+  check("stations: the lists were asked for the start and the end, by POST, with no point in the address", p.stationRequests.length === 2 && p.stationRequests.every((r) => r.search === "") && p.stationRequests[0].action === "pickup" && p.stationRequests[1].action === "dropoff", JSON.stringify(p.stationRequests));
+
+  // Keyboard: Tab reaches the buttons in order, and Enter chooses; the plan is made again with it.
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.nearby-pickup .station-choice').focus(); true");
+  await p.tab();
+  check("stations: Tab moves to the next station in the list", await p.eval("document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1]"), await focused(p));
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const chosen = await p.eval(`(() => ({
+    pressed: [...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')),
+    kept: document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1],
+    badge: document.querySelector('.nearby-pickup .station-chosen')?.textContent,
+    hash: location.hash,
+  }))()`);
+  const lastBody = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: Enter chooses one: it is pressed, the others are not, and the focus stays on it", chosen.pressed.join() === "false,true,false" && chosen.kept, JSON.stringify(chosen));
+  check("stations: the choice is shown in text too, not by colour alone", chosen.badge === "Chosen", String(chosen.badge));
+  check("stations: choosing plans again, with that station in the request", p.routeRequests - before >= 1 && lastBody.pickup_station === "fx-002" && !("dropoff_station" in lastBody), JSON.stringify(lastBody));
+  check("stations: the choice is in no link", !/fx-0|station/i.test(chosen.hash), chosen.hash);
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].click(); true");
+  await sleep(3500);
+  const handed = await p.eval("[...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')).join()");
+  const lastAgain = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: pressing the chosen one again hands the choice back and plans without it", handed === "false,false,false" && !("pickup_station" in lastAgain), `${handed} ${JSON.stringify(lastAgain)}`);
+
+  // The drop-off list works the same way.
+  await p.eval("document.querySelectorAll('.nearby-dropoff .station-choice')[0].click(); true");
+  await sleep(3500);
+  const lastDrop = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: a drop-off station is sent as the plan's end", lastDrop.dropoff_station === "fx-011", JSON.stringify(lastDrop));
+  await p.shot(`${SHOTS}/stations_chosen.png`);
+  await p.close();
+}
+{
+  // Another theme and forced colours: the chosen button is still told apart (a heavier border and the word).
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link, scheme: "dark", forced: true });
+  await sleep(600);
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[0].click(); true");
+  await sleep(3500);
+  const look = await p.eval(`(() => { const b = document.querySelector('.nearby-pickup .station-choice[aria-pressed=true]'); const s = getComputedStyle(b); return { border: s.borderTopWidth, weight: s.fontWeight, word: document.querySelector('.nearby-pickup .station-chosen')?.textContent }; })()`);
+  check("stations in dark, forced colours: the chosen button has a 3 px border, bold text and the word Chosen", look.border === "3px" && Number(look.weight) >= 700 && look.word === "Chosen", JSON.stringify(look));
+  await p.close();
+}
+{
+  // At 375 px the lists sit in one column with nothing spilling sideways.
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link, width: 375, height: 812, mobile: true });
+  await sleep(600);
+  const fit = await p.eval(`(() => [...document.querySelectorAll('.nearby-stations')].map((e) => ({ client: e.clientWidth, scroll: e.scrollWidth })))()`);
+  check("stations at 375 px: nothing spills sideways", fit.length === 2 && fit.every((f) => f.scroll <= f.client + 1), JSON.stringify(fit));
+  await p.shot(`${SHOTS}/stations_375.png`);
+  await p.close();
+}
+{
+  // With the start alone, only the pick-up list; with another ride type, none.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  check("stations: another ride type has no lists and asks for none", (await p.eval("document.querySelectorAll('.nearby-stations').length")) === 0 && p.stationRequests.length === 0);
   await p.close();
 }
 

@@ -4102,29 +4102,23 @@ route chart width estimate).
 ## Bikeshare feeds
 
 The api container makes outbound HTTPS requests to the bikeshare operator's official GBFS feeds
-(`gbfs.capitalbikeshare.com`, `gbfs.lyft.com`; `core.gbfs`), at most once a minute per api worker
-while anyone is planning a Bikeshare route. They carry nothing of the visitor. If the feeds do not
-answer, Bikeshare plans answer 503 with `code: bikeshare_unavailable` when the station list is
-missing, and plan with "availability unknown" notes when only the availability feed is. The
-operator may end the data licence at will (OWNER-DECISIONS 300); removing the ride type is
-removing `bikeshare` from `core.presets.PRESETS`, the Caddyfile redirect and the front end's list.
+(`gbfs.capitalbikeshare.com`, `gbfs.lyft.com`; `core.gbfs`) while anyone is planning a Bikeshare
+route or asking for the nearest stations: **one reading about every 60 s for the whole deployment**,
+not one per api worker. The workers share the latest reading through one row of the
+`bikeshare_feed_cache` table (`core.models.BikeshareFeedCache`), replaced in place at each refresh;
+the worker that finds it out of date and wins a PostgreSQL advisory lock reads the feeds, and the
+others use its row (or wait up to 6 s for it). Nothing is kept as history: no earlier reading, no
+counts over time, no row per station or reading; the table is excluded from the nightly dump and
+from the beta's data shipment, and refills itself. The requests carry nothing of the visitor. If
+the feeds do not answer, the last reading is served for two more minutes; after that Bikeshare
+plans answer 503 with `code: bikeshare_unavailable` when the station list is missing, and plan with
+"availability unknown" notes when only the availability feed is. A station that has not reported
+for 30 minutes counts as unavailable. The operator may end the data licence at will
+(OWNER-DECISIONS 300); removing the ride type is removing `bikeshare` from
+`core.presets.PRESETS`, the Caddyfile redirect and the front end's list, and the cache table can
+then be dropped. The full source reference (data, operator, licence, retrieval) is in
+docs/SOURCES.md, "Capital Bikeshare".
 
-### Bikeshare: the full source reference
-
-(Move to docs/SOURCES.md at the rebase onto the release revision; OWNER-DECISIONS 306: credits on the
-map and in the app stay brief, like an in-text citation, and the full reference lives in the docs.)
-The credit shown to riders is "Capital Bikeshare" alone. The reference in full:
-
-- Data: Capital Bikeshare station information, station status, free-floating e-bike status and pricing
-  plans, from the operator's official GBFS 1.1 feed. Discovery feed:
-  https://gbfs.capitalbikeshare.com/gbfs/gbfs.json (it lists the feeds on gbfs.lyft.com).
-- Operator: Lyft.
-- Licence: the Capital Bikeshare Data License Agreement, https://capitalbikeshare.com/data-license-agreement
-  (read 2026-10-04, OWNER-DECISIONS 300). Non-exclusive, royalty-free, perpetual, any lawful purpose. It
-  forbids hosting, distributing or selling the data as a stand-alone dataset, using the operator's marks
-  without permission, stating or implying affiliation or endorsement, data mining, correlating the data
-  with personal information, and access other than through the provided interface. No attribution is
-  required (the credit is the owner's choice, item 301). The operator may terminate at will. Not legal advice.
-- Retrieval: live at request time, official endpoints only, cached in memory for 60 s, never stored,
-  republished or exported, with nothing about the visitor in a request.
-- Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305).
+`POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
+OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
+address, and reads the shared copy, never the feeds directly.

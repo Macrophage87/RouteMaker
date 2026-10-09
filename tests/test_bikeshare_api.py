@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from test_bikeshare import DUPONT, UNION
-from test_gbfs import Clock, FakeNetwork
+from test_gbfs import Clock, FakeNetwork, feed_wall
 from test_route_api import (
     CONTRACT_KEYS,
     db,
@@ -75,7 +75,7 @@ def world(monkeypatch, segment_schemas):
     routers = Routers()
     monkeypatch.setattr(routing, "_transport", routers)
     net = FakeNetwork()
-    monkeypatch.setattr(gbfs, "client", gbfs.Gbfs(net, Clock()))
+    monkeypatch.setattr(gbfs, "client", gbfs.Gbfs(net, Clock(), wall=feed_wall))
     return routers, net
 
 
@@ -239,7 +239,7 @@ class TestBikeshareDegrades:
     ) -> None:
         monkeypatch.setattr(routing, "_transport", Routers())
         monkeypatch.setattr(
-            gbfs, "client", gbfs.Gbfs(FakeNetwork(fail={"station_status"}), Clock())
+            gbfs, "client", gbfs.Gbfs(FakeNetwork(fail={"station_status"}), Clock(), wall=feed_wall)
         )
         data = post(client, body()).json()
         plan = data["bikeshare"]
@@ -256,7 +256,7 @@ class TestBikeshareDegrades:
         monkeypatch.setattr(routing, "_transport", routers)
         net = FakeNetwork()
         net.down = True
-        monkeypatch.setattr(gbfs, "client", gbfs.Gbfs(net, Clock()))
+        monkeypatch.setattr(gbfs, "client", gbfs.Gbfs(net, Clock(), wall=feed_wall))
         response = post(client, body())
         assert response.status_code == 503
         assert response.json()["code"] == "bikeshare_unavailable"

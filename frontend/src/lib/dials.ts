@@ -58,6 +58,14 @@ export interface Dials {
    * the operator's zone data allows it. Absent is a dock.
    */
   ending?: Ending;
+  /**
+   * Bikeshare only (OWNER-DECISIONS 466a): the station the rider chose to take a bike from, and
+   * the one to return it to, from the nearest-stations lists. Session only: they are added to a
+   * request (lib/stations.ts withStations) and are in no link, because a station's bikes change
+   * by the minute.
+   */
+  pickupStation?: string;
+  dropoffStation?: string;
 }
 
 export const STRESS_MIN = 0;
@@ -281,6 +289,10 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.loop) fields.loop = true;
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
+  if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
+  if (dials.bike && dials.dropoffStation && dials.ending !== "outside_dock") {
+    fields.dropoff_station = dials.dropoffStation;
+  }
   return fields;
 }
 

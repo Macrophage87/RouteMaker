@@ -1,8 +1,16 @@
 """The bikeshare plan: walk to a dock, ride dock to dock, walk to the destination.
 
-FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245, 299, 300, 301). Nothing here is
-saved and nothing is tied to a visitor: the plan reads the operator's feeds
-through `core.gbfs` (cached about 60 s, in memory) and the routers, and answers.
+FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245, 299, 300, 301, 466, 466a). Nothing here is
+saved and nothing is tied to a visitor: the plan reads the operator's live feeds
+through `core.gbfs` (one copy for the deployment, about 60 s old at most; no history
+is kept) and the routers, and answers.
+
+Nearest stations (466, 466a): `nearby_stations` lists the three stations nearest a
+point that are at least 3/4 full (to pick a bike up) or at most 1/4 full (to return
+one), from the live feed alone. They are listed by distance and nothing else: the
+rider chooses, and a chosen station is passed to `plan` (`pickup_station`,
+`dropoff_station`) to be used for that end of the ride. A station that has not
+reported for 30 minutes is unavailable everywhere here.
 
 The plan
 --------
@@ -132,6 +140,7 @@ class Pick:
     station_id: str | None = None
     status: gbfs.StationStatus | None = None
     known: bool = False  # availability read from the feed
+    stale: bool = False  # the station has not reported for 30 minutes: unavailable
 
     @property
     def point(self) -> LonLat:
@@ -152,6 +161,7 @@ def _dock_pick(station: gbfs.Station, snapshot: gbfs.Snapshot) -> Pick:
         station.station_id,
         status,
         known=status is not None,
+        stale=status is not None and snapshot.reporting_stale(status),
     )
 
 
@@ -169,13 +179,21 @@ def _nearest(snapshot: gbfs.Snapshot, around: LonLat) -> list[tuple[float, gbfs.
 def _can_start(pick: Pick, bike: str, snapshot: gbfs.Snapshot) -> bool:
     if snapshot.status is None:
         return True  # unknown: the nearest are used and the plan says so
-    return pick.status is not None and pick.status.can_rent and pick.status.bikes_of(bike) > 0
+    return (
+        pick.status is not None
+        and not pick.stale
+        and pick.status.can_rent
+        and pick.status.bikes_of(bike) > 0
+    )
 
 
 def _can_end(pick: Pick, snapshot: gbfs.Snapshot) -> bool:
     if snapshot.status is None:
         return True
-    return pick.status is not None and pick.status.can_return
+    return pick.status is not None and not pick.stale and pick.status.can_return
+
+
+STALE_WORDS = "has not reported in over 30 minutes, so its count cannot be trusted"
 
 
 def _why_not_start(pick: Pick, bike: str) -> str:
@@ -183,6 +201,8 @@ def _why_not_start(pick: Pick, bike: str) -> str:
     st = pick.status
     if st is None:
         return "has no availability reading"
+    if pick.stale:
+        return STALE_WORDS
     if not st.installed:
         return "is not in service"
     if not st.renting:
@@ -194,6 +214,8 @@ def _why_not_end(pick: Pick) -> str:
     st = pick.status
     if st is None:
         return "has no availability reading"
+    if pick.stale:
+        return STALE_WORDS
     if not st.installed:
         return "is not in service"
     if not st.returning:
@@ -256,6 +278,110 @@ def end_candidates(dest: LonLat, snapshot: gbfs.Snapshot, notes: list[str]):
             else f"The next dock, {pick.name}, {miles(distance)} away, {_why_not_end(pick)}."
         )
     return picks
+
+
+# --- The rider's own choice of dock (OWNER-DECISIONS 466a) ---------------------------
+
+
+def _pinned(station_id: str, around: LonLat, snapshot: gbfs.Snapshot) -> tuple[float, Pick]:
+    for station in snapshot.stations:
+        if station.station_id == station_id:
+            return _distance(around, [station.lon, station.lat]), _dock_pick(station, snapshot)
+    raise NoBikeshare(
+        "The dock you chose is no longer in the operator's list. Choose another, or let the "
+        "plan choose."
+    )
+
+
+def pinned_start(origin: LonLat, station_id: str, bike: str, snapshot: gbfs.Snapshot):
+    """The dock the rider chose to take a bike from, in place of the nearest ones. It must
+    still be able to start the ride, or the rider is told why not."""
+    distance, pick = _pinned(station_id, origin, snapshot)
+    if not _can_start(pick, bike, snapshot):
+        raise NoBikeshare(
+            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "
+            "let the plan choose."
+        )
+    return [(distance, pick)], []
+
+
+def pinned_end(dest: LonLat, station_id: str, snapshot: gbfs.Snapshot):
+    distance, pick = _pinned(station_id, dest, snapshot)
+    if not _can_end(pick, snapshot):
+        raise NoBikeshare(
+            f"The dock you chose, {pick.name}, {_why_not_end(pick)}. Choose another, or let the "
+            "plan choose."
+        )
+    return [(distance, pick)]
+
+
+# --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) -----
+
+PICKUP = "pickup"
+DROPOFF = "dropoff"
+ACTIONS = (PICKUP, DROPOFF)
+# How many are listed, and how full a station is to be listed: to take a bike, at least 3/4
+# full; to return one, at most 1/4 full (bikes / (bikes + free docks)).
+NEARBY_COUNT = 3
+FULL_AT_LEAST = 0.75
+EMPTY_AT_MOST = 0.25
+
+
+@dataclass(frozen=True)
+class NearbyStation:
+    station_id: str
+    name: str
+    lon: float
+    lat: float
+    percent_full: int
+    distance_m: float
+    bikes: int
+    ebikes: int
+    docks: int
+
+
+def nearby_stations(point: LonLat, action: str, snapshot: gbfs.Snapshot) -> list[NearbyStation]:
+    """The `NEARBY_COUNT` stations nearest `point` that fit the action, nearest first, from the
+    live feed alone (nothing stored, nothing ranked beyond distance: the rider chooses).
+
+    pickup: installed, renting, reporting in the last 30 minutes, and at least 3/4 full.
+    dropoff: installed, returning, reporting in the last 30 minutes, and at most 1/4 full.
+    Out to `SEARCH_RADIUS_M` in a straight line. With no availability feed there is nothing
+    to list (the caller says availability is unknown)."""
+    if action not in ACTIONS:
+        raise ValueError(f"not an action: {action}")
+    if snapshot.status is None:
+        return []
+    found: list[NearbyStation] = []
+    for distance, station in _nearest(snapshot, point):
+        status = snapshot.status.get(station.station_id)
+        if status is None or snapshot.reporting_stale(status):
+            continue
+        fullness = status.fullness
+        if fullness is None:
+            continue
+        if action == PICKUP:
+            fits = status.can_rent and fullness >= FULL_AT_LEAST
+        else:
+            fits = status.can_return and fullness <= EMPTY_AT_MOST
+        if not fits:
+            continue
+        found.append(
+            NearbyStation(
+                station_id=station.station_id,
+                name=station.name,
+                lon=round(station.lon, 6),
+                lat=round(station.lat, 6),
+                percent_full=round(fullness * 100),
+                distance_m=round(distance, 1),
+                bikes=status.bikes,
+                ebikes=min(status.ebikes, status.bikes),
+                docks=status.docks,
+            )
+        )
+        if len(found) == NEARBY_COUNT:
+            break
+    return found
 
 
 # --- E-bike endings ---------------------------------------------------------------
@@ -405,9 +531,12 @@ def plan(
     snapshot: gbfs.Snapshot,
     services: Services,
     speed_kmh: float,
+    pickup_station: str | None = None,
+    dropoff_station: str | None = None,
 ) -> dict:
     """The route API's body for a bikeshare plan: the ride leg's own body, with the
-    walks, docks, availability, fee and notes under `bikeshare`.
+    walks, docks, availability, fee and notes under `bikeshare`. A chosen `pickup_station`
+    or `dropoff_station` (a station id) is used for that end in place of the nearest docks.
 
     Raises NoBikeshare where there is no dock to start or end at, no way on foot, or
     nothing to ride; routing's own errors pass through from the ride.
@@ -418,7 +547,10 @@ def plan(
     if ending == ENDING_OUTSIDE and not use_outside:
         notes.append(OUTSIDE_REASON_WORDS[offer["reason"]] + " The plan ends at a dock.")
 
-    docks, free = start_candidates(origin, bike, snapshot, notes)
+    if pickup_station:
+        docks, free = pinned_start(origin, pickup_station, bike, snapshot)
+    else:
+        docks, free = start_candidates(origin, bike, snapshot, notes)
     kind_word = "e-bike" if bike == presets.BIKE_EBIKE else "classic bike"
     if not docks and not free:
         raise NoBikeshare(
@@ -427,7 +559,10 @@ def plan(
         )
     ends: list[tuple[float, Pick]] = []
     if not use_outside:
-        ends = end_candidates(dest, snapshot, notes)
+        if dropoff_station:
+            ends = pinned_end(dest, dropoff_station, snapshot)
+        else:
+            ends = end_candidates(dest, snapshot, notes)
         if not ends:
             raise NoBikeshare(
                 f"No dock within {miles(SEARCH_RADIUS_M)} of the destination has a free slot "

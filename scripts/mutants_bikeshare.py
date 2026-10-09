@@ -37,6 +37,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN_T = ["tests/test_bikeshare.py"]
 GBFS_T = ["tests/test_gbfs.py"]
 API_T = ["tests/test_bikeshare_api.py"]
+NEAR_T = ["tests/test_bikeshare_nearby.py"]
+SHARED_T = ["tests/test_bikeshare_shared.py"]
 
 BS = "src/core/bikeshare.py"
 GB = "src/core/gbfs.py"
@@ -129,15 +131,43 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "start: a dock needs no bike",
         BS,
-        "    return pick.status is not None and pick.status.can_rent and pick.status.bikes_of(bike) > 0",
+        "    return ("
+        + NL
+        + "        pick.status is not None"
+        + NL
+        + "        and not pick.stale"
+        + NL
+        + "        and pick.status.can_rent"
+        + NL
+        + "        and pick.status.bikes_of(bike) > 0"
+        + NL
+        + "    )",
         "    return True",
         PLAN_T,
     ),
     (
         "start: a dock need not be renting",
         BS,
-        "    return pick.status is not None and pick.status.can_rent and pick.status.bikes_of(bike) > 0",
-        "    return pick.status is not None and pick.status.bikes_of(bike) > 0",
+        "    return ("
+        + NL
+        + "        pick.status is not None"
+        + NL
+        + "        and not pick.stale"
+        + NL
+        + "        and pick.status.can_rent"
+        + NL
+        + "        and pick.status.bikes_of(bike) > 0"
+        + NL
+        + "    )",
+        "    return ("
+        + NL
+        + "        pick.status is not None"
+        + NL
+        + "        and not pick.stale"
+        + NL
+        + "        and pick.status.bikes_of(bike) > 0"
+        + NL
+        + "    )",
         PLAN_T,
     ),
     (
@@ -164,7 +194,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "end: a dock needs no free slot",
         BS,
-        "    return pick.status is not None and pick.status.can_return",
+        "    return pick.status is not None and not pick.stale and pick.status.can_return",
         "    return True",
         PLAN_T,
     ),
@@ -203,12 +233,12 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         + NL
         + "        return True"
         + NL
-        + "    return pick.status is not None and pick.status.can_return",
+        + "    return pick.status is not None and not pick.stale and pick.status.can_return",
         "    if snapshot.status is None:"
         + NL
         + "        return False"
         + NL
-        + "    return pick.status is not None and pick.status.can_return",
+        + "    return pick.status is not None and not pick.stale and pick.status.can_return",
         PLAN_T,
     ),
     (
@@ -528,8 +558,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "cache: a failure is tried again at once",
         GB,
-        "            paused = self._failed_at is not None and now - self._failed_at < FAILURE_PAUSE_S",
-        "            paused = False",
+        "            if not paused:",
+        "            if True:",
         GBFS_T,
     ),
     (
@@ -542,12 +572,12 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "cache: a failed feed is taken as empty",
         GB,
-        "                if parsed is None:  # listed, but not the feed it should be"
+        "            if parsed is None:  # listed, but not the feed it should be"
         + NL
-        + "                    failed.add(name)"
+        + "                failed.add(name)"
         + NL
-        + "                    continue",
-        "                parsed = parsed or []",
+        + "                continue",
+        "            parsed = parsed or []",
         GBFS_T,
     ),
     (
@@ -555,9 +585,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         GB,
         "                except (Unavailable, FutureTimeout):"
         + NL
-        + "                    failed.add(name)"
-        + NL
-        + "                    continue",
+        + "                    failed.add(name)",
         "                except (Unavailable, FutureTimeout):"
         + NL
         + "                    raise Unavailable('a feed failed')",
@@ -740,8 +768,12 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "request: bike on any ride type",
         AP,
-        "        elif self.bike is not None or self.ending is not None:",
-        "        elif False:",
+        "        elif ("
+        + NL
+        + "            self.bike is not None",
+        "        elif False and ("
+        + NL
+        + "            self.bike is not None",
         API_T,
     ),
     (
@@ -750,6 +782,185 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "        except gbfs.Unavailable:",
         "        except ZeroDivisionError:",
         API_T,
+    ),
+    # --- the nearest stations (OWNER-DECISIONS 466, 466a) ------------------------------
+    (
+        "nearby: exactly three quarters full is left out",
+        BS,
+        "fits = status.can_rent and fullness >= FULL_AT_LEAST",
+        "fits = status.can_rent and fullness > FULL_AT_LEAST",
+        NEAR_T,
+    ),
+    (
+        "nearby: the pick-up bar is 70%",
+        BS,
+        "FULL_AT_LEAST = 0.75",
+        "FULL_AT_LEAST = 0.7",
+        NEAR_T,
+    ),
+    (
+        "nearby: exactly one quarter full is left out",
+        BS,
+        "fits = status.can_return and fullness <= EMPTY_AT_MOST",
+        "fits = status.can_return and fullness < EMPTY_AT_MOST",
+        NEAR_T,
+    ),
+    (
+        "nearby: the drop-off bar is 30%",
+        BS,
+        "EMPTY_AT_MOST = 0.25",
+        "EMPTY_AT_MOST = 0.3",
+        NEAR_T,
+    ),
+    (
+        "nearby: a station that cannot rent is listed",
+        BS,
+        "fits = status.can_rent and fullness >= FULL_AT_LEAST",
+        "fits = fullness >= FULL_AT_LEAST",
+        NEAR_T,
+    ),
+    (
+        "nearby: a station that cannot take a bike back is listed",
+        BS,
+        "fits = status.can_return and fullness <= EMPTY_AT_MOST",
+        "fits = fullness <= EMPTY_AT_MOST",
+        NEAR_T,
+    ),
+    (
+        "nearby: a silent station is listed",
+        BS,
+        "if status is None or snapshot.reporting_stale(status):",
+        "if status is None:",
+        NEAR_T,
+    ),
+    (
+        "nearby: a fourth station is listed",
+        BS,
+        "if len(found) == NEARBY_COUNT:",
+        "if len(found) == NEARBY_COUNT + 1:",
+        NEAR_T,
+    ),
+    (
+        "nearby: listed by fullness, not distance",
+        BS,
+        "    for distance, station in _nearest(snapshot, point):" + NL + "        status = snapshot.status.get(station.station_id)",
+        "    for distance, station in sorted(_nearest(snapshot, point), key=lambda t: -(snapshot.status.get(t[1].station_id).fullness or 0)):"
+        + NL
+        + "        status = snapshot.status.get(station.station_id)",
+        NEAR_T,
+    ),
+    (
+        "nearby: no availability feed lists every station",
+        BS,
+        "    if snapshot.status is None:" + NL + "        return []",
+        "    if snapshot.status is None:" + NL + "        return [NearbyStation(s.station_id, s.name, s.lon, s.lat, 100, 0.0, 1, 0, 0) for s in snapshot.stations]",
+        NEAR_T,
+    ),
+    (
+        "stale: the limit is an hour",
+        GB,
+        "STATION_STALE_S = 30 * 60",
+        "STATION_STALE_S = 60 * 60",
+        NEAR_T,
+    ),
+    (
+        "stale: a station with no report time counts as fresh",
+        GB,
+        "        if status.last_reported is None:" + NL + "            return True",
+        "        if status.last_reported is None:" + NL + "            return False",
+        NEAR_T,
+    ),
+    (
+        "stale: the planner starts at a silent dock",
+        BS,
+        "        and not pick.stale" + NL + "        and pick.status.can_rent",
+        "        and pick.status.can_rent",
+        NEAR_T,
+    ),
+    (
+        "stale: the planner ends at a silent dock",
+        BS,
+        "    return pick.status is not None and not pick.stale and pick.status.can_return",
+        "    return pick.status is not None and pick.status.can_return",
+        NEAR_T,
+    ),
+    (
+        "chosen: the rider's pick-up is ignored",
+        BS,
+        "    if pickup_station:" + NL + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
+        "    if False:" + NL + "        docks, free = pinned_start(origin, pickup_station, bike, snapshot)",
+        NEAR_T,
+    ),
+    (
+        "chosen: the rider's drop-off is ignored",
+        BS,
+        "        if dropoff_station:" + NL + "            ends = pinned_end(dest, dropoff_station, snapshot)",
+        "        if False:" + NL + "            ends = pinned_end(dest, dropoff_station, snapshot)",
+        NEAR_T,
+    ),
+    (
+        "chosen: a chosen dock that cannot serve is used anyway",
+        BS,
+        "    if not _can_start(pick, bike, snapshot):" + NL + "        raise NoBikeshare(" + NL + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
+        "    if False:" + NL + "        raise NoBikeshare(" + NL + '            f"The dock you chose, {pick.name}, {_why_not_start(pick, bike)}. Choose another, or "',
+        NEAR_T,
+    ),
+    (
+        "chosen: the drop-off station is accepted for an outside-dock ending",
+        AP,
+        "            if self.dropoff_station and self.ending == bikeshare.ENDING_OUTSIDE:",
+        "            if False:",
+        NEAR_T,
+    ),
+    (
+        "nearby: the endpoint has no limit of its own",
+        AP,
+        "    ratelimit.rate_limited(ratelimit.BIKESHARE_STATIONS),",
+        "",
+        NEAR_T,
+    ),
+    (
+        "nearby: the answer may be cached",
+        AP,
+        'response["Cache-Control"] = "no-store"' + NL + "    try:",
+        "pass" + NL + "    try:",
+        NEAR_T,
+    ),
+    # --- one reading for every worker (the shared copy) --------------------------------
+    (
+        "shared: a worker never uses another's reading",
+        GB,
+        "        if age < 0 or age >= limit:",
+        "        if True:",
+        SHARED_T,
+    ),
+    (
+        "shared: a failure is not shared",
+        GB,
+        "                and 0 <= self._wall() - stored.failed_wall < FAILURE_PAUSE_S",
+        "                and False",
+        SHARED_T,
+    ),
+    (
+        "shared: every worker takes the turn",
+        GB,
+        "            with self._store.refresh_turn() as mine:" + NL + "                if mine:",
+        "            with self._store.refresh_turn() as mine:" + NL + "                if True:",
+        SHARED_T,
+    ),
+    (
+        "shared: a reading is not kept for the others",
+        GB,
+        "                self._store.save(Stored(wall, docs, tuple(sorted(unlisted)), tuple(sorted(failed))))",
+        "                pass",
+        SHARED_T,
+    ),
+    (
+        "shared: a copy older than the grace is used",
+        GB,
+        "        limit = CACHE_TTL_S + STALE_GRACE_S if grace else CACHE_TTL_S",
+        "        limit = 10**9",
+        SHARED_T,
     ),
 ]
 
