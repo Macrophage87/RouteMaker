@@ -322,13 +322,21 @@ class CommandFailed(RuntimeError):
     """
 
     def __init__(
-        self, command: Sequence[str], returncode: int, output: tiles.CommandOutput
+        self,
+        command: Sequence[str],
+        returncode: int,
+        output: tiles.CommandOutput,
+        retries: int = 0,
     ) -> None:
         self.command = list(command)
         self.returncode = returncode
         self.output = output
+        self.retries = retries
+        # Said in the message, which is what the alert and the job row carry: a
+        # failure after a retry is the one that says to build with fewer threads.
+        after = f" (after {retries} {'retry' if retries == 1 else 'retries'})" if retries else ""
         super().__init__(
-            f"{Path(self.command[0]).name} exited {returncode}: "
+            f"{Path(self.command[0]).name} exited {returncode}{after}: "
             f"{shlex.join(self.command)}\n{output.tail(COMMAND_OUTPUT_TAIL_LINES)}"
         )
 
@@ -2857,7 +2865,7 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
 # on the next, from the same inputs, after the other graphs had built.
 #
 # So one abort of that one command is run again, from the start (a build from
-# the initialize stage purges the tile directory it is writing into,
+# the initialize stage purges the tile level directories it is writing into,
 # src/mjolnir/util.cc:252-271), inside whatever remains of the deadline. Any
 # other failure, and a second abort, fails the stage as before.
 TILE_BUILD_ABORT_RETRIES = 1
@@ -2881,8 +2889,14 @@ def _run_tile_command(
         try:
             return run(command)
         except CommandFailed as failure:
-            if not retryable or failure.returncode != -signal.SIGABRT or attempt >= retries:
+            if not retryable or failure.returncode != -signal.SIGABRT:
                 raise
+            if attempt >= retries:
+                if not attempt:
+                    raise
+                raise CommandFailed(
+                    failure.command, failure.returncode, failure.output, retries=attempt
+                ) from failure
             attempt += 1
             logger.warning(
                 "valhalla_build_tiles aborted (SIGABRT); running it again, retry %d of %d: %s",

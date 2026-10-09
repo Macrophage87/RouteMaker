@@ -10,8 +10,11 @@ build threads".
 
 from __future__ import annotations
 
+import functools
+import importlib.util
 import json
 import logging
+import shutil
 import signal
 from pathlib import Path
 
@@ -73,6 +76,20 @@ def test_a_second_abort_fails_as_before() -> None:
         _run_tile_command(run, BUILD_TILES)
     assert caught.value.returncode == -signal.SIGABRT
     assert len(run.calls) == 2, "one retry, not a loop"
+    # The alert and the job row carry the message: it says the retry ran too, which is
+    # what tells an operator to build with one thread.
+    assert "valhalla_build_tiles exited -6 (after 1 retry): " in str(caught.value)
+    assert caught.value.retries == 1
+
+
+def test_a_failure_with_no_retry_says_nothing_of_one() -> None:
+    def refused(command):
+        return CommandFailed(command, 1, tiles.CommandOutput("", "bad input\n"))
+
+    with pytest.raises(CommandFailed) as caught:
+        _run_tile_command(Scripted(failures=1, error=refused), BUILD_TILES)
+    assert "exited 1: " in str(caught.value)
+    assert "retry" not in str(caught.value)
 
 
 def test_an_ordinary_failure_is_not_retried() -> None:
@@ -138,6 +155,28 @@ def test_the_retry_gets_only_what_is_left_of_the_deadline(monkeypatch) -> None:
         _run_tile_command(run, BUILD_TILES)
 
 
+def test_the_retry_keeps_the_deadline_of_the_production_runner(monkeypatch) -> None:
+    """The runner `build_handlers` builds: `functools.partial(_run_command,
+    deadline=context.deadline)`. A retry that took the bare function, or gave itself
+    a budget of its own, would run the build again past the deadline."""
+    now = [0.0]
+    timeouts: list[float | None] = []
+
+    def fake_subprocess_run(command, **kwargs):
+        import subprocess
+
+        timeouts.append(kwargs.get("timeout"))
+        now[0] = 100.0  # the crashed build ran past the deadline at 50
+        raise subprocess.CalledProcessError(-signal.SIGABRT, command, "", "double free\n")
+
+    monkeypatch.setattr(run_module.subprocess, "run", fake_subprocess_run)
+    run = functools.partial(_run_command, deadline=50.0, clock=lambda: now[0])
+
+    with pytest.raises(RebuildTimedOut):
+        _run_tile_command(run, BUILD_TILES)
+    assert timeouts == [50.0], "the first build had the budget; the retry was never started"
+
+
 def test_the_runner_reports_an_abort_as_minus_six(tmp_path) -> None:
     """What the retry keys on, from a real process: subprocess reports a child
     killed by a signal as the negative signal number."""
@@ -158,6 +197,22 @@ def test_the_build_config_carries_the_build_concurrency(tmp_path) -> None:
     assert json.loads(path.read_text())["mjolnir"]["concurrency"] == 2
 
 
+def test_a_build_config_never_writes_to_the_serving_configs(tmp_path) -> None:
+    """The serving configs are checked in, and the routers read them; a build's thread
+    count goes into the build's own copy only. Run on a copy of `valhalla/`, so a
+    regression cannot rewrite the repository's files while the test runs."""
+    config_dir = tmp_path / "valhalla"
+    shutil.copytree(REPO / "valhalla", config_dir)
+    before = {path.name: path.read_bytes() for path in config_dir.iterdir() if path.is_file()}
+    for variant in Variant:
+        tiles.write_build_config(config_dir, tmp_path / "tiles", variant, "b1", concurrency=2)
+    after = {path.name: path.read_bytes() for path in config_dir.iterdir() if path.is_file()}
+    assert after == before
+    for variant in Variant:
+        serving = json.loads(tiles.serving_config_path(config_dir, variant).read_text())
+        assert serving["mjolnir"]["concurrency"] == 4
+
+
 def test_without_one_the_serving_configs_count_is_left_alone(tmp_path) -> None:
     serving = json.loads((REPO / "valhalla" / "valhalla-weekend.json").read_text())
     _, config = tiles.build_config(REPO / "valhalla", tmp_path / "tiles", Variant.WEEKEND, "b1")
@@ -175,11 +230,49 @@ def test_a_build_concurrency_below_one_is_refused(tmp_path, concurrency) -> None
     assert not (tmp_path / "tiles").exists()
 
 
+def load_settings_module(module_name: str):
+    """Execute `config/settings.py` again under another name, as
+    test_settings_security does, so `sys.modules` keeps the real one."""
+    import config.settings as live
+
+    spec = importlib.util.spec_from_file_location(module_name, live.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_the_setting_is_a_whole_number_of_threads() -> None:
     from django.conf import settings
 
     assert isinstance(settings.REBUILD_TILE_CONCURRENCY, int)
     assert settings.REBUILD_TILE_CONCURRENCY >= 1
+
+
+@pytest.mark.parametrize(("value", "threads"), [(None, 2), ("", 2), ("  ", 2), ("3", 3), ("1", 1)])
+def test_the_setting_defaults_to_two_threads(monkeypatch, value, threads) -> None:
+    """Unset, and empty (what compose hands the rebuild service when .env sets
+    nothing), are the documented default: exactly 2."""
+    if value is None:
+        monkeypatch.delenv("REBUILD_TILE_CONCURRENCY", raising=False)
+    else:
+        monkeypatch.setenv("REBUILD_TILE_CONCURRENCY", value)
+    module = load_settings_module("config_settings_tile_concurrency")
+    assert module.REBUILD_TILE_CONCURRENCY == threads
+    assert type(module.REBUILD_TILE_CONCURRENCY) is int
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "x", "2.5", "1e1"])
+def test_the_setting_refuses_anything_but_a_whole_number_of_at_least_one(
+    monkeypatch, value
+) -> None:
+    """Refused when the settings load, so the worker fails at start rather than
+    BUILD_TILES failing hours in and the rebuild retrying it five times."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    monkeypatch.setenv("REBUILD_TILE_CONCURRENCY", value)
+    with pytest.raises(ImproperlyConfigured, match="REBUILD_TILE_CONCURRENCY must be a whole"):
+        load_settings_module("config_settings_bad_tile_concurrency")
 
 
 def test_compose_hands_the_setting_to_the_rebuild_service() -> None:
