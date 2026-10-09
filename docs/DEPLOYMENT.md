@@ -1066,14 +1066,16 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
 dependency is pinned to an exact version in `package.json` too). The publish
 copies the hashed files under `assets/` first and replaces `index.html` last,
 by a rename, so a page loaded mid-deploy gets either the old app or the new
-one and never an `index.html` naming files that are not there yet. Older
+one and never an `index.html` naming files that are not there yet. The page
+on how stress ratings work, `about/stress.html`, is replaced by a rename too,
+so nobody reads it half written. Older
 hashed files are left behind: they are what a tab opened before the deploy
 still asks for, and they cost about 2 MB a release. `cp -n` leaves a hashed
 file that is already there alone rather than rewriting it under a reader
@@ -1105,7 +1107,8 @@ script afterwards repairs the ownership, and step 2 then succeeds.
 
 What the edge does with it (Caddyfile, `@frontend`):
 
-- `/`, `/index.html`, `/favicon.svg` and `/assets/*` are the app. The app's
+- `/`, `/index.html`, `/favicon.svg`, `/licenses.txt`, `/about/stress.html`
+  and `/assets/*` are the app. The app's
   paths are listed rather than the API's, so the Caddyfile never names the
   admin path, and every other path - `/api/*`, `/tiles/*`, `/auth/*`,
   `<DJANGO_ADMIN_PATH>`, `/healthz` - reaches the API exactly as before
@@ -1115,7 +1118,8 @@ What the edge does with it (Caddyfile, `@frontend`):
   work (OWNER-DECISIONS 461; `frontend/public/about/stress.html`, developer
   docs in `docs/stress/`), linked from the legend and the road panel and served
   with the app's headers and `no-cache`; `/about/stress` and `/about/stress/`
-  redirect to it (301). The beta's nginx template serves it the same way.
+  redirect to it (302, as the preset links, so a browser keeps nothing for
+  good). The beta's nginx template serves it the same way.
 - `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
   is seen on the next load; the files under `assets/` are content-hashed and
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
@@ -1344,7 +1348,8 @@ front end" above):
 - `handle_path /basemap/*` → the PMTiles archive, glyphs and sprites, to this
   site's own pages only.
 - `handle @frontend` → the built single-page app at `/`, `/index.html`,
-  `/favicon.svg` and `/assets/*`, from `/srv/frontend`.
+  `/favicon.svg`, `/licenses.txt`, `/about/stress.html` and `/assets/*`, from
+  `/srv/frontend` (`/about/stress` and `/about/stress/` redirect to the page).
 - everything else → `reverse_proxy api:8000`, the port
   `docker/api-entrypoint.sh` binds gunicorn to.
 

@@ -214,8 +214,10 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
-    location ~ ^/about/stress/?$ {
-        return 301 /about/stress.html;
+    # The short paths, as the Caddyfile's @stress-page: 302 (a browser keeps a
+    # permanent redirect for good), and ~* because Caddy's `path` matcher ignores case.
+    location ~* ^/about/stress/?$ {
+        return 302 /about/stress.html;
     }
 
     location = /favicon.svg {

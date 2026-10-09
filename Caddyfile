@@ -168,9 +168,12 @@
 	# which the build writes and the map's credits link to. /about/stress.html is
 	# the rider-facing page on how traffic-stress ratings work (OWNER-DECISIONS
 	# 461; frontend/public/about/stress.html), which the legend and the road panel
-	# link to; /about/stress and /about/stress/ redirect to it.
+	# link to; /about/stress and /about/stress/ redirect to it. 302, not 301, for
+	# the preset links' reason above: a browser keeps a permanent redirect with no
+	# way for us to take it back, so a rollback or a later move of the page would
+	# leave it pointing at the API's 404.
 	@stress-page path /about/stress /about/stress/
-	redir @stress-page /about/stress.html 301
+	redir @stress-page /about/stress.html 302
 	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /assets/*
 	handle @frontend {
 		encode zstd gzip

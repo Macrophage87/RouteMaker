@@ -141,6 +141,21 @@ def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
     assert "no-cache" in headers.get("Cache-Control", ""), headers
 
 
+class _Unfollowed(urllib.request.HTTPRedirectHandler):
+    """A redirect handed back as it came, so its status and Location are what is checked."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def unfollowed(base: str, path: str) -> tuple[int, dict[str, str]]:
+    try:
+        with urllib.request.build_opener(_Unfollowed).open(base + path, timeout=5) as response:
+            return response.status, dict(response.headers)
+    except urllib.error.HTTPError as answered:
+        return answered.code, dict(answered.headers)
+
+
 def test_the_stress_page_is_served_with_the_apps_policy_and_its_short_paths_redirect(edge) -> None:
     """OWNER-DECISIONS 461: the rider-facing page on how ratings work, linked from
     the legend and the road panel, is a file of the app's, not the API's."""
@@ -149,10 +164,18 @@ def test_the_stress_page_is_served_with_the_apps_policy_and_its_short_paths_redi
     assert headers.get("Content-Type", "").startswith("text/html"), headers
     assert "no-cache" in headers.get("Cache-Control", ""), headers
     assert "default-src 'self'" in headers.get("Content-Security-Policy", ""), headers
-    for short in ("/about/stress", "/about/stress/"):
-        # urllib follows the redirect: the short path ends at the page, not at the API (502).
+    # A 302, as the preset links (a browser keeps a 301 for good), to exactly the page;
+    # Caddy's `path` matcher ignores case, and so does the beta's nginx (`~*`).
+    for short in ("/about/stress", "/about/stress/", "/About/Stress"):
+        status, headers = unfollowed(edge, short)
+        assert (status, headers.get("Location")) == (302, "/about/stress.html"), (short, headers)
+        # Followed, it ends at the page, not at the API (502).
         status, _, body = get(edge, short)
         assert (status, body) == (200, STRESS_PAGE), short
+    # Its neighbours are not the page's: they still reach the API.
+    for near in ("/about", "/about/", "/about/stressx", "/about/stress.html/"):
+        status, _, _ = get(edge, near)
+        assert status == 502, (near, status)
 
 
 def test_the_app_carries_its_content_security_policy(edge) -> None:
