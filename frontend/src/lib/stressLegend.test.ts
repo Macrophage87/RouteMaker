@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
-import { planToOpen, rememberPlanForPage } from "./signIn.ts";
+import { PLAN_KEY, forgetPlan, isPlainClick, planToOpen, rememberPlan, rememberPlanForPage } from "./signIn.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
@@ -381,7 +381,7 @@ test("the legend links to the page on how ratings work, in the same tab, its nam
 test("following the stress page link keeps the plan for the page's Back to the map (the accessibility review's SF1)", () => {
   const source = readFileSync(new URL("./stressLegend.ts", import.meta.url), "utf8");
   const body = source.slice(source.indexOf("export function StressPageLink"), source.indexOf("/** The unpaved mark's line"));
-  assert.match(body, /h\("a", \{ href: STRESS_PAGE, onClick: \(\) => rememberPlanForPage\(tabSession\(\), window\.location\.hash\) \}, STRESS_PAGE_TEXT\)/);
+  assert.match(body, /h\("a", \{ href: STRESS_PAGE, onClick: \(e\) => isPlainClick\(e\) && rememberPlanForPage\(tabSession\(\), window\.location\.hash\) \}, STRESS_PAGE_TEXT\)/);
   // The page's own links go to a bare "/": the plan comes back from this tab's storage, once.
   const store = new Map<string, string>();
   const storage = {
@@ -395,12 +395,33 @@ test("following the stress page link keeps the plan for the page's Back to the m
   assert.equal(planToOpen(storage, ""), "", "read once");
   rememberPlanForPage(storage, "");
   assert.equal(planToOpen(storage, ""), "", "an empty planner keeps nothing");
+  // A plan cleared after one was kept drops the kept one (the correctness re-check's C8).
+  rememberPlanForPage(storage, plan);
+  rememberPlanForPage(storage, "#v=1");
+  assert.equal(store.has(PLAN_KEY), false, "a plan with no points removes the kept plan");
+  rememberPlan(storage, plan);
+  forgetPlan(storage);
+  assert.equal(store.has(PLAN_KEY), false, "forgetPlan (a bfcache restore) removes it");
+  forgetPlan(null);
+  forgetPlan({ getItem: () => null, setItem: () => {}, removeItem: () => { throw new Error("refused"); } });
   const page = readFileSync(new URL("../../public/about/stress.html", import.meta.url), "utf8");
   assert.deepEqual(
     [...page.matchAll(/<a [^>]*>Back to the map<\/a>/g)].map((m) => m[0]),
     ['<a class="back" href="/">Back to the map</a>', '<a href="/">Back to the map</a>'],
     "both go to a bare /, where planToOpen reads the kept plan",
   );
+});
+
+test("a modified or non-primary click keeps no plan (the accessibility re-check's note)", () => {
+  const plain = { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
+  assert.equal(isPlainClick(plain), true);
+  for (const change of [{ button: 1 }, { button: 2 }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+    assert.equal(isPlainClick({ ...plain, ...change }), false, JSON.stringify(change));
+  }
+  const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(source, /window\.addEventListener\("pageshow", onShow\)/);
+  assert.match(source, /if \(e\.persisted\) forgetPlan\(tabSession\(\)\);/);
+  assert.doesNotMatch(source, /function session\(\)/, "one session helper, tabSession");
 });
 
 test("the road panel shows the same link at the end of Details and sources (correctness C4, mutation T1)", () => {

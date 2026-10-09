@@ -79,7 +79,8 @@ volume (Virginia Roads); Montgomery County Planning Department (Bicycle Level of
 Traffic Stress, its LTS 5 used as Avoid); Open Baltimore (City of Baltimore, bike
 facilities); and the U.S. Census Bureau (TIGER/Line 2024 Urban Areas, for default
 speeds). The Mass Ride map's riders a minute are the RouteMaker Mass Ride model, from
-OpenStreetMap, DC Roadway Block and DC Bike Party counts. docs/SOURCES.md holds each source's full record and credit line.
+OpenStreetMap, DC Roadway Block and DC Bike Party counts. docs/SOURCES.md holds each
+source's full record and credit line.
 The method follows Furth's published tables, written from the tables and not copied
 from another classifier (`stress.py:1-13`). The junction costs come from the
 literature review's derived values (Broach, Dill & Gliebe's Portland route-choice

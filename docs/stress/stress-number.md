@@ -83,7 +83,11 @@ Notes:
   time with no roadway term (`lua/routemaker_remap.lua:1089-1094`), a factor of about
   1.19 at Default, against about 2.2 for a quiet street (`QUIET_COST_FACTOR`). So a path
   meter counts about 0.55 quiet meters, on every graph except no-trail (Mass Ride), which
-  has no facility classes. The 1 in the table is a quiet street, not every calm way.
+  has no facility classes. A street with a protected lane is priced `(0.15 + 0.6u)` times
+  its stress, about 1.25 at Default, so it counts for about 0.57, the same as a path
+  (`lua/routemaker_remap.lua:1086-1089`). The 1 in the table is a quiet street: a quiet
+  street counts as 1, and paths and protected bike lanes count for less (except on Mass
+  Ride). It is not every calm way.
 - The Fast and Group columns are interpolated between the modeled positions
   ([routing-costs.md](routing-costs.md), section 1).
 - Junction costs are separate. They are added at their point (section 4) and weighted by

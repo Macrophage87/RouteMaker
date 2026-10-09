@@ -1841,6 +1841,17 @@ async function saidInDialog(p, text) {
   const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
   check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
     /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
+  // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
+  // cleared afterwards does not come back on reload (the correctness re-check's C8).
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("history.back(); true");
+  const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
+  await p.eval("history.replaceState(null, '', '/'); location.reload(); true");
+  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-canvas')", 40000);
+  const cleared = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
+  check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
+    onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
   await p.close();
 }
 {
@@ -1876,7 +1887,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 325;
+const EXPECTED = 326;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

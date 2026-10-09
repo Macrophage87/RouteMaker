@@ -30,7 +30,7 @@ import {
 } from "../stressStyle.js";
 import { useHighStressLanes, useStressStyle } from "../useStressStyle.ts";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
-import { rememberPlanForPage, tabSession } from "./signIn.ts";
+import { isPlainClick, rememberPlanForPage, tabSession } from "./signIn.ts";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
@@ -194,7 +194,7 @@ export function StressPageLink({ className }: { className?: string }): ReactElem
   return h(
     "p",
     { className: `hint stress-page-link${className ? ` ${className}` : ""}` },
-    h("a", { href: STRESS_PAGE, onClick: () => rememberPlanForPage(tabSession(), window.location.hash) }, STRESS_PAGE_TEXT),
+    h("a", { href: STRESS_PAGE, onClick: (e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash) }, STRESS_PAGE_TEXT),
   );
 }
 
