@@ -324,7 +324,21 @@ REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024*
 # corruption" (valhalla/valhalla#5005, fixed in 3.6.0); fewer threads is fewer
 # chances of it and less memory, at the cost of a slower build. 1 avoids the race
 # entirely. See docs/OPERATIONS.md, "Tile build threads".
-REBUILD_TILE_CONCURRENCY = int(os.environ.get("REBUILD_TILE_CONCURRENCY") or 2)
+# Empty or unset is the default, 2: compose hands the rebuild service an empty value
+# when .env does not set one. Anything else must be a whole number of at least 1,
+# refused here so that the worker fails at start, not hours into a rebuild that
+# then retries the same refusal (0 is not "auto", as a missing key is to Valhalla).
+_tile_concurrency = os.environ.get("REBUILD_TILE_CONCURRENCY", "").strip() or "2"
+if (
+    not (_tile_concurrency.isascii() and _tile_concurrency.isdecimal())
+    or int(_tile_concurrency) < 1
+):
+    raise ImproperlyConfigured(
+        "REBUILD_TILE_CONCURRENCY must be a whole number of at least 1 (the threads "
+        f"valhalla_build_tiles builds with), not {_tile_concurrency!r}"
+    )
+REBUILD_TILE_CONCURRENCY = int(_tile_concurrency)
+del _tile_concurrency
 
 # OWNER-DECISIONS 355: "Pause until our rebuild". With this set to 1 or true the
 # scheduled Tuesday rebuild logs that it is paused and does nothing; a rebuild fired
