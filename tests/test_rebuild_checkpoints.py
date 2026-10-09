@@ -840,6 +840,50 @@ def test_the_rebuild_deletes_nothing_it_may_not_when_a_checkpoint_names_a_promot
         assert (env.build_dir(variant) / "tiles.tar").is_file(), "the promoted graph is intact"
 
 
+@pytest.mark.parametrize("how", ["same-size", "longer", "missing"])
+def test_a_variant_extract_that_is_not_the_one_recorded_means_a_fresh_start(
+    env, how, reset_calls
+) -> None:
+    """T1/T6: the five variant extracts are what the graphs are built from; the
+    checkpoint is used only if each still has its recorded size and SHA-256 (a flipped
+    byte keeps the size)."""
+    invalidated(env, reset_calls)
+    path = env.work / "ebike.osm.pbf"
+    if how == "missing":
+        path.unlink()
+    else:
+        data = bytearray(path.read_bytes())
+        if how == "same-size":
+            data[-1] ^= 0xFF
+        else:
+            data += b"x"
+        path.write_bytes(bytes(data))
+    second = attempt(env, skip=ONLY_FETCH, build_id="20261002T000000Z")
+    assert second.error is None
+    assert not second.context.resumed
+    assert "ebike" in second.context.resume_note
+
+
+def test_the_classification_check_itself_refuses_another_jobs_manifest(tmp_path) -> None:
+    """Defence in depth under `find_resumable`: whatever hands it a manifest, a job id
+    that is not this attempt's is the first thing refused (before any hashing)."""
+
+    def must_not_measure():
+        raise AssertionError("measured before the cheap checks")
+
+    manifest = {"format": 1, "job_id": 1, "build_id": FIRST}
+    for job in (2, None):
+        problem, _ = checkpoint.classification_problem(
+            manifest,
+            job_id=job,
+            tiles_dir=tmp_path,
+            measure_fingerprint=must_not_measure,
+            variant_pbfs={},
+            hasher=checkpoint.Hasher(),
+        )
+        assert problem and "job" in problem
+
+
 # --- T6: staging -------------------------------------------------------------------------
 
 
