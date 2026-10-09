@@ -21,6 +21,37 @@ Early. Phase 1 of 6; no application yet. What exists:
 - `fixtures/reference-routes/` — fifteen real routes with their measured
   properties, supplied by the project owner and used as ground truth
 
+## Running it on this computer
+
+With Docker running (Docker Desktop, or Docker Engine with the compose plugin),
+from the checkout:
+
+```sh
+scripts/local-up.sh
+```
+
+That is the whole of it, the first time and every time after; the site is at
+<http://localhost>. The first run writes a local `.env` with fresh secrets (an
+existing one is never touched), prepares the data directory (`~/rmdata`, or
+`--data-root DIR`), fetches the base map, builds the front end and the images,
+and starts the stack. Later runs skip whatever is already done. `--help` lists
+the options; `--dry-run` shows what a run would do.
+
+Routing needs data that the first rebuild makes (hours, and three reference
+files you supply): until then the map loads but routes do not. The script says
+so and prints the next step, `docs/PLAYBOOK.md` section 7. Once a build is
+promoted, the same command starts the routers too, through
+`scripts/boot/start-stack.sh`, which also checks that place search answers, so
+import a Photon index first (`docs/DEPLOYMENT.md`, "Photon"). After pulling new
+code, run `scripts/local-up.sh -- --force-recreate-all` to put the new images
+into service (it stops a rebuild that is running).
+
+It needs the internet on a first run: Docker Hub, ghcr.io, pypi.org,
+deb.debian.org, registry.npmjs.org and build.protomaps.com, plus
+download.geofabrik.de for the rebuild. Claude's cloud sessions block several of
+these, so this runs on a real computer, not in one of them. On Windows, run it
+inside WSL2 (`handoff-local.md` section 3).
+
 ## Development
 
 The suite needs PostgreSQL 16 with PostGIS, LuaJIT and a Python 3.11 venv

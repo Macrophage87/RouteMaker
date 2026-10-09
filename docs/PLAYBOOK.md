@@ -50,6 +50,10 @@ What changes locally:
 - **What it cannot tell you.** Whether the certificate is issued, the name resolves, the firewall
   is right, or the sizing holds under real traffic. Everything else in A1 to A6 is the same path.
 
+To have the stack running locally without the checklist, `scripts/local-up.sh` does §3 to §5 in
+one command, in the local posture, and starts it again on every later run (README, "Running it on
+this computer").
+
 On Windows, work inside WSL2 — `handoff-local.md` §3 has the setup and the three reasons.
 Skip §1's provisioning and §2's `https` redirect; do everything else as written, with `DATA_ROOT`
 pointing at a directory on a disk with room.
