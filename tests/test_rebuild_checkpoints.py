@@ -1,10 +1,11 @@
 """Rebuild checkpoints (owner decision 459): what a failed attempt keeps, and when the
 job's next attempt may use it.
 
-Design: demo/reports/REBUILD-CHECKPOINTS-design.md. The tests run the real handler set,
-stage by stage, with only the binaries stood in for (as test_pipeline_end_to_end does),
-so a "failed attempt" is a real one that left real files and a real staging schema, and
-a "resumed attempt" is the production code finding them.
+Design: rmdata/demo/reports/REBUILD-CHECKPOINTS-design.md (the owner's report folder).
+The tests run the real handler set, stage by stage, with only the binaries stood in
+for (as test_pipeline_end_to_end does), so a "failed attempt" is a real one that left
+real files and a real staging schema, and a "resumed attempt" is the production code
+finding them.
 
 Each test names the item of the design's test plan it covers (T1 .. T10, T13).
 """
@@ -229,10 +230,12 @@ def test_a_failed_tile_stage_leaves_a_classification_and_a_manifest_for_each_fin
     assert staging_comment() == f"routemaker-checkpoint:{staging['token']}", "tied to the database"
     assert manifest["closure_probes"] == [], "the list is computed early and kept (none here)"
 
+    assert manifest["hash_seconds"] >= 0
     for variant in ORDER[:-1]:
         directory = env.build_dir(variant)
         graph = json.loads((directory / checkpoint.GRAPH_MANIFEST).read_text())
         assert graph["variant"] == variant and graph["build_id"] == FIRST and graph["job_id"] == JOB
+        assert graph["hash_seconds"] >= 0
         assert (directory / checkpoint.BUILD_LOG).read_text() == outcome.context.build_logs[
             Variant(variant)
         ]
@@ -399,20 +402,24 @@ def test_a_crash_between_the_outputs_and_the_manifest_leaves_a_partial_graph(
     env, monkeypatch
 ) -> None:
     """T2: all of the weekend graph's outputs are on disk and the process dies before
-    the manifest rename: nothing is reused for it."""
+    the manifest rename: nothing is reused for it. (A death, not an error: an error
+    while writing a manifest is bookkeeping, and the attempt carries on without it.)"""
     real = checkpoint.atomic_write_json
     state = {"armed": True}
+
+    class Killed(BaseException):
+        """What SIGKILL looks like from inside: nothing after it runs."""
 
     def dies_for_weekend(path, payload):
         if Path(path).name == checkpoint.GRAPH_MANIFEST and "weekend" in str(path):
             if state["armed"]:
                 state["armed"] = False
-                raise OSError("killed before the rename")
+                raise Killed("killed before the rename")
         return real(path, payload)
 
     monkeypatch.setattr(checkpoint, "atomic_write_json", dies_for_weekend)
-    first = attempt(env)
-    assert first.error is not None and first.error.stage is Stage.BUILD_TILES
+    with pytest.raises(Killed):
+        attempt(env)
     weekend = env.build_dir("weekend")
     assert (weekend / "tiles.tar").is_file() and not (weekend / checkpoint.GRAPH_MANIFEST).exists()
     second = attempt(env, build_id=None)
@@ -1239,16 +1246,22 @@ def test_the_rebuild_budget_is_a_setting_that_defaults_to_eight_hours(
 
 
 @pytest.mark.parametrize("value", ["0", "59", "82801", "-1", "x", "8h", "2.5", "1e4"])
-def test_the_rebuild_budget_is_refused_outside_one_minute_to_twenty_three_hours(
+def test_a_rebuild_budget_outside_one_minute_to_twenty_three_hours_is_the_default_and_flagged(
     monkeypatch, value
 ) -> None:
-    """Refused when the settings load: 23 hours is the backup-window rule (a scheduled
-    08:00 UTC rebuild must end before the 07:00 UTC backup)."""
-    from django.core.exceptions import ImproperlyConfigured
-
+    """23 hours is the backup-window rule (a scheduled 08:00 UTC rebuild must end before
+    the 07:00 UTC backup). Review r2: the settings no longer refuse to load, which took
+    the api, the worker and migrate down with a typo in a rebuild knob; every service
+    gets the default and the value is kept for the rebuild to refuse."""
     monkeypatch.setenv("REBUILD_TIMEOUT_S", value)
-    with pytest.raises(ImproperlyConfigured, match="REBUILD_TIMEOUT_S must be"):
-        load_settings_module("config_settings_timeout_bad")
+    module = load_settings_module("config_settings_timeout_bad")
+    assert module.REBUILD_TIMEOUT_S == module.REBUILD_TIMEOUT_DEFAULT_S
+    assert module.REBUILD_TIMEOUT_INVALID == value
+
+
+def test_a_valid_rebuild_budget_is_not_flagged(monkeypatch) -> None:
+    monkeypatch.setenv("REBUILD_TIMEOUT_S", "36000")
+    assert load_settings_module("config_settings_timeout_flag").REBUILD_TIMEOUT_INVALID is None
 
 
 @pytest.mark.parametrize(
@@ -1263,12 +1276,22 @@ def test_checkpoints_are_on_unless_switched_off(monkeypatch, value, expected) ->
     assert load_settings_module("config_settings_ckpt_ok").REBUILD_CHECKPOINTS is expected
 
 
-def test_a_checkpoint_switch_that_is_not_a_switch_is_refused(monkeypatch) -> None:
+@pytest.mark.parametrize("value", ["maybe", "2", "-1", "enabled", "on off", "0n"])
+def test_a_checkpoint_switch_that_is_not_a_switch_is_refused(monkeypatch, value) -> None:
+    """Strict, and only on the rebuild service (compose passes it nowhere else): a typo
+    does not silently decide whether a failed attempt's work is kept."""
     from django.core.exceptions import ImproperlyConfigured
 
-    monkeypatch.setenv("REBUILD_CHECKPOINTS", "maybe")
+    monkeypatch.setenv("REBUILD_CHECKPOINTS", value)
     with pytest.raises(ImproperlyConfigured, match="REBUILD_CHECKPOINTS must be"):
         load_settings_module("config_settings_ckpt_bad")
+
+
+@pytest.mark.parametrize("value", ["YES", " On ", "False", "NO"])
+def test_the_checkpoint_switch_ignores_case_and_spaces(monkeypatch, value) -> None:
+    monkeypatch.setenv("REBUILD_CHECKPOINTS", value)
+    expected = value.strip().lower() in {"yes", "on"}
+    assert load_settings_module("config_settings_ckpt_case").REBUILD_CHECKPOINTS is expected
 
 
 def test_the_task_reads_its_budget_from_the_setting() -> None:
@@ -1365,3 +1388,298 @@ def test_a_toy_extract_builder_still_produces_distinct_bytes(tmp_path) -> None:
     build_toy_extract(two, changed=True)
     assert checkpoint.sha256_file(one) != checkpoint.sha256_file(two)
     assert fake_fetch is not None and os is not None
+
+
+# --- Review r2: the settings as production defines them --------------------------------------
+
+
+def production_settings() -> dict:
+    """Every classification and validation setting with the value production gives it,
+    read from a fresh execution of `config.settings`: not `django.conf.settings`, which
+    the autouse fixture in tests/conftest.py blanks for every test (and which is how the
+    tuple key of `REBUILD_SENTINEL_MILITARY_MIN_CLOSED` reached production unencoded)."""
+    module = load_settings_module("config_settings_production_values")
+    names = (
+        checkpoint.SETTINGS_OF_KIND[checkpoint.CLASSIFICATION]
+        + checkpoint.SETTINGS_OF_KIND[checkpoint.VALIDATION]
+    )
+    return {name: getattr(module, name) for name in names}
+
+
+def test_every_classification_and_validation_setting_digests_with_its_production_value() -> None:
+    """Review r2, the blocker: every rebuild with checkpoints on failed at FETCH_EXTRACT,
+    because `json.dumps` cannot encode a dict with a tuple key."""
+    values = production_settings()
+    military = values["REBUILD_SENTINEL_MILITARY_MIN_CLOSED"]
+    assert any(not isinstance(key, str) for key in military), (
+        "the shape that broke the digest is still in production, so this test still covers it"
+    )
+    assert military != settings.REBUILD_SENTINEL_MILITARY_MIN_CLOSED, (
+        "read past the autouse fixture, not through it"
+    )
+    for name, value in values.items():
+        one = checkpoint.settings_digest({name: value})
+        assert one == checkpoint.settings_digest({name: value}), name
+    for kind in (checkpoint.CLASSIFICATION, checkpoint.VALIDATION):
+        subset = {name: values[name] for name in checkpoint.SETTINGS_OF_KIND[kind]}
+        backwards = dict(reversed(list(subset.items())))
+        assert checkpoint.settings_digest(subset) == checkpoint.settings_digest(backwards)
+
+
+def test_the_start_fingerprint_is_measured_with_every_production_setting_in_place(
+    env, monkeypatch
+) -> None:
+    """The same blocker through the production path: FETCH_EXTRACT measures the start
+    fingerprint with the real values (the military floors' tuple key among them), and
+    neither fails the stage nor turns the checkpoints off."""
+    for name, value in production_settings().items():
+        if name not in CONTEXT_VALUED:
+            monkeypatch.setattr(settings, name, value)
+    outcome = attempt(env, skip=ONLY_FETCH)
+    assert outcome.error is None, outcome.error
+    assert outcome.context.checkpoints, "the measurement did not fall back to no checkpoints"
+    assert outcome.context.start_fingerprint["inputs"]["settings"]
+
+
+def test_canonical_text_handles_any_mapping_key_and_tags_its_type() -> None:
+    military = {"Fort Myer": 3, ("Bolling Air Force Base", "Joint Base Anacostia Bolling"): 2}
+    text = checkpoint.canonical({"floors": military})
+    reordered = dict(reversed(list(military.items())))
+    assert checkpoint.canonical({"floors": reordered}) == text, "order-free"
+    assert checkpoint.canonical({1: "a"}) != checkpoint.canonical({"1": "a"}), "1 is not '1'"
+    assert checkpoint.canonical({("a", "b"): 1}) != checkpoint.canonical({"('a', 'b')": 1})
+    assert checkpoint.canonical({"a": {2: {"x", "y"}}}) == checkpoint.canonical(
+        {"a": {2: {"y", "x"}}}
+    ), "nested, and a set inside a mapping inside a mapping"
+    assert checkpoint.canonical({"p": Path("/data/x")}) == checkpoint.canonical({"p": "/data/x"})
+    assert checkpoint.canonical([1, (2, 3)]) == checkpoint.canonical([1, [2, 3]])
+    assert checkpoint.canonical({frozenset({1, 2}): 0}) == checkpoint.canonical(
+        {frozenset({2, 1}): 0}
+    )
+
+
+# --- Review r2: checkpoints are best effort --------------------------------------------------
+
+
+def test_a_classification_checkpoint_that_cannot_be_written_does_not_fail_the_rebuild(
+    env, monkeypatch
+) -> None:
+    """A database hiccup while stamping the token: logged, checkpoints off for the rest of
+    the attempt, and the rebuild goes on to build and validate every graph."""
+
+    def hiccup(*args, **kwargs):
+        raise RuntimeError("server closed the connection unexpectedly")
+
+    monkeypatch.setattr(checkpoint, "stamp_staging", hiccup)
+    outcome = attempt(env)
+    assert outcome.error is None, outcome.error
+    assert Stage.VALIDATE_TILES in outcome.report.completed
+    assert not outcome.context.checkpoints
+    assert checkpoint.read_classification(env.work) is None
+    assert outcome.context.checkpoints_written == 0
+    assert not any((env.build_dir(v) / checkpoint.GRAPH_MANIFEST).exists() for v in ORDER)
+    assert all((env.build_dir(v) / checkpoint.BUILD_LOG).is_file() for v in ORDER)
+
+
+def test_a_graph_manifest_that_cannot_be_written_does_not_fail_the_rebuild(
+    env, monkeypatch
+) -> None:
+    def full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(checkpoint, "write_graph_manifest", full)
+    outcome = attempt(env)
+    assert outcome.error is None, outcome.error
+    assert checkpoint.read_classification(env.work) is not None, "written before the tiles"
+    assert outcome.context.checkpoints_written == 1
+    assert not outcome.context.checkpoints
+
+
+def test_inputs_that_cannot_be_measured_at_the_start_do_not_fail_the_rebuild(
+    env, monkeypatch
+) -> None:
+    def hiccup():
+        raise RuntimeError("could not read the jurisdiction table")
+
+    monkeypatch.setattr(checkpoint, "jurisdiction_digest", hiccup)
+    outcome = attempt(env)
+    assert outcome.error is None, outcome.error
+    assert outcome.context.start_fingerprint is None and not outcome.context.checkpoints
+    assert checkpoint.read_classification(env.work) is None
+
+
+def test_a_dangling_link_in_the_reference_data_is_part_of_its_digest(tmp_path) -> None:
+    (tmp_path / "a.csv").write_text("x")
+    clean = checkpoint.reference_digest(tmp_path, None)
+    (tmp_path / "stale.csv").symlink_to(tmp_path / "gone.csv")
+    dangling = checkpoint.reference_digest(tmp_path, None)
+    assert dangling != clean
+
+
+def test_a_resume_that_cannot_be_checked_starts_fresh_and_deletes_the_abandoned_build(
+    env, monkeypatch, reset_calls
+) -> None:
+    first_attempt_fails_at(env, "offroad")
+    assert env.build_dir("standard").is_dir()
+
+    def hiccup():
+        raise RuntimeError("could not read the jurisdiction table")
+
+    monkeypatch.setattr(checkpoint, "jurisdiction_digest", hiccup)
+    second = attempt(env, build_id=None)
+    assert second.error is None, second.error
+    assert not second.context.resumed and second.context.resume_refused
+    assert "could not be checked" in second.context.resume_note
+    assert built(second.binaries) == ORDER
+    assert second.context.build_id != FIRST
+    assert not any(env.build_dir(v).exists() for v in ORDER), (
+        "the refused checkpoint's graphs were deleted before the fresh gate"
+    )
+    assert len(reset_calls) == 2
+
+
+def test_a_graph_that_cannot_be_checked_is_built_again(env, monkeypatch) -> None:
+    first_attempt_fails_at(env, "offroad")
+    real = checkpoint.graph_problem
+
+    def flaky(build_dir, **kwargs):
+        if kwargs["variant"] is Variant.STANDARD:
+            raise OSError(5, "Input/output error")
+        return real(build_dir, **kwargs)
+
+    monkeypatch.setattr(checkpoint, "graph_problem", flaky)
+    second = attempt(env, build_id=None)
+    assert second.error is None, second.error
+    assert second.context.resumed
+    assert built(second.binaries) == ["standard", "offroad"]
+
+
+def test_the_guarded_delete_is_checked_against_the_adopted_manifests_build(
+    env, monkeypatch
+) -> None:
+    """Nit 5 of review r2: `this_build` comes from the manifest the attempt adopted, a
+    second source beside the context's own build id."""
+    first_attempt_fails_at(env, "offroad")
+    (env.build_dir("weekend") / checkpoint.GRAPH_MANIFEST).unlink()
+    calls = []
+    real = checkpoint.remove_partial_graph
+
+    def spy(tiles_dir, variant, build_id, *, this_build):
+        calls.append((variant.value, build_id, this_build))
+        return real(tiles_dir, variant, build_id, this_build=this_build)
+
+    monkeypatch.setattr(checkpoint, "remove_partial_graph", spy)
+    second = attempt(env, build_id=None)
+    assert second.error is None
+    assert second.context.resumed_build_id == FIRST
+    assert calls == [("weekend", FIRST, FIRST), ("offroad", FIRST, FIRST)]
+
+
+# --- Review r2: the resume's disk gate, and the hashing ---------------------------------------
+
+
+def test_a_resume_sizes_its_disk_gate_for_the_graphs_still_to_build(env, monkeypatch) -> None:
+    first_attempt_fails_at(env, "weekend")
+    asked = []
+    real = tiles.check_resume_disk_gate
+
+    def spy(tiles_dir, to_build, *args, **kwargs):
+        asked.append([variant.value for variant in to_build])
+        return real(tiles_dir, to_build, *args, **kwargs)
+
+    monkeypatch.setattr(tiles, "check_resume_disk_gate", spy)
+    second = attempt(env, build_id=None)
+    assert second.error is None and second.context.resumed
+    assert asked == [["weekend", "offroad"]]
+
+
+def test_the_resume_gate_counts_only_what_is_left_to_build(tmp_path) -> None:
+    from collections import namedtuple
+
+    Usage = namedtuple("Usage", "total used free")
+    tiles_dir = tmp_path / "tiles"
+    for variant in Variant:
+        directory = tiles_dir / variant.value / FIRST
+        directory.mkdir(parents=True)
+        (directory / "tiles.tar").write_bytes(b"x" * 1000)
+        (tiles_dir / variant.value / "current").symlink_to(FIRST)
+    disk = lambda path: Usage(total=100_000, used=50_000, free=50_000)  # noqa: E731
+    gate = tiles.check_resume_disk_gate(tiles_dir, [Variant.OFFROAD], 500, 10**9, 0.8, disk)
+    assert gate.required == 1000 + 500, "one served graph and the source once"
+    whole = tiles.check_resume_disk_gate(tiles_dir, list(Variant), 500, 10**9, 0.8, disk)
+    assert whole.required == 1000 * len(Variant) + 500
+    tight = lambda path: Usage(total=100_000, used=78_000, free=22_000)  # noqa: E731
+    assert tiles.check_resume_disk_gate(tiles_dir, [Variant.OFFROAD], 500, 10**9, 0.8, tight)
+    with pytest.raises(tiles.DiskGateRefused, match="still has to build standard"):
+        tiles.check_resume_disk_gate(tiles_dir, list(Variant), 500, 10**9, 0.8, tight)
+
+
+def test_the_manifests_record_the_time_spent_hashing(env) -> None:
+    outcome = first_attempt_fails_at(env, "offroad")
+    assert checkpoint.read_classification(env.work)["hash_seconds"] >= 0
+    graph = json.loads((env.build_dir("standard") / checkpoint.GRAPH_MANIFEST).read_text())
+    assert graph["hash_seconds"] >= 0
+    assert outcome.context.hasher.seconds > 0
+
+
+def test_the_installed_packages_are_an_input(env, monkeypatch, reset_calls) -> None:
+    """Nit 6 of review r2: an image rebuilt with only a dependency changed."""
+    first_attempt_fails_at(env, "offroad")
+    monkeypatch.setattr(checkpoint, "packages_digest", lambda: "another venv")
+    second = attempt(env, build_id=None)
+    assert not second.context.resumed
+    assert "packages" in second.context.resume_note
+    assert len(reset_calls) == 2
+
+
+def test_the_package_digest_is_stable() -> None:
+    digest = checkpoint.packages_digest()
+    assert digest == checkpoint.packages_digest() and len(digest) == 64
+
+
+def test_the_classification_is_released_only_when_asked(env) -> None:
+    kept = attempt(env)
+    assert kept.context.ways, "a test (and the default) keeps the whole context"
+    released = attempt(
+        env, job_id=JOB + 1, build_id="20261002T000000Z", release_after_classification=True
+    )
+    assert released.error is None, released.error
+    context = released.context
+    assert not context.ways and not context.stress_by_way and context.reference is None
+    assert Stage.VALIDATE_TILES in released.report.completed, "nothing after needed them"
+
+
+# --- Review r2: the timeout retry's bound ----------------------------------------------------
+
+
+def test_the_timeout_retry_count_is_per_job_and_a_broken_record_is_the_cap(tmp_path) -> None:
+    assert checkpoint.timeout_retries(tmp_path, 7) == 0
+    assert checkpoint.record_timeout_retry(tmp_path, 7) == 1
+    assert checkpoint.record_timeout_retry(tmp_path, 7) == 2
+    assert checkpoint.timeout_retries(tmp_path, 7) == 2
+    assert checkpoint.timeout_retries(tmp_path, 8) == 0, "another job starts from none"
+    (checkpoint.checkpoint_dir(tmp_path) / checkpoint.TIMEOUT_RETRIES_NAME).write_text("{")
+    assert checkpoint.timeout_retries(tmp_path, 7) == checkpoint.MAX_TIMEOUT_RETRIES
+
+
+def test_a_commands_own_time_limit_is_not_the_budget_running_out() -> None:
+    """Nit 4 of review r2: the closure gate's two-minute read is marked as its own."""
+    import subprocess
+    import time
+    import types
+
+    from config.procrastinate import is_budget_timeout, timed_out_with_progress
+
+    progressed = types.SimpleNamespace(checkpoints_written=3, resume_refused=False)
+    with pytest.raises(subprocess.TimeoutExpired) as own:
+        run_module._run_command(["sleep", "5"], deadline=time.monotonic() + 3600, timeout=0.1)
+    assert own.value.budget_exhausted is False
+    assert not is_budget_timeout(own.value) and not timed_out_with_progress(own.value, progressed)
+    with pytest.raises(subprocess.TimeoutExpired) as budget:
+        run_module._run_command(["sleep", "5"], deadline=time.monotonic() + 0.1, timeout=120)
+    assert budget.value.budget_exhausted is True
+    assert timed_out_with_progress(budget.value, progressed)
+    refused = types.SimpleNamespace(checkpoints_written=3, resume_refused=True)
+    assert not timed_out_with_progress(budget.value, refused), (
+        "an attempt whose resume was refused started fresh: what it wrote is not progress"
+    )

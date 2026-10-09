@@ -196,7 +196,7 @@ DERIVED_SENTINEL_EXPECTED = "shared"
 #
 # North Pierce Street, Arlington, the way `settings.REBUILD_SENTINEL_DERIVED_EDGE`
 # lies on (see the evidence there). If a later extract splits or replaces the
-# way, the read finds no edge on it and VALIDATE refuses, naming this check -
+# way, the read finds no edge on it and VALIDATE_TILES refuses, naming this check -
 # move the sentinel then, don't drop the id. With none,
 # `tiles.sample_cycle_lane` still refuses a trace that spans more than one way.
 DERIVED_SENTINEL_WAY_ID: int | None = 8795651
@@ -215,11 +215,11 @@ WEEKEND_SENTINEL_EXPECTED = "separated"
 # every fraction and says the caller decides; this is the decision.
 MIN_JURISDICTION_FRACTION = 0.10
 
-# The bicycle-closure gate (VALIDATE; SINGLETRACK-review-r0, finding 2a).
+# The bicycle-closure gate (VALIDATE_TILES; SINGLETRACK-review-r0, finding 2a).
 #
 # Valhalla's C++ parser reopened 753 singletrack ways and 27 rated OSM closures
 # after the transform had closed them, every Lua check passed, and the build was
-# promoted. So VALIDATE reads a sample of them back from every staged graph,
+# promoted. So VALIDATE_TILES reads a sample of them back from every staged graph,
 # with a pedestrian `/locate` and each edge's `access.bicycle`, and a graph
 # that leaves any of them open to bicycles is not swapped in.
 #
@@ -598,6 +598,17 @@ class RebuildContext:
     # deletes it and starts fresh under a new build id.
     resume: dict | None = None
     resumed: bool = False
+    # The build id the adopted manifest names, kept apart from `build_id` so the
+    # guarded delete has a second source to check it against.
+    resumed_build_id: str | None = None
+    # A resume was offered and refused (an input moved): this attempt started fresh,
+    # so what it checkpoints is not progress on an earlier attempt (459a's retry).
+    resume_refused: bool = False
+    # Drop the classification's in-memory data once VALIDATE_SEGMENTS has passed, so
+    # the tile build has that memory: nothing after it reads them (a resumed attempt
+    # never loads them). Set by the worker; off by default so a test can still read
+    # a whole run's context afterwards.
+    release_after_classification: bool = False
     # A resumed attempt whose staging-only validation numbers changed runs those
     # checks again; the rest of VALIDATE_SEGMENTS needs a context it does not load.
     revalidate_staging: bool = False
@@ -706,11 +717,12 @@ class RebuildContext:
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
     # Open networks inside a base that meet the outside network at two or more points
-    # for no listed reason (`restricted_areas.through_networks`); VALIDATE refuses any.
+    # for no listed reason (`restricted_areas.through_networks`); VALIDATE_SEGMENTS
+    # refuses any.
     military_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
     # The same for a secured federal compound (`restricted_areas.secured_closures`;
     # owner report 2026-10-06; the rebuild's secured-closures.csv), and its open
-    # networks through; VALIDATE refuses any.
+    # networks through; VALIDATE_SEGMENTS refuses any.
     secured_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
     secured_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
     # The curated compounds (`restricted_areas.SECURED_AREAS`) the extract has no area for.
@@ -726,7 +738,6 @@ class RebuildContext:
     # decides the direction no reviewer spoke to. Set by the override stage and
     # empty until it runs.
     bicycle_override_directions: dict[int, frozenset[str]] = field(default_factory=dict)
-    rows: list[dict] = field(default_factory=list)
     # Per variant, not one concatenation of the three. A single `.search` over
     # the three logs joined together is satisfied by whichever variant logged
     # the line first, so two variants could have fallen back to Valhalla's
@@ -757,7 +768,41 @@ class RebuildContext:
                 + "; built: "
                 + (", ".join(self.graphs_built) or "none")
             )
+        if self.hasher.seconds >= 1:
+            parts.append(f"hashing took {self.hasher.seconds:.0f} s")
         return "; ".join(parts)
+
+    def release_classification(self) -> None:
+        """Let go of what only the classification stages and VALIDATE_SEGMENTS read.
+
+        The staging schema and the variant extracts hold the result from here on;
+        VALIDATE_TILES reads the closure probes and the singletracks, which stay.
+        """
+        import gc
+
+        for name in (
+            "ways",
+            "ways_by_id",
+            "aadt_by_way",
+            "aadt_raw_by_way",
+            "road_facts_by_way",
+            "class_tags_by_way",
+            "routing_tags_by_way",
+            "road_attr_sources",
+            "road_disagreements",
+            "stress_by_way",
+            "facility_by_way",
+            "car_free_by_way",
+            "trail_routes",
+            "route_names",
+            "no_bicycle",
+            "border_nodes_by_way",
+            "military_ways",
+            "secured_ways",
+        ):
+            setattr(self, name, type(getattr(self, name))())
+        self.reference = None
+        gc.collect()
 
     def require_reference(self) -> ReferenceData:
         if self.reference is None:
@@ -1529,7 +1574,9 @@ def build_handlers(
     each default is the production implementation.
     """
     # The closure gate's reads carry their own timeout on top of the deadline,
-    # so a wedged read fails VALIDATE in minutes rather than at hour eight.
+    # so a wedged read fails VALIDATE_TILES in minutes rather than at hour eight. Its
+    # timeout is marked as not the budget's (`_run_command`), so the 459a progress
+    # retry does not take it for an attempt that ran out of time.
     closure_run = run or functools.partial(
         _run_command, deadline=context.deadline, timeout=CLOSURE_GATE_READ_TIMEOUT_S
     )
@@ -1558,6 +1605,18 @@ def build_handlers(
                 None if context.checked_in_crossings is None else str(context.checked_in_crossings)
             )
         return _setting(name)
+
+    def bookkeeping_failed(what: str) -> None:
+        """Checkpoints are best effort: an error while measuring or writing one is
+        logged, and the attempt carries on with them off. Writing no checkpoint is
+        always safe; failing a rebuild that would have promoted is not. (The guards,
+        `checkpoint.CheckpointRefused`, are not bookkeeping and still raise.)"""
+        logger.exception(
+            "checkpoint bookkeeping failed while %s; this attempt goes on and writes no "
+            "further checkpoint",
+            what,
+        )
+        context.checkpoints = False
 
     def measure_fingerprint(merged_pbf: Path) -> dict:
         """Every input the classification depends on, measured now."""
@@ -1594,30 +1653,49 @@ def build_handlers(
         if not (context.source_pbf.is_file() and merged.is_file()):
             problem, validation_changed = "the source or merged extract is missing", False
         else:
-            problem, validation_changed = checkpoint.classification_problem(
-                manifest,
-                job_id=context.job_id,
-                tiles_dir=context.tiles_dir,
-                measure_fingerprint=lambda: measure_fingerprint(merged),
-                variant_pbfs={v: context.variant_pbf(v) for v in variants.Variant},
-                hasher=context.hasher,
-            )
+            try:
+                problem, validation_changed = checkpoint.classification_problem(
+                    manifest,
+                    job_id=context.job_id,
+                    tiles_dir=context.tiles_dir,
+                    measure_fingerprint=lambda: measure_fingerprint(merged),
+                    variant_pbfs={v: context.variant_pbf(v) for v in variants.Variant},
+                    hasher=context.hasher,
+                )
+            except checkpoint.CheckpointRefused:
+                raise
+            except Exception as error:  # noqa: BLE001 - not usable means start fresh
+                logger.exception("could not check the classification checkpoint")
+                problem = f"it could not be checked ({type(error).__name__}: {error})"
+                validation_changed = False
         if problem is not None:
             logger.warning("not resuming the classification checkpoint: %s", problem)
             context.resume_note = f"fresh start: the checkpoint was not used ({problem})"
+            context.resume_refused = True
             checkpoint.discard_classification(context.work_dir)
+            remove_abandoned_build(manifest.get("build_id"))
             context.build_id = new_build_id(tiles_dir=context.tiles_dir)
             return False
-        # The same gate a fresh run passes, sized from the extract on disk: a
-        # resumed attempt needs the room a fresh one does.
-        context.disk_gate = tiles.check_disk_gate(
+        # The gate, sized for what is left to do: the variant extracts are on disk
+        # already (and counted in what the volume uses), and so are the graphs this
+        # job finished, so a resume needs the room of the graphs still to build and
+        # scratch. Sizing it as a fresh run would refuse - terminally - the resume
+        # that needs one graph's room on exactly the volume that is tight.
+        to_build = [
+            variant
+            for variant in variants.Variant
+            if not finished_graph(variant, manifest["build_id"])
+        ]
+        context.disk_gate = tiles.check_resume_disk_gate(
             context.tiles_dir,
+            to_build,
             context.source_pbf.stat().st_size,
             _setting("REBUILD_MIN_FREE_BYTES"),
             _setting("DISK_GATE_FRACTION"),
             disk_usage=disk_usage,
         )
         context.build_id = manifest["build_id"]
+        context.resumed_build_id = manifest["build_id"]
         context.merged_pbf = merged
         context.closure_probes = [
             tiles.ClosureProbe(
@@ -1636,6 +1714,43 @@ def build_handlers(
         logger.info("%s", context.resume_note)
         return True
 
+    def finished_graph(variant: variants.Variant, build_id: str) -> bool:
+        """Whether this job left a manifest for the variant's graph in `build_id` (read
+        only, not re-hashed: that is BUILD_TILES's check). For sizing the gate."""
+        found = checkpoint.read_json(
+            checkpoint.graph_manifest_path(tiles.build_dir(context.tiles_dir, variant, build_id))
+        )
+        return (
+            found is not None
+            and found.get("job_id") == context.job_id
+            and found.get("build_id") == build_id
+        )
+
+    def remove_abandoned_build(build_id) -> None:
+        """A refused checkpoint's graphs are of no further use: delete them before
+        the fresh disk gate counts them. Only an unpromoted build id is touched, and
+        through the same guarded delete as a partial graph."""
+        if (
+            not isinstance(build_id, str)
+            or not checkpoint.BUILD_ID.match(build_id)
+            or build_id in checkpoint.promoted_build_ids(context.tiles_dir)
+        ):
+            return
+        for variant in variants.Variant:
+            try:
+                checkpoint.remove_partial_graph(
+                    context.tiles_dir, variant, build_id, this_build=build_id
+                )
+            except checkpoint.CheckpointRefused:
+                raise
+            except OSError:
+                logger.warning(
+                    "could not delete the abandoned %s graph of build %s",
+                    variant.value,
+                    build_id,
+                    exc_info=True,
+                )
+
     def fetch_extract() -> None:
         if context.resume is not None and resume_classification():
             return
@@ -1646,7 +1761,10 @@ def build_handlers(
         checkpoint.discard_classification(context.work_dir)
         fetch_fresh_extract()
         if context.checkpoints:
-            context.start_fingerprint = measure_fingerprint(context.merged_pbf)
+            try:
+                context.start_fingerprint = measure_fingerprint(context.merged_pbf)
+            except Exception:  # noqa: BLE001 - checkpoints are best effort
+                bookkeeping_failed("measuring the inputs at the start")
         reset_and_read()
 
     def fetch_fresh_extract() -> None:
@@ -2654,47 +2772,65 @@ def build_handlers(
             build_dir = tiles.build_dir(context.tiles_dir, variant, context.build_id)
             fingerprint: dict | None = None
             outputs: dict[str, Path] = {}
+            fingerprint_hashing = 0.0
             if context.checkpoints:
-                config_path, serving = tiles.build_config(
-                    context.config_dir, context.tiles_dir, variant, context.build_id
-                )
-                outputs = graph_outputs(build_dir, serving)
-                fingerprint = checkpoint.graph_fingerprint(
-                    variant_pbf=context.variant_pbf(variant),
-                    merged_pbf=context.merged_pbf,
-                    config=serving,
-                    build_dir=build_dir,
-                    lua_dirs=graph_lua_dirs(serving),
-                    elevation_tiles=context.elevation_tiles,
-                    hasher=context.hasher,
-                )
-                if context.resumed and build_dir.exists():
-                    problem = checkpoint.graph_problem(
-                        build_dir,
-                        variant=variant,
-                        build_id=context.build_id,
-                        job_id=context.job_id,
-                        fingerprint=fingerprint,
-                        outputs=outputs,
+                hashing_from = context.hasher.seconds
+                try:
+                    config_path, serving = tiles.build_config(
+                        context.config_dir, context.tiles_dir, variant, context.build_id
+                    )
+                    outputs = graph_outputs(build_dir, serving)
+                    fingerprint = checkpoint.graph_fingerprint(
+                        variant_pbf=context.variant_pbf(variant),
+                        merged_pbf=context.merged_pbf,
+                        config=serving,
+                        build_dir=build_dir,
+                        lua_dirs=graph_lua_dirs(serving),
+                        elevation_tiles=context.elevation_tiles,
                         hasher=context.hasher,
                     )
-                    if problem is None:
-                        context.build_configs[variant] = config_path
-                        context.build_logs[variant] = (build_dir / checkpoint.BUILD_LOG).read_text(
-                            encoding="utf-8"
+                except Exception:  # noqa: BLE001 - checkpoints are best effort
+                    bookkeeping_failed(f"fingerprinting the {variant.value} graph")
+                    fingerprint, outputs = None, {}
+                fingerprint_hashing = context.hasher.seconds - hashing_from
+            if context.resumed and build_dir.exists():
+                problem = "there is no fingerprint to check it against"
+                if fingerprint is not None:
+                    try:
+                        problem = checkpoint.graph_problem(
+                            build_dir,
+                            variant=variant,
+                            build_id=context.build_id,
+                            job_id=context.job_id,
+                            fingerprint=fingerprint,
+                            outputs=outputs,
+                            hasher=context.hasher,
                         )
-                        mjolnir = serving["mjolnir"]
-                        admin_source = admin_source or Path(mjolnir["admin"])
-                        timezone_source = timezone_source or Path(mjolnir["timezone"])
-                        context.graphs_reused.append(variant.value)
-                        logger.info("reusing the %s graph from build %s", variant.value, build_dir)
-                        continue
-                    logger.warning(
-                        "rebuilding the %s graph in %s: %s", variant.value, build_dir, problem
+                    except Exception as error:  # noqa: BLE001 - not usable means rebuild it
+                        logger.exception("could not check the %s graph", variant.value)
+                        problem = f"it could not be checked ({type(error).__name__}: {error})"
+                if problem is None:
+                    context.build_configs[variant] = config_path
+                    context.build_logs[variant] = (build_dir / checkpoint.BUILD_LOG).read_text(
+                        encoding="utf-8"
                     )
-                    checkpoint.remove_partial_graph(
-                        context.tiles_dir, variant, context.build_id, this_build=context.build_id
-                    )
+                    mjolnir = serving["mjolnir"]
+                    admin_source = admin_source or Path(mjolnir["admin"])
+                    timezone_source = timezone_source or Path(mjolnir["timezone"])
+                    context.graphs_reused.append(variant.value)
+                    logger.info("reusing the %s graph from build %s", variant.value, build_dir)
+                    continue
+                logger.warning(
+                    "rebuilding the %s graph in %s: %s", variant.value, build_dir, problem
+                )
+                # `this_build` is the adopted manifest's build id, not the context's:
+                # two sources that must agree before anything is deleted.
+                checkpoint.remove_partial_graph(
+                    context.tiles_dir,
+                    variant,
+                    context.build_id,
+                    this_build=context.resumed_build_id,
+                )
             started = time.monotonic()
             config_path = tiles.write_build_config(
                 context.config_dir,
@@ -2725,26 +2861,35 @@ def build_handlers(
             admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
             context.graphs_built.append(variant.value)
-            # The log is kept beside the graph whatever the checkpoint setting says
-            # (VALIDATE_TILES reads it, and it was only ever in memory, which is where
-            # an operator could not read it after a failure).
+            # The log is kept beside the graph whatever the checkpoint setting says:
+            # a resumed attempt's VALIDATE_TILES reads a reused graph's log from it.
+            # It is written once all of the graph's commands have succeeded, so a
+            # graph whose build failed has none; that failure's output is in the
+            # exception (the run row) and the rebuild's own log.
             log_path = build_dir / checkpoint.BUILD_LOG
-            log_path.write_text(context.build_logs[variant], encoding="utf-8")
+            try:
+                log_path.write_text(context.build_logs[variant], encoding="utf-8")
+            except OSError:
+                bookkeeping_failed(f"writing the {variant.value} graph's build log")
             if context.checkpoints and fingerprint is not None:
                 # And the manifest is the last thing written: a graph without one
                 # is, by definition, not finished.
-                if checkpoint.write_graph_manifest(
-                    build_dir,
-                    variant=variant,
-                    build_id=context.build_id,
-                    job_id=context.job_id,
-                    fingerprint=fingerprint,
-                    outputs=outputs,
-                    concurrency_used=concurrency,
-                    seconds=time.monotonic() - started,
-                    hasher=context.hasher,
-                ):
-                    context.checkpoints_written += 1
+                try:
+                    if checkpoint.write_graph_manifest(
+                        build_dir,
+                        variant=variant,
+                        build_id=context.build_id,
+                        job_id=context.job_id,
+                        fingerprint=fingerprint,
+                        outputs=outputs,
+                        concurrency_used=concurrency,
+                        seconds=time.monotonic() - started,
+                        hasher=context.hasher,
+                        hash_seconds=fingerprint_hashing,
+                    ):
+                        context.checkpoints_written += 1
+                except Exception:  # noqa: BLE001 - checkpoints are best effort
+                    bookkeeping_failed(f"writing the {variant.value} graph's manifest")
 
     def map_class_of(osm_id: int, tags: dict[str, str]) -> facility.MapClass:
         """The map's class for a way, agreeing with what routing does with it.
@@ -2930,7 +3075,10 @@ def build_handlers(
             # staging schema can run, and only when their numbers have changed.
             if context.revalidate_staging:
                 staging_checks()
-                refresh_validation_fingerprint()
+                try:
+                    refresh_validation_fingerprint()
+                except Exception:  # noqa: BLE001 - checkpoints are best effort
+                    bookkeeping_failed("recording the new validation numbers")
             return
         assert_reference_lts4_street(
             context,
@@ -2955,7 +3103,12 @@ def build_handlers(
         # VALIDATE_TILES, which reads the graphs and needs no ways.
         context.closure_probes = closure_probes(context)
         if context.checkpoints:
-            write_classification_checkpoint()
+            try:
+                write_classification_checkpoint()
+            except Exception:  # noqa: BLE001 - checkpoints are best effort
+                bookkeeping_failed("writing the classification checkpoint")
+        if context.release_after_classification:
+            context.release_classification()
 
     def write_classification_checkpoint() -> None:
         """Write the classification manifest: last, atomically, and only when what it
@@ -3006,6 +3159,9 @@ def build_handlers(
                 ],
                 "singletracks": sorted(context.singletracks),
                 "override_summary": summary,
+                # Every hash this attempt has read so far (both extracts, the code,
+                # the reference data, the variant extracts), out of its budget.
+                "hash_seconds": round(context.hasher.seconds, 1),
             },
         )
         context.checkpoints_written += 1
@@ -3323,7 +3479,7 @@ def _run_command(
     log lines, and stderr is never empty - src/baldr/graphreader.cc:110 logs the
     loaded tile count and :121-159 warns twice about the traffic extract every
     generated config names and no deployment has. `sample_grade` is the first
-    thing VALIDATE calls, so the rebuild died there every week and nothing could
+    thing VALIDATE_TILES calls, so the rebuild died there every week and nothing could
     ever promote. See tiles.CommandOutput.
 
     A command that exits non-zero raises `CommandFailed` carrying the end of
@@ -3331,15 +3487,24 @@ def _run_command(
     text is the argv and the exit status and whose captured output nothing was
     reading. See that class.
     """
+    # Whether a timeout here would be the rebuild's budget running out, or only the
+    # caller's own shorter limit on this one command (the closure gate's reads). The
+    # worker retries the first kind when the attempt made progress (OWNER-DECISIONS
+    # 459a) and never the second: a wedged read is not a slow rebuild.
+    budget_bound = deadline is not None
     if deadline is not None:
         remaining = deadline - clock()
         if remaining <= 0:
             raise RebuildTimedOut(f"no time left to run {command[0]}")
+        budget_bound = timeout is None or remaining <= timeout
         timeout = remaining if timeout is None else min(timeout, remaining)
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, check=True, timeout=timeout
         )
+    except subprocess.TimeoutExpired as error:
+        error.budget_exhausted = budget_bound
+        raise
     except subprocess.CalledProcessError as error:
         output = tiles.CommandOutput(error.stdout or "", error.stderr or "")
         failure = CommandFailed(command, error.returncode, output)

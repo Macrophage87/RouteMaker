@@ -25,7 +25,7 @@ import os
 import shlex
 import shutil
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -664,7 +664,7 @@ def sample_cycle_lane(
     trace spanning several ways, an edge with no way id (the attribute was not
     asked for, or the build does not carry it) and a set of edges that disagree
     about the lane all read as "nothing to attribute to the sentinel" and come
-    back as None, which VALIDATE turns into a refusal. Disagreement is not a
+    back as None, which VALIDATE_TILES turns into a refusal. Disagreement is not a
     tie to be broken by position: the sentinel is one block, and a transform
     that reached half of it is the failure this read exists to catch. So
     agreement is checked over all of the way's edges, `none` and absent
@@ -876,5 +876,47 @@ def check_disk_gate(
             f"a second tile set needs {required / 1024**3:.1f} GiB; the data volume has "
             f"{usage.free / 1024**3:.1f} GiB free and would be {fraction_after:.0%} full, "
             f"over the {fraction:.0%} gate. Grow the volume, which is an online resize."
+        )
+    return gate
+
+
+def check_resume_disk_gate(
+    tiles_dir: Path,
+    to_build: Iterable[Variant],
+    source_bytes: int,
+    minimum_free: int,
+    fraction: float,
+    disk_usage: Callable[[str], os.statvfs_result | shutil._ntuple_diskusage] = shutil.disk_usage,
+) -> DiskGate:
+    """`check_disk_gate` for a resumed attempt (pipeline.checkpoint): room for the
+    graphs still to build, plus the source once for scratch.
+
+    The variant extracts and the graphs this job finished are on the volume
+    already, so `used` counts them; reserving them again would refuse - and the
+    refusal is terminal - the resume that needs one graph's room, on exactly the
+    volume where keeping the rest mattered. Each graph still to build is sized as
+    its variant's served graph; with none served yet, as its share of the floor.
+    """
+    tiles_dir = Path(tiles_dir)
+    tiles_dir.mkdir(parents=True, exist_ok=True)
+    to_build = list(to_build)
+    usage = disk_usage(str(tiles_dir))
+    graphs = 0
+    for variant in to_build:
+        build_id = promoted_build_id(tiles_dir, variant)
+        if build_id is not None:
+            graphs += directory_bytes(build_dir(tiles_dir, variant, build_id))
+        else:
+            graphs += minimum_free // len(Variant)
+    required = graphs + source_bytes
+    fraction_after = (usage.used + required) / usage.total if usage.total else 1.0
+    gate = DiskGate(usage.total, usage.used, usage.free, required, fraction_after)
+    if usage.free < required or fraction_after > fraction:
+        names = ", ".join(variant.value for variant in to_build) or "none"
+        raise DiskGateRefused(
+            f"the resumed rebuild still has to build {names}, which needs "
+            f"{required / 1024**3:.1f} GiB; the data volume has {usage.free / 1024**3:.1f} "
+            f"GiB free and would be {fraction_after:.0%} full, over the {fraction:.0%} gate. "
+            "Grow the volume, which is an online resize."
         )
     return gate

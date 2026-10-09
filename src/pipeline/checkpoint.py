@@ -2,9 +2,9 @@
 it may be used again.
 
 Owner decision 459: "Why do we need to rerun everything when one fails. There
-should be reasonable checkpoints." The design is
-`demo/reports/REBUILD-CHECKPOINTS-design.md`; this module is its mechanism and
-`pipeline.run` is where it is wired in.
+should be reasonable checkpoints." The design is in the owner's report folder,
+`rmdata/demo/reports/REBUILD-CHECKPOINTS-design.md` (not in this repository); this
+module is its mechanism and `pipeline.run` is where it is wired in.
 
 Two checkpoints, and one rule for both.
 
@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -47,6 +48,12 @@ logger = logging.getLogger(__name__)
 FORMAT = 1
 CHECKPOINT_DIR = "checkpoint"
 CLASSIFICATION_NAME = "classification.json"
+TIMEOUT_RETRIES_NAME = "timeout-retries.json"
+# At most this many pre-swap timeouts of one job are retried (OWNER-DECISIONS 459a's
+# "let it increase", bounded): each retry gets a whole budget, and without a cap a job
+# whose inputs keep moving could start fresh, checkpoint and time out again until
+# Procrastinate's own five retries ran out.
+MAX_TIMEOUT_RETRIES = 2
 GRAPH_MANIFEST = "routemaker-graph.json"
 BUILD_LOG = "build.log"
 BUILD_CONFIG = "build-config.json"
@@ -198,18 +205,31 @@ def sha256_file(path: Path | str) -> str:
 class Hasher:
     """`sha256_file` that remembers: one attempt hashes the merged extract once,
     not once per variant. Keyed on the path and the file's size and mtime, so a
-    file that is rewritten in between is hashed again."""
+    file that is rewritten in between is hashed again.
+
+    `seconds` is the time spent reading files to hash them (memo hits cost
+    nothing): the hashing comes out of the attempt's own budget, so the manifests
+    record it."""
 
     hash_file: Callable[[Path], str] = sha256_file
     _memo: dict = field(default_factory=dict)
+    seconds: float = 0.0
 
     def sha256(self, path: Path | str) -> str:
         path = Path(path)
         stat = path.stat()
         key = (str(path), stat.st_size, stat.st_mtime_ns)
         if key not in self._memo:
-            self._memo[key] = self.hash_file(path)
+            self._memo[key] = self.unmemoised(path)
         return self._memo[key]
+
+    def unmemoised(self, path: Path | str) -> str:
+        """Hash the file again whatever the memo holds, and count the time."""
+        started = time.monotonic()
+        try:
+            return self.hash_file(Path(path))
+        finally:
+            self.seconds += time.monotonic() - started
 
     def facts(self, path: Path | str) -> dict:
         path = Path(path)
@@ -260,17 +280,54 @@ def read_json(path: Path | str) -> dict | None:
     return data
 
 
-def _plain(value):
-    """What `json.dumps` cannot encode, as something that digests the same way
-    twice: a set in sorted order (its `str` is in hash order, which differs from
-    one process to the next), a path as its text."""
+# The key a mapping whose keys are not all strings is written under. A NUL is in
+# no setting's own string key, so a real mapping cannot collide with it.
+_MAPPING_TAG = "\u0000mapping"
+
+
+def _tagged_key(key) -> list:
+    """A mapping key as a type-tagged, JSON-encodable value: `1` and `"1"` are two
+    keys, and so are `("a", "b")` and `"('a', 'b')"`."""
+    return [type(key).__name__, _normalise(key)]
+
+
+def _normalise(value):
+    """`value` as plain JSON that encodes the same way in every process.
+
+    Recursive, because a setting can be any shape: `REBUILD_SENTINEL_MILITARY_MIN_CLOSED`
+    is a dict with a tuple key, which `json.dumps` cannot take (its `default` hook is
+    never called for a key, and a str and a tuple do not sort against each other).
+
+    - A mapping whose keys are all strings stays an object (`sort_keys` orders it).
+      Any other mapping becomes `{"\0mapping": [[tagged key, value], ...]}`, the
+      pairs sorted by the canonical text of their keys.
+    - A list or a tuple is a list of its items, each normalised.
+    - A set is a list sorted by each item's canonical text (its iteration order is
+      hash order, which differs from one process to the next).
+    - A path, and anything else JSON has no form for, is its text.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Mapping):
+        if all(isinstance(key, str) for key in value):
+            return {key: _normalise(item) for key, item in value.items()}
+        pairs = [[_tagged_key(key), _normalise(item)] for key, item in value.items()]
+        pairs.sort(key=lambda pair: _dump(pair[0]))
+        return {_MAPPING_TAG: pairs}
+    if isinstance(value, (list, tuple)):
+        return [_normalise(item) for item in value]
     if isinstance(value, (set, frozenset)):
-        return sorted(value, key=repr)
+        return sorted((_normalise(item) for item in value), key=_dump)
     return str(value)
 
 
+def _dump(normalised) -> str:
+    return json.dumps(normalised, sort_keys=True, separators=(",", ":"))
+
+
 def canonical(value) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=_plain)
+    """One text for `value`, the same in every process, whatever its shape."""
+    return _dump(_normalise(value))
 
 
 def sha256_text(text: str) -> str:
@@ -330,9 +387,13 @@ def reference_digest(
             directories.sort()
             for name in sorted(names):
                 path = Path(current) / name
-                files.append(
-                    [path.relative_to(root).as_posix(), path.stat().st_size, hasher.sha256(path)]
-                )
+                relative = path.relative_to(root).as_posix()
+                if path.is_symlink() and not path.exists():
+                    # As in `tree_digest`: a dangling link is part of the tree's
+                    # shape, not a reason to fail the rebuild.
+                    files.append([relative, None, "dangling"])
+                    continue
+                files.append([relative, path.stat().st_size, hasher.sha256(path)])
     fixture = None
     if crossings_fixture is not None and Path(crossings_fixture).is_file():
         fixture = hasher.sha256(crossings_fixture)
@@ -382,6 +443,23 @@ def settings_digest(values: Mapping[str, object]) -> str:
     return sha256_text(canonical({name: values[name] for name in sorted(values)}))
 
 
+def packages_digest() -> str:
+    """The Python packages installed beside the code, as sorted `name==version`
+    lines: a rebuilt image that changed only a dependency (osmium, shapely and the
+    rest of /opt/venv) changes this. Not covered: the system libraries (GEOS, PROJ,
+    libspatialite) and the PostGIS server, which change with the image or the
+    database container (docs/OPERATIONS.md, "Rebuild checkpoints")."""
+    from importlib import metadata
+
+    entries = sorted(
+        {
+            f"{(dist.metadata.get('Name') or '').lower()}=={dist.version}"
+            for dist in metadata.distributions()
+        }
+    )
+    return sha256_text("\n".join(entries))
+
+
 def measure_classification_fingerprint(
     *,
     source_pbf: Path,
@@ -396,6 +474,7 @@ def measure_classification_fingerprint(
     jurisdictions: str,
     smooth_volume: bool,
     hasher: Hasher,
+    packages: str | None = None,
 ) -> dict:
     """Everything the classification depends on, measured now, as one flat mapping.
 
@@ -407,6 +486,7 @@ def measure_classification_fingerprint(
         "source_extract": hasher.facts(source_pbf),
         "merged_extract": hasher.facts(merged_pbf),
         "code": {name: tree_digest(root, hasher) for name, root in sorted(code_roots.items())},
+        "packages": packages if packages is not None else packages_digest(),
         "overrides": overrides_digest(override_rows),
         "reference": reference_digest(reference_dir, crossings_fixture, hasher),
         "jurisdictions": jurisdictions,
@@ -491,6 +571,29 @@ def reset_checkpoints(work_dir: Path | str) -> bool:
     existed = directory.exists()
     shutil.rmtree(directory, ignore_errors=True)
     return existed
+
+
+def timeout_retries(work_dir: Path | str, job_id: int | None) -> int:
+    """How many pre-swap timeouts of this job have been retried already. A record
+    from another job counts as none; one that is there and cannot be read counts as
+    the cap, so a broken file stops the retries rather than unbounding them."""
+    path = checkpoint_dir(work_dir) / TIMEOUT_RETRIES_NAME
+    if not path.exists():
+        return 0
+    data = read_json(path)
+    if data is None or not isinstance(data.get("retries"), int):
+        return MAX_TIMEOUT_RETRIES
+    return data["retries"] if data.get("job_id") == job_id else 0
+
+
+def record_timeout_retry(work_dir: Path | str, job_id: int | None) -> int:
+    """Count one more retried timeout for this job, and return the new count."""
+    retries = timeout_retries(work_dir, job_id) + 1
+    atomic_write_json(
+        checkpoint_dir(work_dir) / TIMEOUT_RETRIES_NAME,
+        {"format": FORMAT, "job_id": job_id, "retries": retries},
+    )
+    return retries
 
 
 def new_token() -> str:
@@ -711,6 +814,7 @@ def write_graph_manifest(
     concurrency_used,
     seconds: float,
     hasher: Hasher,
+    hash_seconds: float = 0.0,
 ) -> bool:
     """Write the graph's manifest, last. Returns False, writing nothing, when an
     output a rebuild needs is not there: such a graph stays partial, and the next
@@ -722,9 +826,11 @@ def write_graph_manifest(
         )
         return False
     recorded = {}
+    hashing_from = hasher.seconds
     for name, path in sorted(outputs.items()):
         fsync_path(path)
         recorded[name] = {"size": Path(path).stat().st_size, "sha256": hasher.sha256(path)}
+    hashed = hasher.seconds - hashing_from + hash_seconds
     atomic_write_json(
         graph_manifest_path(build_dir),
         {
@@ -736,6 +842,9 @@ def write_graph_manifest(
             "outputs": recorded,
             "concurrency_used": concurrency_used,
             "seconds": round(seconds, 1),
+            # The fingerprint's and the outputs' hashing, which the attempt's budget
+            # pays for on top of the build.
+            "hash_seconds": round(hashed, 1),
         },
     )
     return True
@@ -779,7 +888,7 @@ def graph_problem(
             return f"{name} is missing"
         if size != facts.get("size"):
             return f"{name} has a different size"
-        if hasher.hash_file(Path(path)) != facts.get("sha256"):
+        if hasher.unmemoised(path) != facts.get("sha256"):
             return f"{name} does not hash to what was recorded"
     return None
 
@@ -790,7 +899,10 @@ def remove_partial_graph(
     """Delete one variant's directory for this rebuild's own build id, manifest
     first. Guarded three ways, and each guard refuses rather than skips:
 
-    - the name must be a build id, and it must be *this* rebuild's;
+    - the name must be a build id, and it must be *this* rebuild's: `this_build`
+      is the build the caller's checkpoint manifest names, passed separately from
+      the build id to delete, so a context whose build id drifted from its
+      checkpoint is refused rather than trusted;
     - never a directory any variant's `current` or `previous` points at;
     - never a symlink, and only a directory directly under that variant.
     """
