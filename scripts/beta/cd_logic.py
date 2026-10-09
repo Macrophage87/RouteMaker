@@ -101,14 +101,23 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
 
 # Paths whose change means the release needs the owner. Each says why, in the report's words.
 STOP_PREFIXES: Sequence[tuple] = (
-    ("deploy/", "the nginx site, its 401 page or the env template changed (owner steps, with sudo)"),
+    (
+        "deploy/",
+        "the nginx site, its 401 page or the env template changed (owner steps, with sudo)",
+    ),
     (
         "scripts/prepare_data_root.sh",
         "the data directory layout changed (prepare_data_root.sh runs with sudo)",
     ),
     ("lua/", "the graph tag transform changed: rebuild the routing graphs at home and ship them"),
-    ("valhalla/vendor/", "the vendored Valhalla config builder changed: rebuild the graphs at home"),
-    ("src/pipeline/schema.py", "the live table layout changed: rebuild the data at home and ship it"),
+    (
+        "valhalla/vendor/",
+        "the vendored Valhalla config builder changed: rebuild the graphs at home",
+    ),
+    (
+        "src/pipeline/schema.py",
+        "the live table layout changed: rebuild the data at home and ship it",
+    ),
     ("src/pipeline/variants.py", "the routing graph variants changed: rebuild the data at home"),
     ("src/pipeline/tiles.py", "how the routing graphs are built changed: rebuild the data at home"),
     ("docker/valhalla", "a router image changed"),
@@ -363,9 +372,7 @@ def rollback_plan(done: Iterable[str]) -> list:
 
 
 def _git(repo: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", repo, *args], capture_output=True, text=True, check=False
-    )
+    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, check=False)
 
 
 def git_gate(repo: str, old: str, new: str) -> dict:

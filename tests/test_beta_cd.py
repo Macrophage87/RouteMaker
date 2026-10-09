@@ -766,9 +766,7 @@ def test_a_predraw_that_fails_after_a_tile_format_deploy_warns_and_does_not_roll
     beta: Beta,
 ) -> None:
     sha = beta.release("v0.2.0", {"src/core/stress_tiles.py": "FORMAT_VERSION = 8\n"})
-    done = beta.agent(
-        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PREDRAW_RC="1"
-    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PREDRAW_RC="1")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
     assert git(beta.src, "rev-parse", "HEAD") == sha
