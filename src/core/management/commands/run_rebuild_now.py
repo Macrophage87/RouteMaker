@@ -65,6 +65,19 @@ class Command(BaseCommand):
         "covers a running one."
     )
 
+    def add_arguments(self, parser) -> None:
+        parser.add_argument(
+            "--fresh",
+            action="store_true",
+            help=(
+                "Delete the rebuild's checkpoint directory (<DATA_ROOT>/rebuild/checkpoint) "
+                "before queueing. A new job never resumes another job's checkpoints, so this "
+                "only clears one that an earlier job left behind; to force a fresh start in "
+                "a job that is already queued or retrying, delete that directory by hand, "
+                "or set REBUILD_CHECKPOINTS=0."
+            ),
+        )
+
     def handle(self, *args, **options) -> None:
         # Imported here rather than at module scope: importing the app module
         # registers the tasks, and a management command that did that at import
@@ -86,6 +99,27 @@ class Command(BaseCommand):
             raise CommandError(
                 f"a rebuild is already in flight - job {job.id} is {job.status} on the "
                 f"{job.queue_name} queue - so this one was not queued. {IN_FLIGHT_REFUSAL}"
+            )
+
+        if options.get("fresh"):
+            from django.conf import settings
+
+            from pipeline import checkpoint
+
+            # After the in-flight check, which is what makes this safe: nothing is
+            # running that could be writing a checkpoint as it is deleted.
+            try:
+                removed = checkpoint.reset_checkpoints(settings.REBUILD_WORK_DIR)
+            except OSError as error:
+                raise CommandError(
+                    f"could not delete the checkpoint directory under "
+                    f"{settings.REBUILD_WORK_DIR}: {error}. Delete it where the rebuild "
+                    "service can see it (docker compose exec rebuild ...), and run this again."
+                ) from error
+            self.stdout.write(
+                "deleted the rebuild's checkpoint directory."
+                if removed
+                else "no rebuild checkpoint directory to delete."
             )
 
         try:

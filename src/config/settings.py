@@ -340,6 +340,45 @@ if (
 REBUILD_TILE_CONCURRENCY = int(_tile_concurrency)
 del _tile_concurrency
 
+# How long one rebuild attempt may run, in seconds (docs/OPERATIONS.md, "The rebuild's
+# own budget"). Each attempt of a job gets this much, whether it is the first or a
+# retry that resumed from a checkpoint (OWNER-DECISIONS 459a, 459b). Empty or unset is
+# the default, 8 hours.
+#
+# The ceiling is the backup-window rule: a scheduled rebuild starts at 08:00 UTC
+# (config.procrastinate.WEEKLY_REBUILD_CRON) and the nightly backup is at 07:00 UTC, so
+# a budget that ends before the next 07:00 is at most 23 hours. A longer one is refused
+# here, at start, rather than discovered as a rebuild still holding the database when
+# the dump begins. The floor is a minute: anything lower cannot run a stage.
+REBUILD_TIMEOUT_DEFAULT_S = 8 * 60 * 60
+REBUILD_TIMEOUT_MIN_S = 60
+REBUILD_TIMEOUT_MAX_S = 23 * 60 * 60
+_rebuild_timeout = os.environ.get("REBUILD_TIMEOUT_S", "").strip() or str(REBUILD_TIMEOUT_DEFAULT_S)
+if (
+    not (_rebuild_timeout.isascii() and _rebuild_timeout.isdecimal())
+    or not REBUILD_TIMEOUT_MIN_S <= int(_rebuild_timeout) <= REBUILD_TIMEOUT_MAX_S
+):
+    raise ImproperlyConfigured(
+        "REBUILD_TIMEOUT_S must be a whole number of seconds between "
+        f"{REBUILD_TIMEOUT_MIN_S} and {REBUILD_TIMEOUT_MAX_S} (23 hours: a scheduled "
+        "08:00 UTC rebuild has to end before the 07:00 UTC backup), not "
+        f"{_rebuild_timeout!r}"
+    )
+REBUILD_TIMEOUT_S = int(_rebuild_timeout)
+del _rebuild_timeout
+
+# Whether a failed attempt's work is kept for the job's next attempt
+# (pipeline.checkpoint; OWNER-DECISIONS 459). On by default; REBUILD_CHECKPOINTS=0
+# turns it off, and every attempt then starts from the first stage. Empty or unset is
+# on. Anything but a plain on/off word is refused, so a typo does not silently decide.
+_checkpoints = os.environ.get("REBUILD_CHECKPOINTS", "").strip().lower() or "1"
+if _checkpoints not in {"1", "0", "true", "false", "yes", "no", "on", "off"}:
+    raise ImproperlyConfigured(
+        f"REBUILD_CHECKPOINTS must be 1 or 0 (on or off), not {_checkpoints!r}"
+    )
+REBUILD_CHECKPOINTS = _checkpoints in {"1", "true", "yes", "on"}
+del _checkpoints
+
 # OWNER-DECISIONS 355: "Pause until our rebuild". With this set to 1 or true the
 # scheduled Tuesday rebuild logs that it is paused and does nothing; a rebuild fired
 # by hand (`run_rebuild_now`) still runs, and the cron schedule is unchanged.

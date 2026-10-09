@@ -27,6 +27,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from django.conf import settings as django_settings
 from procrastinate import RetryStrategy
 from procrastinate.contrib.django import app
 from procrastinate.exceptions import JobAborted
@@ -52,12 +53,17 @@ DEGRADED_GUILD_SWEEP_CRON = "*/5 * * * *"
 # deadline to every binary it runs and checks it between stages; the sweep runs
 # under core.runs.run_with_deadline.
 #
-# Eight hours, not the plan's original six: the fourth graph (the weekend twin,
+# Eight hours by default, not the plan's original six: the fourth graph (the weekend twin,
 # PUBLIC-DIALS) adds about 25 minutes to a quiet run and far more to a loaded
 # one, and a six-hour run had already failed on its budget with three. The
 # owner, 2026-09-28, asked "Raise the limit to 8 hours?": "Yes, 8 hours
 # (Recommended)" (PLAN.md, Owner amendments).
-REBUILD_TIMEOUT_S = 8 * 60 * 60
+#
+# A setting since OWNER-DECISIONS 459b: `REBUILD_TIMEOUT_S` in the environment, validated
+# at start (config.settings: at least a minute, at most 23 hours so that a scheduled
+# 08:00 UTC rebuild ends before the 07:00 UTC backup). The budget is per attempt: a
+# retry that resumed from a checkpoint (459a) gets all of it again.
+REBUILD_TIMEOUT_S = django_settings.REBUILD_TIMEOUT_S
 SWEEP_TIMEOUT_S = 30 * 60
 # The backup's ceiling, and it is the maintenance queue's bound rather than the
 # backup's own convenience. `pg_dump` had no timeout at all, and the maintenance
@@ -231,7 +237,7 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         return
 
     from core.runs import jobs_in_flight, record
-    from pipeline import retention
+    from pipeline import checkpoint, retention
     from pipeline.rebuild import RebuildFailed, RebuildTimedOut, run_rebuild
     from pipeline.run import RebuildContext, build_handlers
 
@@ -248,12 +254,33 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         )
 
     with record("weekly_rebuild") as run:
+        # A checkpoint left by an earlier attempt of THIS job is resumed (its
+        # retries and an `unwedge_job` requeue keep the job id); a new job's first
+        # stage deletes it. `SOURCE_EXTRACT_FORCE_REFRESH=1` and
+        # `REBUILD_CHECKPOINTS=0` both mean a fresh start.
+        kept = (
+            checkpoint.read_classification(settings.REBUILD_WORK_DIR)
+            if settings.REBUILD_CHECKPOINTS
+            else None
+        )
+        resumable = (
+            kept
+            if kept is not None
+            and job_id is not None
+            and kept.get("job_id") == job_id
+            and not settings.SOURCE_EXTRACT_FORCE_REFRESH
+            else None
+        )
         context = RebuildContext(
             source_pbf=settings.REBUILD_SOURCE_PBF,
             work_dir=settings.REBUILD_WORK_DIR,
             reference_dir=settings.REBUILD_REFERENCE_DIR,
             checked_in_crossings=settings.REBUILD_CROSSINGS_FIXTURE,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
+            job_id=job_id,
+            checkpoints=settings.REBUILD_CHECKPOINTS,
+            resume=resumable,
+            build_id=resumable["build_id"] if resumable is not None else "",
         )
         # Before the disk gate, which is the first thing the first stage runs.
         # Pruning only after a successful run put the whole of retention
@@ -264,8 +291,15 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         # construction - `prune_builds` never removes what `current` or
         # `previous` points at, which is the served graph and the rollback
         # target, and this rebuild has written nothing yet.
+        #
+        # The build a classification checkpoint names is kept as well, whichever
+        # job wrote it: a resumable one is the next attempt's graphs, and one from
+        # a finished job is deleted by the fresh path's own prune after this run.
         reclaimed = _prune_tile_builds(
-            context.tiles_dir, retention.KEEP_BUILDS, "before the disk gate"
+            context.tiles_dir,
+            retention.KEEP_BUILDS,
+            "before the disk gate",
+            protect=[kept["build_id"]] if kept is not None and kept.get("build_id") else (),
         )
         try:
             try:
@@ -300,6 +334,24 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
                     "drift report."
                 ) from error
             if isinstance(error.cause, terminal_causes()):
+                if timed_out_with_progress(error.cause, context):
+                    # OWNER-DECISIONS 459a: "Yes, let it increase." A timeout before the
+                    # swap is retried when this attempt finished at least one new
+                    # checkpoint, because the next attempt then starts from it and has
+                    # less to do in a whole new budget. `live_old` is not at risk before
+                    # the swap, and each retry must make progress, so they are bounded.
+                    logging.getLogger(__name__).warning(
+                        "%s - %d checkpoint(s) written by this attempt, so it is retried and "
+                        "resumes from them",
+                        error,
+                        context.checkpoints_written,
+                    )
+                    raise
+                if is_timeout(error.cause):
+                    raise RebuildAbandoned(
+                        f"{error}. This attempt wrote no new checkpoint, so a retry would "
+                        "repeat the same work inside the same budget and is not made."
+                    ) from error
                 raise RebuildAbandoned(str(error)) from error
             raise
         except RebuildTimedOut as error:
@@ -331,12 +383,16 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         # computed every week and read by nothing, so whether a reviewed
         # correction was in force - or had matched no way in this week's
         # extract - was findable only in the log.
-        overridden = (
-            f" {context.override_report.summary()}." if context.override_report is not None else ""
+        override_text = (
+            context.override_report.summary()
+            if context.override_report is not None
+            else context.override_summary
         )
+        overridden = f" {override_text}." if override_text else ""
+        saved = f" Checkpoints: {context.checkpoint_summary()}." if context.checkpoint_summary() else ""
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
-            f"pruned {reclaimed} old build directories.{overridden} "
+            f"pruned {reclaimed} old build directories.{overridden}{saved} "
             f"{_predraw_stress_tiles(context.deadline)} {ROUTER_RESTART_NOTICE}"
         )
         run.save(update_fields=["detail"])
@@ -420,6 +476,30 @@ def stages_after_swap() -> frozenset:
     return frozenset(Stage) - set(stages_before(Stage.SWAP)) - {Stage.SWAP}
 
 
+def timeout_causes() -> tuple[type[Exception], ...]:
+    """The two shapes of 'the attempt ran out of its budget': the stage boundary's
+    `RebuildTimedOut` and a binary killed by `subprocess.TimeoutExpired`."""
+    import subprocess
+
+    from pipeline.rebuild import RebuildTimedOut
+
+    return (RebuildTimedOut, subprocess.TimeoutExpired)
+
+
+def is_timeout(cause: BaseException) -> bool:
+    return isinstance(cause, timeout_causes())
+
+
+def timed_out_with_progress(cause: BaseException, context) -> bool:
+    """Whether a pre-swap timeout is worth a retry: this attempt wrote a checkpoint.
+
+    The callers have already sent a stage after the swap down the terminal path, so
+    this is only asked of timeouts before it. With checkpoints off nothing is ever
+    written, and the answer is the old one: terminal.
+    """
+    return is_timeout(cause) and getattr(context, "checkpoints_written", 0) > 0
+
+
 def terminal_causes() -> tuple[type[Exception], ...]:
     """Failures a retry cannot fix. Imported lazily: this module is imported
     at Django app-ready time and the pipeline imports the ORM.
@@ -455,6 +535,7 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     """
     import subprocess
 
+    from pipeline.checkpoint import CheckpointRefused
     from pipeline.elevation import ElevationTileInvalid
     from pipeline.promotion import SwapUndoIncomplete
     from pipeline.rebuild import RebuildTimedOut, StageNotImplemented
@@ -473,6 +554,9 @@ def terminal_causes() -> tuple[type[Exception], ...]:
         RebuildTimedOut,
         subprocess.TimeoutExpired,
         SwapUndoIncomplete,
+        # A checkpoint cleanup that would have touched a promoted build or a name that
+        # is not this rebuild's: the same refusal on every attempt.
+        CheckpointRefused,
         # A broken corridor or lane-override fixture is in the image: a retry
         # re-runs about 2 h of work to meet the same file (operations review nit).
         CorridorRefused,

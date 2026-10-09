@@ -58,6 +58,7 @@ from routemaker.stress import classify, inferred_unpaved, is_rough
 from . import (
     aadt_smoothing,
     borders,
+    checkpoint,
     conflation,
     discrepancies,
     elevation,
@@ -585,6 +586,44 @@ class RebuildContext:
     # Monotonic-clock instant after which no further stage or binary starts.
     deadline: float | None = None
 
+    # --- Checkpoints (pipeline.checkpoint; OWNER-DECISIONS 459) ------------------
+    # The Procrastinate job this attempt belongs to, None outside the worker. A
+    # checkpoint is resumed only inside the job that wrote it: the job's own retries
+    # and an `unwedge_job` requeue keep the id, a new job gets a new one.
+    job_id: int | None = None
+    # Off with REBUILD_CHECKPOINTS=0: nothing is written and nothing is resumed.
+    checkpoints: bool = field(default_factory=lambda: bool(_setting("REBUILD_CHECKPOINTS")))
+    # The classification manifest this attempt means to resume. FETCH_EXTRACT checks
+    # it against the world as it is now and either adopts it (`resumed`) or
+    # deletes it and starts fresh under a new build id.
+    resume: dict | None = None
+    resumed: bool = False
+    # A resumed attempt whose staging-only validation numbers changed runs those
+    # checks again; the rest of VALIDATE_SEGMENTS needs a context it does not load.
+    revalidate_staging: bool = False
+    # What the attempt did with its checkpoints, for the log and the run row.
+    resume_note: str = ""
+    checkpoints_written: int = 0
+    graphs_reused: list[str] = field(default_factory=list)
+    graphs_built: list[str] = field(default_factory=list)
+    hasher: checkpoint.Hasher = field(default_factory=checkpoint.Hasher)
+    # The directories whose content the classification fingerprint digests.
+    code_roots: dict[str, Path] = field(
+        default_factory=lambda: {
+            name: Path(_setting("BASE_DIR")) / name
+            for name in ("src", "fixtures", "lua", "valhalla")
+        }
+    )
+    # The inputs as they were when the extract was in place and nothing had been read:
+    # the checkpoint is written only if they are still the same at the end.
+    start_fingerprint: dict | None = None
+    # The sample of closures the graphs must keep closed, and the singletrack ways
+    # the post-swap probe reads. Computed by VALIDATE_SEGMENTS, which has the ways;
+    # VALIDATE_TILES, which does not need them, reads these.
+    closure_probes: list | None = None
+    # The override report's text, when the report itself was not built in this process.
+    override_summary: str | None = None
+
     reference: ReferenceData | None = None
     # The merged, *unclipped* extract FETCH_EXTRACT produced or reused, which is
     # what `valhalla_build_admins` is given (PLAN:13). Not `source_pbf`: that one
@@ -705,6 +744,20 @@ class RebuildContext:
 
     def variant_pbf(self, variant: variants.Variant) -> Path:
         return self.work_dir / f"{variant.value}.osm.pbf"
+
+    def checkpoint_summary(self) -> str:
+        """One sentence on what this attempt kept or reused, for the run row."""
+        parts = []
+        if self.resume_note:
+            parts.append(self.resume_note)
+        if self.graphs_reused or self.graphs_built:
+            parts.append(
+                "graphs reused: "
+                + (", ".join(self.graphs_reused) or "none")
+                + "; built: "
+                + (", ".join(self.graphs_built) or "none")
+            )
+        return "; ".join(parts)
 
     def require_reference(self) -> ReferenceData:
         if self.reference is None:
@@ -1490,8 +1543,112 @@ def build_handlers(
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
     sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
+    def classification_value(name: str):
+        """A classification-affecting setting as this attempt will use it: the
+        context's own value where the context carries one (a test or a second
+        deployment may point it elsewhere), else the setting."""
+        if name == "COVERAGE_BBOX":
+            return list(context.coverage_bbox)
+        if name == "COVERAGE_POLYGON":
+            return None if context.coverage_polygon is None else str(context.coverage_polygon)
+        if name == "SEGMENT_SCHEMA_STAGING":
+            return context.staging_schema
+        if name == "REBUILD_CROSSINGS_FIXTURE":
+            return None if context.checked_in_crossings is None else str(context.checked_in_crossings)
+        return _setting(name)
+
+    def measure_fingerprint(merged_pbf: Path) -> dict:
+        """Every input the classification depends on, measured now."""
+        return checkpoint.measure_classification_fingerprint(
+            source_pbf=context.source_pbf,
+            merged_pbf=merged_pbf,
+            code_roots=context.code_roots,
+            reference_dir=context.reference_dir,
+            crossings_fixture=context.checked_in_crossings,
+            coverage_polygon=context.coverage_polygon,
+            classification_settings={
+                name: classification_value(name)
+                for name in checkpoint.SETTINGS_OF_KIND[checkpoint.CLASSIFICATION]
+            },
+            validation_settings={
+                name: _setting(name) for name in checkpoint.SETTINGS_OF_KIND[checkpoint.VALIDATION]
+            },
+            override_rows=checkpoint.approved_override_rows(),
+            jurisdictions=checkpoint.jurisdiction_digest(),
+            smooth_volume=context.smooth_volume,
+            hasher=context.hasher,
+        )
+
+    def resume_classification() -> bool:
+        """Adopt the classification checkpoint if every part of it still holds.
+
+        The checks are `checkpoint.classification_problem`'s, cheapest first. A
+        failure deletes the manifest (first, before anything else is touched) and
+        takes the fresh path under a new build id: the old id's directories are
+        pruned at the end of the run like any failed attempt's.
+        """
+        manifest, context.resume = context.resume, None
+        merged = context.source_pbf.parent / source.MERGED_NAME
+        if not (context.source_pbf.is_file() and merged.is_file()):
+            problem, validation_changed = "the source or merged extract is missing", False
+        else:
+            problem, validation_changed = checkpoint.classification_problem(
+                manifest,
+                job_id=context.job_id,
+                tiles_dir=context.tiles_dir,
+                measure_fingerprint=lambda: measure_fingerprint(merged),
+                variant_pbfs={v: context.variant_pbf(v) for v in variants.Variant},
+                hasher=context.hasher,
+            )
+        if problem is not None:
+            logger.warning("not resuming the classification checkpoint: %s", problem)
+            context.resume_note = f"fresh start: the checkpoint was not used ({problem})"
+            checkpoint.discard_classification(context.work_dir)
+            context.build_id = new_build_id(tiles_dir=context.tiles_dir)
+            return False
+        # The same gate a fresh run passes, sized from the extract on disk: a
+        # resumed attempt needs the room a fresh one does.
+        context.disk_gate = tiles.check_disk_gate(
+            context.tiles_dir,
+            context.source_pbf.stat().st_size,
+            _setting("REBUILD_MIN_FREE_BYTES"),
+            _setting("DISK_GATE_FRACTION"),
+            disk_usage=disk_usage,
+        )
+        context.build_id = manifest["build_id"]
+        context.merged_pbf = merged
+        context.closure_probes = [
+            tiles.ClosureProbe(
+                int(entry["way_id"]), float(entry["lon"]), float(entry["lat"]), entry["reason"]
+            )
+            for entry in manifest.get("closure_probes", [])
+        ]
+        context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
+        context.override_summary = manifest.get("override_summary")
+        context.resumed = True
+        context.revalidate_staging = validation_changed
+        context.resume_note = (
+            f"resumed job {context.job_id} build {context.build_id}: classification from "
+            f"{manifest.get('written_at')}"
+        )
+        logger.info("%s", context.resume_note)
+        return True
+
     def fetch_extract() -> None:
-        """Produce this week's extract, or reuse the one on disk, then read it.
+        if context.resume is not None and resume_classification():
+            return
+        # The fresh path. The checkpoint is deleted first, before the extract can
+        # be refreshed or the staging schema dropped: from here on it describes a
+        # world that is about to change, and a manifest that outlived its schema
+        # is the one thing the design must not leave.
+        checkpoint.discard_classification(context.work_dir)
+        fetch_fresh_extract()
+        if context.checkpoints:
+            context.start_fingerprint = measure_fingerprint(context.merged_pbf)
+        reset_and_read()
+
+    def fetch_fresh_extract() -> None:
+        """Produce this week's extract, or reuse the one on disk.
 
         Produce: this stage used to check that `<DATA_ROOT>/extracts/source.osm.pbf`
         existed and fail when it did not, so the first rebuild on a fresh
@@ -1553,6 +1710,8 @@ def build_handlers(
                 f"{produced.clipped}, so this deployment is configured to read a file "
                 "nothing writes"
             )
+
+    def reset_and_read() -> None:
         # The staging schema is rebuilt from scratch every week, and it is reset
         # here rather than by the segment writer because the crossings are
         # written into it several stages before the segments are.
@@ -2438,6 +2597,29 @@ def build_handlers(
                 drop_ways=dropped,
             )
 
+    def graph_outputs(build_dir: Path, config: dict) -> dict[str, Path]:
+        """What a finished graph is made of, by name relative to its directory: the
+        tile archive and the two databases (named by the build config), the build
+        log and the build config itself."""
+        mjolnir = config["mjolnir"]
+        named = {
+            str(Path(mjolnir[key]).relative_to(build_dir)): Path(mjolnir[key])
+            for key in ("tile_extract", "admin", "timezone")
+        }
+        named[checkpoint.BUILD_LOG] = build_dir / checkpoint.BUILD_LOG
+        named[checkpoint.BUILD_CONFIG] = build_dir / checkpoint.BUILD_CONFIG
+        return named
+
+    def graph_lua_dirs(config: dict) -> list[Path]:
+        """The Lua the build reads: the image's copy and, where this container has
+        it, the directory the build config names (compose bind-mounts the working
+        tree at /conf/lua)."""
+        found = [Path(_setting("BASE_DIR")) / "lua"]
+        named = Path(config["mjolnir"].get("graph_lua_name", "")).parent
+        if named.is_dir() and named not in found:
+            found.append(named)
+        return found
+
     def build_tiles() -> None:
         # Each variant builds into its own dated directory through a config
         # derived from its serving config: valhalla_build_tiles has no
@@ -2452,19 +2634,72 @@ def build_handlers(
         # variant's admin build was handed. So the first variant builds each of
         # them and the rest copy the file - one ~100 MB download and one parse
         # of the 1-2 GB merged PBF per rebuild, rather than one and three.
+        #
+        # A resumed attempt finds the graphs an earlier attempt of this job
+        # finished: each has a manifest (written last) naming what it was built
+        # from and what it produced. A graph whose manifest is valid and whose
+        # inputs and outputs all still match is kept - including as the source
+        # of the admin and timezone copies - and any other directory of this
+        # build is partial or stale and is deleted and built again.
         if context.merged_pbf is None:
             raise ReferenceDataMissing(
                 "no merged extract to build admin data from; FETCH_EXTRACT produces it"
             )
         admin_source: Path | None = None
         timezone_source: Path | None = None
+        concurrency = _setting("REBUILD_TILE_CONCURRENCY")
         for variant in variants.Variant:
+            build_dir = tiles.build_dir(context.tiles_dir, variant, context.build_id)
+            fingerprint: dict | None = None
+            outputs: dict[str, Path] = {}
+            if context.checkpoints:
+                config_path, serving = tiles.build_config(
+                    context.config_dir, context.tiles_dir, variant, context.build_id
+                )
+                outputs = graph_outputs(build_dir, serving)
+                fingerprint = checkpoint.graph_fingerprint(
+                    variant_pbf=context.variant_pbf(variant),
+                    merged_pbf=context.merged_pbf,
+                    config=serving,
+                    build_dir=build_dir,
+                    lua_dirs=graph_lua_dirs(serving),
+                    elevation_tiles=context.elevation_tiles,
+                    hasher=context.hasher,
+                )
+                if context.resumed and build_dir.exists():
+                    problem = checkpoint.graph_problem(
+                        build_dir,
+                        variant=variant,
+                        build_id=context.build_id,
+                        job_id=context.job_id,
+                        fingerprint=fingerprint,
+                        outputs=outputs,
+                        hasher=context.hasher,
+                    )
+                    if problem is None:
+                        context.build_configs[variant] = config_path
+                        context.build_logs[variant] = (build_dir / checkpoint.BUILD_LOG).read_text(
+                            encoding="utf-8"
+                        )
+                        mjolnir = serving["mjolnir"]
+                        admin_source = admin_source or Path(mjolnir["admin"])
+                        timezone_source = timezone_source or Path(mjolnir["timezone"])
+                        context.graphs_reused.append(variant.value)
+                        logger.info("reusing the %s graph from build %s", variant.value, build_dir)
+                        continue
+                    logger.warning(
+                        "rebuilding the %s graph in %s: %s", variant.value, build_dir, problem
+                    )
+                    checkpoint.remove_partial_graph(
+                        context.tiles_dir, variant, context.build_id, this_build=context.build_id
+                    )
+            started = time.monotonic()
             config_path = tiles.write_build_config(
                 context.config_dir,
                 context.tiles_dir,
                 variant,
                 context.build_id,
-                concurrency=_setting("REBUILD_TILE_CONCURRENCY"),
+                concurrency=concurrency,
             )
             context.build_configs[variant] = config_path
             mjolnir = json.loads(config_path.read_text())["mjolnir"]
@@ -2487,6 +2722,25 @@ def build_handlers(
             )
             admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
+            context.graphs_built.append(variant.value)
+            if context.checkpoints and fingerprint is not None:
+                # The log is persisted beside the graph (VALIDATE_TILES reads it),
+                # and the manifest is the last thing written: a graph without one
+                # is, by definition, not finished.
+                log_path = build_dir / checkpoint.BUILD_LOG
+                log_path.write_text(context.build_logs[variant], encoding="utf-8")
+                if checkpoint.write_graph_manifest(
+                    build_dir,
+                    variant=variant,
+                    build_id=context.build_id,
+                    job_id=context.job_id,
+                    fingerprint=fingerprint,
+                    outputs=outputs,
+                    concurrency_used=concurrency,
+                    seconds=time.monotonic() - started,
+                    hasher=context.hasher,
+                ):
+                    context.checkpoints_written += 1
 
     def map_class_of(osm_id: int, tags: dict[str, str]) -> facility.MapClass:
         """The map's class for a way, agreeing with what routing does with it.
@@ -2621,56 +2875,18 @@ def build_handlers(
                         bike_access_reason=access_reason,
                     )
                 )
-        context.rows = rows
         writers.write_segments(context.staging_schema, rows)
+        # Not kept on the context any more: this stage runs before the tile build
+        # now, and millions of row dicts held through it are memory the host does
+        # not have. Nothing read them.
+        del rows
         trail_routes.derive_trail_runs(context.staging_schema)
         trail_routes.derive_calm_runs(context.staging_schema)
         trail_routes.derive_roadside(context.staging_schema)
 
-    def validate() -> None:
-        if set(context.build_logs) != set(variants.Variant):
-            raise ValidationFailed(
-                "not every variant produced a build log, so there is nothing to check the "
-                f"missing ones against: have {sorted(v.value for v in context.build_logs)}"
-            )
-        for variant, build_log in context.build_logs.items():
-            build_config = context.build_configs.get(variant)
-            if build_config is None:
-                raise ValidationFailed(
-                    f"the {variant.value} variant produced a build log and no build config, "
-                    "so there is nothing to say which transform its build was told to load"
-                )
-            assert_lua_script_was_loaded(build_log, build_config, variant.value)
-            assert_no_rule_violations(build_log, variant.value)
-        assert_admin_and_timezone_databases_were_built(context.build_configs)
-        assert_elevation_reached_the_tiles(sample_grade())
-        assert_derived_tags_reached_the_tiles(sample_derived_tag(), DERIVED_SENTINEL_EXPECTED)
-        weekend = sample_weekend_tag()
-        if weekend != WEEKEND_SENTINEL_EXPECTED:
-            raise ValidationFailed(
-                f"the weekend graph reports {weekend!r} on Sligo Creek Parkway (way "
-                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
-                "derived as the weekend twin, so a weekend ride on it would not prefer the "
-                "roads closed to cars"
-            )
-        assert_reference_lts4_street(
-            context,
-            _setting("REBUILD_SENTINEL_LTS4_STREET"),
-            _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
-            _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
-            _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
-        )
-        assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
-        assert_military_closures(
-            context,
-            _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
-            _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
-        )
-        assert_secured_closures(
-            context,
-            _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
-            _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
-        )
+    def staging_checks() -> None:
+        """The VALIDATE_SEGMENTS checks that read the staging schema alone, which is
+        why a resumed attempt can run them again."""
         assert_mass_capacity(
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
@@ -2698,12 +2914,163 @@ def build_handlers(
             _setting("REBUILD_CALM_RUN_FLOORS"),
         )
 
+    def validate_segments() -> None:
+        """Everything that needs no graph: the segment rows and the in-memory
+        classification, checked before the hours of tile building rather than after.
+
+        When it passes, the classification checkpoint is written (last, and only
+        if the inputs are still what they were at the start).
+        """
+        if context.resumed:
+            # The context was never loaded, so only the checks that read the
+            # staging schema can run, and only when their numbers have changed.
+            if context.revalidate_staging:
+                staging_checks()
+                refresh_validation_fingerprint()
+            return
+        assert_reference_lts4_street(
+            context,
+            _setting("REBUILD_SENTINEL_LTS4_STREET"),
+            _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
+            _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
+        )
+        assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
+        assert_military_closures(
+            context,
+            _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
+        )
+        assert_secured_closures(
+            context,
+            _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
+            _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
+        )
+        staging_checks()
+        # Computed here, where the ways are, and held (and checkpointed) for
+        # VALIDATE_TILES, which reads the graphs and needs no ways.
+        context.closure_probes = closure_probes(context)
+        if context.checkpoints:
+            write_classification_checkpoint()
+
+    def write_classification_checkpoint() -> None:
+        """Write the classification manifest: last, atomically, and only when what it
+        would say is still true."""
+        if context.start_fingerprint is None or context.merged_pbf is None:
+            return
+        measured = measure_fingerprint(context.merged_pbf)
+        moved = checkpoint.changed_inputs(context.start_fingerprint["inputs"], measured["inputs"])
+        if moved:
+            logger.warning(
+                "no classification checkpoint: these inputs changed while the rebuild ran: %s",
+                ", ".join(moved),
+            )
+            return
+        pbfs = {variant: context.variant_pbf(variant) for variant in variants.Variant}
+        absent = [str(path) for path in pbfs.values() if not path.is_file()]
+        if absent:
+            logger.warning("no classification checkpoint: %s not written", ", ".join(absent))
+            return
+        state = checkpoint.staging_state(context.staging_schema)
+        if state is None or state["segment_rows"] is None:
+            logger.warning("no classification checkpoint: no staging schema to describe")
+            return
+        token = checkpoint.new_token()
+        variant_facts = checkpoint.variant_pbf_facts(pbfs, context.hasher)
+        # The token goes onto the schema first and the manifest second: the manifest
+        # is the commit, and a token with no manifest beside it is inert.
+        checkpoint.stamp_staging(context.staging_schema, token)
+        summary = context.override_report.summary() if context.override_report else None
+        checkpoint.atomic_write_json(
+            checkpoint.classification_path(context.work_dir),
+            {
+                "format": checkpoint.FORMAT,
+                "job_id": context.job_id,
+                "build_id": context.build_id,
+                "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                "fingerprint": measured,
+                "variant_pbfs": variant_facts,
+                "staging": {
+                    "schema": context.staging_schema,
+                    "segment_rows": state["segment_rows"],
+                    "border_crossing_rows": state["border_crossing_rows"],
+                    "token": token,
+                },
+                "closure_probes": [
+                    {"way_id": p.way_id, "lon": p.lon, "lat": p.lat, "reason": p.reason}
+                    for p in context.closure_probes or []
+                ],
+                "singletracks": sorted(context.singletracks),
+                "override_summary": summary,
+            },
+        )
+        context.checkpoints_written += 1
+        logger.info(
+            "classification checkpoint written for job %s build %s", context.job_id, context.build_id
+        )
+
+    def refresh_validation_fingerprint() -> None:
+        """After the staging checks have passed against new numbers, record them, so
+        the next attempt does not run them again."""
+        manifest = checkpoint.read_classification(context.work_dir)
+        if manifest is None or manifest.get("build_id") != context.build_id:
+            return
+        manifest["fingerprint"]["validation"] = measure_fingerprint(context.merged_pbf)[
+            "validation"
+        ]
+        checkpoint.atomic_write_json(checkpoint.classification_path(context.work_dir), manifest)
+
+    def validate_tiles() -> None:
+        if set(context.build_logs) != set(variants.Variant):
+            raise ValidationFailed(
+                "not every variant produced a build log, so there is nothing to check the "
+                f"missing ones against: have {sorted(v.value for v in context.build_logs)}"
+            )
+        for variant, build_log in context.build_logs.items():
+            build_config = context.build_configs.get(variant)
+            if build_config is None:
+                raise ValidationFailed(
+                    f"the {variant.value} variant produced a build log and no build config, "
+                    "so there is nothing to say which transform its build was told to load"
+                )
+            assert_lua_script_was_loaded(build_log, build_config, variant.value)
+            assert_no_rule_violations(build_log, variant.value)
+        assert_admin_and_timezone_databases_were_built(context.build_configs)
+        assert_elevation_reached_the_tiles(sample_grade())
+        assert_derived_tags_reached_the_tiles(sample_derived_tag(), DERIVED_SENTINEL_EXPECTED)
+        weekend = sample_weekend_tag()
+        if weekend != WEEKEND_SENTINEL_EXPECTED:
+            raise ValidationFailed(
+                f"the weekend graph reports {weekend!r} on Sligo Creek Parkway (way "
+                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
+                "derived as the weekend twin, so a weekend ride on it would not prefer the "
+                "roads closed to cars"
+            )
         assert_bicycle_closures_reached_the_tiles(sample_closures())
 
     def swap() -> None:
-        context.swap_outcome = promotion.perform_swap(
-            context.tiles_dir, context.build_id, context.upstreams
-        )
+        # The classification checkpoint is deleted before the swap, never after: from
+        # the first rename on, staging is the live schema and a resume into it would
+        # be a resume into a promoted build. If the swap fails and undoes itself
+        # completely - the one case where the staging schema is again exactly what
+        # the manifest describes - the same manifest is put back, so the job's retry
+        # re-runs VALIDATE_TILES and SWAP instead of the whole rebuild. It is
+        # verified like any other on the way in. An undo that did not finish
+        # (`SwapUndoIncomplete`), or a process that died, leaves it deleted.
+        saved = checkpoint.read_classification(context.work_dir)
+        checkpoint.discard_classification(context.work_dir)
+        try:
+            context.swap_outcome = promotion.perform_swap(
+                context.tiles_dir, context.build_id, context.upstreams
+            )
+        except promotion.SwapUndoIncomplete:
+            raise
+        except Exception:
+            if saved is not None and saved.get("build_id") == context.build_id:
+                checkpoint.atomic_write_json(
+                    checkpoint.classification_path(context.work_dir), saved
+                )
+            raise
 
     def reconcile_after_swap() -> None:
         context.drift_report = reconcile.drift_report(
@@ -2712,19 +3079,34 @@ def build_handlers(
             _setting("SEGMENT_SCHEMA_RETIRED"),
         )
 
+    def unless_resumed(handler: Callable[[], None]) -> Callable[[], None]:
+        """A stage the classification checkpoint stands in for. Whether this attempt
+        resumes is decided when FETCH_EXTRACT runs, after the stage list is fixed,
+        so the stages are skipped here rather than named in `run_rebuild`'s `skip`."""
+
+        @functools.wraps(handler)
+        def maybe() -> None:
+            if context.resumed:
+                logger.info("%s: kept from the classification checkpoint", handler.__name__)
+                return
+            handler()
+
+        return maybe
+
     handlers = {
         Stage.FETCH_EXTRACT: fetch_extract,
-        Stage.LOAD_REFERENCE_DATA: load_reference_data,
+        Stage.LOAD_REFERENCE_DATA: unless_resumed(load_reference_data),
         Stage.ELEVATION: ensure_elevation,
-        Stage.CONFLATE_VOLUME: conflate_volume,
-        Stage.CLASSIFY_STRESS: classify_stress,
-        Stage.TAG_JURISDICTIONS: tag_jurisdictions,
-        Stage.APPLY_OVERRIDES: apply_overrides,
-        Stage.INSERT_BORDER_NODES: insert_border_nodes,
-        Stage.INJECT_TAGS: inject_tags,
+        Stage.CONFLATE_VOLUME: unless_resumed(conflate_volume),
+        Stage.CLASSIFY_STRESS: unless_resumed(classify_stress),
+        Stage.TAG_JURISDICTIONS: unless_resumed(tag_jurisdictions),
+        Stage.APPLY_OVERRIDES: unless_resumed(apply_overrides),
+        Stage.INSERT_BORDER_NODES: unless_resumed(insert_border_nodes),
+        Stage.INJECT_TAGS: unless_resumed(inject_tags),
+        Stage.WRITE_SEGMENTS: unless_resumed(write_segments),
+        Stage.VALIDATE_SEGMENTS: validate_segments,
         Stage.BUILD_TILES: build_tiles,
-        Stage.WRITE_SEGMENTS: write_segments,
-        Stage.VALIDATE: validate,
+        Stage.VALIDATE_TILES: validate_tiles,
         Stage.SWAP: swap,
         Stage.RECONCILE: reconcile_after_swap,
     }
@@ -2828,7 +3210,9 @@ def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
 def _closures_across_variants(context: RebuildContext, run) -> dict:
     """Read the gate's probes back from every variant's staged graph, after
     writing them where the post-swap probe will look for them."""
-    probes = closure_probes(context)
+    probes = (
+        context.closure_probes if context.closure_probes is not None else closure_probes(context)
+    )
     try:
         write_closure_reports(
             context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
@@ -2870,6 +3254,13 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
 # other failure, and a second abort, fails the stage as before.
 TILE_BUILD_ABORT_RETRIES = 1
 
+# The signals a valhalla_build_tiles can die of that a second run has cleared.
+# SIGABRT is the double free above. SIGSEGV (-11) is the same race seen as a
+# crash instead of an abort: the freed memory is touched before glibc notices
+# (job 8408, 2026-10-09; OWNER-DECISIONS 459). The retry is the same one - once,
+# from the start, in whatever is left of the deadline.
+RETRYABLE_TILE_SIGNALS = (-signal.SIGABRT, -signal.SIGSEGV)
+
 
 def _run_tile_command(
     run: Callable[[Sequence[str]], tiles.CommandOutput],
@@ -2878,8 +3269,8 @@ def _run_tile_command(
 ) -> tiles.CommandOutput:
     """Run one tile-build command, running an aborted valhalla_build_tiles again.
 
-    Only `valhalla_build_tiles`, and only SIGABRT: a crash in the admin build or
-    the extract is not the race above, and an ordinary non-zero exit is a
+    Only `valhalla_build_tiles`, and only SIGABRT or SIGSEGV: a crash in the admin
+    build or the extract is not the race above, and an ordinary non-zero exit is a
     refusal that will say the same thing twice. The deadline is the runner's:
     `_run_command` raises `RebuildTimedOut` when nothing is left for the retry.
     """
@@ -2889,7 +3280,7 @@ def _run_tile_command(
         try:
             return run(command)
         except CommandFailed as failure:
-            if not retryable or failure.returncode != -signal.SIGABRT:
+            if not retryable or failure.returncode not in RETRYABLE_TILE_SIGNALS:
                 raise
             if attempt >= retries:
                 if not attempt:
@@ -2899,7 +3290,9 @@ def _run_tile_command(
                 ) from failure
             attempt += 1
             logger.warning(
-                "valhalla_build_tiles aborted (SIGABRT); running it again, retry %d of %d: %s",
+                "valhalla_build_tiles %s (%s); running it again, retry %d of %d: %s",
+                "aborted" if failure.returncode == -signal.SIGABRT else "crashed",
+                signal.Signals(-failure.returncode).name,
                 attempt,
                 retries,
                 shlex.join(command),
