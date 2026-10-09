@@ -24,7 +24,7 @@ export const STATION_ICON_PX = 20;
 export const ELEVATOR_ICON_PX = 16;
 const SAMPLES = 4; // per pixel side: 16 samples, for smooth edges
 
-type Rgb = [number, number, number];
+export type Rgb = [number, number, number];
 
 export function hexToRgb(hex: string): Rgb {
   const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
@@ -34,7 +34,7 @@ export function hexToRgb(hex: string): Rgb {
 }
 
 /** Fill a buffer by asking `colourAt` for each sub-sample; null is transparent. */
-function rasterise(
+export function rasterise(
   size: number,
   pixelRatio: number,
   colourAt: (x: number, y: number) => Rgb | null,
