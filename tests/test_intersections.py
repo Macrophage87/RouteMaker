@@ -274,7 +274,8 @@ class TestMovementCosts:
         turn = junction(movement=Movement.LEFT, incoming=Road(3), outgoing=Road(4))
         cost_ft, kind, about = m.cost_of(turn)
         assert kind == "left_onto" and about == Road(4)
-        assert cost_ft == pytest.approx(m.STOPPED_CROSSING_FT[4] * m.MOVEMENT_FACTOR_ONTO["left"])
+        # Road(4) has no speed: read at 45 mph for cost, 4,000 x 1.4 x 1.25 = 7,000 ft (468).
+        assert cost_ft == pytest.approx(7000.0 * m.MOVEMENT_FACTOR_ONTO["left"])
         assert cost_ft > m.left_from_ft(Road(3), Control.NONE)
 
     def test_a_left_with_a_stop_on_the_riders_side_onto_an_equal_road(self) -> None:
@@ -295,7 +296,7 @@ class TestMovementCosts:
         turn = junction(movement=Movement.RIGHT, incoming=Road(3), outgoing=Road(4))
         cost_ft, kind, _about = m.cost_of(turn)
         assert kind == "right_onto"
-        assert cost_ft == pytest.approx(m.STOPPED_CROSSING_FT[4] * m.MOVEMENT_FACTOR_ONTO["right"])
+        assert cost_ft == pytest.approx(7000.0 * m.MOVEMENT_FACTOR_ONTO["right"])  # see above
         assert m.assess(turn).severity is None
 
     def test_straight_on_from_one_busy_road_onto_a_busier_is_not_a_turn(self) -> None:
@@ -606,7 +607,8 @@ class TestRoute:
         both = m.assess_route(
             [junction(m=0.0, crossed=(road,)), junction(m=20.0, crossed=(other,))]
         )
-        assert both[0].cost_ft == pytest.approx(m.STOPPED_CROSSING_FT[4] * m.MEDIAN_REFUGE_FACTOR)
+        # Road(4) with no speed costs 7,000 ft (assumed 45 mph, 468); the refuge x0.75.
+        assert both[0].cost_ft == pytest.approx(7000.0 * m.MEDIAN_REFUGE_FACTOR)
         assert both[0].severity == m.severity_of(both[0].cost_ft)
         # A red LTS 4 crossing at 25 mph whose credit takes it to orange.
         slow = Road(
