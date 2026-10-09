@@ -1828,7 +1828,7 @@ async function saidInDialog(p, text) {
   const link = await p.eval(`(() => { const a = document.querySelector('.stress-page-link a'); if (!a) return null;
     return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="legend-heading"]') }; })()`);
   const ax = await axNode(p, ".stress-page-link a");
-  check("stress page: the legend links to it in the same tab, named by its visible words first",
+  check("stress page: the legend links to it in the same tab, named by its visible words",
     link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How stress ratings work",
     JSON.stringify({ link, ax }));
   // Following it and then the page's own "Back to the map" (a bare "/") brings the route back
