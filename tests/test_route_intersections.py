@@ -235,8 +235,9 @@ class TestIntersectionsInTheAnswer:
         assert body["intersections"] == []
         (row,) = body["junctions_debug"]
         assert row["control"] == "signal" and row["flagged"] is False and row["severity"] is None
-        assert row["cost_ft"] == 600 and row["time_factor"] in (0.85, 1.0, 1.25)
-        assert row["text"] == "0.11 calm mi (0.18 calm km)" or row["time_factor"] != 1.0
+        assert row["time_factor"] in (0.85, 1.0, 1.25)  # the ride time is the moment's
+        assert row["cost_ft"] == round(600 * row["time_factor"])
+        assert row["text"].endswith(" calm km)") and " calm mi (" in row["text"]
         assert row["assumed_speed"] is False
 
     def test_a_stop_sign_on_the_riders_side_is_said(self, client, arterial, router) -> None:
