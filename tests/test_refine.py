@@ -175,7 +175,7 @@ class TestCrossingAvoidance:
         self, monkeypatch
     ) -> None:
         original = analysis(
-            "o", events=[event(1500.0, 3000.0), event(2500.0, 3100.0), event(3000.0, 1300.0)]
+            "o", events=[event(1500.0, 3000.0), event(2500.0, 2950.0), event(3000.0, 1300.0)]
         )
         better = analysis("b", cost_s=4050.0, events=[])
         world = World(monkeypatch, {"o": original, "b": better}, [trip_of("b", 4.2)])
