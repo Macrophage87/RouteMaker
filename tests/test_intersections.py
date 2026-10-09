@@ -351,7 +351,9 @@ class TestMovementCosts:
         assert m.merge_ft(Road(3, lanes=3, speed_mph=30)) == pytest.approx(2 * 0.15 * 5280)
         assert m.merge_ft(Road(4, lanes=2, speed_mph=30)) == pytest.approx(0.30 * 5280)
         assert m.merge_ft(Road(4, lanes=3, speed_mph=30)) == pytest.approx(2 * 0.30 * 5280)
-        assert m.merge_ft(Road(5, lanes=2, speed_mph=30)) == m.merge_ft(Road(4, lanes=2, speed_mph=30))
+        assert m.merge_ft(Road(5, lanes=2, speed_mph=30)) == m.merge_ft(
+            Road(4, lanes=2, speed_mph=30)
+        )
 
     @pytest.mark.parametrize(
         ("mph", "rise"), [(25, 1.0), (35, 1.0), (40, 1.2), (45, 1.4), (50, 1.6)]
@@ -1302,7 +1304,12 @@ class TestOptionC:
         )
 
     def test_severe_speed_factors(self) -> None:
-        for mph, factor in [(35, 1.0), (40, 1.2), (45, 1.4 * m.RURAL_FACTOR), (50, 1.6 * m.RURAL_FACTOR)]:
+        for mph, factor in [
+            (35, 1.0),
+            (40, 1.2),
+            (45, 1.4 * m.RURAL_FACTOR),
+            (50, 1.6 * m.RURAL_FACTOR),
+        ]:
             assert m.scale(Road(4, speed_mph=mph), True) == pytest.approx(factor)
         # LTS 3 keeps the ordinary factors.
         assert m.scale(Road(3, speed_mph=40), True) == pytest.approx(1.1)
@@ -1327,14 +1334,20 @@ class TestOptionC:
         # LTS 3 with no speed is not guessed.
         assert m.cost_speed(Road(3)) is None and not m.speed_assumed(Road(3))
         # A speed the map gives is never overridden.
-        assert m.cost_speed(Road(4, speed_mph=30)) == 30 and not m.speed_assumed(Road(4, speed_mph=30))
+        assert m.cost_speed(Road(4, speed_mph=30)) == 30 and not m.speed_assumed(
+            Road(4, speed_mph=30)
+        )
 
     def test_the_event_says_when_the_speed_was_assumed(self) -> None:
         assert m.assess(junction(crossed=(Road(4),), control=Control.NONE)).assumed_speed
-        assert not m.assess(junction(crossed=(Road(4, speed_mph=30),), control=Control.NONE)).assumed_speed
+        assert not m.assess(
+            junction(crossed=(Road(4, speed_mph=30),), control=Control.NONE)
+        ).assumed_speed
         assert not m.assess(junction(crossed=(Road(4),), control=Control.SIGNAL)).assumed_speed
 
-    def test_a_left_off_an_unsignalised_lts4_road_costs_as_much_as_crossing_it_from_a_stop(self) -> None:
+    def test_a_left_off_an_unsignalised_lts4_road_costs_as_much_as_crossing_it_from_a_stop(
+        self,
+    ) -> None:
         road = Road(4, speed_mph=30, lanes=1)
         left_off = m.left_from_ft(road, Control.NONE)
         stopped = m.crossing_ft(road, Control.NONE, 1)

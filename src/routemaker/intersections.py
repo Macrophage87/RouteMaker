@@ -184,6 +184,7 @@ def time_factor(when: str | None) -> float:
     the setting is unknown."""
     return TIME_FACTORS.get(when or "", 1.0)
 
+
 # --- Movement (item 166) ----------------------------------------------------
 #
 # "Make it less of a penalty for right turns and more of one for left. For most
@@ -567,7 +568,7 @@ def calm_miles(cost_ft: float) -> float:
 
 
 def calm_text(cost_ft: float) -> str:
-    """"0.55 calm mi (0.88 calm km)": US units first, metric in brackets."""
+    """ "0.55 calm mi (0.88 calm km)": US units first, metric in brackets."""
     miles = calm_miles(cost_ft)
     return f"{miles:.2f} calm mi ({miles * KM_PER_MILE:.2f} calm km)"
 

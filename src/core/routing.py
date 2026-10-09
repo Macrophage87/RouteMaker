@@ -1623,7 +1623,9 @@ def _intersection_rows(events: list) -> list[dict]:
             "kind": event.kind,
             "cost_ft": round(event.cost_ft),
             "calm_mi": round(intersections.calm_miles(event.cost_ft), 2),
-            "calm_km": round(intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2),
+            "calm_km": round(
+                intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2
+            ),
             "group": event.group,
         }
         for event in events
@@ -1646,7 +1648,9 @@ def _junction_debug_rows(events: list) -> list[dict]:
             "crossed_tier": event.crossed_tier,
             "cost_ft": round(event.cost_ft),
             "calm_mi": round(intersections.calm_miles(event.cost_ft), 3),
-            "calm_km": round(intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 3),
+            "calm_km": round(
+                intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 3
+            ),
             "text": intersections.calm_text(event.cost_ft),
             "severity": event.severity,
             "flagged": event.flagged,
@@ -2543,7 +2547,9 @@ def plan(
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (
-                _junction_debug_rows(events) if dials.debug_junctions and events is not None else None
+                _junction_debug_rows(events)
+                if dials.debug_junctions and events is not None
+                else None
             ),
             "calm_search": refined,
             "dodges": dodges_of,
