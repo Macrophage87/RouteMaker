@@ -585,7 +585,7 @@ class TestTiles:
         oid, optional, generation = stress_tiles.live_state()
         old = stress_tiles.etag_for(oid, optional, generation)
         near = [tile_of(LON, LAT, z) for z in (10, 12, 14, 16)]
-        far = [tile_of(*FAR, z) for z in (10, 12, 14, 16)]
+        far = [tile_of(*FAR, z) for z in (12, 14, 16)]  # z10 is one tile wide of both
         for z, x, y in [*near, *far]:
             seed_cache(old, z, x, y)
         assert tile_cache.get(old, *near[0]) is not None
@@ -799,6 +799,7 @@ class TestMe:
         assert "csrftoken" in r.cookies
 
     def test_a_banned_admin_is_signed_out_and_may_not(self, live) -> None:
+        make_user()  # another admin, so this one is not the last
         user = make_user()
         client = sign_in(Client(), user)
         user.is_banned = True
