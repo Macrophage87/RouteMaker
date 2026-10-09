@@ -441,8 +441,9 @@ pool of its own, never runs the search. So at most
 many api containers there are, and each makes its router calls one after
 another. Each router serves with two workers per stage: the second argument of
 its `command` in `compose.yaml` (`valhalla_service /conf/valhalla-<variant>.json
-2`). `mjolnir.concurrency` (4) in `valhalla/*.json` is the tile build's thread
-count and says nothing about serving. So three routing slots can have three
+2`). `mjolnir.concurrency` (4) in `valhalla/*.json` is used by neither: the
+routers take their worker count from that argument, and a tile build takes its
+thread count from `REBUILD_TILE_CONCURRENCY` ("Tile build threads"). So three routing slots can have three
 plans asking one router at once against its two workers, and the third waits
 inside Valhalla. A calm plan at the top of the slider, with the trail seek's up
 to six asks a leg one after another, is the case where that shows: it costs
@@ -1571,6 +1572,84 @@ killed binary). It will not finish faster on the next attempt, and a retry runs
 the whole rebuild again including the swap — whose `DROP SCHEMA live_old`
 destroys the schema a rollback would have put back. Five retries of a timed-out
 rebuild would have dismantled its own rollback target, one attempt at a time.
+
+## Tile build threads
+
+Each graph is built by one `valhalla_build_tiles` run, and the five run one
+after another (standard, no-trail, ebike, weekend, offroad). How many threads a
+run uses is `mjolnir.concurrency` in that variant's
+`<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
+writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **2**).
+The serving configs' own `"concurrency": 4` is not what a build uses.
+
+Why it is a setting: Valhalla 3.5.1 can abort a multi-threaded tile build with
+
+```
+double free or corruption (fasttop)
+```
+
+on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log,
+usually a few seconds after `Building <n> tiles with <threads> threads...`. Each
+build thread frees its spatialite connections to the admin and timezone
+databases when it finishes, that cleanup calls a libxml2 function that is not
+thread-safe, and two threads finishing together can free the same memory.
+Upstream fixed it in 3.6.0 ([valhalla/valhalla#5005](https://github.com/valhalla/valhalla/pull/5005),
+reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
+race, not bad data: the same inputs build on the next try, and which graph it
+hits is luck.
+
+Two things keep it from failing a rebuild:
+
+- **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
+  and less memory. **1 cannot hit it at all**, and is the setting to use if
+  aborts keep happening; it makes the tile stage slower (the figures below).
+- **One retry of the crashed graph.** A `valhalla_build_tiles` that dies with
+  SIGABRT is run once more, for that graph only, logged as
+  `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1: <command>`.
+  That line means the retry is running and nothing needs doing now. The rerun
+  starts from scratch in the same build directory (Valhalla purges the tile
+  level directories first) and gets whatever is left of the budget. Any other
+  failure, or a second abort, fails the rebuild as before; a second abort is
+  reported as `valhalla_build_tiles exited -6 (after 1 retry): <command>`.
+
+What it costs, measured on attempt 3 of job 8023 (2026-10-08, 4 threads, no
+abort): preprocessing up to the first build config took 2 h 37 min, the tile
+stage 1 h 15 min (5.6 to 20.6 min a graph; standard is the longest, since it
+also builds the admin and timezone databases), and VALIDATE 27 min. From those:
+
+| Threads | Whole rebuild |
+|---|---|
+| 4 | about 4.5 h |
+| 2 (the default) | about 6 h; about 6.8 h if one graph is retried |
+| 1 | about 6.6 to 8.3 h |
+
+At 1 thread the top of that range is past the eight-hour budget ("The
+rebuild's own budget", above), and a rebuild that times out is abandoned, not
+retried. So set 1 only after an abort that the retry did not cure (the `(after
+1 retry)` failure), or after the retry line has shown up in more than one
+rebuild, and watch the next one against the budget.
+
+The setting is read when the settings load: a value that is not a whole number
+of at least 1 (`0`, `-1`, `2.5`, `x`) keeps the rebuild service from starting:
+under `restart: unless-stopped` the container keeps restarting, and
+`docker compose logs rebuild` shows
+`REBUILD_TILE_CONCURRENCY must be a whole number of at least 1`. Empty counts
+as unset.
+
+To change it: set `REBUILD_TILE_CONCURRENCY=1` (or another whole number of at
+least 1) in `.env` and, with no rebuild job `todo` or `doing`, recreate the
+rebuild service (never a plain `up -d`):
+
+```sh
+docker compose up -d --no-deps --no-build --force-recreate rebuild </dev/null
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null   # the new value
+```
+
+The value a build actually used is in its `build-config.json` under
+`/data/tiles/<variant>/<build id>/`. (Valhalla's `Building <n> tiles with
+<threads> threads...` line is not in `docker compose logs rebuild` on a build
+that succeeds: the rebuild captures the output and logs it only when a command
+fails.)
 
 ## The source extract
 
@@ -3691,6 +3770,7 @@ grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: c
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
 docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 2 (or the .env value; "Tile build threads")
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
 Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
@@ -3817,7 +3897,9 @@ deletes the stress row for way 424993005 in the admin; without that, `override-r
 lists that row as `failed`, which is expected. Rollback point: the override max id saved
 in C (rows above it are this step's).
 
-**I. The rebuild** (about 3-3.5 h on a quiet host; abandoned at 8 h). No lane work meanwhile.
+**I. The rebuild** (about 6 h at 2 threads, about 6.8 h if one graph's tile build is
+retried, from the timings measured at 4 threads in "Tile build threads"; abandoned at 8 h).
+No lane work meanwhile.
 
 First the fresh extract (443). Just before firing, move the 2026-10-03 clipped extract
 aside inside the running `rebuild` container (it runs as 10001, which owns the directory),
@@ -3877,6 +3959,27 @@ long trails, the closure readback on **five** graphs, and `Stress tile cache pre
 11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A
 VALIDATE refusal is terminal and nothing is promoted: keep the code (the new api is safe on
 the old table), hold the front end, and report.
+
+Once the tile stage starts (about 2.5 h in), a new build directory appears under
+`/data/tiles/standard/`, named with today's UTC date (build ids look like
+`20261008T182100Z`). The rebuild does not log that the stage began, so check for the
+directory. In a second shell, read the newest directory by name and print it with its
+`build-config.json` thread count:
+
+```sh
+docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 2
+```
+
+If the directory it prints is not dated today (UTC), the build has not started its tiles
+yet and that is an older build's value (it may well say 4): wait and run it again, and do
+not conclude anything from it.
+
+A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
+the 3.5.1 race hit one graph and the retry is building it again: nothing needs doing during
+the run. Note it in the report; "Tile build threads" says when to move to
+`REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
+line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
+the retry aborted too: set 1 before the next rebuild.
 
 **J. After the swap.** The run row's notice prints the same restart as here.
 
