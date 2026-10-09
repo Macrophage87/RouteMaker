@@ -1254,6 +1254,7 @@ def route(request, body: RouteIn, response: HttpResponse):
             body.points,
             _stress_of(body),
             long_ride=False,
+            trails_off=body.trails_off,
         ):
             # A long calm plan (OWNER-DECISIONS 256) has the long ride's time
             # limit, so it takes the long ride's in-flight slot as well: one at a
@@ -1322,14 +1323,18 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         return Status(400, {"error": ROUTER_TOO_LONG})
     except routing.NoRoute as no_route:
         message = "No route joins these points on this preset."
-        if no_route.no_path and (
-            body.trails_off or presets.PRESETS[body.preset].variant == "no-trail"
-        ):
+        if no_route.no_path and presets.PRESETS[body.preset].variant == "no-trail":
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
-                " A Mass Ride, or a ride kept to roads, uses roadways only, and without"
-                " trails there can be no roadway-legal connection between two points."
+                " A Mass Ride routes only on roadways, and removing trails can leave"
+                " no roadway-legal connection between two points."
+            )
+        elif no_route.no_path and body.trails_off:
+            # The same for a ride with "Keep to roads, not trails" on, in its words.
+            message += (
+                " With Keep to roads, not trails, this ride routes only on roadways, and"
+                " without trails there may be no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
     except routing.RouterUnavailable:

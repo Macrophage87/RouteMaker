@@ -765,6 +765,22 @@ def test_a_mass_ride_counts_bike_lanes_as_none(client, facility_segments, router
     assert mass["protected"] == 0
 
 
+@db
+def test_a_trails_off_ride_keeps_its_bike_lanes_in_the_breakdown(client, facility_segments, router):
+    """The lanes-as-none relabel is Mass Ride's (it takes the roadway), not the
+    no-trail graph's: a Default ride with "Keep to roads, not trails" on still
+    rides way 202's painted lane, and its breakdown says so (the trails-off
+    correctness review, 3)."""
+    router(standard_router())
+    ordinary = post(client, {**good_body("default"), "when": "weekday_rush"}).json()["facility_m"]
+    router(standard_router())
+    body = post(client, {**good_body("default"), "when": "weekday_rush", "trails_off": True}).json()
+    assert body["variant"] == "no-trail"
+    assert ordinary["lane"] > 0
+    assert body["facility_m"]["lane"] == pytest.approx(ordinary["lane"])
+    assert "lane" in [s["facility"] for s in body["stress_spans"]]
+
+
 # --- The avoid half: sustained climbs and descents (the owner, 2026-09-28) ----
 
 

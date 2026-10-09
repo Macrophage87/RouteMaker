@@ -239,6 +239,9 @@ class TestTheLongCalmPlan:
         assert not long_calm_for("trailmaxxing", [US, [-77.0, 38.95]], 100, False)
         assert not long_calm_for("trailmaxxing", [US, PENN], 100, True), "a long ride has its own"
         assert not long_calm_for("trailmaxxing", [US], 100, False)
+        # Not with trails off: its leg-by-leg search is for trails (the trails-off
+        # correctness review, 7).
+        assert not long_calm_for("trailmaxxing", [US, PENN], 100, False, trails_off=True)
 
     def test_the_span_that_makes_it_long_is_the_searchs_working_span(self) -> None:
         assert refine_span() == 30_000

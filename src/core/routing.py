@@ -394,7 +394,10 @@ def _has_facility_columns(schema: str) -> bool:
 # The facility classes a ride on the roadway does not use: a mass ride takes
 # the general lanes whatever the street marks for bicycles (the owner,
 # 2026-09-27: "Mass rides don't need to consider these. Even protected bike
-# lanes aren't used."), so on the no-trail variant their length is "none".
+# lanes aren't used."), so on a Mass Ride their length is "none". Only there:
+# a rider with "Keep to roads, not trails" on rides the lanes the road has, and
+# its breakdown says so (the trails-off correctness review, 3), though the
+# no-trail graph gives them no credit (`facility_neutral`).
 ROADWAY_ONLY_AS_NONE = frozenset({"protected", "lane"})
 
 
@@ -443,8 +446,9 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
     for a ride at `when`, each a `PieceClass` that also carries the segment's
-    surface. With `roadway_only` (a ride on the no-trail variant), bicycle
-    lanes of either class are "none"; a road closed to cars is still a path."""
+    surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
+    not every ride on the no-trail variant), bicycle lanes of either class are
+    "none"; a road closed to cars is still a path."""
     if not pieces:
         return []
     # The schema name comes from settings and is validated the way every DDL
@@ -1132,18 +1136,24 @@ def straight_span_m(points: list) -> float:
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
 
 
-def long_calm_for(preset_name: str, points: list, stress: int, long_ride: bool) -> bool:
+def long_calm_for(
+    preset_name: str, points: list, stress: int, long_ride: bool, trails_off: bool = False
+) -> bool:
     """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
     stress slider on a ride type that plans past the calm search's working span
     leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
     stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
     ride (past the confirm span, which has its own rules). The Hills slider seeking
     climbs does not change it: at the top of the stress slider seeking hills keeps
-    the stress order and the target (OWNER-DECISIONS 298(3))."""
+    the stress order and the target (OWNER-DECISIONS 298(3)). Not with trails off
+    ("Keep to roads, not trails"): the leg-by-leg search spends the long ride's
+    budget looking for trails, which that ride has turned off (the trails-off
+    correctness review, 7), so it plans as any other ride at the top does."""
     from . import refine
 
     return (
-        presets.PRESETS[preset_name].long_calm
+        not trails_off
+        and presets.PRESETS[preset_name].long_calm
         and presets.maxcalm_for(stress)
         and len(points) >= 2
         and not long_ride
@@ -2002,7 +2012,9 @@ def plan(
     # for a long ride (2026-09-26). It is the same plan the ordinary budget
     # would cut short after its first legs, and no more than the router calls
     # a long ride makes (docs/OPERATIONS.md, "Long calm plans").
-    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride)
+    long_calm = not loop and long_calm_for(
+        preset_name, points, stress_dial, long_ride, trails_off=bool(dials.trails_off)
+    )
     if long_ride or long_calm:
         budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
     else:
@@ -2015,6 +2027,9 @@ def plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
+    # Ride, whose own graph is no-trail), not on every trails-off ride.
+    lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
     costing = presets.costing(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
@@ -2166,6 +2181,7 @@ def plan(
         traces=traces,
         points=points,
         roadway_only=variant == Variant.NO_TRAIL.value,
+        lanes_as_roadway=lanes_as_roadway,
         with_facility=_has_facility_columns(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)),
         group=preset_name == "mass-ride",
         rate=presets.calm_rate_for(stress_dial),
@@ -2348,7 +2364,7 @@ def plan(
             classes = (
                 analysed.classes
                 if analysed is not None and len(analysed.pieces) == len(pieces)
-                else classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+                else classify(pieces, when, roadway_only=lanes_as_roadway)
             )
             traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
             for key, metres in traced_stress.items():

@@ -802,9 +802,16 @@ class TestRouterOutcomes:
         kept = post(client, {**good_body("default"), "trails_off": True}).json()["error"]
         router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path could be found")}))
         mass = post(client, good_body("mass-ride")).json()["error"]
-        assert kept == mass
         assert kept != standard
         assert kept.startswith(standard)
+        # Each in its own words (the correctness review, 5): a Mass Ride's names Mass
+        # Ride, a trails-off ride's names the switch and not Mass Ride.
+        assert "Mass Ride" in mass and "Keep to roads" not in mass
+        assert "Keep to roads, not trails" in kept and "Mass Ride" not in kept
+        assert "roadway-legal connection" in kept
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path could be found")}))
+        both = post(client, {**good_body("mass-ride"), "trails_off": True}).json()["error"]
+        assert both == mass
 
     def test_both_no_path_codes_tell_the_crossing_story(self, client, router) -> None:
         """Valhalla answers 442 or 443 for no path, depending on where the
