@@ -1526,6 +1526,15 @@ async function saidInDialog(p, text) {
   check("road panel: Details and sources is a native disclosure, closed at first, and says so",
     brief.detailsOpen === false && brief.summaryFirst === "SUMMARY" && brief.summaryText === "Details and sources" && sumAx?.expanded === false,
     JSON.stringify({ ...brief, lines: undefined, sumAx }));
+  // Its last item is the link to the page on how ratings work (461; correctness C4, mutation T1).
+  const how = await p.eval(`(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (!det) return null;
+    det.open = true; const a = det.querySelector('.stress-page-link a'); if (!a) return { found: false };
+    return { found: true, href: a.getAttribute('href'), target: a.getAttribute('target'), last: det.lastElementChild === a.parentElement, shown: a.getBoundingClientRect().height > 0 }; })()`);
+  const howAx = await axNode(p, "dialog.road-info details.road-info-details .stress-page-link a");
+  await p.eval("(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (det) det.open = false; return true; })()");
+  check("road panel: Details and sources ends with the link to how stress ratings work, in the same tab, named by its visible words",
+    how?.found && how.href === "/about/stress.html" && how.target === null && how.last && how.shown && howAx?.role === "link" && howAx?.name === "How stress ratings work",
+    JSON.stringify({ how, howAx }));
   check("road panel: each part is a section named by its own heading, the figures terms with the source in words, the stress in words",
     body.sections.length >= 6 && body.sections.every((x) => x.heading && x.tag === "H3") &&
       /Level = LTS 3: For experienced cyclistsSource: RouteMaker classifier/.test(rows) && /Speed limit = 30 mph \(48 km\/h\), postedSource: DC Roadway Block/.test(rows) &&
@@ -1820,8 +1829,18 @@ async function saidInDialog(p, text) {
     return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="legend-heading"]') }; })()`);
   const ax = await axNode(p, ".stress-page-link a");
   check("stress page: the legend links to it in the same tab, named by its visible words first",
-    link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How ratings work (traffic stress)",
+    link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How stress ratings work",
     JSON.stringify({ link, ax }));
+  // Following it and then the page's own "Back to the map" (a bare "/") brings the route back
+  // (the accessibility review's SF1): the link keeps the plan in this tab's sessionStorage.
+  const before = await p.eval("location.hash");
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("document.querySelector('a.back')?.click(); true");
+  const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
+  check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
+    /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
   await p.close();
 }
 {
@@ -1830,7 +1849,7 @@ async function saidInDialog(p, text) {
   await p.waitFor("document.readyState === 'complete' && !!document.querySelector('h1')", 20000);
   const fit = await p.eval(`(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
     font: parseFloat(getComputedStyle(document.body).fontSize),
-    tables: [...document.querySelectorAll('.table-wrap')].map((w) => ({ focusable: w.tabIndex === 0, named: !!w.getAttribute('aria-labelledby') })) }))()`);
+    tables: [...document.querySelectorAll('.table-wrap')].map((w) => ({ focusable: w.tabIndex === 0, named: !!w.getAttribute('aria-label') })) }))()`);
   check("stress page at 320 px: nothing spills sideways, the text is 16 px or more, and a wide table scrolls in a named, focusable region",
     fit.scroll <= fit.width && fit.font >= 16 && fit.tables.length > 0 && fit.tables.every((t) => t.focusable && t.named), JSON.stringify(fit));
   const shape = await p.eval(`(() => { const levels = [...document.querySelectorAll('h1, h2, h3, h4')].map((h) => Number(h.tagName[1]));
@@ -1857,7 +1876,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 323;
+const EXPECTED = 325;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

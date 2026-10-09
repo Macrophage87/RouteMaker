@@ -33,6 +33,10 @@ export function rememberPlan(storage: StorageLike | null, hash: string): void {
  * stored: the owner's accepted exception to "never stored" (OWNER-DECISIONS
  * 398, "yes, keep location"), so it stays false.
  *
+ * The stress page link keeps a plan the same way (`rememberPlanForPage`, below), so
+ * flipping this to true also needs that link to learn whether the plan holds a
+ * location.
+ *
  * Flipping it to true (the rider then comes back from sign-in to an empty plan)
  * also needs: the Settings sheet's sign-in sentence in App.tsx ("your current
  * plan is kept across the sign-in.") made true for a plan with a location, and
@@ -51,6 +55,28 @@ export function rememberPlanForSignIn(
   skipWithLocation: boolean = SKIP_SIGN_IN_PLAN_WITH_LOCATION,
 ): void {
   if (holdsLocation && skipWithLocation) return;
+  rememberPlan(storage, hash);
+}
+
+/** This tab's sessionStorage, or null where the browser refuses it (a private window, a sandbox). */
+export function tabSession(): StorageLike | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The stress page link's handler (`StressPageLink`, stressLegend.ts; the accessibility
+ * review's SF1). /about/stress.html is a static page in the same tab, and its "Back to the
+ * map" links go to a bare "/", which loses the fragment the plan lives in. So the plan is
+ * kept as for the sign-in round trip: in this tab's sessionStorage, read once by
+ * `planToOpen` on the next load that has no plan of its own. The browser's Back button
+ * brings the fragment back itself, and then the page's own plan wins and the kept one is
+ * dropped.
+ */
+export function rememberPlanForPage(storage: StorageLike | null, hash: string): void {
   rememberPlan(storage, hash);
 }
 
