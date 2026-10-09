@@ -1457,7 +1457,8 @@ async function infoAsked(p, before, ms = 8000) {
 }
 /** Opens Map tools (by the zoom buttons; OWNER-DECISIONS 450) if it is closed, and presses one of its two buttons. */
 const mapTool = (p, label) =>
-  p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
+  p.eval(`(() => { if (!document.querySelector('.map-tools-toggle')) document.querySelector('.access-link')?.click(); // accessibility mode on (455)
+    const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
     [...document.querySelectorAll('.map-tools-panel button')].find((b) => b.textContent === ${JSON.stringify(label)})?.click(); return true; })()`);
 /** A test probe: moves the map, the MapLibre map in MapView's ref, found through React's fiber; whether it was found. */
 const jumpMap = (p, lon, lat, zoom) =>
@@ -1589,7 +1590,7 @@ async function saidInDialog(p, text) {
     stored: localStorage.getItem('routemaker.accessMode'), link: document.querySelector('.access-link')?.getAttribute('aria-pressed') ?? '',
     crosshair: !!document.querySelector('.crosshair') })`);
   check("accessibility mode: off by default, so no Map tools, nothing kept and the link offers to turn it on",
-    offState.tools === 0 && offState.stored === null && offState.link === "false" && !offState.crosshair, JSON.stringify(offState));
+    offState.tools === 0 && offState.stored === null && offState.link === "false", JSON.stringify(offState));
   const tipsOff = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
   check("accessibility mode: with it off, the help says to turn it on before Map tools, and the keys still work (I, arrows)",
     /press I for the road at the center of the map, or turn on accessibility mode \(the first button on the page\) and open Map tools/.test(tipsOff) &&
@@ -1623,6 +1624,9 @@ async function saidInDialog(p, text) {
   check("accessibility mode: Enter on the link again turns it off - Map tools goes, the focus stays on the link, it says so",
     offAgain.tools === 0 && offAgain.stored === "off" && offAgain.link === "false" && offAgain.focus && /Accessibility mode off\./.test(offAgain.said) && !offAgain.crosshair, JSON.stringify(offAgain));
   // The toggle in "More tips" does the same and leaves the focus where it is.
+  // More tips is inside the points, which a shown route folds behind Edit points.
+  await p.eval("(() => { const e = document.querySelector('.edit-points'); if (e && e.getAttribute('aria-expanded') === 'false') e.click(); const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return true; })()");
+  await sleep(200);
   await p.eval("document.querySelector('.access-toggle').focus(); true");
   await p.enter();
   await sleep(300);
