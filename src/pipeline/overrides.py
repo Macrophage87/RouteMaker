@@ -322,7 +322,9 @@ def load_approved(model=None, fingerprints=None) -> list[Override]:
 
     Filtered in the query rather than in Python: an unapproved row must not
     travel into the pipeline at all, so that no later stage can decide to apply
-    one.
+    one. A superseded row (a later road-panel edit replaced it, `core.stress_edits`)
+    is inert for the same reason: it stays approved, so that reloading an old file
+    cannot re-approve it, and is left out here instead.
     """
     if model is None:
         from core.models import Override as model
@@ -337,9 +339,15 @@ def load_approved(model=None, fingerprints=None) -> list[Override]:
             osm_way_id=row.osm_way_id,
             value=row.value,
             reason=row.reason or "",
-            fingerprint=fingerprints.get((row.kind, row.osm_way_id)),
+            # The reviewed file's fingerprint, else the one the row carries (a road-panel
+            # edit writes its own where it can).
+            fingerprint=(
+                fingerprints.get((row.kind, row.osm_way_id)) or getattr(row, "fingerprint", None)
+            ),
         )
-        for row in model.objects.filter(approved=True).order_by("osm_way_id", "id")
+        for row in model.objects.filter(approved=True, superseded_by__isnull=True).order_by(
+            "osm_way_id", "id"
+        )
     ]
 
 

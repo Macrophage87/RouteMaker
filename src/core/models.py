@@ -176,9 +176,54 @@ class Override(models.Model):
     approved = models.BooleanField(default=False)
     approved_at = models.DateTimeField(null=True, blank=True)
 
+    class Source(models.TextChoices):
+        FILE = "file", "Reviewed file"
+        ADMIN = "admin", "Typed into the admin"
+        PANEL = "panel", "Road panel (Change LTS)"
+
+    # Where the row came from. A row a file loaded and a row an instance admin
+    # wrote in the road panel are told apart because the loader must never undo
+    # the second (see `superseded_by`).
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.FILE)
+    # Who wrote and who approved it: the application's own user id, never the
+    # Discord id (the audit log's reasoning, `AuditLogEntry.actor_user_id`). The
+    # numeric copy survives the account's deletion, which SET_NULL on the key alone
+    # would make look like a row nobody wrote. Null on every row the loader or the
+    # admin wrote before the road panel's editor existed.
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_by_user_id = models.BigIntegerField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    approved_by_user_id = models.BigIntegerField(null=True, blank=True)
+    # A later panel edit replaced this row. A superseded row stays approved on
+    # purpose: `load_access_overrides` re-approves an unapproved row that matches
+    # a file, so unapproving it would let reloading an old file undo the edit.
+    # It is inert instead - the rebuild reads only rows that are not superseded
+    # (`pipeline.overrides.load_approved`) - and the loader leaves it alone.
+    superseded_by = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="supersedes"
+    )
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    # What the way looked like when the panel wrote the row (`pipeline.rematch`
+    # shape), so a rebuild can find the way again after OSM splits it. Null on a
+    # row typed into the admin.
+    fingerprint = models.JSONField(null=True, blank=True)
+
     class Meta:
         db_table = "override"
         indexes = [models.Index(fields=["osm_way_id", "approved"])]
+        constraints = [
+            # At most one approved, live stress row a way. Two would be applied
+            # in id order, which is not a decision anybody made.
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(kind="stress", approved=True, superseded_by__isnull=True),
+                name="override_one_live_stress_row_per_way",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.kind} on way {self.osm_way_id}"
@@ -1161,3 +1206,83 @@ class StressTileCache(models.Model):
 
     def __str__(self) -> str:
         return f"{self.z}/{self.x}/{self.y} ({self.version})"
+
+
+class StressEdit(models.Model):
+    """One road-panel action on a way's traffic stress: what changed, who by.
+
+    The audit log is deliberately narrow (who, what object, allowed or not, never a
+    copy of the row), so the before and after of a stress change live here, in a
+    table of their own. `before` is what an undo puts back; `after` is what a
+    promotion or a rollback re-applies (`core.stress_edits`).
+
+    Nothing here is shown to a rider. The private reason is on the override row.
+    """
+
+    class Action(models.TextChoices):
+        SET = "set", "Change"
+        UNDO = "undo", "Undo"
+
+    at = models.DateTimeField(default=timezone.now)
+    actor = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # The application's user id, kept beside the key for the reason
+    # `AuditLogEntry.actor_user_id` is; never the Discord id.
+    actor_user_id = models.BigIntegerField(null=True, blank=True)
+    action = models.CharField(max_length=8, choices=Action.choices)
+    # The row this edit created, or that an undo reinstated (null when an undo left
+    # the way with no row), and the live row it superseded.
+    override = models.ForeignKey(
+        Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="edits"
+    )
+    replaced = models.ForeignKey(
+        Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # For an undo, the edit it undid.
+    undoes = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="undone_by"
+    )
+    osm_way_ids = models.JSONField(default=list)
+    # {"<way>:<ordinal>": {column: value}} as the live table held it, and as this
+    # edit left it. Every column the edit may touch, so either side can be written back.
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    # The live table's oid when applied, the oids of later tables it was re-applied to,
+    # and the edit generation after it (it is in the tile ETag).
+    applied_to = models.BigIntegerField(null=True, blank=True)
+    reapplied_to = models.JSONField(default=list)
+    generation = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "stress_edit"
+        ordering = ["id"]
+        indexes = [models.Index(fields=["-at"], name="stress_edit_at")]
+
+    def __str__(self) -> str:
+        return f"{self.action} of ways {self.osm_way_ids} at {self.at:%Y-%m-%d %H:%M}"
+
+
+class LiveEditGeneration(models.Model):
+    """How many panel edits one live segment table has had since it was promoted.
+
+    Keyed by the table's oid, which survives the swap's renames, so a promotion
+    starts a new table at generation 0. The generation goes into the stress tile's
+    ETag: an in-place update changes the tiles but not the table's oid, and without
+    it a browser's revalidation would be answered 304 for the old tile.
+
+    `overrides_read_at` is when the rebuild that made the table read the approved
+    rows (set at promotion). A promotion or a rollback re-applies the edits made
+    after it.
+    """
+
+    table_oid = models.BigIntegerField(unique=True)
+    generation = models.IntegerField(default=0)
+    overrides_read_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "live_edit_generation"
+
+    def __str__(self) -> str:
+        return f"table {self.table_oid}: generation {self.generation}"

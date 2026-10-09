@@ -7,11 +7,17 @@ off: it loads its script from a third-party CDN, which the planned
 Content-Security-Policy of `default-src 'self'` would refuse, and the schema is
 all a client needs.
 
-No endpoint here needs a sign-in. The owner's decision of 2026-09-26 is that
-the map and route planning work signed out, and that a signed-out plan is not
-saved; so POST /api/route reads the routers and the segment table and writes
+No endpoint the map and the planner use needs a sign-in. The owner's decision of
+2026-09-26 is that the map and route planning work signed out, and that a signed-out
+plan is not saved; so POST /api/route reads the routers and the segment table and writes
 nothing but its rate-limit count. What stands in for the sign-in is the per-IP
 limit (`core.ratelimit.ROUTING`), applied before the body is read.
+
+The one exception is the road panel's stress editor (OWNER-DECISIONS 441g, 441h;
+`core.stress_edits`): GET /api/me, GET /api/stress-edits/way/{id}, POST /api/stress-edits
+and POST /api/stress-edits/{id}/undo. They are for an instance admin and are the first
+authenticated writes here, so they carry a session, standing, a CSRF token, the same-site
+check and per-account counts (see the section at the end of this module).
 
 Every error POST /api/route answers is `{"error": "..."}` with the status the
 shared contract names (another method on the path is Django's own 405, and
@@ -49,7 +55,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing, segment_info
+from . import audit, geocode, presets, ratelimit, routing, segment_info
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +128,10 @@ LONG_RIDE_TIMED_OUT = "long_ride_timed_out"
 api = NinjaAPI(
     title="RouteMaker",
     version="1",
-    description="Public route planning for the RouteMaker region. No sign-in.",
+    description=(
+        "Public route planning for the RouteMaker region. No sign-in, except the road panel's"
+        " stress editor (/api/me and /api/stress-edits), which is for instance admins."
+    ),
     docs_url=None,
     urls_namespace="api",
 )
@@ -1128,6 +1137,18 @@ def invalid_input(request, exc: ValidationError):
             continue
         where = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
         problems.append(f"{where}: {msg}" if where else msg)
+    if request.path.startswith(STRESS_EDIT_PATHS):
+        # The editor names the field a problem is about, so the form can focus it.
+        first = next(
+            (
+                str(part)
+                for error in exc.errors[:1]
+                for part in reversed(error.get("loc", ()))
+                if isinstance(part, str) and part != "body"
+            ),
+            None,
+        )
+        return _stress_error(400, "; ".join(p for p in problems if p) or "invalid request", first)
     return _error(400, "; ".join(p for p in problems if p) or "invalid request")
 
 
@@ -1149,11 +1170,15 @@ def unexpected(request, exc: Exception):
     logger.exception("unhandled error in %s %s", request.method, request.path)
     if request.path.startswith(GEOCODE_PATHS):
         return _error(500, "Something went wrong looking up the place.")
+    if request.path.startswith(STRESS_EDIT_PATHS):
+        return _stress_error(500, "Something went wrong; nothing was changed.")
     return _error(500, "Something went wrong planning this route.")
 
 
 # The place-search endpoints, whose unexpected failure is not a route's.
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
+# The road panel's stress editor, whose answers are private and name the form field.
+STRESS_EDIT_PATHS = ("/api/stress-edits", "/api/me")
 
 
 def errors_as_json(view):
@@ -1637,3 +1662,360 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     found = segment_info.segment_info(params.lat, params.lon)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
+
+
+# --- Who is asking, and the road panel's stress editor -----------------------------
+#
+# GET /api/me and the three /api/stress-edits endpoints (OWNER-DECISIONS 441g, 441h, 441m, 460;
+# core.stress_edits). The first authenticated writes in this API, so every one of these has
+# all of: a session of an account in standing (401 without), instance-admin standing (403,
+# and a refused write is audited), a CSRF token on writes (Django's own check, which Ninja
+# does not apply to a view it has marked exempt), the same-site check, a JSON body of bounded
+# size, and a count - per client address first, then per account. Nothing here carries a
+# name or an id of a person: /api/me answers three yes/no flags, a path carries an OSM way id
+# or an edit id, and a body is JSON, never a query string.
+
+ME_MAX_AGE = "no-store"
+
+
+class MeOut(Schema):
+    signed_in: bool
+    can_change_lts: bool = Field(
+        description="An active instance admin: the road panel offers Change LTS."
+    )
+    can_suggest: bool = Field(
+        description="Always false until riders can suggest changes (a later phase)."
+    )
+
+
+def _private(response: HttpResponse) -> HttpResponse:
+    response["Cache-Control"] = ME_MAX_AGE
+    response["Vary"] = "Cookie"
+    return response
+
+
+def _stress_error(status: int, message: str, field: str | None = None, code: str | None = None):
+    body: dict = {"error": message}
+    if field:
+        body["field"] = field
+    if code:
+        body["code"] = code
+    return _private(JsonResponse(body, status=status))
+
+
+class StressEditErrorOut(Schema):
+    error: str
+    field: str | None = Field(default=None, description="The form field the error is about.")
+    code: str | None = None
+
+
+def same_site_editor(view):
+    """`same_site_only`, with a sentence that fits the editor."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return _stress_error(403, "This answers this site's own pages only.")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+def _refused(request, user, detail: str) -> None:
+    """Audit a refused write. Written here, outside any transaction the refusal unwound."""
+    from .models import AuditLogEntry
+
+    audit.record(
+        user,
+        "stress_edit",
+        "override",
+        "",
+        AuditLogEntry.Outcome.REFUSED,
+        detail=f"{request.method} {request.path.split('?')[0]}: {detail}"[:2000],
+    )
+
+
+def instance_admin_only(*, audited: bool):
+    """A session of an active instance admin, or 401 (no session) or 403.
+
+    `audited`: a write refused to a signed-in account is written to the audit log (the
+    plan: every refused write is). A read refused is not, as the admin's page views are not.
+    """
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            if not signed_in(request):
+                return _stress_error(401, "Sign in to change traffic stress.", code="signed_out")
+            user = request.user
+            if not getattr(user, "is_instance_admin", False):
+                if audited:
+                    _refused(request, user, "not an instance admin")
+                return _stress_error(
+                    403, "Only an instance admin can change traffic stress.", code="not_admin"
+                )
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def _no_view():  # pragma: no cover - the callback Django's CSRF check is asked about
+    return None
+
+
+def csrf_protected(view):
+    """Refuse a write that does not carry the CSRF token (Django's own check).
+
+    Ninja marks every view it serves `csrf_exempt` and only checks the token itself for
+    its own cookie authenticators, so `CsrfViewMiddleware` lets these through unchecked.
+    The check is therefore made here, with the middleware's own `process_view`: the
+    `X-CSRFToken` header against the `csrftoken` cookie, and the Origin or Referer against
+    the host or `CSRF_TRUSTED_ORIGINS` on HTTPS.
+    """
+    from django.middleware.csrf import CsrfViewMiddleware
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        refusal = CsrfViewMiddleware(lambda r: None).process_view(request, _no_view, (), {})
+        if refusal is not None:
+            _refused(request, request.user, "missing or wrong CSRF token")
+            return _stress_error(
+                403,
+                "This page's security token is missing or out of date. Reload the page and "
+                "try again.",
+                code="csrf",
+            )
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+@api.get(
+    "/me",
+    response={200: MeOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="Three yes/no flags: signed in, may change traffic stress, may suggest",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.ME),
+    same_site_only,
+    errors_as_json,
+)
+def me(request, response: HttpResponse):
+    """No name and no id, so nothing here can leak into a link or a log."""
+    from django.middleware.csrf import get_token
+
+    signed = signed_in(request)
+    can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
+    if can_change:
+        # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
+        get_token(request)
+    _private(response)
+    return Status(200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": False})
+
+
+class StepOut(Schema):
+    value: int
+    words: str
+
+
+class CategoryOut(Schema):
+    id: str
+    label: str
+
+
+class CurrentOut(Schema):
+    step: int
+    words: str
+    source: Literal["classifier", "file", "admin", "panel"]
+    at_least: bool
+    category: str | None = None
+    public_note: str | None = None
+    display: str | None = None
+    private_reason: str | None = Field(
+        default=None, description="For the admin only; never shown to a rider."
+    )
+    when: str | None = None
+    by: Literal["you", "another admin"] | None = None
+
+
+class RecentEditOut(Schema):
+    id: int
+    action: str
+    at: str
+    can_undo: bool
+
+
+class EditorStateOut(Schema):
+    osm_way_id: int
+    classifier_step: int | None = Field(
+        default=None, description="Null when an earlier override hides it."
+    )
+    can_raise_only: bool
+    current: CurrentOut
+    expected: str = Field(description="Send back unchanged with the edit; a mismatch is a 409.")
+    steps: list[StepOut]
+    categories: list[CategoryOut]
+    reason_max: int
+    note_max: int
+    recent_edit: RecentEditOut | None = None
+    pieces: int
+
+
+@api.get(
+    "/stress-edits/way/{osm_way_id}",
+    response={
+        200: EditorStateOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        404: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="The stress editor's starting state for one way (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_edit_state(request, osm_way_id: int, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import stress_edits
+
+    get_token(request)
+    try:
+        state = stress_edits.editor_state(request.user, osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, state)
+
+
+class StressEditIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] = Field(
+        min_length=1, max_length=1, description="The road piece to change (one, for now)."
+    )
+    step: StrictInt = Field(description="The level, 1 to 5 (5 is Avoid).")
+    at_least: StrictBool = Field(
+        default=False, description="Only raise it: keep the current level where it is higher."
+    )
+    category: str = Field(max_length=40, description="Why, in a category the panel can show.")
+    reason: str = Field(
+        max_length=2000, description="Private. Required, at most 500 characters; never shown."
+    )
+    public_note: str | None = Field(
+        default=None, max_length=1000, description="Optional note riders may read."
+    )
+    display: Literal["route_only", "map"] = "route_only"
+    expected: str = Field(max_length=64)
+
+
+class EditedWayOut(Schema):
+    osm_way_id: int
+    step: int
+    changed: bool = Field(
+        description="False where the road already had this level (or met the floor)."
+    )
+
+
+class StressEditOut(Schema):
+    edit_id: int
+    ways: list[EditedWayOut]
+    generation: int = Field(description="Added to the stress tile URLs as ?rev= by the editor.")
+    undo_until: str = Field(description="When the Undo stops being offered, ISO 8601.")
+
+
+STRESS_EDIT_RESPONSES = {
+    200: StressEditOut,
+    400: StressEditErrorOut,
+    401: StressEditErrorOut,
+    403: StressEditErrorOut,
+    404: StressEditErrorOut,
+    409: StressEditErrorOut,
+    429: ErrorOut,
+    500: ErrorOut,
+}
+
+
+def _edit_out(result) -> dict:
+    from . import stress_edits
+
+    return {
+        "edit_id": result.edit.pk,
+        "ways": result.ways,
+        "generation": result.generation,
+        "undo_until": (result.edit.at + stress_edits.UNDO_WINDOW).isoformat(),
+    }
+
+
+def _edit_refusal(request, refused) -> JsonResponse:
+    if refused.status == 409:
+        _refused(request, request.user, f"{refused.code}: {refused.message}")
+    return _stress_error(refused.status, refused.message, refused.field, refused.code)
+
+
+# Ninja wraps these innermost first, so the order written is the reverse of the order they
+# run in: the error guard, the address count, the same-site check, the JSON body, the
+# account (401, 403), the CSRF token, then the account's own count.
+STRESS_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.STRESS_EDIT_WRITES),
+    csrf_protected,
+    instance_admin_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+@api.post(
+    "/stress-edits",
+    response=STRESS_EDIT_RESPONSES,
+    summary="Change a road's traffic stress at once (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
+    from . import stress_edits
+
+    spec = stress_edits.Spec(
+        tier=body.step,
+        at_least=body.at_least,
+        category=body.category,
+        reason=body.reason,
+        public_note=body.public_note.strip() if body.public_note else None,
+        display=body.display,
+    )
+    try:
+        result = stress_edits.apply(request.user, body.osm_way_ids, spec, body.expected)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, _edit_out(result))
+
+
+class UndoIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+
+@api.post(
+    "/stress-edits/{edit_id}/undo",
+    response=STRESS_EDIT_RESPONSES,
+    summary="Undo a change within 30 minutes (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_undo(request, edit_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        result = stress_edits.undo(request.user, edit_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, _edit_out(result))

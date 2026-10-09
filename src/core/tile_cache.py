@@ -111,6 +111,58 @@ def evict(version: str, max_bytes: int = MAX_BYTES, also_keep: tuple[str, ...] =
         return stale + cursor.rowcount
 
 
+def covering_tiles(
+    bbox: tuple[float, float, float, float], margin: int = 1
+) -> list[tuple[int, int, int]]:
+    """The (z, x, y) of every tile from MIN_ZOOM to MAX_ZOOM that a box reaches, with
+    `margin` tiles more on every side: a feature near a tile's edge is drawn in the
+    neighbour's buffer too."""
+    from .stress_tiles import MAX_ZOOM, MIN_ZOOM
+
+    west, south, east, north = bbox
+    tiles = []
+    for z in range(MIN_ZOOM, MAX_ZOOM + 1):
+        x0, y0 = tile_index(west, north, z)
+        x1, y1 = tile_index(east, south, z)
+        last = 2**z - 1
+        tiles.extend(
+            (z, x, y)
+            for x in range(max(0, x0 - margin), min(last, x1 + margin) + 1)
+            for y in range(max(0, y0 - margin), min(last, y1 + margin) + 1)
+        )
+    return tiles
+
+
+def rekey_after_edit(
+    bbox: tuple[float, float, float, float] | None, versions: dict[str, str]
+) -> int:
+    """After a road-panel edit: delete the cached tiles that cover `bbox` under each old
+    version, and re-key every other cached tile of it to the new one, so the cache stays
+    warm and only the tiles the edit can have changed are drawn again. `versions` maps an
+    old tag to its new tag (the stress tiles' and the Mass Ride tiles'). Returns how many
+    tiles were deleted."""
+    covering = covering_tiles(bbox) if bbox is not None else []
+    zs = [t[0] for t in covering]
+    xs = [t[1] for t in covering]
+    ys = [t[2] for t in covering]
+    deleted = 0
+    with connection.cursor() as cursor:
+        for old, new in versions.items():
+            if covering:
+                cursor.execute(
+                    "DELETE FROM stress_tile_cache WHERE version = %s AND (z, x, y) IN "
+                    "(SELECT * FROM unnest(%s::smallint[], %s::int[], %s::int[]))",
+                    [old, zs, xs, ys],
+                )
+                deleted += cursor.rowcount
+            # Nothing should be under the new tag yet; whatever is would be a stale draw.
+            cursor.execute("DELETE FROM stress_tile_cache WHERE version = %s", [new])
+            cursor.execute(
+                "UPDATE stress_tile_cache SET version = %s WHERE version = %s", [new, old]
+            )
+    return deleted
+
+
 def tile_index(lon: float, lat: float, z: int) -> tuple[int, int]:
     """The (x, y) of the z tile holding a point (Web Mercator, as the map)."""
     n = 2**z
@@ -200,11 +252,11 @@ def predraw(
     if workers is None:
         workers = settings.STRESS_PREDRAW_WORKERS
     workers = max(1, workers)
-    oid, optional = stress_tiles.live_table()
+    oid, optional, generation = stress_tiles.live_state()
     if oid is None:
         return Predrawn(0, 0)
-    version = stress_tiles.etag_for(oid, optional)
-    mass_version = mass_tiles.etag_for(oid, optional)
+    version = stress_tiles.etag_for(oid, optional, generation)
+    mass_version = mass_tiles.etag_for(oid, optional, generation)
     evict(version, also_keep=(mass_version,))
     deadline = time.monotonic() + budget_s
     # (draw, version, z, x, y): the stress tiles, then the Mass Ride tiles.

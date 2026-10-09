@@ -116,8 +116,8 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # of zooming in and out four levels and panning, in a 1920x1080 window with an
 # empty cache, fetched 87 (2026-09-27, against the first promoted build). 600
 # a minute is several times that, for a household or an office behind one
-# address; the browser's cache (an hour, then a 304 that draws nothing) keeps
-# a return to a place from counting twice in the hour. This is above PLAN's
+# address; the browser's cache (five minutes, then a 304 that draws nothing) keeps
+# a return to a place from counting twice in those minutes. This is above PLAN's
 # 60 for unauthenticated paths, which a map could not work inside.
 TILES = Limit(scope="tiles", requests=600, window_s=60)
 
@@ -144,6 +144,16 @@ REVERSE = Limit(scope="reverse", requests=60, window_s=60)
 # for a rider clicking along a street.
 SEGMENT_INFO_BURST = Limit(scope="segment-info-10s", requests=20, window_s=10)
 SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
+
+# Who the visitor is (GET /api/me: three yes/no flags the road panel asks once when it
+# opens) and the road panel's stress editor (core.stress_edits), both counted per client
+# address before anything else about the request is looked at, so a refused or anonymous
+# request still costs one upsert and nothing more. The editor's writes are then counted per
+# signed-in account as well (STRESS_EDIT_WRITES): 60 an hour, the plan's figure, which is
+# far above what one admin changing roads by hand does.
+ME = Limit(scope="me", requests=120, window_s=60)
+STRESS_EDIT_CLIENT = Limit(scope="stress-edit-ip", requests=120, window_s=60)
+STRESS_EDIT_WRITES = Limit(scope="stress-edit", requests=60, window_s=3600)
 
 
 def _normalise(candidate: str) -> str | None:
@@ -229,6 +239,37 @@ def rate_limited(limit: Limit):
             if not decision.allowed:
                 response = JsonResponse(
                     {"error": "Too many requests from this address; try again shortly."},
+                    status=429,
+                )
+                response["Retry-After"] = str(decision.retry_after_s)
+                return response
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def user_rate_limited(limit: Limit):
+    """Like `rate_limited`, but counted per signed-in account rather than per address:
+    an admin changing roads from a phone and a laptop shares one budget, and two accounts
+    behind one address do not. The key is a digest of the application's own user id (never
+    the Discord id), the way an address is kept as a digest. Applied after the session is
+    checked; a request with no account falls back to its address."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            user = getattr(request, "user", None)
+            who = (
+                f"user:{user.pk}"
+                if user is not None and getattr(user, "is_authenticated", False)
+                else client_address(request)
+            )
+            decision = hit(limit, client_key(who))
+            if not decision.allowed:
+                response = JsonResponse(
+                    {"error": "Too many changes in the last hour; try again later."},
                     status=429,
                 )
                 response["Retry-After"] = str(decision.retry_after_s)

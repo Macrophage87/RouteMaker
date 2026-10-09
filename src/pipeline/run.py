@@ -697,6 +697,9 @@ class RebuildContext:
     elevation_tiles: list[Path] = field(default_factory=list)
     build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
     swap_outcome: promotion.SwapOutcome | None = None
+    # When the override stage read the approved rows. A road-panel edit (core.stress_edits)
+    # made after this is not in the table this rebuild builds, so the promotion re-applies it.
+    overrides_read_at: datetime | None = None
     drift_report: object | None = None
 
     def __post_init__(self) -> None:
@@ -1982,6 +1985,7 @@ def build_handlers(
         and no stage ever read: a row could be written, reviewed and approved,
         and the graph was built exactly as if it were not there.
         """
+        context.overrides_read_at = datetime.now(UTC)
         rows = load_overrides()
         unhandled = sorted({row.kind for row in rows} - overrides.HANDLED_KINDS)
         if unhandled:
@@ -2702,7 +2706,10 @@ def build_handlers(
 
     def swap() -> None:
         context.swap_outcome = promotion.perform_swap(
-            context.tiles_dir, context.build_id, context.upstreams
+            context.tiles_dir,
+            context.build_id,
+            context.upstreams,
+            overrides_read_at=context.overrides_read_at,
         )
 
     def reconcile_after_swap() -> None:
