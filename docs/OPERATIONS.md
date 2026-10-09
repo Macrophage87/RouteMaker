@@ -1630,7 +1630,9 @@ retried. So set 1 only after an abort that the retry did not cure (the `(after
 rebuild, and watch the next one against the budget.
 
 The setting is read when the settings load: a value that is not a whole number
-of at least 1 (`0`, `-1`, `2.5`, `x`) stops the rebuild service at start with
+of at least 1 (`0`, `-1`, `2.5`, `x`) keeps the rebuild service from starting:
+under `restart: unless-stopped` the container keeps restarting, and
+`docker compose logs rebuild` shows
 `REBUILD_TILE_CONCURRENCY must be a whole number of at least 1`. Empty counts
 as unset.
 
@@ -1643,8 +1645,11 @@ docker compose up -d --no-deps --no-build --force-recreate rebuild </dev/null
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null   # the new value
 ```
 
-The value a build actually used is in its `build-config.json`, and in the
-rebuild's log as `Building <n> tiles with <threads> threads...`.
+The value a build actually used is in its `build-config.json` under
+`/data/tiles/<variant>/<build id>/`. (Valhalla's `Building <n> tiles with
+<threads> threads...` line is not in `docker compose logs rebuild` on a build
+that succeeds: the rebuild captures the output and logs it only when a command
+fails.)
 
 ## The source extract
 
@@ -3955,17 +3960,25 @@ long trails, the closure readback on **five** graphs, and `Stress tile cache pre
 VALIDATE refusal is terminal and nothing is promoted: keep the code (the new api is safe on
 the old table), hold the front end, and report.
 
-Once the tile stage starts (about 2.5 h in, after `Building <n> tiles with 2 threads...`
-first appears), check the thread count the first graph was built with, in a second shell:
+Once the tile stage starts (about 2.5 h in), a new build directory appears under
+`/data/tiles/standard/`, named with today's UTC date (build ids look like
+`20261008T182100Z`). The rebuild does not log that the stage began, so check for the
+directory. In a second shell, read the newest directory by name and print it with its
+`build-config.json` thread count:
 
 ```sh
-docker compose exec -T rebuild sh -c 'grep -h "\"concurrency\"" "$(ls -td /data/tiles/standard/2*/ | head -1)build-config.json"' </dev/null   # "concurrency": 2
+docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 2
 ```
+
+If the directory it prints is not dated today (UTC), the build has not started its tiles
+yet and that is an older build's value (it may well say 4): wait and run it again, and do
+not conclude anything from it.
 
 A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
 the 3.5.1 race hit one graph and the retry is building it again: nothing needs doing during
-the run. Note it in the report; after the rebuild, consider `REBUILD_TILE_CONCURRENCY=1`
-("Tile build threads"). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
+the run. Note it in the report; "Tile build threads" says when to move to
+`REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
+line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
 the retry aborted too: set 1 before the next rebuild.
 
 **J. After the swap.** The run row's notice prints the same restart as here.
