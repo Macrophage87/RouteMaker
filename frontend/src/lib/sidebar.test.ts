@@ -162,8 +162,8 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     return i;
   };
   assert.deepEqual(
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints),
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
     "the search, then the loop box, then the points and their tools",
   );
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
@@ -190,7 +190,7 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   // The start-up how-to only before any point; with points, how to change them (the correctness review's N5).
   assert.match(
     app,
-    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>\}/,
+    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
   );
   assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
   // The compact row; every existing button is still there. Add point at map center is in Map tools (450).

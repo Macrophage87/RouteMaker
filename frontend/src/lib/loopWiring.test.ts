@@ -83,8 +83,8 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias\]\);/);
   assert.match(app, /if \(!canReverse\(current, loopVias\)\) return;\s+commit\(reversedPoints\(current, loopVias\)\);/);
   assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
-  assert.match(app, /\{emptyPlanHint\(preset, loopVias\)\}/);
-  assert.match(app, /\{loneStartHint\(preset, loopVias\)\}/);
+  assert.match(app, /\{emptyPlanHint\(preset, loopVias, accessMode\)\}/);
+  assert.match(app, /\{loneStartHint\(preset, loopVias, accessMode\)\}/);
 });
 
 test("App: the toggle, the ride type and undo or redo say when they rename the points", () => {

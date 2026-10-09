@@ -254,7 +254,7 @@ test("App: Map tools is rendered only in accessibility mode; the toggle is in Mo
   const tips = app.slice(app.indexOf("<MoreTips>"), app.indexOf("</MoreTips>"));
   assert.match(tips, /infoHelp\(accessMode\)/);
   assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
-  assert.match(tips, /aria-pressed=\{accessMode\}[^>]*>\s*\{ACCESS_LABEL\}/);
+  assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{ACCESS_LABEL\}/);
 });
 
 test("App: turning the mode on or off is said in the live region, kept, and focuses Map tools from the link (455)", () => {
