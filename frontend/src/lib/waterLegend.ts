@@ -11,14 +11,14 @@ import { createElement as h, type ReactElement } from "react";
 import { formatDistance } from "./format.ts";
 import {
   ALONG_ROUTE_M,
-  KIND_LABEL,
   WATER_CAUTION,
-  WATER_KINDS,
   waterAlongCount,
   waterAlongText,
   waterIcon,
+  waterKindLabel,
   type WaterAlong,
-  type WaterKind,
+  type WaterIcon,
+  type WaterPrefs,
   type WaterStatus,
 } from "./waterRestrooms.ts";
 
@@ -26,22 +26,30 @@ export const WATER_HEADING = "Water and restrooms";
 export const WATER_SWITCH = "Show public water and restrooms on the map";
 export const WATER_LOADING = "Loading water and restrooms…";
 export const WATER_UNAVAILABLE = "Water and restrooms are unavailable for now. The map and your route are not affected.";
+export const WATER_BASIC_SWITCH = "Portable, pit and composting toilets";
+export const WATER_UNTREATED_SWITCH = "Untreated water sources (filter or treat first)";
 export const WATER_HELP =
-  "Public drinking fountains, water taps and restrooms that OpenStreetMap lists, drawn from street zoom in. " +
-  "On by default for Trailmaxxing and Gravel. Places for customers only, or private, are left out.";
+  "Public drinking fountains, water taps, springs and restrooms that OpenStreetMap lists, drawn from street zoom " +
+  "in. Places for customers only, or private, are left out. Your choices here are kept on this device.";
+export const WATER_UNTREATED_HELP =
+  "Untreated water is a spring, well or tap not marked as drinkable: carry a filter or treat it before you drink.";
 export const WATER_ALONG_HEADING = "Water and restrooms along your route";
 export const WATER_ALONG_NONE = `None within ${formatDistance(ALONG_ROUTE_M)} of your route.`;
 export const WATER_ALONG_NO_ROUTE = "Plan a route to list the water and restrooms along it.";
 
-const SHAPE: Record<WaterKind, string> = {
-  w: "blue drop",
-  t: "purple diamond",
-  wt: "purple diamond with a white drop",
-};
+/** The legend's rows, in its order: what each icon is, then its shape in words (a cue that is not colour). */
+export const WATER_LEGEND: ReadonlyArray<{ icon: WaterIcon; label: string; shape: string }> = [
+  { icon: "w-p", label: "Drinking water", shape: "blue drop" },
+  { icon: "w-n", label: "Untreated water, filter or treat it first", shape: "brown drop struck through" },
+  { icon: "t-f", label: "Flush restroom", shape: "purple diamond" },
+  { icon: "t-b", label: "Portable, pit or composting toilet", shape: "green upright box" },
+  { icon: "t-u", label: "Restroom, type not mapped", shape: "white diamond ringed in purple" },
+  { icon: "t-f-w", label: "A restroom with drinking water", shape: "its shape with a drop inside" },
+];
 
 /** The legend's swatch: the map's own icon, as an SVG of its inked pixels. */
-export function WaterSwatch({ kind }: { kind: WaterKind }): ReactElement {
-  const raster = waterIcon(kind, 1);
+export function WaterSwatch({ icon }: { icon: WaterIcon }): ReactElement {
+  const raster = waterIcon(icon, 1);
   const colours = new Map<string, string>();
   for (let y = 0; y < raster.height; y++) {
     for (let x = 0; x < raster.width; x++) {
@@ -58,12 +66,13 @@ export function WaterSwatch({ kind }: { kind: WaterKind }): ReactElement {
   );
 }
 
-export function WaterLegend(): ReactElement {
+export function WaterLegend({ prefs }: { prefs: WaterPrefs }): ReactElement {
+  const rows = WATER_LEGEND.filter(({ icon }) => (prefs.untreated || icon !== "w-n") && (prefs.basic || icon !== "t-b"));
   return h(
     "ul",
     { className: "legend water-legend", "aria-label": "Water and restrooms legend" },
-    ...WATER_KINDS.map((kind) =>
-      h("li", { key: kind }, h(WaterSwatch, { kind }), h("span", { className: "stress-label" }, `${KIND_LABEL[kind]}: ${SHAPE[kind]}`)),
+    ...rows.map(({ icon, label, shape }) =>
+      h("li", { key: icon }, h(WaterSwatch, { icon }), h("span", { className: "stress-label" }, `${label}: ${shape}`)),
     ),
   );
 }
@@ -107,7 +116,7 @@ export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: Al
               {
                 type: "button",
                 className: "secondary water-add",
-                "aria-label": `Add as stop: ${KIND_LABEL[item.point.kind]} at ${formatDistance(item.alongM)}`,
+                "aria-label": `Add as stop: ${waterKindLabel(item.point)} at ${formatDistance(item.alongM)}`,
                 onClick: () => onAddStop(item),
               },
               "Add as stop",
@@ -120,32 +129,46 @@ export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: Al
 }
 
 interface SectionProps {
-  on: boolean;
-  onChange: (on: boolean) => void;
+  prefs: WaterPrefs;
+  onChange: (prefs: WaterPrefs) => void;
   status: WaterStatus;
   items: WaterAlong[] | null;
   onAddStop?: (item: WaterAlong) => void;
 }
 
+function checkbox(checked: boolean, onChange: (on: boolean) => void, label: string, className = "toggle"): ReactElement {
+  return h(
+    "label",
+    { className },
+    h("input", { type: "checkbox", checked, onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked) }),
+    label,
+  );
+}
+
 /**
- * The section in the Map layers sheet: the switch, one persistent status line
- * whose words change (a live region inserted with its text is often not read),
- * the legend, the list and the help.
+ * The section in the Map layers sheet: the layer's switch and, while it is on, the two kinds a rider may
+ * not want (basic toilets, untreated water); one persistent status line whose words change (a live region
+ * inserted with its text is often not read); the legend, the list and the help.
  */
-export function WaterSection({ on, onChange, status, items, onAddStop }: SectionProps): ReactElement {
+export function WaterSection({ prefs, onChange, status, items, onAddStop }: SectionProps): ReactElement {
+  const ready = prefs.on && status === "ready";
   return h(
     "section",
     { "aria-labelledby": "water-heading", className: "water-section" },
     h("h3", { id: "water-heading" }, WATER_HEADING),
-    h(
-      "label",
-      { className: "toggle" },
-      h("input", { type: "checkbox", checked: on, onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked) }),
-      WATER_SWITCH,
-    ),
-    h("p", { className: "hint water-status", role: "status" }, waterStatusText(on, status)),
-    on && status === "ready" && h(WaterLegend),
-    on && status === "ready" && h(WaterAlongList, { items, onAddStop, headingId: "water-along-layers-heading" }),
+    checkbox(prefs.on, (on) => onChange({ ...prefs, on }), WATER_SWITCH),
+    prefs.on &&
+      h(
+        "fieldset",
+        { className: "water-kinds" },
+        h("legend", null, "Also show"),
+        checkbox(prefs.basic, (basic) => onChange({ ...prefs, basic }), WATER_BASIC_SWITCH),
+        checkbox(prefs.untreated, (untreated) => onChange({ ...prefs, untreated }), WATER_UNTREATED_SWITCH),
+      ),
+    h("p", { className: "hint water-status", role: "status" }, waterStatusText(prefs.on, status)),
+    ready && h(WaterLegend, { prefs }),
+    ready && h(WaterAlongList, { items, onAddStop, headingId: "water-along-layers-heading" }),
     h("p", { className: "hint" }, WATER_HELP),
+    prefs.on && prefs.untreated && h("p", { className: "hint" }, WATER_UNTREATED_HELP),
   );
 }

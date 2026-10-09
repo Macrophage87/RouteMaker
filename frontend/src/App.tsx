@@ -127,7 +127,7 @@ import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
-import { loadWaterRestrooms, waterAlongRoute, waterShown, type WaterAlong, type WaterChoices, type WaterPoint, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
@@ -229,13 +229,17 @@ export function App() {
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   const [federalData, setFederalData] = useState<FederalData | null>(null);
-  // Public water and restrooms (lib/waterRestrooms.ts): on by default for Trailmaxxing and Gravel,
-  // the rider's switch per ride type for the visit; the data is fetched the first time it is shown.
-  const [waterChoices, setWaterChoices] = useState<WaterChoices>({});
+  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type, its
+  // switches kept on this device; the data is fetched the first time it is shown.
+  const [waterPrefs, setWaterPrefsState] = useState<WaterPrefs>(() => readWaterPrefs());
+  const changeWaterPrefs = (next: WaterPrefs) => {
+    setWaterPrefsState(next);
+    saveWaterPrefs(next);
+  };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
   const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
   const waterRequested = useRef(false);
-  const waterOn = waterShown(preset, waterChoices);
+  const waterOn = waterPrefs.on;
   useEffect(() => {
     if (!waterOn || waterRequested.current) return;
     waterRequested.current = true;
@@ -931,8 +935,11 @@ export function App() {
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // The layer in words: the points along the route shown, in riding order.
   const waterAlong = useMemo(
-    () => (waterOn && waterData && shown ? waterAlongRoute(shown.geometry.coordinates, waterData) : null),
-    [waterOn, waterData, shown],
+    () =>
+      waterOn && waterData && shown
+        ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
+        : null,
+    [waterOn, waterData, waterPrefs, shown],
   );
   const addWaterStop = (item: WaterAlong) => placeSpot("via", [item.point.lon, item.point.lat]);
   // The line can be dragged when it is the route of the points as they are:
@@ -1312,7 +1319,7 @@ export function App() {
         massCapacity={massMap}
         massArea={isMassRide(preset)}
         water={waterData}
-        waterVisible={waterOn && waterData !== null}
+        waterPrefs={waterPrefs}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1466,8 +1473,8 @@ export function App() {
               />
 
               <WaterSection
-                on={waterOn}
-                onChange={(on) => setWaterChoices((choices) => ({ ...choices, [preset]: on }))}
+                prefs={waterPrefs}
+                onChange={changeWaterPrefs}
                 status={waterStatus}
                 items={waterAlong}
                 onAddStop={addWaterStop}

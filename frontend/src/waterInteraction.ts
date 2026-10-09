@@ -1,8 +1,9 @@
 /**
- * Tapping or clicking a water or restroom icon: a small card with what it is,
- * its name, the details OSM gives (free or fee, wheelchair access, a bottle
- * filler, the season and hours) and the standing caution that it is
- * volunteers' mapping.
+ * Tapping or clicking a water or restroom icon: a small card with what it is
+ * (drinking or untreated water; a flush, basic or unmapped restroom), its
+ * name, the details OSM gives (free or fee, wheelchair access, a bottle filler,
+ * the season and hours) and the standing caution that it is volunteers'
+ * mapping.
  *
  * As federalInteraction.ts, the card is information beside the map's own
  * click, not instead of it: the click still goes on to place a point, which
@@ -14,7 +15,7 @@
  */
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { WATER_CAUTION, WATER_LAYER, waterDetails, KIND_LABEL, type WaterPoint } from "./lib/waterRestrooms.ts";
+import { WATER_CAUTION, WATER_LAYER, waterDetails, waterKindLabel, type WaterPoint } from "./lib/waterRestrooms.ts";
 
 export interface WaterInteractionOptions {
   visible(): boolean;
@@ -31,7 +32,7 @@ export function waterCardElement(p: WaterPoint): HTMLElement {
   root.className = "water-popup";
   const title = document.createElement("strong");
   title.className = "water-kind";
-  title.textContent = KIND_LABEL[p.kind];
+  title.textContent = waterKindLabel(p);
   root.append(title);
   if (p.name) {
     const name = document.createElement("p");

@@ -59,7 +59,7 @@ import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
-import { addWaterRestrooms, setWaterVisibility, WATER_SOURCE_ID, type WaterMap, type WaterPoint } from "./lib/waterRestrooms.ts";
+import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
@@ -154,8 +154,8 @@ interface Props {
   onFederalData?: (data: FederalData) => void;
   /** The public water and restrooms (lib/waterRestrooms.ts), once App has loaded them; null before. */
   water?: readonly WaterPoint[] | null;
-  /** Whether their layer is on (lib/waterRestrooms.ts waterShown). */
-  waterVisible?: boolean;
+  /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
+  waterPrefs?: WaterPrefs;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
   /**
@@ -411,17 +411,17 @@ export function MapView(props: Props) {
     let waterById = new Map<string, WaterPoint>();
     /** Add the water and restrooms layer when its data has come, then show or hide it with the switch. */
     const syncWater = () => {
-      const visible = callbacks.current.waterVisible === true;
+      const prefs = callbacks.current.waterPrefs ?? { on: false, basic: true, untreated: true };
       if (map.getSource(WATER_SOURCE_ID)) {
-        setWaterVisibility(map as unknown as WaterMap, visible);
-        if (!visible) water?.close();
+        setWaterPrefs(map as unknown as WaterMap, prefs);
+        water?.close();
         return;
       }
       const data = callbacks.current.water;
       if (!data || data.length === 0) return;
       waterById = new Map(data.map((p) => [p.id, p]));
       // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
-      addWaterRestrooms(map as unknown as WaterMap, data, visible, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -860,7 +860,7 @@ export function MapView(props: Props) {
       // the first time it is shown, under the stress overlay and the route.
       // The water and restrooms card first, so a tap on a fountain on federal land shows the fountain's.
       water = attachWaterInteraction(map, {
-        visible: () => callbacks.current.waterVisible === true,
+        visible: () => callbacks.current.waterPrefs?.on === true,
         otherPopupOpen: () => anyPopupOpen(),
         point: (id) => waterById.get(id),
       });
@@ -1189,7 +1189,7 @@ export function MapView(props: Props) {
   // The water and restrooms layer: its data when it comes, and the switch.
   useEffect(() => {
     waterSync.current?.();
-  }, [props.water, props.waterVisible]);
+  }, [props.water, props.waterPrefs]);
 
   return (
     <>

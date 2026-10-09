@@ -24,30 +24,45 @@ spec.loader.exec_module(mod)
 IN = (-77.0, 38.9)
 
 
-def _kind(tags: dict[str, str]) -> str | None:
+def _kind(tags: dict[str, str]) -> tuple[str | None, str | None] | None:
     a = mod.classify("n1", tags, *IN)
-    return a.kind if a else None
+    return (a.water, a.toilet) if a else None
 
 
 @pytest.mark.parametrize(
     "tags, kind",
     [
-        ({"amenity": "drinking_water"}, "w"),
-        ({"amenity": "drinking_water", "drinking_water": "no"}, None),
-        ({"amenity": "water_point"}, "w"),
-        ({"man_made": "water_tap"}, None),
-        ({"man_made": "water_tap", "drinking_water": "yes"}, "w"),
+        ({"amenity": "drinking_water"}, ("p", None)),
+        # Marked undrinkable: still a source, for a rider with a filter.
+        ({"amenity": "drinking_water", "drinking_water": "no"}, ("n", None)),
+        ({"amenity": "water_point"}, ("p", None)),
+        ({"amenity": "water_point", "drinking_water": "no"}, ("n", None)),
+        # A tap, well or spring is drinkable only when marked so.
+        ({"man_made": "water_tap"}, ("n", None)),
+        ({"man_made": "water_tap", "drinking_water": "yes"}, ("p", None)),
+        ({"man_made": "water_well", "drinking_water": "no"}, ("n", None)),
+        ({"natural": "spring"}, ("n", None)),
+        ({"natural": "spring", "drinking_water": "yes"}, ("p", None)),
         ({"amenity": "fountain"}, None),
-        ({"amenity": "fountain", "drinking_water": "yes"}, "w"),
-        ({"amenity": "toilets"}, "t"),
-        ({"amenity": "toilets", "drinking_water": "yes"}, "wt"),
-        ({"amenity": "toilets", "drinking_water": "no"}, "t"),
+        ({"amenity": "fountain", "drinking_water": "yes"}, ("p", None)),
         ({"amenity": "restaurant", "drinking_water": "yes"}, None),
-        ({"amenity": "toilets", "access": "public"}, "t"),
-        ({"amenity": "toilets", "access": "permissive"}, "t"),
+        # Restrooms by how they flush.
+        ({"amenity": "toilets"}, (None, "u")),
+        ({"amenity": "toilets", "toilets:disposal": "flush"}, (None, "f")),
+        ({"amenity": "toilets", "toilets:disposal": "chemical"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "pitlatrine"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "composting"}, (None, "b")),
+        ({"amenity": "toilets", "portable": "yes"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "flush;chemical"}, (None, "f")),
+        ({"amenity": "toilets", "drinking_water": "yes"}, ("p", "u")),
+        ({"amenity": "toilets", "drinking_water": "no"}, (None, "u")),
+        # Public only, in use only.
+        ({"amenity": "toilets", "access": "public"}, (None, "u")),
+        ({"amenity": "toilets", "access": "permissive"}, (None, "u")),
         ({"amenity": "toilets", "access": "customers"}, None),
         ({"amenity": "toilets", "access": "private"}, None),
         ({"amenity": "drinking_water", "access": "no"}, None),
+        ({"natural": "spring", "access": "private"}, None),
         ({"amenity": "toilets", "disused": "yes"}, None),
         ({"disused:amenity": "toilets"}, None),
     ],
@@ -87,22 +102,24 @@ def test_details_kept_and_cleaned():
     assert a.hours == "Apr-Oct"
     assert a.seasonal == "summer"
     assert a.bottle is True
+    # A bottle filler is said of drinking water only.
+    assert mod.classify("n1", {"man_made": "water_tap", "bottle": "yes"}, *IN).bottle is False
     assert mod.classify("n1", {"amenity": "toilets", "seasonal": "no"}, *IN).seasonal is None
 
 
 def test_document_is_short_and_sorted():
     doc = mod.document(
         [
-            mod.Amenity("w5", -77.1, 38.8, False, True, name="Comfort station"),
-            mod.Amenity("n20", -77.2, 38.7, True, False, bottle=True),
-            mod.Amenity("n3", -77.3, 38.6, True, True, fee="yes"),
+            mod.Amenity("w5", -77.1, 38.8, None, "f", name="Comfort station"),
+            mod.Amenity("n20", -77.2, 38.7, "p", None, bottle=True),
+            mod.Amenity("n3", -77.3, 38.6, "p", "b", fee="yes"),
         ]
     )
     assert doc["source"] == "OpenStreetMap contributors, ODbL 1.0"
     assert doc["points"] == [
-        {"id": "n3", "x": -77.3, "y": 38.6, "k": "wt", "fee": "yes"},
-        {"id": "n20", "x": -77.2, "y": 38.7, "k": "w", "b": 1},
-        {"id": "w5", "x": -77.1, "y": 38.8, "k": "t", "n": "Comfort station"},
+        {"id": "n3", "x": -77.3, "y": 38.6, "w": "p", "t": "b", "fee": "yes"},
+        {"id": "n20", "x": -77.2, "y": 38.7, "w": "p", "b": 1},
+        {"id": "w5", "x": -77.1, "y": 38.8, "t": "f", "n": "Comfort station"},
     ]
 
 
@@ -121,9 +138,13 @@ OSM = """<?xml version="1.0" encoding="UTF-8"?>
  <node id="7" version="1" lat="38.95" lon="-77.03">
   <tag k="amenity" v="bench"/>
  </node>
+ <node id="8" version="1" lat="38.96" lon="-77.04">
+  <tag k="natural" v="spring"/>
+ </node>
  <way id="10" version="1">
   <nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="3"/>
   <tag k="amenity" v="toilets"/><tag k="building" v="yes"/><tag k="name" v="Comfort station"/>
+  <tag k="toilets:disposal" v="flush"/>
  </way>
 </osm>
 """
@@ -138,11 +159,12 @@ def test_reads_an_extract_and_writes_the_file(tmp_path):
     text = out.read_text()
     doc = json.loads(text)
     assert doc["points"] == [
-        {"id": "n1", "x": -77.0, "y": 38.9, "k": "w"},
+        {"id": "n1", "x": -77.0, "y": 38.9, "w": "p"},
+        {"id": "n8", "x": -77.04, "y": 38.96, "w": "n"},
         # The building's mean corner, its first node counted once.
-        {"id": "w10", "x": -77.01, "y": 38.93, "k": "t", "n": "Comfort station"},
+        {"id": "w10", "x": -77.01, "y": 38.93, "t": "f", "n": "Comfort station"},
     ]
-    assert text.count("\n") == 4  # one point per line
+    assert text.count("\n") == 5  # one point per line
 
 
 def test_bundled_file_is_well_formed():
@@ -152,5 +174,6 @@ def test_bundled_file_is_well_formed():
     ids = [p["id"] for p in doc["points"]]
     assert len(ids) == len(set(ids))
     for p in doc["points"]:
-        assert p["k"] in ("w", "t", "wt")
+        assert p.get("w") in (None, "p", "n") and p.get("t") in (None, "f", "b", "u")
+        assert "w" in p or "t" in p
         assert west <= p["x"] <= east and south <= p["y"] <= north

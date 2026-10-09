@@ -1,36 +1,43 @@
 /**
- * Public drinking water and restrooms from OpenStreetMap (owner, 2026-10-09:
- * "OSM sometimes has public water fountains and restrooms. That should be a
- * layer, especially on trailmaxxing and gravel").
+ * Public water and restrooms from OpenStreetMap. The owner, 2026-10-09: "OSM
+ * sometimes has public water fountains and restrooms. That should be a layer,
+ * especially on trailmaxxing and gravel"; then "make sure there's a distinction
+ * for those who care about regular flush restrooms; and port-a-potties and
+ * similar facilities. Also remote areas sometimes contain nonpotable water
+ * sources. Mark them too but with a different icon than potable water. People
+ * would carry filters."; and "This is likely to want to be always on, but
+ * perhaps not shown at every zoom" / "On by default, removable".
  *
  * The data is amenity-data/water-restrooms.json, built from the project's
  * extract by scripts/build_water_restrooms.py (what counts is in its
- * docstring), loaded only when the layer is first shown. The layer is on by
- * default for Trailmaxxing and Gravel and off for every other ride type; the
- * rider's switch overrides that, per ride type, for the visit.
+ * docstring), loaded the first time the layer is shown. The layer is on by
+ * default for every ride type and drawn from zoom 12 in; its switches (the
+ * layer, portable and pit toilets, untreated water) are kept on this device.
  *
- * Each kind is told apart by shape as well as colour (a drop for water, a
- * diamond for a restroom, a diamond with a drop in it for both), and the same
- * points are listed in words along the planned route (waterLegend.ts), so a
+ * Each kind has its own shape as well as colour (lib/waterLegend.ts names
+ * them), and the same points are listed in words along the planned route, so a
  * screen-reader or keyboard rider has them without the map.
  *
- * These are functions of a small map interface so a test can run them against
- * a stand-in (the real map needs WebGL), like railLayer.ts and federalLand.ts.
+ * The map parts are functions of a small map interface so a test can run them
+ * against a stand-in (the real map needs WebGL), like railLayer.ts and
+ * federalLand.ts.
  */
 import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
-import type { PresetId } from "./presets.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
-export type WaterKind = "w" | "t" | "wt";
-export const WATER_KINDS: readonly WaterKind[] = ["w", "t", "wt"];
+/** "p" drinking water; "n" untreated, to filter or treat first. */
+export type WaterSource = "p" | "n";
+/** "f" flush; "b" portable, pit, composting or other basic toilet; "u" type not mapped. */
+export type ToiletType = "f" | "b" | "u";
 
 export interface WaterPoint {
   /** OSM element, "n123" or "w456". */
   id: string;
   lon: number;
   lat: number;
-  kind: WaterKind;
+  water?: WaterSource;
+  toilet?: ToiletType;
   name?: string;
   fee?: "yes" | "no";
   wheelchair?: "yes" | "limited" | "no";
@@ -41,30 +48,79 @@ export interface WaterPoint {
 
 export type WaterStatus = "loading" | "ready" | "unavailable";
 
-/** The ride types the layer is on for until the rider says otherwise. */
-export const WATER_DEFAULT_ON: readonly PresetId[] = ["trailmaxxing", "gravel"];
+// --- The rider's switches --------------------------------------------------
 
-/** The rider's own choices this visit, per ride type; a ride type left out follows the default. */
-export type WaterChoices = Partial<Record<PresetId, boolean>>;
-
-export function waterShown(preset: PresetId, choices: WaterChoices): boolean {
-  return choices[preset] ?? WATER_DEFAULT_ON.includes(preset);
+export interface WaterPrefs {
+  /** The layer itself. */
+  on: boolean;
+  /** Portable, pit and composting toilets. */
+  basic: boolean;
+  /** Untreated water: springs, wells and taps not marked drinkable. */
+  untreated: boolean;
 }
 
-const isKind = (value: unknown): value is WaterKind => typeof value === "string" && (WATER_KINDS as readonly string[]).includes(value);
+export const WATER_PREFS_DEFAULT: WaterPrefs = { on: true, basic: true, untreated: true };
+export const WATER_PREFS_KEY = "routemaker.waterLayer";
+
+type Store = Pick<Storage, "getItem" | "setItem">;
+
+function defaultStore(): Store | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** The switches as kept on this device; the defaults when nothing is kept or storage is blocked. */
+export function readWaterPrefs(store: Store | null = defaultStore()): WaterPrefs {
+  try {
+    const raw = store?.getItem(WATER_PREFS_KEY);
+    if (!raw) return { ...WATER_PREFS_DEFAULT };
+    const kept = JSON.parse(raw) as Partial<Record<keyof WaterPrefs, unknown>>;
+    const flag = (key: keyof WaterPrefs) => (typeof kept?.[key] === "boolean" ? (kept[key] as boolean) : WATER_PREFS_DEFAULT[key]);
+    return { on: flag("on"), basic: flag("basic"), untreated: flag("untreated") };
+  } catch {
+    return { ...WATER_PREFS_DEFAULT };
+  }
+}
+
+/** Keep the switches on this device; whether they were kept. */
+export function saveWaterPrefs(prefs: WaterPrefs, store: Store | null = defaultStore()): boolean {
+  try {
+    if (!store) return false;
+    store.setItem(WATER_PREFS_KEY, JSON.stringify(prefs));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a point is drawn and listed with these switches: for its restroom or for its water. */
+export function waterVisible(p: WaterPoint, prefs: WaterPrefs): boolean {
+  const toilet = p.toilet !== undefined && (p.toilet !== "b" || prefs.basic);
+  const water = p.water !== undefined && (p.water !== "n" || prefs.untreated);
+  return toilet || water;
+}
+
+// --- The file ------------------------------------------------------------
+
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 
-/** The file's points with a kind and a place; null if it is not the file's shape. */
+/** The file's points with a place and something to say; null if it is not the file's shape. */
 export function parseWaterRestrooms(value: unknown): WaterPoint[] | null {
   const body = value as { points?: unknown } | null;
   if (!body || !Array.isArray(body.points)) return null;
   const out: WaterPoint[] = [];
   for (const raw of body.points as Array<Record<string, unknown>>) {
-    if (!raw || typeof raw.id !== "string" || !isKind(raw.k)) continue;
+    if (!raw || typeof raw.id !== "string") continue;
     const lon = raw.x;
     const lat = raw.y;
     if (typeof lon !== "number" || typeof lat !== "number" || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    const p: WaterPoint = { id: raw.id, lon, lat, kind: raw.k };
+    const p: WaterPoint = { id: raw.id, lon, lat };
+    if (raw.w === "p" || raw.w === "n") p.water = raw.w;
+    if (raw.t === "f" || raw.t === "b" || raw.t === "u") p.toilet = raw.t;
+    if (!p.water && !p.toilet) continue;
     const name = text(raw.n);
     if (name) p.name = name;
     if (raw.fee === "yes" || raw.fee === "no") p.fee = raw.fee;
@@ -73,7 +129,7 @@ export function parseWaterRestrooms(value: unknown): WaterPoint[] | null {
     if (hours) p.hours = hours;
     const seasonal = text(raw.s);
     if (seasonal) p.seasonal = seasonal;
-    if (raw.b === 1 && p.kind !== "t") p.bottle = true;
+    if (raw.b === 1 && p.water === "p") p.bottle = true;
     out.push(p);
   }
   return out;
@@ -96,11 +152,24 @@ export async function loadWaterRestrooms(
 
 // --- Words ---------------------------------------------------------------
 
-export const KIND_LABEL: Record<WaterKind, string> = {
-  w: "Drinking water",
-  t: "Restroom",
-  wt: "Restroom with drinking water",
+export const WATER_LABEL: Record<WaterSource, string> = {
+  p: "Drinking water",
+  n: "Untreated water, filter or treat it first",
 };
+export const TOILET_LABEL: Record<ToiletType, string> = {
+  f: "Flush restroom",
+  b: "Portable or pit toilet",
+  u: "Restroom, type not mapped",
+};
+
+/** What the point is, in a few words: "Flush restroom with drinking water", "Untreated water, filter or treat it first". */
+export function waterKindLabel(p: WaterPoint): string {
+  if (!p.toilet) return WATER_LABEL[p.water ?? "p"];
+  const base = TOILET_LABEL[p.toilet];
+  if (p.water === "p") return `${base}, with drinking water`;
+  if (p.water === "n") return `${base}, with untreated water`;
+  return base;
+}
 
 /** The point's details, each a short sentence: what the map's card and the list say after the kind. */
 export function waterDetails(p: WaterPoint): string[] {
@@ -116,9 +185,9 @@ export function waterDetails(p: WaterPoint): string[] {
   return out;
 }
 
-/** "Restroom with drinking water, Peirce Mill comfort station". */
+/** "Flush restroom, with drinking water, Peirce Mill". */
 export function waterTitle(p: WaterPoint): string {
-  return p.name ? `${KIND_LABEL[p.kind]}, ${p.name}` : KIND_LABEL[p.kind];
+  return p.name ? `${waterKindLabel(p)}, ${p.name}` : waterKindLabel(p);
 }
 
 /** The standing caution: OSM is volunteers' mapping, and taps get shut off. */
@@ -206,26 +275,42 @@ export function waterAlongText(item: WaterAlong): string {
   return [`At ${formatDistance(item.alongM)}: ${waterTitle(item.point)}, ${off}.`, ...waterDetails(item.point)].join(" ");
 }
 
-/** The list's count line: "3 along your route: 2 with drinking water, 2 restrooms." */
+/** The list's count line: "3 along your route: 1 with drinking water, 1 untreated water source, 2 restrooms." */
 export function waterAlongCount(items: readonly WaterAlong[]): string {
-  const water = items.filter((i) => i.point.kind !== "t").length;
-  const toilets = items.filter((i) => i.point.kind !== "w").length;
-  const part = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  return `${items.length} along your route: ${part(water, "with drinking water", "with drinking water")}, ${part(toilets, "restroom", "restrooms")}.`;
+  const n = (test: (p: WaterPoint) => boolean) => items.filter((i) => test(i.point)).length;
+  const drinking = n((p) => p.water === "p");
+  const untreated = n((p) => p.water === "n");
+  const restrooms = n((p) => p.toilet !== undefined);
+  const parts = [`${drinking} with drinking water`];
+  if (untreated > 0) parts.push(`${untreated} untreated water ${untreated === 1 ? "source" : "sources"}`);
+  parts.push(`${restrooms} ${restrooms === 1 ? "restroom" : "restrooms"}`);
+  return `${items.length} along your route: ${parts.join(", ")}.`;
 }
 
 // --- The map's layer -----------------------------------------------------
 
 export const WATER_SOURCE_ID = "water-restrooms";
 export const WATER_LAYER = "water-restrooms";
-export const waterIconId = (kind: WaterKind) => `water-restrooms-${kind}`;
 /** Drawn from street-network zoom in: further out the points would crowd the stress map. */
 export const WATER_MIN_ZOOM = 12;
 export const WATER_ICON_PX = 18;
 
+/** One icon per kind the map draws: water alone by source, a restroom by type, with a drop when it has drinking water. */
+export type WaterIcon = "w-p" | "w-n" | "t-f" | "t-b" | "t-u" | "t-f-w" | "t-b-w" | "t-u-w";
+export const WATER_ICONS: readonly WaterIcon[] = ["w-p", "w-n", "t-f", "t-b", "t-u", "t-f-w", "t-b-w", "t-u-w"];
+export const waterIconId = (icon: WaterIcon) => `water-restrooms-${icon}`;
+
+/** The icon for a point: its restroom's when it has one (with a drop for drinking water), else its water's. */
+export function waterIconOf(p: WaterPoint): WaterIcon {
+  if (p.toilet) return `t-${p.toilet}${p.water === "p" ? "-w" : ""}` as WaterIcon;
+  return p.water === "n" ? "w-n" : "w-p";
+}
+
 export const WATER_COLOUR = "#075ea8";
+export const UNTREATED_COLOUR = "#8a4b0f";
 export const RESTROOM_COLOUR = "#6d28d9";
-const EDGE = "#ffffff";
+export const BASIC_COLOUR = "#0f6b5c";
+const WHITE = "#ffffff";
 
 /** Whether (x, y) is inside a drop: a circle of radius `r` at (`cx`, `cy`) drawn up to a tip at `top`. */
 function inDrop(x: number, y: number, cx: number, top: number, cy: number, r: number): boolean {
@@ -234,25 +319,51 @@ function inDrop(x: number, y: number, cx: number, top: number, cy: number, r: nu
   // The two tangents from the tip to the circle bound the drop's upper part, down to where they touch it.
   if (y < top || y > top + (d * d - r * r) / d) return false;
   const half = Math.asin(r / d);
-  const across = Math.abs(x - cx);
-  return across <= (y - top) * Math.tan(half);
+  return Math.abs(x - cx) <= (y - top) * Math.tan(half);
 }
 
-/** The icon for a kind: a blue drop, a purple diamond, or a purple diamond holding a white drop. Each has a white edge. */
-export function waterIcon(kind: WaterKind, pixelRatio = 2, cssSize = WATER_ICON_PX): Raster {
+/**
+ * The icon: drinking water a blue drop; untreated water a brown drop struck through; a flush restroom a
+ * purple diamond; a portable or pit toilet a green upright box (a port-a-potty's shape); a restroom of
+ * unmapped type a white diamond ringed in purple. A restroom with drinking water holds a drop. Each has
+ * a white edge for the base map.
+ */
+export function waterIcon(icon: WaterIcon, pixelRatio = 2, cssSize = WATER_ICON_PX): Raster {
   const size = Math.round(cssSize * pixelRatio);
   const c = size / 2;
   const edge = 1.5 * pixelRatio;
-  const blue = hexToRgb(WATER_COLOUR);
-  const purple = hexToRgb(RESTROOM_COLOUR);
-  const white = hexToRgb(EDGE);
-  if (kind === "w") {
+  const white = hexToRgb(WHITE);
+  if (icon === "w-p" || icon === "w-n") {
+    const fill = hexToRgb(icon === "w-p" ? WATER_COLOUR : UNTREATED_COLOUR);
     const top = size * 0.02;
     const cy = size * 0.64;
     const r = size * 0.34;
+    const slash = 1.1 * pixelRatio;
     return rasterise(size, pixelRatio, (x, y): Rgb | null => {
       if (!inDrop(x, y, c, top, cy, r)) return null;
-      return inDrop(x, y, c, top + edge * 1.8, cy, r - edge) ? blue : white;
+      if (!inDrop(x, y, c, top + edge * 1.8, cy, r - edge)) return white;
+      // Untreated: a white stroke from upper right to lower left.
+      if (icon === "w-n" && Math.abs(x - c + (y - cy * 0.92)) < slash) return white;
+      return fill;
+    });
+  }
+  const type = icon[2] as ToiletType;
+  const withWater = icon.endsWith("-w");
+  const purple = hexToRgb(RESTROOM_COLOUR);
+  const blue = hexToRgb(WATER_COLOUR);
+  if (type === "b") {
+    const green = hexToRgb(BASIC_COLOUR);
+    const halfW = size * 0.32;
+    const roof = size * 0.06;
+    return rasterise(size, pixelRatio, (x, y): Rgb | null => {
+      const dx = Math.abs(x - c);
+      if (dx > halfW || y < roof || y > size - 0.5) return null;
+      // A rounded roof, as a port-a-potty has.
+      const roofY = roof + (halfW - Math.sqrt(Math.max(0, halfW * halfW - dx * dx))) * 0.35;
+      if (y < roofY) return null;
+      if (dx > halfW - edge || y < roofY + edge || y > size - 0.5 - edge) return white;
+      if (withWater && inDrop(x, y, c, size * 0.3, size * 0.64, size * 0.15)) return white;
+      return green;
     });
   }
   const half = size / 2;
@@ -260,42 +371,56 @@ export function waterIcon(kind: WaterKind, pixelRatio = 2, cssSize = WATER_ICON_
     const d = Math.abs(x - c) + Math.abs(y - c);
     if (d > half) return null;
     if (d > half - edge * 1.4) return white;
-    if (kind === "wt" && inDrop(x, y, c, size * 0.24, size * 0.58, size * 0.15)) return white;
-    return purple;
+    const drop = withWater && inDrop(x, y, c, size * 0.24, size * 0.58, size * 0.15);
+    if (type === "u") {
+      // Unmapped: a ring, white inside (a blue drop when it has drinking water).
+      if (d > half - edge * 1.4 - 2.2 * pixelRatio) return purple;
+      return drop ? blue : white;
+    }
+    return drop ? white : purple;
   });
 }
 
 export interface WaterFeature {
   type: "Feature";
-  properties: { id: string; kind: WaterKind; name?: string };
+  properties: { id: string; icon: WaterIcon; w?: WaterSource; t?: ToiletType };
   geometry: { type: "Point"; coordinates: LonLat };
 }
 
 export function waterGeoJson(points: readonly WaterPoint[]): { type: "FeatureCollection"; features: WaterFeature[] } {
   return {
     type: "FeatureCollection",
-    features: points.map((p) => ({
-      type: "Feature",
-      properties: p.name ? { id: p.id, kind: p.kind, name: p.name } : { id: p.id, kind: p.kind },
-      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    })),
+    features: points.map((p) => {
+      const properties: WaterFeature["properties"] = { id: p.id, icon: waterIconOf(p) };
+      if (p.water) properties.w = p.water;
+      if (p.toilet) properties.t = p.toilet;
+      return { type: "Feature", properties, geometry: { type: "Point", coordinates: [p.lon, p.lat] } };
+    }),
   };
 }
 
-export function waterLayer(sourceId = WATER_SOURCE_ID): Record<string, unknown> {
+/** The layer's filter for the switches: waterVisible, as an expression. */
+export function waterFilter(prefs: WaterPrefs): unknown[] {
+  const toilet = prefs.basic ? ["has", "t"] : ["all", ["has", "t"], ["!=", ["get", "t"], "b"]];
+  const water = prefs.untreated ? ["has", "w"] : ["all", ["has", "w"], ["!=", ["get", "w"], "n"]];
+  return ["any", toilet, water];
+}
+
+export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = WATER_SOURCE_ID): Record<string, unknown> {
   return {
     id: WATER_LAYER,
     type: "symbol",
     source: sourceId,
     minzoom: WATER_MIN_ZOOM,
+    filter: waterFilter(prefs),
     layout: {
-      "icon-image": ["match", ["get", "kind"], ...WATER_KINDS.flatMap((k) => [k, waterIconId(k)]), waterIconId("w")],
+      "icon-image": ["concat", "water-restrooms-", ["get", "icon"]],
       "icon-size": ["interpolate", ["linear"], ["zoom"], WATER_MIN_ZOOM, 0.7, 15, 1, 18, 1.2],
       "icon-allow-overlap": true,
       // The base map's labels still place around them.
       "icon-ignore-placement": true,
-      // A restroom with water over a plain fountain beside it.
-      "symbol-sort-key": ["match", ["get", "kind"], "wt", 2, "t", 1, 0],
+      // A restroom over a water source beside it.
+      "symbol-sort-key": ["case", ["has", "t"], 1, 0],
     },
   };
 }
@@ -309,31 +434,35 @@ export interface WaterMap {
   hasImage(id: string): boolean;
   addImage(id: string, image: Omit<Raster, "pixelRatio">, options: { pixelRatio: number }): void;
   setLayoutProperty(id: string, name: string, value: string): void;
+  setFilter(id: string, filter: unknown): void;
 }
 
 /** Add the icons, the source and the layer, once, under `beforeId` (the route's lowest layer); whether they were added. */
 export function addWaterRestrooms(
   map: WaterMap,
   points: readonly WaterPoint[],
-  visible: boolean,
+  prefs: WaterPrefs,
   pixelRatio: number,
   beforeId?: string,
 ): boolean {
   if (map.getSource(WATER_SOURCE_ID)) return false;
-  for (const kind of WATER_KINDS) {
-    if (map.hasImage(waterIconId(kind))) continue;
-    const { pixelRatio: ratio, ...image } = waterIcon(kind, pixelRatio);
-    map.addImage(waterIconId(kind), image, { pixelRatio: ratio });
+  for (const icon of WATER_ICONS) {
+    if (map.hasImage(waterIconId(icon))) continue;
+    const { pixelRatio: ratio, ...image } = waterIcon(icon, pixelRatio);
+    map.addImage(waterIconId(icon), image, { pixelRatio: ratio });
   }
   map.addSource(WATER_SOURCE_ID, { type: "geojson", data: waterGeoJson(points) });
-  const layer = waterLayer();
+  const layer = waterLayer(prefs);
   map.addLayer(
-    { ...layer, layout: { ...(layer.layout as object), visibility: visible ? "visible" : "none" } },
+    { ...layer, layout: { ...(layer.layout as object), visibility: prefs.on ? "visible" : "none" } },
     beforeId && map.getLayer(beforeId) ? beforeId : undefined,
   );
   return true;
 }
 
-export function setWaterVisibility(map: WaterMap, visible: boolean): void {
-  if (map.getLayer(WATER_LAYER)) map.setLayoutProperty(WATER_LAYER, "visibility", visible ? "visible" : "none");
+/** Bring the layer in line with the switches. */
+export function setWaterPrefs(map: WaterMap, prefs: WaterPrefs): void {
+  if (!map.getLayer(WATER_LAYER)) return;
+  map.setLayoutProperty(WATER_LAYER, "visibility", prefs.on ? "visible" : "none");
+  map.setFilter(WATER_LAYER, waterFilter(prefs));
 }

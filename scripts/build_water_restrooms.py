@@ -1,26 +1,40 @@
 #!/usr/bin/env python3
-"""Write the public drinking water and restrooms the map shows, from the OSM extract.
+"""Write the public water sources and restrooms the map shows, from the OSM extract.
 
-Owner request (2026-10-09): "OSM sometimes has public water fountains and
+Owner requests (2026-10-09): "OSM sometimes has public water fountains and
 restrooms. That should be a layer, especially on trailmaxxing and gravel."
-The layer is the map's Water and restrooms switch (frontend/src/lib/waterRestrooms.ts).
+Then: "make sure there's a distinction for those who care about regular flush
+restrooms; and port-a-potties and similar facilities. Also remote areas
+sometimes contain nonpotable water sources. Mark them too but with a different
+icon than potable water. People would carry filters." The layer is the map's
+Water and restrooms switch (frontend/src/lib/waterRestrooms.ts).
 
 What counts, from the OSM wiki's own tag definitions
 (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water>,
 <https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dwater_point>,
 <https://wiki.openstreetmap.org/wiki/Tag:man_made%3Dwater_tap>,
-<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets>,
+<https://wiki.openstreetmap.org/wiki/Tag:man_made%3Dwater_well>,
+<https://wiki.openstreetmap.org/wiki/Tag:natural%3Dspring>,
 <https://wiki.openstreetmap.org/wiki/Key:drinking_water>,
+<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets>,
+<https://wiki.openstreetmap.org/wiki/Key:toilets:disposal>,
 <https://wiki.openstreetmap.org/wiki/Key:access>):
 
-- water: amenity=drinking_water (unless drinking_water=no); amenity=water_point
-  unless drinking_water=no; and drinking_water=yes on a tap, well, fountain,
-  shelter or restroom, the features where riders can reach it.
-- restroom: amenity=toilets.
+- drinking water ("p"): amenity=drinking_water and amenity=water_point, unless
+  drinking_water=no; and drinking_water=yes on a tap, well, spring, fountain,
+  shelter or restroom.
+- untreated water ("n", filter or treat it first): a tap, well, spring or water
+  point that is not marked drinking_water=yes, so drinking_water=no and no tag
+  at all alike, as the project treats unclear as closed. An
+  amenity=drinking_water marked drinking_water=no is untreated too. Decorative
+  fountains are left out unless marked drinkable.
+- restrooms: amenity=toilets, by toilets:disposal: flush ("f"); a portable,
+  pit, composting or other basic toilet ("b": chemical, pitlatrine, bucket,
+  dry_toilet, incineration, composting, or portable=yes); or not mapped ("u").
 - public only: no access tag, or access=yes, public, permissive or designated.
   Anything else (private, customers, permit, no, ...) is left out, as an unclear
-  "maybe you can use it" is no help to a thirsty rider; this follows the
-  project's rule that unclear access is closed.
+  "maybe you can use it" is no help to a rider; this follows the project's
+  rule that unclear access is closed.
 - in use only: disused=yes and abandoned=yes are left out (lifecycle-prefixed
   keys such as disused:amenity never match in the first place).
 
@@ -54,9 +68,14 @@ OUT = REPO / "frontend" / "src" / "amenity-data" / "water-restrooms.json"
 COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
 
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
+# Sources riders fill from; drinkable only when marked so.
+SOURCES_MAN_MADE = frozenset({"water_tap", "water_well"})
+SOURCES_NATURAL = frozenset({"spring"})
 # Where drinking_water=yes means a rider can fill a bottle there.
-WATER_HOSTS_AMENITY = frozenset({"fountain", "shelter", "toilets", "water_point", "drinking_water"})
-WATER_HOSTS_MAN_MADE = frozenset({"water_tap", "water_well"})
+DRINKABLE_HOSTS_AMENITY = frozenset({"fountain", "shelter", "toilets"})
+BASIC_DISPOSAL = frozenset(
+    {"chemical", "pitlatrine", "bucket", "dry_toilet", "incineration", "composting"}
+)
 YES_NO = frozenset({"yes", "no"})
 WHEELCHAIR = frozenset({"yes", "limited", "no"})
 MAX_TEXT = 80
@@ -67,8 +86,8 @@ class Amenity:
     osm: str  # "n123" or "w456"
     lon: float
     lat: float
-    water: bool
-    toilets: bool
+    water: str | None  # "p" drinking, "n" untreated
+    toilet: str | None  # "f" flush, "b" basic, "u" not mapped
     name: str | None = None
     fee: str | None = None
     wheelchair: str | None = None
@@ -76,21 +95,38 @@ class Amenity:
     seasonal: str | None = None
     bottle: bool = False
 
-    @property
-    def kind(self) -> str:
-        return ("w" if self.water else "") + ("t" if self.toilets else "")
 
-
-def is_water(tags: dict[str, str]) -> bool:
+def water_of(tags: dict[str, str]) -> str | None:
+    """'p' for drinking water, 'n' for an untreated source, None for neither."""
     amenity = tags.get("amenity")
     drinking = tags.get("drinking_water")
-    if drinking == "no":
-        return False
-    if amenity in ("drinking_water", "water_point"):
-        return True
-    return drinking == "yes" and (
-        amenity in WATER_HOSTS_AMENITY or tags.get("man_made") in WATER_HOSTS_MAN_MADE
+    source = (
+        tags.get("man_made") in SOURCES_MAN_MADE
+        or tags.get("natural") in SOURCES_NATURAL
+        or amenity == "water_point"
     )
+    if amenity == "drinking_water":
+        return "n" if drinking == "no" else "p"
+    if amenity == "water_point" and drinking != "no":
+        return "p"
+    if drinking == "yes" and (source or amenity in DRINKABLE_HOSTS_AMENITY):
+        return "p"
+    if source:
+        return "n"
+    return None
+
+
+def toilet_of(tags: dict[str, str]) -> str | None:
+    """'f' flush, 'b' portable or other basic toilet, 'u' type not mapped, None for no restroom."""
+    if tags.get("amenity") != "toilets":
+        return None
+    disposal = tags.get("toilets:disposal", "")
+    kinds = {d.strip() for d in disposal.split(";") if d.strip()}
+    if "flush" in kinds:
+        return "f"
+    if kinds & BASIC_DISPOSAL or tags.get("portable") == "yes":
+        return "b"
+    return "u"
 
 
 def is_public(tags: dict[str, str]) -> bool:
@@ -109,9 +145,9 @@ def _text(value: str | None) -> str | None:
 
 def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity | None:
     """The point's amenity, or None when it is neither public water nor a public restroom."""
-    water = is_water(tags)
-    toilets = tags.get("amenity") == "toilets"
-    if not (water or toilets) or not is_public(tags):
+    water = water_of(tags)
+    toilet = toilet_of(tags)
+    if not (water or toilet) or not is_public(tags):
         return None
     west, south, east, north = COVERAGE_BBOX
     if not (west <= lon <= east and south <= lat <= north):
@@ -124,13 +160,13 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity 
         lon=round(lon, 5),
         lat=round(lat, 5),
         water=water,
-        toilets=toilets,
+        toilet=toilet,
         name=_text(tags.get("name")),
         fee=fee if fee in YES_NO else None,
         wheelchair=wheelchair if wheelchair in WHEELCHAIR else None,
         hours=_text(tags.get("opening_hours")),
         seasonal=None if seasonal in (None, "no") else _text(seasonal),
-        bottle=water and tags.get("bottle") == "yes",
+        bottle=water == "p" and tags.get("bottle") == "yes",
     )
 
 
@@ -140,14 +176,14 @@ def read_extract(path: Path) -> list[Amenity]:
     found: list[Amenity] = []
 
     def wanted(tags: dict[str, str]) -> bool:
-        return (
-            tags.get("amenity") in WATER_HOSTS_AMENITY
-            or tags.get("man_made") in WATER_HOSTS_MAN_MADE
-        )
+        return water_of(tags) is not None or toilet_of(tags) is not None
+
+    def tagged(t) -> bool:
+        return "amenity" in t or "man_made" in t or "natural" in t
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
-            if "amenity" not in n.tags and "man_made" not in n.tags:
+            if not tagged(n.tags):
                 return
             tags = dict(n.tags)
             if wanted(tags):
@@ -156,7 +192,7 @@ def read_extract(path: Path) -> list[Amenity]:
                     found.append(a)
 
         def way(self, w):
-            if "amenity" not in w.tags and "man_made" not in w.tags:
+            if not tagged(w.tags):
                 return
             tags = dict(w.tags)
             if not wanted(tags):
@@ -185,7 +221,11 @@ def document(amenities: list[Amenity]) -> dict:
     """The file the front end reads: short keys, absent fields left out."""
     points = []
     for a in sorted(amenities, key=_sort_key):
-        p: dict = {"id": a.osm, "x": a.lon, "y": a.lat, "k": a.kind}
+        p: dict = {"id": a.osm, "x": a.lon, "y": a.lat}
+        if a.water:
+            p["w"] = a.water
+        if a.toilet:
+            p["t"] = a.toilet
         if a.name:
             p["n"] = a.name
         if a.fee:
@@ -226,10 +266,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8")
-    water = sum(a.water for a in amenities)
-    toilets = sum(a.toilets for a in amenities)
-    both = sum(a.water and a.toilets for a in amenities)
-    print(f"{len(amenities)} points: {water} with water, {toilets} restrooms, {both} both")
+    count = lambda field, value: sum(getattr(a, field) == value for a in amenities)  # noqa: E731
+    print(
+        f"{len(amenities)} points: drinking water {count('water', 'p')}, "
+        f"untreated water {count('water', 'n')}; restrooms flush {count('toilet', 'f')}, "
+        f"basic {count('toilet', 'b')}, type not mapped {count('toilet', 'u')}"
+    )
     return 0
 
 

@@ -8,23 +8,25 @@ the repository's `.gitignore` ignores every directory of that name.
 
 | File | What | Source | Licence | Credit on the map |
 | --- | --- | --- | --- | --- |
-| `water-restrooms.json` | public drinking water (fountains, taps, water points) and public restrooms in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps) and public restrooms (flush, portable or pit, type not mapped) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 
-What counts as public water or a public restroom, and what is left out
-(customers-only, private, disused), is in the script's docstring, with the OSM
+What counts as drinking or untreated water, how a restroom's type is read
+from `toilets:disposal`, and what is left out (customers-only, private,
+disused), is in the script's docstring, with the OSM
 wiki pages it follows. The file is one point per line, short keys:
 
 | Key | Meaning |
 | --- | --- |
 | `id` | OSM element, `n` node or `w` way, then its id |
 | `x`, `y` | longitude, latitude (5 decimals, about 3 ft (1 m); a way's mean node) |
-| `k` | `w` drinking water, `t` restroom, `wt` a restroom with drinking water |
+| `w` | water: `p` drinking water, `n` untreated (filter or treat first); left out for none |
+| `t` | restroom: `f` flush, `b` portable, pit, composting or other basic toilet, `u` type not mapped; left out for none |
 | `n` | `name` |
 | `fee` | `fee=yes` or `no` |
 | `wc` | `wheelchair=yes`, `limited` or `no` |
 | `h` | `opening_hours`, as mapped |
 | `s` | `seasonal`, unless `no` |
-| `b` | 1 for `bottle=yes` on water |
+| `b` | 1 for `bottle=yes` on drinking water |
 
 ## Status
 

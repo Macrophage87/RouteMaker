@@ -2697,3 +2697,14 @@ details.zoom-notes {
 .water-popup .water-caution {
   color: var(--text-muted);
 }
+
+.water-kinds {
+  border: 0;
+  margin: 0 0 0 20px;
+  padding: 0;
+}
+
+.water-kinds legend {
+  padding: 0;
+  color: var(--text-muted);
+}
