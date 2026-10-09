@@ -9,11 +9,13 @@ here touches a stack, a server, GitHub or the network.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -203,12 +205,45 @@ def test_documentation_and_ci_alone_change_nothing_on_the_server() -> None:
         "src/pipeline/schema.py",
         "src/pipeline/variants.py",
         "src/pipeline/tiles.py",
+        "docker/valhalla/Dockerfile",
+        "docker/photon/Dockerfile",
+        "docker/postgis/Dockerfile",
     ],
 )
 def test_a_release_that_needs_the_owner_stops(path: str) -> None:
     result = _gate({path: ("a", "b")})
     assert result["verdict"] == "stop"
     assert any(path in reason for reason in result["reasons"])
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "deploy/nginx é.conf",
+        "lua/a\\b.lua",
+        'src/core/a"b.py',
+        "src/core/tab\there.py",
+        "src/core/a b.py",
+        "docs/notes é.md",  # an odd name stops even where a plain one is ignored
+        "src/core/\udcff.py",  # not UTF-8 (git's bytes, read with surrogateescape)
+    ],
+)
+def test_an_odd_file_name_stops_the_release(path: str) -> None:
+    result = _gate({path: ("a", "b")})
+    assert result["verdict"] == "stop" and result["changed_files"] == 1
+    assert len(result["reasons"]) == 1 and "file name" in result["reasons"][0]
+    assert all(" " <= c <= "~" for c in result["reasons"][0])  # printable for the report
+
+
+def test_git_s_nul_separated_name_status_is_read_exactly() -> None:
+    assert cd_logic.parse_name_status_z("M\0src/a.py\0A\0lua/a\\b.lua\0") == [
+        ("M", "src/a.py"),
+        ("A", "lua/a\\b.lua"),
+    ]
+    assert cd_logic.parse_name_status_z("") == []
+    for bad in ("M\0a\0A\0", "R100\0a\0", "M\0\0", 'M\tsrc/a.py\n"x"'):
+        with pytest.raises(SystemExit):
+            cd_logic.parse_name_status_z(bad)
 
 
 @pytest.mark.parametrize("path", ["src/core/stress_tiles.py", "src/core/mass_tiles.py"])
@@ -409,6 +444,40 @@ def test_the_gate_reads_git_history(tmp_path: Path) -> None:
     assert cd_logic.git_gate(str(repo), old, newer)["verdict"] == "stop"
 
 
+@needs_git
+def test_the_gate_sees_a_path_git_would_quote_and_stops(tmp_path: Path) -> None:
+    # Without -z, git prints these quoted ("deploy/nginx \303\251.conf"), and no prefix matched.
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    old = commit(repo, {"src/core/a.py": "x\n"})
+    names = ["deploy/nginx é.conf", "lua/a\\b.lua", "src/core/tab\there.py"]
+    new = commit(repo, {name: "x\n" for name in names})
+    result = cd_logic.git_gate(str(repo), old, new)
+    assert result["verdict"] == "stop" and result["changed_files"] == 3
+    assert len(result["reasons"]) == 3
+    assert all("file name" in reason for reason in result["reasons"])
+
+
+@needs_git
+def test_a_failed_compose_diff_fails_the_gate_closed(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    old = commit(repo, {"src/core/a.py": "x\n"})
+    new = commit(repo, {"compose.beta.yaml": "services: {}\n"})
+    real = cd_logic._git
+
+    def fake(where: str, *args: str) -> subprocess.CompletedProcess:
+        if "-U0" in args:
+            return subprocess.CompletedProcess(args, 128, "", "fatal: boom")
+        return real(where, *args)
+
+    monkeypatch.setattr(cd_logic, "_git", fake)
+    with pytest.raises(SystemExit):
+        cd_logic.git_gate(str(repo), old, new)
+
+
 # --- the agent, end to end against stubs ---
 
 STUB_COMPOSE = """#!/bin/sh
@@ -423,8 +492,11 @@ case "$*" in
   *django_migrations*) echo t ;;
   *pg_stat_activity*) echo 0 ;;
   *"migrate --check"*) [ -n "${STUB_PENDING:-}" ] && [ ! -f "$STUB_MIGRATED" ] && exit 1 ;;
-  *"migrate --noinput"*) touch "$STUB_MIGRATED" ;;
-  *predraw_stress_tiles*) exit "${STUB_PREDRAW_RC:-0}" ;;
+  *"migrate --noinput"*) touch "$STUB_MIGRATED"
+    # STUB_KILL_AT_*: the whole process group is signalled, as systemd stops a unit's cgroup
+    [ -n "${STUB_KILL_AT_MIGRATE:-}" ] && kill -"$STUB_KILL_AT_MIGRATE" 0 ;;
+  *predraw_stress_tiles*) [ -n "${STUB_KILL_AT_PREDRAW:-}" ] && kill -"$STUB_KILL_AT_PREDRAW" 0
+    exit "${STUB_PREDRAW_RC:-0}" ;;
 esac
 exit 0
 """
@@ -440,10 +512,40 @@ exit 1
 STUB_CHECKER = """print("beta compose: ok")
 """
 STUB_DOCKER = """#!/bin/sh
+# a stand-in for docker: records its arguments. `run` acts out the three containers the agent
+# runs: the front-end build (writes /out), the install (/src into /dest) and the restore
+# (/saved into /dest).
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
   "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0; exit 1 ;;
-  build*) exit "${STUB_BUILD_RC:-0}" ;;
+  build*)
+    if [ -n "${STUB_BUILD_FAIL_ONCE:-}" ] && [ ! -f "$STUB_BUILD_FAIL_ONCE" ]; then
+      : > "$STUB_BUILD_FAIL_ONCE"; exit 1
+    fi
+    exit "${STUB_BUILD_RC:-0}" ;;
+  info*) [ -n "${STUB_DOCKER_ROOT:-}" ] && echo "$STUB_DOCKER_ROOT"; exit 0 ;;
+  inspect*) echo "stub/postgis:16"; exit 0 ;;
+  run*)
+    out=""; src=""; dest=""; saved=""; prev=""
+    for a in "$@"; do
+      if [ "$prev" = "-v" ]; then
+        case "$a" in
+          *:/out) out=${a%:/out} ;;
+          *:/src:ro) src=${a%:/src:ro} ;;
+          *:/dest) dest=${a%:/dest} ;;
+          *:/saved:ro) saved=${a%:/saved:ro} ;;
+        esac
+      fi
+      prev=$a
+    done
+    if [ -n "$out" ]; then
+      [ -n "${STUB_FRONTEND_RC:-}" ] && exit "$STUB_FRONTEND_RC"
+      mkdir -p "$out/assets"; echo x > "$out/assets/app-1.js"
+      echo "<html>new</html>" > "$out/index.html"
+    elif [ -n "$dest" ] && [ -n "$src" ]; then cp -R "$src/." "$dest/"
+    elif [ -n "$dest" ] && [ -n "$saved" ]; then cp -R "$saved/." "$dest/"
+    fi
+    exit 0 ;;
 esac
 exit 0
 """
@@ -468,6 +570,16 @@ esac
 """
 
 
+STUB_DATE = """#!/bin/sh
+# the hour from STUB_HOUR, for the deploy window; anything else from the real date
+if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then echo "$STUB_HOUR"; exit 0; fi
+exec REAL_DATE "$@"
+"""
+GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
+API = "ghcr.io/macrophage87/routemaker-api"
+ROUTERS = "valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+
+
 class Beta:
     """A throwaway origin, a beta checkout of it at v0.1.0, and a state directory."""
 
@@ -486,15 +598,23 @@ class Beta:
                 "src/core/stress_tiles.py": "FORMAT_VERSION = 7\n",
                 "src/core/mass_tiles.py": "FORMAT_VERSION = 2\n",
                 "frontend/package-lock.json": "{}\n",
+                "valhalla/valhalla-standard.json": _vjson(),
+                "valhalla/valhalla-offroad.json": _vjson(),
             },
         )
         self.tag("v0.1.0")
         self.src = tmp / "src"
         git(tmp, "clone", "-q", str(self.origin), str(self.src))
         git(self.src, "checkout", "-q", "--detach", "v0.1.0")
+        # The origin a real beta has (the agent checks it), fetched from the throwaway one.
+        git(self.src, "remote", "set-url", "origin", GITHUB)
+        git(self.src, "config", f"url.{self.origin}.insteadOf", GITHUB)
         self.data = tmp / "data"
         (self.data / "frontend").mkdir(parents=True)
         (self.data / "frontend" / "index.html").write_text("<html>old</html>\n")
+        (self.data / "frontend" / "beta-build.txt").write_text(
+            "VITE_BETA=1\nVITE_BETA_REPORT_URL=\ngit=old\n"
+        )
         (self.src / ".env").write_text(
             f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={self.data}\nTAG={self.v1[:12]}\n"
         )
@@ -515,7 +635,13 @@ class Beta:
         self.vars.chmod(0o600)
         self.bin = tmp / "bin"
         self.bin.mkdir()
-        for name, text in (("docker", STUB_DOCKER), ("curl", STUB_CURL)):
+        real_date = shutil.which("date") or "/bin/date"
+        stubs = (
+            ("docker", STUB_DOCKER),
+            ("curl", STUB_CURL),
+            ("date", STUB_DATE.replace("REAL_DATE", real_date)),
+        )
+        for name, text in stubs:
             (self.bin / name).write_text(text)
             (self.bin / name).chmod(0o755)
         self.log = tmp / "calls.log"
@@ -549,7 +675,8 @@ class Beta:
         ]
         self.ci.write_text(json.dumps({"check_runs": runs}))
 
-    def agent(self, *args: str, **env: str) -> subprocess.CompletedProcess:
+    def agent(self, *args: str, session: bool = False, **env: str) -> subprocess.CompletedProcess:
+        # session: a process group of its own, so a stub can signal the whole pass (as systemd does)
         full = {
             "PATH": f"{self.bin}:{os.environ['PATH']}",
             "HOME": str(self.tmp),
@@ -558,6 +685,8 @@ class Beta:
             "STUB_CI": str(self.ci),
             "STUB_MIGRATED": str(self.tmp / "migrated"),
             "RM_CD_SMOKE_RETRY_S": "0",
+            "RM_CD_BUILD_RETRY_S": "0",
+            "TMPDIR": str(self.tmp),
             "DOCKER": str(self.bin / "docker"),
             "CURL": str(self.bin / "curl"),
             "GIT_CONFIG_GLOBAL": os.devnull,
@@ -565,7 +694,12 @@ class Beta:
             **env,
         }
         return subprocess.run(
-            ["bash", str(AGENT), *args], capture_output=True, text=True, env=full, check=False
+            ["bash", str(AGENT), *args],
+            capture_output=True,
+            text=True,
+            env=full,
+            check=False,
+            start_new_session=session,
         )
 
     def status(self) -> str:
@@ -573,6 +707,14 @@ class Beta:
 
     def calls(self) -> str:
         return self.log.read_text() if self.log.exists() else ""
+
+    def node_modules(self, lockfile: bytes = b"{}\n") -> Path:
+        path = self.cd / "node_modules" / hashlib.sha256(lockfile).hexdigest() / "node_modules"
+        path.mkdir(parents=True)
+        return path
+
+    def head(self) -> str:
+        return git(self.src, "rev-parse", "HEAD")
 
 
 @pytest.fixture
@@ -667,7 +809,6 @@ def test_paused_does_nothing_and_resume_undoes_it(beta: Beta) -> None:
     assert "PAUSED:" in beta.agent("status").stdout
     beta.agent("resume")
     assert "PAUSED:" not in beta.agent("status").stdout
-    beta.agent("run", "--dry-run")
     assert "would deploy v0.2.0" in beta.agent("run", "--dry-run").stdout
 
 
@@ -677,14 +818,28 @@ def test_a_checkout_changed_by_hand_stops_the_agent(beta: Beta) -> None:
     assert "drift" in beta.status()
 
 
-def test_a_build_failure_changes_nothing_and_marks_the_tag_failed(beta: Beta) -> None:
+def test_a_build_that_keeps_failing_is_tried_three_times_then_rolled_back(beta: Beta) -> None:
+    # The build runs after the stop (operations r2, 2), so a failed one starts the old release.
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
     done = beta.agent("run", STUB_BUILD_RC="1")
     assert done.returncode == 1
-    assert "failed" in beta.status() and "nothing was changed" in beta.status()
+    assert "rolled-back" in beta.status(), done.stdout
     assert (beta.cd / "failed" / "v0.2.0").exists()
-    assert git(beta.src, "rev-parse", "HEAD") == beta.v1
-    assert "stop api worker" not in beta.calls()
+    assert beta.head() == beta.v1
+    calls = beta.calls()
+    assert calls.count("docker build") == 3
+    _order(calls, "stop api worker", "docker build", "up -d api worker", "smoke --local")
+    assert "pg_dump" not in calls  # nothing past the build ran
+    assert not (beta.cd / "in-progress").exists()
+
+
+def test_a_build_that_fails_once_is_tried_again_and_deploys(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_BUILD_FAIL_ONCE=str(beta.tmp / "once"))
+    assert done.returncode == 0, done.stdout
+    assert "deployed: v0.2.0" in beta.status()
+    assert beta.calls().count("docker build") == 2
+    assert "try 2 of 3" in done.stdout
 
 
 def test_a_failure_after_the_stop_rolls_back_and_starts_the_old_release(beta: Beta) -> None:
@@ -718,7 +873,11 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
     assert (beta.cd / "previous-tag").read_text().strip() == "v0.1.0"
     assert len(list((beta.cd / "backups").glob("pre-release-*.dump"))) == 1
-    assert len(list((beta.cd / "backups").glob("index.html.pre-release-*"))) == 1
+    saved = list((beta.cd / "backups").glob("frontend.pre-release-*"))
+    assert len(saved) == 1
+    assert (saved[0] / "index.html").read_text() == "<html>old</html>\n"
+    assert "git=old" in (saved[0] / "beta-build.txt").read_text()
+    assert not (beta.cd / "in-progress").exists()
     _order(
         beta.calls(),
         "stop api worker",
@@ -826,9 +985,15 @@ def test_mark_deployed_records_a_release_shipped_by_hand(beta: Beta) -> None:
     git(beta.src, "checkout", "-q", "--detach", sha)
     env = (beta.src / ".env").read_text().replace(beta.v1[:12], sha[:12])
     (beta.src / ".env").write_text(env)
+    # the hand ship's front end carried another report link
+    (beta.data / "frontend" / "beta-build.txt").write_text(
+        f"VITE_BETA=1\nVITE_BETA_REPORT_URL=https://example.invalid/report\ngit={sha}\n"
+    )
     done = beta.agent("mark-deployed", "v0.2.0")
     assert done.returncode == 0, done.stderr
     assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
+    assert (beta.cd / "report-url").read_text().strip() == "https://example.invalid/report"
+    assert "report link: https://example.invalid/report" in done.stdout
     assert not (beta.cd / "hold" / "v0.2.0").exists()
     beta.agent("run")
     assert "up-to-date: v0.2.0" in beta.status()
@@ -931,3 +1096,327 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         "OWNER-DECISIONS 431",
     ):
         assert needle in section, needle
+
+
+# --- revision 3: routers, gates, the front end, interruptions, pause, settings ---
+
+
+def _restarts(calls: str) -> list[str]:
+    return [line for line in calls.splitlines() if line.startswith("restart ")]
+
+
+def test_a_valhalla_runtime_change_restarts_exactly_the_four_routers(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0", {"valhalla/valhalla-standard.json": _vjson(loki__logging__long_request=1)}
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    calls = beta.calls()
+    assert _restarts(calls) == [f"restart {ROUTERS}"]
+    assert "offroad" not in calls
+    _order(calls, "up -d api worker", f"restart {ROUTERS}", "smoke --local")
+
+
+def test_a_runtime_change_to_the_offroad_config_restarts_no_router(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0", {"valhalla/valhalla-offroad.json": _vjson(loki__logging__long_request=1)}
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert _restarts(beta.calls()) == []
+    assert "offroad" not in beta.calls()
+    assert "the offroad router does not run on the beta" in done.stdout
+
+
+def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0",
+        {
+            "valhalla/valhalla-standard.json": _vjson(loki__logging__long_request=1),
+            "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS,
+        },
+    )
+    beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "rolled-back" in beta.status()
+    assert _restarts(beta.calls()) == [f"restart {ROUTERS}", f"restart {ROUTERS}"]
+    assert "offroad" not in beta.calls()
+
+
+def test_a_compose_change_recreates_photon_and_the_four_routers(beta: Beta) -> None:
+    beta.release("v0.2.0", {"compose.beta.yaml": "services: {}\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    assert f"up -d photon {ROUTERS}\n" in beta.calls()
+    assert "offroad" not in beta.calls()
+
+
+def test_a_tag_older_than_the_deployed_release_does_not_descend_and_is_held(beta: Beta) -> None:
+    # v0.1.1 (a later commit) is deployed; v0.2.0 is then put on v0.1.0's commit, an ancestor.
+    later = beta.release("v0.1.1", {"src/core/a.py": "x = 1.1\n"})
+    git(beta.src, "fetch", "-q", "--tags", "origin")
+    git(beta.src, "checkout", "-q", "--detach", later)
+    env = (beta.src / ".env").read_text().replace(beta.v1[:12], later[:12])
+    (beta.src / ".env").write_text(env)
+    (beta.cd / "deployed-tag").write_text("v0.1.1\n")
+    (beta.cd / "deployed-sha").write_text(later + "\n")
+    git(beta.origin, "tag", "-a", "v0.2.0", "-m", "v0.2.0", beta.v1)
+    beta.sha = beta.v1
+    beta.green()
+    beta.agent("run")
+    assert "held" in beta.status() and "does not descend from the deployed release" in beta.status()
+    assert (beta.cd / "hold" / "v0.2.0").exists()
+    assert "stop api worker" not in beta.calls()
+
+
+def test_a_new_lockfile_waits_even_when_the_old_one_has_node_modules(beta: Beta) -> None:
+    beta.node_modules(b"{}\n")  # v0.1.0's lockfile
+    new_lock = '{"lockfileVersion": 3}\n'
+    beta.release("v0.2.0", {"frontend/package-lock.json": new_lock})
+    done = beta.agent("run", STUB_HAS_IMAGES="1")
+    assert "waiting" in beta.status() and "node_modules" in beta.status()
+    assert hashlib.sha256(new_lock.encode()).hexdigest() in beta.status()
+    assert "the front end's package files changed" in done.stdout
+    assert "stop api worker" not in beta.calls()
+
+
+def test_a_front_end_release_is_built_after_the_stop_and_installed(beta: Beta) -> None:
+    beta.node_modules(b"{}\n")
+    sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    front = beta.data / "frontend"
+    assert (front / "index.html").read_text() == "<html>new</html>\n"
+    assert (front / "assets" / "app-1.js").exists()
+    built = (front / "beta-build.txt").read_text()
+    assert "VITE_BETA=1\n" in built and f"git={sha}\n" in built
+    calls = beta.calls()
+    build = next(line for line in calls.splitlines() if "/out" in line)
+    for flag in ("--pull never", "--network none", "--memory 1536m", "--oom-score-adj 1000"):
+        assert flag in build, flag
+    _order(calls, "stop api worker", build, "pg_dump", "up -d api worker", "smoke --local")
+
+
+def test_a_front_end_rollback_puts_back_the_page_and_its_build_record(beta: Beta) -> None:
+    beta.node_modules(b"{}\n")
+    beta.release(
+        "v0.2.0",
+        {"frontend/src/x.ts": "export {}\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS},
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "rolled-back" in beta.status(), done.stdout
+    front = beta.data / "frontend"
+    assert (front / "index.html").read_text() == "<html>old</html>\n"
+    assert "git=old" in (front / "beta-build.txt").read_text()
+    assert "rollback: restore-index" in done.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("hold", "v1.2.3-rc1"),
+        ("retry", "v0.2"),
+        ("hold", "v1.2.3/../../x"),
+        ("retry", "v1.2.3/../../x"),
+        ("mark-deployed", "v1.2.3-rc1"),
+    ],
+)
+def test_hold_retry_and_mark_deployed_refuse_anything_but_a_strict_tag(
+    beta: Beta, args: tuple
+) -> None:
+    (beta.cd / "hold" / "v1.2.3").mkdir(parents=True)
+    sentinel = beta.cd / "x"
+    sentinel.write_text("keep\n")
+    done = beta.agent(*args)
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert sentinel.exists()
+    assert [p.name for p in (beta.cd / "hold").iterdir()] == ["v1.2.3"]
+    assert not any((beta.cd / "hold" / "v1.2.3").iterdir())
+
+
+def test_a_release_with_nothing_for_the_server_is_recorded_without_a_stop(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"docs/NOTES.md": "x\n", ".github/workflows/x.yml": "x: 1\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status() and "without touching the stack" in beta.status()
+    assert beta.head() == sha
+    assert f"TAG={sha[:12]}\n" in (beta.src / ".env").read_text()
+    calls = beta.calls()
+    assert f"docker tag {API}:{beta.v1[:12]} {API}:{sha[:12]}" in calls
+    assert "stop api worker" not in calls and "up -d" not in calls and "pg_dump" not in calls
+    beta.agent("run")
+    assert "up-to-date: v0.2.0" in beta.status()
+
+
+def test_a_new_tag_on_the_deployed_commit_is_only_recorded(beta: Beta) -> None:
+    beta.tag("v0.2.0")
+    done = beta.agent("run", STUB_HAS_IMAGES="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert (beta.cd / "deployed-sha").read_text().strip() == beta.v1
+    assert "docker tag" not in beta.calls() and "stop api worker" not in beta.calls()
+
+
+def test_a_pass_stopped_mid_deploy_records_it_and_the_next_pass_rolls_it_back(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+    done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="TERM", **run)
+    assert done.returncode == 143, done.stdout + done.stderr
+    assert "interrupted" in beta.status() and "next pass rolls it back" in beta.status()
+    marker = (beta.cd / "in-progress").read_text()
+    assert "tag=v0.2.0\n" in marker and "migrate" in marker and "interrupted=" in marker
+    assert beta.head() == sha  # the checkout had moved
+    assert "IN PROGRESS" in beta.agent("status").stdout
+    dry = beta.agent("run", "--dry-run")
+    assert "rolls that deploy back" in dry.stdout and beta.head() == sha
+    beta.log.unlink()
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 1, done.stdout
+    assert "rolled-back" in beta.status() and "stopped mid-deploy" in beta.status()
+    assert "drift" not in done.stdout
+    assert beta.head() == beta.v1
+    assert f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+    assert "pg_restore" in beta.calls()  # the migration had run
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
+    assert (beta.cd / "failed" / "v0.2.0").exists()
+    assert not (beta.cd / "in-progress").exists()
+    beta.agent("run")
+    assert "failed" in beta.status()  # not tried again until retry
+
+
+def test_a_pass_killed_outright_mid_deploy_is_rolled_back_next_time(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+    done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="KILL", **run)
+    assert done.returncode == -9
+    marker = (beta.cd / "in-progress").read_text()
+    assert "migrate" in marker and "interrupted=" not in marker
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "rolled-back" in beta.status(), done.stdout
+    assert beta.head() == beta.v1
+
+
+def test_a_pass_stopped_during_the_predraw_leaves_a_deployed_release(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/stress_tiles.py": "FORMAT_VERSION = 8\n"})
+    done = beta.agent(
+        "run",
+        session=True,
+        STUB_KILL_AT_PREDRAW="TERM",
+        STUB_HAS_IMAGES="1",
+        STUB_RUNNING="postgis",
+    )
+    assert done.returncode == 143
+    assert "deployed: v0.2.0" in beta.status() and "during the pre-draw" in beta.status()
+    assert (beta.cd / "deployed-sha").read_text().strip() == sha
+    assert (beta.cd / "previous-tag").read_text().strip() == "v0.1.0"
+    assert not (beta.cd / "in-progress").exists()
+    beta.agent("run")
+    assert "up-to-date: v0.2.0" in beta.status()
+
+
+def test_a_leftover_marker_that_touched_nothing_lets_the_pass_go_on(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    (beta.cd / "in-progress").write_text(
+        f"tag=v0.2.0\nnew={sha}\nold={beta.v1}\nold_tag=v0.1.0\nsteps=\npid=1\n"
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "had not touched the stack" in done.stdout
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+
+
+def test_a_marker_that_does_not_match_the_deployed_release_is_broken(beta: Beta) -> None:
+    (beta.cd / "in-progress").write_text(
+        f"tag=v0.2.0\nnew={'b' * 40}\nold={'c' * 40}\nold_tag=v0.0.9\nsteps=stopped\npid=1\n"
+    )
+    beta.agent("run")
+    assert "broken" in beta.status() and (beta.cd / "BROKEN").exists()
+
+
+def _hold_the_lock(beta: Beta, seconds: str) -> subprocess.Popen:
+    holder = subprocess.Popen(["flock", str(beta.cd / "lock"), "sleep", seconds])
+    for _ in range(100):
+        probe = subprocess.run(["flock", "-n", str(beta.cd / "lock"), "true"], check=False)
+        if probe.returncode != 0:
+            return holder
+        time.sleep(0.05)
+    holder.kill()
+    pytest.fail("the lock was never taken")
+
+
+def test_pause_says_when_a_pass_is_running_and_wait_waits_for_it(beta: Beta) -> None:
+    done = beta.agent("pause", "shipping")
+    assert done.returncode == 0 and "no pass is running now" in done.stdout
+    holder = _hold_the_lock(beta, "30")
+    try:
+        done = beta.agent("pause", "shipping")
+        assert done.returncode == 0 and "a pass is running now" in done.stderr
+        assert "running:" in beta.agent("status").stdout
+    finally:
+        holder.kill()
+        holder.wait()
+    holder = _hold_the_lock(beta, "1")
+    try:
+        done = beta.agent("pause", "--wait", "shipping", "by", "hand")
+        assert done.returncode == 0 and "it ended" in done.stdout
+    finally:
+        holder.wait()
+    assert (beta.cd / "PAUSED").read_text().split(" ", 1)[1] == "shipping by hand\n"
+
+
+@pytest.mark.parametrize("window", ["02-02", "00-00", "25-03", "2-6", "ab"])
+def test_a_deploy_window_that_makes_no_sense_is_an_error_in_status(beta: Beta, window: str) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", RM_CD_WINDOW=window)
+    assert done.returncode == 1
+    assert "error:" in beta.status() and "RM_CD_WINDOW" in beta.status()
+    assert "SETTING:" in beta.agent("status", RM_CD_WINDOW=window).stdout
+
+
+@pytest.mark.parametrize(
+    "window, hour, inside",
+    [
+        ("02-06", "02", True),
+        ("02-06", "05", True),
+        ("02-06", "06", False),
+        ("02-06", "01", False),
+        ("22-04", "23", True),
+        ("22-04", "03", True),
+        ("22-04", "04", False),
+        ("22-04", "12", False),
+        ("00-24", "23", True),
+    ],
+)
+def test_the_deploy_window_and_its_wrap_past_midnight(
+    beta: Beta, window: str, hour: str, inside: bool
+) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", "--dry-run", RM_CD_WINDOW=window, STUB_HOUR=hour)
+    assert ("would deploy v0.2.0" in done.stdout) is inside, done.stdout
+    assert ("outside the deploy window" in done.stdout) is not inside
+
+
+def test_an_origin_other_than_the_ci_repository_is_an_error(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    git(beta.src, "remote", "set-url", "origin", "https://someone:hunter2token@github.com/x/y.git")
+    beta.agent("run")
+    assert "error:" in beta.status() and "Macrophage87/RouteMaker" in beta.status()
+    assert "hunter2token" not in beta.status()
+    git(beta.src, "remote", "set-url", "origin", "http://github.com/Macrophage87/RouteMaker.git")
+    beta.agent("run")
+    assert "error:" in beta.status()
+    assert "api.github.com" not in beta.calls()
+
+
+def test_too_little_space_on_docker_s_root_waits(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_DOCKER_ROOT=str(beta.tmp), RM_CD_DOCKER_FREE_GIB="999999999")
+    assert "waiting" in beta.status() and "Docker's root" in beta.status(), done.stdout
+    assert "stop api worker" not in beta.calls()
+
+
+def test_status_shows_disk_images_and_kept_databases(beta: Beta) -> None:
+    out = beta.agent("status", STUB_DOCKER_ROOT=str(beta.tmp)).stdout
+    for needle in ("disk free:", "api images:", "kept dbs:", "node_modules:"):
+        assert needle in out, needle

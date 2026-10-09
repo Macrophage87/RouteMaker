@@ -9,7 +9,9 @@
 #                                     one-time setup (and upgrade): copies the agent into
 #                                     $RM_STATE/cd/bin, writes the systemd --user units, enables the timer
 #   auto-release.sh uninstall         stop and remove the timer and units (keeps $RM_STATE/cd)
-#   auto-release.sh pause [REASON] | resume
+#   auto-release.sh pause [--wait] [REASON] | resume
+#                                     pause: no pass starts a deploy until resume; it says if a pass
+#                                     is running now, and --wait waits for that pass to end
 #   auto-release.sh mark-deployed vX.Y.Z   after a release shipped by hand (the runbook), or to
 #                                     clear a BROKEN state once the owner has looked
 #   auto-release.sh retry vX.Y.Z      allow a held or failed tag to be tried again
@@ -17,23 +19,37 @@
 #   auto-release.sh set-report-url URL|none
 #
 # One pass (`run`), in order; anything but a deploy only reports and changes nothing:
-#   1. paused, BROKEN, or another pass still running (flock): nothing to do.
-#   2. the checkout must be clean, at the deployed tag's commit, with .env's TAG matching it.
+#   1. paused, BROKEN, a setting that makes no sense, or another pass still running (flock):
+#      nothing to do. A deploy that a stopped pass left half done ($RM_STATE/cd/in-progress) is
+#      rolled back first, and its tag marked failed.
+#   2. the checkout must be clean, at the deployed tag's commit, with .env's TAG matching it, and
+#      its origin https://github.com/$RM_CD_GITHUB_REPO, the repository whose CI is read.
 #   3. `git fetch --tags`; the highest strict vX.Y.Z tag newer than the deployed one.
 #   4. it must be an annotated tag (optionally a signed one: RM_CD_REQUIRE_SIGNED_TAGS=1), its
-#      commit an ancestor of origin/main, and GitHub's `test` check run green for that commit
-#      (an unauthenticated read of the public repository; a rate limit is tried again next pass).
+#      commit an ancestor of origin/main and a descendant of the deployed release, and GitHub's
+#      `test` check run green for that commit (an unauthenticated read of the public repository;
+#      a rate limit is tried again next pass).
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
-#      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>.
-#   6. "A new release sha" from the runbook without sudo: the api image and the front end are
-#      built first from a `git archive` of the tag (nothing running is touched); then the api and
-#      worker stop, the database is snapshotted (pg_dump into $RM_STATE/cd/backups), index.html
-#      is saved, the checkout moves to the tag, TAG is set in .env, the compose gate runs,
-#      migrations run (only after the snapshot), the front end is installed (index.html last),
-#      the api and worker start, collectstatic, routers restart if valhalla/*.json changed, and
-#      the local smoke tests run.
-#   7. any failure in 6 rolls back automatically (cd_logic.py rollback: rollback A/C as the
-#      runbook defines them) and the tag is marked failed; a failed rollback marks the agent BROKEN.
+#      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
+#      release with nothing for the server (documentation, CI) is only recorded: the checkout and
+#      TAG move (the running api image is tagged with it), nothing is stopped.
+#   6. "A new release sha" from the runbook without sudo, inside RM_CD_WINDOW if one is set: the
+#      tag's tree is exported (`git archive`); then the api and worker stop, and the api image (3
+#      tries; skipped if it is already on the host) and, if frontend/ changed, the front end are
+#      built, in the memory the api and worker had and not the other sites' headroom; the database
+#      is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
+#      (index.html, beta-build.txt) are saved, the checkout moves to the tag, TAG is set in .env,
+#      the compose gate runs, migrations run (only after the snapshot), the front end is installed
+#      (index.html last), the api and worker start, collectstatic, the four routers restart if a
+#      valhalla/*.json they read changed (never for valhalla-offroad.json: that router does not run
+#      on the beta), and the local smoke tests run. The release is then recorded as deployed. Last,
+#      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
+#      a pre-draw that fails is a warning, not a rollback.
+#   7. any failure in 6 before the release is recorded rolls back automatically (cd_logic.py
+#      rollback: rollback A/C as the runbook defines them) and the tag is marked failed; a failed
+#      rollback marks the agent BROKEN. Each step is written to $RM_STATE/cd/in-progress before it
+#      runs, so a pass stopped mid-deploy (TERM/INT/HUP, a reboot, a kill) leaves a record that the
+#      next pass acts on (step 1).
 #
 # Never touches nginx, sudo, the data bundle, or anything outside the beta's own checkout,
 # $RM_DATA/frontend and $RM_STATE. Holds no token. Logs (in $RM_STATE/cd) carry no secret and no
@@ -43,7 +59,9 @@
 #   RM_STATE RM_SRC RM_DATA      required (section 0)
 #   RM_PY                        the python with pyyaml for check_beta_compose.py [python3]
 #   RM_CD_GITHUB_REPO            owner/name on GitHub [Macrophage87/RouteMaker]
-#   RM_CD_WINDOW                 HH-HH local hours in which a deploy may start (e.g. 02-06) [any]
+#   RM_CD_WINDOW                 HH-HH local hours in which a deploy may start (e.g. 02-06; the two
+#                                hours differ; 22-04 wraps past midnight) [any]
+#   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
 #   RM_CD_HOST                   Host header for the local health check [routemaker.cieply.com]
@@ -83,6 +101,9 @@ load_vars() {
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
 	health_host=${RM_CD_HOST:-routemaker.cieply.com}
+	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
+	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
+	progress="$cd_dir/in-progress"
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
 	logic="$cd_dir/bin/cd_logic.py"
 	receive="$cd_dir/bin/receive-data.sh"
@@ -109,7 +130,7 @@ finish() { # word message
 		tail -n 2000 "$cd_dir/agent.log" >"$cd_dir/agent.log.new" && mv "$cd_dir/agent.log.new" "$cd_dir/agent.log"
 		[ -z "$report" ] || cp "$report" "$cd_dir/last-report.txt"
 		# The last pass that did something about a release, kept past the idle passes after it.
-		case "$word" in deployed | rolled-back | failed | broken | held) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
+		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
 	fi
 }
 # A release that needs the owner: kept in hold/<tag>, so later passes do not retry it.
@@ -129,14 +150,34 @@ deployed_tag() { cat "$cd_dir/deployed-tag" 2>/dev/null; }
 deployed_sha() { cat "$cd_dir/deployed-sha" 2>/dev/null; }
 annotated() { [ "$(gitc cat-file -t "refs/tags/$1" 2>/dev/null)" = tag ]; }
 tag_commit() { gitc rev-parse --verify --quiet "refs/tags/$1^{commit}"; }
-in_window() {
+# Prints what is wrong with RM_CD_WINDOW, and succeeds, if anything is (a pass reports it as an error).
+window_problem() {
+	local w=${RM_CD_WINDOW:-} from to
+	[ -n "$w" ] || return 1
+	case "$w" in [0-2][0-9]-[0-2][0-9]) ;; *) echo "RM_CD_WINDOW '$w' is not HH-HH"; return 0 ;; esac
+	from=$((10#${w%-*})); to=$((10#${w#*-}))
+	if [ "$from" -gt 23 ] || [ "$to" -gt 24 ]; then echo "RM_CD_WINDOW '$w': the hours run from 00 to 23 (24 may end a window)"; return 0; fi
+	[ "$from" != "$to" ] || { echo "RM_CD_WINDOW '$w' opens and closes at the same hour, so it would never open; leave it unset for any hour"; return 0; }
+	return 1
+}
+in_window() { # RM_CD_WINDOW has passed window_problem
 	local w=${RM_CD_WINDOW:-} from to now
 	[ -n "$w" ] || return 0
-	case "$w" in [0-2][0-9]-[0-2][0-9]) ;; *) die "RM_CD_WINDOW '$w' is not HH-HH" ;; esac
 	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(date +%H)))
-	[ "$from" -le 23 ] && [ "$to" -le 24 ] || die "RM_CD_WINDOW '$w' is not HH-HH"
 	if [ "$from" -le "$to" ]; then [ "$now" -ge "$from" ] && [ "$now" -lt "$to" ]; else [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]; fi
 }
+# Prints why the checkout's origin is not the GitHub repository whose CI the agent reads, and
+# succeeds, if it is not: code and CI must come from the same place, over https.
+origin_problem() {
+	local url want
+	url=$(gitc config --get remote.origin.url 2>/dev/null)
+	want="https://github.com/$gh_repo"
+	case "${url,,}" in "${want,,}" | "${want,,}.git") return 1 ;; esac
+	url=$(printf '%s' "$url" | sed 's#//[^/]*@#//(credentials hidden)@#')
+	echo "the checkout's origin (${url:-none}) is not $want(.git), the repository whose CI check the agent reads (RM_CD_GITHUB_REPO)"
+}
+docker_root() { dk info -f '{{.DockerRootDir}}' 2>/dev/null </dev/null; }
+free_kib() { df -P -k "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'; }
 predraw_running() {
 	local w
 	w=$(bc ps -q worker 2>/dev/null </dev/null) || return 1
@@ -205,7 +246,9 @@ build_frontend() { # src-dir sha out-dir
 	# The mount point for node_modules inside the read-only source (docker cannot make it there).
 	mkdir -p "$src/frontend/node_modules"
 	say "testing and building the front end (pinned node image, no network, VITE_BETA=1, report link: ${url:-none})"
-	quiet dk run --rm --pull never --network none --memory 1536m --memory-swap 1536m --cpus 1.5 -u "$(id -u):$(id -g)" -e HOME=/tmp \
+	# --oom-score-adj 1000: if the host runs short, the kernel kills this build before any other
+	# site's process (and before the beta's own containers, at 500).
+	quiet dk run --rm --pull never --network none --memory 1536m --memory-swap 1536m --cpus 1.5 --oom-score-adj 1000 -u "$(id -u):$(id -g)" -e HOME=/tmp \
 		-e VITE_BETA=1 -e VITE_BETA_REPORT_URL="$url" \
 		-v "$src/frontend:/app:ro" -v "$cd_dir/node_modules/$h/node_modules:/app/node_modules" -v "$out:/out" -w /app \
 		"$NODE_IMAGE" sh -c 'umask 022 && npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' </dev/null || return 1
@@ -228,13 +271,21 @@ install_frontend() { # out-dir
 	quiet dk run --rm --pull never --network none --user "$owner" -v "$out:/src:ro" -v "$RM_DATA/frontend:/dest" --entrypoint sh "$img" -c \
 		'umask 022 && cd /src && tar --exclude=./index.html -cf - . | tar -C /dest --no-same-owner -xf - && cp /src/index.html /dest/.index.html.new && mv -f /dest/.index.html.new /dest/index.html' </dev/null
 }
-restore_index() { # saved-index-file
+# The front end's top-level files (index.html, beta-build.txt, the unhashed public files): saved
+# before an install, so a rollback puts back the page and the record of which build is live.
+save_frontend_top() { # dir
+	[ -f "$RM_DATA/frontend/index.html" ] || return 1
+	mkdir -p "$1" && chmod 755 "$1" &&
+		find "$RM_DATA/frontend" -mindepth 1 -maxdepth 1 -type f -exec cp -p {} "$1"/ \; &&
+		[ -f "$1/index.html" ]
+}
+restore_frontend() { # saved-dir: back as they were, index.html last by rename
 	local saved=$1 img owner
-	[ -f "$saved" ] || { say "no saved index.html at $saved"; return 1; }
+	[ -f "$saved/index.html" ] || { say "no saved index.html in ${saved:-(none recorded)}"; return 1; }
 	img=$(util_image) && [ -n "$img" ] || return 1
 	owner=$(stat -c '%u:%g' "$RM_DATA/frontend")
-	quiet dk run --rm --pull never --network none --user "$owner" -v "$saved:/saved/index.html:ro" -v "$RM_DATA/frontend:/dest" --entrypoint sh "$img" -c \
-		'umask 022 && cp /saved/index.html /dest/.index.html.new && mv -f /dest/.index.html.new /dest/index.html' </dev/null
+	quiet dk run --rm --pull never --network none --user "$owner" -v "$saved:/saved:ro" -v "$RM_DATA/frontend:/dest" --entrypoint sh "$img" -c \
+		'umask 022 && cd /saved && tar --exclude=./index.html -cf - . | tar -C /dest --no-same-owner -xf - && cp /saved/index.html /dest/.index.html.new && mv -f /dest/.index.html.new /dest/index.html' </dev/null
 }
 
 # --- the stack ------------------------------------------------------------------------------------
@@ -276,13 +327,49 @@ predraw() { # the step 8 pre-draw, waited for here (a systemd pass ends by killi
 }
 
 # --- deploy and roll back -------------------------------------------------------------------------
-done_steps=""
-mark() { done_steps="$done_steps${done_steps:+,}$1"; say "step: $2"; }
+# $cd_dir/in-progress: written when a deploy starts and before each of its steps runs, removed once
+# the release is recorded or rolled back. A pass stopped mid-deploy leaves it, and the next pass
+# rolls that deploy back (recover) instead of reporting the moved checkout as drift.
+done_steps=""; deploy_tag=""; deploy_new=""; deploy_old=""; deploy_old_tag=""; predraw_warning=""
+write_progress() {
+	printf 'tag=%s\nnew=%s\nold=%s\nold_tag=%s\nsteps=%s\npid=%s\n' "$deploy_tag" "$deploy_new" "$deploy_old" "$deploy_old_tag" "$done_steps" "$$" >"$progress.new" &&
+		mv -f "$progress.new" "$progress"
+}
+start_progress() { # tag new-sha
+	deploy_tag=$1; deploy_new=$2; deploy_old=$(deployed_sha); deploy_old_tag=$(deployed_tag); done_steps=""
+	write_progress || { say "FAILED: could not write $progress"; return 1; }
+}
+mark() { # step description: recorded in $progress before the step runs
+	done_steps="$done_steps${done_steps:+,}$1"
+	write_progress || { say "FAILED: could not record the step in $progress"; return 1; }
+	say "step: $2"
+}
 step() { # description command...: runs it, its output in the log; fails the deploy on error
 	local what=$1; shift
 	"$@" >>"$run_log" 2>&1 && return 0
 	say "FAILED: $what"
 	return 1
+}
+# The release is live and smoke-tested: record it now, before anything optional (the pre-draw) runs.
+commit_release() { # tag sha
+	printf '%s\n' "$deploy_old_tag" >"$cd_dir/previous-tag.new" && printf '%s\n' "$2" >"$cd_dir/deployed-sha.new" &&
+		printf '%s\n' "$1" >"$cd_dir/deployed-tag.new" || return 1
+	mv -f "$cd_dir/previous-tag.new" "$cd_dir/previous-tag" && mv -f "$cd_dir/deployed-sha.new" "$cd_dir/deployed-sha" &&
+		mv -f "$cd_dir/deployed-tag.new" "$cd_dir/deployed-tag" || return 1
+	rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"
+}
+# TERM, INT or HUP during a pass: systemd stopping the unit (TimeoutStartSec, a reboot, the user
+# manager ending at logout without linger), or ^C. The steps done stay in $progress for the next pass.
+on_signal() { # signal-name exit-code
+	trap - TERM INT HUP
+	if [ -f "$progress" ]; then
+		printf 'interrupted=%s SIG%s\n' "$(utc)" "$1" >>"$progress"
+		finish interrupted "${deploy_tag:-a deploy}: the pass was stopped (SIG$1) mid-deploy after steps ${done_steps:-none}; the next pass rolls it back ($progress)"
+	elif [ -n "$deploy_tag" ] && [ "$(deployed_tag)" = "$deploy_tag" ]; then
+		finish deployed "$deploy_tag ($deploy_new), was $deploy_old_tag; WARNING: the pass was stopped (SIG$1) during the pre-draw: the tiles not yet drawn are drawn on request"
+	fi
+	[ -z "$report" ] || rm -f "$report"
+	exit "$2"
 }
 
 rollback() { # old-sha old-short
@@ -309,113 +396,206 @@ rollback() { # old-sha old-short
 					say "FAILED: no pre-release snapshot to restore"; ok=0
 				fi
 				;;
-			restore-index) restore_index "$(cat "$cd_dir/run-index" 2>/dev/null)" || { say "FAILED: put the old index.html back"; ok=0; } ;;
+			restore-index) restore_frontend "$(cat "$cd_dir/run-index" 2>/dev/null)" || { say "FAILED: put the old front end's top-level files back (index.html, beta-build.txt)"; ok=0; } ;;
 			start-app) step "start the api and worker" bc up -d api worker </dev/null || ok=0 ;;
 			recreate-services) step "recreate photon and the routers" bc up -d photon $ROUTERS </dev/null || ok=0 ;;
 			restart-routers) step "restart the routers" bc restart $ROUTERS </dev/null || ok=0 ;;
-			predraw) predraw || { say "the pre-draw did not finish cleanly (see $RM_STATE/predraw.log)"; ok=0; } ;;
+			# A missing pre-draw only means tiles are drawn on request (OWNER-DECISIONS 436): a warning.
+			predraw) predraw || say "WARNING: the pre-draw after the restore did not finish cleanly (see $RM_STATE/predraw.log); tiles not yet drawn are drawn on request" ;;
 			smoke) { wait_healthy && smoke; } || { say "FAILED: the smoke tests on the previous release"; ok=0; } ;;
 		esac
 	done
 	[ "$ok" = 1 ]
 }
 
-deploy() { # tag new-sha gate-file
-	local tag=$1 new=$2 gate_file=$3 old old_short new_short stamp src out="" dump
-	old=$(deployed_sha); old_short=${old:0:12}; new_short=${new:0:12}; stamp=$(utc)
-	src="$cd_dir/build/src-$new_short"
-	done_steps=""; rm -f "$cd_dir/run-snapshot" "$cd_dir/run-index"
+# The api image, with pip's network: a failure is tried again twice (a pip index or network blip),
+# a minute apart, before the deploy fails.
+build_api() { # src-dir short-sha
+	local src=$1 short=$2 n=1 tries=3
+	while :; do
+		say "step: build the api image $API_IMAGE:$short (pip needs the network; a few minutes; try $n of $tries)"
+		step "build the api image" dk build -f "$src/docker/api.Dockerfile" -t "$API_IMAGE:$short" "$src" </dev/null && return 0
+		[ "$n" -lt "$tries" ] || return 1
+		sleep "${RM_CD_BUILD_RETRY_S:-60}"
+		n=$((n + 1))
+	done
+}
 
-	# Before anything running is touched: the source, the image and the front end.
+# A release with nothing for the server (documentation, CI, a new tag on the deployed commit):
+# the checkout and TAG move, the running image is tagged with the new TAG, nothing is stopped.
+noop_release() { # tag new-sha
+	local tag=$1 new=$2 old old_short new_short
+	old=$(deployed_sha); old_short=${old:0:12}; new_short=${new:0:12}
+	start_progress "$tag" "$new" || return 3
+	if [ "$new" != "$old" ]; then
+		mark image "tag the running api image $API_IMAGE:$old_short as $new_short" || return 1
+		step "tag the api image" dk tag "$API_IMAGE:$old_short" "$API_IMAGE:$new_short" </dev/null || return 1
+		mark checkout "check out $tag" || return 1
+		step "check out $tag" gitc checkout --quiet --detach "$new" || return 1
+		[ "$(gitc rev-parse HEAD)" = "$new" ] || { say "FAILED: the checkout is not at $new"; return 1; }
+		mark tag_set "set TAG=$new_short in .env" || return 1
+		step "set TAG in .env" set_tag "$new_short" || return 1
+		compose_gate || { say "FAILED: the compose gate (check_beta_compose.py --env-file .env); its output is in the run log"; return 1; }
+	fi
+	commit_release "$tag" "$new" || { say "FAILED: recording $tag as deployed in $cd_dir"; return 1; }
+}
+
+deploy() { # tag new-sha gate-file
+	local tag=$1 new=$2 gate_file=$3 old_short new_short stamp src out="" dump saved
+	old_short=$(deployed_sha); old_short=${old_short:0:12}; new_short=${new:0:12}; stamp=$(utc)
+	src="$cd_dir/build/src-$new_short"
+	rm -f "$cd_dir/run-snapshot" "$cd_dir/run-index"
+	start_progress "$tag" "$new" || return 3
+
+	# Before anything running is touched: the release's tree.
 	rm -rf "$src"; mkdir -p "$src"
 	step "export the release's tree" sh -c 'git -C "$1" archive --format=tar "$2" | tar -x -C "$3"' sh "$RM_SRC" "$new" "$src" || return 3
+
+	# The runbook's "A new release sha", steps 2 to 8, without sudo. The builds come after the stop,
+	# so they use the memory the api and worker had and not the other sites' headroom (the api
+	# build is not capped: BuildKit runs in the daemon; docs/BETA-RUNBOOK.md, install step 6).
+	mark stopped "stop the api and worker" || return 1
+	step "stop the api and worker" bc stop api worker </dev/null || return 1
+	mark image "the api image $API_IMAGE:$new_short" || return 1
 	if dk image inspect "$API_IMAGE:$new_short" >/dev/null 2>&1; then
 		say "step: the api image $API_IMAGE:$new_short is already on the host (built or loaded earlier)"
 	else
-		say "step: build the api image $API_IMAGE:$new_short (pip needs the network; a few minutes)"
-		step "build the api image" dk build -f "$src/docker/api.Dockerfile" -t "$API_IMAGE:$new_short" "$src" </dev/null || return 3
+		build_api "$src" "$new_short" || return 1
 	fi
 	if [ "$(kv frontend "$gate_file")" = 1 ]; then
 		out="$cd_dir/build/frontend-$new_short"
-		build_frontend "$src" "$new" "$out" || { say "FAILED: the front-end test or build"; return 3; }
+		build_frontend "$src" "$new" "$out" || { say "FAILED: the front-end test or build"; return 1; }
 	fi
-
-	# The runbook's "A new release sha", steps 2 to 8, without sudo.
-	mark stopped "stop the api and worker"
-	step "stop the api and worker" bc stop api worker </dev/null || return 1
-	mark snapshot "snapshot the database (pre-release)"
+	mark snapshot "snapshot the database (pre-release)" || return 1
 	dump=$(RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" snapshot-db --label release </dev/null 2>>"$run_log") && [ -s "$dump" ] ||
 		{ say "FAILED: the database snapshot"; return 1; }
 	printf '%s\n' "$dump" >"$cd_dir/run-snapshot"
 	say "snapshot: $dump"
-	mark index_saved "save index.html"
-	step "save index.html" cp -p "$RM_DATA/frontend/index.html" "$cd_dir/backups/index.html.pre-release-$stamp" || return 1
-	printf '%s\n' "$cd_dir/backups/index.html.pre-release-$stamp" >"$cd_dir/run-index"
-	mark checkout "check out $tag"
+	mark index_saved "save the front end's top-level files (index.html, beta-build.txt)" || return 1
+	saved="$cd_dir/backups/frontend.pre-release-$stamp"
+	step "save the front end's top-level files" save_frontend_top "$saved" || return 1
+	printf '%s\n' "$saved" >"$cd_dir/run-index"
+	mark checkout "check out $tag" || return 1
 	step "check out $tag" gitc checkout --quiet --detach "$new" || return 1
 	[ "$(gitc rev-parse HEAD)" = "$new" ] || { say "FAILED: the checkout is not at $new"; return 1; }
-	mark tag_set "set TAG=$new_short in .env"
+	mark tag_set "set TAG=$new_short in .env" || return 1
 	step "set TAG in .env" set_tag "$new_short" || return 1
 	compose_gate || { say "FAILED: the compose gate (check_beta_compose.py --env-file .env); its output is in the run log"; return 1; }
 	if ! bc run --rm --no-deps migrate ./manage.py migrate --check </dev/null >>"$run_log" 2>&1; then
-		mark migrate "migrate (after the snapshot)"
+		mark migrate "migrate (after the snapshot)" || return 1
 		step "migrate" bc run --rm --no-deps migrate ./manage.py migrate --noinput </dev/null || return 1
 	else
 		say "step: no migrations to apply"
 	fi
 	if [ -n "$out" ]; then
-		mark frontend "install the front end (index.html last)"
+		mark frontend "install the front end (index.html last)" || return 1
 		install_frontend "$out" || { say "FAILED: the front-end install"; return 1; }
 	fi
-	mark started "start the api and worker"
+	mark started "start the api and worker" || return 1
 	step "start the api and worker" bc up -d api worker </dev/null || return 1
 	if [ "$(kv compose_changed "$gate_file")" = 1 ]; then
-		mark services "recreate photon and the routers whose compose settings changed"
+		mark services "recreate photon and the routers whose compose settings changed" || return 1
 		step "recreate photon and the routers" bc up -d photon $ROUTERS </dev/null || return 1
 	fi
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
-		mark routers "restart the routers (valhalla/*.json changed)"
+		mark routers "restart the four routers (a valhalla/*.json they read changed)" || return 1
 		step "restart the routers" bc restart $ROUTERS </dev/null || return 1
 	fi
 	wait_healthy || { say "FAILED: /healthz did not answer 200 (60 tries, 3 s apart)"; return 1; }
 	step "migrations check" bc exec -T api ./manage.py migrate --check </dev/null || return 1
 	step "collectstatic" bc exec -T api ./manage.py collectstatic --noinput </dev/null || return 1
 	smoke || { say "FAILED: the smoke tests"; return 1; }
+	# Live and smoke-tested: recorded before the pre-draw, so a pass stopped during the pre-draw
+	# leaves a deployed release, not a half-done one.
+	commit_release "$tag" "$new" || { say "FAILED: recording $tag as deployed in $cd_dir"; return 1; }
+	say "step: $tag recorded as deployed"
 	if [ "$(kv predraw "$gate_file")" = 1 ]; then
 		# A tile FORMAT_VERSION changed (OWNER-DECISIONS 436): the cache is keyed on it, so the
-		# new tiles are drawn now (step 8). The release is already live and healthy, so a pre-draw
-		# that fails or runs out of budget is a warning, not a rollback: what is left is drawn on request.
+		# new tiles are drawn now (step 8). A pre-draw that fails or runs out of budget is a
+		# warning, not a rollback: what is left is drawn on request.
 		say "step: pre-draw the tiles (a tile FORMAT_VERSION changed)"
-		predraw || say "WARNING: the pre-draw did not finish cleanly; the release is live and tiles not yet drawn are drawn on request. Re-run step 8 of docs/BETA-RUNBOOK.md by hand if you want them all warm."
+		if ! predraw; then
+			predraw_warning="the pre-draw did not finish cleanly (tiles not yet drawn are drawn on request)"
+			say "WARNING: the pre-draw did not finish cleanly; the release is live and tiles not yet drawn are drawn on request. Re-run step 8 of docs/BETA-RUNBOOK.md by hand if you want them all warm."
+		fi
 	fi
 	return 0
 }
 
 prune() {
 	local pattern
-	for pattern in 'pre-release-*.dump' 'pre-rollback-*.dump' 'index.html.pre-release-*'; do
+	for pattern in 'pre-release-*.dump' 'pre-rollback-*.dump' 'frontend.pre-release-*'; do
 		# shellcheck disable=SC2012
-		ls -1t "$cd_dir/backups"/$pattern 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do rm -f -- "$f"; done
+		ls -1dt "$cd_dir/backups"/$pattern 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do rm -rf -- "$f"; done
 	done
 	# shellcheck disable=SC2012
 	ls -1t "$cd_dir/runs"/*.log 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f -- "$f"; done
 	rm -rf "$cd_dir/build"; mkdir -p "$cd_dir/build"
 }
 
+# A deploy that a stopped pass left half done: roll it back from the steps $progress records.
+# Returns 0 when the pass may go on (nothing had been touched, or it had been recorded), 1 when
+# the pass ends here (rolled back, or BROKEN).
+recover() {
+	local steps
+	deploy_tag=$(kv tag "$progress"); deploy_new=$(kv new "$progress"); deploy_old=$(kv old "$progress")
+	deploy_old_tag=$(kv old_tag "$progress"); steps=$(kv steps "$progress")
+	say "found $progress: a pass was stopped mid-deploy of ${deploy_tag:-?} after steps: ${steps:-none} ($(kv interrupted "$progress"))"
+	if [ -n "$deploy_new" ] && [ "$deploy_new" = "$(deployed_sha)" ] && [ "$deploy_tag" = "$(deployed_tag)" ]; then
+		rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"
+		say "it had already been recorded as deployed"
+		return 0
+	fi
+	if ! is_semver "$deploy_tag" || [[ ! $deploy_old =~ ^[0-9a-f]{40}$ ]] || [ "$deploy_old" != "$(deployed_sha)" ]; then
+		{ echo "$(utc) a stopped pass left $progress, which does not match the deployed release"; cat "$progress"; cat "$report"; } >"$cd_dir/BROKEN"
+		finish broken "a stopped pass left $progress, which does not match the deployed release: the owner is needed (see $cd_dir/BROKEN)"
+		return 1
+	fi
+	if [ -z "$steps" ]; then
+		rm -f "$progress"
+		say "it had not touched the stack; carrying on"
+		return 0
+	fi
+	done_steps=$steps
+	write_progress
+	if rollback "$deploy_old" "${deploy_old:0:12}"; then
+		{ echo "$(utc) $deploy_tag: a pass was stopped mid-deploy, and it was rolled back to $deploy_old_tag"; cat "$report"; } >"$cd_dir/failed/$deploy_tag"
+		rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
+		finish rolled-back "$deploy_tag: a pass was stopped mid-deploy; it was rolled back and $deploy_old_tag is running again (see $cd_dir/failed/$deploy_tag; auto-release.sh retry $deploy_tag to try it again)"
+	else
+		{ echo "$(utc) $deploy_tag: a pass was stopped mid-deploy and the rollback to $deploy_old_tag did not complete"; cat "$report"; } >"$cd_dir/BROKEN"
+		finish broken "$deploy_tag: a pass was stopped mid-deploy AND the rollback did not complete: the owner is needed (see $cd_dir/BROKEN and the run log)"
+	fi
+	return 1
+}
+
 # --- one pass -------------------------------------------------------------------------------------
 pass() {
-	local cur cur_sha tag new verdict reason gate_file why free h
+	local cur cur_sha tag new verdict reason gate_file why free h root noop=0
+	predraw_warning=""
 	[ -f "$cd_dir/BROKEN" ] && { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN); after fixing, auto-release.sh mark-deployed <tag>"; return 1; }
 	[ -f "$cd_dir/PAUSED" ] && { finish paused "$(head -n 1 "$cd_dir/PAUSED")"; return 0; }
+	why=$(window_problem) && { finish error "$why (in $vars)"; return 1; }
 	cur=$(deployed_tag); cur_sha=$(deployed_sha)
 	[ -n "$cur" ] && [ -n "$cur_sha" ] || { finish error "no deployed tag recorded: run auto-release.sh install"; return 1; }
 	[ -f "$logic" ] && [ -x "$receive" ] || { finish error "the agent is not installed in $cd_dir/bin: run auto-release.sh install"; return 1; }
+
+	# A deploy a stopped pass left half done comes first: the checkout may be anywhere in it.
+	if [ -f "$progress" ]; then
+		if [ "$dry_run" = 1 ]; then
+			finish dry-run "a stopped pass left $progress ($(kv tag "$progress"), steps: $(kv steps "$progress")); the next pass rolls that deploy back"
+			return 0
+		fi
+		recover || return 1
+		cur=$(deployed_tag); cur_sha=$(deployed_sha)
+	fi
 
 	# The checkout must be what the agent last left there: anything else is someone's hand at work.
 	if [ "$(gitc rev-parse HEAD 2>/dev/null)" != "$cur_sha" ] || [ -n "$(gitc status --porcelain 2>/dev/null)" ] || [ "$(env_value TAG)" != "${cur_sha:0:12}" ]; then
 		finish drift "the checkout is not clean at $cur ($cur_sha) with TAG=${cur_sha:0:12} in .env; if a release was shipped by hand, run auto-release.sh mark-deployed <tag>"
 		return 1
 	fi
+	why=$(origin_problem) && { finish error "$why"; return 1; }
 
 	if ! gitc fetch --quiet --tags origin "+refs/heads/main:refs/remotes/origin/main" >>"$run_log" 2>&1; then
 		finish waiting "git fetch failed (network, or a tag moved on the remote); trying again next pass"
@@ -453,39 +633,58 @@ pass() {
 	fi
 	[ "$(kv agent_changed "$gate_file")" = 1 ] && say "note: this release changes the release agent itself; once it is deployed, reinstall it: $RM_SRC/scripts/beta/auto-release.sh install"
 	[ "$(kv migrations "$gate_file")" = 1 ] && say "note: the release carries migrations; they run after the pre-release snapshot"
-
-	if [ "$(kv frontend "$gate_file")" = 1 ]; then
-		why=$(frontend_ready "$new") || { rm -f "$gate_file"; finish waiting "$tag: $why"; return 0; }
-		h=$(lock_hash "$new")
+	[ "$(kv lockfile_changed "$gate_file")" = 1 ] && say "note: the front end's package files changed, so the release needs node_modules for its new lockfile, sent from home"
+	if [ "$(kv changed_files "$gate_file")" = 0 ] && dk image inspect "$API_IMAGE:${cur_sha:0:12}" >/dev/null 2>&1; then
+		noop=1
+		say "nothing in this release is for the server (documentation or CI only): it is recorded without touching the stack"
 	fi
-	in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
-	predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
-	free=$(df -P -k "$cd_dir/backups" | awk 'NR == 2 { print $4 }')
-	[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
+
+	if [ "$noop" = 0 ]; then
+		if [ "$(kv frontend "$gate_file")" = 1 ]; then
+			why=$(frontend_ready "$new") || { rm -f "$gate_file"; finish waiting "$tag: $why"; return 0; }
+			h=$(lock_hash "$new")
+		fi
+		in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
+		predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
+		free=$(free_kib "$cd_dir/backups")
+		[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
+		root=$(docker_root)
+		free=""; [ -z "$root" ] || free=$(free_kib "$root")
+		if [ -z "$free" ]; then
+			say "note: could not read the free space on Docker's root (docker info); going on"
+		elif [ "$free" -lt $((docker_free_gib * 1048576)) ]; then
+			rm -f "$gate_file"
+			finish waiting "$tag: less than $docker_free_gib GiB free on Docker's root ($root) for the image build; the owner frees space (old api images: docker image ls $API_IMAGE)"
+			return 0
+		fi
+	fi
 	if [ "$dry_run" = 1 ]; then
-		say "dry run: would deploy $tag ($new) over $cur: frontend=$(kv frontend "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file") predraw=$(kv predraw "$gate_file")"
+		say "dry run: would deploy $tag ($new) over $cur: nothing_for_the_server=$noop frontend=$(kv frontend "$gate_file") lockfile_changed=$(kv lockfile_changed "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file") predraw=$(kv predraw "$gate_file")"
 		rm -f "$gate_file"; finish dry-run "$tag would be deployed"; return 0
 	fi
 
 	say "deploying $tag ($new) over $cur at $(utc)"
-	deploy "$tag" "$new" "$gate_file"; local rc=$?
+	if [ "$noop" = 1 ]; then noop_release "$tag" "$new"; else deploy "$tag" "$new" "$gate_file"; fi
+	local rc=$?
 	rm -f "$gate_file"
 	if [ "$rc" = 0 ]; then
-		printf '%s\n' "$cur" >"$cd_dir/previous-tag"
-		printf '%s\n' "$tag" >"$cd_dir/deployed-tag.new" && mv "$cd_dir/deployed-tag.new" "$cd_dir/deployed-tag"
-		printf '%s\n' "$new" >"$cd_dir/deployed-sha.new" && mv "$cd_dir/deployed-sha.new" "$cd_dir/deployed-sha"
-		rm -f "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
-		finish deployed "$tag ($new), was $cur"
+		prune
+		if [ "$noop" = 1 ]; then
+			finish deployed "$tag ($new), was $cur: nothing in it for the server, so it was recorded without touching the stack"
+		else
+			finish deployed "$tag ($new), was $cur${predraw_warning:+; WARNING: $predraw_warning}"
+		fi
 		return 0
 	fi
 	if [ "$rc" = 3 ]; then # failed before anything running was touched
+		rm -f "$progress"
 		{ echo "$(utc) $tag failed before the deploy touched the stack"; cat "$report"; } >"$cd_dir/failed/$tag"
-		prune; finish failed "$tag: the build failed; nothing was changed (see $cd_dir/failed/$tag)"
+		prune; finish failed "$tag: the release's tree could not be prepared; nothing was changed (see $cd_dir/failed/$tag)"
 		return 1
 	fi
 	if rollback "$cur_sha" "${cur_sha:0:12}"; then
 		{ echo "$(utc) $tag failed and was rolled back to $cur"; cat "$report"; } >"$cd_dir/failed/$tag"
-		rm -f "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
+		rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
 		finish rolled-back "$tag failed and $cur is running again (see $cd_dir/failed/$tag)"
 	else
 		{ echo "$(utc) $tag failed and the rollback to $cur did not complete"; cat "$report"; } >"$cd_dir/BROKEN"
@@ -505,9 +704,15 @@ cmd_run() {
 	stamp=$(utc)
 	run_log="$cd_dir/runs/$stamp.log"; : >"$run_log"
 	report=$(mktemp)
+	if [ "$dry_run" = 0 ]; then
+		trap 'on_signal TERM 143' TERM
+		trap 'on_signal INT 130' INT
+		trap 'on_signal HUP 129' HUP
+	fi
 	if [ "$dry_run" = 1 ]; then say "auto-release pass at $stamp (dry run: fetches, then changes nothing)"; else say "auto-release pass at $stamp"; fi
 	say "run log: $run_log"
 	pass; local rc=$?
+	trap - TERM INT HUP
 	rm -f "$report"
 	[ -s "$run_log" ] || rm -f "$run_log"
 	return "$rc"
@@ -515,13 +720,32 @@ cmd_run() {
 
 # --- the other commands ---------------------------------------------------------------------------
 cmd_status() {
+	local root pguser n
 	echo "deployed:   $(deployed_tag || echo '(none recorded)') $(deployed_sha)"
 	echo "checkout:   $(gitc describe --tags --exact-match HEAD 2>/dev/null || gitc rev-parse --short=12 HEAD 2>/dev/null) (TAG=$(env_value TAG 2>/dev/null))"
 	echo "last pass:  $(cat "$cd_dir/status" 2>/dev/null || echo '(none yet)')"
 	[ -f "$cd_dir/PAUSED" ] && echo "PAUSED:     $(head -n 1 "$cd_dir/PAUSED")  (auto-release.sh resume)"
 	[ -f "$cd_dir/BROKEN" ] && echo "BROKEN:     $(head -n 1 "$cd_dir/BROKEN")  (the owner looks; then auto-release.sh mark-deployed <tag>)"
+	if [ -f "$progress" ]; then
+		if pass_running; then
+			echo "deploying:  $(kv tag "$progress") now (steps so far: $(kv steps "$progress"))"
+		else
+			echo "IN PROGRESS: left by a stopped pass: $(kv tag "$progress") after steps $(kv steps "$progress") $(kv interrupted "$progress"); the next pass rolls it back"
+		fi
+	elif pass_running; then
+		echo "running:    a pass is running now"
+	fi
+	w=$(window_problem) && echo "SETTING:    $w"
 	for f in "$cd_dir"/hold/* "$cd_dir"/failed/*; do [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):  $(head -n 1 "$f")"; done
 	echo "report url: $(if [ -f "$cd_dir/report-url" ]; then r=$(report_url); echo "${r:-none}"; else echo '(not recorded)'; fi)"
+	root=$(docker_root)
+	echo "disk free:  Docker's root ${root:-(unknown)}: $( [ -n "$root" ] && df -P -h "$root" 2>/dev/null | awk 'NR == 2 { print $4 " of " $2 }')  $RM_STATE: $(df -P -h "$RM_STATE" 2>/dev/null | awk 'NR == 2 { print $4 " of " $2 }')"
+	n=$(dk image ls -q "$API_IMAGE" 2>/dev/null </dev/null | sort -u | grep -c .)
+	echo "api images: ${n:-0} (one a release, kept for rollback C; the owner removes old ones: docker image ls $API_IMAGE)"
+	pguser=$(env_value PGUSER 2>/dev/null); pguser=${pguser:-routemaker}
+	n=$(bc exec -T postgis psql -U "$pguser" -d postgres -At -c "select count(*) from pg_database where datname like '%\_before\_%'" </dev/null 2>/dev/null)
+	echo "kept dbs:   ${n:-unknown} <db>_before_<time> databases left by restores (the owner drops them once the beta works)"
+	echo "node_modules: $(find "$cd_dir/node_modules" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -c .) lockfile copies in $cd_dir/node_modules"
 	if command -v systemctl >/dev/null 2>&1; then
 		echo "timer:      $(systemctl --user is-enabled "$UNIT.timer" 2>/dev/null || echo not-installed), $(systemctl --user is-active "$UNIT.timer" 2>/dev/null)"
 		echo "next pass:  $(systemctl --user list-timers "$UNIT.timer" --no-legend 2>/dev/null | awk '{ print $1, $2, $3 }')"
@@ -530,7 +754,25 @@ cmd_status() {
 	echo "last report: $cd_dir/last-report.txt (the last release's: $cd_dir/last-release-report.txt)"
 }
 
-cmd_pause() { mkdir -p "$cd_dir"; printf '%s %s\n' "$(utc)" "${1:-paused by hand}" >"$cd_dir/PAUSED"; echo "paused: no pass deploys until auto-release.sh resume"; }
+# Whether a pass holds the run lock now (a subshell takes it and lets it go at once).
+pass_running() { [ -e "$cd_dir/lock" ] || return 1; ! (exec 8>>"$cd_dir/lock" && flock -n 8); }
+
+cmd_pause() { # [--wait] reason...
+	local wait=0
+	[ "${1:-}" != --wait ] || { wait=1; shift; }
+	mkdir -p "$cd_dir"; printf '%s %s\n' "$(utc)" "${*:-paused by hand}" >"$cd_dir/PAUSED"
+	echo "paused: no pass starts a deploy until auto-release.sh resume"
+	pass_running || { echo "no pass is running now: it is safe to work by hand"; return 0; }
+	if [ "$wait" = 0 ]; then
+		echo "WARNING: a pass is running now ($(cat "$cd_dir/status" 2>/dev/null || echo 'see status')); pause does not stop it. Wait until it ends before working by hand: auto-release.sh pause --wait waits for it." >&2
+		return 0
+	fi
+	echo "a pass is running now; waiting for it to end (it may be building, deploying or pre-drawing) ..."
+	exec 9>>"$cd_dir/lock"
+	flock 9 || die "could not wait for the running pass"
+	flock -u 9
+	echo "it ended: $(cat "$cd_dir/status" 2>/dev/null); it is safe to work by hand"
+}
 cmd_resume() { rm -f "$cd_dir/PAUSED"; echo "resumed"; }
 
 verify_at_tag() { # tag: the checkout is clean at the tag's commit with TAG set to it
@@ -547,14 +789,26 @@ record_deployed() { # tag sha
 	printf '%s\n' "$1" >"$cd_dir/deployed-tag"; printf '%s\n' "$2" >"$cd_dir/deployed-sha"
 }
 cmd_mark_deployed() {
-	local tag=${1:-} sha
+	local tag=${1:-} sha url
 	[ -n "$tag" ] || die "mark-deployed needs a tag"
 	sha=$(verify_at_tag "$tag") || exit 2
 	exec 9>"$cd_dir/lock"; flock -n 9 || die "a pass is running; try again when it ends"
 	record_deployed "$tag" "$sha"
-	rm -f "$cd_dir/hold/$tag" "$cd_dir/failed/$tag" "$cd_dir/BROKEN" "$cd_dir/run-snapshot"
+	rm -f "$cd_dir/hold/$tag" "$cd_dir/failed/$tag" "$cd_dir/BROKEN" "$cd_dir/run-snapshot" "$cd_dir/run-index" "$progress"
 	printf '%s marked-deployed: %s (%s) by hand\n' "$(utc)" "$tag" "$sha" | tee -a "$cd_dir/agent.log" >"$cd_dir/status"
 	echo "recorded $tag ($sha) as deployed"
+	# A front end shipped by hand may carry another report link: the live one is the one CD keeps.
+	if [ -f "$RM_DATA/frontend/beta-build.txt" ]; then
+		url=$(sed -n 's/^VITE_BETA_REPORT_URL=//p' "$RM_DATA/frontend/beta-build.txt" | head -n 1)
+		if [ ! -f "$cd_dir/report-url" ] || [ "$url" != "$(report_url)" ]; then
+			if check_report_url "$url"; then
+				cmd_set_report_url "${url:-none}" >/dev/null
+				echo "report link: ${url:-none} (read from $RM_DATA/frontend/beta-build.txt, the live front end)"
+			else
+				echo "WARNING: the report link in $RM_DATA/frontend/beta-build.txt is not a plain https:// address; the recorded one is kept (auto-release.sh set-report-url URL|none)" >&2
+			fi
+		fi
+	fi
 }
 cmd_hold() { # tag reason...: keep a tag from being deployed (after a rollback by hand, say)
 	local tag=${1:-}
@@ -610,7 +864,7 @@ UNITEOF
 }
 
 cmd_install() {
-	local tag="" url="__unset__" enable=1 sha linger
+	local tag="" url="__unset__" enable=1 sha linger why
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--deployed-tag) [ $# -ge 2 ] || die "$1 needs a value"; tag=$2; shift 2 ;;
@@ -625,6 +879,8 @@ cmd_install() {
 	[ -f "$here/cd_logic.py" ] && [ -x "$here/receive-data.sh" ] || die "run install from a checkout's scripts/beta (cd_logic.py and receive-data.sh beside it)"
 	if [ -z "$tag" ]; then tag=$(gitc describe --tags --exact-match --match 'v*' HEAD 2>/dev/null) || die "the checkout is not at a release tag; give --deployed-tag"; fi
 	sha=$(verify_at_tag "$tag") || exit 2
+	why=$(window_problem) && die "$why (in $vars)"
+	why=$(origin_problem) && die "$why"
 	if [ -f "$cd_dir/deployed-tag" ] && [ "$(deployed_tag)" != "$tag" ]; then
 		die "the agent records $(deployed_tag) as deployed, not $tag; if $tag was shipped by hand, run mark-deployed $tag first"
 	fi
@@ -689,7 +945,7 @@ main() {
 		status) cmd_status ;;
 		install) cmd_install "$@" ;;
 		uninstall) cmd_uninstall ;;
-		pause) cmd_pause "$*" ;;
+		pause) cmd_pause "$@" ;;
 		resume) cmd_resume ;;
 		mark-deployed) cmd_mark_deployed "$@" ;;
 		retry) cmd_retry "$@" ;;
