@@ -907,7 +907,7 @@ def events_of(
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
     built = build_junctions(raws, nodes, roads)
-    events = assess_route(built, group)
+    events = assess_route(built, group, when=when)
     if not group:
         return events
     return with_majors(built, events)

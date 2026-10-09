@@ -21,14 +21,21 @@ a derived tag could not say "a left across a four-lane road" either. The model
 therefore works on the traced route, where the tier of every road at every
 junction, the movement and Valhalla's own control flags are all known.
 
-Every number below is a PROPOSAL for the owner, taken from "Bicycle stress
-literature in depth" (reports/LTS-literature-review-2.md), "Crossing penalties
-by control type and right of way" and "Left turns, multi-lane merges capped by
-box turns, and slip lanes". They are judgement within the cited ranges (Broach et al.'s per-mile
-values, Eugene's 818 ft per left, Copenhagen's 154 ft left against 62 ft
-right, Oregon's LTS tables) and are named so the owner's answers are one-line
-changes. Nothing here is a legal claim; the DC roll-through rule (item 171) is
-the owner's account.
+The numbers are "option C" of reports/INTERSECTION-COSTS-options.md, chosen by
+the owner on 2026-10-09 (OWNER-DECISIONS 467, 468, 468a). They start from
+"Bicycle stress literature in depth" (reports/LTS-literature-review-2.md),
+"Crossing penalties by control type and right of way" and "Left turns,
+multi-lane merges capped by box turns, and slip lanes" (Broach et al.'s
+per-mile values, Eugene's 818 ft per left, Copenhagen's 154 ft left against
+62 ft right, Oregon's LTS tables), taken at the TOP of those ranges for the
+ordinary tiers. The severe tier (an unsignalised junction with an LTS 4 or
+Avoid road: steeper speed and lane factors, a left off the road as dear as a
+stopped crossing, a merge priced by the road, a 2 mi cap) is ABOVE anything
+the literature gives; it is the owner's choice (467: "There's definitely
+intersections that I'd detour 2 miles to avoid, though rare."), not a measured
+value. Costs are said in calm miles (`calm_miles`), US units first. Nothing
+here is a legal claim; the DC roll-through rule (item 171) is the owner's
+account.
 """
 
 from __future__ import annotations
@@ -38,8 +45,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
+from . import ridetime
+
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
+FEET_PER_MILE = 5280.0
+KM_PER_MILE = 1.609344
 
 # --- Which roads count -----------------------------------------------------
 
@@ -52,12 +63,17 @@ BUSY_TIER = 3
 #
 # Feet of equivalent quiet-street riding by the crossed road's tier. Literature
 # review: LTS 3 800-1,600 ft (Eugene 818 ft; Broach 10-20k ADT 6-10% a mile),
-# LTS 4 2,500-3,500 ft (Broach 20k+ ADT, 1,700-3,260 ft). The midpoints.
-STOPPED_CROSSING_FT = {3: 1200.0, 4: 3000.0, 5: 3000.0}
+# LTS 4 2,500-3,500 ft (Broach 20k+ ADT, 1,700-3,260 ft). OWNER-DECISIONS 468
+# (option C, which is B here) takes the TOP of the range: 1,600 ft = 0.30 calm mi
+# for LTS 3; 4,000 ft = 0.76 calm mi for LTS 4 (a little above the top, 3,500 ft).
+# The severe tier below then raises LTS 4 further on fast, wide roads.
+STOPPED_CROSSING_FT = {3: 1600.0, 4: 4000.0, 5: 4000.0}
 
 # "Much lower penalty for traffic signals" (item 165): 100-200 ft for a signal
-# with detection, wider roads on a short phase more. Mostly delay.
-SIGNALISED_CROSSING_FT = {3: 150.0, 4: 300.0, 5: 300.0}
+# with detection, wider roads on a short phase more. Mostly delay. 468: a
+# signalised crossing of a big LTS 4 road is 600 ft = 0.11 calm mi (it was 300 ft);
+# LTS 3 stays 150 ft = 0.03 calm mi.
+SIGNALISED_CROSSING_FT = {3: 150.0, 4: 600.0, 5: 600.0}
 
 # An all-way stop: Broach's stop 0.5-0.9% a mile (26-48 ft) and Arlington's -1
 # give 50-100 ft; the rider is stopped, but so is everyone else.
@@ -123,7 +139,50 @@ VOLUME_FACTOR_BUSIER = 1.2
 # traffic" (item 165). Posted speed at or above this is taken as rural.
 RURAL_SPEED_MPH = 45.0
 RURAL_FACTOR = 1.25
-MAX_CROSSING_FT = 4500.0
+
+# --- The severe tier (OWNER-DECISIONS 468, option C) ------------------------
+#
+# An unsignalised junction with an LTS 4 or Avoid road scales more steeply
+# than the ordinary tiers: 1.2 at 40 mph, 1.4 at 45 and 1.6 above (against 1.1,
+# 1.2 and 1.3), 1.25 for two lanes a direction and 1.6 for three or more
+# (against 1.1 and 1.25), and the rural factor applies to a left off the road
+# as well as to a stop against it. The literature does not go this high; this is
+# the owner's weighting of the worst junctions (467).
+SEVERE_MIN_TIER = 4
+SEVERE_SPEED_FACTORS = ((25.0, 0.8), (30.0, 0.9), (35.0, 1.0), (40.0, 1.2), (45.0, 1.4))
+SEVERE_SPEED_FACTOR_FASTER = 1.6
+SEVERE_LANE_FACTORS = {1: 1.0, 2: 1.25}
+SEVERE_LANE_FACTOR_WIDER = 1.6
+# 468: "rural MD LTS 4 roads with no speed assumed 45 mph for junction cost only,
+# never shown". The data cannot say which roads are rural, so an LTS 4 or Avoid
+# road with no speed in the data is read at this speed for the cost; the words
+# (`describe_road`) only ever say what the map gave.
+UNKNOWN_SPEED_SEVERE_MPH = 45.0
+
+# The most any one junction costs: 10,560 ft = 2.00 calm mi (468; 467: "I'd
+# detour 2 miles to avoid"). It was 4,500 ft = 0.85 calm mi. Above the literature.
+MAX_CROSSING_FT = 10560.0
+
+# --- Time of day (OWNER-DECISIONS 468a) --------------------------------------
+#
+# "Put some more intersection stress during rush hour too and a little less on
+# weekends and off hours." A busy-road junction's cost is times this by the
+# ride's setting (`routemaker.ridetime`: weekend, weekday_rush, weekday_offpeak):
+# rush x1.25, weekday off-peak x1.0, weekend (federal holidays included) x0.85.
+# The owner's 468a splits the weekday off-peak into daytime x1.0 and
+# evening/night x0.85; the ride settings have no evening, so the whole
+# off-peak is x1.0 until one is added. Quiet-street stops are not scaled.
+TIME_FACTORS = {
+    ridetime.WEEKDAY_RUSH: 1.25,
+    ridetime.WEEKDAY_OFFPEAK: 1.0,
+    ridetime.WEEKEND: 0.85,
+}
+
+
+def time_factor(when: str | None) -> float:
+    """The multiplier on a busy-road junction's cost at a ride time; 1.0 where
+    the setting is unknown."""
+    return TIME_FACTORS.get(when or "", 1.0)
 
 # --- Movement (item 166) ----------------------------------------------------
 #
@@ -139,19 +198,29 @@ MOVEMENT_FACTOR_ONTO = {"left": 1.5, "straight": 1.0, "right": 0.1}
 # LTS 3 value, 600 ft, is BELOW the literature review's 800-1,600 ft range for
 # an LTS 3 crossing (it is a left across one oncoming lane from a lane the
 # rider already holds, not a crossing from a stop); an owner question.
-LEFT_ACROSS_ONCOMING_FT = {3: 600.0, 4: 1500.0, 5: 1500.0}
+# 468: LTS 3 800 ft (0.15 calm mi); and "a left off an unsignalised LTS 4 road
+# costs as much as crossing it from a stop", so LTS 4 is the stopped crossing's
+# 4,000 ft (0.76 calm mi) before the severe tier's factors, plus the merge.
+LEFT_ACROSS_ONCOMING_FT = {3: 800.0, 4: 4000.0, 5: 4000.0}
 SIGNALISED_LEFT_FACTOR = 0.4
 RIGHT_FROM_BUSY_FT = 15.0
 
 # "having to cross several lanes to get into the left turn can add stress too,
-# though box turns are an option" (item 167): feet per lane merged across, per
-# direction, capped at about a two-stage box turn (two crossings and one extra
-# signal wait: 200-500 ft at a signalized junction). At a signal the whole left
-# is capped there too, oncoming lanes and merge together (item 186, "Cap at box
-# turn": "At signals a left never costs more than the two-stage box-turn
-# alternative (about 500 ft equivalent)").
-MERGE_FT_PER_LANE = 250.0
-BOX_TURN_CAP_FT = 500.0
+# though box turns are an option" (item 167); "What about having to change lanes
+# to make a left? That's very stressful too" (468). Priced by the road crossed,
+# per lane merged across, per direction: about 0.15 calm mi (792 ft) a lane on
+# an LTS 3 road and about 0.30 calm mi (1,584 ft) a lane on LTS 4 or Avoid,
+# rising with speed from 40 mph (the severe tier's speed factors, never below
+# 1), so a two-lane merge then a left on a fast LTS 4 road reaches the severe
+# range. Not in the literature. At a signal the whole left (oncoming lanes and
+# merge together) is capped at a two-stage box turn, 750 ft = 0.14 calm mi
+# (items 167, 186, 468). Where OSM maps a bike box or two-stage turn box the same
+# cap should apply to an unsignalised left, but the router data does not carry
+# those tags (nothing in lua/ or the pipeline reads an advanced stop line or a
+# bicycle box), so that cap is not applied.
+MERGE_MILES_PER_LANE = {3: 0.15, 4: 0.30, 5: 0.30}
+MERGE_SPEED_FLOOR = 1.0
+BOX_TURN_CAP_FT = 750.0
 # Where the lane count is unknown, a road of this tier is read at this many
 # lanes a direction for the merge.
 ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
@@ -165,7 +234,8 @@ ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
 # when you cross it (Recommended)"); riding straight past it along the road is
 # not. What "crosses" is, from the router's arms at the node, is
 # `core.junctions.crossed_links`.
-SLIP_LANE_FT = 800.0
+# 468: 1,000 ft = 0.19 calm mi (it was 800 ft).
+SLIP_LANE_FT = 1000.0
 SIGNALISED_SLIP_FACTOR = 0.5
 
 # --- Severity (item 172) ----------------------------------------------------
@@ -173,8 +243,11 @@ SIGNALISED_SLIP_FACTOR = 0.5
 # A stopped-side crossing of an LTS 3 road (800-1,600 ft) is orange; of an LTS 4
 # road (2,500-3,500 ft) red; a left onto or across an LTS 3 road is orange, red
 # when the road is fast. A signalized crossing (150-300 ft) is neither.
-ORANGE_MIN_FT = 600.0
-RED_MIN_FT = 2000.0
+# 468: orange from 800 ft = 0.15 calm mi, red from 2,900 ft = 0.55 calm mi (they
+# were 600 and 2,000 ft), so the mix of markers holds with the higher costs. Red
+# is also the search's avoidance trigger (`core.refine.REFINE_MIN_EVENT_FT`).
+ORANGE_MIN_FT = 800.0
+RED_MIN_FT = 2900.0
 ORANGE = "orange"
 RED = "red"
 
@@ -297,6 +370,11 @@ class Event:
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
     group: int | None = None
+    # The cost read the road's speed as the assumed 45 mph (`cost_speed`): for
+    # the debug list; never said to a rider.
+    assumed_speed: bool = field(default=False, compare=False)
+    # The ride-time factor that was applied (`time_factor`, 468a).
+    time_factor: float = field(default=1.0, compare=False)
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -315,16 +393,42 @@ def _band(value: float, bands: tuple[tuple[float, float], ...], above: float) ->
     return above
 
 
+def severe(road: Road) -> bool:
+    return (road.tier or 0) >= SEVERE_MIN_TIER
+
+
+def cost_speed(road: Road) -> float | None:
+    """The speed the cost reads: the map's, or for an LTS 4 / Avoid road with none
+    the assumed 45 mph (468). For cost only; never said."""
+    if road.speed_mph is not None:
+        return road.speed_mph
+    return UNKNOWN_SPEED_SEVERE_MPH if severe(road) else None
+
+
+def speed_assumed(road: Road) -> bool:
+    return road.speed_mph is None and severe(road)
+
+
 def scale(road: Road, stopped_side: bool) -> float:
     """The crossed road's speed, width, volume and rurality, as a multiplier on
-    the tier's base cost. Unknown inputs are 1.0, not guessed."""
+    the tier's base cost. Unknown inputs are 1.0, not guessed, except an LTS 4 /
+    Avoid road's speed (`cost_speed`). The severe tier (LTS 4, Avoid) scales
+    more steeply and counts rurality on any movement (468)."""
+    hard = severe(road)
     factor = 1.0
-    if road.speed_mph is not None:
-        factor *= _band(road.speed_mph, SPEED_FACTORS, SPEED_FACTOR_FASTER)
-        if stopped_side and road.speed_mph >= RURAL_SPEED_MPH:
+    speed = cost_speed(road)
+    if speed is not None:
+        if hard:
+            factor *= _band(speed, SEVERE_SPEED_FACTORS, SEVERE_SPEED_FACTOR_FASTER)
+        else:
+            factor *= _band(speed, SPEED_FACTORS, SPEED_FACTOR_FASTER)
+        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH:
             factor *= RURAL_FACTOR
     if road.lanes is not None:
-        factor *= LANE_FACTORS.get(road.lanes, LANE_FACTOR_WIDER)
+        if hard:
+            factor *= SEVERE_LANE_FACTORS.get(road.lanes, SEVERE_LANE_FACTOR_WIDER)
+        else:
+            factor *= LANE_FACTORS.get(road.lanes, LANE_FACTOR_WIDER)
     if road.aadt is not None:
         factor *= _band(float(road.aadt), VOLUME_FACTORS, VOLUME_FACTOR_BUSIER)
     return factor
@@ -355,11 +459,17 @@ def crossing_ft(road: Road, control: Control, rider_tier: int | None) -> float:
     return min(STOPPED_CROSSING_FT[tier] * scale(road, stopped_side=True), MAX_CROSSING_FT)
 
 
-def merge_ft(road: Road) -> float:
-    """Lanes the rider must cross to reach the left-turn position, capped at a
-    box turn (item 167). `road.lanes` is lanes per direction."""
+def merge_ft(road: Road, control: Control = Control.NONE) -> float:
+    """Lanes the rider must cross to reach the left-turn position, priced by the
+    road (468): per lane, by tier, rising with speed from 40 mph. At a signal
+    capped at a box turn (item 167). `road.lanes` is lanes per direction."""
     lanes = road.lanes if road.lanes is not None else ASSUMED_LANES.get(_tier(road), 1)
-    return min(MERGE_FT_PER_LANE * max(lanes - 1, 0), BOX_TURN_CAP_FT)
+    speed = cost_speed(road)
+    rise = MERGE_SPEED_FLOOR
+    if speed:
+        rise = max(rise, _band(speed, SEVERE_SPEED_FACTORS, SEVERE_SPEED_FACTOR_FASTER))
+    feet = max(lanes - 1, 0) * MERGE_MILES_PER_LANE[_tier(road)] * FEET_PER_MILE * rise
+    return min(feet, BOX_TURN_CAP_FT) if control is Control.SIGNAL else feet
 
 
 def left_from_ft(road: Road, control: Control) -> float:
@@ -371,7 +481,7 @@ def left_from_ft(road: Road, control: Control) -> float:
         oncoming *= scale(road, stopped_side=False)
         if control is Control.SIGNAL:
             oncoming *= SIGNALISED_LEFT_FACTOR
-    total = oncoming + merge_ft(road)
+    total = oncoming + merge_ft(road, control)
     if control is Control.SIGNAL:
         total = min(total, BOX_TURN_CAP_FT)
     return min(total, MAX_CROSSING_FT)
@@ -449,6 +559,17 @@ def marked_unsignalised(junction: Junction) -> bool:
     "Trail crossings whose signal is not mapped cap at orange")."""
     trail = junction.marked_crossing or junction.path_crossing
     return trail and junction.control in {Control.NONE, Control.STOP}
+
+
+def calm_miles(cost_ft: float) -> float:
+    """A cost in calm miles (467): feet of quiet riding over 5,280."""
+    return cost_ft / FEET_PER_MILE
+
+
+def calm_text(cost_ft: float) -> str:
+    """"0.55 calm mi (0.88 calm km)": US units first, metric in brackets."""
+    miles = calm_miles(cost_ft)
+    return f"{miles:.2f} calm mi ({miles * KM_PER_MILE:.2f} calm km)"
 
 
 def severity_of(cost_ft: float) -> str | None:
@@ -545,7 +666,7 @@ def reason_of(kind: str, road: Road | None, control: Control) -> str:
     return f"{KIND_WORDS.get(kind, 'Junction with')} {_article(noun)} {noun}, {words}"
 
 
-def assess(junction: Junction, group: bool = False) -> Event | None:
+def assess(junction: Junction, group: bool = False, when: str | None = None) -> Event | None:
     """The event at one junction, or None where there is nothing to say.
 
     `group` is the Mass Ride reading (items 133 and 138: "put an orange warning
@@ -555,6 +676,10 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
     cost, kind, about = cost_of(junction)
     if kind == "neighbourhood" or about is None:
         return None
+    # 468a: a busy-road junction costs more at rush hour, less at the weekend.
+    factor = time_factor(when)
+    cost = min(cost * factor, MAX_CROSSING_FT)
+    assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
     reason = reason_of(kind, about, junction.control)
     if group:
@@ -581,6 +706,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             road_display=about.display,
             road_ways=about.ways,
             road_oneway=about.oneway,
+            assumed_speed=assumed,
+            time_factor=factor,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -602,6 +729,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
         max_severity=cap,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        assumed_speed=assumed,
+        time_factor=factor,
     )
 
 
@@ -902,14 +1031,18 @@ def crossing_groups(events: list[Event]) -> list[CrossingGroup]:
 
 
 def assess_route(
-    junctions: list[Junction], group: bool = False, stops: Sequence[float] = ()
+    junctions: list[Junction],
+    group: bool = False,
+    stops: Sequence[float] = (),
+    when: str | None = None,
 ) -> list[Event]:
     """Every junction's event, in route order (a cost the objective sums; the
     flagged ones are what the planner draws). The nodes of one junction share
     its strongest control first (`share_controls`). On a Mass Ride (`group`)
     the signalized crossings that run together are numbered (`number_groups`),
-    never across a stop (`stops`, where each leg ends)."""
-    events = (assess(junction, group) for junction in share_controls(junctions))
+    never across a stop (`stops`, where each leg ends). `when` is the ride time
+    (`time_factor`, 468a)."""
+    events = (assess(junction, group, when) for junction in share_controls(junctions))
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
 

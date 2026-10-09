@@ -217,6 +217,14 @@ class RouteIn(Schema):
             " system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
         ),
     )
+    debug_junctions: StrictBool = Field(
+        default=False,
+        description=(
+            "Debug (OWNER-DECISIONS 468): add `junctions_debug` to the answer, listing every"
+            " junction event of the route with its cost in calm miles, flagged or not. Off by"
+            " default; it holds only facts about the route."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -494,6 +502,11 @@ class IntersectionOut(Schema):
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
     cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
+    calm_mi: float | None = Field(
+        default=None,
+        description="The same cost in calm miles, 2 places (467); `calm_km` is the metric.",
+    )
+    calm_km: float | None = None
     group: int | None = Field(
         default=None,
         description=(
@@ -502,6 +515,27 @@ class IntersectionOut(Schema):
             "junction stays in the list and on the map."
         ),
     )
+
+
+class JunctionDebugOut(Schema):
+    """One junction event of the route, for the debug list (`debug_junctions`)."""
+
+    m: int
+    lon: float
+    lat: float
+    kind: str
+    movement: Literal["left", "straight", "right"]
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
+    crossed_tier: int | None
+    cost_ft: int
+    calm_mi: float
+    calm_km: float
+    text: str = Field(description='"0.55 calm mi (0.88 calm km)".')
+    severity: Literal["orange", "red"] | None
+    flagged: bool
+    time_factor: float = Field(description="The ride-time factor applied (468a).")
+    assumed_speed: bool = Field(description="The cost assumed 45 mph for a road with no speed.")
+    reason: str
 
 
 class IntersectionGroupOut(Schema):
@@ -966,6 +1000,8 @@ class RouteBody(Schema):
     # A Mass Ride's groups of signalized crossings (OWNER-DECISIONS 233, 234): additive,
     # empty or null elsewhere.
     intersection_groups: list[IntersectionGroupOut] | None = None
+    # Every junction event with its cost, only when the request asks (`debug_junctions`).
+    junctions_debug: list[JunctionDebugOut] | None = None
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
     # Side-street dodges found and what was done with them (OWNER-DECISIONS 272): null
@@ -1300,6 +1336,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             target_distance_m=body.target_distance_m,
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
+            debug_junctions=body.debug_junctions,
         )
         return Status(
             200,

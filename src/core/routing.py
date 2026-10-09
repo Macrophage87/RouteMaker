@@ -746,6 +746,9 @@ class Dials:
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+    # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
+    # flagged or not, for re-running a sample with all junctions counted (468).
+    debug_junctions: bool = False
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).
@@ -1619,10 +1622,39 @@ def _intersection_rows(events: list) -> list[dict]:
             "control": event.control.value,
             "kind": event.kind,
             "cost_ft": round(event.cost_ft),
+            "calm_mi": round(intersections.calm_miles(event.cost_ft), 2),
+            "calm_km": round(intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2),
             "group": event.group,
         }
         for event in events
         if event.flagged
+    ]
+
+
+def _junction_debug_rows(events: list) -> list[dict]:
+    """EVERY junction event of a route, flagged or not, with its cost (OWNER-DECISIONS
+    468: "an API debug field listing every junction"). Off unless the request sets
+    `debug_junctions`. Only route-derived facts: no account, no request detail."""
+    return [
+        {
+            "m": round(event.m),
+            "lon": round(event.lon, 6),
+            "lat": round(event.lat, 6),
+            "kind": event.kind,
+            "movement": event.movement.value,
+            "control": event.control.value,
+            "crossed_tier": event.crossed_tier,
+            "cost_ft": round(event.cost_ft),
+            "calm_mi": round(intersections.calm_miles(event.cost_ft), 3),
+            "calm_km": round(intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 3),
+            "text": intersections.calm_text(event.cost_ft),
+            "severity": event.severity,
+            "flagged": event.flagged,
+            "time_factor": event.time_factor,
+            "assumed_speed": event.assumed_speed,
+            "reason": event.reason,
+        }
+        for event in events
     ]
 
 
@@ -2510,6 +2542,9 @@ def plan(
             "leg_ends": leg_ends,
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
+            "junctions_debug": (
+                _junction_debug_rows(events) if dials.debug_junctions and events is not None else None
+            ),
             "calm_search": refined,
             "dodges": dodges_of,
             "effort_m": effort_m,
