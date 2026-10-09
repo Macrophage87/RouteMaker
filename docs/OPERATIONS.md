@@ -632,6 +632,9 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 
 ## The stress tiles
 
+How a way gets its stress tier, and what each tier costs a route, is in
+[docs/stress/](stress/README.md).
+
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
 stress overlay from the live segment table with PostGIS's `ST_AsMVT`, for
 anyone, signed in or not. Zooms 10 to 16 are drawn; any other zoom, and any

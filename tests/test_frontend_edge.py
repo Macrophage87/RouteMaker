@@ -34,6 +34,7 @@ INDEX = b"<!doctype html><title>RouteMaker</title><div id=root></div>"
 # Long enough that Caddy's encoder (minimum 512 bytes) compresses it.
 SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
+STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 STATIC = b"body{}"
 
 
@@ -71,6 +72,8 @@ def edge(tmp_path_factory):
     (frontend / "favicon.svg").write_bytes(b"<svg/>")
     (frontend / "assets" / "index-abc123.js").write_bytes(SCRIPT)
     (frontend / "licenses.txt").write_bytes(LICENCES)
+    (frontend / "about").mkdir()
+    (frontend / "about" / "stress.html").write_bytes(STRESS_PAGE)
     static = root / "static"
     (static / "admin").mkdir(parents=True)
     (static / "admin" / "base.css").write_bytes(STATIC)
@@ -136,6 +139,20 @@ def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
     status, headers, body = get(edge, "/licenses.txt")
     assert (status, body) == (200, LICENCES)
     assert "no-cache" in headers.get("Cache-Control", ""), headers
+
+
+def test_the_stress_page_is_served_with_the_apps_policy_and_its_short_paths_redirect(edge) -> None:
+    """OWNER-DECISIONS 461: the rider-facing page on how ratings work, linked from
+    the legend and the road panel, is a file of the app's, not the API's."""
+    status, headers, body = get(edge, "/about/stress.html")
+    assert (status, body) == (200, STRESS_PAGE), (status, headers)
+    assert headers.get("Content-Type", "").startswith("text/html"), headers
+    assert "no-cache" in headers.get("Cache-Control", ""), headers
+    assert "default-src 'self'" in headers.get("Content-Security-Policy", ""), headers
+    for short in ("/about/stress", "/about/stress/"):
+        # urllib follows the redirect: the short path ends at the page, not at the API (502).
+        status, _, body = get(edge, short)
+        assert (status, body) == (200, STRESS_PAGE), short
 
 
 def test_the_app_carries_its_content_security_policy(edge) -> None:

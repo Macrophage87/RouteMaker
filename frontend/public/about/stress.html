@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="How RouteMaker rates roads for traffic stress, and how the ratings change the routes it plans.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>How traffic stress ratings work - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1c1917;
+    --muted: #4b5260;
+    --line: #d6d3d1;
+    --panel: #f5f5f4;
+    --link: #1d4ed8;
+    --focus: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917;
+      --fg: #f5f5f4;
+      --muted: #c4c7ce;
+      --line: #57534e;
+      --panel: #292524;
+      --link: #93c5fd;
+      --focus: #93c5fd;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.25rem 0 0.5rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .planned { font-weight: 600; }
+  nav ul { padding-left: 1.25rem; }
+  .levels { list-style: none; padding: 0; margin: 0.5rem 0; }
+  .levels li { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+  .levels svg { flex: 0 0 auto; margin-top: 0.35rem; }
+  .levels strong { display: block; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <h1>How traffic stress ratings work</h1>
+</header>
+<main id="main">
+  <p class="lead">RouteMaker gives every road and path a traffic-stress rating. The
+  rating is how stressful the traffic beside you is likely to feel on a bike. It
+  colours the map, and it decides which roads a route prefers. This page explains
+  where the ratings come from and how each ride type uses them.</p>
+
+  <nav aria-labelledby="contents-heading">
+    <h2 id="contents-heading">On this page</h2>
+    <ul>
+      <li><a href="#levels">The levels</a></li>
+      <li><a href="#rating">How a road gets its rating</a></li>
+      <li><a href="#avoid">Avoid, and roads closed to bikes</a></li>
+      <li><a href="#corrections">Corrections</a></li>
+      <li><a href="#routes">How ride types and the slider use the ratings</a></li>
+      <li><a href="#junctions">Junction warnings</a></li>
+      <li><a href="#mass-ride">Mass Ride</a></li>
+      <li><a href="#planned">Half steps and the stress chart (planned)</a></li>
+      <li><a href="#report">Reporting a wrong rating</a></li>
+      <li><a href="#sources">Sources</a></li>
+    </ul>
+  </nav>
+
+  <section aria-labelledby="levels">
+    <h2 id="levels">The levels</h2>
+    <p>The scale is Level of Traffic Stress (LTS), a widely used four-level scale for
+    bike riding, plus a fifth level of RouteMaker's own called Avoid. Each level below
+    gives the words the road panel uses, then the shorter words in the map legend.
+    On the map, each level also has its own line width and dash pattern, so the
+    levels can be told apart without colour.</p>
+    <ul class="levels">
+      <li>
+        <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden="true" focusable="false"><line x1="2" y1="7" x2="62" y2="7" stroke="#2f5d47" stroke-width="5.5"/><line x1="2" y1="7" x2="62" y2="7" stroke="#9ed3ac" stroke-width="3"/></svg>
+        <span><strong>LTS 1: Comfortable for everyone</strong> Legend: "Comfortable for most people". Trails and paths, and very quiet, slow streets. Solid thin line.</span>
+      </li>
+      <li>
+        <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden="true" focusable="false"><line x1="2" y1="7" x2="62" y2="7" stroke="#1a2638" stroke-width="6"/><line x1="2" y1="7" x2="62" y2="7" stroke="#57a06c" stroke-width="3.5" stroke-dasharray="14 3.5"/></svg>
+        <span><strong>LTS 2: Fine for adults</strong> Legend: "Comfortable for most adults". Quiet streets, and streets with a good bike lane. Long dashes.</span>
+      </li>
+      <li>
+        <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden="true" focusable="false"><line x1="2" y1="7" x2="62" y2="7" stroke="#1c1917" stroke-width="9"/><line x1="2" y1="7" x2="62" y2="7" stroke="#f28c28" stroke-width="7"/><line x1="2" y1="7" x2="62" y2="7" stroke="#f3c81a" stroke-width="4.5" stroke-dasharray="9 1.8"/></svg>
+        <span><strong>LTS 3: For experienced cyclists</strong> Legend: "For confident riders". Busier or faster streets. Short dashes.</span>
+      </li>
+      <li>
+        <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden="true" focusable="false"><line x1="2" y1="7" x2="62" y2="7" stroke="#1c1917" stroke-width="10"/><line x1="2" y1="7" x2="62" y2="7" stroke="#c81e1e" stroke-width="8"/><line x1="2" y1="7" x2="62" y2="7" stroke="#f28c28" stroke-width="5" stroke-dasharray="20 2.5"/></svg>
+        <span><strong>LTS 4: High stress: busy, fast traffic</strong> Legend: "Heavy or fast traffic". Wide or fast roads. Very long dashes, wider line.</span>
+      </li>
+      <li>
+        <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden="true" focusable="false"><line x1="2" y1="7" x2="62" y2="7" stroke="#111111" stroke-width="10"/><line x1="2" y1="7" x2="62" y2="7" stroke="#d42020" stroke-width="6.5" stroke-dasharray="16 3 1.6 3"/></svg>
+        <span><strong>Avoid</strong> Legend: "Legal, but best avoided". You may legally ride it, but it is not a place to send anyone, such as an expressway. Dash and dot, the widest line.</span>
+      </li>
+    </ul>
+    <p>The colours shown are the map's default ones. The map can also use a
+    colour-blind-friendly set of colours, which the accessibility switch turns
+    on.</p>
+  </section>
+
+  <section aria-labelledby="rating">
+    <h2 id="rating">How a road gets its rating</h2>
+    <p>RouteMaker rates each road itself, using the published LTS method (Furth's
+    tables), the same way on both sides of every county and state line. It looks
+    at, in this order:</p>
+    <ol>
+      <li><strong>Speed.</strong> The posted speed limit. Where none is mapped, it uses
+      the legal default: 20 mph in the District, and the Maryland and Virginia
+      defaults elsewhere. Where in doubt it assumes the faster figure.</li>
+      <li><strong>Lanes.</strong> More lanes in each direction means more stress.</li>
+      <li><strong>Bike facilities.</strong> A separated bike lane rates calmest. A
+      painted lane or a wide paved shoulder helps on slower roads, and less on fast
+      ones.</li>
+      <li><strong>Traffic volume.</strong> Vehicle counts from the District, Virginia
+      and agency street records. On a two-lane road with no bike lane, very light
+      traffic lowers the rating one level, and heavy traffic raises it one level.
+      Where one block's count is far above the rest of its street (often traffic
+      bunching at an intersection), the street's typical count is used for the road,
+      and the higher count still counts at the intersection.</li>
+      <li><strong>Road type.</strong> Main roads are never rated below "For
+      experienced cyclists" without a bike facility. Minor through roads are never
+      rated below "Fine for adults".</li>
+      <li><strong>Surface.</strong> A rough surface, such as dirt or grass, keeps a
+      road out of the calmest level.</li>
+    </ol>
+    <p>In the District, the city's own street records (posted speed, lanes, one-way,
+    bike lanes and parking) take priority over the map's tags. A small number of
+    roads have a rating set by hand (see <a href="#corrections">Corrections</a>).</p>
+    <p>Ratings are updated with each weekly map data update.</p>
+  </section>
+
+  <section aria-labelledby="avoid">
+    <h2 id="avoid">Avoid, and roads closed to bikes</h2>
+    <p><strong>Avoid</strong> roads are legal for bikes. Routes stay off them unless
+    there is no reasonable other way. Every ride type adds a one-time charge for
+    entering an Avoid road: on Default, about as much as 2.5 extra miles [4 km] of
+    quiet street.</p>
+    <p><strong>Closed to bikes</strong> is different. It means you may not ride
+    there at all, and routes never use it. Examples are roads and paths inside
+    military bases and secured government sites, ways signed no bicycles, and
+    mountain-bike-only trails. When it is unclear whether bikes are allowed,
+    RouteMaker treats the way as closed. A closed way can be reopened by hand when
+    there is evidence that bikes may use it.</p>
+  </section>
+
+  <section aria-labelledby="corrections">
+    <h2 id="corrections">Corrections</h2>
+    <p>Map data is not always right. RouteMaker's owner can change a road's rating up
+    or down, and can set a minimum ("at least this level"), for reasons such as fast
+    drivers, poor sightlines, a dangerous merge, or because one road is the better
+    choice among similar ones. Most corrections are hidden. Where a correction has a
+    published note, a route that uses that road says why. Notes describe the road and
+    its traffic, never a neighbourhood or its people.</p>
+    <p>Corrections are never made automatically. Each one is reviewed and approved
+    by the owner, and takes effect at the next map data update.</p>
+    <p class="note"><span class="planned">Planned:</span> a way for signed-in riders to
+    suggest a rating from the road panel. Suggestions will be reviewed and never
+    applied automatically.</p>
+  </section>
+
+  <section aria-labelledby="routes">
+    <h2 id="routes">How ride types and the slider use the ratings</h2>
+    <p>A route is chosen by adding up the cost of every stretch it rides. A stretch
+    rated LTS 1 or LTS 2 costs its length. A busier stretch costs more, as if it were
+    longer. The table below shows how much longer each ride type treats a mile of
+    each level, as calm miles. Each figure is a range, because faster and wider roads
+    of the same level cost more.</p>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="cost-caption">
+      <table>
+        <caption id="cost-caption">One mile of each level counts as about this many calm miles, at each ride type's starting slider position</caption>
+        <thead>
+          <tr><th scope="col">Ride type</th><th scope="col">LTS 1 and 2</th><th scope="col">LTS 3</th><th scope="col">LTS 4</th><th scope="col">Avoid</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Fast</th><td>1</td><td>1.2 to 1.4</td><td>2.1 to 2.3</td><td>As LTS 4, plus the entry charge</td></tr>
+          <tr><th scope="row">Group Ride, Mountain Goat, Gravel</th><td>1</td><td>1.9 to 2.9</td><td>5.4 to 6.3</td><td>As LTS 4, plus the entry charge</td></tr>
+          <tr><th scope="row">Default, E-bike, Cargo Bike carrying cargo</th><td>1</td><td>2.9 to 5.8</td><td>13 to 16</td><td>As LTS 4, plus the entry charge</td></tr>
+          <tr><th scope="row">Cargo Bike with passengers</th><td>1</td><td>3.2 to 6.8</td><td>16 to 19</td><td>As LTS 4, plus the entry charge</td></tr>
+          <tr><th scope="row">Trailmaxxing</th><td>1</td><td>6</td><td>11, and always avoided first</td><td>16, and always avoided first</td></tr>
+          <tr><th scope="row">Mass Ride</th><td>1</td><td>1</td><td>1</td><td>1, plus the entry charge</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>The traffic-stress slider</strong> changes these figures. Moving it
+      toward "calm" makes busy roads count for more. Near the top, RouteMaker also
+      searches for calmer routes itself and will add real distance to avoid busy
+      roads. At the very top, it ranks routes by the least LTS 4 and very high stress
+      junctions first, then the least LTS 3 and higher stress junctions, then
+      distance. It takes a longer route only when the extra miles buy a real cut in
+      stress: about 1 mile of LTS 3 avoided for each 5 miles added, with LTS 4 and
+      Avoid counting more.</li>
+      <li><strong>Trailmaxxing and Cargo Bike with passengers</strong> never swap the
+      router's first route for one with more LTS 4 and Avoid (counting very high
+      stress junctions), however much trail it would gain.</li>
+      <li>On every ride type except Mass Ride, the slider can be moved from where the
+      ride type starts it.</li>
+      <li>A route will also never get busier just because you asked it to avoid
+      hills.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="junctions">
+    <h2 id="junctions">Junction warnings</h2>
+    <p>Crossings and turns have a cost of their own, measured as the extra distance
+    of quiet street they are worth. Crossing a busy road (LTS 3) from a stop sign
+    costs about 1,200 feet [370 m]. Crossing an LTS 4 road from a stop sign costs
+    about 3,000 feet [910 m]. A signal makes crossings much cheaper (150 to 300 feet).
+    Left turns cost more than right turns. Faster, wider or busier roads, and rural
+    stop signs, cost more again. Quiet streets meeting quiet streets cost almost
+    nothing.</p>
+    <ul>
+      <li><strong>Higher stress junction</strong> (orange marker): a cost of 600 feet
+      [180 m] or more.</li>
+      <li><strong>Very high stress junction</strong> (red marker): 2,000 feet [610 m]
+      or more.</li>
+    </ul>
+    <p>Each warning in the route description names the road, the movement and the
+    control, in words.</p>
+  </section>
+
+  <section aria-labelledby="mass-ride">
+    <h2 id="mass-ride">Mass Ride</h2>
+    <p>Mass Ride plans for a large group that takes the whole lane, so traffic
+    stress hardly matters to it. Its slider is fixed at the most direct end. LTS 3
+    and LTS 4 cost nothing extra, and only Avoid roads are charged. Its map shows
+    how many riders a road can carry each minute instead of stress levels, in the
+    District only. Avoid roads show the word "AVOID". Its junction markers are
+    orange for a crossing of an LTS 3 road and red for LTS 4 or Avoid.</p>
+  </section>
+
+  <section aria-labelledby="planned">
+    <h2 id="planned">Half steps and the stress chart (planned)</h2>
+    <p class="note"><span class="planned">Planned, not built yet.</span> These are
+    decided in outline and are not in the app today.</p>
+    <h3>Half steps</h3>
+    <p>Some roads sit between two levels. Half steps will add 1.5 "Probably
+    comfortable for older children", 2.5 "Fine for most confident adults", 3.5
+    "Stressful even for experienced cyclists" and 4.5 "A very high-stress road". A
+    half step will cost halfway between its two levels. 4.5 is never treated as
+    Avoid. On the map, a half step will look like the level below it. Zoomed in, it
+    will add a dash in the colour of the level above.</p>
+    <h3>A stress number and a rolling stress chart</h3>
+    <p>Each road's level is its stress number, 1 to 5. A half step is 1.5, 2.5 and so
+    on. The route description will get a chart of stress along the route, like the
+    elevation chart, so short busy stretches and bad crossings stand out. The chart
+    will show the route's cost per mile over a short stretch, about 0.1 mile [160 m],
+    with junction costs included. 1 means calm riding, and higher numbers mean more
+    stress, on the same scale as the table above. Its details are still to be
+    confirmed.</p>
+  </section>
+
+  <section aria-labelledby="report">
+    <h2 id="report">Reporting a wrong rating</h2>
+    <ul>
+      <li><strong>The map data is wrong or missing</strong> (a speed limit, a bike
+      lane, the number of lanes): use <strong>Edit in OSM</strong> in the road panel
+      to fix it in OpenStreetMap. It needs a free OpenStreetMap account. Do not copy
+      from Google Street View. The rating follows at a later map data update.</li>
+      <li><strong>The data is right but the rating feels wrong</strong>: tell the
+      person who gave you access to RouteMaker. If the beta notice shows a
+      "Report a problem" link, use that. Include the page's address (it holds your
+      route), the road, and what you expected.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="sources">
+    <h2 id="sources">Sources</h2>
+    <ul>
+      <li>Map data: © OpenStreetMap contributors (ODbL).</li>
+      <li>Traffic counts and street records: DC Open Data (DDOT Traffic Volume, DC
+      Roadway Block; CC BY 4.0, adapted); VDOT traffic volume (Virginia Roads).</li>
+      <li>Roads marked to avoid in Montgomery County: Bicycle Level of Traffic
+      Stress, Montgomery County Planning Department.</li>
+      <li>Bike facilities in Baltimore: City of Baltimore, Open Baltimore.</li>
+      <li>Urban areas, for default speeds: U.S. Census Bureau.</li>
+      <li>Method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network
+      Connectivity", Mineta Transportation Institute Report 11-19 (2012); Furth, LTS
+      criteria v2.0 (2017) and v2.2 (2022).</li>
+      <li>Junction costs: derived from Broach, Dill and Gliebe's Portland bicycle
+      route-choice study, and from the Oregon and Mineta crossing tables.</li>
+    </ul>
+  </section>
+</main>
+<footer>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

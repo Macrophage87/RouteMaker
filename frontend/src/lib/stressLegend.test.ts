@@ -8,6 +8,9 @@ import { STRESS_ZOOMS } from "./mapStyle.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
+  STRESS_PAGE,
+  STRESS_PAGE_MORE,
+  STRESS_PAGE_TEXT,
   MTB_LEGEND,
   MtbTrailSwatch,
   ROADWAY_LANES,
@@ -363,3 +366,15 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
   assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
 });
 
+
+test("the legend links to the page on how ratings work, in the same tab, its name the visible words first (461)", () => {
+  const html = legendHtml();
+  const link = html.match(/<p class="hint stress-page-link"><a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a><\/p>/);
+  assert.ok(link, html.slice(0, 400));
+  assert.equal(link[1], STRESS_PAGE);
+  assert.equal(link[2], "", "no target or other attribute: it opens in the same tab");
+  const name = link[3].replace(/<[^>]+>/g, "");
+  assert.equal(name, STRESS_PAGE_TEXT + STRESS_PAGE_MORE);
+  assert.ok(name.startsWith(STRESS_PAGE_TEXT), "the accessible name starts with the visible label (WCAG 2.5.3)");
+  assert.ok(html.indexOf("stress-page-link") > html.indexOf("lts-means"), "after the line that says what LTS is");
+});

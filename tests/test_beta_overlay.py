@@ -834,6 +834,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
         "= /index.html",
         "= /favicon.svg",
         "= /licenses.txt",
+        "= /about/stress.html",
         "^~ /assets/",
         "^~ /static/",
         "^~ /basemap/",

@@ -173,6 +173,25 @@ export function StressZoomNotes({
 /** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2). */
 export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 (heavy traffic); Avoid is legal but best avoided.";
 
+/**
+ * The rider-facing page on how the ratings work (OWNER-DECISIONS 461: "Something that can be
+ * linked to on the website"), a static page in public/ served at this path by both edges
+ * (Caddyfile, deploy/beta/nginx-routemaker.conf.template). Opens in the same tab.
+ */
+export const STRESS_PAGE = "/about/stress.html";
+/** The link's visible words; its accessible name adds what the ratings are of, after them. */
+export const STRESS_PAGE_TEXT = "How ratings work";
+export const STRESS_PAGE_MORE = " (traffic stress)";
+
+/** The link to STRESS_PAGE, as the legend and the road panel show it. */
+export function StressPageLink({ className }: { className?: string }): ReactElement {
+  return h(
+    "p",
+    { className: `hint stress-page-link${className ? ` ${className}` : ""}` },
+    h("a", { href: STRESS_PAGE }, STRESS_PAGE_TEXT, h("span", { className: "visually-hidden" }, STRESS_PAGE_MORE)),
+  );
+}
+
 /** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
 export const UNPAVED_LEGEND =
   "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has.";
@@ -321,6 +340,7 @@ export function StressLegend({
     Fragment,
     null,
     h("p", { className: "hint lts-means" }, LTS_MEANS),
+    h(StressPageLink, null),
     h(
       "ul",
       { className: "legend", "aria-label": "Traffic stress legend" },

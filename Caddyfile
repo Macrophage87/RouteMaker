@@ -165,8 +165,13 @@
 	# to this site (PLAN.md:15, no third-party tile servers), MapLibre's worker
 	# is a same-origin file, and MapLibre sets inline styles. frame-ancestors
 	# refuses framing. licenses.txt is the bundled packages' licence notices,
-	# which the build writes and the map's credits link to.
-	@frontend path / /index.html /favicon.svg /licenses.txt /assets/*
+	# which the build writes and the map's credits link to. /about/stress.html is
+	# the rider-facing page on how traffic-stress ratings work (OWNER-DECISIONS
+	# 461; frontend/public/about/stress.html), which the legend and the road panel
+	# link to; /about/stress and /about/stress/ redirect to it.
+	@stress-page path /about/stress /about/stress/
+	redir @stress-page /about/stress.html 301
+	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /assets/*
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
@@ -181,6 +186,7 @@
 		header / Cache-Control "no-cache"
 		header /index.html Cache-Control "no-cache"
 		header /licenses.txt Cache-Control "no-cache"
+		header /about/stress.html Cache-Control "no-cache"
 		header /favicon.svg Cache-Control "public, max-age=86400"
 		file_server
 	}
