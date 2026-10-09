@@ -743,12 +743,12 @@ class Dials:
     # and load, for the effort the Hills slider's avoid half weighs at the top of the
     # stress slider; None: `presets.system_weight_for`.
     system_weight_kg: int | None = None
-    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
-    # A ride whose last point is its first is a loop whatever this says.
-    loop: bool = False
     # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
     # flagged or not, for re-running a sample with all junctions counted (468).
     debug_junctions: bool = False
+    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
+    # A ride whose last point is its first is a loop whatever this says.
+    loop: bool = False
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).

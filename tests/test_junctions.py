@@ -1354,7 +1354,9 @@ class TestEvents:
         signalled = answer(crossroads()["edges"], [node(N, signal=True)])
         (event,) = junctions.events_of([raw()], "weekend", False, self.locate_with(signalled))
         assert event.control is Control.SIGNAL
-        assert not event.flagged and event.cost_ft == model.SIGNALISED_CROSSING_FT[4]
+        # "weekend": 468a's x0.85 on the 600 ft signalised crossing.
+        assert not event.flagged
+        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * model.time_factor("weekend")
 
     @db
     def test_riding_along_the_arterial_past_a_merge_is_not_a_crossing(self, grid) -> None:

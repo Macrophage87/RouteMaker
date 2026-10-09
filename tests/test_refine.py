@@ -175,14 +175,14 @@ class TestCrossingAvoidance:
         self, monkeypatch
     ) -> None:
         original = analysis(
-            "o", events=[event(1500.0, 3000.0), event(2500.0, 2100.0), event(3000.0, 1300.0)]
+            "o", events=[event(1500.0, 3000.0), event(2500.0, 3100.0), event(3000.0, 1300.0)]
         )
         better = analysis("b", cost_s=4050.0, events=[])
         world = World(monkeypatch, {"o": original, "b": better}, [trip_of("b", 4.2)])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "b"
         assert info["rounds"] == 1 and info["limited"] is None
-        # The two red events (2,000 ft and up); an orange one is not worth a second route.
+        # The two red events (2,900 ft and up since 468; they were 2,000); an orange one is not worth a second route.
         assert len(world.requests[0]["exclude_locations"]) == 2
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
         assert "alternates" not in world.requests[0], "one route, not alternatives"
@@ -206,7 +206,7 @@ class TestCrossingAvoidance:
             assert kept["legs"][0]["shape"] == taken, weight
 
     def test_nothing_to_avoid_asks_the_router_nothing(self, monkeypatch) -> None:
-        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 1900.0)])}, [])
+        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 2800.0)])}, [])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
