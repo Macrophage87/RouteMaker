@@ -240,7 +240,8 @@ def runs_of(junctions: Iterable[Junction]) -> dict[int, int]:
         # refuses a build with a named candidate still at 0. A sub-metre piece that is a
         # run of its own (a 0.45 m two-point stub of a named trail, 2026-10-08) rounded
         # to 0 and failed a build whose derive had run to the end. Every floor that reads
-        # the run is hundreds of metres or more, so 1 m filters out exactly as 0 did.
+        # the run is hundreds of metres or more, so 1 m filters out exactly as 0 did. The
+        # paths' derive (`trail_routes._DERIVE_CALM_PATHS`) has the same floor.
         run = max(1, round(total[root(p)]))
         if run > runs.get(row, -1):
             runs[row] = run

@@ -263,10 +263,14 @@ WHERE s.id = runs.id
 # (eps CALM_PATH_GAP_M), or of its named run (`trail_run_m`) if that is longer. A
 # road gets the length of its calm run (`pipeline.calm_roads`: continuous LTS 1 and 2
 # road, ended at every junction with a road at LTS 3 or above); a road with no name
-# stays 0: it has no run.
+# stays 0: it has no run. A path's run is at least 1 m, as a road's is
+# (`calm_roads.runs_of`): 0 is "not derived" to VALIDATE, and a lone named trail
+# piece under half a metre rounds to 0. `trail_run_m` rounds the same way and is left
+# as it is: nothing reads its 0 as "not derived" (its readers compare it with floors
+# of hundreds of metres, and the tiles carry it as it is).
 _DERIVE_CALM_PATHS = """
 UPDATE {schema}.segment AS s
-SET {calm} = GREATEST(runs.run_m, COALESCE(s.{run}, 0))
+SET {calm} = GREATEST(1, runs.run_m, COALESCE(s.{run}, 0))
 FROM (
     SELECT id, round(sum(length_m) OVER (PARTITION BY chain))::integer AS run_m
     FROM (

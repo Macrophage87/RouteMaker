@@ -799,6 +799,8 @@ def test_a_sub_metre_piece_on_its_own_is_a_run_of_one_metre_not_zero() -> None:
     assert calm_roads.runs_of(point) == {2: 1}
     # And a longer run is rounded as before.
     assert calm_roads.runs_of([junction(3, 50, 0.0), junction(3, 51, 1.6)]) == {3: 2}
+    # Rounded, not raised: 2.4 m is 2, not 3.
+    assert calm_roads.runs_of([junction(4, 60, 0.0), junction(4, 61, 2.4)]) == {4: 2}
 
 
 def test_a_row_a_busy_road_crosses_keeps_its_longer_side() -> None:
@@ -967,6 +969,20 @@ class TestCalmRoads:
         got = calm_runs(staging)
         assert got[1] == got[2] == got[3] and got[1] == pytest.approx(1500, abs=30)
         assert got[4] == pytest.approx(300, abs=20), "an isolated stub is its own"
+
+    def test_a_lone_sub_metre_named_trail_is_a_run_of_one_metre_not_zero(
+        self, segment_schemas
+    ) -> None:
+        """The paths' side of the 2026-10-08 failure: a 0.4 m named trail with no other
+        path within CALM_PATH_GAP_M is a network of its own, and its run and its named
+        run both round to 0, which VALIDATE reads as "not derived"."""
+        _live, staging = segment_schemas
+        calm_piece(staging, 1, "Community Center Trail", 0, 0.4, path=True, trail_run=0)
+        calm_piece(staging, 2, "Community Center Trail", 5000, 0.4, path=True)  # no named run
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging) == {1: 1, 2: 1}
+        summary = trail_routes.calm_run_summary(staging, (), 400, 3219)
+        assert summary.unset_named == 0
 
     def test_a_path_keeps_its_named_run_if_that_is_longer(self, segment_schemas) -> None:
         # trail_run_m chains by name across 400 m, which the network's 30 m does not.
