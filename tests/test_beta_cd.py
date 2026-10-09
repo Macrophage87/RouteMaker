@@ -509,7 +509,17 @@ echo "smoke-new $*" >> "$STUB_LOG"
 echo "FAIL  a route: expected 200, got 500"
 exit 1
 """
-STUB_CHECKER = """print("beta compose: ok")
+STUB_CHECKER = """import os, sys
+# STUB_GATE_FAIL=<a TAG>: the compose gate fails while .env's TAG is that one (and only then, so
+# the rollback's gate on the previous release still passes)
+tag = ""
+for line in open(sys.argv[sys.argv.index("--env-file") + 1]):
+    if line.startswith("TAG="):
+        tag = line.strip()[4:]
+if tag and tag == os.environ.get("STUB_GATE_FAIL"):
+    print("beta compose: FAILED (stub)")
+    sys.exit(1)
+print("beta compose: ok")
 """
 STUB_DOCKER = """#!/bin/sh
 # a stand-in for docker: records its arguments. `run` acts out the three containers the agent
@@ -1356,10 +1366,15 @@ def test_pause_says_when_a_pass_is_running_and_wait_waits_for_it(beta: Beta) -> 
     finally:
         holder.kill()
         holder.wait()
-    holder = _hold_the_lock(beta, "1")
+    holder = _hold_the_lock(beta, "3")
     try:
+        started = time.monotonic()
         done = beta.agent("pause", "--wait", "shipping", "by", "hand")
+        waited = time.monotonic() - started
         assert done.returncode == 0 and "it ended" in done.stdout
+        assert "it is safe to work by hand" in done.stdout
+        # it really waited for the lock: the holder had about 3 s left when pause started
+        assert waited >= 2.0, waited
     finally:
         holder.wait()
     assert (beta.cd / "PAUSED").read_text().split(" ", 1)[1] == "shipping by hand\n"
@@ -1420,3 +1435,174 @@ def test_status_shows_disk_images_and_kept_databases(beta: Beta) -> None:
     out = beta.agent("status", STUB_DOCKER_ROOT=str(beta.tmp)).stdout
     for needle in ("disk free:", "api images:", "kept dbs:", "node_modules:"):
         assert needle in out, needle
+
+
+# --- revision 4: the compose gate failing, each stop signal, pause and mark-deployed over a
+# half-done deploy, a record cut off part-way, and the report link ---
+
+
+def test_a_docs_only_release_whose_compose_gate_fails_is_not_recorded(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"docs/NOTES.md": "x\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_GATE_FAIL=sha[:12])
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "FAILED: the compose gate" in done.stdout
+    assert "rolled-back" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
+    assert (beta.cd / "deployed-sha").read_text().strip() == beta.v1
+    assert beta.head() == beta.v1
+    assert f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+    assert "stop api worker" not in beta.calls()
+    assert (beta.cd / "failed" / "v0.2.0").exists()
+    assert not (beta.cd / "in-progress").exists()
+
+
+def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent(
+        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_GATE_FAIL=sha[:12]
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "FAILED: the compose gate" in done.stdout
+    assert "rolled-back" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
+    assert beta.head() == beta.v1
+    assert f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+    calls = beta.calls()
+    assert "migrate --noinput" not in calls
+    _order(calls, "stop api worker", "up -d api worker", "smoke")
+    assert (beta.cd / "failed" / "v0.2.0").exists()
+
+
+@pytest.mark.parametrize(("sig", "rc"), [("TERM", 143), ("INT", 130), ("HUP", 129)])
+def test_each_stop_signal_leaves_an_interrupted_record(beta: Beta, sig: str, rc: int) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+    done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE=sig, **run)
+    assert done.returncode == rc, done.stdout + done.stderr
+    assert "interrupted" in beta.status() and f"(SIG{sig})" in beta.status()
+    assert f" SIG{sig}\n" in (beta.cd / "in-progress").read_text()
+
+
+def _ship_v2_by_hand(beta: Beta, build: str) -> str:
+    """v0.2.0 needs the owner (deploy/), so it is held; then it is shipped by hand."""
+    sha = beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
+    beta.agent("run")
+    assert (beta.cd / "hold" / "v0.2.0").exists()
+    git(beta.src, "checkout", "-q", "--detach", sha)
+    env = (beta.src / ".env").read_text().replace(beta.v1[:12], sha[:12])
+    (beta.src / ".env").write_text(env)
+    (beta.data / "frontend" / "beta-build.txt").write_text(build)
+    return sha
+
+
+def _half_done(beta: Beta, sha: str, steps: str = "stopped,image") -> None:
+    (beta.cd / "in-progress").write_text(
+        f"tag=v0.2.0\nnew={sha}\nold={beta.v1}\nold_tag=v0.1.0\nsteps={steps}\npid=1\n"
+        "interrupted=20261009T000000Z SIGTERM\n"
+    )
+
+
+def test_mark_deployed_with_a_live_link_that_is_not_plain_https_warns_and_keeps_the_old(
+    beta: Beta,
+) -> None:
+    (beta.cd / "report-url").write_text("https://example.invalid/old\n")
+    _ship_v2_by_hand(beta, "VITE_BETA=1\nVITE_BETA_REPORT_URL=http://x\ngit=x\n")
+    done = beta.agent("mark-deployed", "v0.2.0")
+    assert done.returncode == 0, done.stderr
+    assert "WARNING" in done.stderr
+    assert (beta.cd / "report-url").read_text().strip() == "https://example.invalid/old"
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
+
+
+def test_mark_deployed_keeps_the_recorded_link_when_the_build_names_none(beta: Beta) -> None:
+    (beta.cd / "report-url").write_text("https://example.invalid/old\n")
+    _ship_v2_by_hand(beta, "VITE_BETA=1\ngit=x\n")
+    done = beta.agent("mark-deployed", "v0.2.0")
+    assert done.returncode == 0, done.stderr
+    assert "kept" in done.stdout
+    assert (beta.cd / "report-url").read_text().strip() == "https://example.invalid/old"
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
+
+
+def test_mark_deployed_over_a_half_done_deploy_needs_force(beta: Beta) -> None:
+    sha = _ship_v2_by_hand(beta, "VITE_BETA=1\nVITE_BETA_REPORT_URL=\ngit=x\n")
+    _half_done(beta, sha)
+    done = beta.agent("mark-deployed", "v0.2.0")
+    assert done.returncode == 2 and "half done" in done.stderr, done.stdout + done.stderr
+    assert "--force" in done.stderr
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
+    assert (beta.cd / "in-progress").exists()
+    done = beta.agent("mark-deployed", "--force", "v0.2.0")
+    assert done.returncode == 0, done.stderr
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
+    assert not (beta.cd / "in-progress").exists()
+
+
+def test_mark_deployed_over_a_record_that_touched_nothing_needs_no_force(beta: Beta) -> None:
+    sha = _ship_v2_by_hand(beta, "VITE_BETA=1\nVITE_BETA_REPORT_URL=\ngit=x\n")
+    _half_done(beta, sha, steps="")
+    done = beta.agent("mark-deployed", "v0.2.0")
+    assert done.returncode == 0, done.stderr
+    assert not (beta.cd / "in-progress").exists()
+
+
+def test_pause_over_a_half_done_deploy_says_it_is_not_safe_and_status_says_paused(
+    beta: Beta,
+) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    _half_done(beta, sha)
+    done = beta.agent("pause", "shipping")
+    assert done.returncode == 0, done.stderr
+    assert "IN PROGRESS" in done.stdout and "NOT yet safe" in done.stdout
+    assert "it is safe to work by hand" not in done.stdout
+    assert "auto-release.sh resume, then auto-release.sh run" in done.stdout
+    assert "mark-deployed --force" in done.stdout
+    status = beta.agent("status").stdout
+    assert "IN PROGRESS" in status and "PAUSED, so nothing rolls it back" in status
+    assert "the next pass rolls it back" not in status
+    # pause --wait over a pass that ends and leaves the record says the same
+    holder = _hold_the_lock(beta, "1")
+    try:
+        done = beta.agent("pause", "--wait", "shipping")
+        assert "it ended" in done.stdout and "NOT yet safe" in done.stdout
+    finally:
+        holder.wait()
+    # resumed, the next pass rolls it back as before
+    beta.agent("resume")
+    assert "the next pass rolls it back" in beta.agent("status").stdout
+
+
+def test_pause_over_a_record_that_touched_nothing_is_safe(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    _half_done(beta, sha, steps="")
+    done = beta.agent("pause", "shipping")
+    assert "it is safe to work by hand" in done.stdout and "NOT yet safe" not in done.stdout
+
+
+def test_a_pass_stopped_inside_the_record_finishes_it(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    # Live and smoke-tested; commit_release had moved deployed-sha but not deployed-tag.
+    git(beta.src, "fetch", "-q", "--tags", "origin")
+    git(beta.src, "checkout", "-q", "--detach", sha)
+    env = (beta.src / ".env").read_text().replace(beta.v1[:12], sha[:12])
+    (beta.src / ".env").write_text(env)
+    (beta.cd / "deployed-sha").write_text(sha + "\n")
+    _half_done(beta, sha, steps="stopped,image,snapshot,index_saved,checkout,tag_set,started")
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "recorded part-way" in done.stdout
+    assert (beta.cd / "deployed-tag").read_text().strip() == "v0.2.0"
+    assert (beta.cd / "previous-tag").read_text().strip() == "v0.1.0"
+    assert not (beta.cd / "in-progress").exists()
+    assert "up-to-date: v0.2.0" in beta.status()
+    assert "stop api worker" not in beta.calls()
+
+
+def test_prune_drops_a_half_written_dump(beta: Beta) -> None:
+    backups = beta.cd / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    (backups / "pre-release-20261009T000000Z.dump.part").write_text("partial")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    assert not list(backups.glob("*.part"))

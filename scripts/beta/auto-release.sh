@@ -11,17 +11,22 @@
 #   auto-release.sh uninstall         stop and remove the timer and units (keeps $RM_STATE/cd)
 #   auto-release.sh pause [--wait] [REASON] | resume
 #                                     pause: no pass starts a deploy until resume; it says if a pass
-#                                     is running now, and --wait waits for that pass to end
-#   auto-release.sh mark-deployed vX.Y.Z   after a release shipped by hand (the runbook), or to
-#                                     clear a BROKEN state once the owner has looked
+#                                     is running now, and --wait waits for that pass to end; it says
+#                                     if a stopped pass left a deploy half done (IN PROGRESS), which
+#                                     nothing rolls back while paused
+#   auto-release.sh mark-deployed [--force] vX.Y.Z   after a release shipped by hand (the runbook),
+#                                     or to clear a BROKEN state once the owner has looked; --force
+#                                     also drops a half-done deploy's record, once the owner has
+#                                     checked the stack by hand
 #   auto-release.sh retry vX.Y.Z      allow a held or failed tag to be tried again
 #   auto-release.sh hold vX.Y.Z [REASON]   keep a tag from being deployed (after a rollback by hand)
 #   auto-release.sh set-report-url URL|none
 #
 # One pass (`run`), in order; anything but a deploy only reports and changes nothing:
 #   1. paused, BROKEN, a setting that makes no sense, or another pass still running (flock):
-#      nothing to do. A deploy that a stopped pass left half done ($RM_STATE/cd/in-progress) is
-#      rolled back first, and its tag marked failed.
+#      nothing to do (while paused, not even the recovery below). Then a deploy that a stopped pass
+#      left half done ($RM_STATE/cd/in-progress) is rolled back, if it had touched the stack, and
+#      its tag marked failed; if it had not, the record is dropped and the pass goes on.
 #   2. the checkout must be clean, at the deployed tag's commit, with .env's TAG matching it, and
 #      its origin https://github.com/$RM_CD_GITHUB_REPO, the repository whose CI is read.
 #   3. `git fetch --tags`; the highest strict vX.Y.Z tag newer than the deployed one.
@@ -31,8 +36,9 @@
 #      a rate limit is tried again next pass).
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
 #      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
-#      release with nothing for the server (documentation, CI) is only recorded: the checkout and
-#      TAG move (the running api image is tagged with it), nothing is stopped.
+#      release with nothing for the server (documentation, CI) is only recorded, if the running api
+#      image is on the host (if not, it is a full deploy): the checkout and TAG move (the running
+#      api image is tagged with it), nothing is stopped.
 #   6. "A new release sha" from the runbook without sudo, inside RM_CD_WINDOW if one is set: the
 #      tag's tree is exported (`git archive`); then the api and worker stop, and the api image (3
 #      tries; skipped if it is already on the host) and, if frontend/ changed, the front end are
@@ -40,9 +46,11 @@
 #      is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
 #      (index.html, beta-build.txt) are saved, the checkout moves to the tag, TAG is set in .env,
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
-#      (index.html last), the api and worker start, collectstatic, the four routers restart if a
-#      valhalla/*.json they read changed (never for valhalla-offroad.json: that router does not run
-#      on the beta), and the local smoke tests run. The release is then recorded as deployed. Last,
+#      (index.html last), the api and worker start, photon and the four routers are recreated if a
+#      compose file changed, the four routers restart if a valhalla/*.json they read changed (never
+#      for valhalla-offroad.json: that router does not run on the beta), /healthz is waited for,
+#      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
+#      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
 #      a pre-draw that fails is a warning, not a rollback.
 #   7. any failure in 6 before the release is recorded rolls back automatically (cd_logic.py
@@ -330,7 +338,7 @@ predraw() { # the step 8 pre-draw, waited for here (a systemd pass ends by killi
 # $cd_dir/in-progress: written when a deploy starts and before each of its steps runs, removed once
 # the release is recorded or rolled back. A pass stopped mid-deploy leaves it, and the next pass
 # rolls that deploy back (recover) instead of reporting the moved checkout as drift.
-done_steps=""; deploy_tag=""; deploy_new=""; deploy_old=""; deploy_old_tag=""; predraw_warning=""
+done_steps=""; deploy_tag=""; deploy_new=""; deploy_old=""; deploy_old_tag=""; predraw_warning=""; predraw_started=0
 write_progress() {
 	printf 'tag=%s\nnew=%s\nold=%s\nold_tag=%s\nsteps=%s\npid=%s\n' "$deploy_tag" "$deploy_new" "$deploy_old" "$deploy_old_tag" "$done_steps" "$$" >"$progress.new" &&
 		mv -f "$progress.new" "$progress"
@@ -358,15 +366,40 @@ commit_release() { # tag sha
 		mv -f "$cd_dir/deployed-tag.new" "$cd_dir/deployed-tag" || return 1
 	rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"
 }
+# Who rolls back a deploy a stopped pass left half done: the next pass, unless the agent is paused.
+rolled_back_when() {
+	if [ -f "$cd_dir/PAUSED" ]; then
+		echo "the agent is PAUSED, so nothing rolls it back until auto-release.sh resume (then the next pass does), or the owner puts it right by hand and runs mark-deployed --force <tag>"
+	else
+		echo "the next pass rolls it back"
+	fi
+}
+# What a leftover $progress means when no pass holds the lock: none; harmless (it had touched
+# nothing, or the release had been recorded); or half-done.
+leftover() {
+	[ -f "$progress" ] || { echo none; return; }
+	if [ -z "$(kv steps "$progress")" ] || { [ "$(kv new "$progress")" = "$(deployed_sha)" ] && [ "$(kv tag "$progress")" = "$(deployed_tag)" ]; }; then
+		echo harmless
+	else
+		echo half-done
+	fi
+}
+in_progress_line() {
+	echo "IN PROGRESS: left by a stopped pass: $(kv tag "$progress") after steps $(kv steps "$progress") $(kv interrupted "$progress"); $(rolled_back_when)"
+}
 # TERM, INT or HUP during a pass: systemd stopping the unit (TimeoutStartSec, a reboot, the user
 # manager ending at logout without linger), or ^C. The steps done stay in $progress for the next pass.
 on_signal() { # signal-name exit-code
 	trap - TERM INT HUP
 	if [ -f "$progress" ]; then
 		printf 'interrupted=%s SIG%s\n' "$(utc)" "$1" >>"$progress"
-		finish interrupted "${deploy_tag:-a deploy}: the pass was stopped (SIG$1) mid-deploy after steps ${done_steps:-none}; the next pass rolls it back ($progress)"
+		finish interrupted "${deploy_tag:-a deploy}: the pass was stopped (SIG$1) mid-deploy after steps ${done_steps:-none}; $(rolled_back_when) ($progress)"
 	elif [ -n "$deploy_tag" ] && [ "$(deployed_tag)" = "$deploy_tag" ]; then
-		finish deployed "$deploy_tag ($deploy_new), was $deploy_old_tag; WARNING: the pass was stopped (SIG$1) during the pre-draw: the tiles not yet drawn are drawn on request"
+		if [ "$predraw_started" = 1 ]; then
+			finish deployed "$deploy_tag ($deploy_new), was $deploy_old_tag; WARNING: the pass was stopped (SIG$1) during the pre-draw: the tiles not yet drawn are drawn on request"
+		else
+			finish deployed "$deploy_tag ($deploy_new), was $deploy_old_tag; the pass was stopped (SIG$1) after the release was recorded"
+		fi
 	fi
 	[ -z "$report" ] || rm -f "$report"
 	exit "$2"
@@ -514,6 +547,7 @@ deploy() { # tag new-sha gate-file
 		# new tiles are drawn now (step 8). A pre-draw that fails or runs out of budget is a
 		# warning, not a rollback: what is left is drawn on request.
 		say "step: pre-draw the tiles (a tile FORMAT_VERSION changed)"
+		predraw_started=1
 		if ! predraw; then
 			predraw_warning="the pre-draw did not finish cleanly (tiles not yet drawn are drawn on request)"
 			say "WARNING: the pre-draw did not finish cleanly; the release is live and tiles not yet drawn are drawn on request. Re-run step 8 of docs/BETA-RUNBOOK.md by hand if you want them all warm."
@@ -524,6 +558,9 @@ deploy() { # tag new-sha gate-file
 
 prune() {
 	local pattern
+	# A dump a stopped snapshot left half written (receive-data.sh writes <name>.part, then renames):
+	# never restorable, and only a pass holding the lock writes one.
+	rm -f "$cd_dir/backups"/*.dump.part
 	for pattern in 'pre-release-*.dump' 'pre-rollback-*.dump' 'frontend.pre-release-*'; do
 		# shellcheck disable=SC2012
 		ls -1dt "$cd_dir/backups"/$pattern 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do rm -rf -- "$f"; done
@@ -541,9 +578,19 @@ recover() {
 	deploy_tag=$(kv tag "$progress"); deploy_new=$(kv new "$progress"); deploy_old=$(kv old "$progress")
 	deploy_old_tag=$(kv old_tag "$progress"); steps=$(kv steps "$progress")
 	say "found $progress: a pass was stopped mid-deploy of ${deploy_tag:-?} after steps: ${steps:-none} ($(kv interrupted "$progress"))"
+	# Stopped inside commit_release, between its renames: deployed-sha moves to a new commit only
+	# after the smoke tests passed, so that release is live; finish the record.
+	if [ -n "$deploy_old" ] && [ -n "$deploy_new" ] && [ "$deploy_new" != "$deploy_old" ] && [ "$deploy_new" = "$(deployed_sha)" ] &&
+		[ "$deploy_tag" != "$(deployed_tag)" ] && is_semver "$deploy_tag"; then
+		{ printf '%s\n' "$deploy_old_tag" >"$cd_dir/previous-tag" && printf '%s\n' "$deploy_tag" >"$cd_dir/deployed-tag.new" &&
+			mv -f "$cd_dir/deployed-tag.new" "$cd_dir/deployed-tag"; } || { finish error "could not finish recording $deploy_tag in $cd_dir"; return 1; }
+		say "it had been recorded part-way (deployed-sha written, deployed-tag not): the record is finished"
+	fi
 	if [ -n "$deploy_new" ] && [ "$deploy_new" = "$(deployed_sha)" ] && [ "$deploy_tag" = "$(deployed_tag)" ]; then
 		rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"
 		say "it had already been recorded as deployed"
+		# Not this pass's deploy: a signal later in the pass must not report it as its own.
+		deploy_tag=""
 		return 0
 	fi
 	if ! is_semver "$deploy_tag" || [[ ! $deploy_old =~ ^[0-9a-f]{40}$ ]] || [ "$deploy_old" != "$(deployed_sha)" ]; then
@@ -730,7 +777,7 @@ cmd_status() {
 		if pass_running; then
 			echo "deploying:  $(kv tag "$progress") now (steps so far: $(kv steps "$progress"))"
 		else
-			echo "IN PROGRESS: left by a stopped pass: $(kv tag "$progress") after steps $(kv steps "$progress") $(kv interrupted "$progress"); the next pass rolls it back"
+			in_progress_line
 		fi
 	elif pass_running; then
 		echo "running:    a pass is running now"
@@ -762,7 +809,7 @@ cmd_pause() { # [--wait] reason...
 	[ "${1:-}" != --wait ] || { wait=1; shift; }
 	mkdir -p "$cd_dir"; printf '%s %s\n' "$(utc)" "${*:-paused by hand}" >"$cd_dir/PAUSED"
 	echo "paused: no pass starts a deploy until auto-release.sh resume"
-	pass_running || { echo "no pass is running now: it is safe to work by hand"; return 0; }
+	pass_running || { echo "no pass is running now"; safe_by_hand; return 0; }
 	if [ "$wait" = 0 ]; then
 		echo "WARNING: a pass is running now ($(cat "$cd_dir/status" 2>/dev/null || echo 'see status')); pause does not stop it. Wait until it ends before working by hand: auto-release.sh pause --wait waits for it." >&2
 		return 0
@@ -771,7 +818,18 @@ cmd_pause() { # [--wait] reason...
 	exec 9>>"$cd_dir/lock"
 	flock 9 || die "could not wait for the running pass"
 	flock -u 9
-	echo "it ended: $(cat "$cd_dir/status" 2>/dev/null); it is safe to work by hand"
+	echo "it ended: $(cat "$cd_dir/status" 2>/dev/null)"
+	safe_by_hand
+}
+# After pause: safe to work by hand, unless a stopped pass left a deploy half done (which a paused
+# agent does not roll back).
+safe_by_hand() {
+	if [ "$(leftover)" != half-done ]; then
+		echo "it is safe to work by hand"
+		return 0
+	fi
+	in_progress_line
+	echo "It is NOT yet safe to work by hand: the api and worker may be stopped and the checkout part-way to $(kv tag "$progress") (auto-release.sh status shows where). Either resume and let one pass roll it back (auto-release.sh resume, then auto-release.sh run, then pause again), or put it right by hand and record what is running with auto-release.sh mark-deployed --force <tag>."
 }
 cmd_resume() { rm -f "$cd_dir/PAUSED"; echo "resumed"; }
 
@@ -788,11 +846,23 @@ verify_at_tag() { # tag: the checkout is clean at the tag's commit with TAG set 
 record_deployed() { # tag sha
 	printf '%s\n' "$1" >"$cd_dir/deployed-tag"; printf '%s\n' "$2" >"$cd_dir/deployed-sha"
 }
-cmd_mark_deployed() {
-	local tag=${1:-} sha url
+cmd_mark_deployed() { # [--force] tag
+	local tag="" sha url force=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--force) force=1 ;;
+			*) [ -z "$tag" ] || die "mark-deployed takes one tag"; tag=$1 ;;
+		esac
+		shift
+	done
 	[ -n "$tag" ] || die "mark-deployed needs a tag"
 	sha=$(verify_at_tag "$tag") || exit 2
 	exec 9>"$cd_dir/lock"; flock -n 9 || die "a pass is running; try again when it ends"
+	# A half-done deploy's record is the next pass's rollback plan: dropping it is the owner's call
+	# (--force; a BROKEN state already means the owner has looked).
+	if [ "$force" = 0 ] && [ ! -f "$cd_dir/BROKEN" ] && [ "$(leftover)" = half-done ]; then
+		die "a stopped pass left a deploy of $(kv tag "$progress") half done (steps $(kv steps "$progress"); $progress). Let a pass roll it back (resume, then run), or put it right by hand, check auto-release.sh status, and run mark-deployed --force $tag"
+	fi
 	record_deployed "$tag" "$sha"
 	rm -f "$cd_dir/hold/$tag" "$cd_dir/failed/$tag" "$cd_dir/BROKEN" "$cd_dir/run-snapshot" "$cd_dir/run-index" "$progress"
 	printf '%s marked-deployed: %s (%s) by hand\n' "$(utc)" "$tag" "$sha" | tee -a "$cd_dir/agent.log" >"$cd_dir/status"
@@ -800,7 +870,10 @@ cmd_mark_deployed() {
 	# A front end shipped by hand may carry another report link: the live one is the one CD keeps.
 	if [ -f "$RM_DATA/frontend/beta-build.txt" ]; then
 		url=$(sed -n 's/^VITE_BETA_REPORT_URL=//p' "$RM_DATA/frontend/beta-build.txt" | head -n 1)
-		if [ ! -f "$cd_dir/report-url" ] || [ "$url" != "$(report_url)" ]; then
+		# A build record without the line (an older one, or made by hand) says nothing: the link stays.
+		if ! grep -q '^VITE_BETA_REPORT_URL=' "$RM_DATA/frontend/beta-build.txt"; then
+			echo "report link: $(r=$(report_url); echo "${r:-none}") (kept: $RM_DATA/frontend/beta-build.txt names none)"
+		elif [ ! -f "$cd_dir/report-url" ] || [ "$url" != "$(report_url)" ]; then
 			if check_report_url "$url"; then
 				cmd_set_report_url "${url:-none}" >/dev/null
 				echo "report link: ${url:-none} (read from $RM_DATA/frontend/beta-build.txt, the live front end)"
