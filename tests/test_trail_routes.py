@@ -788,6 +788,19 @@ def test_runs_join_at_a_calm_node_and_end_at_a_busy_one() -> None:
     assert calm_roads.runs_of(stressful) == {1: 500, 2: 700}
 
 
+def test_a_sub_metre_piece_on_its_own_is_a_run_of_one_metre_not_zero() -> None:
+    """0 means "not derived" to VALIDATE (`calm_run_summary`), so no derived run may be 0.
+    The 2026-10-08 rebuild's "Community Center Trail" had a 0.45 m two-point piece that
+    met nothing, and rounding made it 0."""
+    stub = [junction(1, 30, 0.0, fwd=90.0), junction(1, 31, 0.45, back=270.0)]
+    assert calm_roads.runs_of(stub) == {1: 1}
+    # Both ends at one point: still 1.
+    point = [junction(2, 40, 5.0, fwd=90.0), junction(2, 41, 5.0, back=270.0)]
+    assert calm_roads.runs_of(point) == {2: 1}
+    # And a longer run is rounded as before.
+    assert calm_roads.runs_of([junction(3, 50, 0.0), junction(3, 51, 1.6)]) == {3: 2}
+
+
 def test_a_row_a_busy_road_crosses_keeps_its_longer_side() -> None:
     # Row 1 is crossed at 300 m (node 21, a busy road's vertex): its sides are 300 and 900 m.
     rows = [
