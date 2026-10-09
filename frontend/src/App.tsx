@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
-import { ACCESS_HELP, ACCESS_LABEL, accessModeSaid, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { ACCESS_HELP, ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -282,6 +282,7 @@ export function App() {
   const [accessMode, setAccessMode] = useState(() => readAccessMode());
   const toolsToggleRef = useRef<HTMLButtonElement>(null);
   const focusToolsNext = useRef(false);
+  const focusAtPress = useRef<Element | null>(null);
   const toolsCrosshair = useCallback((on: boolean) => setCrosshair((c) => (c.button === on ? c : { ...c, button: on })), []);
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
@@ -476,22 +477,29 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
-  // Turn accessibility mode on or off, say so, and keep it. From the page's first button, turning it on puts
-  // the focus on Map tools (focusTools); off, the focus stays on the link, which is always there.
+  // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
+  // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
+  // switch pressed, which is always on the page.
   const toggleAccessMode = useCallback(
     (focusTools: boolean) => {
-      const next = !accessMode;
-      writeAccessMode(next);
-      focusToolsNext.current = next && focusTools;
-      setAccessMode(next);
-      announce(accessModeSaid(next));
+      const step = accessModeToggle(accessMode, focusTools);
+      writeAccessMode(step.next);
+      focusToolsNext.current = step.focusTools;
+      focusAtPress.current = document.activeElement;
+      setAccessMode(step.next);
+      announce(step.said);
     },
     [accessMode, announce],
   );
-  useEffect(() => {
-    if (accessMode && focusToolsNext.current) toolsToggleRef.current?.focus();
+  // Map tools tells App when it is on the page (its onShown). That is the same commit as the press once the map
+  // is built, or later while the map is still loading; the move waits for it, and is dropped if the rider has
+  // moved on in the meantime (the focus is no longer where it was at the press; the a11y review's N5).
+  const toolsShown = useCallback(() => {
+    if (!focusToolsNext.current) return;
     focusToolsNext.current = false;
-  }, [accessMode]);
+    const now = document.activeElement;
+    if (!now || now === document.body || now === focusAtPress.current || now.classList.contains("access-link")) toolsToggleRef.current?.focus();
+  }, []);
 
   // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
@@ -1290,6 +1298,7 @@ export function App() {
             addDisabled={points.length >= MAX_POINTS}
             onRoadInfo={roadInfoAtCentre}
             onCrosshair={toolsCrosshair}
+            onShown={toolsShown}
           />
           ) : null
         }

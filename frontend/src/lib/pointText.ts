@@ -6,7 +6,7 @@
  * every later one a stop, and there is no end. Mass Ride has no loop, so its
  * hints never mention the toggle.
  */
-import { mapToolsWays } from "./accessMode.ts";
+import { ACCESS_SENTENCE_WHERE, mapToolsWays } from "./accessMode.ts";
 import { LOOP_FIRST_HINT, LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
@@ -145,13 +145,16 @@ export function editingTips(accessMode = false): string {
   );
 }
 
-/** The hint with the start alone, with the keyboard's way to place the next point. */
+/**
+ * The hint with the start alone, with the keyboard's way to place the next point. With accessibility
+ * mode off, the owner's sentence (455a(4)) is its own sentence and says where the switch is.
+ */
 export function loneStartHint(preset: PresetId, loop: boolean, accessMode = false): string {
-  const keys = accessMode ? 'or use "Add point at map center" in Map tools' : "or, for keyboard or screen reader use, turn on accessibility mode";
-  if (loop) return `Now click the map to add a stop, ${keys}. The ride comes back to the start.`;
-  if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
+  const keys = accessMode ? ', or use "Add point at map center" in Map tools.' : `. ${ACCESS_SENTENCE_WHERE}`;
+  if (loop) return `Now click the map to add a stop${keys} The ride comes back to the start.`;
+  if (preset === "mass-ride") return `Now click the map where you want to finish${keys}`;
   return (
-    `Now click the map where you want to finish, ${keys}. To finish back at the start instead,` +
+    `Now click the map where you want to finish${keys} To finish back at the start instead,` +
     ` check "${LOOP_LABEL}" ${TOGGLE_PLACE}.`
   );
 }

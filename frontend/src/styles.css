@@ -145,14 +145,18 @@ body {
   box-shadow: 0 0 0 2px var(--map-focus-inner);
 }
 
-/* The skip link (lib/skipLink.ts) and, before it, the accessibility mode link (lib/accessMode.ts; 455):
-   the page's first two stops, each shown while focused. */
+/* The skip link (lib/skipLink.ts) and, before it, the accessibility mode switch (lib/accessMode.ts; 455):
+   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons. */
 .access-link,
 .skip-link {
   position: absolute;
   top: 8px;
   left: 8px;
   z-index: 10;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 12px;
   border-radius: 6px;
   background: var(--bg);

@@ -17,6 +17,7 @@ const mapView = read("./MapView.tsx");
 const app = read("./App.tsx");
 const dialsPanel = read("./DialsPanel.tsx");
 const list = read("./IntersectionList.tsx");
+const mapTools = read("./MapTools.tsx");
 
 /** The body of the first `@media (query) { ... }`, by matching braces. */
 function mediaBody(source: string, query: string): string {
@@ -257,10 +258,22 @@ test("App: Map tools is rendered only in accessibility mode; the toggle is in Mo
   assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{ACCESS_LABEL\}/);
 });
 
-test("App: turning the mode on or off is said in the live region, kept, and focuses Map tools from the link (455)", () => {
+test("App: a press goes through accessModeToggle (tested in accessMode.test.ts): kept, said, and the focus flag (455)", () => {
   const fn = app.slice(app.indexOf("const toggleAccessMode"), app.indexOf("const toggleAccessMode") + 500);
-  assert.match(fn, /writeAccessMode\(next\)/);
-  assert.match(fn, /announce\(accessModeSaid\(next\)\)/);
-  assert.match(fn, /focusToolsNext\.current = next && focusTools/);
-  assert.match(app, /if \(accessMode && focusToolsNext\.current\) toolsToggleRef\.current\?\.focus\(\)/);
+  assert.match(fn, /const step = accessModeToggle\(accessMode, focusTools\)/);
+  assert.match(fn, /writeAccessMode\(step\.next\)/);
+  assert.match(fn, /setAccessMode\(step\.next\)/);
+  assert.match(fn, /announce\(step\.said\)/);
+  assert.match(fn, /focusToolsNext\.current = step\.focusTools/);
+  // The move waits for Map tools to be on the page (its onShown), which may be after the map loads (the a11y review's N5).
+  assert.match(app, /onShown=\{toolsShown\}/);
+  const shown = app.slice(app.indexOf("const toolsShown"), app.indexOf("const toolsShown") + 500);
+  assert.match(shown, /if \(!focusToolsNext\.current\) return;\s*focusToolsNext\.current = false;/);
+  assert.match(shown, /toolsToggleRef\.current\?\.focus\(\)/);
+  assert.match(mapTools, /useEffect\(\(\) => onShown\?\.\(\), \[\]\)/);
+});
+
+test("the page's first two stops, the switch and the skip link, are at least 44 px tall (the a11y review's N3)", () => {
+  assert.match(declared(".access-link"), /min-height:\s*44px/);
+  assert.match(declared(".skip-link"), /min-height:\s*44px/);
 });

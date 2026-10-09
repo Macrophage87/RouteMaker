@@ -1,6 +1,7 @@
 /**
  * "Map tools" (OWNER-DECISIONS 450; on the page only in accessibility mode, 455: App renders it
- * only then, and the mode's link moves the focus here when it turns the mode on): one small visible button with the map's zoom buttons
+ * only then, and the mode's switch, the page's first button, moves the focus here when it turns
+ * the mode on): one small visible button with the map's zoom buttons
  * that opens a short disclosure holding the two map-center actions, "Add point at map
  * center" and "Road info at map center". They were two wide buttons in the planner, which
  * pointer riders rarely need; they stay the keyboard's and a screen reader's way to add a
@@ -27,9 +28,11 @@ interface Props {
   onCrosshair: (on: boolean) => void;
   /** The Map tools button, for App to give the focus to when accessibility mode is turned on. */
   toggleRef?: RefObject<HTMLButtonElement | null>;
+  /** Called once Map tools is on the page (the map may still be loading when the mode is turned on). */
+  onShown?: () => void;
 }
 
-export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, toggleRef: outerRef }: Props) {
+export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, toggleRef: outerRef, onShown }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const ownRef = useRef<HTMLButtonElement>(null);
@@ -41,6 +44,8 @@ export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, tog
   }, [open, onCrosshair]);
   // Turned off with it open: the crosshair goes with it.
   useEffect(() => () => onCrosshair(false), [onCrosshair]);
+  // On the page now: App may be waiting to give it the focus. Once, on mount (so no deps).
+  useEffect(() => onShown?.(), []);
 
   // A press anywhere else closes it, as the focus leaving it does (onBlur below).
   useEffect(() => {

@@ -120,7 +120,7 @@ export function infoHelp(accessMode: boolean): string {
   return (
     "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
     `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}. ` +
-    `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${MAP_TOOLS_LABEL} works in either.`
+    `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`
   );
 }
 export const INFO_HELP = infoHelp(true);

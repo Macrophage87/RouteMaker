@@ -8,7 +8,8 @@
  * markers are where a sighted keyboard rider sees the junctions, and a card
  * opened from one gives the focus back to it; a screen-reader rider has the
  * list in the summary, which says the same, and both get past the map in one
- * key press. The link is the first stop and shows when it has the focus.
+ * key press. The link is the page's second stop, after accessibility mode's switch
+ * (OWNER-DECISIONS 455a(1)), and shows when it has the focus.
  *
  * It does not change the address: the plan lives in the fragment (planHash.ts),
  * and "#route-planner" there would be read as a plan. So the link moves the
