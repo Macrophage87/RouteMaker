@@ -182,7 +182,8 @@ class TestCrossingAvoidance:
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "b"
         assert info["rounds"] == 1 and info["limited"] is None
-        # The two red events (2,900 ft and up since 468; they were 2,000); an orange one is not worth a second route.
+        # The two red events (2,900 ft and up since 468; they were 2,000); an orange
+        # one is not worth a second route.
         assert len(world.requests[0]["exclude_locations"]) == 2
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
         assert "alternates" not in world.requests[0], "one route, not alternatives"
