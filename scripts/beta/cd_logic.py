@@ -124,6 +124,10 @@ STOP_PREFIXES: Sequence[tuple] = (
     ("docker/photon", "the Photon image changed"),
     ("docker/postgis", "the database image changed"),
 )
+# A path git would have to quote (a byte outside printable ASCII, a quote, a backslash) or one
+# with a character no file in the repository uses: the gate cannot be sure what it is, so it
+# stops (it errs closed). The repository's own paths use only these characters.
+PLAIN_PATH = re.compile(r"[A-Za-z0-9._/+@=,~-]+")
 # Paths that never affect the server (documentation, reports, CI): ignored entirely.
 INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/")
 INERT_SUFFIXES = (".md",)
@@ -247,6 +251,14 @@ def gate(
     for change in changes:
         paths.extend(change[1:])
     for path in sorted(set(paths)):
+        if not PLAIN_PATH.fullmatch(path):
+            # Before the inert test: an odd name under docs/ stops too.
+            result["changed_files"] += 1
+            reasons.append(
+                f"{_clean(path)}: a file name with a character the gate does not accept (a "
+                "space, a quote, a backslash, a control or non-ASCII character): check it by hand"
+            )
+            continue
         if path.startswith(INERT_PREFIXES) or path.endswith(INERT_SUFFIXES):
             continue
         result["changed_files"] += 1
@@ -315,11 +327,11 @@ def gate(
 # Deploy steps, in the order the agent runs them; it records each one as it starts it.
 STEPS = (
     "stopped",  # api and worker stopped
+    "image",  # the api image built or tagged (nothing to undo: the old one keeps its own tag)
     "snapshot",  # pre-release database dump written
-    "index_saved",  # the old index.html copied aside
+    "index_saved",  # the front end's top-level files (index.html, beta-build.txt) copied aside
     "checkout",  # the checkout moved to the new tag
     "tag_set",  # TAG= in .env set to the new release
-    "image",  # the api image built (nothing to undo: the old one keeps its own tag)
     "migrate",  # migrate started (the database may have moved forward)
     "frontend",  # front end install started (the index may be the new one)
     "started",  # api and worker started on the new image
@@ -372,7 +384,31 @@ def rollback_plan(done: Iterable[str]) -> list:
 
 
 def _git(repo: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, check=False)
+    # surrogateescape: a path that is not UTF-8 still reads (and then fails PLAIN_PATH: a stop).
+    return subprocess.run(
+        ["git", "-C", repo, *args],
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",
+        check=False,
+    )
+
+
+def parse_name_status_z(text: str) -> list:
+    """(status, path) tuples from `git diff -z --name-status --no-renames`: the fields are
+    NUL-terminated, a status then its path. Anything else is refused."""
+    fields = text.split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    if len(fields) % 2:
+        raise SystemExit("cd_logic: git diff -z gave an odd number of fields")
+    changes = []
+    for i in range(0, len(fields), 2):  # (zip's strict= needs Python 3.10; this runs on 3.8)
+        status, path = fields[i], fields[i + 1]
+        if not re.fullmatch(r"[ACDMTUX][0-9]{0,3}", status) or not path:
+            raise SystemExit(f"cd_logic: unexpected git diff entry {_clean(status)!r}")
+        changes.append((status, path))
+    return changes
 
 
 def git_gate(repo: str, old: str, new: str) -> dict:
@@ -380,17 +416,24 @@ def git_gate(repo: str, old: str, new: str) -> dict:
     for sha in (old, new):
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise SystemExit(f"cd_logic: not a full commit id: {sha!r}")
-    names = _git(repo, "diff", "--name-status", "--no-renames", old, new)
+    # -z: every path exactly as stored, NUL-terminated, never quoted or escaped by git (a quoted
+    # path would slip past every prefix test). --no-renames: one path per entry.
+    names = _git(repo, "diff", "-z", "--name-status", "--no-renames", old, new)
     if names.returncode != 0:
         raise SystemExit(f"cd_logic: git diff failed: {names.stderr.strip()}")
-    changes = [tuple(line.split("\t")) for line in names.stdout.splitlines() if line.strip()]
-    compose = _git(repo, "diff", "-U0", old, new, "--", *COMPOSE_FILES).stdout
+    changes = parse_name_status_z(names.stdout)
+    compose = _git(repo, "diff", "-U0", old, new, "--", *COMPOSE_FILES)
+    if compose.returncode != 0:
+        # Without the compose diff the image and DATA_ROOT stops cannot be checked: err closed.
+        raise SystemExit(
+            f"cd_logic: git diff of the compose files failed: {compose.stderr.strip()}"
+        )
 
     def show(side: str, path: str) -> Optional[str]:
         done = _git(repo, "show", f"{old if side == 'old' else new}:{path}")
         return done.stdout if done.returncode == 0 else None
 
-    return gate(changes, show, compose)
+    return gate(changes, show, compose.stdout)
 
 
 def _clean(text: str) -> str:
