@@ -1002,7 +1002,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the pre-release snapshot **only if a migration ran** (`restore-dump`, which keeps the database as
    it was beside it as `routemaker_before_<time>` for the owner to drop); `index.html` and `beta-build.txt` back only if
    the new front end was installed; start the api and worker; the routers again if they were
-   restarted; the step 8 pre-draw after a database restore; the smoke tests. The tag is then marked
+   restarted; the step 8 pre-draw after a database restore (a failure there is a warning); the smoke tests. The tag is then marked
    failed (`$RM_STATE/cd/failed/<tag>`) and not tried again until `retry <tag>`. A failure before the
    stop (exporting the tag's tree) changes nothing and marks the tag failed the same way. If the rollback itself fails,
    the agent marks itself BROKEN, stops making passes, and waits for the owner.
