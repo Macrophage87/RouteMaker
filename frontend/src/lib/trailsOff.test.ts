@@ -78,7 +78,7 @@ test("the label says what checked means, and the hint does not repeat it (OWNER-
 });
 
 test("the hint says in plain words what is left out", () => {
-  assert.match(TRAILS_OFF_HINT, /no bike paths, trails or stairs/);
+  assert.match(TRAILS_OFF_HINT, /^No bike paths, trails or stairs./);
   assert.match(TRAILS_OFF_HOW, /footway/);
   assert.match(TRAILS_OFF_HOW, /Chain Bridge/);
   assert.match(TRAILS_OFF_HOW, /one-way/);

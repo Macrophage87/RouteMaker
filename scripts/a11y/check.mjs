@@ -779,7 +779,7 @@ const federalFetched = (p) =>
 {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const sw = await axNode(p, ".trails-off input");
-  check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /no bike paths, trails or stairs/.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
+  check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
   const how = await p.eval("(() => { const d = document.querySelector('.trails-off details.how'); const s = d?.querySelector('summary'); const hidden = s?.querySelector('.visually-hidden'); return d ? { summary: s.textContent, shown: s.textContent.replace(hidden?.textContent ?? '', ''), open: d.open, said: /Chain Bridge/.test(d.textContent), tall: Math.round(s.getBoundingClientRect().height) } : null; })()");
   check("roads only: what is left out is under a closed \"How this works\" (read \": keep to roads\"), not in the description", how?.summary === "How this works: keep to roads" && how.shown === "How this works" && how.open === false && how.said === true && !/Chain Bridge/.test(sw?.description ?? ""), JSON.stringify(how));
   // The a11y review's SF1: `details.how summary` (24 px) used to beat `.panel summary` (44 px) here.
