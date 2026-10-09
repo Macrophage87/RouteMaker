@@ -1809,11 +1809,55 @@ async function saidInDialog(p, text) {
   check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
+// The page on how traffic-stress ratings work (OWNER-DECISIONS 461): a static page in public/, read
+// by screen reader users among the rest, and linked from the legend in the same tab.
+{
+  const p = await open();
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  await p.waitFor("!!document.querySelector('[aria-label=\"Traffic stress legend\"]')", 15000);
+  const link = await p.eval(`(() => { const a = document.querySelector('.stress-page-link a'); if (!a) return null;
+    return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="legend-heading"]') }; })()`);
+  const ax = await axNode(p, ".stress-page-link a");
+  check("stress page: the legend links to it in the same tab, named by its visible words first",
+    link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How ratings work (traffic stress)",
+    JSON.stringify({ link, ax }));
+  await p.close();
+}
+{
+  const p = await newPage(b, { width: 320, height: 800 });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/about/stress.html` });
+  await p.waitFor("document.readyState === 'complete' && !!document.querySelector('h1')", 20000);
+  const fit = await p.eval(`(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
+    font: parseFloat(getComputedStyle(document.body).fontSize),
+    tables: [...document.querySelectorAll('.table-wrap')].map((w) => ({ focusable: w.tabIndex === 0, named: !!w.getAttribute('aria-labelledby') })) }))()`);
+  check("stress page at 320 px: nothing spills sideways, the text is 16 px or more, and a wide table scrolls in a named, focusable region",
+    fit.scroll <= fit.width && fit.font >= 16 && fit.tables.length > 0 && fit.tables.every((t) => t.focusable && t.named), JSON.stringify(fit));
+  const shape = await p.eval(`(() => { const levels = [...document.querySelectorAll('h1, h2, h3, h4')].map((h) => Number(h.tagName[1]));
+    const ordered = levels.every((l, i) => i === 0 || l <= levels[i - 1] + 1);
+    const items = [...document.querySelectorAll('.levels li')];
+    return { h1: levels.filter((l) => l === 1).length, first: levels[0], ordered,
+      landmarks: ['header', 'nav', 'main', 'footer'].every((t) => !!document.querySelector(t)),
+      swatches: items.length === 5 && items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true' && /^(LTS [1-4]: \\S|Avoid)/.test(li.querySelector('strong')?.textContent ?? '')),
+      lang: document.documentElement.lang }; })()`);
+  check("stress page: one h1, headings in order, its landmarks, and every swatch hidden beside its level in words",
+    shape.h1 === 1 && shape.first === 1 && shape.ordered && shape.landmarks && shape.swatches && shape.lang === "en", JSON.stringify(shape));
+  await p.tab();
+  await sleep(100);
+  const skip = await p.eval(`(() => { const a = document.activeElement; const r = a?.getBoundingClientRect();
+    return { skip: a?.classList.contains('skip'), visible: !!r && r.left >= 0 && r.width > 0 }; })()`);
+  await p.key("Enter", "Enter", 13);
+  await sleep(100);
+  const landed = await p.eval("location.hash");
+  check("stress page: the first Tab stop is a skip link that shows and goes to the content", skip.skip && skip.visible && landed === "#main", JSON.stringify({ skip, landed }));
+  await p.shot(`${SHOTS}/stress-page_320.png`);
+  await p.close();
+}
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 319;
+const EXPECTED = 323;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -8,7 +8,8 @@ a set of documentation for all of this." Anything not yet built is marked
 **planned**.
 
 Riders read a plain-language version of this, linked from the legend and the road
-panel, at `/about/stress` (`frontend/public/about/stress.html`).
+panel, at `/about/stress.html` (`frontend/public/about/stress.html`; `/about/stress`
+redirects to it).
 
 ## Overview
 
