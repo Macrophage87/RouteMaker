@@ -1036,3 +1036,39 @@ class TestAdmin:
         row = client.get(reverse("routemaker_admin:core_override_change", args=[override.pk]))
         assert row.status_code == 200
         assert f"discord:{admin.discord_user_id}".encode() not in row.content
+
+
+@db
+class TestReapplyCommand:
+    def run(self, *args, **options) -> str:
+        out = io.StringIO()
+        call_command("reapply_stress_edits", *args, stdout=out, **options)
+        return out.getvalue()
+
+    def test_it_is_dry_by_default_and_lists_what_it_would_replay(self, live) -> None:
+        edit(live, make_user(), 4)
+        rebuild_without_the_edit(live)
+        said = self.run(since="all")
+        assert "1 edits" in said and "set of way(s) [5001]" in said and "dry run" in said
+        assert live_row(live)["stress_tier"] == 3
+
+    def test_confirm_replays_and_a_second_run_changes_nothing(self, live) -> None:
+        edit(live, make_user(), 4)
+        rebuild_without_the_edit(live)
+        assert "1 rows changed" in self.run(since="all", confirm=True)
+        assert live_row(live)["stress_tier"] == 4
+        assert "0 rows changed" in self.run(since="all", confirm=True)
+
+    def test_without_a_time_it_uses_the_one_the_table_recorded(self, live) -> None:
+        edit(live, make_user(), 4)
+        rebuild_without_the_edit(live)
+        LiveEditGeneration.objects.create(
+            table_oid=stress_edits.live_oid(live),
+            overrides_read_at=timezone.now() + timedelta(hours=1),
+        )
+        assert "0 edits" in self.run()
+        assert "1 edits" in self.run(since="2000-01-01T00:00:00Z")
+
+    def test_the_time_must_be_a_time(self, live) -> None:
+        with pytest.raises(CommandError):
+            self.run(since="yesterday")

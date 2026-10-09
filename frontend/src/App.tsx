@@ -72,6 +72,7 @@ import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import { refreshStressTiles } from "./lib/mapStyle.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import {
@@ -1309,6 +1310,11 @@ export function App() {
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
+        onStressChanged={(generation) => {
+          // An instance admin changed a road (OWNER-DECISIONS 441h): the map asks for its tiles again.
+          const map = mapRef.current;
+          if (map) refreshStressTiles(map, window.location.origin, generation);
+        }}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
       />

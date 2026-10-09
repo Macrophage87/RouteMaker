@@ -1347,6 +1347,142 @@ dialog.road-info::backdrop {
   text-decoration: underline;
 }
 
+/* Change LTS (OWNER-DECISIONS 441m) is a button, drawn as the links beside it. */
+.road-info-body button.road-info-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 6px 14px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.road-info-body button.road-info-button:hover {
+  text-decoration: underline;
+}
+
+/* The stress editor (StressEditor.tsx), in the road panel in place of the action row: one
+   column, controls at least 44px tall, nothing that scrolls sideways at 375px. */
+.stress-editor h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.stress-editor-now,
+.stress-editor-extent {
+  margin: 4px 0;
+}
+
+.stress-editor-said {
+  margin: 4px 0;
+  min-height: 0;
+  font-weight: 600;
+}
+
+.stress-editor-said:empty {
+  display: none;
+}
+
+.stress-editor-error {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 2px solid var(--text);
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.stress-editor-field {
+  margin: 12px 0 0;
+}
+
+.stress-editor-field > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.stress-editor-field select,
+.stress-editor-field input[type="text"],
+.stress-editor-field textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+}
+
+.stress-editor-field textarea {
+  resize: vertical;
+}
+
+.stress-editor-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.stress-editor-slider input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--accent);
+}
+
+.stress-editor-output {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.stress-editor-check {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-check input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-check > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.stress-editor-check > .hint {
+  grid-column: 2;
+  margin-top: 0;
+}
+
+.stress-editor-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.stress-editor-buttons button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.stress-editor-ticks {
+  margin: 0;
+}
+
 .road-info-notes {
   margin: 6px 0 0;
   font-size: 0.8125rem;

@@ -292,7 +292,8 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
     { key, className },
     swatch,
     h("span", { className: "stress-name" }, short),
-    h("span", { className: "stress-label" }, label),
+    // Avoid is just "Avoid" (OWNER-DECISIONS 441j): said once, not as its name and its label.
+    label === short ? null : h("span", { className: "stress-label" }, label),
   );
 
 /**

@@ -49,17 +49,20 @@ import { MASS_SOURCE_ID, massHides, massLayers } from "./massStyle.js";
 // is cut to 0.4 of the width (1.7 px, a sixth of the line) over a softer brown
 // casing: 0.60, no harsher than LTS 4. stressSalience.test.ts holds harshness
 // non-decreasing from LTS 3 to LTS 4 to Avoid in every palette, plain and strong.
+// The labels are the owner's step words (OWNER-DECISIONS 441l, 441j: "5 is just avoid"), the
+// ones the road panel and its editor use (core/segment_info.py TIER_WORDS); 460.8-11 switched
+// the legend to them from its own.
 const TIER_SHAPES = [
   // A solid line is `null`, never [1]: a one-entry dash array is an odd list,
   // which SVG (the legend) repeats into [1, 1] - a dashed swatch for a line
   // the map draws solid (OWNER-DECISIONS 279). Every dash here has an even length.
-  { tier: 1, label: "Comfortable for most people", short: "LTS 1", dash: null, width: 2.5 },
-  { tier: 2, label: "Comfortable for most adults", short: "LTS 2", dash: [4, 1], width: 3.25 },
-  { tier: 3, label: "For confident riders", short: "LTS 3", dash: [2, 0.4], width: 4.25 },
-  { tier: 4, label: "Heavy or fast traffic", short: "LTS 4", dash: [8, 1], width: 5 },
+  { tier: 1, label: "Comfortable for everyone", short: "LTS 1", dash: null, width: 2.5 },
+  { tier: 2, label: "Fine for adults", short: "LTS 2", dash: [4, 1], width: 3.25 },
+  { tier: 3, label: "For experienced cyclists", short: "LTS 3", dash: [2, 0.4], width: 4.25 },
+  { tier: 4, label: "High stress: busy, fast traffic", short: "LTS 4", dash: [8, 1], width: 5 },
   // Not a Furth tier: legal for a bicycle and best avoided (the owner's fifth
   // category, 2026-09-27): the widest line and a dash-dot nothing else uses.
-  { tier: 5, label: "Legal, but best avoided", short: "Avoid", dash: [5, 1, 0.5, 1], width: 6.5 },
+  { tier: 5, label: "Avoid", short: "Avoid", dash: [5, 1, 0.5, 1], width: 6.5 },
 ];
 
 /**

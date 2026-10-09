@@ -1,7 +1,8 @@
 /**
  * The map's road panel (OWNER-DECISIONS 441, 441a; lib/roadInfo.ts): what RouteMaker
  * knows of the road or path nearest a spot, with a bottom row of links drawn as
- * buttons: Street View, Edit in OSM, and (when the editing release passes it) Change LTS.
+ * buttons: Street View, Edit in OSM, and, for an instance admin, Change LTS (OWNER-DECISIONS 441g, 441h,
+ * 441m), which opens the stress editor (StressEditor.tsx) in this same dialog in place of the row.
  *
  * Compact, so the common case fits a phone without scrolling: the name, its kind, a
  * short summary list (one line a fact, read in order), a nearby station's pages, a
@@ -19,7 +20,7 @@
  * the heading hears it come in: the page's own region is outside the modal, which makes it
  * inert and drops it from the accessibility tree (the a11y review's S1).
  */
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   DETAILS_TEXT,
   NO_ROAD_HINT,
@@ -41,13 +42,14 @@ import {
   wayRows,
   type InfoRequest,
   type InfoState,
-  type SegmentInfo,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
+import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
+import { StressEditor } from "./StressEditor.tsx";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -64,20 +66,30 @@ interface Props {
    */
   fallbackFocus?: () => HTMLElement | null;
   /**
-   * The editing release's hook (OWNER-DECISIONS 441g/441h, 441m): the "Change LTS" control
-   * for a signed-in instance admin, drawn third in the bottom action row. Not passed until
-   * the editor exists, so nothing shows now; it returns null for anyone who may not edit.
+   * An instance admin changed (or undid a change of) a road's stress (OWNER-DECISIONS 441h): the
+   * map asks for its tiles again under the new edit generation. The panel refreshes itself.
    */
-  changeLtsAction?: (info: SegmentInfo) => ReactNode | null;
+  onStressChanged?: (generation: number) => void;
   /** The plan's point count and whether it is a loop, for the top row (OWNER-DECISIONS 441n). */
   plan: { count: number; loop: boolean };
   /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
   onPlace: (choice: PlaceChoice, point: [number, number]) => void;
 }
 
-const FOCUSABLE = "button:not([disabled]), [href], summary, [tabindex]:not([tabindex='-1'])";
+const FOCUSABLE =
+  "button:not([disabled]), [href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
-export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, changeLtsAction, plan, onPlace }: Props) {
+/** The stop after (or before) `from` in page order among `items`, wrapping round at the ends. */
+function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean): HTMLElement {
+  if (backwards) {
+    const before = items.filter((i) => from.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_PRECEDING);
+    return before.length ? before[before.length - 1] : items[items.length - 1];
+  }
+  const after = items.filter((i) => from.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING);
+  return after.length ? after[0] : items[0];
+}
+
+export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -90,6 +102,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const [state, setState] = useState<InfoState>({ kind: "loading" });
   // The answer's sentence for the dialog's own status region, empty until it comes.
   const [said, setSaid] = useState("");
+  // Who is asking (three yes/no flags, once per page) and whether the stress editor is open.
+  const [me, setMe] = useState<Me>(NO_ME);
+  const [editing, setEditing] = useState(false);
+  // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
+  const [reload, setReload] = useState(0);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const returnToButton = useRef(false);
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
 
@@ -110,6 +129,9 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     headingRef.current?.focus();
     setState({ kind: "loading" });
     setSaid("");
+    setEditing(false);
+    setReload(0);
+    void fetchMe(window.location.origin).then(setMe);
     const controller = new AbortController();
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
@@ -122,6 +144,28 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     // Each request is its own object (App sets a new one per ask), so asking again at the
     // same spot - Escape, then I on an unmoved map - opens the panel again.
   }, [request]);
+
+  // The answer again, fresh, after a change: the editor stays open and keeps the focus.
+  useEffect(() => {
+    if (reload === 0 || !request) return;
+    const controller = new AbortController();
+    fetchSegmentInfo(window.location.origin, request.point, controller.signal, true).then(
+      (next) => {
+        if (next.kind === "ready") setState(next);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+    // `request` is the spot this reload is for; a new spot resets `reload` to 0 above.
+  }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from the editor: the Change LTS button, which has just come back, takes the focus.
+  useEffect(() => {
+    if (!editing && returnToButton.current) {
+      returnToButton.current = false;
+      changeButton.current?.focus();
+    }
+  }, [editing]);
 
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
@@ -147,15 +191,30 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
 
   const close = () => dialogRef.current?.close();
 
+  const closeEditor = () => {
+    returnToButton.current = true;
+    setEditing(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
-      close();
+      // Escape cancels the editor, not the whole panel.
+      if (editing) closeEditor();
+      else close();
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
     const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const index = items.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement as HTMLElement | null;
+    const index = items.indexOf(active as HTMLElement);
+    if (index < 0 && active && active !== dialogRef.current && dialogRef.current.contains(active) && items.length > 0) {
+      // On something the dialog focuses but Tab does not visit (a heading): move to the next stop in
+      // page order from there, wrapping at the ends, so the editor's heading leads to its first control.
+      event.preventDefault();
+      neighbour(items, active, event.shiftKey).focus();
+      return;
+    }
     const next = nextFocus(index, items.length, event.shiftKey);
     if (next >= 0) {
       event.preventDefault();
@@ -170,7 +229,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const where = request ? subtitle(state, request.origin) : "";
   const osmEdit = ready ? osmEditUrl(ready) : null;
   const actions = spotActions(plan.count, plan.loop);
-  const changeLts = ready && changeLtsAction ? changeLtsAction(ready) : null;
+  const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
 
   return (
     <dialog
@@ -327,7 +386,21 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
             Data: {ready.attribution.join(", ")} and others (see {DETAILS_TEXT}).
           </p>
         )}
-        {request && (
+        {request && editing && editableWay !== null && ready && (
+          <div className="road-info-actions">
+            <StressEditor
+              origin={window.location.origin}
+              wayId={editableWay}
+              title={ready.title}
+              onClose={closeEditor}
+              onChanged={(generation) => {
+                setReload((n) => n + 1);
+                onStressChanged?.(generation);
+              }}
+            />
+          </div>
+        )}
+        {request && !(editing && editableWay !== null) && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -354,7 +427,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
                   </a>
                 </li>
               )}
-              {changeLts && <li>{changeLts}</li>}
+              {editableWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={changeButton} onClick={() => setEditing(true)}>
+                    {CHANGE_LTS_TEXT}
+                  </button>
+                </li>
+              )}
             </ul>
             <p className="hint road-info-notes">
               <span aria-hidden="true">{STREET_VIEW_TEXT}: </span>
