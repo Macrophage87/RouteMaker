@@ -212,6 +212,33 @@ class TestIntersectionsInTheAnswer:
         assert junction["m"] == 900  # the first edge's length
         assert junction["cost_ft"] >= 2000
 
+    def test_the_cost_is_also_said_in_calm_miles(self, client, arterial, router) -> None:
+        """OWNER-DECISIONS 467: calm miles, US first, metric alongside."""
+        router(world())
+        (junction,) = post(client, good_body()).json()["intersections"]
+        assert junction["calm_mi"] == pytest.approx(junction["cost_ft"] / 5280, abs=0.006)
+        assert junction["calm_km"] == pytest.approx(junction["calm_mi"] * 1.609344, abs=0.01)
+
+    def test_the_debug_list_is_off_unless_asked(self, client, arterial, router) -> None:
+        router(world())
+        assert post(client, good_body()).json().get("junctions_debug") is None
+
+    def test_the_debug_list_has_every_junction_even_unflagged(
+        self, client, arterial, router
+    ) -> None:
+        """468: "an API debug field listing every junction". A signalised crossing of
+        the arterial (600 ft, below orange) is not in `intersections` but is in the list."""
+        fake = world()
+        fake.locate = locate_answer(signal=True)
+        router(fake)
+        body = post(client, {**good_body(), "debug_junctions": True}).json()
+        assert body["intersections"] == []
+        (row,) = body["junctions_debug"]
+        assert row["control"] == "signal" and row["flagged"] is False and row["severity"] is None
+        assert row["cost_ft"] == 600 and row["time_factor"] in (0.85, 1.0, 1.25)
+        assert row["text"] == "0.11 calm mi (0.18 calm km)" or row["time_factor"] != 1.0
+        assert row["assumed_speed"] is False
+
     def test_a_stop_sign_on_the_riders_side_is_said(self, client, arterial, router) -> None:
         fake = world()
         fake.locate = locate_answer(stop=True)

@@ -81,10 +81,13 @@ class TestCrossing:
     def test_the_stopped_side_pays_the_literature_review_range(self) -> None:
         # LTS 3: 800-1,600 ft; LTS 4: 2,500-3,500 ft (Eugene, Broach); the speed
         # and width of the road move it inside its tier.
+        # 468 takes the top of the range for LTS 3 (1,600 ft) and a little above it
+        # for LTS 4 (4,000 ft); an LTS 4 road with no speed is read at 45 mph, 7,000 ft.
         lts3 = m.crossing_ft(Road(3), Control.STOP, rider_tier=1)
-        lts4 = m.crossing_ft(Road(4), Control.STOP, rider_tier=1)
+        lts4 = m.crossing_ft(Road(4, speed_mph=35, lanes=1), Control.STOP, rider_tier=1)
         assert 800 <= lts3 <= 1600
-        assert 2500 <= lts4 <= 3500
+        assert 2500 <= lts4 <= 4000
+        assert m.crossing_ft(Road(4), Control.STOP, rider_tier=1) == pytest.approx(7000.0)
 
     @pytest.mark.parametrize("group", [False, True])
     def test_an_event_carries_the_crossed_roads_mapped_names(self, group) -> None:
