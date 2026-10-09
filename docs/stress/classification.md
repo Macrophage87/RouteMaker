@@ -54,7 +54,7 @@ recorded in `assumed` (`stress.py:135-137`).
 | 3 | Speed: posted `maxspeed`; else DC 20 (alley 15); else MD/VA urban defaults; else the urban or rural table by class (an unpaved rural lane is capped at 30 mph) | `:783-806`, tables `:142-223`, `:292` |
 | 4 | Lanes per direction (default 1). An urban multi-lane street is read on the single-lane row. A one-way of up to 2 lanes gets relief. | `:808-822`, `:482-503` |
 | 5 | Facility. A separated track: LTS 1. A painted lane: Furth's bike-lane table by speed, lanes and width (beside parking, the 15 ft [4.57 m] reach). A decent lane at 40 mph is LTS 3. With no lane, the mixed-traffic table, and the urban two-way floor (LTS 3, or LTS 4 at 30 mph or more over 8,000 vehicles a day) | `:859-895`; tables `:524-611`, `:506-521`, `:632-656` |
-| 6 | Paved shoulder 1.2 m [4 ft] or wider: the bike-lane table, never worse than no provision | `:936-990`, `:250` |
+| 6 | Paved shoulder 4 ft [1.2 m] or wider: the bike-lane table, never worse than no provision | `:936-990`, `:250` |
 | 7 | Volume, on single-lane roads with no provision. Up to 1,500 vehicles a day: one tier down (only to 35 mph, or when the speed was assumed). 8,000 or more: one tier up. Over 1,500 at 20 mph or less: LTS 1 becomes 2. An urban two-way floored road at LTS 4 drops to LTS 3 at 1,500 or less (same speed condition) | `:1023-1064`; thresholds `:298-301` |
 | 8 | Floors without a facility: trunk, primary and secondary at least LTS 3 (OWNER-DECISIONS 141); tertiary at least LTS 2 (176). A rideable shoulder is read as a lane instead | `:1080-1098`, `:302-307` |
 | 9 | Motor traffic restricted, with no count. `motor_vehicle=no`/`agricultural`/`forestry` (or `access=` the same with bicycles kept): at most LTS 1. `private`/`destination`/`permit`/`delivery`: at most LTS 2. One tier higher where posted over 30 mph | `:1105-1115`, `:1159-1220` |
@@ -65,8 +65,8 @@ recorded in `assumed` (`stress.py:135-137`).
 
 1. **AADT smoothing** (`aadt_smoothing.py`; OWNER-DECISIONS 285, 296, 303) runs before
    `classify`. A way's count is replaced by the length-weighted median of the counts on
-   the same street (name without quadrant, same state) within 400 m [1,312 ft], when the
-   window holds at least 3 ways and 250 m [820 ft] of road (`aadt_smoothing.py:57-59`).
+   the same street (name without quadrant, same state) within 1,312 ft [400 m], when the
+   window holds at least 3 ways and 820 ft [250 m] of road (`aadt_smoothing.py:57-59`).
    It only ever lowers a count. The segment still publishes the agency's count. When the
    raw count gives a higher tier, that tier is kept as `stress_unsmoothed_tier`
    (`run.py:1770-1784`). The junction model and the calm-road breaks read the higher of
@@ -99,7 +99,11 @@ Whether a bicycle may use a way is decided by the access rules, never by the tie
   Pentagon, its listed ways (OWNER-DECISIONS 330, 437, 446-446c). Each closed way is
   listed in the rebuild's `military-closures.csv` / `secured-closures.csv`.
 - Singletrack, natural-surface park trails and the other `rm:no_bicycle` reasons
-  (`src/routemaker/trailaccess.py`, `singletrack.py`).
+  (`src/routemaker/trailaccess.py`, `singletrack.py`). Rated singletrack is closed on
+  every graph. The mountain-bike class (`rm:no_bicycle=mtb`) is closed on every graph
+  but the off-road one, which Gravel and Mountain Goat ride (`OFFROAD_PRESETS`,
+  `src/core/presets.py:646-652`; `src/pipeline/variants.py:61-71`; OWNER-DECISIONS
+  291(2)).
 - The standing rule is to **err closed**: when it is unclear whether bikes are allowed,
   the way is closed, and the owner reopens it with evidence through an access override.
 

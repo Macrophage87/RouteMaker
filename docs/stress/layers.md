@@ -10,7 +10,7 @@ draws:
 
 | What | Rule | Threshold |
 |---|---|---|
-| Long, connected traffic-free paths | A path whose connected network (paths within 30 m [100 ft] of one another, `CALM_PATH_GAP_M`) or named run is long enough. No mountain-bike trails | 0.25 mi [400 m] (`RIDE_PATH_RUN_MI`, `schema.py:343`) |
+| Long, connected traffic-free paths | A path whose connected network (paths within 100 ft [30 m] of one another, `CALM_PATH_GAP_M`) or named run is long enough. No mountain-bike trails | 0.25 mi [400 m] (`RIDE_PATH_RUN_MI`, `schema.py:343`) |
 | Calm roads | A continuous run of named LTS 1-2 road (`CALM_ROAD_MAX_TIER = 2`, `:345`), not a trail | 2 mi [3.2 km] (`RIDE_ROAD_RUN_MI`, `:352`; the owner's proposed bar, "not yet confirmed") |
 | Timed car-free roads | Any road closed to cars at set times, whatever its length | - |
 
@@ -51,12 +51,12 @@ its candidates to the two calm tiers.
 
 ## Mass Ride capacity (OWNER-DECISIONS 325-327, 387, 394, 404)
 
-Capacity is not stress. It is the modelled throughput of a corked group, in riders a
+Capacity is not stress. It is the modeled throughput of a corked group, in riders a
 minute (`src/routemaker/massflow.py:1-30`):
 
-    riders a minute = 60 x safe density 0.37/m² x utilisation 0.7 x usable width x pace 1.9 m/s
+    riders a minute = 60 x safe density 0.37/m² x utilization 0.7 x usable width x pace 1.9 m/s
 
-That is about 29.5 riders a minute for each metre of usable width, or about 99 per
+That is about 29.5 riders a minute for each meter of usable width, or about 99 per
 11 ft [3.35 m] lane. It is written as `segment.mass_usable_width_m` and checked by
 VALIDATE (`src/pipeline/mass_capacity.py`). The model is from the owner's counts of
 DC Bike Party rides, accepted as the working model. Its sources are pending

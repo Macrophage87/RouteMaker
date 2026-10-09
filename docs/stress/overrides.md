@@ -32,13 +32,13 @@ a path for the facility class, and then the car-free rule makes it LTS 1
 | Key | Meaning |
 |---|---|
 | `tier` | Integer 1-5 (`:119`, `:155-159`). It may be below the classifier's: a down-adjustment ("down adjust a road if this is the better route among similar routes"). Half steps are **planned** (the editor stores the lower level plus a flag; HALF-STEP-EDITOR-plan section 4.1). |
-| `at_least` | Optional. `true` makes the row a **floor**: the way gets max(the classifier's tier, `tier`). A way already at or above it keeps its own tier, its rule and no adjustment, and the row is not counted as applied (`:113-118`, `:438-444`; OWNER-DECISIONS 445a-c). |
+| `at_least` | Optional. `true` makes the row a **floor**: the way gets max(its tier at that point, `tier`), where its tier at that point is the classifier's after the curated lanes, the corridors and any earlier row for the way (`:436-443`). A way already at or above it keeps its own tier, its rule and no adjustment, and the row is not counted as applied (`:113-118`, `:438-444`; OWNER-DECISIONS 445a-c). |
 | `adjustment_id` | Lower-case words joined by hyphens, at most 64 characters (`:121-122`), shared by every way of one stretch and stable across rebuilds. |
 | `category` | `speed`, `road_conditions`, `driver_behaviour`, `intersection`, `sightlines`, `better_among_alternatives`, `other` (`src/routemaker/stress.py:326-334`). |
 | `visibility` | `public` or `hidden`. |
 | `annotation_status` | `proposed` or `approved`. Only public and approved adjustments show their reason (`StressAdjustment.is_shown`, `stress.py:376-379`). Everything else is published as "adjusted" with its id (`exposed`, `:381-394`). |
 | `display` | `route_only` (only in the summary of a route over the stretch) or `map` (that, and on a map click). |
-| `public_note` | Optional, at most 200 characters. It describes the road and its traffic, never a neighbourhood or its people. Words such a note would most likely use are refused (`:123-131`, `:180-191`). |
+| `public_note` | Optional, at most 200 characters. It describes the road and its traffic, never a neighborhood or its people. Words such a note would most likely use are refused (`:123-131`, `:180-191`). |
 
 A row typed into the admin as `{"tier": n}` still sets the tier, as a hidden
 adjustment `way-<id>` (`stress_adjustment`, `overrides.py:195-236`). The row's own
@@ -113,16 +113,16 @@ When an approved row's way is missing, `rematch.resolve` (`rematch.py:534-`, cal
 `run.py:2009`) looks for ways of the same name and class along the stored line. Its
 constants are at `rematch.py:63-95`:
 
-- within 6 m [20 ft] of the line (`TOLERANCE_M`);
+- within 20 ft [6 m] of the line (`TOLERANCE_M`);
 - 90% of each way's length on it and 90% of the line covered;
 - each within 30 degrees of the line's direction;
 - together within 1.25 times its length.
 
 It applies the row to all of them only when that is unambiguous. It declines when two
 ways run side by side, when another way of the name overlaps it beyond an end-on
-neighbour, or when a target already carries a different row. Every missing row is
+neighbor, or when a target already carries a different row. Every missing row is
 reported as `rematched`, `covered`, `failed` or `drifted` in
-`override-rematch.md`/`.csv` in the rebuild's report directory and summarised in the
+`override-rematch.md`/`.csv` in the rebuild's report directory and summarized in the
 run row. A failed row is left as it was and still counted as matching no way. A row
 typed into the admin has no fingerprint and cannot be re-matched. Nor can the
 crosswalk-links file's rows, which by decision 442 carry way ids only.

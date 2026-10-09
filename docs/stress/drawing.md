@@ -7,7 +7,7 @@ path (`tierAt`, `facilityAt`, `:664-667`).
 
 ## Shapes: the same in every palette (`TIER_SHAPES`, `:52-63`)
 
-Colour is never the only cue: every tier differs in width and dash too.
+Color is never the only cue: every tier differs in width and dash too.
 
 | Tier | Legend label | Dash (in line widths) | Width (px) |
 |---|---|---|---|
@@ -18,14 +18,14 @@ Colour is never the only cue: every tier differs in width and dash too.
 | 5 Avoid | Legal, but best avoided | [5, 1, 0.5, 1] (dash-dot, only Avoid) | 6.5 |
 
 Each line has a casing 1 px wider on each side (`CASING_EXTRA_PX`, `:1153-1158`). The
-accessibility switch draws stronger: +0.5 px line, a casing 1.5 px a side, and the
+accessibility switch (labeled High contrast) draws stronger: +0.5 px line, a casing 1.5 px a side, and the
 calm tiers' casings pushed to black or white (`STRONG_*`, `:202-203`; `tiersFor`,
 `:269-294`). The legend labels above are the legend's. The road panel's words are
 441l's ([classification.md](classification.md)).
 
 ## Palettes (`PALETTES`, `:120-151`)
 
-| Tier | Two-tone (default since 351; link `twotone`) | Warm (`blended`; link `warm`) | Colour-blind-friendly (`cvd`; link `cool`; the accessibility switch) |
+| Tier | Two-tone (default since 351; link `twotone`) | Warm (`blended`; link `warm`) | Color-blind-friendly (`cvd`; link `cool`; the accessibility switch, labeled High contrast) |
 |---|---|---|---|
 | 1 | `#9ed3ac` on `#2f5d47` | `#9ed3ac` on `#2f5d47` | `#d2eafc` on `#0a1a2f` |
 | 2 | `#57a06c` on `#1a2638`, gaps `#7a8fa3` | the same | `#5d99d2` on `#0a1a2f`, gaps `#a7b4c1` |
@@ -38,7 +38,7 @@ who uses them (`:155-162`; OWNER-DECISIONS 321). The CVD palette keeps every adj
 pair CIEDE2000 20 or more apart under protanopia, deuteranopia and tritanopia (Machado
 2009), and its lightness falls tier by tier (`:105-118`; `stressContrast.test.ts`).
 Unpaved ways use a brown ramp per palette, darker for busier
-(`UNPAVED_PALETTES`, `:377-400`), with a dotted centre mark (`UNPAVED_DASH`, `:1034`).
+(`UNPAVED_PALETTES`, `:377-400`), with a dotted center mark (`UNPAVED_DASH`, `:1034`).
 A trail with no surface mapped is dashed [2, 1.5] (`UNKNOWN_SURFACE_DASH`, `:425`).
 
 **There is no dark-mode map palette.** `prefers-color-scheme: dark` restyles the panels
@@ -73,12 +73,12 @@ lower tier plus a half flag (HALF-STEP-EDITOR-plan section 9).
 
 - **Below zoom 15**, a half step draws exactly as its lower level (460.1: "The level
   below makes more sense"). 1.5 looks like LTS 1.
-- **From zoom 15**, a half step keeps the lower level's whole look: base colour, casing,
+- **From zoom 15**, a half step keeps the lower level's whole look: base color, casing,
   width and its own pattern (441v). Over it goes a dash in the next level's **base
-  colour** (441u), using Option A, sparse blocks (458):
-  - 1.5, 2.5, 3.5: dash [1.5, 4.5] at full line width, in the base colour of LTS 2, 3 or
+  color** (441u), using Option A, sparse blocks (458):
+  - 1.5, 2.5, 3.5: dash [1.5, 4.5] at full line width, in the base color of LTS 2, 3 or
     4 (1.5's dash is LTS 2's `#57a06c` in the default palette and blue in CVD, 458a);
-  - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width, in Avoid's base colour (the
+  - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width, in Avoid's base color (the
     darker red, 441s-441t). It is never drawn as Avoid (441k).
 - **Low-contrast dashes get a thin outline** on the dash only (458b): default palette
   3.5 (LTS 4's orange on LTS 3's yellow, about 1.5:1) and CVD 4.5 (Avoid's blue-black on
@@ -90,13 +90,13 @@ lower tier plus a half flag (HALF-STEP-EDITOR-plan section 9).
 
 ## The Mass Ride map (`frontend/src/massStyle.js`; OWNER-DECISIONS 325-327, 387, 415-422)
 
-In Mass Ride the stress layers are hidden at every zoom: the LTS colours, facility
-rails, trails and the ride layer (`setMassRide`, `stressStyle.js:827-838`;
+In Mass Ride the stress layers are hidden at every zoom: the LTS colors, facility
+rails, trails and the ride layer (`setMassRide`, `stressStyle.js:831-835`;
 `lib/mapGlue.ts`). The map draws the Mass Ride tiles (`src/core/mass_tiles.py`),
-coloured by carrying capacity in riders a minute at 6-8 mph, inside the District
+colored by carrying capacity in riders a minute at 6-8 mph, inside the District
 only:
 
-| Band (riders a minute) | Colour | Width | Dash | From zoom |
+| Band (riders a minute) | Color | Width | Dash | From zoom |
 |---|---|---|---|---|
 | Under 60, bottleneck | red `#d7191c` | 4 px | short | 14 |
 | 60 to 120, tight | orange `#f28e2b` | 5.5 px | long | 14 |
@@ -104,13 +104,13 @@ only:
 | 200 and up, wide open | purple `#6a3d9a` | 8.5 px | solid | 10 (only runs of 0.5 mi [0.8 km] or more) |
 
 `MASS_BANDS`, `massStyle.js:60-71`. Each band has a 3:1 halo. **Avoid** shows at every
-zoom in its own style, with no capacity colour and the label "AVOID" (`MASS_AVOID`,
+zoom in its own style, with no capacity color and the label "AVOID" (`MASS_AVOID`,
 `:102`). Its junction icons are orange at LTS 3 and red at LTS 4 or Avoid
 ([routing-costs.md](routing-costs.md), section 5).
 
 ## The route's own stress view
 
-The route panel shows a stress breakdown bar of metres per tier, each segment labelled
+The route panel shows a stress breakdown bar of meters per tier, each segment labeled
 with its percentage (`frontend/src/lib/stressBar.ts`). Avoid is the route's magenta
 there (OWNER-DECISIONS 397). The rolling stress chart that replaces the strip (460.12)
 is **planned** ([stress-number.md](stress-number.md), section 4).

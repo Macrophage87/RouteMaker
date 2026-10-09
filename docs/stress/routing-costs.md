@@ -2,7 +2,7 @@
 
 [Index](README.md). Stress reaches a route in three layers:
 
-1. **The Valhalla graph** (Valhalla 3.5.1, MIT licence). Tags are written per way at
+1. **The Valhalla graph** (Valhalla 3.5.1, MIT license). Tags are written per way at
    graph build, and a weight, `use_roads`, is sent per request.
 2. **RouteMaker's own ranking** (`src/core/refine.py`, `src/core/routing.py`). It
    reads the live segment table at route time and runs the calm search, the guards,
@@ -24,7 +24,7 @@ open to a bicycle (`may_penalise`, `:1044-1057`) and never on a trail-class way.
 | Write | Tiers | Effect | Graphs | Lines |
 |---|---|---|---|---|
 | `bicycle=use_sidepath` | 3, 4, 5 (and OSM's own alleys, priced as LTS 3) | Adds `3 x (1 - use_roads)` to the accommodation factor | All | `:402-447`; `STRESS_PENALTY_TIER = 3` `:1061` |
-| Graded: `maxspeed:practical=140`, `lanes:forward`/`backward=15` | 4, 5 | The graph's top speed and lane count, which raise roadway stress. LTS 4's added cost is at least 2x LTS 3's at slider positions 5-100 on roads posted up to 50 mph (1.99x at 55, 1.75x at 65) | All but no-trail (`facility_neutral`, `src/pipeline/run.py:1445-1446`) | `:449-482`; `GRADED_*` `:1065-1067` |
+| Graded: `maxspeed:practical=140`, `lanes:forward`/`backward=15` | 4, 5 | The graph's top speed and lane count, which raise roadway stress. LTS 4's added cost is at least 2x LTS 3's at old slider positions 5-100 (today's about 4 and up) on roads posted up to 50 mph (1.99x at 55, 1.75x at 65) | All but no-trail (`facility_neutral`, `src/pipeline/run.py:1445-1446`) | `:449-482`; `GRADED_*` `:1065-1067` |
 | `service=alley` | 5 | Valhalla charges `alley_penalty` each time a route enters an alley from a way that is not one. RouteMaker sends 1,800 s on every preset (`AVOID_ENTRY_PENALTY_S`, `presets.py:161`, sent at `:455`). The edge stays routable | All | `:484-514`; `AVOID_TIER = 5` `:1070` |
 | Facility class (not stress) | any | Path `0.1+0.9u`, protected `(0.15+0.6u) x stress`, painted `(0.9+0.05u) x stress`, none `1.0 x stress`; `highway=cycleway` `0.8u` | Not on no-trail | `:1079-1110`, `:1155-` |
 
@@ -41,9 +41,9 @@ Graph variants (`src/pipeline/variants.py`; chosen by `variant_for_ride`,
 
 There is no per-tier knob in a request: `use_roads` is the only stress weight.
 
-### The graded cost, as modelled (docs/DEVELOPMENT.md, "Graded stress")
+### The graded cost, as modeled (docs/DEVELOPMENT.md, "Graded stress")
 
-The added cost per metre, as a multiple of the edge's time, for LTS 3 / LTS 4.
+The added cost per meter, as a multiple of the edge's time, for LTS 3 / LTS 4.
 **DEVELOPMENT.md labels its columns 0/25/50/75/90/100. These are positions on the
 slider before the 2026-10-01 rescale**, so `use_roads` = 1 - old/100. They map to
 today's positions like this:
@@ -82,22 +82,22 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 
 | Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid) | LTS 4 hold | Bike type, planning speed | Calm search runs |
 |---|---|---|---|---|---|---|---|---|---|
-| Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 18 km/h [11.2 mph] | yes, one crossing round |
-| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16 | yes | Cross, 20 km/h [12.4 mph] | yes, leg by leg (`long_calm`) |
-| Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 20 km/h | yes, one crossing round |
-| Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 9.7 km/h [6 mph] | **no** (`routing._refine_limit`, `routing.py:1166-1167`) |
-| Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 20 km/h | no while the climb seek runs (hills start at 100), else one crossing round |
-| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 20 km/h | yes, one crossing round |
-| Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 18 km/h | yes, one crossing round |
-| Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14 km/h [8.7 mph] (18 with assist) | yes, one crossing round |
-| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 14 km/h (18 with assist) | yes, one crossing round |
-| E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 24 km/h [14.9 mph] | yes, one crossing round |
+| Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
+| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
+| Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
+| Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1166-1167`) |
+| Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else one crossing round |
+| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
+| Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
+| Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
+| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
+| E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, one crossing round |
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:455`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes one crossing-only round
 (`CROSSING_ONLY_ROUNDS`, `refine.py:84`, `:1384`), and above 0 up to 5 exclusion
 rounds (`REFINE_MAX_ROUNDS`, `:83`). The search does not run for Mass Ride, fewer than
-2 points, a long ride, a climb seek, a span over 30 km [18.6 mi] (except
+2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1151-1178`). The exposure weights
 come from `Exposure` (`presets.py:332-348`), chosen per carrying choice on Cargo Bike
 (`:351-358`, `:600-601`).
@@ -110,12 +110,12 @@ come from `Exposure` (`presets.py:332-348`), chosen per carrying choice on Cargo
 
     score = router cost + quiet_cost x (rate x exposure_m + weight x junction_m + climb_weight x climb_m)
 
-- `quiet_cost` = 2.2 x the time of a metre at the request's speed (`QUIET_COST_FACTOR`,
-  `refine.py:136-139`, `quiet_cost_per_m` `:174-181`). That is 0.44 cost-seconds a metre
-  at 18 km/h.
-- `exposure_m` = the metres of each tier times its exposure weight (`refine.py:614-618`).
+- `quiet_cost` = 2.2 x the time of a meter at the request's speed (`QUIET_COST_FACTOR`,
+  `refine.py:136-139`, `quiet_cost_per_m` `:174-181`). That is 0.44 cost-seconds a meter
+  at 11.2 mph [18 km/h].
+- `exposure_m` = the meters of each tier times its exposure weight (`refine.py:614-618`).
   LTS 1-2 and unknown count 0.
-- `junction_m` = the summed junction costs in metres (`intersections.penalty_m`).
+- `junction_m` = the summed junction costs in meters (`intersections.penalty_m`).
 - A candidate replaces the best only if it beats it by more than 10 cost-seconds
   (`IMPROVEMENT_EPS_S`, `refine.py:135`, `:528-529`).
 
@@ -123,39 +123,39 @@ come from `Exposure` (`presets.py:332-348`), chosen per carrying choice on Cargo
 
 It reads the router's route, then excludes (`exclude_locations`) the LTS 4 and Avoid
 stretches first, and later every LTS 3 stretch of the newest candidate. Each sample
-is one point per edge middle, 40 m [131 ft] apart, at most 60 a round and 150 in
-all, and never within 500 m [0.31 mi] of an end or a via point (`refine.py:107-125`,
+is one point per edge middle, 131 ft [40 m] apart, at most 60 a round and 150 in
+all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:107-125`,
 `calm_targets` `:669-694`, worst first `:1393-1394`, `:1415-1417`). In the
 crossing-only round it excludes the approaches to junctions of 2,000 ft or more (red),
 at most 3 (`crossing_targets`, `:697-709`). Mass Ride is skipped (`ctx.group`).
 
 ### The guards
 
-- **Traffic wins**: a candidate whose exposure is more than 2% plus 50 m [164 ft] over
+- **Traffic wins**: a candidate whose exposure is more than 2% plus 164 ft [50 m] over
   the router's first route's is not taken (`EXPOSURE_TOLERANCE`, `EXPOSURE_SLACK_M`,
   `refine.py:126-133`, `_allowance` `:1304-1307`).
 - **`calmer_or_own`**: an alternative the hills slider picked is kept only if its
   exposure is no worse than the router's own route (`routing.py:985-1020`).
 - **LTS 4 hold** (stress-averse rides only): refuse a candidate whose top figure (LTS 4
-  and Avoid metres plus red junction cost) is more than 1 m over the router's first
+  and Avoid meters plus red junction cost) is more than 1 m over the router's first
   route, for the whole trip or for any leg (`more_lts4`, `refine.py:817-870`;
   `routing._hold_refuses` `:976-982`).
 
 ### The top of the slider (100): strict order and worth rule
 
 - `Analysis.key` = (top, second, distance) (`refine.py:338-356`). Top = LTS 4 +
-  Avoid metres + red junction cost in metres. Second = LTS 3 metres + orange junction
+  Avoid meters + red junction cost in meters. Second = LTS 3 meters + orange junction
   cost. Distance = actual and effort-equivalent distance blended by the Hills slider
-  (`level3` `:359-372`). Tie steps are 15 m, 50 m and 50 m (`MAXCALM_STEPS`, `:402`).
+  (`level3` `:359-372`). Tie steps are 49 ft, 164 ft and 164 ft [15 m, 50 m and 50 m] (`MAXCALM_STEPS`, `:402`).
 - **Worth rule** (OWNER-DECISIONS 268, 271): a longer candidate replaces a shorter one
   only when the stress it saves pays for the distance it adds (`worth_it`,
-  `refine.py:494-508`). Stress saved is counted in LTS 3-equivalent metres with the
+  `refine.py:494-508`). Stress saved is counted in LTS 3-equivalent meters with the
   *standard* weights on every ride (LTS 3 x1, LTS 4 x2, Avoid x3, red junction cost x2,
-  orange x1; `WORTH_WEIGHTS`, `stress_weight_m`, `:419-441`). The price per metre saved:
+  orange x1; `WORTH_WEIGHTS`, `stress_weight_m`, `:419-441`). The price per meter saved:
   - no target distance: 5 m added (`WORTH_DEFAULT`), up to 1.6 x the router's route
     and at least 1 mi [1.6 km] more (`presets.py:280-281`);
   - up to a rider's target distance: free;
-  - past the target: 2.5 m added per metre saved (`WORTH_OVER_TARGET`), never past
+  - past the target: 2.5 m added per meter saved (`WORTH_OVER_TARGET`), never past
     1.25 x the target (`presets.py:282`).
 - If the top figure improves by more than its tie step, its saving counts on its own,
   so LTS 4 never loses to extra LTS 3 (`stress_saved_m`, `:455-474`).
@@ -192,7 +192,7 @@ the whole left is capped at 500 ft (`:153-157`, `merge_ft` `:358-362`, `left_fro
 `:365-377`). Crossing a slip lane costs 800 ft, half that at a signal (`:168-169`). A
 trail crossing with no signal mapped costs x0.5 and is never red (`:88-94`,
 `marked_unsignalised` `:445-451`). A divided road counts once, with the median refuge
-at x0.75 (`:107`, `merge_nearby` `:660-`). Several events within 45 m [148 ft] add, each
+at x0.75 (`:107`, `merge_nearby` `:660-`). Several events within 148 ft [45 m] add, each
 after the costliest at half its cost (`:608-624`). The cost of each junction is the
 worst of its movements (`cost_of`, `:384-442`).
 
@@ -211,7 +211,7 @@ the slider as part of the top (red) and second (orange) figures. Junctions under
 
 | Where | What Avoid gets |
 |---|---|
-| Valhalla | LTS 4's per-metre price (graded, except on no-trail) plus 1,800 s on each entry, on every preset including Mass Ride |
+| Valhalla | LTS 4's per-meter price (graded, except on no-trail) plus 1,800 s on each entry, on every preset including Mass Ride |
 | Exposure | 3 (standard) or 16 (stress-averse) |
 | LTS 4 hold, strict order | Counted with LTS 4 in the top figure |
 | Worth rule | 3 |
@@ -222,5 +222,6 @@ the slider as part of the top (red) and second (orange) figures. Junctions under
 The 1,800 s entry charge is cost, not time. Since Valhalla's edge factor is never
 below 1, it is worth at most 30 minutes of riding. Against a quiet street, which
 costs about 2.2x its time (`QUIET_COST_FACTOR`), it is worth about 2.5 mi [4.1 km] of
-quiet street at 18 km/h. At 20 km/h it is 2.8 mi [4.5 km], at Mass Ride's 9.7 km/h
-1.4 mi [2.2 km], at 14 km/h 2.0 mi [3.2 km], and at 24 km/h 3.4 mi [5.5 km].
+quiet street at 11.2 mph [18 km/h]. At 12.4 mph [20 km/h] it is 2.8 mi [4.5 km], at
+Mass Ride's 6 mph [9.7 km/h] 1.4 mi [2.2 km], at 8.7 mph [14 km/h] 2.0 mi [3.2 km], and
+at 14.9 mph [24 km/h] 3.4 mi [5.5 km].
