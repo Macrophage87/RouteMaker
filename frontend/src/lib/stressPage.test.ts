@@ -51,14 +51,63 @@ test("every swatch is hidden from a screen reader, and each level is named in th
   for (const words of PANEL_WORDS) assert.ok(text.includes(words), words);
 });
 
+test("each level is said whole, with a stop after its name, the legend's words marked, and its map color in words", () => {
+  const items = [...page.matchAll(/<li>\s*<svg[\s\S]*?<\/svg>\s*<span>([\s\S]*?)<\/span>\s*<\/li>/g)].map((m) => m[1]);
+  assert.equal(items.length, 5);
+  items.forEach((item, i) => {
+    const name = item.match(/^<strong>([^<]+)<\/strong> /)?.[1] ?? "";
+    assert.ok(name.endsWith(`${PANEL_WORDS[i]}.`), name);
+    assert.match(item, /<\/strong> Map legend: "/, "the legend's words are labelled as such");
+    // The accessibility review's SF2: the color of each swatch in words, for a pilot's "the orange one".
+    assert.match(item, /On the map: [^.]*\b(green|blue|yellow|orange|red|black)\b[^.]*\.$/, item);
+  });
+  assert.match(text, /The High contrast switch/, "the control's own label (accessibilitySwitch.ts)");
+  assert.doesNotMatch(text, /accessibility switch/i, "Accessibility mode (455) does not change the colors");
+});
+
+test("closed ways: rated singletrack everywhere, other mountain-bike trails open on Gravel and Mountain Goat (presets.OFFROAD_PRESETS)", () => {
+  assert.match(text, /rated mountain-bike singletrack/);
+  assert.match(text, /Other natural-surface mountain-bike trails are closed on most ride types\. They are open on Gravel and Mountain Goat\./);
+  assert.doesNotMatch(text, /mountain-bike-only trails/);
+});
+
+test("the cost table: one short-named region, a short caption, and LTS 1 and 2 said once above it", () => {
+  assert.doesNotMatch(page, /<section [^>]*aria-labelledby/, "plain sections: the h2s give the headings, not 10 more regions");
+  const regions = [...page.matchAll(/<div [^>]*role="region"[^>]*>/g)].map((m) => m[0]);
+  assert.deepEqual(regions, ['<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">']);
+  assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
+  assert.match(text, /LTS 1 and 2 streets always count as about 1/);
+  assert.match(text, /Traffic-free paths count for less than a quiet street \(except on Mass Ride\)/);
+  assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
+});
+
 test("US units first, metric in brackets", () => {
   assert.match(text, /0\.1 mile \[160 m\]/);
   assert.match(text, /1,200 feet \[370 m\]/);
   assert.doesNotMatch(text, /\b\d+ (m|km)\b(?![^[]*\])/, "a metric figure outside brackets");
+  // And every US figure has its metric (the accessibility review's N6): "20 mph" alone fails.
+  const figures = [...text.matchAll(/\b\d[\d,.]*(?: to \d[\d,.]*)? (?:extra )?(?:mph|feet|miles?)\b(.{0,2})/g)];
+  assert.ok(figures.length >= 8, String(figures.length));
+  for (const m of figures) assert.equal(m[1], " [", `metric missing after "${m[0]}"`);
+});
+
+test("US spelling, as the app's own text", () => {
+  assert.doesNotMatch(text, /colour|neighbour|behaviour|centre|metre/i);
 });
 
 test("the sources are credited in text", () => {
-  for (const credit of ["OpenStreetMap contributors", "DC Open Data", "VDOT", "Montgomery County Planning Department", "Open Baltimore", "U.S. Census Bureau", "Furth"]) {
+  for (const credit of [
+    "OpenStreetMap contributors",
+    "DC Open Data",
+    "VDOT",
+    "Montgomery County Planning Department",
+    "Open Baltimore",
+    "U.S. Census Bureau",
+    "Furth",
+    "Broach, Dill and Gliebe",
+    "Eugene",
+    "RouteMaker Mass Ride model",
+  ]) {
     assert.ok(text.includes(credit), credit);
   }
 });
