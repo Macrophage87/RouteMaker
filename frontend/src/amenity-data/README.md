@@ -30,16 +30,25 @@ wiki pages it follows. The file is one point per line, short keys:
 
 ## Status
 
-**The committed file has no points yet.** The extract lives on the project's
-build host, which the change that added the layer could not reach; until the
-file is regenerated there the layer's switch says it is unavailable. To build
-it, from the repository root on that host:
+Generated on the build host on 2026-10-09 from that day's extract
+(`<DATA_ROOT>/extracts/source.osm.pbf`), commit dce6451: 2,263 points, all
+inside the coverage box, 141,213 bytes, sha256
+`496bae39f7d0741cf2261e40d20937f6fd652c6dbea996d56c58d1a21dd281e1`.
+
+| Kind | Points |
+| --- | --- |
+| drinking water | 762 (20 of them at a restroom) |
+| untreated water | 175 |
+| flush restroom | 206 |
+| portable, pit or composting toilet | 286 |
+| restroom, type not mapped | 854 |
+
+To rebuild, from the repository root on that host:
 
     .venv311/bin/python scripts/build_water_restrooms.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-then record the extract's date, size and sha256 and the file's sha256 here, as
-`rail-data/README.md` does, and commit the file.
+then update the figures above and commit the file.
 
 ## Refresh
 
