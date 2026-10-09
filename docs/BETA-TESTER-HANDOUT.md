@@ -69,8 +69,11 @@ needed; reload the page to get the box back.
 6. Once you are in (for screen-reader users)
 --------------------------------------------
 
-- The first thing on the page is a link, "Skip to the route planner". It takes you past the
-  map to the planner.
+- The first thing on the page is a button, "Accessibility mode", a switch that starts off.
+  Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
+  "Road info at map center". It stays on for this device. The same switch is in "More tips".
+- The next thing is a link, "Skip to the route planner". It takes you past the map to the
+  planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
   as "Route planner, complementary". Its heading is "RouteMaker".
 - Just under that heading is a region called "Beta notice", with a "Dismiss" button. It says

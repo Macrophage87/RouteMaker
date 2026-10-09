@@ -18,6 +18,7 @@
  */
 import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { formatRadius } from "./format.ts";
+import { mapToolsWays } from "./accessMode.ts";
 import { applyPlace, choicesFor, type PlaceChoice } from "./geocode.ts";
 import { pointName } from "./summary.ts";
 
@@ -110,10 +111,19 @@ export const INFO_BUTTON_LABEL = "Road info at map center";
 export const MAP_TOOLS_LABEL = "Map tools";
 export const ADD_AT_CENTRE_LABEL = "Add point at map center";
 export const INFO_KEY = "i";
-export const INFO_HELP =
-  "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
-  `From the keyboard: with the map focused, press I for the road at the center of the map, or open ${MAP_TOOLS_LABEL} (by the map's zoom buttons) for ${INFO_BUTTON_LABEL} and ${ADD_AT_CENTRE_LABEL}. ` +
-  `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${MAP_TOOLS_LABEL} works in either.`;
+/**
+ * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in
+ * accessibility mode (455): off, it says to turn the mode on first. INFO_HELP is the mode-on text.
+ */
+export function infoHelp(accessMode: boolean): string {
+  const ways = mapToolsWays(accessMode);
+  return (
+    "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
+    `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}. ` +
+    `With NVDA or JAWS, I reaches the map only in focus mode (in browse mode it moves to the next list item); ${accessMode ? "" : "in accessibility mode, "}${MAP_TOOLS_LABEL} works in either.`
+  );
+}
+export const INFO_HELP = infoHelp(true);
 /** How long a finger must rest, unmoved, for a long press. */
 export const LONG_PRESS_MS = 600;
 /** How far a finger may drift and still be a long press, not a pan. */

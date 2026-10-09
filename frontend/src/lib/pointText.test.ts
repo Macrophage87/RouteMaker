@@ -6,6 +6,7 @@ import { LOOP_LABEL, LOOP_START_NAME, loopView } from "./loop.ts";
 import { markerDeps } from "./mapGlue.ts";
 import {
   addedSaid,
+  editingTips,
   emptyPlanHint,
   insertedSaid,
   loopChangeSaid,
@@ -158,19 +159,42 @@ test("the empty-plan hint: start then stops in a loop; the toggle offered only w
 
 test("the lone-start hint: a stop next in a loop; the toggle offered only where the ride type has one", () => {
   assert.equal(
-    loneStartHint("default", true),
+    loneStartHint("default", true, true),
     'Now click the map to add a stop, or use "Add point at map center" in Map tools. The ride comes back to the start.',
   );
   assert.equal(
-    loneStartHint("default", false),
+    loneStartHint("default", false, true),
     'Now click the map where you want to finish, or use "Add point at map center" in Map tools. To finish back at the start' +
       ' instead, check "Make it a loop" under the search.',
   );
   assert.equal(
-    loneStartHint("mass-ride", false),
+    loneStartHint("mass-ride", false, true),
     'Now click the map where you want to finish, or use "Add point at map center" in Map tools.',
   );
-  assert.doesNotMatch(loneStartHint("mass-ride", false), /loop/i);
+  assert.doesNotMatch(loneStartHint("mass-ride", false, true), /loop/i);
+});
+
+test("accessibility mode off: the hints say to turn it on, not to use Map tools that is not there (455)", () => {
+  // The owner's sentence (455a(4)) on its own, with where the switch is (the a11y review's SF1; mutation U17).
+  const turnOn = "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).";
+  assert.equal(loneStartHint("default", true), `Now click the map to add a stop. ${turnOn} The ride comes back to the start.`);
+  assert.equal(
+    loneStartHint("default", false),
+    `Now click the map where you want to finish. ${turnOn} To finish back at the start instead, check "Make it a loop" under the search.`,
+  );
+  assert.equal(loneStartHint("mass-ride", false), `Now click the map where you want to finish. ${turnOn}`);
+  for (const hint of [loneStartHint("default", true), loneStartHint("default", false), loneStartHint("mass-ride", false)]) {
+    assert.doesNotMatch(hint, /Map tools/);
+  }
+  const tips = editingTips();
+  // In More tips, whose own line says where the switch is, so not here (the spec review's SF4).
+  assert.match(tips, /move the map with the arrow keys and turn on accessibility mode, then use "Add point at map center" in Map tools;/);
+  assert.doesNotMatch(tips, /first button/);
+  assert.match(editingTips(true), /use "Add point at map center" in Map tools; Ctrl\+Z/);
+  assert.doesNotMatch(editingTips(true), /accessibility mode/);
+  assert.match(emptyPlanHint("default", false), /turn on accessibility mode/);
+  assert.doesNotMatch(emptyPlanHint("default", false), /first button/);
+  assert.doesNotMatch(emptyPlanHint("default", false, true), /accessibility mode/);
 });
 
 test("the toggle's hint with a start alone talks of no end point", () => {

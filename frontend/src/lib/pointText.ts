@@ -6,6 +6,7 @@
  * every later one a stop, and there is no end. Mass Ride has no loop, so its
  * hints never mention the toggle.
  */
+import { ACCESS_SENTENCE_WHERE, mapToolsWays } from "./accessMode.ts";
 import { LOOP_FIRST_HINT, LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
@@ -116,7 +117,7 @@ export function loopChangeSaid(before: LoopRide, after: LoopRide, count: number)
 const TOGGLE_PLACE = "under the search";
 
 /** The hint before any point is placed. */
-export function emptyPlanHint(preset: PresetId, loop: boolean): string {
+export function emptyPlanHint(preset: PresetId, loop: boolean, accessMode = false): string {
   const first = loop
     ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
     : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
@@ -127,7 +128,7 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
       ? ""
       : ` To finish back at the start, check "${LOOP_LABEL}" ${TOGGLE_PLACE};` +
         " then each click after the start is a stop.";
-  return `${first}${toggle} ${editingTips()}`;
+  return `${first}${toggle} ${editingTips(accessMode)}`;
 }
 
 /**
@@ -135,22 +136,25 @@ export function emptyPlanHint(preset: PresetId, loop: boolean): string {
  * point, and the whole of "More tips" once there are points (the correctness review's N5: the start-up
  * words read wrong with points placed).
  */
-export function editingTips(): string {
+export function editingTips(accessMode = false): string {
   return (
     "Drag any marker to move it, or drag the route line to pull it through somewhere else" +
     " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
-    ' move the map with the arrow keys and use "Add point at map center" in Map tools; Ctrl+Z undoes the' +
+    ` move the map with the arrow keys and ${mapToolsWays(accessMode).addPoint}; Ctrl+Z undoes the` +
     " last change and Ctrl+Shift+Z redoes it."
   );
 }
 
-/** The hint with the start alone, with the keyboard's way to place the next point. */
-export function loneStartHint(preset: PresetId, loop: boolean): string {
-  const keys = 'or use "Add point at map center" in Map tools';
-  if (loop) return `Now click the map to add a stop, ${keys}. The ride comes back to the start.`;
-  if (preset === "mass-ride") return `Now click the map where you want to finish, ${keys}.`;
+/**
+ * The hint with the start alone, with the keyboard's way to place the next point. With accessibility
+ * mode off, the owner's sentence (455a(4)) is its own sentence and says where the switch is.
+ */
+export function loneStartHint(preset: PresetId, loop: boolean, accessMode = false): string {
+  const keys = accessMode ? ', or use "Add point at map center" in Map tools.' : `. ${ACCESS_SENTENCE_WHERE}`;
+  if (loop) return `Now click the map to add a stop${keys} The ride comes back to the start.`;
+  if (preset === "mass-ride") return `Now click the map where you want to finish${keys}`;
   return (
-    `Now click the map where you want to finish, ${keys}. To finish back at the start instead,` +
+    `Now click the map where you want to finish${keys} To finish back at the start instead,` +
     ` check "${LOOP_LABEL}" ${TOGGLE_PLACE}.`
   );
 }

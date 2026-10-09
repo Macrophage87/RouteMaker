@@ -5273,13 +5273,54 @@ Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
-## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m-441q, 450; v0.2.1)
+## Accessibility mode (OWNER-DECISIONS 455, 455a)
+
+`frontend/src/lib/accessMode.ts`. Off by default; with it on, Map tools (below) is on the
+page by the map's zoom buttons; with it off, App does not render `<MapTools>` at all. The
+keys (I, the arrows, + and -) work in both modes.
+
+- **Storage.** localStorage key `routemaker.accessMode`, "on" or "off"; only "on" means
+  on, so a missing or unknown value reads as off. Reading and writing are in try/catch
+  (`browserStore` also catches a throwing `localStorage`), so with storage blocked the mode
+  is off at load and lasts only for the visit. It is unrelated to the High contrast
+  switch, whose key is `routemaker.accessibility` (`stressStyle.js`; the switch is
+  `lib/accessibilitySwitch.ts`).
+- **Two switches**, both a `<button aria-pressed>` with the constant name "Accessibility
+  mode": the page's first element and first Tab stop (`.access-link`, off screen until
+  focused like the skip link, which is now the second stop; both at least 44 px tall), and
+  one in More tips (`.access-toggle`). `accessModeToggle` gives the new state, what the
+  page's polite region says ("Accessibility mode on. Map tools is by the map's zoom
+  buttons." / "Accessibility mode off. Map tools is hidden.") and whether the focus moves:
+  only the first switch, turning the mode on, moves it to the Map tools button. The move
+  waits for Map tools to mount (`MapTools`' `onShown`; the map may still be loading) and is
+  dropped if the focus has moved on since the press.
+- **Help that changes with the mode.** Off: the search lede and the lone-start hint (shown
+  outside More tips) say "For keyboard or screen reader use, turn on accessibility mode
+  (the first button on the page, or in More tips)."; in More tips, the keyboard hints and
+  the road help say "turn on accessibility mode" before naming Map tools, and its own line
+  says "For keyboard or screen reader use, turn on accessibility mode. It adds Map tools by
+  the map's zoom buttons and is kept on this device. It is also the first button on the
+  page." On: the hints name Map tools directly (`mapToolsWays`, `infoHelp`, `searchLede`,
+  `loneStartHint`, `editingTips`, `emptyPlanHint` all take the mode).
+- **Upgrade note.** v0.2.1 showed Map tools to everyone; after this change it is behind the
+  mode, which starts off on every device (no earlier key to migrate from). The release
+  note tells riders to turn it on once.
+- **Tests.** `lib/accessMode.test.ts` (storage, blocked and missing storage, the press, the
+  wording), `pointText.test.ts`, `roadInfo.test.ts`, `sidebar.test.ts`,
+  `a11yFixes.test.ts`; the browser suite (`scripts/a11y/check.mjs`, EXPECTED 319): section
+  1 checks that the switch is the first stop, not pressed, shown and 44 px tall when
+  focused and off screen otherwise; 7 checks before the Map tools ones cover off by
+  default, the help when off, Enter turning it on (Map tools closed and focused, kept),
+  the announcement, a new page remembering it, Enter turning it off (the focus stays) and
+  the More tips switch.
+
+## The map's road panel (OWNER-DECISIONS 441, 441a-441f, 441m-441q, 450, 455; v0.2.1)
 
 **What a rider does.** A right-click on the map (a computer), a finger held still for
 0.6 s (a phone; `lib/roadInfo.ts` `LongPress`, called off by a drift past 10 px, a second
 finger, the finger lifting or the map moving, and never preventing a default, so the map
 pans and pinches as before), I with the map focused, or "Road info at map center" in Map
-tools (450; `MapTools.tsx`): one small button, at least 44 px, in a map control under the
+tools (450; `MapTools.tsx`; on the page only in accessibility mode, 455, above): one small button, at least 44 px, in a map control under the
 zoom buttons, a disclosure (`aria-expanded`, two plain buttons, not an ARIA menu) holding
 "Add point at map center" and "Road info at map center"; Escape closes it and the focus
 goes back to it, as it does before either action runs, and the crosshair shows the center
@@ -5309,7 +5350,8 @@ passes it yet. A polite status region inside the dialog (always rendered, empty 
 answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
 cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
 silent, since the modal makes everything outside it inert. On a phone it is a sheet from
-the bottom. The help (More tips) names all four ways (right-click, hold, I, Map tools) and
+the bottom. The help (More tips) names all four ways (right-click, hold, I, Map tools; with
+accessibility mode off it says to turn the mode on for Map tools) and
 says that NVDA and JAWS pass I to the map only in focus mode; the map's own name says
 "Press I" (and only the canvas has `aria-keyshortcuts="I"`). A right-button drag that rotates the map is not a
 request (`MapView.tsx`: the contextmenu waits for the release on platforms that send it
@@ -5394,7 +5436,8 @@ corridor; the route-only note kept off; a silent router; an old table; no coordi
 any log; 400, 403 uncounted, 429; the rule and reason words; `bike_access_reason`),
 `tests/test_beta_overlay.py`, `lib/roadInfo.test.ts`, `lib/stationLinks.test.ts` (every
 Metro station on the map has a slug, no stray, Penn and Union Station, the nearby station),
-and section 21 of the a11y check (29 checks since the v0.2.1 fix round, among them Map tools
+and section 21 of the a11y check (36 checks: 29 since the v0.2.1 fix round and 7 for
+accessibility mode, 455; among them Map tools
 by keyboard, the answer read from the accessibility tree inside the dialog, Shift+Tab, an
 unavailable top-row button, the station links near Union Station and the focus after a long
 press; the first 15: a right-click opens a modal dialog with the

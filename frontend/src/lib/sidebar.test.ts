@@ -162,8 +162,8 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     return i;
   };
   assert.deepEqual(
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints),
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints),
+    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
     "the search, then the loop box, then the points and their tools",
   );
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
@@ -185,12 +185,12 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.equal(MORE_TIPS, "More tips");
   assert.equal(FEWER_TIPS, "Fewer tips");
   // The keyboard's way in stays in view (the a11y review's S6).
-  assert.equal(searchLede(false), "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.");
-  assert.equal(searchLede(true), "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start.");
+  assert.equal(searchLede(false, true), "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.");
+  assert.equal(searchLede(true, true), "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start.");
   // The start-up how-to only before any point; with points, how to change them (the correctness review's N5).
   assert.match(
     app,
-    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias\)\}<\/p>\}/,
+    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
   );
   assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
   // The compact row; every existing button is still there. Add point at map center is in Map tools (450).
@@ -198,7 +198,15 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.ok(labels.every((i) => i > 0));
   assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
-  assert.match(app, /<MapTools\s+onAddPoint=\{addAtCentre\}/);
+  assert.match(app, /accessMode \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
+  assert.equal(
+    searchLede(false),
+    "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).",
+  );
+  assert.equal(
+    searchLede(true),
+    "Search or click the map: start, then stops. The ride comes back to the start. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).",
+  );
   // I works only on the focused map: no button claims it (the a11y review's S2); the map's canvas still does.
   assert.doesNotMatch(app, /aria-keyshortcuts="I"/);
   const tools = src("../MapTools.tsx");

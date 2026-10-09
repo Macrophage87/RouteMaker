@@ -17,6 +17,7 @@ const mapView = read("./MapView.tsx");
 const app = read("./App.tsx");
 const dialsPanel = read("./DialsPanel.tsx");
 const list = read("./IntersectionList.tsx");
+const mapTools = read("./MapTools.tsx");
 
 /** The body of the first `@media (query) { ... }`, by matching braces. */
 function mediaBody(source: string, query: string): string {
@@ -236,4 +237,43 @@ test("a closed group's list is really hidden: [hidden] wins over the grid", () =
 test("the toggle rows (loop, avoid gravel, the ride times) are 24 px targets, not 21 (the release a11y review's N7)", () => {
   const rule = css.match(/\n\.toggle \{([^}]*)\}/)?.[1] ?? "";
   assert.match(rule, /min-height: 24px;/);
+});
+
+test("App: the accessibility mode switch is the first thing in the page, before the skip link and the map (455)", () => {
+  const access = app.indexOf('className="access-link"');
+  assert.ok(access > 0 && access < app.indexOf('className="skip-link"'), "before the skip link");
+  assert.match(app, /<button type="button" className="access-link" aria-pressed=\{accessMode\} onClick=\{\(\) => toggleAccessMode\(true\)\}>\s*\{ACCESS_LABEL\}\s*<\/button>/);
+  // Hidden until it has the focus, as the skip link is.
+  assert.match(declared(".access-link"), /transform:\s*translateY\(-200%\)/);
+  assert.match(declared(".access-link:focus"), /transform:\s*none/);
+  assert.match(declared(".access-link:focus-visible"), /transform:\s*none/);
+});
+
+test("App: Map tools is rendered only in accessibility mode; the toggle is in More tips too (455)", () => {
+  assert.match(app, /tools=\{\s*accessMode \? \(\s*<MapTools/);
+  assert.match(app, /\) : null\s*\}\s*\/>/);
+  const tips = app.slice(app.indexOf("<MoreTips>"), app.indexOf("</MoreTips>"));
+  assert.match(tips, /infoHelp\(accessMode\)/);
+  assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
+  assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{ACCESS_LABEL\}/);
+});
+
+test("App: a press goes through accessModeToggle (tested in accessMode.test.ts): kept, said, and the focus flag (455)", () => {
+  const fn = app.slice(app.indexOf("const toggleAccessMode"), app.indexOf("const toggleAccessMode") + 500);
+  assert.match(fn, /const step = accessModeToggle\(accessMode, focusTools\)/);
+  assert.match(fn, /writeAccessMode\(step\.next\)/);
+  assert.match(fn, /setAccessMode\(step\.next\)/);
+  assert.match(fn, /announce\(step\.said\)/);
+  assert.match(fn, /focusToolsNext\.current = step\.focusTools/);
+  // The move waits for Map tools to be on the page (its onShown), which may be after the map loads (the a11y review's N5).
+  assert.match(app, /onShown=\{toolsShown\}/);
+  const shown = app.slice(app.indexOf("const toolsShown"), app.indexOf("const toolsShown") + 500);
+  assert.match(shown, /if \(!focusToolsNext\.current\) return;\s*focusToolsNext\.current = false;/);
+  assert.match(shown, /toolsToggleRef\.current\?\.focus\(\)/);
+  assert.match(mapTools, /useEffect\(\(\) => onShown\?\.\(\), \[\]\)/);
+});
+
+test("the page's first two stops, the switch and the skip link, are at least 44 px tall (the a11y review's N3)", () => {
+  assert.match(declared(".access-link"), /min-height:\s*44px/);
+  assert.match(declared(".skip-link"), /min-height:\s*44px/);
 });

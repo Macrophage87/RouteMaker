@@ -3,7 +3,8 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
-import { INFO_HELP, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
+import { ACCESS_HELP, ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
+import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
@@ -276,6 +277,12 @@ export function App() {
   // The map is where the focus goes when the road panel's opener cannot take it back (a long press).
   const mapFocus = useCallback(() => mapRef.current?.getCanvas() ?? null, []);
   // Map tools (OWNER-DECISIONS 450) shows the crosshair while it is open.
+  // Accessibility mode (OWNER-DECISIONS 455; lib/accessMode.ts): off unless turned on, kept on this device.
+  // Map tools is on the page only while it is on.
+  const [accessMode, setAccessMode] = useState(() => readAccessMode());
+  const toolsToggleRef = useRef<HTMLButtonElement>(null);
+  const focusToolsNext = useRef(false);
+  const focusAtPress = useRef<Element | null>(null);
   const toolsCrosshair = useCallback((on: boolean) => setCrosshair((c) => (c.button === on ? c : { ...c, button: on })), []);
   // The junction a click on the route summary's list names; `nonce` makes a second
   // click on the same one open its card again.
@@ -470,6 +477,29 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
+  // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
+  // switch pressed, which is always on the page.
+  const toggleAccessMode = useCallback(
+    (focusTools: boolean) => {
+      const step = accessModeToggle(accessMode, focusTools);
+      writeAccessMode(step.next);
+      focusToolsNext.current = step.focusTools;
+      focusAtPress.current = document.activeElement;
+      setAccessMode(step.next);
+      announce(step.said);
+    },
+    [accessMode, announce],
+  );
+  // Map tools tells App when it is on the page (its onShown). That is the same commit as the press once the map
+  // is built, or later while the map is still loading; the move waits for it, and is dropped if the rider has
+  // moved on in the meantime (the focus is no longer where it was at the press; the a11y review's N5).
+  const toolsShown = useCallback(() => {
+    if (!focusToolsNext.current) return;
+    focusToolsNext.current = false;
+    const now = document.activeElement;
+    if (!now || now === document.body || now === focusAtPress.current || now.classList.contains("access-link")) toolsToggleRef.current?.focus();
+  }, []);
 
   // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
@@ -1029,7 +1059,7 @@ export function App() {
         </div>
       )}
       {points.length === 0 ? (
-        <p className="hint">{searchLede(loopVias)}</p>
+        <p className="hint">{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, namer, loopVias)}
@@ -1039,7 +1069,7 @@ export function App() {
           }}
         />
       )}
-      {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias)}</p>}
+      {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
       {routeShownForPoints && points.length >= 2 && (
         <button
           type="button"
@@ -1090,9 +1120,13 @@ export function App() {
       {/* The how-to, collapsed (the mockup's "More tips"). */}
       <MoreTips>
         {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
-        {points.length > 0 ? <p className="hint">{editingTips()}</p> : <p className="hint">{emptyPlanHint(preset, loopVias)}</p>}
+        {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
         {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
-        <p className="hint">{INFO_HELP}</p>
+        <p className="hint">{infoHelp(accessMode)}</p>
+        <p className="hint">{ACCESS_HELP}</p>
+        <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
+          {ACCESS_LABEL}
+        </button>
       </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
@@ -1208,6 +1242,11 @@ export function App() {
     <div className="app">
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
+      {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
+          switch (OWNER-DECISIONS 455, 455a): a button with aria-pressed and a constant name. */}
+      <button type="button" className="access-link" aria-pressed={accessMode} onClick={() => toggleAccessMode(true)}>
+        {ACCESS_LABEL}
+      </button>
       <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
         {SKIP_LINK_TEXT}
       </a>
@@ -1252,12 +1291,16 @@ export function App() {
         onStationPoint={placeStation}
         onRoadInfo={setRoadInfo}
         tools={
+          accessMode ? (
           <MapTools
+            toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
             addDisabled={points.length >= MAX_POINTS}
             onRoadInfo={roadInfoAtCentre}
             onCrosshair={toolsCrosshair}
+            onShown={toolsShown}
           />
+          ) : null
         }
       />
       <RoadInfoDialog
