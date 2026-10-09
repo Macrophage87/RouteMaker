@@ -49,7 +49,7 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.carrying) params.set("carrying", dials.carrying);
     if (dials.assist) params.set("assist", "1");
     if (dials.avoidGravel) params.set("avoidgravel", "1");
-    // "Trails off" (OWNER-DECISIONS 463). Absent is trails on, except on Mass Ride, which is always off.
+    // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
     if (dials.trailsOff) params.set("trailsoff", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));

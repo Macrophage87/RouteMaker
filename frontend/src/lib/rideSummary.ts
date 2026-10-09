@@ -57,7 +57,7 @@ export function targetShort(metres: Dials["targetDistanceM"]): string | null {
   return target === undefined ? null : `about ${formatDistance(target)}`;
 }
 
-/** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, trails off, gravel). */
+/** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, roads only, gravel). */
 export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
   const locked = stressMax(preset) === 0;
   const target = targetShort(dials.targetDistanceM);
@@ -68,7 +68,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
     whenShort(dials.when),
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? ["loop"] : []),
-    ...(dials.trailsOff === true && !trailsOffLocked(preset) ? ["trails off"] : []),
+    ...(dials.trailsOff === true && !trailsOffLocked(preset) ? ["roads only"] : []),
     ...(dials.avoidGravel === true ? ["avoids gravel"] : []),
   ];
 }

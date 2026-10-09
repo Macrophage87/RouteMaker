@@ -30,8 +30,8 @@ export interface Dials {
    */
   avoidGravel?: boolean;
   /**
-   * "Trails off" (OWNER-DECISIONS 463; 2026-09-26, "Every type, roadways ok"): plan
-   * on roadways only, on any ride type. Absent is off (trails allowed), except on
+   * "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b; 2026-09-26, "Every type,
+   * roadways ok"): plan on roadways only, on any ride type, e-bike rides included (463a). Absent is off (trails allowed), except on
    * Mass Ride, which is always trails off (`trailsOffLocked`). It is about the ride,
    * so it stays when the ride type changes.
    */

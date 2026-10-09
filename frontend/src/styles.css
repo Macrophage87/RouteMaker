@@ -1812,6 +1812,13 @@ dialog.weight-dialog h2 {
   min-height: 44px;
 }
 
+/* `details.how summary` (24 px, above) is more specific than `.panel summary`, so in the planner it
+   would win: say 44 px here too (the trails-off a11y review's SF1). Its display stays list-item, so the
+   disclosure marker stays. */
+.panel details.how summary {
+  min-height: 44px;
+}
+
 .panel button.link,
 .panel .toggle {
   min-height: 44px;

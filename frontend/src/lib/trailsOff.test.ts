@@ -1,11 +1,19 @@
-// "Trails off" (OWNER-DECISIONS 463; the 2026-09-26 "Every type, roadways ok"): one switch on every ride type.
+// "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b; the 2026-09-26 "Every type, roadways ok"): one switch on
+// every ride type. The link (`trailsoff=1`) and the request (`trails_off`) keep the old name.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PRESETS } from "./presets.ts";
 import { dialFields, fitDials, startDials, trailsAreOff, trailsOffLocked } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
-import { panelView, TRAILS_OFF_HINT, TRAILS_OFF_HOW, TRAILS_OFF_LABEL } from "./dialsPanel.ts";
+import {
+  panelView,
+  TRAILS_OFF_HINT,
+  TRAILS_OFF_HOW,
+  TRAILS_OFF_HOW_ABOUT,
+  TRAILS_OFF_LABEL,
+  TRAILS_OFF_LOCKED_HINT,
+} from "./dialsPanel.ts";
 import { choose } from "./rideTypeDialog.ts";
 import { rideSummary } from "./rideSummary.ts";
 
@@ -54,8 +62,19 @@ test("the panel offers the switch on every ride type, locked on and said so on M
     const on = panelView(preset.id, { ...startDials(preset.id), trailsOff: true }).trailsOff;
     assert.equal(on.checked, true, preset.id);
   }
-  assert.match(panelView("mass-ride", startDials("mass-ride")).trailsOff.hint, /always trails off/);
+  assert.equal(panelView("mass-ride", startDials("mass-ride")).trailsOff.hint, TRAILS_OFF_LOCKED_HINT);
+  assert.match(TRAILS_OFF_LOCKED_HINT, /^A mass ride always keeps to roads\. /);
   assert.ok(TRAILS_OFF_HINT.length <= 150, "a description is read on every focus");
+  assert.ok(TRAILS_OFF_LOCKED_HINT.length <= 150, "Mass Ride's description is read on every focus too");
+});
+
+test("the label says what checked means, and the hint does not repeat it (OWNER-DECISIONS 463b)", () => {
+  assert.equal(TRAILS_OFF_LABEL, "Keep to roads, not trails");
+  assert.equal(TRAILS_OFF_HINT, "No bike paths, trails or stairs. Can use the Key and Memorial Bridge roadways.");
+  assert.doesNotMatch(TRAILS_OFF_HINT, /roads only/i);
+  // Its "How this works" is told apart from the other dials' by a suffix read but not shown.
+  assert.equal(panelView("default", startDials("default")).trailsOff.howAbout, TRAILS_OFF_HOW_ABOUT);
+  assert.equal(TRAILS_OFF_HOW_ABOUT, "keep to roads");
 });
 
 test("the hint says in plain words what is left out", () => {
@@ -72,9 +91,10 @@ test("turning it on does not make the ride type look custom, and the reset keeps
   assert.equal(panelView("default", { ...dials, stress: 20 }).reset?.trailsOff, true);
 });
 
-test("the ride line names a trails-off ride, but not Mass Ride, which is always so", () => {
-  assert.match(rideSummary("default", { ...startDials("default"), trailsOff: true }), /trails off/);
-  assert.doesNotMatch(rideSummary("mass-ride", { ...startDials("mass-ride"), trailsOff: true }), /trails off/);
+test("the ride line says \"roads only\", but not on Mass Ride, which always is", () => {
+  assert.match(rideSummary("default", { ...startDials("default"), trailsOff: true }), /roads only/);
+  assert.doesNotMatch(rideSummary("default", startDials("default")), /roads only/);
+  assert.doesNotMatch(rideSummary("mass-ride", { ...startDials("mass-ride"), trailsOff: true }), /roads only/);
 });
 
 test("the switch is a real checkbox, labelled, and described by its hint; Mass Ride's stays in the Tab order", () => {
