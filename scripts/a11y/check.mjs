@@ -775,6 +775,34 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 16b. Trails off (OWNER-DECISIONS 463): one switch on every ride type ----
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const sw = await axNode(p, ".trails-off input");
+  check("trails off: a real checkbox named \"Trails off\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Trails off" && sw?.checked === false && /no bike paths, trails or stairs/.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
+  const how = await p.eval("(() => { const d = document.querySelector('.trails-off details.how'); return d ? { summary: d.querySelector('summary').textContent, open: d.open, said: /Chain Bridge/.test(d.textContent) } : null; })()");
+  check("trails off: what is left out is under a closed \"How this works\", not in the description", how?.summary === "How this works" && how.open === false && how.said === true, JSON.stringify(how));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const on = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '' })");
+  check("trails off: Space turns it on, plans once, keeps the focus, and puts it in the link and the Ride line", on.checked && on.focus && p.routeRequests - before === 1 && /trailsoff=1/.test(await p.eval("location.hash")) && /trails off/.test(on.line), JSON.stringify({ ...on, plans: p.routeRequests - before }));
+  await p.close();
+}
+{
+  // Mass Ride is always trails off: checked from a link that does not say so, in the Tab order, unchangeable.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  const sw = await axNode(p, ".trails-off input");
+  check("trails off: on Mass Ride it is checked, and its description says a mass ride is always trails off", sw?.role === "checkbox" && sw?.name === "Trails off" && sw?.checked === true && /^A mass ride is always trails off\./.test(sw?.description ?? ""), JSON.stringify(sw));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1000);
+  const after = await p.eval("(() => { const i = document.querySelector('.trails-off input'); return { checked: i.checked, attr: i.getAttribute('aria-disabled'), disabled: i.disabled, focus: document.activeElement === i }; })()");
+  check("trails off: on Mass Ride it keeps the focus, and Space neither unchecks it nor plans", after.checked && after.attr === "true" && !after.disabled && after.focus && p.routeRequests === before && !/trailsoff/.test(await p.eval("location.hash")), JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  await p.close();
+}
 // ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 {
@@ -1813,7 +1841,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 319;
+const EXPECTED = 324;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

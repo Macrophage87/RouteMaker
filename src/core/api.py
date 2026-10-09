@@ -205,6 +205,14 @@ class RouteIn(Schema):
         default=False,
         description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
     )
+    trails_off: StrictBool = Field(
+        default=False,
+        description=(
+            "Plan on roadways only: no bike paths, trails, footways or stairs, and the Key"
+            " Bridge and Arlington Memorial Bridge roadways allowed. Any ride type. Mass Ride"
+            " always rides this way, whatever is sent."
+        ),
+    )
     system_weight_kg: StrictInt | None = Field(
         default=None,
         description=(
@@ -394,6 +402,7 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    trails_off: bool = False
     target_distance_m: int | None = Field(
         default=None,
         description="The rider's target distance the route was planned towards, if set.",
@@ -1297,6 +1306,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             carrying=body.carrying,
             assist=body.assist,
             avoid_gravel=body.avoid_gravel,
+            trails_off=body.trails_off,
             target_distance_m=body.target_distance_m,
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
@@ -1311,11 +1321,14 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         return Status(400, {"error": ROUTER_TOO_LONG})
     except routing.NoRoute as no_route:
         message = "No route joins these points on this preset."
-        if no_route.no_path and presets.PRESETS[body.preset].variant == "no-trail":
+        if no_route.no_path and (
+            body.trails_off or presets.PRESETS[body.preset].variant == "no-trail"
+        ):
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
-                " Mass Ride routes only on roadways, and removing trails can leave"
+                " A Mass Ride or a ride with trails off routes only on roadways, and removing"
+                " trails can leave"
                 " no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})

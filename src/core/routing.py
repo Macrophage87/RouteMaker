@@ -735,6 +735,9 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
+    # "Trails off": plan on the no-trail graph, whatever the ride type
+    # (`presets.variant_for_ride`). Mass Ride is always on it.
+    trails_off: bool = False
     # The rider's "Target distance" (metres, OWNER-DECISIONS 271), for the top of the
     # stress slider only (`presets.maxcalm_for`): a soft goal with a hard ceiling
     # (`presets.target_ceiling_m`); None: no target, `presets.default_ceiling_m`.
@@ -2010,7 +2013,8 @@ def plan(
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, when, assist)
+    trails_off = bool(dials.trails_off)
+    variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
     avoid_gravel = bool(dials.avoid_gravel)
     costing = presets.costing(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
@@ -2500,6 +2504,8 @@ def plan(
                 "carrying": presets.carrying_of(preset_name, dials.carrying),
                 "assist": assist,
                 "avoid_gravel": avoid_gravel,
+                # What was planned, not what was asked: Mass Ride is always trails-off.
+                "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,

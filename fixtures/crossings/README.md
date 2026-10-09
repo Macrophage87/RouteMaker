@@ -196,10 +196,11 @@ agree.
   ("Offer trails-off on every ride type; like Group Ride, it may use the Key
   and Memorial roadways."). So these roadways are for any trails-off ride.
   `variants.variant_for` gives the no-trail variant to every request with
-  trails off; it takes the two toggles and no ride name. The toggle is not
-  built yet, and the route API's presets (on the branch that builds them)
-  name `Variant.NO_TRAIL` directly for Mass Ride, which does not pass through
-  `variant_for`.
+  trails off; it takes the two toggles and no ride name. The route API asks
+  `core.presets.variant_for_ride`, which gives the no-trail graph to a request
+  with `trails_off` (the "Trails off" switch, built from OWNER-DECISIONS 463,
+  on every ride type) and, through the preset's own variant, to Mass Ride,
+  which is always trails off and does not pass through `variant_for`.
   The bar also closes the tags upstream's `graph.lua` would otherwise grant
   bicycle access from over `bicycle=no` - every `cycleway*` key and
   `vehicle:forward`/`:backward` set to `no`, `oneway:bicycle` to `yes`

@@ -962,7 +962,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         "legs": 0,
     }
     if ctx.roadway_only:
-        # A ride on the no-trail graph (Group Ride with trails off): there are
+        # A ride on the no-trail graph (Mass Ride, or any ride with trails off): there are
         # no trails to seek, and through points would snap to the roads beside
         # them (review r1).
         seek["limited"] = "roadway_only"

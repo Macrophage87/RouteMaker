@@ -26,7 +26,7 @@ class Variant(Enum):
     """Named for what it does, not for who uses it.
 
     The no-trail variant is not the "mass ride variant": Group Ride uses it
-    whenever its trail toggle is off, and naming it after one preset invites the
+    whenever its "Trails off" switch is on, and naming it after one preset invites the
     assumption that it encodes that preset's other opinions.
 
     It does encode the owner's of 2026-10-02 (items 192, 193): no ride on it
@@ -43,7 +43,9 @@ class Variant(Enum):
     2026-09-26, asked what trails-off should do for the other ride types,
     "Every type, roadways ok" - "Offer trails-off on every ride type; like
     Group Ride, it may use the Key and Memorial roadways." `variant_for` gives
-    this variant to any ride with trails off (fixtures/crossings/README.md).
+    this variant to any ride with trails off (fixtures/crossings/README.md);
+    the route API asks `core.presets.variant_for_ride`, which does the same for
+    the "Trails off" switch (OWNER-DECISIONS 463).
     """
 
     STANDARD = "standard"
@@ -983,7 +985,10 @@ def variant_for(allow_trails: bool, ebike_rules: bool) -> Variant:
     than silently choosing one.
 
     Trails off gives the no-trail variant, whatever the ride: the toggles alone
-    decide, and no ride is named. PLAN.md:86 has every dial on every preset,
+    decide, and no ride is named. (The route API's own entry is
+    `core.presets.variant_for_ride`, which adds the ride type's graph, the
+    weekend twin and the off-road graph for a ride with trails on, and gives
+    this variant to a trails-off one; this function is the toggles' rule.) PLAN.md:86 has every dial on every preset,
     and the no-trail variant keeps the roadways the crossings fixture marks
     `roadway_mass_ride_only` (Key Bridge and Arlington Memorial Bridge), which
     the owner reserved on 2026-09-26 ("I wouldn't route someone onto that

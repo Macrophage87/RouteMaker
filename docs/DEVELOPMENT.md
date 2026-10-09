@@ -2675,8 +2675,8 @@ corridor's detour (`refine.SEEK_RETRY_OVER`, `SEEK_RETRY_SLACK_M`), time allowin
 both answers are scored and guarded, and the second's `tried` row says
 `retry: "longer"`. So a leg is up to six routes.
 
-**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Group Ride
-with trails off at 100) is not seeked (`limited: "roadway_only"`).
+**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Mass Ride,
+or any ride with the "Trails off" switch on, at 100) is not seeked (`limited: "roadway_only"`).
 
 **Credit 0 against 0.5, one process.** Trailmaxxing at 100, the twelve trips, the
 harness's plan time (the second of two plans, the harness's own work excluded), two
@@ -3490,10 +3490,48 @@ for group rides or mass rides, many routing engines put people on this when it's
 not appropriate." and, for a Group Ride with trails on, "with trails on that's
 fine". So the closure is built into one graph. A ride chooses its graph through
 `core.presets.variant_for_ride`, which `routing.py` calls and which gives
-`Variant.NO_TRAIL` to Mass Ride (its preset's own variant). Any ride with trails
-off would take the same graph (`pipeline.variants.variant_for` maps the trails-off
-toggle to it; Group Ride's toggle is not offered yet). Group Ride with trails on
-is on the standard graph, which keeps contraflow.
+`Variant.NO_TRAIL` to Mass Ride (its preset's own variant) and to any ride whose
+request has `trails_off` (the "Trails off" switch, below). Group Ride with trails
+on is on the standard graph, which keeps contraflow.
+
+### Trails off (OWNER-DECISIONS 463)
+
+The owner, 2026-10-09: "add it". A "Trails off" switch is offered on every ride
+type (2026-09-26, "Every type, roadways ok"). The request field is
+`trails_off` (`core.api.RouteIn`, a strict boolean, default false), carried as
+`Dials.trails_off` to `presets.variant_for_ride(name, when, assist, trails_off)`,
+which gives `Variant.NO_TRAIL` whatever else the ride asks. The answer's
+`dials.trails_off` says what was planned: true on Mass Ride whether or not it
+was sent, because Mass Ride is always trails off.
+
+What it means is what the no-trail graph leaves out (`pipeline.variants.inject`,
+`is_trail_class`): every way whose `highway` is `cycleway`, `footway`, `path`,
+`pedestrian`, `bridleway` or `steps`, whatever its bicycle tag, plus the roadways
+of the sidepath-only bridges (Chain Bridge, the George Mason span, the Wilson
+Bridge). It also gives no ride a one-way street against its traffic
+(`close_contraflow`) and no credit for painted or protected lanes
+(`facility_neutral`); the lanes tagged on a road stay in the graph as the road.
+The Key Bridge and Arlington Memorial Bridge roadways (`roadway_mass_ride_only`)
+are barred on the standard and e-bike graphs and open here, so any trails-off
+ride may use them. The switch's hint says this in plain words
+(`frontend/src/lib/dialsPanel.ts`, `TRAILS_OFF_HINT`, `TRAILS_OFF_HOW`).
+
+Choices made where the owner has not said (they are in the report on the
+branch): electric assist with trails off plans on the no-trail graph at the
+assist pace, without the e-bike graph's bar on ways that bar electric bicycles;
+Gravel and Mountain Goat with trails off take the no-trail graph, not the
+off-road graph; a weekend ride takes it without a weekend twin, as Mass Ride
+does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
+
+The front end holds it as `Dials.trailsOff`, absent for off. It is in the link as
+`trailsoff=1` (written only when on; a link without it is trails on, so every
+older link opens as before, and Mass Ride is trails off whatever the link says),
+in the request as `trails_off: true`, in the Ride line as "trails off" (not on
+Mass Ride), and stays when the ride type changes, as Avoid gravel does. The
+control is a real checkbox with the label "Trails off", described by its hint;
+on Mass Ride it is checked and `aria-disabled` (in the Tab order, a press changes
+nothing), as "Make it a loop" is when the ride is a loop already. The browser
+check (`scripts/a11y/check.mjs`) covers it.
 
 `pipeline.variants.inject` calls `close_contraflow` last on the no-trail
 variant, after the trail and sidepath drop. On a way that is one-way for motor

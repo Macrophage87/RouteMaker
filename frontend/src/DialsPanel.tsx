@@ -200,6 +200,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
     else keys.current.now(commitDraft);
   };
   const view = panelView(preset, dials, draft);
+  const trailsOffHintId = useId();
   return (
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
@@ -293,6 +294,27 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           onClear={weight.onClear}
         />
       )}
+      <div className="dial trails-off">
+        <label className="toggle">
+          {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+              reason in its description, and a press changes nothing (as the loop box does). */}
+          <input
+            type="checkbox"
+            checked={view.trailsOff.checked}
+            aria-disabled={view.trailsOff.locked || undefined}
+            aria-describedby={trailsOffHintId}
+            onChange={(event) => {
+              if (view.trailsOff.locked) return;
+              onCommit({ ...dials, trailsOff: event.target.checked });
+            }}
+          />
+          {view.trailsOff.label}
+        </label>
+        <p className="hint" id={trailsOffHintId}>
+          {view.trailsOff.hint}
+        </p>
+        <HowThisWorks text={view.trailsOff.how} />
+      </div>
       <label className="toggle">
         <input
           type="checkbox"

@@ -342,6 +342,19 @@ def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
     for when in ("weekend", "weekday_rush", "weekday_offpeak"):
         assert presets.variant_for_ride("cargo", when, assist=True) == Variant.EBIKE.value
     assert presets.variant_for_ride("default", "weekday_rush", assist=True) == "standard"
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+@pytest.mark.parametrize("when", ["weekend", "weekday_rush", "weekday_offpeak"])
+@pytest.mark.parametrize("assist", [False, True])
+def test_trails_off_is_the_no_trail_graph_on_every_ride_type(name, when, assist):
+    """OWNER-DECISIONS 463: offered on every type; off-road and e-bike included."""
+    assert presets.variant_for_ride(name, when, assist, trails_off=True) == Variant.NO_TRAIL.value
+
+
+@pytest.mark.parametrize("assist", [False, True])
+def test_mass_ride_is_on_the_no_trail_graph_with_the_switch_off(assist):
+    assert presets.variant_for_ride("mass-ride", "weekend", assist, trails_off=False) == "no-trail"
     assert (
         presets.costing("cargo", assist=True)["bicycle"]["cycling_speed"]
         < options("ebike")["cycling_speed"]

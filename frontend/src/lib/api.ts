@@ -371,6 +371,7 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
+    trails_off?: boolean;
     target_distance_m?: number | null;
     system_weight_kg?: number | null;
     loop?: boolean;

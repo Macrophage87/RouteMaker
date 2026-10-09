@@ -30,6 +30,13 @@ export interface Dials {
    */
   avoidGravel?: boolean;
   /**
+   * "Trails off" (OWNER-DECISIONS 463; 2026-09-26, "Every type, roadways ok"): plan
+   * on roadways only, on any ride type. Absent is off (trails allowed), except on
+   * Mass Ride, which is always trails off (`trailsOffLocked`). It is about the ride,
+   * so it stays when the ride type changes.
+   */
+  trailsOff?: boolean;
+  /**
    * "Target distance" (OWNER-DECISIONS 256, 271), in metres: a soft goal. The planner
    * finds the least stressful route at or under it, and goes past it only where the
    * extra miles avoid enough stress, never past `TARGET_CEILING_RATIO` times it.
@@ -128,6 +135,16 @@ export function stressMax(preset: PresetId): number {
   return STARTS[preset].stressMax ?? STRESS_MAX;
 }
 
+/** Ride types that are always trails off: the switch shows on and cannot change (Mass Ride). */
+export function trailsOffLocked(preset: PresetId): boolean {
+  return preset === "mass-ride";
+}
+
+/** Whether the ride is planned trails off: the rider's switch, or a ride type that always is. */
+export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">): boolean {
+  return trailsOffLocked(preset) || dials.trailsOff === true;
+}
+
 export function offersAssist(preset: PresetId): boolean {
   return STARTS[preset].assist === true;
 }
@@ -215,6 +232,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     carrying: start.carrying,
     assist: start.assist,
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
+    ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
   };
@@ -227,6 +245,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
   if (dials.avoidGravel) fields.avoid_gravel = true;
+  if (dials.trailsOff) fields.trails_off = true;
   const target = fitTarget(dials.targetDistanceM);
   if (target !== undefined) fields.target_distance_m = target;
   const weight = fitWeight(dials.systemWeightKg);

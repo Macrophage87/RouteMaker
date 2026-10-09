@@ -16,8 +16,8 @@ they start, and the other dials stay the preset's own:
   a default which is basically fastest time for most people in the middle, to
   hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
   (Valhalla's hills weight off) is an implementation choice.
-- **Group Ride**: "L1: standard variant, trails allowed" (its "Allow bike paths
-  and trails" toggle ships on, and the toggle is not offered yet); "L2: Cross,
+- **Group Ride**: "L1: standard variant, trails allowed" (its trails toggle ships on; the
+  "Trails off" switch, offered on every ride type, turns it off: `variant_for_ride`); "L2: Cross,
   mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
@@ -652,8 +652,21 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 
 
-def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
+def variant_for_ride(
+    name: str, when: str, assist: bool = False, trails_off: bool = False
+) -> str:
     """The graph a ride routes on.
+
+    A ride with trails off (the rider's "Trails off" switch, offered on every
+    ride type: OWNER-DECISIONS 463, "Every type, roadways ok") takes the
+    no-trail graph, as Mass Ride always does, whatever else the ride asks: the
+    other choices below are then moot. That means electric assist rides the
+    no-trail graph without the e-bike graph's bar on ways that bar electric
+    bicycles (it keeps the assist pace), and a Gravel or Mountain Goat ride
+    gives up the off-road graph's mountain-bike class, whose trails are the
+    ones it is turning off. Both are questions for the owner (the report on
+    wip/trails-off). Any trails-off ride may use the Key Bridge and Memorial
+    Bridge roadways, which only this graph keeps.
 
     Electric assist (Cargo Bike) takes the e-bike graph. Gravel and Mountain
     Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
@@ -662,6 +675,8 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     graphs have no weekend twin, so their weekend rides stay on them.
     """
     preset = PRESETS[name]
+    if trails_off:
+        return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
     if name in OFFROAD_PRESETS and preset.variant == Variant.STANDARD.value:
