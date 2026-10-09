@@ -2335,11 +2335,16 @@ def test_a_refused_rebuild_is_on_neither_alert_surface(
         # Before the second deferral: the queueing lock's index is partial on
         # `WHERE status = 'todo'`, so two rebuilds can only coexist once the
         # first has left that state - which is the whole reason the in-task
-        # check has to read `doing` itself.
+        # check has to read `doing` itself. Held by a worker that is still
+        # beating, as a running job is: one whose worker is gone is wedged.
         cursor.execute(
-            "UPDATE procrastinate_jobs SET status = 'doing'::procrastinate_job_status "
-            "WHERE id = %s",
-            [other],
+            "INSERT INTO procrastinate_workers (last_heartbeat) VALUES (now()) RETURNING id"
+        )
+        worker_id = cursor.fetchone()[0]
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'doing'::procrastinate_job_status, "
+            "worker_id = %s WHERE id = %s",
+            [worker_id, other],
         )
     refused_id = app.tasks["weekly_rebuild"].defer(timestamp=1)
     with pytest.raises(RebuildAlreadyRunning):
@@ -2509,12 +2514,15 @@ def test_the_pre_run_prune_keeps_this_jobs_checkpointed_build_and_only_that(
 
     def recording(tiles_dir, keep, what, protect=()):
         protected.append((what, list(protect)))
+        keeps.append(keep)
         return real(tiles_dir, keep, what, protect=protect)
 
+    keeps = []
     monkeypatch.setattr(procrastinate, "_prune_tile_builds", recording)
     all_binaries_work(monkeypatch, binaries)
     task(job_context(5), timestamp=0)
     assert protected[0] == ("before the disk gate", [build])
+    assert keeps[0] == 0, "nothing is kept by age before the gate (review r2, ops 6b)"
 
     fail_tile_build_of(monkeypatch, binaries, "offroad")
     with pytest.raises(RebuildFailed):
@@ -2625,3 +2633,122 @@ def test_a_refused_checkpoint_cleanup_is_terminal() -> None:
     from pipeline.checkpoint import CheckpointRefused
 
     assert CheckpointRefused in terminal_causes()
+
+
+# --- Review r2 ---------------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failed_attempts_run_row_says_what_it_kept_and_what_the_retry_does(
+    rebuild_environment, monkeypatch
+) -> None:
+    """Operations review r2, 2: the red row says whether the retry resumes."""
+    from pipeline.rebuild import RebuildFailed
+
+    root, binaries = rebuild_environment
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):
+        app.tasks["weekly_rebuild"].func(job_context(41), timestamp=0)
+    build = builds_on_disk(root, "standard")[-1]
+    detail = last_rebuild_detail()
+    assert "Checkpoints: graphs reused: none; built: standard, no-trail, ebike, weekend" in detail
+    assert "5 written by this attempt" in detail
+    assert "the next attempt of job 41" in detail and f"resumes build {build}" in detail
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failed_attempt_with_nothing_kept_says_the_retry_starts_fresh(
+    rebuild_environment, monkeypatch
+) -> None:
+    from pipeline.rebuild import RebuildFailed
+
+    def hiccup(*args, **kwargs):
+        raise RuntimeError("server closed the connection unexpectedly")
+
+    monkeypatch.setattr("pipeline.run.writers.write_segments", hiccup)
+    with pytest.raises(RebuildFailed):
+        app.tasks["weekly_rebuild"].func(job_context(42), timestamp=0)
+    assert "no classification checkpoint is kept, so a retry starts fresh" in (
+        last_rebuild_detail()
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_timeout_after_a_refused_resume_is_terminal(rebuild_environment, monkeypatch) -> None:
+    """Correctness review r2, 3: an input moved between the attempts, so the second
+    started fresh; the checkpoints it wrote before timing out are the same work again,
+    not progress, and the job is not retried a third time on them."""
+    from pipeline.rebuild import RebuildFailed
+
+    _root, binaries = rebuild_environment
+    task = app.tasks["weekly_rebuild"].func
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):
+        task(job_context(51), timestamp=0)
+    monkeypatch.setattr("pipeline.checkpoint.packages_digest", lambda: "a redeployed image")
+    timeout = subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=1)
+    fail_tile_build_of(monkeypatch, binaries, "weekend", timeout)
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        task(job_context(51), timestamp=0)
+    assert "builds on the job's earlier work" in str(abandoned.value)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_timeout_retries_are_capped_per_job(rebuild_environment, monkeypatch) -> None:
+    """Each attempt writes one more graph and then runs out: the first two timeouts are
+    retried, the third is abandoned however much it wrote."""
+    from config.procrastinate import RebuildAbandoned as Abandoned
+    from pipeline import checkpoint
+    from pipeline.rebuild import RebuildFailed
+
+    _root, binaries = rebuild_environment
+    task = app.tasks["weekly_rebuild"].func
+    timeout = subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=1)
+    for variant in ("no-trail", "ebike"):
+        fail_tile_build_of(monkeypatch, binaries, variant, timeout)
+        with pytest.raises(RebuildFailed) as retried:
+            task(job_context(61), timestamp=0)
+        assert not isinstance(retried.value, Abandoned)
+    assert checkpoint.timeout_retries(settings.REBUILD_WORK_DIR, 61) == 2
+    fail_tile_build_of(monkeypatch, binaries, "weekend", timeout)
+    with pytest.raises(Abandoned) as abandoned:
+        task(job_context(61), timestamp=0)
+    assert "timeout retries are used up" in str(abandoned.value)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_budget_the_settings_could_not_read_stops_only_the_rebuild(
+    rebuild_environment, monkeypatch
+) -> None:
+    """Operations review r2, 1: the other services run on the default; the rebuild
+    refuses with a run row naming the value, and is not retried."""
+    from core.models import ScheduledRun
+
+    _root, binaries = rebuild_environment
+    monkeypatch.setattr(settings, "REBUILD_TIMEOUT_INVALID", "8h")
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(job_context(71), timestamp=0)
+    assert "REBUILD_TIMEOUT_S='8h'" in str(abandoned.value)
+    assert binaries.calls == [], "nothing ran"
+    row = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert not row.succeeded and "REBUILD_TIMEOUT_S='8h'" in row.detail
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_worker_releases_the_classification_before_the_tiles(
+    rebuild_environment, monkeypatch
+) -> None:
+    from pipeline.run import RebuildContext
+
+    released = []
+    real = RebuildContext.release_classification
+
+    def spy(self):
+        released.append(len(self.ways))
+        return real(self)
+
+    monkeypatch.setattr(RebuildContext, "release_classification", spy)
+    app.tasks["weekly_rebuild"].func(job_context(81), timestamp=0)
+    assert len(released) == 1 and released[0] > 0

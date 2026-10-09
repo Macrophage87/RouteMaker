@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """After a swap: do the serving routers keep singletrack closed to bicycles?
 
-The rebuild's VALIDATE stage checks the staged tiles before the swap
+The rebuild's VALIDATE_TILES stage checks the staged tiles before the swap
 (`pipeline.run.assert_bicycle_closures_reached_the_tiles`). This asks the same
 question of what is actually being served, which also catches a router that was
 never restarted onto the new build (docs/OPERATIONS.md, "After a rebuild:
@@ -13,7 +13,7 @@ script, the rebuild's reports and the routers' addresses:
         --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \\
         --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host <allowed host>
 
-`locate` reads the probes VALIDATE wrote (`bicycle-closure-probes.csv`) and asks
+`locate` reads the probes VALIDATE_TILES wrote (`bicycle-closure-probes.csv`) and asks
 every router, with one pedestrian `/locate` each, whether any probed way has an
 edge a bicycle may use. Pedestrian, because a bicycle locate finds no edge on a
 closed way, which a missed snap also produces; the way's own edges then say

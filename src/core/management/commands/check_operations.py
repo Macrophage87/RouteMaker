@@ -26,8 +26,10 @@ from __future__ import annotations
 
 import sys
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
 from core.runs import (
     DISK_SHORT,
     DISK_UNMEASURED,
@@ -95,10 +97,25 @@ class Command(BaseCommand):
         # until `weekly_rebuild` went stale eight days later, while the job
         # holding the rebuild queue's only slot was never going to move.
         for entry in wedged:
+            why = (
+                f"its worker is gone (no heartbeat for over {STALLED_WORKER_TIMEOUT_S:.0f}s) "
+                f"after {entry['age_s']:.0f}s of its {entry['budget_s']:.0f}s budget"
+                if entry.get("worker_gone") and entry["age_s"] < entry["budget_s"]
+                else f"has been running for {entry['age_s']:.0f}s, past its "
+                f"{entry['budget_s']:.0f}s budget"
+            )
             self.stdout.write(
-                f"wedged job: {entry['id']} {entry['task']} on {entry['queue']} has been "
-                f"running for {entry['age_s']:.0f}s, past its {entry['budget_s']:.0f}s budget "
+                f"wedged job: {entry['id']} {entry['task']} on {entry['queue']} {why} "
                 f"(started: {entry['started_at']}) - {entry['remedy']}"
+            )
+        # A rebuild budget the settings could not read: every service runs on the
+        # default, and the rebuild refuses to start until it is fixed.
+        bad_budget = getattr(settings, "REBUILD_TIMEOUT_INVALID", None)
+        if bad_budget is not None:
+            self.stdout.write(
+                f"config: REBUILD_TIMEOUT_S={bad_budget!r} is not "
+                f"{settings.REBUILD_TIMEOUT_RULE}; the rebuild refuses to start until it is "
+                "fixed in .env and the services are recreated"
             )
         for job in jobs:
             self.stdout.write(
@@ -122,7 +139,13 @@ class Command(BaseCommand):
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
                 "--failed-job-limit lists more)"
             )
-        if not stale and not wedged and not failed_total and not headroom["alert"]:
+        if (
+            not stale
+            and not wedged
+            and not failed_total
+            and not headroom["alert"]
+            and bad_budget is None
+        ):
             # The free-space clause names the path and the figure rather than
             # asserting room in the abstract. "room for a rebuild" was printed
             # on a container that had measured its own root filesystem, and a
@@ -145,8 +168,9 @@ class Command(BaseCommand):
             if headroom["status"] == DISK_SHORT
             else "1 volume(s) not measured"
         )
+        invalid = ", 1 setting(s) invalid" if bad_budget is not None else ""
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
-            f"{failed_total} failed job(s), {volumes}"
+            f"{failed_total} failed job(s), {volumes}{invalid}"
         )
         sys.exit(EXIT_ALERT)

@@ -116,10 +116,15 @@ class Command(BaseCommand):
                     f"{settings.REBUILD_WORK_DIR}: {error}. Delete it where the rebuild "
                     "service can see it (docker compose exec rebuild ...), and run this again."
                 ) from error
+            # Named by its path, and "in this container": the command runs wherever
+            # it is exec'd, and a container that does not mount the rebuild's work
+            # directory sees nothing there even when the rebuild service has one.
+            where = checkpoint.checkpoint_dir(settings.REBUILD_WORK_DIR)
             self.stdout.write(
-                "deleted the rebuild's checkpoint directory."
+                f"deleted the rebuild's checkpoint directory {where}."
                 if removed
-                else "no rebuild checkpoint directory to delete."
+                else f"nothing at {where} in this container, so no checkpoint was deleted "
+                "here (run this in the rebuild service, which mounts it, to be sure)."
             )
 
         try:

@@ -63,9 +63,12 @@ MIN_FREE_GIB = 20  # the disk gate's floor, `REBUILD_MIN_FREE_BYTES`
 # Memorial to Union Station. Any bicycle graph of the District routes it.
 CANARY = ((-77.0502, 38.8893), (-77.0063, 38.8973))
 REBUILD_POLL_S = 60
-# Past the rebuild's own 8-hour budget (config.procrastinate), so the poll
-# outlasts a rebuild that uses all of it.
-REBUILD_TIMEOUT_S = 9 * 3600
+# The rebuild's budget is per attempt (`REBUILD_TIMEOUT_S`, 8 hours by default), and a
+# job whose attempt times out after writing a checkpoint is retried and resumes, at most
+# twice (OWNER-DECISIONS 459a; `pipeline.checkpoint.MAX_TIMEOUT_RETRIES`). So the poll
+# outlasts three default budgets and the backoff between them; pass --rebuild-timeout
+# for a deployment with a longer budget.
+REBUILD_TIMEOUT_S = 3 * 8 * 3600 + 3600
 RESTORE_DB = "routemaker_acceptance_restore"
 
 
@@ -545,6 +548,14 @@ This script then re-checks the installer and fires the rebuild again.
 -------------------------------------------------------------------------------"""
 
 
+REBUILD_IN_FLIGHT = """
+import json
+from procrastinate.contrib.django.models import ProcrastinateJob
+print(json.dumps({"in_flight": ProcrastinateJob.objects.filter(
+    task_name="weekly_rebuild", status__in=("todo", "doing")).exists()}))
+"""
+
+
 LATEST_RUN = """
 import json
 from core.models import ScheduledRun
@@ -563,16 +574,24 @@ def _latest_rebuild(ctx: Context) -> dict | None:
     return facts or None
 
 
+def _rebuild_in_flight(ctx: Context) -> bool:
+    return bool(ctx.django_json("api", REBUILD_IN_FLIGHT).get("in_flight"))
+
+
 def _wait_for_rebuild(ctx: Context, *, after_id: int | None) -> dict:
+    """The run row of the job's last attempt. A failed attempt whose job is still
+    `todo` or `doing` is waited past: Procrastinate is retrying it, and with
+    checkpoints the retry resumes rather than starting over."""
     if ctx.args.dry_run:
         return {}
     deadline = time.time() + ctx.args.rebuild_timeout
     while time.time() < deadline:
         run = _latest_rebuild(ctx)
         if run and run.get("finished") and (after_id is None or run["id"] != after_id):
-            return run
+            if run.get("succeeded") or not _rebuild_in_flight(ctx):
+                return run
         time.sleep(REBUILD_POLL_S)
-    raise Fail(f"no weekly_rebuild run finished within {ctx.args.rebuild_timeout / 3600:.1f} h")
+    raise Fail(f"no weekly_rebuild job finished within {ctx.args.rebuild_timeout / 3600:.1f} h")
 
 
 def _canary(ctx: Context, variant: str) -> None:

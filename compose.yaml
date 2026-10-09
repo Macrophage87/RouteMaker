@@ -103,6 +103,7 @@ x-django-env: &django-env
   # One attempt of the weekly rebuild may run this many seconds (default 28800, 8 h;
   # at most 82800). Every service that loads the settings carries it, because the
   # operations page and `check_operations` call a rebuild wedged past this budget.
+  # A bad value is the default everywhere, and the rebuild alone refuses to start.
   REBUILD_TIMEOUT_S: ${REBUILD_TIMEOUT_S:-}
 
 services:
