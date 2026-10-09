@@ -1039,12 +1039,13 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_bundle_is_format_7(self) -> None:
+    def test_the_format_is_8(self) -> None:
         # A forgotten bump would serve the old z10-13 tiles as current (mutation
         # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375); 6 was claimed by both
         # the ride layer (391) with the surface-unknown properties (376) and the Mass Ride
-        # capacity (325-327), on branches that never shipped alone; 7 is the rebuild bundle.
-        assert stress_tiles.FORMAT_VERSION == 7
+        # capacity (325-327), on branches that never shipped alone; 7 is the rebuild bundle;
+        # 8 draws a judged trail bridge in its trail's surface (BRIDGE_UNPAVED).
+        assert stress_tiles.FORMAT_VERSION == 8
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1509,6 +1510,29 @@ class TestLongTrails:
         assert kept == {10: int(at_z10), 11: int(at_z11)}
 
     @pytest.mark.parametrize(
+        ("bridge", "deck_unpaved", "drawn_unpaved"),
+        [
+            (2, False, True),  # a paved deck inside an unpaved trail: the Seneca Aqueduct
+            (1, True, False),  # an unpaved deck between paved trail ways
+            (1, False, False),
+            (0, False, False),  # a bridge left to its own deck, and every other way
+            (0, True, True),
+            (0, None, None),  # an unknown surface stays left out
+        ],
+    )
+    @pytest.mark.parametrize("z", [11, 14])
+    def test_a_judged_bridge_is_drawn_in_its_trails_surface(
+        self, client, segment_schemas, z, bridge, deck_unpaved, drawn_unpaved
+    ) -> None:
+        """The owner, 2026-10-09: the towpath's paved aqueduct drew as a paved path in the
+        middle of the unpaved towpath. The deck stays as it is in `is_unpaved` (routing and
+        the road panel read it); only the tile's surface mark follows the trail."""
+        live, _ = segment_schemas
+        insert_trail(live, deck_unpaved, 3, 10.0, bridge=bridge)
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        assert [f.properties.get("unpaved") for f in layer.features] == [drawn_unpaved]
+
+    @pytest.mark.parametrize(
         "drop",
         [
             ["trail_route", "trail_run_m", "trail_bridge"],
@@ -1703,7 +1727,7 @@ class TestRideLayer:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+kcfrmwosbtl-v7" in etag, etag
+        assert "+kcfrmwosbtl-v8" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1786,7 +1810,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmwoesbtl-v7" in etag, etag
+        assert "+cfrmwoesbtl-v8" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1867,7 +1891,7 @@ class TestMassCapacity:
 # The riders-a-minute figure each format pair was drawn with. A tuned flow constant
 # (FOLLOWUP-FLOW-CALIBRATION) changes `rpm` in every tile without changing either tile
 # tag, so it has to come with a bump of both FORMAT_VERSIONs and a row here.
-RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526"}
+RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526", (8, 2): "29.526"}
 
 
 def test_a_tuned_flow_constant_bumps_both_tile_formats() -> None:

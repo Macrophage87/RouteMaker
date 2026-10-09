@@ -720,6 +720,14 @@ unpaved. So it keeps no bridge on its own and lowers none. A bridge whose end
 meets another bridge in that bridge's middle, not at its end, is not chained
 to it, and is judged on its own deck.
 
+The map draws a judged bridge in its trail's surface too, at every zoom
+(`core.stress_tiles.BRIDGE_UNPAVED`, FORMAT_VERSION 8): the tile's `unpaved` is
+true on a `trail_bridge` of 2 and false on 1, whatever the deck. The owner,
+2026-10-09, on the C&O towpath's Seneca Aqueduct drawn as a paved path inside
+the unpaved towpath: "We made woodden bridges paved, so they didn't mess with
+the paved routing. Now it makes the unpaved routing look weird." Routing and
+the road panel still read the deck (`segment.is_unpaved`, OWNER-DECISIONS 440).
+
 **The columns are the rebuild's** (`trail_name`, `trail_route`, `trail_run_m`,
 `trail_bridge`). `pipeline.trail_routes` reads the route relations from the
 source extract (one relations-only pass), the writer stores a name only on a
@@ -739,9 +747,10 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 7 (5 was the long trails; 6 was claimed by both the ride layer
+`l`, `b`). FORMAT_VERSION 8 (5 was the long trails; 6 was claimed by both the ride layer
 with the surface-unknown trails and the Mass Ride capacity, on branches that never shipped
-alone; 7 is the rebuild bundle, which carries both) must reach the api and the pipeline images
+alone; 7 is the rebuild bundle, which carries both; 8 draws a judged bridge in its trail's
+surface, below) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -898,9 +907,9 @@ don't drop it.
 drew before: the paths and the roads at LTS 3 and above, faint, with the front end's
 `FAINT` rules) on one that does not, so a table promoted before this rebuild draws
 today's z12-13 until the data rebuild promotes the column. The ETag names it with
-`k` (`+kcfrmwoesbtl-v7"` with all twelve optional columns, `e` being 403's `roadside` and
-`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 7
-(the rebuild bundle's format, with the surface-unknown properties below and the Mass Ride
+`k` (`+kcfrmwoesbtl-v8"` with all twelve optional columns, `e` being 403's `roadside` and
+`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 8
+(the rebuild bundle's format, 7, with the surface-unknown properties below and the Mass Ride
 capacity: the tile cache key changes, so run the pre-draw as the steps
 below say). The ride layer has its own partial index,
 `segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
