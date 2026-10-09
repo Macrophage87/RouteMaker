@@ -2676,7 +2676,7 @@ both answers are scored and guarded, and the second's `tried` row says
 `retry: "longer"`. So a leg is up to six routes.
 
 **No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Mass Ride,
-or any ride with the "Trails off" switch on, at 100) is not seeked (`limited: "roadway_only"`).
+or any ride with the "Keep to roads, not trails" switch on, at 100) is not seeked (`limited: "roadway_only"`).
 
 **Credit 0 against 0.5, one process.** Trailmaxxing at 100, the twelve trips, the
 harness's plan time (the second of two plans, the harness's own work excluded), two
@@ -3491,13 +3491,15 @@ not appropriate." and, for a Group Ride with trails on, "with trails on that's
 fine". So the closure is built into one graph. A ride chooses its graph through
 `core.presets.variant_for_ride`, which `routing.py` calls and which gives
 `Variant.NO_TRAIL` to Mass Ride (its preset's own variant) and to any ride whose
-request has `trails_off` (the "Trails off" switch, below). Group Ride with trails
+request has `trails_off` (the "Keep to roads, not trails" switch, below). Group Ride with trails
 on is on the standard graph, which keeps contraflow.
 
-### Trails off (OWNER-DECISIONS 463)
+### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
-The owner, 2026-10-09: "add it". A "Trails off" switch is offered on every ride
-type (2026-09-26, "Every type, roadways ok"). The request field is
+The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
+type (2026-09-26, "Every type, roadways ok"). Its label is "Keep to roads, not
+trails" (463b; checked is roads only); the link parameter and the API field keep
+the names `trailsoff` and `trails_off`. The request field is
 `trails_off` (`core.api.RouteIn`, a strict boolean, default false), carried as
 `Dials.trails_off` to `presets.variant_for_ride(name, when, assist, trails_off)`,
 which gives `Variant.NO_TRAIL` whatever else the ride asks. The answer's
@@ -3516,19 +3518,35 @@ are barred on the standard and e-bike graphs and open here, so any trails-off
 ride may use them. The switch's hint says this in plain words
 (`frontend/src/lib/dialsPanel.ts`, `TRAILS_OFF_HINT`, `TRAILS_OFF_HOW`).
 
+E-bike rides (463a). The owner, 2026-10-09: "Most ebikes are allowed on
+multiuse trails." So an e-bike ride with the switch on, the E-bike ride type or
+electric assist on Cargo Bike, plans on the no-trail graph like any other ride,
+with no lock, at its assist pace. It does not get the e-bike graph's one rule,
+`bicycle=no` on ways tagged `electric_bicycle=no`
+(`pipeline.variants.bars_electric_bicycle`); with the trails gone, that rule
+would matter only on a road that bars e-bikes. Counted on 2026-10-09: the
+clipped source extract (`source.osm.pbf`, 4,564,476 ways) has no way at all with
+`electric_bicycle=no`, so no road, and the e-bike and standard variant extracts
+of that build are byte for byte the same. The full three-state extract has 14,
+every one a `highway=path` trail in western Virginia, outside the coverage and
+trail class anyway. If a road inside the coverage is ever tagged so, carrying
+the bar into the no-trail graph is a tile change and a rebuild (a recorded
+follow-up, not built).
+
 Choices made where the owner has not said (they are in the report on the
-branch): electric assist with trails off plans on the no-trail graph at the
-assist pace, without the e-bike graph's bar on ways that bar electric bicycles;
-Gravel and Mountain Goat with trails off take the no-trail graph, not the
+branch): Gravel and Mountain Goat with trails off take the no-trail graph, not the
 off-road graph; a weekend ride takes it without a weekend twin, as Mass Ride
 does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
 
 The front end holds it as `Dials.trailsOff`, absent for off. It is in the link as
 `trailsoff=1` (written only when on; a link without it is trails on, so every
 older link opens as before, and Mass Ride is trails off whatever the link says),
-in the request as `trails_off: true`, in the Ride line as "trails off" (not on
+in the request as `trails_off: true`, in the Ride line as "roads only" (not on
 Mass Ride), and stays when the ride type changes, as Avoid gravel does. The
-control is a real checkbox with the label "Trails off", described by its hint;
+control is a real checkbox with the label "Keep to roads, not trails",
+described by its hint ("No bike paths, trails or stairs. Can use the Key and
+Memorial Bridge roadways."; on Mass Ride it starts "A mass ride always keeps to
+roads."), with its own "How this works" (read "How this works: keep to roads");
 on Mass Ride it is checked and `aria-disabled` (in the Tab order, a press changes
 nothing), as "Make it a loop" is when the ride is a loop already. The browser
 check (`scripts/a11y/check.mjs`) covers it.

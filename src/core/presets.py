@@ -17,7 +17,8 @@ they start, and the other dials stay the preset's own:
   hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
   (Valhalla's hills weight off) is an implementation choice.
 - **Group Ride**: "L1: standard variant, trails allowed" (its trails toggle ships on; the
-  "Trails off" switch, offered on every ride type, turns it off: `variant_for_ride`); "L2: Cross,
+  "Keep to roads, not trails" switch, offered on every ride type, turns it off:
+  `variant_for_ride`); "L2: Cross,
   mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
@@ -657,15 +658,19 @@ def variant_for_ride(
 ) -> str:
     """The graph a ride routes on.
 
-    A ride with trails off (the rider's "Trails off" switch, offered on every
-    ride type: OWNER-DECISIONS 463, "Every type, roadways ok") takes the
-    no-trail graph, as Mass Ride always does, whatever else the ride asks: the
-    other choices below are then moot. That means electric assist rides the
-    no-trail graph without the e-bike graph's bar on ways that bar electric
-    bicycles (it keeps the assist pace), and a Gravel or Mountain Goat ride
-    gives up the off-road graph's mountain-bike class, whose trails are the
-    ones it is turning off. Both are questions for the owner (the report on
-    wip/trails-off). Any trails-off ride may use the Key Bridge and Memorial
+    A ride with trails off (the rider's "Keep to roads, not trails" switch,
+    offered on every ride type: OWNER-DECISIONS 463, 463b, "Every type,
+    roadways ok") takes the no-trail graph, as Mass Ride always does, whatever
+    else the ride asks: the other choices below are then moot. An e-bike ride
+    (the E-bike ride type, or electric assist) with it on takes the no-trail
+    graph too, with no lock (OWNER-DECISIONS 463a, "Most ebikes are allowed on
+    multiuse trails"); it keeps the assist pace, and it does not get the e-bike
+    graph's bar (`pipeline.variants.bars_electric_bicycle`). With the trails
+    gone that bar matters only on a road that bars e-bikes, and the extract of
+    2026-10-09 has none: no way in the coverage carries `electric_bicycle=no`
+    (docs/DEVELOPMENT.md, "Trails off"). A Gravel or Mountain Goat ride gives
+    up the off-road graph's mountain-bike class, whose trails are the ones it
+    is turning off. Any trails-off ride may use the Key Bridge and Memorial
     Bridge roadways, which only this graph keeps.
 
     Electric assist (Cargo Bike) takes the e-bike graph. Gravel and Mountain

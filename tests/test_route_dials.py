@@ -1507,7 +1507,8 @@ class TestAvoidGravel:
 @db
 class TestTrailsOff:
     """OWNER-DECISIONS 463 (and the 2026-09-26 "Every type, roadways ok"): the
-    "Trails off" switch plans on the no-trail graph, on every ride type."""
+    "Keep to roads, not trails" switch (463b) plans on the no-trail graph, on
+    every ride type, e-bike rides included with no lock (463a)."""
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
@@ -1541,10 +1542,27 @@ class TestTrailsOff:
     def test_electric_assist_with_trails_off_keeps_its_pace_on_the_no_trail_graph(
         self, client, facility_segments, router
     ):
-        router(standard_router())
+        """463a: "Most ebikes are allowed on multiuse trails" - no lock, and
+        the no-trail graph, not the e-bike graph."""
+        fake = router(standard_router())
         body = post(client, {**good_body("cargo"), "trails_off": True, "assist": True}).json()
         assert body["variant"] == "no-trail"
         assert body["dials"]["assist"] is True
+        assert body["dials"]["trails_off"] is True
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["no-trail"])
+
+    def test_the_e_bike_ride_type_with_trails_off_is_not_locked(
+        self, client, facility_segments, router
+    ):
+        """463a: the E-bike ride type's own graph is the e-bike graph; with
+        the switch on it takes the no-trail graph, and the switch is honoured."""
+        router(standard_router())
+        off = post(client, good_body("ebike")).json()
+        assert off["variant"] == "ebike"
+        assert off["dials"]["trails_off"] is False
+        on = post(client, {**good_body("ebike"), "trails_off": True}).json()
+        assert on["variant"] == "no-trail"
+        assert on["dials"]["trails_off"] is True
 
     def test_only_a_boolean(self, client, facility_segments, router):
         fake = router(standard_router())

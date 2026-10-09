@@ -198,8 +198,8 @@ agree.
   `variants.variant_for` gives the no-trail variant to every request with
   trails off; it takes the two toggles and no ride name. The route API asks
   `core.presets.variant_for_ride`, which gives the no-trail graph to a request
-  with `trails_off` (the "Trails off" switch, built from OWNER-DECISIONS 463,
-  on every ride type) and, through the preset's own variant, to Mass Ride,
+  with `trails_off` (the "Keep to roads, not trails" switch, built from
+  OWNER-DECISIONS 463 and 463b, on every ride type) and, through the preset's own variant, to Mass Ride,
   which is always trails off and does not pass through `variant_for`.
   The bar also closes the tags upstream's `graph.lua` would otherwise grant
   bicycle access from over `bicycle=no` - every `cycleway*` key and

@@ -793,6 +793,19 @@ class TestRouterOutcomes:
         assert no_trail != standard
         assert no_trail.startswith(standard)
 
+    def test_a_trails_off_no_route_says_why(self, client, router) -> None:
+        """The same on any ride with the "Keep to roads, not trails" switch on
+        (OWNER-DECISIONS 463), which plans on the no-trail graph."""
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path could be found")}))
+        standard = post(client, good_body("default")).json()["error"]
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path could be found")}))
+        kept = post(client, {**good_body("default"), "trails_off": True}).json()["error"]
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path could be found")}))
+        mass = post(client, good_body("mass-ride")).json()["error"]
+        assert kept == mass
+        assert kept != standard
+        assert kept.startswith(standard)
+
     def test_both_no_path_codes_tell_the_crossing_story(self, client, router) -> None:
         """Valhalla answers 442 or 443 for no path, depending on where the
         search gave up; either can be the no-trail variant's missing crossing."""

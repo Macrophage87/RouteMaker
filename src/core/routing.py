@@ -735,7 +735,7 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
-    # "Trails off": plan on the no-trail graph, whatever the ride type
+    # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
     # (`presets.variant_for_ride`). Mass Ride is always on it.
     trails_off: bool = False
     # The rider's "Target distance" (metres, OWNER-DECISIONS 271), for the top of the

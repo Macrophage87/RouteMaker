@@ -208,8 +208,9 @@ class RouteIn(Schema):
     trails_off: StrictBool = Field(
         default=False,
         description=(
-            "Plan on roadways only: no bike paths, trails, footways or stairs, and the Key"
-            " Bridge and Arlington Memorial Bridge roadways allowed. Any ride type. Mass Ride"
+            "The \"Keep to roads, not trails\" switch: plan on roadways only, with no bike"
+            " paths, trails, footways or stairs, and the Key Bridge and Arlington Memorial"
+            " Bridge roadways allowed. Any ride type, e-bike rides included. Mass Ride"
             " always rides this way, whatever is sent."
         ),
     )
@@ -1327,9 +1328,8 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
-                " A Mass Ride or a ride with trails off routes only on roadways, and removing"
-                " trails can leave"
-                " no roadway-legal connection between two points."
+                " A Mass Ride, or a ride kept to roads, uses roadways only, and without"
+                " trails there can be no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
     except routing.RouterUnavailable:
