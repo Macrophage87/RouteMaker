@@ -310,7 +310,9 @@ Docker's root from step 1, which may be the root disk and not `/data` (the four 
 **The build is not capped:** BuildKit runs inside the Docker daemon, outside every container
 limit, and pip's install can take a core and several hundred MB for a few minutes on a host other
 sites share. So either build only when the owner says the other sites are quiet, or (preferred)
-have the owner build at home from the same sha and send the image, which needs no build here:
+have the owner build at home from the same sha and send the image, which needs no build here
+(the release agent, "Continuous deployment" below, builds only after it has stopped the api and
+worker, so its builds use their memory):
 
 ```sh
 # at home, in a clean checkout of the release sha (NOT the live stack's: its .env has TAG=dev, and
@@ -808,8 +810,12 @@ sudo certbot delete --cert-name routemaker.cieply.com
 The tooling is the same each time. Ask the owner which kind it is.
 
 If continuous deployment is installed (next section), pause it first so no pass starts while you
-work (`"$RM_STATE/cd/bin/auto-release.sh" pause "shipping by hand"`), and when you are done tell it
-what is running (`... mark-deployed vX.Y.Z` for a release, nothing for data only), then `... resume`.
+work, and let a pass that is already running end: `"$RM_STATE/cd/bin/auto-release.sh" pause --wait "shipping by hand"`
+(plain `pause` does not stop a running pass; it says if one is running). When you are done, tell
+it what is running (`... mark-deployed vX.Y.Z` for a release, nothing for data only), then
+`... resume`. `mark-deployed` also reads the report link from `$RM_DATA/frontend/beta-build.txt`,
+so if that ship used another `--report-url`, the agent's next front-end build keeps it (check with
+`... status`, or set it with `... set-report-url URL|none`).
 
 **New data only** (a fresh build of the tiles, database or Photon index, same release):
 
@@ -902,12 +908,22 @@ part of it.
 
 **How a release flows.** The change is reviewed and merged to `main`; CI's `test` check goes green on
 that commit; the owner says go; the owner (and only the owner, or someone on the owner's word)
-pushes an **annotated** tag on that commit:
+pushes an **annotated** tag on that commit. Before the tag, at home, on that commit (a tag goes
+live within about 10 minutes, and nothing after it checks what a screen reader hears):
+
+- If `frontend/` changed since the deployed tag, run the browser accessibility check,
+  `scripts/a11y/run.sh <a node_modules for that lockfile>` (offline; docs/DEVELOPMENT.md), and it
+  must pass. CI and the agent run only `npm test`.
+- If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
+  landmarks, the headings, the beta notice, where Dismiss puts the focus), update the handout in
+  the same release and send it to the testers again once the release is deployed.
 
 ```sh
 # at home, on the owner's go:
 git tag -a v0.2.0 -m "RouteMaker 0.2.0" <the main commit>
 git push origin v0.2.0
+# about 15 minutes later, what the server made of it (deployed, waiting, held or failed):
+ssh "$RM_SSH_HOST" '"$HOME/routemaker-beta-state/cd/bin/auto-release.sh" status'
 ```
 
 Within about 10 minutes a pass on the server sees it and either deploys it or stops and says why.
@@ -917,12 +933,17 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 
 ### What one pass does
 
-1. Nothing at all if the agent is paused, BROKEN (a rollback failed earlier), or another pass is
-   still running (`flock`). A pass that would deploy also waits while a stress-tile pre-draw runs,
-   outside the deploy window if one is set, or with less than 1 GiB free for the snapshot.
+1. Nothing at all if the agent is paused, BROKEN (a rollback failed earlier), another pass is
+   still running (`flock`), or a setting makes no sense (`RM_CD_WINDOW` not `HH-HH`, or with the
+   same hour twice: an `error` in `status`). If a pass was stopped mid-deploy (it left
+   `$RM_STATE/cd/in-progress`, step 7), this pass first rolls that deploy back. A pass that would
+   deploy also waits while a stress-tile pre-draw runs, outside the deploy window if one is set,
+   with less than 1 GiB free for the snapshot, or with less than `RM_CD_DOCKER_FREE_GIB` (3 GiB)
+   free on Docker's root.
 2. Checks that the checkout is clean, at the deployed tag's commit, with that commit's `TAG` in
    `.env`. Anything else ("drift") means someone shipped or edited by hand: it stops until
-   `mark-deployed` says what is running.
+   `mark-deployed` says what is running. The checkout's `origin` must be
+   `https://github.com/<RM_CD_GITHUB_REPO>` (`.git` or not), the repository whose CI it reads.
 3. `git fetch --tags`, then the highest strict `vX.Y.Z` tag (no `-rc`, no leading zeros) newer than
    the deployed one. Only the highest: if it cannot go, the agent waits for the owner rather than
    deploying an older one.
@@ -939,7 +960,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to  restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 page, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
@@ -947,34 +968,52 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
 | `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |
+| a file name with a space, a quote, a backslash, or a control or non-ASCII character | a path the gate cannot be sure of | **stops** (check it by hand) |
+
+   A release whose only changes are ignored ones (documentation, CI), or a new tag on the deployed
+   commit, is recorded as deployed without touching the stack: the checkout and `TAG` move and the
+   running api image is tagged with the new `TAG`.
 
    A stop writes its reasons to `$RM_STATE/cd/hold/<tag>` and the agent does nothing else for that
    tag. Ship it by hand ("Shipping an update later", with `pause` first), then `mark-deployed <tag>`.
-6. The deploy. First, with nothing running touched: a `git archive` of the tag into
-   `$RM_STATE/cd/build`, the api image (`docker build` of that tree, skipped if
-   `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it from
-   home), and, if `frontend/` changed, the front end. Then the runbook's steps: stop the api and
-   worker; snapshot the database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
+6. The deploy. First, with nothing running touched, a `git archive` of the tag into
+   `$RM_STATE/cd/build`. Then the runbook's steps: stop the api and worker; build the api image
+   (`docker build` of that tree, tried 3 times a minute apart, since pip needs the network; skipped
+   if `ghcr.io/macrophage87/routemaker-api:<TAG>` is already on the host because the owner loaded it
+   from home) and, if `frontend/` changed, the front end. The builds come after the stop on
+   purpose: the api build is not capped (BuildKit runs in the daemon), so it uses the memory the api
+   and worker had instead of the other sites' headroom, and the front-end build runs with
+   `--memory 1536m` and `--oom-score-adj 1000`, so a host short of memory kills it first. The cost
+   is a few minutes of downtime per release: set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
+   database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no
-   sudo); save `index.html` there; `git checkout --detach` the tag; `TAG=` in `.env` by `sed`; the
+   sudo); save the front end's top-level files (`index.html`, `beta-build.txt`) there; `git checkout --detach` the tag; `TAG=` in `.env` by `sed`; the
    compose gate (`check_beta_compose.py --env-file .env`); migrate in the migrate container, only if
    `migrate --check` says something is pending; install the front end (hashed files first, `index.html`
    last by rename, as the uid that owns `$RM_DATA/frontend`'s files, in the postgis image already on
    the host, no network); `up -d api worker`; photon and the routers if the gate said so; `/healthz`;
    `migrate --check` and `collectstatic` in the api; `smoke-test.sh --local` (retried once after a
-   minute). If the gate saw a tile `FORMAT_VERSION` change (`core.stress_tiles` or `core.mass_tiles`), the
+   minute). The release is then recorded as deployed (`$RM_STATE/cd/deployed-tag`). If the gate saw a tile `FORMAT_VERSION` change (`core.stress_tiles` or `core.mass_tiles`), the
    step 8 pre-draw (`predraw_stress_tiles`, both tile sets) then runs and the pass waits for it (log:
    `$RM_STATE/predraw.log`); the release is already live by then, so a pre-draw that fails or runs out
    of its budget is a WARNING in the report and not a rollback. Every log line is a step name, a commit id or a PASS/FAIL line; `.env` is never printed.
 7. **Any failure after the stop rolls back by itself** (rollback A/C as above, without sudo): stop the
    api and worker, check out the previous release, `TAG` back, the compose gate; the database from
    the pre-release snapshot **only if a migration ran** (`restore-dump`, which keeps the database as
-   it was beside it as `routemaker_before_<time>` for the owner to drop); `index.html` back only if
+   it was beside it as `routemaker_before_<time>` for the owner to drop); `index.html` and `beta-build.txt` back only if
    the new front end was installed; start the api and worker; the routers again if they were
    restarted; the step 8 pre-draw after a database restore; the smoke tests. The tag is then marked
    failed (`$RM_STATE/cd/failed/<tag>`) and not tried again until `retry <tag>`. A failure before the
-   stop (a build) changes nothing and marks the tag failed the same way. If the rollback itself fails,
+   stop (exporting the tag's tree) changes nothing and marks the tag failed the same way. If the rollback itself fails,
    the agent marks itself BROKEN, stops making passes, and waits for the owner.
+
+   **A pass stopped mid-deploy.** Each step is written to `$RM_STATE/cd/in-progress` before it
+   runs. If the pass is stopped (systemd's `TimeoutStartSec`, a reboot, `systemctl --user stop`, a
+   logout without linger, a kill), the next pass rolls that deploy back from the steps written there
+   and marks the tag failed (`retry <tag>` to try it again); if that rollback fails, BROKEN. A pass
+   stopped during the pre-draw has already recorded the release, so nothing is rolled back. Do not
+   stop a pass mid-deploy on purpose: `pause --wait` and let it end. Without linger, a logout can
+   stop one; the crontab line below does not depend on a login.
 
 What it never does: touch nginx, use sudo, receive or install a data bundle, touch Photon's index or
 the routing graphs, write outside the checkout, `$RM_DATA/frontend` and `$RM_STATE`, or remove an
@@ -1014,13 +1053,14 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `export RM_CD_WINDOW=02-06` | any hour | local hours in which a deploy may start. The image build is not capped (step 6 of the install); a window keeps it to quiet hours |
+| `export RM_CD_WINDOW=02-06` | any hour | local hours in which a deploy may start (the two hours differ; `22-04` wraps past midnight). Recommended: a deploy stops the api and worker while it builds (step 6), so a window keeps the builds and the downtime to quiet hours |
+| `export RM_CD_DOCKER_FREE_GIB=5` | `3` | GiB that must be free on Docker's root (`docker info`) before a deploy; less, and the release waits |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
 | `export RM_CD_GITHUB_REPO=owner/name` | `Macrophage87/RouteMaker` | where the check runs are read |
 
-**Front-end releases need two things on the server**, neither of which the agent downloads by
-default. While either is missing, a release that changes `frontend/` waits (status says which):
+**Front-end releases need two things on the server**, neither of which the agent ever downloads
+(OWNER-DECISIONS 436). While either is missing, a release that changes `frontend/` waits (status says which):
 
 - the pinned node image, `docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7`
   (the one `ship-data.sh --build-frontend` uses at home). Once, from home:
@@ -1041,10 +1081,11 @@ of any secret in `.env` appears in it.
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 A="$RM_STATE/cd/bin/auto-release.sh"
-"$A" status                       # deployed tag, the last pass's result, holds, failures, the timer, linger
+"$A" status                       # deployed tag, the last pass's result, holds, failures, a pass running or stopped mid-deploy, disk, the timer, linger
 cat "$RM_STATE/cd/last-release-report.txt"   # the last deploy, rollback or hold; last-report.txt is the last pass; runs/<time>.log has the build output
 journalctl --user -u routemaker-beta-cd --since today  # the passes, if the journal keeps user units
-"$A" pause "why"                  # no pass deploys until resume (a pass already running finishes)
+"$A" pause "why"                  # no pass deploys until resume; says if a pass is running now (it is not stopped)
+"$A" pause --wait "why"           # the same, then waits for a running pass to end: use this before working by hand
 "$A" resume
 "$A" run --dry-run                # what the next pass would do (it fetches; it changes nothing)
 "$A" retry v0.2.0                 # try a held or failed tag again, once its cause is fixed
@@ -1056,8 +1097,8 @@ systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altoge
 **Rollback by hand** is rollback C above, with the files the agent kept: the snapshot is
 `$RM_STATE/cd/backups/pre-release-<time>.dump` (restore it with
 `receive-data.sh --env-file .env --backups-dir "$RM_STATE/cd/backups" restore-dump <file>`, no sudo),
-the old front end's page is `$RM_STATE/cd/backups/index.html.pre-release-<time>`, and the previous
-tag is in `$RM_STATE/cd/previous-tag`. Pause the agent first; once the checkout and `TAG` are back,
+the old front end's top-level files (`index.html`, `beta-build.txt`) are in `$RM_STATE/cd/backups/frontend.pre-release-<time>/`, and the previous
+tag is in `$RM_STATE/cd/previous-tag`. Pause the agent first (`pause --wait`); once the checkout and `TAG` are back,
 `"$A" hold <the newer tag> "rolled back by hand"` (or the next pass would deploy it again),
 `"$A" mark-deployed <the previous tag>`, then `"$A" resume`. A later release (a higher tag) is the
 usual way forward.
@@ -1065,6 +1106,13 @@ usual way forward.
 **Upgrading the agent.** A release that changes the agent says so in its report; once it is
 deployed, rerun `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state). Until then the
 installed copy keeps running.
+
+**Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
+images (one a release, kept for rollback C), the `<db>_before_<time>` databases automatic restores
+left, and the `node_modules` copies. The agent removes none of the images or databases; the owner
+does, once a release has run well: `docker image rm ghcr.io/macrophage87/routemaker-api:<old TAG>`
+(never the running one or the previous one), `drop database "<db>_before_<time>"` in postgis, and
+old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP` snapshots.
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
