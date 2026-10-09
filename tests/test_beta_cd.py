@@ -928,7 +928,6 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         '"$A" status',
         '"$A" mark-deployed',
         '"$A" hold',
-        "RM_CD_NPM",
         "git tag -a",
         "restore-dump",
         "OWNER-DECISIONS 431",

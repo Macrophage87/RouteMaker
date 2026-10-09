@@ -44,8 +44,6 @@
 #   RM_PY                        the python with pyyaml for check_beta_compose.py [python3]
 #   RM_CD_GITHUB_REPO            owner/name on GitHub [Macrophage87/RouteMaker]
 #   RM_CD_WINDOW                 HH-HH local hours in which a deploy may start (e.g. 02-06) [any]
-#   RM_CD_NPM                    off | registry: whether node_modules may be fetched from the npm
-#                                registry for a front-end change (an owner decision) [off]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
 #   RM_CD_HOST                   Host header for the local health check [routemaker.cieply.com]
@@ -84,8 +82,6 @@ load_vars() {
 	case "$gh_repo" in *[!A-Za-z0-9._/-]* | */*/* | /* | */) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; */*) ;; *) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; esac
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
-	npm_mode=${RM_CD_NPM:-off}
-	case "$npm_mode" in off | registry) ;; *) die "RM_CD_NPM must be off or registry" ;; esac
 	health_host=${RM_CD_HOST:-routemaker.cieply.com}
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
 	logic="$cd_dir/bin/cd_logic.py"
@@ -180,8 +176,8 @@ ci_status() { # sha
 # --- the front end --------------------------------------------------------------------------------
 lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | sha256sum | cut -c1-64; }
 # The node_modules for a lockfile, offline: $cd_dir/node_modules/<sha256 of package-lock.json>/
-# node_modules, put there by the owner (from home) or, with RM_CD_NPM=registry, by `npm ci
-# --ignore-scripts` in the pinned node image. Prints why not, and fails, if it cannot be had.
+# node_modules, put there by the owner from home (the server never downloads npm packages:
+# OWNER-DECISIONS 436). Prints why not, and fails, if it is missing.
 frontend_ready() { # sha
 	local h
 	h=$(lock_hash "$1")
@@ -189,8 +185,8 @@ frontend_ready() { # sha
 		echo "the pinned node image is not on this host ($NODE_IMAGE); the owner loads it once (docker save at home | docker load here), or approves a docker pull of that digest"
 		return 1
 	fi
-	if [ ! -d "$cd_dir/node_modules/$h/node_modules" ] && [ "$npm_mode" != registry ]; then
-		echo "the front end changed and there is no node_modules for its lockfile at $cd_dir/node_modules/$h/node_modules (owner: send it from home, or set RM_CD_NPM=registry)"
+	if [ ! -d "$cd_dir/node_modules/$h/node_modules" ]; then
+		echo "the front end changed and there is no node_modules for its lockfile at $cd_dir/node_modules/$h/node_modules (owner: send it from home)"
 		return 1
 	fi
 	if ! check_report_url "$(report_url)" || [ ! -f "$cd_dir/report-url" ]; then
@@ -198,23 +194,12 @@ frontend_ready() { # sha
 		return 1
 	fi
 }
-fetch_node_modules() { # src-dir hash: only with RM_CD_NPM=registry (a download from the npm registry)
-	local src=$1 h=$2 dest="$cd_dir/node_modules/$h"
-	[ -d "$dest/node_modules" ] && return 0
-	[ "$npm_mode" = registry ] || return 1
-	rm -rf "$dest.part"; mkdir -p "$dest.part"
-	cp "$src/frontend/package.json" "$src/frontend/package-lock.json" "$dest.part/"
-	say "fetching node_modules for lockfile $h from the npm registry (npm ci --ignore-scripts; RM_CD_NPM=registry)"
-	quiet dk run --rm --pull never --memory 1536m --memory-swap 1536m --cpus 1 -u "$(id -u):$(id -g)" -e HOME=/tmp \
-		-v "$dest.part:/work" -w /work "$NODE_IMAGE" npm ci --ignore-scripts --no-audit --no-fund --loglevel=warn </dev/null || { rm -rf "$dest.part"; return 1; }
-	mv -T "$dest.part" "$dest"
-}
 # Test and build exactly as ship-data.sh --build-frontend does: pinned image, no network, VITE_BETA=1,
 # the recorded report link; then refuse a build that carries the value of any secret in .env.
 build_frontend() { # src-dir sha out-dir
 	local src=$1 sha=$2 out=$3 h url key value
 	h=$(lock_hash "$sha")
-	fetch_node_modules "$src" "$h" || { say "no node_modules for lockfile $h"; return 1; }
+	[ -d "$cd_dir/node_modules/$h/node_modules" ] || { say "no node_modules for lockfile $h"; return 1; }
 	url=$(report_url)
 	rm -rf "$out"; mkdir -p "$out"; chmod 755 "$out"
 	# The mount point for node_modules inside the read-only source (docker cannot make it there).
@@ -472,7 +457,6 @@ pass() {
 	if [ "$(kv frontend "$gate_file")" = 1 ]; then
 		why=$(frontend_ready "$new") || { rm -f "$gate_file"; finish waiting "$tag: $why"; return 0; }
 		h=$(lock_hash "$new")
-		[ -d "$cd_dir/node_modules/$h/node_modules" ] || say "note: node_modules for this lockfile will be fetched from the npm registry (RM_CD_NPM=registry)"
 	fi
 	in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
 	predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }

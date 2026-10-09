@@ -1015,7 +1015,6 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `export RM_CD_WINDOW=02-06` | any hour | local hours in which a deploy may start. The image build is not capped (step 6 of the install); a window keeps it to quiet hours |
-| `export RM_CD_NPM=registry` | `off` | **leave it off** (OWNER-DECISIONS 436: no npm download on the server). It is the switch that would let the agent fetch `node_modules` from the npm registry; the owner has decided against it, so a release that changes the front end waits for `node_modules` sent from home |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
 | `export RM_CD_GITHUB_REPO=owner/name` | `Macrophage87/RouteMaker` | where the check runs are read |
@@ -1030,7 +1029,7 @@ default. While either is missing, a release that changes `frontend/` waits (stat
   (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
   `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
   A copy is reused for every release with the same lockfile. There is no download fallback: the
-  release waits until the copy arrives (`RM_CD_NPM` stays `off`).
+  release waits until the copy arrives.
 
 The build is the same as `ship-data.sh --build-frontend`: `npm test`, `tsc --noEmit` and `vite build`
 in the pinned image with `--network none`, `VITE_BETA=1` and the recorded report link (kept in
