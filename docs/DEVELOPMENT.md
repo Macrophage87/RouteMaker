@@ -3538,11 +3538,40 @@ branch): Gravel and Mountain Goat with trails off take the no-trail graph, not t
 off-road graph; a weekend ride takes it without a weekend twin, as Mass Ride
 does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
 
+What differs from Mass Ride, which shares the graph (the correctness review of
+wip/trails-off):
+
+- `highway=track` is not trail class, so unpaved farm and forest roads stay on
+  the no-trail graph and a roads-only ride may use them; "How this works" says
+  so ("Unpaved farm and forest roads stay.").
+- The breakdown counts a painted or protected lane as a lane. Bike lanes are
+  "none" only on Mass Ride, which takes the roadway (`Context.lanes_as_roadway`,
+  `routing.classify(..., roadway_only=...)`, from the preset's own variant); the
+  graph's `facility_neutral` still gives the lanes no credit on every
+  trails-off ride.
+- No long calm plan (`routing.long_calm_for(..., trails_off=True)` is false):
+  Trailmaxxing at the top with trails off plans as the other ride types do at
+  the top, rather than spending the long ride's budget on a leg-by-leg search
+  for trails it has turned off.
+- Its no-route message names the switch ("With Keep to roads, not trails, this
+  ride routes only on roadways ..."); a Mass Ride's names Mass Ride, as before.
+
+`pipeline.variants.variant_for` and the `Variant` docstring still say the
+no-trail and e-bike variants are mutually exclusive and that Group Ride is the
+one ride with the toggle. They are stale after 463 and 463a (the route API asks
+`core.presets.variant_for_ride` and never calls `variant_for`), and are left as
+they are on this branch because `src/pipeline/variants.py` is a beta CD stop
+path (`scripts/beta/cd_logic.py`): a recorded follow-up for the next branch that
+changes that file anyway.
+
 The front end holds it as `Dials.trailsOff`, absent for off. It is in the link as
 `trailsoff=1` (written only when on; a link without it is trails on, so every
 older link opens as before, and Mass Ride is trails off whatever the link says),
 in the request as `trails_off: true`, in the Ride line as "roads only" (not on
-Mass Ride), and stays when the ride type changes, as Avoid gravel does. The
+Mass Ride), in a GPX export's dials comment as `trailsoff=1` (read back on
+import, so the file reopens on roads only) and its description as "roads only,
+no trails" (neither on Mass Ride), and stays when the ride type changes, as
+Avoid gravel does. The
 control is a real checkbox with the label "Keep to roads, not trails",
 described by its hint ("No bike paths, trails or stairs. Can use the Key and
 Memorial Bridge roadways."; on Mass Ride it starts "A mass ride always keeps to

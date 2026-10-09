@@ -52,6 +52,8 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
     (when ? `; ride time ${when.toLowerCase()}` : "") +
     (d.carrying ? `; ${carryingWords(d.carrying)}` : "") +
     (d.assist ? "; electric assist" : "") +
+    // "Keep to roads, not trails" (OWNER-DECISIONS 463); Mass Ride always keeps to roads, so it is not said there.
+    (d.trails_off === true && route.preset !== "mass-ride" ? "; roads only, no trails" : "") +
     "."
   );
 }
@@ -72,6 +74,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
         when: route.dials.when,
         carrying: route.dials.carrying,
         assist: route.dials.assist === true,
+        ...(route.dials.trails_off === true && route.preset !== "mass-ride" ? { trailsOff: true } : {}),
       }
     : undefined;
   return {

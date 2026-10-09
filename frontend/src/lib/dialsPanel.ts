@@ -117,7 +117,8 @@ export const TRAILS_OFF_HOW_ABOUT = "keep to roads";
 export const TRAILS_OFF_HOW =
   "Leaves out every separate bike path, trail, sidewalk or footway, boardwalk, pedestrian street, bridle path and set of " +
   "stairs, however it is signed for bikes. Bridges whose bike route is a side path, such as Chain Bridge, are left out. " +
-  "Bike lanes painted on a road stay, with no extra credit for them. Never rides against a one-way street's traffic. " +
+  "Unpaved farm and forest roads stay. Bike lanes painted on a road stay, with no extra credit for them. " +
+  "Never rides against a one-way street's traffic. " +
   "Where roads alone cannot join your points, there is no route.";
 
 export const TARGET_LABEL = "Target distance (miles)";

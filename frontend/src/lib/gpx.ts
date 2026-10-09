@@ -365,6 +365,8 @@ export interface ExportDials {
   assist?: boolean;
   /** A loop the rider chose (OWNER-DECISIONS 374), so the file opens as one again. */
   loop?: boolean;
+  /** "Keep to roads, not trails" (OWNER-DECISIONS 463), so the file reopens on roads only; not on Mass Ride, which always is. */
+  trailsOff?: boolean;
 }
 
 export function dialsComment(dials: ExportDials): string {
@@ -373,6 +375,7 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.carrying) parts.push(`carrying=${dials.carrying}`);
   if (dials.assist) parts.push("assist=1");
   if (dials.loop) parts.push("loop=1");
+  if (dials.trailsOff) parts.push("trailsoff=1");
   return PLAN_DIALS_PREFIX + parts.join(";");
 }
 
