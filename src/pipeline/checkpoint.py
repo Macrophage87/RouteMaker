@@ -449,6 +449,26 @@ def read_classification(work_dir: Path | str) -> dict | None:
     return read_json(classification_path(work_dir))
 
 
+def find_resumable(
+    work_dir: Path | str, job_id: int | None, *, enabled: bool = True, force_fresh: bool = False
+) -> tuple[dict | None, dict | None]:
+    """What the checkpoint directory holds for this attempt: `(kept, resumable)`.
+
+    `kept` is any valid classification manifest, whichever job wrote it (a caller
+    that only wants to know what is on disk). `resumable` is the same manifest when
+    the rest of the rule allows using it - checkpoints on, no forced refresh of the extract, and
+    the job id this attempt's own (a retry or an `unwedge_job` requeue keeps it; a
+    new job never matches). Everything else is checked later, against the world as
+    it is then, by `classification_problem`.
+    """
+    kept = read_classification(work_dir) if enabled else None
+    if kept is None:
+        return None, None
+    same_job = job_id is not None and kept.get("job_id") == job_id
+    usable = same_job and not force_fresh and isinstance(kept.get("build_id"), str)
+    return kept, kept if usable else None
+
+
 def discard_classification(work_dir: Path | str) -> bool:
     """Delete the manifest (and a stray temporary one). The checkpoint's first step
     on every path that stops using it: nothing is deleted before it, so a
@@ -595,10 +615,9 @@ def classification_problem(
         return f"the staging schema {schema!r} does not exist", False
     if not recorded_staging.get("token") or state["token"] != recorded_staging["token"]:
         return f"the staging schema {schema} does not carry its token", False
-    if (
-        state["segment_rows"] != recorded_staging.get("segment_rows")
-        or state["border_crossing_rows"] != recorded_staging.get("border_crossing_rows")
-    ):
+    if state["segment_rows"] != recorded_staging.get("segment_rows") or state[
+        "border_crossing_rows"
+    ] != recorded_staging.get("border_crossing_rows"):
         return (
             f"the staging schema {schema} has {state['segment_rows']} segment rows and "
             f"{state['border_crossing_rows']} border crossings, and the checkpoint recorded "
@@ -642,9 +661,8 @@ def elevation_digest(tile_paths: Iterable[Path | str]) -> str:
 GRAPH_BINARIES = ("valhalla_build_tiles", "valhalla_build_extract")
 
 
-def binaries_digest(
-    hasher: Hasher, which: Callable[[str], str | None] = shutil.which
-) -> str:
+def binaries_digest(hasher: Hasher, which: Callable[[str], str | None] | None = None) -> str:
+    which = which or shutil.which
     entries = {}
     for name in GRAPH_BINARIES:
         found = which(name)
@@ -661,7 +679,7 @@ def graph_fingerprint(
     lua_dirs: Sequence[Path],
     elevation_tiles: Iterable[Path],
     hasher: Hasher,
-    which: Callable[[str], str | None] = shutil.which,
+    which: Callable[[str], str | None] | None = None,
 ) -> dict:
     """What one graph's build is a function of: its extract's content, the merged
     extract the admin database is built from, the build config without its thread

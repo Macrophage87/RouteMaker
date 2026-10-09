@@ -1554,7 +1554,9 @@ def build_handlers(
         if name == "SEGMENT_SCHEMA_STAGING":
             return context.staging_schema
         if name == "REBUILD_CROSSINGS_FIXTURE":
-            return None if context.checked_in_crossings is None else str(context.checked_in_crossings)
+            return (
+                None if context.checked_in_crossings is None else str(context.checked_in_crossings)
+            )
         return _setting(name)
 
     def measure_fingerprint(merged_pbf: Path) -> dict:
@@ -2723,12 +2725,14 @@ def build_handlers(
             admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
             context.graphs_built.append(variant.value)
+            # The log is kept beside the graph whatever the checkpoint setting says
+            # (VALIDATE_TILES reads it, and it was only ever in memory, which is where
+            # an operator could not read it after a failure).
+            log_path = build_dir / checkpoint.BUILD_LOG
+            log_path.write_text(context.build_logs[variant], encoding="utf-8")
             if context.checkpoints and fingerprint is not None:
-                # The log is persisted beside the graph (VALIDATE_TILES reads it),
-                # and the manifest is the last thing written: a graph without one
+                # And the manifest is the last thing written: a graph without one
                 # is, by definition, not finished.
-                log_path = build_dir / checkpoint.BUILD_LOG
-                log_path.write_text(context.build_logs[variant], encoding="utf-8")
                 if checkpoint.write_graph_manifest(
                     build_dir,
                     variant=variant,
@@ -3006,7 +3010,9 @@ def build_handlers(
         )
         context.checkpoints_written += 1
         logger.info(
-            "classification checkpoint written for job %s build %s", context.job_id, context.build_id
+            "classification checkpoint written for job %s build %s",
+            context.job_id,
+            context.build_id,
         )
 
     def refresh_validation_fingerprint() -> None:

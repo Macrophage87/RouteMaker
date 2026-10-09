@@ -258,18 +258,11 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         # retries and an `unwedge_job` requeue keep the job id); a new job's first
         # stage deletes it. `SOURCE_EXTRACT_FORCE_REFRESH=1` and
         # `REBUILD_CHECKPOINTS=0` both mean a fresh start.
-        kept = (
-            checkpoint.read_classification(settings.REBUILD_WORK_DIR)
-            if settings.REBUILD_CHECKPOINTS
-            else None
-        )
-        resumable = (
-            kept
-            if kept is not None
-            and job_id is not None
-            and kept.get("job_id") == job_id
-            and not settings.SOURCE_EXTRACT_FORCE_REFRESH
-            else None
+        _kept, resumable = checkpoint.find_resumable(
+            settings.REBUILD_WORK_DIR,
+            job_id,
+            enabled=settings.REBUILD_CHECKPOINTS,
+            force_fresh=settings.SOURCE_EXTRACT_FORCE_REFRESH,
         )
         context = RebuildContext(
             source_pbf=settings.REBUILD_SOURCE_PBF,
@@ -292,14 +285,16 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         # `previous` points at, which is the served graph and the rollback
         # target, and this rebuild has written nothing yet.
         #
-        # The build a classification checkpoint names is kept as well, whichever
-        # job wrote it: a resumable one is the next attempt's graphs, and one from
-        # a finished job is deleted by the fresh path's own prune after this run.
+        # The build this job's own classification checkpoint names is kept as well:
+        # it is the graphs this attempt is about to resume. Another job's is not
+        # resumable and is pruned like any other failed build - protecting it would
+        # put a third tile set on the volume in front of a gate this prune exists to
+        # make room for.
         reclaimed = _prune_tile_builds(
             context.tiles_dir,
             retention.KEEP_BUILDS,
             "before the disk gate",
-            protect=[kept["build_id"]] if kept is not None and kept.get("build_id") else (),
+            protect=[resumable["build_id"]] if resumable is not None else (),
         )
         try:
             try:
@@ -389,7 +384,9 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
             else context.override_summary
         )
         overridden = f" {override_text}." if override_text else ""
-        saved = f" Checkpoints: {context.checkpoint_summary()}." if context.checkpoint_summary() else ""
+        saved = (
+            f" Checkpoints: {context.checkpoint_summary()}." if context.checkpoint_summary() else ""
+        )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
             f"pruned {reclaimed} old build directories.{overridden}{saved} "
@@ -513,6 +510,11 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     SWAP, whose `DROP SCHEMA live_old` destroys the very schema a rollback
     would put back. The first timed-out rebuild would have spent thirty hours
     of CPU dismantling its own rollback target one attempt at a time.
+
+    They are terminal *unless* the attempt wrote a checkpoint and had not reached the
+    swap: `timed_out_with_progress` exempts that case at the one place that raises
+    `RebuildAbandoned` (OWNER-DECISIONS 459a), because the next attempt resumes from
+    what was written and so is not the same work in the same budget.
 
     Both doors arrive here as a `RebuildFailed.cause` now: the one a handler's
     own `_run_command` comes through when it finds no budget left, and the

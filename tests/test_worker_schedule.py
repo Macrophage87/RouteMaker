@@ -188,7 +188,7 @@ def test_the_rebuild_task_runs_the_real_handler_set(
 
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert run.succeeded and run.finished_at is not None
-    assert "14 stages completed" in run.detail
+    assert "15 stages completed" in run.detail
     # The promotion is not the end of the deployment's work and the row says so:
     # valhalla_service does not reload tiles at runtime, so the three routers go
     # on serving the build they started against until their containers restart,
@@ -501,7 +501,7 @@ def test_a_rebuild_the_gate_would_refuse_prunes_before_the_gate_reads_the_volume
     app.tasks["weekly_rebuild"].func(timestamp=0)
 
     detail = last_rebuild_detail()
-    assert "14 stages completed" in detail, detail
+    assert "15 stages completed" in detail, detail
     assert "pruned 9 old build directories" in detail
     for variant in VARIANTS:
         assert builds_on_disk(root, variant) == [
@@ -548,7 +548,7 @@ def test_only_the_newest_failed_builds_directory_survives_its_run(
 
     with pytest.raises(RebuildAbandoned) as abandoned:
         app.tasks["weekly_rebuild"].func(timestamp=0)
-    assert Stage.VALIDATE.value in str(abandoned.value)
+    assert Stage.VALIDATE_TILES.value in str(abandoned.value)
 
     first_failure = {}
     for variant in VARIANTS:
@@ -707,6 +707,10 @@ def test_a_rebuild_killed_by_its_own_deadline_is_abandoned_rather_than_retried(
     from core.models import ScheduledRun
     from pipeline.rebuild import RebuildTimedOut
 
+    # With checkpoints off, which is what "this attempt wrote nothing" means here:
+    # a timeout that made no progress is terminal, as it always was. The case where
+    # it did is tested below (OWNER-DECISIONS 459a).
+    monkeypatch.setattr(settings, "REBUILD_CHECKPOINTS", False)
     _root, binaries = rebuild_environment
     failure = (
         subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=REBUILD_TIMEOUT_S)
@@ -2413,3 +2417,211 @@ def test_a_failing_dump_still_prunes_the_row_tables(tmp_path, monkeypatch) -> No
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE id = %s", [stale_job])
         assert cursor.fetchone()[0] == 0, "the finished job row past its retention goes too"
+
+
+# --- Checkpoints (OWNER-DECISIONS 459) ----------------------------------------------------
+
+
+def job_context(job_id: int):
+    """What Procrastinate hands a task with `pass_context=True`, as far as the rebuild
+    reads it: `context.job.id`."""
+    import types
+
+    return types.SimpleNamespace(job=types.SimpleNamespace(id=job_id))
+
+
+def fail_tile_build_of(monkeypatch, binaries, variant: str, failure=None, times: int = 1) -> None:
+    """The next `times` `valhalla_build_tiles` for one variant raise `failure`."""
+    state = {"left": times}
+
+    def failing(command, deadline=None, clock=None):
+        if command[0] == "valhalla_build_tiles" and state["left"] > 0:
+            config = json.loads(Path(command[2]).read_text())
+            if Path(config["mjolnir"]["tile_dir"]).parents[1].name == variant:
+                state["left"] -= 1
+                raise failure or RuntimeError("the tile build died")
+        return binaries(command)
+
+    monkeypatch.setattr("pipeline.run._run_command", failing)
+
+
+def all_binaries_work(monkeypatch, binaries) -> None:
+    monkeypatch.setattr(
+        "pipeline.run._run_command", lambda command, deadline=None, clock=None: binaries(command)
+    )
+
+
+def tile_builds(binaries) -> list[str]:
+    return [Path(c[2]).parent.parent.name for c in binaries.commands("valhalla_build_tiles")]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_retry_of_the_same_job_resumes_and_a_new_job_does_not(
+    rebuild_environment, monkeypatch
+) -> None:
+    """Procrastinate's retry keeps the job id, and so does an `unwedge_job` requeue: both
+    resume. A new job is a fresh start."""
+    from pipeline.rebuild import RebuildFailed
+
+    root, binaries = rebuild_environment
+    task = app.tasks["weekly_rebuild"].func
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):  # an ordinary failure, so Procrastinate retries it
+        task(job_context(77), timestamp=0)
+    build = builds_on_disk(root, "standard")[-1]
+
+    binaries.calls.clear()
+    all_binaries_work(monkeypatch, binaries)
+    task(job_context(77), timestamp=0)
+    assert tile_builds(binaries) == ["offroad"], "only the graph that failed"
+    detail = last_rebuild_detail()
+    assert f"build {build}" in detail
+    assert "Checkpoints: resumed job 77" in detail
+    assert "graphs reused: standard, no-trail, ebike, weekend; built: offroad" in detail
+
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):
+        task(job_context(78), timestamp=0)
+    binaries.calls.clear()
+    all_binaries_work(monkeypatch, binaries)
+    task(job_context(79), timestamp=0)
+    assert tile_builds(binaries) == ["standard", "no-trail", "ebike", "weekend", "offroad"]
+    assert "resumed" not in last_rebuild_detail()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_pre_run_prune_keeps_this_jobs_checkpointed_build_and_only_that(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The prune that runs before the disk gate protects the build a resumable
+    checkpoint names, and (so that it can still make room) not another job's."""
+    from config import procrastinate
+    from pipeline.rebuild import RebuildFailed
+
+    root, binaries = rebuild_environment
+    task = app.tasks["weekly_rebuild"].func
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):
+        task(job_context(5), timestamp=0)
+    build = builds_on_disk(root, "standard")[-1]
+    protected = []
+    real = procrastinate._prune_tile_builds
+
+    def recording(tiles_dir, keep, what, protect=()):
+        protected.append((what, list(protect)))
+        return real(tiles_dir, keep, what, protect=protect)
+
+    monkeypatch.setattr(procrastinate, "_prune_tile_builds", recording)
+    all_binaries_work(monkeypatch, binaries)
+    task(job_context(5), timestamp=0)
+    assert protected[0] == ("before the disk gate", [build])
+
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed):
+        task(job_context(6), timestamp=0)
+    protected.clear()
+    all_binaries_work(monkeypatch, binaries)
+    task(job_context(7), timestamp=0)
+    assert protected[0] == ("before the disk gate", []), "job 6's failed build is not protected"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_run_that_failed_keeps_its_build_for_the_retry(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The prune after a failed run protects the build the checkpoint describes."""
+    from pipeline.rebuild import RebuildFailed
+
+    root, binaries = rebuild_environment
+    fail_tile_build_of(monkeypatch, binaries, "weekend")
+    with pytest.raises(RebuildFailed):
+        app.tasks["weekly_rebuild"].func(job_context(3), timestamp=0)
+    build = builds_on_disk(root, "standard")[-1]
+    assert (root / "tiles" / "standard" / build / "routemaker-graph.json").is_file()
+    assert (root / "rebuild" / "checkpoint" / "classification.json").is_file()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("kind", ["binary_killed", "no_budget_left"])
+def test_a_timeout_before_the_swap_is_retried_when_the_attempt_wrote_a_checkpoint(
+    rebuild_environment, monkeypatch, kind
+) -> None:
+    """OWNER-DECISIONS 459a: "Yes, let it increase." The attempt ran out of its budget in
+    the middle of the tile stage, after the classification checkpoint and the first
+    graphs: the next attempt starts from them, so the job is retried (a plain
+    `RebuildFailed`) and not abandoned."""
+    from core.models import ScheduledRun
+    from pipeline.rebuild import RebuildFailed, RebuildTimedOut
+
+    _root, binaries = rebuild_environment
+    failure = (
+        subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=REBUILD_TIMEOUT_S)
+        if kind == "binary_killed"
+        else RebuildTimedOut("no time left to run valhalla_build_tiles")
+    )
+    fail_tile_build_of(monkeypatch, binaries, "weekend", failure)
+    with pytest.raises(RebuildFailed) as retried:
+        app.tasks["weekly_rebuild"].func(job_context(9), timestamp=0)
+    assert not isinstance(retried.value, RebuildAbandoned)
+    assert retried.value.stage.value == "build_tiles"
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=retried.value, job=job(0)) is not None
+    assert not ScheduledRun.objects.get(task="weekly_rebuild").succeeded
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_timeout_that_wrote_no_new_checkpoint_is_terminal_even_when_it_resumed(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The other half of 459a: a resumed attempt that reused everything it was given
+    and still ran out of time has made no progress, and a retry would repeat it."""
+    from pipeline.rebuild import RebuildFailed
+
+    _root, binaries = rebuild_environment
+    task = app.tasks["weekly_rebuild"].func
+    fail_tile_build_of(monkeypatch, binaries, "standard")
+    with pytest.raises(RebuildFailed):
+        task(job_context(11), timestamp=0)
+    # The classification was checkpointed; the resumed attempt times out on the first
+    # graph it has to build, having written nothing.
+    timeout = subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=1)
+    fail_tile_build_of(monkeypatch, binaries, "standard", timeout)
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        task(job_context(11), timestamp=0)
+    assert "wrote no new checkpoint" in str(abandoned.value)
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(1)) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_timeout_after_the_swap_is_terminal_whatever_was_checkpointed(
+    rebuild_environment, monkeypatch
+) -> None:
+    """A retry re-runs the swap, whose DROP of `live_old` is the rollback target: the
+    progress rule is for timeouts before it only."""
+    from pipeline import run as run_module
+    from pipeline.rebuild import RebuildTimedOut
+
+    def late(*args, **kwargs):
+        raise RebuildTimedOut("no time left for the reconcile")
+
+    monkeypatch.setattr(run_module.reconcile, "drift_report", late)
+    with pytest.raises(RebuildAbandoned):
+        app.tasks["weekly_rebuild"].func(job_context(12), timestamp=0)
+
+
+def test_the_timeout_causes_are_the_two_shapes_of_running_out_of_budget() -> None:
+    from config.procrastinate import is_timeout, terminal_causes
+    from pipeline.rebuild import RebuildTimedOut
+
+    assert is_timeout(RebuildTimedOut("x"))
+    assert is_timeout(subprocess.TimeoutExpired(cmd="x", timeout=1))
+    assert not is_timeout(RuntimeError("x"))
+    assert RebuildTimedOut in terminal_causes() and subprocess.TimeoutExpired in terminal_causes()
+
+
+def test_a_refused_checkpoint_cleanup_is_terminal() -> None:
+    from config.procrastinate import terminal_causes
+    from pipeline.checkpoint import CheckpointRefused
+
+    assert CheckpointRefused in terminal_causes()
