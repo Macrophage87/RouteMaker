@@ -1456,10 +1456,12 @@ async function infoAsked(p, before, ms = 8000) {
   return { asked, opened };
 }
 /** Opens Map tools (by the zoom buttons; OWNER-DECISIONS 450) if it is closed, and presses one of its two buttons. */
-const mapTool = (p, label) =>
-  p.eval(`(() => { if (!document.querySelector('.map-tools-toggle')) document.querySelector('.access-link')?.click(); // accessibility mode on (455)
-    const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
+const mapTool = async (p, label) => {
+  // Map tools is on the page only in accessibility mode (455): turn it on first, as a rider would.
+  if (await p.eval("!document.querySelector('.map-tools-toggle') && !!document.querySelector('.access-link')?.click()")) await sleep(300);
+  return p.eval(`(() => { const t = document.querySelector('.map-tools-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click();
     [...document.querySelectorAll('.map-tools-panel button')].find((b) => b.textContent === ${JSON.stringify(label)})?.click(); return true; })()`);
+};
 /** A test probe: moves the map, the MapLibre map in MapView's ref, found through React's fiber; whether it was found. */
 const jumpMap = (p, lon, lat, zoom) =>
   p.eval(`(() => { const el = document.querySelector('.map'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
