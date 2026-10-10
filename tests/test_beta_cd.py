@@ -1614,6 +1614,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     for needed in (
         "Router unavailable",
         "not available right now",
+        "Back soon",
         "502 Bad Gateway",
         "half an hour",
     ):

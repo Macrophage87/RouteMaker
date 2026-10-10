@@ -1191,7 +1191,7 @@ before, at the preset's own starting positions:
 ```sh
 curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
     -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "cargo",
-         "carrying": "people", "stress": 90, "hills": -40, "when": "weekend"}'
+         "carrying": "people", "stress": 80, "hills": -40, "when": "weekend"}'
 ```
 
 - `stress`, integer 0-100, rescaled on 2026-10-01 (OWNER-DECISIONS 163 and 164;
@@ -1231,7 +1231,7 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   is car-free at weekday rush; supported since the round-1 mutation review).
   A condition it cannot read - a month range, `sunset` - closes nothing.
 - `carrying`: `cargo` or `people` ("Cargo with passengers", item 241), Cargo Bike only
-  (400 elsewhere); it sets the stress slider's start (90, Default's, or 100).
+  (400 elsewhere); it sets the stress slider's start (70, Default's, or 80).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
   routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
@@ -1573,7 +1573,10 @@ comes from its own speed, so no duration changes, and the speed limit and
 access stay OSM's. Not on the no-trail graph: Mass Ride is locked at 0.
 
 The stress levels, LTS 3 / LTS 4 (and the ratio), modelled from the costing
-code for representative roadways at each slider position:
+code for representative roadways at each slider position. (Positions in this
+table and the measurements below it are on the scale before the 2026-10-01
+rescale: the old position `q` is now `q * 7 / 9` up to 90, so the columns are
+today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is today's 4 to 80.)
 
 | Roadway | 0 | 25 | 50 | 75 | 90 | 100 |
 |---|---|---|---|---|---|---|

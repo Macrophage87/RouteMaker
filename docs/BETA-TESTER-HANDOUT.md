@@ -102,6 +102,6 @@ If the beta notice shows a "Report a problem" link, you can use that instead.
 
 Now and then the beta is updated to a new version. For about 10 to 20 minutes the page still
 opens, but planning a route says "Router unavailable", place search and the road information
-say they are "not available right now", and Sign in shows a bare "502 Bad Gateway" page (the
-browser's Back button takes you back to your route). That is the update, not something you did.
+say they are "not available right now", and Sign in shows a "Back soon" or "502 Bad Gateway"
+page (the browser's Back button takes you back to your route). That is the update, not something you did.
 Wait about 20 minutes and try again. Report it only if it lasts more than half an hour.
