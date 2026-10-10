@@ -2350,6 +2350,7 @@ class TestSpeedDefaults:
             ("VA", True, False, {"highway": "secondary"}, 25.0),
             ("VA", False, False, {"highway": "secondary"}, 55.0),
             ("VA", False, False, {"highway": "tertiary", "surface": "gravel"}, 35.0),
+            ("VA", True, False, {"highway": "tertiary", "surface": "gravel"}, 25.0),
             (None, False, False, {"highway": "secondary"}, 55.0),
         ],
     )

@@ -250,9 +250,8 @@ def statutory_default_mph(
     if zone == "MD":
         return (MD_STATUTORY_URBAN_MPH if urban else MD_STATUTORY_OTHER_MPH)[divided]
     if zone == "VA":
-        if is_unpaved(tags):
-            return VA_STATUTORY_UNPAVED_MPH
-        return VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
+        district = VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
+        return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
     return None
 
 
