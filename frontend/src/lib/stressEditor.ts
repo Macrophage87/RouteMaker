@@ -69,8 +69,6 @@ export interface EditorState {
   pieces: number;
   /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
   half_steps?: boolean;
-  /** The named stretch the piece is in (phase 5), or null where it is the only piece. */
-  stretch?: EditorStretch | null;
 }
 
 /** The ways of one name end to end, to the next high-stress crossing (core/stress_edits.named_stretch). */
@@ -91,22 +89,58 @@ export const EXTENT_LEGEND = "What to change";
 export const STRETCH_HELP =
   "A named stretch is the pieces of this road, end to end, up to a busy crossing.";
 export const STRETCH_CAPPED = "It goes on further; one change takes at most 40 pieces.";
+export const STRETCH_FINDING = "Finding the whole named stretch…";
+export const STRETCH_ALONE =
+  "Nothing else of this name joins this piece before a busy crossing, so this road piece is the whole stretch.";
+export const STRETCH_WAIT = "Wait until the whole named stretch is found, or choose this road piece.";
+
+/** The stretch as the extent choice holds it: asked only when the admin chooses it. */
+export type StretchLoad =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "ready"; stretch: EditorStretch }
+  | { kind: "alone" }
+  | { kind: "error"; message: string };
+
+/** Whether a road can have a named stretch at all: an unnamed one cannot. */
+export function mayHaveStretch(title: string): boolean {
+  return !/^Unnamed (road|path)$/.test(title.trim()) && title.trim() !== "";
+}
 
 /** The extent choice's two options, US units first with metric in brackets. */
-export function extentOptions(title: string, stretch: EditorStretch): { value: Extent; text: string }[] {
+export function extentOptions(title: string, stretch: EditorStretch | null): { value: Extent; text: string }[] {
   return [
     { value: "piece", text: `This road piece: ${title}` },
     {
       value: "stretch",
-      text: `The whole named stretch of ${stretch.name}: ${stretch.pieces} pieces, ${formatDistance(stretch.length_m)}`,
+      text: stretch
+        ? `The whole named stretch of ${stretch.name}: ${stretch.pieces} pieces, ${formatDistance(stretch.length_m)}`
+        : `The whole named stretch of ${title}`,
     },
   ];
 }
 
-/** The ways a save sends and the token that goes with them. */
-export function saveTarget(state: EditorState, extent: Extent): { osm_way_ids: number[]; expected: string } {
-  if (extent === "stretch" && state.stretch) {
-    return { osm_way_ids: state.stretch.osm_way_ids, expected: state.stretch.expected };
+/** What the choice's polite status line says about the stretch. */
+export function stretchSaid(load: StretchLoad): string {
+  if (load.kind === "loading") return STRETCH_FINDING;
+  if (load.kind === "alone") return STRETCH_ALONE;
+  if (load.kind === "error") return load.message;
+  if (load.kind === "ready") {
+    const s = load.stretch;
+    return `The whole named stretch of ${s.name}: ${s.pieces} pieces, ${formatDistance(s.length_m)}.${s.capped ? ` ${STRETCH_CAPPED}` : ""}`;
+  }
+  return "";
+}
+
+/** The ways a save sends and the token that goes with them (null: the stretch is not found yet). */
+export function saveTarget(
+  state: EditorState,
+  extent: Extent,
+  stretch: StretchLoad = { kind: "none" },
+): { osm_way_ids: number[]; expected: string } | null {
+  if (extent === "stretch") {
+    if (stretch.kind === "ready") return { osm_way_ids: stretch.stretch.osm_way_ids, expected: stretch.stretch.expected };
+    if (stretch.kind === "loading") return null;
   }
   return { osm_way_ids: [state.osm_way_id], expected: state.expected };
 }
@@ -378,6 +412,26 @@ export async function fetchEditorState(
       return { kind: "error", message: refusalText(response.status, body.message) };
     }
     return { kind: "ready", state: (await response.json()) as EditorState };
+  } catch (error) {
+    if ((error as { name?: string })?.name === "AbortError") throw error;
+    return { kind: "error", message: refusalText(500, null) };
+  }
+}
+
+/** GET /api/stress-edits/way/{id}/stretch: the named stretch, asked when the admin chooses it. */
+export async function fetchStretch(origin: string, wayId: number, signal?: AbortSignal, get: Fetch = fetch): Promise<StretchLoad> {
+  try {
+    const response = await get(`${origin}/api/stress-edits/way/${wayId}/stretch`, {
+      signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      const body = await errorBody(response);
+      return { kind: "error", message: refusalText(response.status, body.message) };
+    }
+    const body = (await response.json()) as { stretch: EditorStretch | null };
+    return body.stretch ? { kind: "ready", stretch: body.stretch } : { kind: "alone" };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;
     return { kind: "error", message: refusalText(500, null) };

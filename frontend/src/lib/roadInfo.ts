@@ -51,6 +51,8 @@ export interface SegmentInfo {
   tier: number | null;
   /** The exact step, half steps included (1.5 ... 4.5); absent from an older API. `tier` is its whole level. */
   step?: number | null;
+  /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
+  half_steps?: boolean | null;
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;

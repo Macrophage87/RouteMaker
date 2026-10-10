@@ -21,8 +21,8 @@ import {
   CATEGORY_LABEL,
   DISPLAY_LABEL,
   EXTENT_LEGEND,
-  STRETCH_CAPPED,
   STRETCH_HELP,
+  STRETCH_WAIT,
   DISPLAY_OPTIONS,
   EDITOR_HEADING,
   HALF_STEP_HELP,
@@ -37,7 +37,10 @@ import {
   countText,
   csrfFromCookie,
   extentOptions,
+  fetchStretch,
+  mayHaveStretch,
   saveTarget,
+  stretchSaid,
   currentText,
   fetchEditorState,
   formProblem,
@@ -53,6 +56,7 @@ import {
   type EditorLoad,
   type EditorState,
   type Extent,
+  type StretchLoad,
 } from "./lib/stressEditor.ts";
 
 interface Props {
@@ -80,6 +84,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
   const [note, setNote] = useState("");
   const [display, setDisplay] = useState<DisplayWhere>("route_only");
   const [extent, setExtent] = useState<Extent>("piece");
+  const [stretch, setStretch] = useState<StretchLoad>({ kind: "none" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ field: Field | null; message: string } | null>(null);
   // What the status region says, and the change Undo would take back.
@@ -143,7 +148,11 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
     }
     setError(null);
     setSaving(true);
-    const target = saveTarget(state, extent);
+    const target = saveTarget(state, extent, stretch);
+    if (target === null) {
+      fail(null, STRETCH_WAIT);
+      return;
+    }
     const outcome = await saveEdit(
       origin,
       {
@@ -162,14 +171,30 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
       const field = (["reason", "public_note", "category", "step", "at_least", "display"] as const).find((f) => f === outcome.field);
       fail(field ?? null, outcome.message);
       // A stale edit: the road changed under the editor; show the new state for the next try.
-      if (outcome.status === 409) refresh();
+      if (outcome.status === 409) {
+        refresh();
+        if (extent === "stretch") void chooseStretch();
+      }
       return;
     }
     setSaved(outcome.result);
     setSaid(savedSaid(outcome.result, state.steps, atLeast));
     onChanged(outcome.result.generation);
     refresh();
+    if (extent === "stretch") void chooseStretch(false);
     headingRef.current?.focus();
+  };
+
+  // The stretch is asked for only when the admin chooses it (the server asks the router for the
+  // road names); the choice's status line says what was found.
+  const chooseStretch = async (say = true) => {
+    setExtent("stretch");
+    if (say) setStretch({ kind: "loading" });
+    const found = await fetchStretch(origin, wayId).catch(
+      (): StretchLoad => ({ kind: "error", message: "The stretch could not be found just now." }),
+    );
+    setStretch(found);
+    if (found.kind === "alone" || found.kind === "error") setExtent("piece");
   };
 
   const onUndo = async () => {
@@ -216,10 +241,10 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
       {state && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
           <p className="stress-editor-now">{currentText(state.current, state.steps)}</p>
-          {state.stretch ? (
+          {mayHaveStretch(title) ? (
             <fieldset className="stress-editor-field stress-editor-extent-choice" aria-describedby={id("extent-help")}>
               <legend>{EXTENT_LEGEND}</legend>
-              {extentOptions(title, state.stretch).map((option) => (
+              {extentOptions(title, stretch.kind === "ready" ? stretch.stretch : null).map((option) => (
                 <div className="stress-editor-radio" key={option.value}>
                   <input
                     id={id(`extent-${option.value}`)}
@@ -227,14 +252,17 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
                     name={id("extent")}
                     value={option.value}
                     checked={extent === option.value}
-                    onChange={() => setExtent(option.value)}
+                    onChange={() => (option.value === "stretch" ? void chooseStretch() : setExtent("piece"))}
                   />
                   <label htmlFor={id(`extent-${option.value}`)}>{option.text}</label>
                 </div>
               ))}
               <p id={id("extent-help")} className="hint">
                 {STRETCH_HELP}
-                {state.stretch.capped ? ` ${STRETCH_CAPPED}` : ""}
+              </p>
+              {/* Always in the page, empty at first: what was found when the stretch is chosen. */}
+              <p className="hint stress-editor-stretch-said" role="status">
+                {stretchSaid(stretch)}
               </p>
             </fieldset>
           ) : (

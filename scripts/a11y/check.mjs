@@ -2170,15 +2170,23 @@ const levelSlider = `${EDITOR} input[type=range]`;
       rows: [...f.querySelectorAll('.stress-editor-radio')].map((d) => Math.round(d.getBoundingClientRect().height)), help: document.getElementById(f.getAttribute('aria-describedby'))?.textContent ?? '' }; })()`);
   const piece = await axNode(p, `${EDITOR} fieldset input[data-n="0"]`);
   const whole = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
-  check("named stretch: a labelled group (What to change) of two radios, This road piece checked; the stretch named with its pieces and length in miles, kilometres in brackets; rows at least 44px",
+  const askedEarly = p.editRequests.some((r) => r.path.endsWith("/stretch"));
+  check("named stretch: a labelled group (What to change) of two radios, This road piece checked, the stretch named by its road; rows at least 44px; the stretch is not looked for until it is chosen",
     group.legend === "What to change" && group.count === 2 && group.checked[0] && !group.checked[1] && group.same && group.rows.every((h) => h >= 44) &&
-      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)" &&
-      /busy crossing/.test(group.help), JSON.stringify({ group, piece, whole }));
+      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest" &&
+      /busy crossing/.test(group.help) && !askedEarly, JSON.stringify({ group, piece, whole, askedEarly }));
 
   await p.eval(`document.querySelector('${EDITOR} fieldset input[data-n="0"]').focus(); true`);
   await p.key("ArrowDown", "ArrowDown", 40);
   const moved = await p.eval(`({ checked: document.querySelector('${EDITOR} fieldset input[data-n="1"]').checked, focus: document.activeElement?.dataset?.n })`);
   check("named stretch: the arrow key moves the choice to the whole stretch, as native radios do", moved.checked && moved.focus === "1", JSON.stringify(moved));
+  await p.waitFor(`/pieces/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  const found = await p.eval(`(() => { const s = document.querySelector('${EDITOR} .stress-editor-stretch-said'); return { role: s?.getAttribute('role'), text: s?.textContent ?? '' }; })()`);
+  const wholeFound = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  check("named stretch: once chosen it is looked for, and a status line says what was found: its pieces and length in miles, kilometres in brackets, as the radio now reads too",
+    p.editRequests.some((r) => r.method === "GET" && r.path === "/api/stress-edits/way/101/stretch") && found.role === "status" &&
+      found.text === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)." &&
+      wholeFound?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)", JSON.stringify({ found, whole: wholeFound?.name }));
 
   await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
   await p.key("ArrowRight", "ArrowRight", 39);
@@ -2450,8 +2458,8 @@ const SUGGEST = "dialog.road-info .suggest-change";
   await p.waitFor(`/^Thanks/.test(document.querySelector('${SUGGEST} [role=status]')?.textContent ?? '')`, 8000);
   const sent = p.suggestRequests.find((r) => r.method === "POST");
   const said = await p.eval(`document.querySelector('${SUGGEST} [role=status]')?.textContent ?? ''`);
-  check("suggestions: Send posts the way, the spot, the level 2.5 and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
-    sent?.path === "/api/stress-suggestions" && sent.body.osm_way_id === 101 && sent.body.step === 2.5 && typeof sent.body.lat === "number" && typeof sent.body.lon === "number" &&
+  check("suggestions: Send posts the way, the nearest point on the road (never the spot clicked), the level 2.5 and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/stress-suggestions" && sent.body.osm_way_id === 101 && sent.body.step === 2.5 && sent.body.lat === 38.91 && sent.body.lon === -77.04 &&
       sent.body.reason === "A protected lane opened this summer." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
 
   await p.escape();
@@ -2463,6 +2471,8 @@ const SUGGEST = "dialog.road-info .suggest-change";
 {
   // The instance admin's review, in the Settings sheet: the three actions, the poll to copy, "Copied".
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  // Two waiting: Approve now moves the focus on to the next one, and Delete the last to the empty line.
+  p.suggestionsOpen = [...p.suggestionsOpen, { ...p.suggestionsOpen[0], id: 42, osm_way_id: 102, road: "Pine Street" }];
   await openSheet(p, "Settings");
   await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
   await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
@@ -2503,9 +2513,37 @@ const SUGGEST = "dialog.road-info .suggest-change";
 
   await p.eval("document.getElementById('__sg0').click(); true");
   await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
-  const approved = await p.eval("({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.suggestion-item').length })");
+  await sleep(150);
+  const approved = await p.eval(`({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.suggestion-item').length,
+    focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
   check("suggestions: Approve now says the road's new level in words in the status region and the suggestion leaves the list",
-    /^Approved\. Oak Street is now LTS 2\.5/.test(approved.said) && approved.left === 0 && p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/41/approve"), JSON.stringify(approved));
+    /^Approved\. Oak Street is now LTS 2\.5/.test(approved.said) && approved.left === 1 && p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/41/approve"), JSON.stringify(approved));
+  check("suggestions: after Approve now the focus moves to the next suggestion's heading, not lost to the page",
+    approved.focus === "H4" && approved.focusTab === -1 && /^Pine Street: from LTS 3/.test(approved.focusText), JSON.stringify(approved));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await sleep(150);
+  const asking = await p.eval(`(() => { const g = document.querySelector('.suggestion-confirm'); const d = [...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete');
+    return { role: g?.getAttribute('role'), label: document.getElementById(g?.getAttribute('aria-labelledby') ?? '')?.textContent ?? '', expanded: d?.getAttribute('aria-expanded'),
+      focus: document.activeElement?.textContent ?? '', buttons: [...g.querySelectorAll('button')].map((b) => b.textContent) }; })()`);
+  const sentEarly = p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete");
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Keep it').click(); true");
+  await sleep(150);
+  const kept = await p.eval(`({ open: !!document.querySelector('.suggestion-confirm'), focus: document.activeElement?.textContent ?? '', expanded: document.activeElement?.getAttribute('aria-expanded') })`);
+  check("suggestions: Delete first asks, in a group labelled by its question, with the focus on Yes, delete and nothing sent; Keep it closes the question and puts the focus back on Delete",
+    asking.role === "group" && asking.label === "Delete this suggestion? It cannot be brought back." && asking.expanded === "true" && asking.focus === "Yes, delete" &&
+      JSON.stringify(asking.buttons) === JSON.stringify(["Yes, delete", "Keep it"]) && !sentEarly && !kept.open && kept.focus === "Delete" && kept.expanded === "false", JSON.stringify({ asking, sentEarly, kept }));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Yes, delete').click(); true");
+  await p.waitFor("/^Deleted/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const deleted = await p.eval(`({ left: document.querySelectorAll('.suggestion-item').length, focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
+  check("suggestions: Yes, delete sends the delete, says Deleted, and with nothing left the focus moves to the line saying no suggestions are waiting",
+    p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete") && deleted.left === 0 && deleted.focus === "P" && deleted.focusTab === -1 &&
+      deleted.focusText.trim() === "No suggestions are waiting.", JSON.stringify(deleted));
   await p.close();
 }
 {
@@ -2685,7 +2723,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 437;
+const EXPECTED = 441;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

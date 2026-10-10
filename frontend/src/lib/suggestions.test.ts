@@ -90,3 +90,9 @@ test("the spot link opens the map at the spot, street level, and only inside the
   assert.equal(atFromHash("#at=nonsense"), null);
   assert.equal(atFromHash("#p=-77.04,38.91"), null);
 });
+
+test("the privacy note says the road's location may be shared, and never the rider's name or spot", async () => {
+  const { SUGGEST_PRIVACY } = await import("./suggestions.ts");
+  assert.match(SUGGEST_PRIVACY, /road's location/);
+  assert.match(SUGGEST_PRIVACY, /never your name or the spot you clicked/);
+});

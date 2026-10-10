@@ -29,7 +29,7 @@ export const SUGGEST_LEVEL_LABEL = "The level you suggest";
 export const SUGGEST_REASON_LABEL = "Why (required)";
 export const SUGGEST_REASON_MAX = 500;
 export const SUGGEST_PRIVACY =
-  "An admin reviews every suggestion before anything changes. Your reason may be shared, without your name, to ask other riders.";
+  "An admin reviews every suggestion before anything changes. The road's location and your reason may be shared in a public poll to ask other riders, never your name or the spot you clicked.";
 export const SUGGEST_SEND = "Send suggestion";
 export const REVIEW_HEADING = "Rider suggestions";
 export const COPY_POST = "Copy post";

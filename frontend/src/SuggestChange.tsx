@@ -28,12 +28,14 @@ interface Props {
   title: string;
   /** The road's level now (1 to 5 by halves). */
   current: number;
-  /** The spot the panel was opened for, [lon, lat]. */
+  /** The nearest point on the road ([lon, lat], the panel's `on_way`): never the spot clicked. */
   point: [number, number];
+  /** Whether the road data can hold a half step yet: whole steps only until it can. */
+  halfSteps: boolean;
   onClose: () => void;
 }
 
-export function SuggestChange({ origin, wayId, title, current, point, onClose }: Props) {
+export function SuggestChange({ origin, wayId, title, current, point, halfSteps, onClose }: Props) {
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -112,7 +114,7 @@ export function SuggestChange({ origin, wayId, title, current, point, onClose }:
                 type="range"
                 min={1}
                 max={5}
-                step={0.5}
+                step={halfSteps ? 0.5 : 1}
                 value={step}
                 aria-valuetext={words}
                 aria-describedby={id("ticks")}
@@ -124,7 +126,8 @@ export function SuggestChange({ origin, wayId, title, current, point, onClose }:
               </output>
             </div>
             <p id={id("ticks")} className="hint stress-editor-ticks">
-              1 is the calmest, 5 is Avoid. The arrow keys move half a step; Home goes to 1 and End to 5.
+              1 is the calmest, 5 is Avoid. The arrow keys move {halfSteps ? "half a step" : "a whole step"}; Home goes to 1
+              and End to 5.
             </p>
           </div>
           <div className="stress-editor-field">

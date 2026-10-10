@@ -435,7 +435,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
               wayId={suggestWay}
               title={ready.title}
               current={ready.step ?? ready.tier ?? 3}
-              point={request.point}
+              point={streetViewPoint(ready, request.point)}
+              halfSteps={ready.half_steps === true}
               onClose={closeSuggest}
             />
           </div>

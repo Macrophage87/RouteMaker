@@ -236,7 +236,11 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       page.editRequests.push(record);
       type = "application/json";
       const undo = /^\/api\/stress-edits\/(\d+)\/undo$/.exec(url.pathname);
-      if (request.method === "GET") {
+      if (request.method === "GET" && url.pathname.endsWith("/stretch")) {
+        // Asked for only once the whole stretch is chosen (it needs the router's names).
+        status = 200;
+        body = JSON.stringify({ stretch: stretchState(road) });
+      } else if (request.method === "GET") {
         status = 200;
         body = JSON.stringify(editorState(road));
       } else if (page.editFail) {
@@ -720,8 +724,8 @@ export const DISCORD_POST = [
   'The rider suggested: Between "Fine for most people, even nervous riders" and "OK for confident riders"',
   "> A protected lane opened this summer.",
   "",
-  "Where: Oak Street between Elm Street and Ash Avenue (near 38.90000, -77.03000)",
-  "Map: <http://127.0.0.1/#at=-77.03000,38.90000>",
+  "Where: Oak Street between Elm Street and Ash Avenue",
+  "Map: <http://127.0.0.1/#at=-77.0300,38.9000>",
   "",
   "Please weigh in by reacting with one letter:",
   "\u{1F1E6} Fine for anyone, kids included",
@@ -757,10 +761,14 @@ export function editorState(road) {
     note_max: 200,
     recent_edit: road.edit ? { id: road.edit, action: "set", at: new Date().toISOString(), can_undo: true } : null,
     pieces: 1,
-    stretch: road.stretch
-      ? { name: "Connecticut Avenue Northwest", osm_way_ids: [100, 101, 102], pieces: 3, length_m: 1207, capped: false, expected: `stretch-${road.generation}` }
-      : null,
   };
+}
+
+/** The named stretch the road is in (GET /api/stress-edits/way/{id}/stretch), or null. */
+export function stretchState(road) {
+  return road.stretch
+    ? { name: "Connecticut Avenue Northwest", osm_way_ids: [100, 101, 102], pieces: 3, length_m: 1207, capped: false, expected: `stretch-${road.generation}` }
+    : null;
 }
 
 /** The road panel's answer at a level: the fixed road with its stress rows changed. */
@@ -867,6 +875,8 @@ export const S_SEGMENT_INFO = {
   distance_m: 2.4,
   // The nearest point on the way: the Street View link opens here (OWNER-DECISIONS 441o).
   on_way: [-77.04, 38.91],
+  // The road data holds half steps, so a rider may suggest one.
+  half_steps: true,
   kind: "Main road",
   summary: [
     { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },
