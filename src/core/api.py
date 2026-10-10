@@ -894,7 +894,8 @@ class ProfileCalmStepOut(Schema):
 
 
 class ProfileCalmPointOut(Schema):
-    """Calm metres counted at one place."""
+    """Calm metres counted at one place: a flagged junction, or an entry into Avoid. Every
+    other junction counts in `ratio` and the total but is not listed."""
 
     m: int
     calm_m: int = Field(description="The calm (quiet-street) metres it counts for.")
@@ -907,7 +908,8 @@ class ProfileCalmPointOut(Schema):
 class ProfileCalmOut(Schema):
     """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
     calm miles per actual mile over the window centred on each sample (cut at the route's
-    ends), the junctions' own costs counted once in every window that holds them. 1.0 is
+    ends), each junction's cost at the ride's intersection weight counted once in every
+    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
     all quiet-street riding; a path or a protected lane counts below it. Every ride type
     but Mass Ride."""
 

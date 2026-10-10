@@ -51,7 +51,9 @@ import {
   calmRows,
   calmScale,
   calmShapes,
+  calmSource,
   calmStepLine,
+  calmTicks,
   calmTop,
   chartKind,
   climbRows,
@@ -289,18 +291,18 @@ export function ElevationChart({
 
           {calm && calmY && calmLayout && (
             <g>
-              <text className="pc-axis-text" x={2} y={calmLayout.calmTop + 4}>
-                {calmMax}
-              </text>
-              <text className="pc-axis-text" x={2} y={(calmLayout.calmTop + calmLayout.calmBottom) / 2 - 8}>
+              {/* The side: the unit on the marker row (nothing else is drawn left of the plot there), and the log scale's figures, right-aligned against the plot and never crowded. */}
+              <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6}>
                 calm mi
               </text>
-              <text className="pc-axis-text" x={2} y={(calmLayout.calmTop + calmLayout.calmBottom) / 2 + 3}>
+              <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6 + CHART_TYPE}>
                 per mi
               </text>
-              <text className="pc-axis-text" x={2} y={Math.min(calmY(1) + 4, calmLayout.calmBottom)}>
-                1
-              </text>
+              {calmTicks(calmMax, calmY).map((t) => (
+                <text key={t} className="pc-axis-text" x={LEFT - 3} y={calmY(t) + 4} textAnchor="end">
+                  {t}
+                </text>
+              ))}
               <line className="pc-axis" x1={LEFT} y1={calmLayout.calmBottom} x2={RIGHT} y2={calmLayout.calmBottom} />
               <line className="pc-calm-one" x1={LEFT} y1={calmY(1)} x2={RIGHT} y2={calmY(1)} />
               {calmArea.map((shape, i) => {
@@ -312,6 +314,7 @@ export function ElevationChart({
                   </g>
                 );
               })}
+              <path className="pc-calm-steps-casing" d={calmSteps} fill="none" />
               <path className="pc-calm-steps" d={calmSteps} fill="none" />
               {calmAvoids.map((r, i) => {
                 const real = Math.max(x(r.to_m) - x(r.from_m), 0);
@@ -334,13 +337,18 @@ export function ElevationChart({
               <path className="pc-calm-line" d={calmEdge} fill="none" />
               {calm.bands.slice(0, 2).map((at, i) => {
                 if (at >= calmMax) return null;
-                const label = `LTS ${i + 3} ${calmFigure(at)}`;
+                // Where both edges are one (0 on the slider: LTS 3 costs nothing extra), only the LTS 4 guide is drawn.
+                if (i === 0 && calm.bands[1] !== undefined && at >= calm.bands[1]) return null;
+                const label = `LTS ${i + 3} from ${calmFigure(at)}`;
                 const textW = label.length * 6.2;
-                const cls = spanClass({ tier: i + 3, facility: "none" });
+                const tier = i + 3;
+                const cls = spanClass({ tier, facility: "none" });
                 return (
                   <g key={i}>
+                    <line className="pc-calm-guide-casing" x1={LEFT} y1={calmY(at)} x2={RIGHT} y2={calmY(at)} />
                     <line className="pc-calm-guide" x1={LEFT} y1={calmY(at)} x2={RIGHT} y2={calmY(at)} />
-                    <rect className="pc-guide-swatch" x={RIGHT - textW - 11} y={calmY(at) - 8} width={8} height={5} fill={cls.color} />
+                    <rect x={RIGHT - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={cls.color} />
+                    <rect className="pc-calm-swatch" x={RIGHT - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={`url(#${uid}-t${tier})`} />
                     <text x={RIGHT} y={calmY(at) - 2} className="pc-guide-text" textAnchor="end">
                       {label}
                     </text>
@@ -479,7 +487,9 @@ export function ElevationChart({
         ))}
         {calm ? (
           <>
-            <li className="pc-legend-strip">Under the elevation: rolling stress, calm miles per mile over the mile around each point (1 is all quiet streets)</li>
+            <li className="pc-legend-strip">
+              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); 1 is all quiet streets
+            </li>
             {CALM_BANDS.map((band) => {
               const cls = spanClass({ tier: band.tier, facility: "none" });
               return (
@@ -496,7 +506,13 @@ export function ElevationChart({
               <svg width="14" height="10" aria-hidden="true">
                 <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
               </svg>
-              Dashed line: each stretch on its own
+              Dashed steps: each stretch's own figure, without the mile around it
+            </li>
+            <li>
+              <svg width="14" height="10" aria-hidden="true">
+                <path d="M0 5H14" className="pc-calm-guide" fill="none" />
+              </svg>
+              Dotted lines: where the levels change (the solid grey line is 1)
             </li>
             {calmAvoids.length > 0 && (
               <li>
@@ -600,7 +616,7 @@ export function ElevationChart({
         {kind === "mass"
           ? "Elevation: USGS 3DEP. Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
           : calm
-            ? "Elevation: USGS 3DEP. Rolling stress: what the routing charges for each stretch and junction, as quiet-street miles (OpenStreetMap; the stress ratings are RouteMaker's)."
+            ? `Elevation: USGS 3DEP. ${calmSource(calm)}`
             : "Elevation: USGS 3DEP."}
       </p>
       <details className="pc-table-fold">
@@ -721,6 +737,7 @@ function Tables({ profile, kind, spans, total }: { profile: RouteProfile; kind: 
                 <th scope="col">At</th>
                 <th scope="col">Calm miles per mile</th>
                 <th scope="col">Reads as</th>
+                <th scope="col">Junctions to watch since the row before</th>
               </tr>
             </thead>
             <tbody>
@@ -729,6 +746,7 @@ function Tables({ profile, kind, spans, total }: { profile: RouteProfile; kind: 
                   <th scope="row">{row.at}</th>
                   <td>{row.value}</td>
                   <td>{row.reads}</td>
+                  <td>{row.junctions}</td>
                 </tr>
               ))}
             </tbody>

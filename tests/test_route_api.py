@@ -338,7 +338,7 @@ class TestAnswer:
         assert score["window_m"] == round(calm.WINDOW_M)
         assert score["bands"] == pytest.approx([2.67, 9.34], abs=0.02)
         assert score["junctions_counted"] is True and score["estimate"] is True
-        assert score["rated_m"] > 0 and score["total_calm_m"] > 0
+        assert score["rated_m"] > 0 and score["total_calm_m"] >= score["rated_m"] * 0.5
         mass = post(client, good_body("mass-ride")).json()["profile"]
         assert mass["calm"] is None
 
@@ -348,6 +348,10 @@ class TestAnswer:
         router(standard_router())
         profile = post(client, {**good_body(), "stress": 100}).json()["profile"]
         assert profile["calm"]["bands"] == [3.5, 8.5]
+        # Test strength review, survivor 1: priced at the dial, not the preset's start.
+        group = calm.Pricing(use_roads=presets.use_roads_for(40))
+        at40 = post(client, {**good_body(), "stress": 40}).json()["profile"]["calm"]
+        assert at40["bands"] == pytest.approx(list(calm.bands(group)), abs=0.01)
 
     def test_junctions_not_read_are_not_counted_in_the_score(
         self, client, segments, router, monkeypatch

@@ -1447,7 +1447,7 @@ def route_profile(
     flow_stretches: list[tuple] | Callable[[], list[tuple]] | None = None,
     majors: list | None = None,
     majors_complete: bool = True,
-    calm_pricing: calm.Pricing | None = None,
+    calm_pricing: calm.Pricing | Callable[[], calm.Pricing] | None = None,
     events: list | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
@@ -1473,8 +1473,9 @@ def route_profile(
     Off a Mass Ride (`calm_pricing` given) it also has the rolling stress score
     (`routemaker.calm`, OWNER-DECISIONS 460.12, 461d, 461e): calm miles per mile over the
     mile around each sample, from the sections (`spans`) and the junction `events` (None:
-    not read, so not counted, and the answer says so). A failure there costs only the
-    score, sent as `calm: null`.
+    not read, so not counted, and the answer says so); the highest window's sample is kept
+    when a long route is thinned. `calm_pricing` may be a function that makes it. A
+    failure there costs only the score, sent as `calm: null`.
 
     The climbs (`climbs.runs`) are found once, and every figure is worked out on every
     sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
@@ -1529,6 +1530,16 @@ def route_profile(
             rows.append(row)
         heights = [h for _m, h in samples]
         keep = profile_rules.thin(heights, grade_at, riders)
+        pricing = None
+        if calm_pricing is not None:
+            try:
+                pricing = calm_pricing() if callable(calm_pricing) else calm_pricing
+                peak = calm.peak_index(spans, events, pricing, sample_m)
+                if peak is not None and peak not in keep:
+                    keep = sorted([*keep, peak])
+            except Exception:  # noqa: BLE001 - the chart is drawn without the score
+                logger.warning("the rolling stress score could not be built", exc_info=True)
+                pricing = None
         body: dict = {
             "interval_m": ELEVATION_INTERVAL_M,
             "m": [round(sample_m[i]) for i in keep],
@@ -1546,9 +1557,9 @@ def route_profile(
             "crossings_complete": None,
             "calm": None,
         }
-        if calm_pricing is not None:
+        if pricing is not None:
             try:
-                body["calm"] = calm.score(spans, events, calm_pricing, [sample_m[i] for i in keep])
+                body["calm"] = calm.score(spans, events, pricing, [sample_m[i] for i in keep])
             except Exception:  # noqa: BLE001 - the chart is drawn without the score
                 logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
@@ -2410,7 +2421,7 @@ def plan(
             majors_complete,
             None
             if mass_ride
-            else calm.Pricing(
+            else lambda: calm.Pricing(
                 use_roads=presets.use_roads_for(stress_dial),
                 rate=presets.calm_rate_for(stress_dial),
                 weights=(exposure.lts3, exposure.lts4, exposure.avoid),
@@ -2418,6 +2429,7 @@ def plan(
                 target=target_m is not None,
                 no_trail=variant == Variant.NO_TRAIL.value,
                 quiet_cost_s=refine_context.quiet_cost,
+                junction_weight=refine.intersection_weight(stress_dial),
             ),
             events,
         )

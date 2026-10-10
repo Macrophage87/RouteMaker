@@ -31,10 +31,16 @@ costs, at the rider's preset and slider position:
   stands in: `1 + 5 x w(L)` with no target, `1 + 2.5 x w(L)` with one, at the standard
   1 / 2 / 3 weights (`refine.WORTH_*`).
 
-A junction counts its own cost, the junction model's distance-equivalent penalty, as calm
-miles (`cost_ft / 5280`, 469b(5): "keep it", without the preset's intersection weight). An
-unrated stretch has no number: it counts in neither the calm miles nor the miles, and a
-window that is all unrated has no value.
+A junction counts what the ranking charges for it (461c, 461d: "today's distance-equivalent
+penalty ... times its factors and the preset's intersection weight"): the junction model's
+cost (`cost_ft`) times `refine.intersection_weight` at the slider position (0.25 at 0, 1
+from 70). At the top of the slider the worth rule's exchange stands in, as it does for the
+stretches: a red junction counts its cost at the LTS 4 weight, an orange one at the LTS 3
+weight, times the exchange (`refine.stress_weight_m`), and an unflagged one nothing.
+
+An unrated stretch has no number: it counts in neither the calm miles nor the miles, a
+junction or an Avoid entry inside it is not counted either, and a window that is all
+unrated has no value.
 """
 
 from __future__ import annotations
@@ -93,6 +99,9 @@ class Pricing:
     # The router's cost of a quiet metre at this ride's speed, cost seconds
     # (refine.quiet_cost_per_m), for the Avoid entry charge.
     quiet_cost_s: float = 0.44
+    # How much of a junction's cost the ranking counts at this position
+    # (refine.intersection_weight).
+    junction_weight: float = 1.0
 
 
 def _added(use_roads: float) -> tuple[float, float]:
@@ -139,12 +148,33 @@ def avoid_entry_m(pricing: Pricing) -> float:
     return AVOID_ENTRY_S / pricing.quiet_cost_s if pricing.quiet_cost_s > 0 else 0.0
 
 
+def junction_m(cost_ft: float, severity: str | None, flagged: bool, pricing: Pricing) -> float:
+    """Calm metres a junction counts for at this ride's position."""
+    cost_m = max(cost_ft, 0.0) * METRES_PER_FOOT
+    if pricing.maxcalm:
+        worth = WORTH_OVER_TARGET if pricing.target else WORTH_DEFAULT
+        level = {"red": 4, "orange": 3}.get(severity or "") if flagged else None
+        return worth * WORTH_WEIGHTS[level] * cost_m if level else 0.0
+    return cost_m * pricing.junction_weight
+
+
+# A band edge sits at least this far above a quiet street's 1, so an all-quiet route never
+# reads as LTS 3 where LTS 3 costs nothing extra (at 0 on the slider).
+MIN_BAND_GAP = 0.05
+
+
 def bands(pricing: Pricing) -> tuple[float, float]:
     """Where the words change (docs/stress/stress-number.md "Words as a guide"): the
-    half-step midpoints 2.5 and 3.5 (461a), from a quiet street's 1."""
+    half-step midpoints 2.5 and 3.5 (461a), from a quiet street's 1. Where LTS 3 costs
+    no more than a quiet street (0 on the slider) there is no LTS 3 band: both edges are
+    the 3.5 midpoint."""
     m3 = multiplier(3, None, pricing) or 1.0
     m4 = multiplier(4, None, pricing) or 1.0
-    return (1.0 + m3) / 2, (m3 + m4) / 2
+    high = max((m3 + m4) / 2, 1.0 + MIN_BAND_GAP)
+    low = (1.0 + m3) / 2
+    if low < 1.0 + MIN_BAND_GAP:
+        low = high
+    return low, high
 
 
 @dataclass(frozen=True)
@@ -189,23 +219,31 @@ def points_of(steps: Sequence[Step], events: Sequence | None, pricing: Pricing) 
     charges for (flagged or not), and each entry into Avoid."""
     out: list[Point] = []
     for event in events or ():
-        cost_ft = float(getattr(event, "cost_ft", 0.0) or 0.0)
-        if cost_ft > 0:
-            out.append(
-                Point(
-                    float(event.m),
-                    cost_ft * METRES_PER_FOOT,
-                    "junction",
-                    getattr(event, "severity", None) if getattr(event, "flagged", False) else None,
-                )
-            )
+        flagged = bool(getattr(event, "flagged", False))
+        severity = getattr(event, "severity", None) if flagged else None
+        counted = junction_m(
+            float(getattr(event, "cost_ft", 0.0) or 0.0), severity, flagged, pricing
+        )
+        if counted > 0 and _rated_at(steps, float(event.m)):
+            out.append(Point(float(event.m), counted, "junction", severity))
     entry = avoid_entry_m(pricing)
     previous: Step | None = None
     for step in steps:
-        if step.tier == 5 and (previous is None or previous.tier != 5) and entry > 0:
+        joined = previous is not None and previous.tier == 5 and previous.to_m >= step.from_m
+        if step.tier == 5 and not joined and entry > 0:
             out.append(Point(step.from_m, entry, "avoid_entry"))
         previous = step
     return sorted(out, key=lambda p: p.m)
+
+
+def _rated_at(steps: Sequence[Step], m: float) -> bool:
+    """Whether a place lies on a rated stretch (either side of a joint will do)."""
+    i = bisect.bisect_right([s.from_m for s in steps], m) - 1
+    for j in (i, i - 1):
+        if 0 <= j < len(steps) and steps[j].from_m <= m <= steps[j].to_m:
+            if steps[j].ratio is not None:
+                return True
+    return False
 
 
 class Rolling:
@@ -275,6 +313,26 @@ class Rolling:
         return self.rated[-1]
 
 
+def peak_index(
+    spans: Sequence[dict],
+    events: Sequence | None,
+    pricing: Pricing,
+    sample_m: Sequence[float],
+    window_m: float = WINDOW_M,
+) -> int | None:
+    """The sample whose window scores highest (the first of a tie), read over every sample
+    before a long route is thinned, so the thinned answer keeps it."""
+    steps = steps_of(spans, pricing)
+    rolling = Rolling(steps, points_of(steps, events, pricing))
+    best: int | None = None
+    best_r = -1.0
+    for i, m in enumerate(sample_m):
+        r = rolling.at(m, window_m)
+        if r is not None and r > best_r:
+            best, best_r = i, r
+    return best
+
+
 def score(
     spans: Sequence[dict],
     events: Sequence | None,
@@ -289,9 +347,10 @@ def score(
     points = points_of(steps, events, pricing)
     rolling = Rolling(steps, points)
     low, high = bands(pricing)
+    ratio = [rolling.at(m, window_m) for m in sample_m]
     return {
         "window_m": round(window_m),
-        "ratio": [_round(rolling.at(m, window_m)) for m in sample_m],
+        "ratio": [_round(r) for r in ratio],
         "steps": [
             {
                 "from_m": round(s.from_m),
@@ -301,9 +360,12 @@ def score(
             }
             for s in steps
         ],
+        # Only what the chart marks: the flagged junctions and the Avoid entries. Every
+        # junction is in `ratio` and the total (operations review: the answer's size).
         "points": [
             {"m": round(p.m), "calm_m": round(p.calm_m), "kind": p.kind, "severity": p.severity}
             for p in points
+            if p.kind != "junction" or p.severity is not None
         ],
         "total_calm_m": round(rolling.total_calm_m()),
         "rated_m": round(rolling.total_rated_m()),

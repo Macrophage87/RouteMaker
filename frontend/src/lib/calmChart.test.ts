@@ -9,11 +9,14 @@ import {
   calmFigure,
   calmLine,
   calmPeak,
+  calmRowStep,
   calmRows,
   calmScale,
   calmSentences,
   calmShapes,
+  calmSource,
   calmStepLine,
+  calmTicks,
   calmTop,
   calmWords,
   readingAt,
@@ -58,11 +61,16 @@ test("the score is used only when it has one value a sample and at least one kno
   assert.equal(usableCalm({ ...profile, calm: { ...calm, ratio: calm.ratio.map(() => null) } }), null);
 });
 
+test("where both edges are equal (0 on the slider) a quiet street is never LTS 3", () => {
+  assert.equal(calmBand(1.0, [1.22, 1.22]).tier, 2);
+  assert.equal(calmBand(1.22, [1.22, 1.22]).tier, 4);
+});
+
 test("the bands change at the half-step midpoints the API sends", () => {
   const bands = [2.67, 9.34];
   assert.equal(calmBand(0.55, bands).tier, 2);
-  assert.equal(calmBand(2.66, bands).tier, 2);
-  assert.equal(calmBand(2.67, bands).tier, 3);
+  assert.equal(calmBand(2.67, bands).tier, 2);
+  assert.equal(calmBand(2.68, bands).tier, 3);
   assert.equal(calmBand(9.34, bands).tier, 4);
 });
 
@@ -95,6 +103,12 @@ test("the area is cut at a guide, so the colour changes where the line crosses i
   );
   // The first cut is at 50 m along (1 to 5 crosses 3 halfway).
   assert.match(shapes[0].d, /L50 -3 L50 0 Z$/);
+  // Through both guides and back.
+  const high = calmShapes(profile, { ...calm, ratio: [1, 12, 1] }, (m) => m, (r) => -r, 0);
+  assert.deepEqual(
+    high.map((s) => s.band.tier),
+    [2, 3, 4, 3, 2],
+  );
 });
 
 test("the line and the step line break where nothing is rated", () => {
@@ -109,6 +123,8 @@ test("the line and the step line break where nothing is rated", () => {
   } as unknown as ProfileCalm;
   assert.equal(calmLine(profile, calm, (m) => m, (r) => r), "M0 1 M200 2 L300 2");
   assert.equal(calmStepLine(calm, (m) => m, (r) => r, 300), "M0 1 L100 1 M200 2 L300 2");
+  const touching = { steps: [{ from_m: 0, to_m: 100, ratio: 1, tier: 2 }, { from_m: 100, to_m: 200, ratio: 2, tier: 3 }] } as unknown as ProfileCalm;
+  assert.equal(calmStepLine(touching, (m) => m, (r) => r, 200), "M0 1 L100 1 L100 2 L200 2");
 });
 
 test("Avoid stretches are joined and clipped to the axis", () => {
@@ -120,20 +136,26 @@ test("Avoid stretches are joined and clipped to the axis", () => {
     ],
   } as unknown as ProfileCalm;
   assert.deepEqual(calmAvoid(calm, 300), [{ from_m: 100, to_m: 300 }]);
+  const one = { steps: [{ from_m: 100, to_m: 400, ratio: 14, tier: 5 }] } as unknown as ProfileCalm;
+  assert.deepEqual(calmAvoid(one, 300), [{ from_m: 100, to_m: 300 }]);
 });
 
-test("the scrub adds the rolling figure and its words after the tier", () => {
+test("the scrub adds the mile around and the next junction to watch", () => {
   const { route, profile } = build();
-  const r = readingAt(route, profile, MILE);
+  const r = readingAt(route, profile, 1500);
   assert.equal(r.calm, 1.62);
-  assert.match(r.text, /LTS 2\. Rolling stress 1\.6 calm miles per mile \(LTS 1 to 2 level\)\.$/);
-  assert.match(readingAt(route, profile, 0).text, /Rolling stress 1\.0 calm miles per mile/);
+  assert.match(r.text, /LTS 2\. Mile around: 1\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: very high stress, mile 1\.0\.$/);
+  assert.match(readingAt(route, profile, 0).text, /Mile around: 1\.0 calm miles per mile.* Next junction to watch: very high stress, mile 1\.0\.$/);
+  assert.doesNotMatch(readingAt(route, profile, 1.5 * MILE).text, /Next junction/);
 });
 
 test("a mile with Avoid in it says so", () => {
   const { calm } = build({ steps: [{ from_m: 0, to_m: 1000, ratio: 1, tier: 2 }, { from_m: 1000, to_m: 1100, ratio: 14, tier: 5 }] });
-  assert.match(calmWords(calm, 3, 1500) ?? "", /LTS 3 level, with Avoid in this mile/);
+  assert.match(calmWords(calm, 3, 1500) ?? "", /LTS 3 level, Avoid nearby/);
   assert.doesNotMatch(calmWords(calm, 3, 3000) ?? "", /Avoid/);
+  // Half the window either side: Avoid ends at 1100 m, the window is 1609 m.
+  assert.match(calmWords(calm, 3, 1100 + 800) ?? "", /Avoid/);
+  assert.doesNotMatch(calmWords(calm, 3, 1100 + 805 + 50) ?? "", /Avoid/);
   assert.equal(calmWords(calm, null, 0), null);
 });
 
@@ -142,9 +164,13 @@ test("the summary gives the total in calm miles and km, the most stressful mile 
   const peak = calmPeak(profile, calm);
   assert.ok(peak && peak.ratio === 1.62);
   const text = calmSentences(profile, calm).join(" ");
-  assert.match(text, /Rolling stress: 2\.6 calm mi \(4\.2 calm km\) over 2(\.0)? mi .* rated, 1\.3 calm miles per mile on average/);
-  assert.match(text, /most stressful mile is around mile 0\.5: 1\.6 calm miles per mile \(LTS 1 to 2 level\), with 1 very high stress junction\./);
-  assert.match(text, /estimated from its stress level/);
+  assert.match(text, /Rolling stress: 2\.6 calm mi \(4\.2 calm km\) over 2(\.0)? mi .* rated, 1\.3 calm miles per mile \(calm km per km\) on average/);
+  assert.match(text, /most stressful mile is around mile 0\.5: 1\.6 calm miles per mile, LTS 1 to 2 level, with 1 very high stress junction\./);
+  // A junction outside the peak's mile is not named in it.
+  const far = calmSentences(profile, { ...calm, points: [...calm.points, { m: 0, calm_m: 300, kind: "junction", severity: "orange" }] }).join(" ");
+  assert.match(far, /with 1 very high stress junction\./);
+  assert.match(calmSource(calm), /an estimate of what the routing charges/);
+  assert.doesNotMatch(calmSource({ ...calm, estimate: false }), /estimate/);
   assert.match(summaryText(route, profile), /Rolling stress: /);
 });
 
@@ -165,4 +191,23 @@ test("the table reads every half mile on a short route, with the start and the e
     ["1.0", "1.6", "1.6", "1.6", "1.0"],
   );
   assert.equal(rows[1].reads, "LTS 1 to 2 level");
+  assert.deepEqual(
+    rows.map((r) => r.junctions),
+    ["None", "None", "1 very high stress", "None", "None"],
+  );
+  assert.equal(calmRowStep(20 * MILE), MILE);
+  assert.equal(calmRowStep(60 * MILE), 2 * MILE);
+  assert.equal(calmRowStep(100 * MILE), 5 * MILE);
+  const withAvoid = build({ steps: [{ from_m: 0, to_m: 2000, ratio: 1, tier: 2 }, { from_m: 2000, to_m: 2100, ratio: 14, tier: 5 }] });
+  assert.equal(calmRows(withAvoid.profile, withAvoid.calm, 2 * MILE)[2].reads, "LTS 1 to 2 level, Avoid nearby");
+});
+
+test("the side's figures: the floor, 1, the top and 2, 5, 10 between", () => {
+  assert.deepEqual(calmTicks(20), [0.5, 1, 2, 5, 10, 20]);
+  assert.deepEqual(calmTicks(2), [0.5, 1, 2]);
+  // On the chart's 60-unit track only those 12 units apart are kept, the top, 1 and the floor first (here the floor is too near 1).
+  const y = calmScale(20, 166, 106);
+  const ticks = calmTicks(20, y);
+  assert.deepEqual(ticks, [1, 5, 20]);
+  for (let i = 1; i < ticks.length; i += 1) assert.ok(y(ticks[i - 1]) - y(ticks[i]) >= 12);
 });

@@ -630,6 +630,18 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 - An unnamed divided road's two carriageways are counted as two roads (half the
   second added), not once with the refuge credit.
 
+**The rolling stress chart** (OWNER-DECISIONS 460.12; docs/DEVELOPMENT.md "The rolling
+stress chart"). The route answer's `profile.calm` is worked out from the sections and
+junctions the answer already reads: no router call, no database read, no migration and no
+router restart; it ships with the API image and the front end, in either order (an older
+front end ignores it, and the new one draws the old stress strip where it is missing). A
+WARNING "the rolling stress score could not be built" means one answer went out with
+`calm: null`: its chart fell back to the strip and the route itself is unaffected. It adds
+at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus the
+sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
+compresses only tiles and the front end), so a long ride with candidates grows by tens of
+KB. `calm.estimate` is true while each stretch is priced by its tier.
+
 ## The stress tiles
 
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
