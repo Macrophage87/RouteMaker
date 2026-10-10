@@ -6100,7 +6100,7 @@ dropped (no signal at the start, or a base map that is not served). Where they a
   replaces the tile rather than orphaning it. The protocol's loader (`loadTile` in
   `lib/stressProtocol.ts`, given `corridorStress` by App) during a ride reads a kept tile of the same
   generation first (in a real dead spot the phone often still says it is online, and a request hangs
-  rather than fails), then gives the network `NETWORK_TIMEOUT_MS` (4 s) before falling back to a kept
+  rather than fails), then gives the network `NETWORK_TIMEOUT_MS` (6 s, above the 5.46 s cold draw in docs/OPERATIONS.md) before falling back to a kept
   tile of any generation; it keeps each tile the map loads during a ride. Outside a ride the bucket is
   neither read nor opened (opening would create it).
 * The base map: `region.pmtiles` is read by HTTP range, and Cache Storage refuses 206 answers, so

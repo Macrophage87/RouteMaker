@@ -289,6 +289,37 @@ test("CorridorSource: a range with no ETag, or one the store or budget refuses, 
   assert.equal(failing.keepFailures, budgetBefore + 1);
 });
 
+test("CorridorSource: a write still in flight at End ride is not counted, and the store stays untouched after", async () => {
+  const { source: inner, state } = fakeArchive();
+  const base = memoryRangeStore();
+  let release = () => {};
+  const reads: string[] = [];
+  const store = {
+    ...base,
+    get: async (key: string) => {
+      reads.push(key);
+      return base.get(key);
+    },
+    put: async (range: Parameters<typeof base.put>[0]) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      await base.put(range);
+    },
+  };
+  const budget = new ByteBudget();
+  const source = new CorridorSource(inner, store, budget);
+  source.keeping = true;
+  const reading = source.getBytes(0, 16384);
+  await new Promise((r) => setTimeout(r, 0));
+  await source.clear(); // End ride, with the put still waiting
+  release();
+  await reading;
+  assert.equal(budget.bytes, 0, "the in-flight write's bytes were given back");
+  assert.equal(base.ranges.size, 0, "a write that landed after the clear is cleared again");
+  state.online = false;
+  await assert.rejects(() => source.getBytes(0, 16384));
+  assert.deepEqual(reads, [], "outside the ride the store is not read");
+});
+
 test("CorridorSource: an aborted read is not answered from the store", async () => {
   const store = memoryRangeStore();
   await store.put({ key: "0:16384", etag: "v1", data: new ArrayBuffer(2) });

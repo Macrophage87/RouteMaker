@@ -208,7 +208,7 @@ function registerPmtiles(): void {
   protocol.add(basemapArchive);
   maplibregl.addProtocol("pmtiles", protocol.tile);
   protocolRegistered = true;
-  // A corridor kept over a day ago (a ride never ended) is cleared (WEB-NAV-plan.md section 6).
+  // No ride survives a reload, so whatever an earlier page kept is cleared (WEB-NAV-plan.md section 6).
   sweepCorridor();
 }
 

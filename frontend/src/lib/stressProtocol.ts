@@ -166,7 +166,7 @@ let registered = false;
  * Ride mode's kept tiles (lib/corridorStore.ts; WEB-NAV-plan.md section 6). During a ride the kept tile
  * is read first (in a real dead spot the phone still says it is online, and a request can hang rather
  * than fail), and the network gets NETWORK_TIMEOUT_MS before the kept tiles are tried again with any
- * edit generation; outside a ride, with the browser offline, the kept tiles are read first too.
+ * edit generation. Outside a ride nothing is kept, so the kept tiles answer nothing (`kept` gives null).
  */
 export interface OfflineTiles {
   /** Whether a ride is keeping tiles now. */
@@ -177,8 +177,9 @@ export interface OfflineTiles {
   keep(url: string, data: ArrayBuffer): Promise<boolean>;
 }
 
-/** How long a ride's tile request may take before the kept tiles answer (a hung request in a dead spot). */
-export const NETWORK_TIMEOUT_MS = 4000;
+/** How long a ride's tile request may take before the kept tiles answer (a hung request in a dead spot): above
+ * the 5.46 s a cold draw on a busy host once took (docs/OPERATIONS.md), so a slow draw is not cut off. */
+export const NETWORK_TIMEOUT_MS = 6000;
 
 function offlineNow(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
