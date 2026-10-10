@@ -57,9 +57,11 @@ def router(monkeypatch):
         names = dict(NAMES)
         down = False
         calls = 0
+        timeouts: list[float] = []
 
-    def fake(lat, lon, costing):
+    def fake(lat, lon, costing, timeout_s=None):
         Fake.calls += 1
+        Fake.timeouts.append(timeout_s)
         if Fake.down:
             raise segment_info.RouterSilent("down")
         return [{"edge_info": {"way_id": w, "names": [n]}} for w, n in Fake.names.items()]
@@ -154,6 +156,15 @@ class TestTheStretch:
         assert stress_edits.named_stretch(road, A, names) is None
         assert names.silent and router.calls == 0
         assert road_names.NAMES_BUDGET_S == 3.0
+
+    def test_each_ask_waits_only_for_what_is_left_of_the_budget(self, road, router) -> None:
+        router.timeouts = []
+        stress_edits.named_stretch(road, A, road_names.Names(budget_s=1.0))
+        assert router.timeouts and all(0 < t <= 1.0 for t in router.timeouts)
+        # Never longer than one locate's own limit, however large the budget.
+        router.timeouts = []
+        stress_edits.named_stretch(road, A, road_names.Names(budget_s=60.0))
+        assert all(t <= segment_info.LOCATE_TIMEOUT_S for t in router.timeouts)
 
 
 @db

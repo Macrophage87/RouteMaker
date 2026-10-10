@@ -30,6 +30,7 @@ from django.db import connection
 
 from pipeline.schema import validate_schema_name
 from routemaker import flow
+from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -46,6 +47,11 @@ CANDIDATES = 24
 # How far around the spot on the way `/locate` looks for its edges.
 LOCATE_RADIUS_M = 8
 LOCATE_TIMEOUT_S = 3.0
+# The panel's title for a way with no name: the route description's words (`describe`),
+# capitalised. The front end reads the same titles (frontend/src/lib/roadInfo.ts
+# UNNAMED_TITLES; tests/test_segment_info_api.py ties the two).
+UNNAMED_ROAD_TITLE = UNNAMED_ROAD[:1].upper() + UNNAMED_ROAD[1:]
+UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
 # Missing optional columns are looked for again this often, so the first
 # answer after a rebuild's swap sees the new ones without a restart.
 COLUMN_RECHECK_S = 300.0
@@ -348,8 +354,11 @@ class RouterSilent(Exception):
     """The router did not answer; the panel says what the table alone knows."""
 
 
-def locate_edges(lat: float, lon: float, costing: str) -> list[dict]:
-    """The router's edges around a spot for one costing (`/locate`, verbose)."""
+def locate_edges(
+    lat: float, lon: float, costing: str, timeout_s: float = LOCATE_TIMEOUT_S
+) -> list[dict]:
+    """The router's edges around a spot for one costing (`/locate`, verbose), waiting at most
+    `timeout_s` (a caller with a deadline of its own passes what is left of it)."""
     from . import routing
 
     payload = {
@@ -359,7 +368,7 @@ def locate_edges(lat: float, lon: float, costing: str) -> list[dict]:
     }
     url = f"{settings.VALHALLA_UPSTREAMS['standard'].rstrip('/')}/locate"
     try:
-        answer = routing._transport(url, payload, LOCATE_TIMEOUT_S)
+        answer = routing._transport(url, payload, min(LOCATE_TIMEOUT_S, timeout_s))
     except (routing.RouterUnavailable, routing.RouterRefused) as error:
         raise RouterSilent(str(error)) from error
     if not isinstance(answer, list):
@@ -929,7 +938,9 @@ def describe(row: dict, router: dict) -> dict:
     name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
-    title = name or ("Unnamed path" if path or router.get("use") in PATH_USES else "Unnamed road")
+    title = name or (
+        UNNAMED_PATH_TITLE if path or router.get("use") in PATH_USES else UNNAMED_ROAD_TITLE
+    )
     open_, access = access_rows(row, router.get("bicycle"))
     sections = [
         {

@@ -76,6 +76,8 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // The latest stretch request: an answer to an earlier one (the choice changed since) is ignored.
+  const stretchAsk = useRef(0);
   const [load, setLoad] = useState<EditorLoad>({ kind: "loading" });
   const [step, setStep] = useState(3);
   const [atLeast, setAtLeast] = useState(false);
@@ -188,13 +190,25 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
   // The stretch is asked for only when the admin chooses it (the server asks the router for the
   // road names); the choice's status line says what was found.
   const chooseStretch = async (say = true) => {
+    const ask = ++stretchAsk.current;
     setExtent("stretch");
     if (say) setStretch({ kind: "loading" });
     const found = await fetchStretch(origin, wayId).catch(
       (): StretchLoad => ({ kind: "error", message: "The stretch could not be found just now." }),
     );
+    if (ask !== stretchAsk.current) return;
     setStretch(found);
-    if (found.kind === "alone" || found.kind === "error") setExtent("piece");
+    if (found.kind === "alone" || found.kind === "error") {
+      setExtent("piece");
+      // The choice went back to the piece: a keyboard user on the stretch's radio stays in the
+      // group, on the radio now checked, so Tab and Shift+Tab go on from there.
+      if (document.activeElement?.id === id("extent-stretch")) document.getElementById(id("extent-piece"))?.focus();
+    }
+  };
+
+  const choosePiece = () => {
+    stretchAsk.current += 1;
+    setExtent("piece");
   };
 
   const onUndo = async () => {
@@ -252,7 +266,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
                     name={id("extent")}
                     value={option.value}
                     checked={extent === option.value}
-                    onChange={() => (option.value === "stretch" ? void chooseStretch() : setExtent("piece"))}
+                    onChange={() => (option.value === "stretch" ? void chooseStretch() : choosePiece())}
                   />
                   <label htmlFor={id(`extent-${option.value}`)}>{option.text}</label>
                 </div>

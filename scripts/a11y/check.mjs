@@ -2214,6 +2214,27 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 {
+  // A piece that is its own whole stretch: chosen by the keyboard, the choice goes back to the piece,
+  // says why, and the focus moves with it to the radio now checked, so Shift+Tab leaves the group.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[value=piece]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await p.waitFor(`/whole stretch/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  await sleep(200);
+  const back = await p.eval(`({ said: document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '', piece: document.querySelector('${EDITOR} fieldset input[value=piece]').checked,
+    focus: document.activeElement?.value ?? document.activeElement?.tagName })`);
+  await p.tab(true);
+  const before = await p.eval(`(() => { const e = document.activeElement; return { radio: e?.type === 'radio', inside: !!e?.closest('dialog.road-info') }; })()`);
+  check("named stretch: a piece with no stretch beyond it goes back to This road piece, says why in the status line, keeps the focus on the radio now checked, and Shift+Tab leaves the group",
+    /this road piece is the whole stretch/.test(back.said) && back.piece && back.focus === "piece" && !before.radio && before.inside, JSON.stringify({ back, before }));
+  await p.close();
+}
+{
   // A phone: the editor stacks in one column, controls at least 44px tall, nothing scrolls sideways.
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 375, height: 812, mobile: true, ride: false, junctions: false, admin: true });
   const opened = await panelByKey(p);
@@ -3082,7 +3103,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 485;
+const EXPECTED = 486;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

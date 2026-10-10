@@ -85,7 +85,7 @@ def router(monkeypatch):
         down = False
         calls: list[tuple] = []
 
-    def fake(lat, lon, costing):
+    def fake(lat, lon, costing, timeout_s=None):
         Fake.calls.append((lat, lon, costing))
         if Fake.down:
             raise segment_info.RouterSilent("down")
@@ -834,3 +834,17 @@ def test_the_surface_words_name_a_bridge_drawn_in_its_trails_surface(row, words)
     from core.segment_info import surface_words
 
     assert surface_words(row) == words
+
+
+def test_the_unnamed_titles_are_describes_words_and_the_front_ends() -> None:
+    """One source: the route description's words, capitalised, and the same in roadInfo.ts
+    (the editor offers no named stretch on them)."""
+    from pathlib import Path
+
+    from routemaker import describe
+
+    assert segment_info.UNNAMED_ROAD_TITLE == "Unnamed road" == describe.UNNAMED_ROAD.capitalize()
+    assert segment_info.UNNAMED_PATH_TITLE == "Unnamed path" == describe.UNNAMED_PATH.capitalize()
+    ts = (Path(__file__).parents[1] / "frontend/src/lib/roadInfo.ts").read_text(encoding="utf-8")
+    assert f'UNNAMED_ROAD_TITLE = "{segment_info.UNNAMED_ROAD_TITLE}"' in ts
+    assert f'UNNAMED_PATH_TITLE = "{segment_info.UNNAMED_PATH_TITLE}"' in ts

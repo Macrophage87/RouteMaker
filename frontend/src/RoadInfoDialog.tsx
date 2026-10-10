@@ -262,7 +262,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     if (event.key !== "Tab" || !dialogRef.current) return;
     // One stop a radio group (the named stretch's What to change), as the browser's Tab order has it.
     const items = tabStops(Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)) as (HTMLElement & TabCandidate)[]);
-    const active = document.activeElement as HTMLElement | null;
+    let active = document.activeElement as HTMLElement | null;
+    const radio = active as (HTMLElement & TabCandidate) | null;
+    if (radio?.type === "radio" && radio.name && !items.includes(radio)) {
+      // An unchecked radio of a group with a checked one (the choice moved under the focus):
+      // Tab goes on from the group's stop, as the browser's own order does.
+      active = items.find((i) => (i as HTMLElement & TabCandidate).type === "radio" && (i as HTMLElement & TabCandidate).name === radio.name) ?? active;
+    }
     const index = items.indexOf(active as HTMLElement);
     if (index < 0 && active && active !== dialogRef.current && dialogRef.current.contains(active) && items.length > 0) {
       // On something the dialog focuses but Tab does not visit (a heading): move to the next stop in

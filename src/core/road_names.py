@@ -85,10 +85,13 @@ class Names:
         self.silent = False
         self._deadline = routing.Deadline(at=routing.clock() + budget_s, per_call_s=budget_s)
 
-    def _out_of_time(self) -> bool:
+    def _left_s(self) -> float:
         from . import routing
 
-        return self._deadline.at - routing.clock() <= 0
+        return self._deadline.at - routing.clock()
+
+    def _out_of_time(self) -> bool:
+        return self._left_s() <= 0
 
     def _at(self, point: tuple[float, float], costing: str) -> dict[int, str]:
         spot = (round(point[0], 6), round(point[1], 6), costing)
@@ -99,7 +102,14 @@ class Names:
             self.silent = True
         if not self.silent:
             try:
-                edges = segment_info.locate_edges(point[1], point[0], costing)
+                # Each ask waits only for what is left of the budget, so the whole stays
+                # within it (a locate's own timeout alone could take it to twice that).
+                edges = segment_info.locate_edges(
+                    point[1],
+                    point[0],
+                    costing,
+                    timeout_s=min(segment_info.LOCATE_TIMEOUT_S, self._left_s()),
+                )
             except segment_info.RouterSilent:
                 self.silent = True
                 edges = []

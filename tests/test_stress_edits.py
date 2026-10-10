@@ -77,7 +77,7 @@ def _columns(monkeypatch):
     segment_info.forget_columns()
 
     # No router here: road names are the table's (core.road_names; tests/test_named_stretch.py).
-    def silent(lat, lon, costing):
+    def silent(lat, lon, costing, timeout_s=None):
         raise segment_info.RouterSilent("no router in these tests")
 
     monkeypatch.setattr(segment_info, "locate_edges", silent)

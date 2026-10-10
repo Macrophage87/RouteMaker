@@ -13,7 +13,7 @@
  * list and the focus goes to the next one's heading (the one before, at the end), or to the "No
  * suggestions are waiting" line when none is left: never to the top of the page.
  */
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { csrfFromCookie, fetchMe } from "./lib/stressEditor.ts";
 import {
@@ -48,6 +48,10 @@ export function SuggestionReview({ onStressChanged }: Props) {
   // The suggestion whose Delete is asking "Yes, delete / Keep it", and where the focus goes next.
   const [confirming, setConfirming] = useState<number | null>(null);
   const [focusNext, setFocusNext] = useState<string | null>(null);
+  // The list as last drawn: an action's answer arrives after a wait, when `items` captured at its
+  // start may be out of date (a refresh, another action).
+  const itemsNow = useRef<SuggestionItem[] | null>(null);
+  itemsNow.current = items;
   const origin = window.location.origin;
 
   useEffect(() => {
@@ -96,11 +100,11 @@ export function SuggestionReview({ onStressChanged }: Props) {
     setSaid(actionSaid(action, item, r.body.message));
     if (action === "approve" && typeof r.body.generation === "number") onStressChanged?.(r.body.generation);
     setConfirming(null);
-    const list = items ?? [];
+    const list = itemsNow.current ?? [];
     const at = list.findIndex((s) => s.id === item.id);
     const rest = list.filter((s) => s.id !== item.id);
     const next = rest[Math.min(Math.max(at, 0), rest.length - 1)];
-    setItems(rest);
+    setItems((old) => old?.filter((s) => s.id !== item.id) ?? old);
     setFocusNext(next ? id(`s${next.id}`) : id("none"));
   };
 

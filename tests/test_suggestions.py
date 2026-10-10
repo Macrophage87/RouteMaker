@@ -51,7 +51,7 @@ def router(monkeypatch):
     class Fake:
         names: dict[int, str] | None = None
 
-    def fake(lat, lon, costing):
+    def fake(lat, lon, costing, timeout_s=None):
         if Fake.names is None:
             raise segment_info.RouterSilent("down")
         return [{"edge_info": {"way_id": w, "names": [n]}} for w, n in Fake.names.items()]

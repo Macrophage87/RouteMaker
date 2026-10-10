@@ -1,6 +1,8 @@
 // The whole named stretch at once (HALF-STEP-EDITOR phase 5; lib/stressEditor.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { UNNAMED_PATH, UNNAMED_ROAD } from "./federalStops.ts";
+import { UNNAMED_PATH_TITLE, UNNAMED_ROAD_TITLE } from "./roadInfo.ts";
 import {
   STRETCH_ALONE,
   STRETCH_FINDING,
@@ -42,6 +44,13 @@ test("the extent choice: the piece, or the stretch, its pieces and length in mil
   assert.equal(extentOptions("Oak Street", STRETCH)[1].text, "The whole named stretch of Oak Street: 3 pieces, 1.0 mi (1.6 km)");
   assert.equal(mayHaveStretch("Oak Street"), true);
   assert.equal(mayHaveStretch("Unnamed road"), false);
+  assert.equal(mayHaveStretch(UNNAMED_PATH_TITLE), false);
+  assert.equal(mayHaveStretch("  "), false);
+});
+
+test("the unnamed titles are the route description's words, capitalised", () => {
+  assert.equal(UNNAMED_ROAD_TITLE, UNNAMED_ROAD.charAt(0).toUpperCase() + UNNAMED_ROAD.slice(1));
+  assert.equal(UNNAMED_PATH_TITLE, UNNAMED_PATH.charAt(0).toUpperCase() + UNNAMED_PATH.slice(1));
 });
 
 test("the choice's status line says what was found", () => {

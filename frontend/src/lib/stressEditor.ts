@@ -17,6 +17,7 @@
  */
 
 import { formatDistance } from "./format.ts";
+import { UNNAMED_TITLES } from "./roadInfo.ts";
 
 /** GET /api/me: three yes/no flags, no name and no id. */
 export interface Me {
@@ -104,7 +105,8 @@ export type StretchLoad =
 
 /** Whether a road can have a named stretch at all: an unnamed one cannot. */
 export function mayHaveStretch(title: string): boolean {
-  return !/^Unnamed (road|path)$/.test(title.trim()) && title.trim() !== "";
+  const t = title.trim();
+  return t !== "" && !UNNAMED_TITLES.includes(t);
 }
 
 /** The extent choice's two options, US units first with metric in brackets. */
