@@ -10,6 +10,7 @@ import {
   ByteBudget,
   CorridorSource,
   MAX_JOBS,
+  START_JITTER_MS,
   STOP_AFTER_FAILURES,
   STRESS_GAP_MS,
   corridorJobs,
@@ -69,7 +70,7 @@ test("corridorJobs: deepest zooms first, the stress and base map's alternately; 
   assert.equal(small.capped, true);
 });
 
-test("prefetchCorridor: one at a time, paced, stress tiles 250 ms apart; done keys kept", async () => {
+test("prefetchCorridor: a short random start, then one at a time, paced; done keys kept", async () => {
   const line = [at(0, 0), at(800, 0)];
   const order: string[] = [];
   const waits: number[] = [];
@@ -86,14 +87,34 @@ test("prefetchCorridor: one at a time, paced, stress tiles 250 ms apart; done ke
       return true;
     },
     wait: async (ms) => void waits.push(ms),
+    random: () => 0.5,
     signal: new AbortController().signal,
     done,
   });
   assert.equal(most, 1, "never two at once");
   assert.equal(result.kept, result.total);
   assert.equal(done.size, result.total);
-  assert.deepEqual(waits, order.map((k) => (k === "stress" ? STRESS_GAP_MS : BASE_GAP_MS)));
+  assert.equal(result.stress.kept + result.base.kept, result.kept);
+  assert.equal(result.stress.total + result.base.total, result.total);
+  assert.deepEqual(waits, [START_JITTER_MS / 2, ...order.map((k) => (k === "stress" ? STRESS_GAP_MS : BASE_GAP_MS))]);
+  assert.ok(STRESS_GAP_MS >= 400 && STRESS_GAP_MS <= 500, "stress tiles 400 to 500 ms apart");
   assert.equal(corridorNote(result), "The map along the route is saved for dead spots.");
+});
+
+test("corridorNote: says which kind was saved, and only what was", () => {
+  const result = (stress: number, base: number, capped = false) => ({
+    kept: stress + base,
+    failed: 0,
+    total: 20,
+    stress: { kept: stress, total: 10 },
+    base: { kept: base, total: 10 },
+    capped,
+    stopped: false,
+  });
+  assert.equal(corridorNote(result(10, 0)), "Only the stress lines along the route are saved for dead spots, not the base map.");
+  assert.equal(corridorNote(result(0, 10)), "Only the base map along the route is saved for dead spots, not the stress lines.");
+  assert.equal(corridorNote(result(3, 3, true)), "The map along the first part of the route is saved for dead spots.");
+  assert.match(corridorNote(result(0, 0)), /could not be saved/);
 });
 
 test("prefetchCorridor: a kind failing in a row is stopped (no signal, or no base map served); End ride stops it all", async () => {
@@ -150,6 +171,29 @@ test("prefetchCorridor: stops when the kept bytes reach the cap", async () => {
   assert.equal(count, 4);
   assert.equal(result.capped, true);
   assert.match(corridorNote(result), /first part of the route/);
+});
+
+test("prefetchCorridor with a real ByteBudget: the first refused tile stops it (tiles never fill it exactly)", async () => {
+  const budget = new ByteBudget(1000);
+  let count = 0;
+  const result = await prefetchCorridor([at(0, 0), at(3000, 0)], {
+    // Each tile is 300 bytes: 900 fit, the fourth is refused, and 900 is under the cap.
+    fetch: async () => {
+      count += 1;
+      return budget.take(300);
+    },
+    full: () => budget.full,
+    wait: async () => undefined,
+    random: () => 0,
+    signal: new AbortController().signal,
+    done: new Set(),
+  });
+  assert.equal(count, 4);
+  assert.equal(budget.bytes, 900);
+  assert.equal(result.capped, true);
+  assert.equal(result.kept, 3);
+  budget.give(300);
+  assert.equal(budget.full, false, "bytes given back make room again");
 });
 
 /** A source over a fake archive: `online` decides whether the network answers. */
@@ -226,6 +270,23 @@ test("CorridorSource: outside a ride with nothing kept, the store is never touch
   state.online = false;
   await assert.rejects(() => source.getBytes(0, 16384));
   assert.deepEqual(reads, []);
+});
+
+test("CorridorSource: a range with no ETag, or one the store or budget refuses, is not kept and is counted", async () => {
+  const { source: inner, state } = fakeArchive();
+  const store = memoryRangeStore();
+  const source = new CorridorSource(inner, store, new ByteBudget());
+  source.keeping = true;
+  state.etag = undefined as unknown as string;
+  await source.getBytes(0, 16384);
+  assert.equal(store.ranges.size, 0, "no ETag: a later file could not be told apart");
+  assert.equal(source.keepFailures, 1);
+  state.etag = "v1";
+  const failing = new CorridorSource(inner, { ...memoryRangeStore(), put: async () => Promise.reject(new DOMException("full", "QuotaExceededError")) }, new ByteBudget());
+  failing.keeping = true;
+  const budgetBefore = failing.keepFailures;
+  await failing.getBytes(0, 16384);
+  assert.equal(failing.keepFailures, budgetBefore + 1);
 });
 
 test("CorridorSource: an aborted read is not answered from the store", async () => {

@@ -163,31 +163,62 @@ export interface ProtocolHost {
 let registered = false;
 
 /**
- * Ride mode's kept tiles (lib/corridorStore.ts; WEB-NAV-plan.md section 6): `kept` answers a tile the
- * network did not (no signal in a dead spot), `keep` is offered each tile the map loads.
+ * Ride mode's kept tiles (lib/corridorStore.ts; WEB-NAV-plan.md section 6). During a ride the kept tile
+ * is read first (in a real dead spot the phone still says it is online, and a request can hang rather
+ * than fail), and the network gets NETWORK_TIMEOUT_MS before the kept tiles are tried again with any
+ * edit generation; outside a ride, with the browser offline, the kept tiles are read first too.
  */
 export interface OfflineTiles {
-  kept(url: string): Promise<ArrayBuffer | null>;
-  keep(url: string, data: ArrayBuffer): void;
+  /** Whether a ride is keeping tiles now. */
+  riding(): boolean;
+  /** A kept tile of this URL's own edit generation (`?rev=`), or with `anyRev` of any. */
+  kept(url: string, anyRev?: boolean): Promise<ArrayBuffer | null>;
+  /** Keep a tile the map loaded; whether it was kept. */
+  keep(url: string, data: ArrayBuffer): Promise<boolean>;
 }
+
+/** How long a ride's tile request may take before the kept tiles answer (a hung request in a dead spot). */
+export const NETWORK_TIMEOUT_MS = 4000;
 
 function offlineNow(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
-/** One tile through the protocol: the network, and with `offline` the ride's kept tiles behind it. */
-export async function loadTile(url: string, signal: AbortSignal, get?: typeof fetch, offline?: OfflineTiles): Promise<ArrayBuffer> {
-  if (offline && offlineNow()) {
+/**
+ * `get` with each request aborted after `ms`. The timer is left to run out rather than cleared at the
+ * headers, so a body that stalls is cut too; aborting a finished request does nothing.
+ */
+export function withTimeout(get: typeof fetch, ms: number): typeof fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const outer = init?.signal;
+    if (outer?.aborted) controller.abort();
+    else outer?.addEventListener("abort", () => controller.abort(), { once: true });
+    setTimeout(() => controller.abort(), ms);
+    return get(input, { ...init, signal: controller.signal });
+  }) as typeof fetch;
+}
+
+/** One tile through the protocol: the network, and with `offline` the ride's kept tiles around it. */
+export async function loadTile(
+  url: string,
+  signal: AbortSignal,
+  get?: typeof fetch,
+  offline?: OfflineTiles,
+  timeoutMs = NETWORK_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  const riding = offline?.riding() ?? false;
+  if (offline && (riding || offlineNow())) {
     const kept = await offline.kept(url);
     if (kept) return kept;
   }
   try {
-    const data = await fetchTile(url, { get, signal });
-    offline?.keep(url, data);
+    const data = await fetchTile(url, { get: riding ? withTimeout(get ?? ((i, o) => fetch(i, o)), timeoutMs) : get, signal });
+    if (riding) void offline?.keep(url, data);
     return data;
   } catch (error) {
     if (!offline || signal.aborted) throw error;
-    const kept = await offline.kept(url);
+    const kept = await offline.kept(url, true);
     if (kept) return kept;
     throw error;
   }

@@ -736,7 +736,7 @@ export function whereAmI(model: RideModel, state: RideState, metric = false): st
   const place = placeOnRoute(model, state.progressM);
   const sentences = [
     place?.kind === "trail"
-      ? `On ${place.trail}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
+      ? `On the ${place.trail}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
       : `On ${streetWords(stretchAt(model, state.progressM))}.`,
   ];
   const progress = state.progressM;

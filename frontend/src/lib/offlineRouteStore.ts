@@ -142,11 +142,15 @@ export async function deleteRanges(keys: readonly string[]): Promise<void> {
 
 // ---- The tiles, glyphs and sprite ------------------------------------------------------------------
 
-/** A kept stress tile, for the stress protocol when the network fails. */
-export async function keptTile(url: string): Promise<ArrayBuffer | null> {
+/**
+ * A kept stress tile, for the stress protocol when the network fails: of this URL's edit generation
+ * (`?rev=`), or with `anyRev` of any (an admin's edit since it was kept still leaves the older tile).
+ */
+export async function keptTile(url: string, anyRev = false): Promise<ArrayBuffer | null> {
   try {
     if (typeof caches === "undefined" || !anyKept()) return null;
-    const hit = await (await caches.open(OFFLINE_BUCKET)).match(url);
+    const cache = await caches.open(OFFLINE_BUCKET);
+    const hit = (await cache.match(url)) ?? (anyRev ? await cache.match(url, { ignoreSearch: true }) : undefined);
     return hit ? await hit.arrayBuffer() : null;
   } catch {
     return null;

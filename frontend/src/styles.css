@@ -3122,6 +3122,11 @@ details.zoom-notes {
   text-decoration: underline;
 }
 
+.ride-report-actions .action-link.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
 .ride-toggle {
   min-height: 44px;
   display: flex;

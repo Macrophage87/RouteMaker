@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { RoutePlace } from "./navigate.ts";
-import { DC_311_SHORT_CODE, REPORT_KINDS, REPORT_NOTE_MAX, canText, placeWords, reportText, smsHref } from "./report311.ts";
+import { DC_311_SHORT_CODE, REPORT_KINDS, REPORT_NOTE_MAX, canText, keywordOf, placeWords, reportText, smsHref } from "./report311.ts";
 
 const JUNCTION: RoutePlace = { kind: "junction", junction: { atM: 1000, streets: ["Q Street Northwest", "R Street Northwest"] } };
 const TRAIL: RoutePlace = {
@@ -35,10 +35,17 @@ test("the place in the route's street names, or the trail marker in US units (46
   assert.equal(placeWords(null), null);
 });
 
-test("the message: the keyword first, then the place in DC, then the note, tidied and capped", () => {
-  assert.equal(reportText("pothole", JUNCTION), "POTHOLE Location: near Q Street Northwest and R Street Northwest, Washington, DC.");
+test("the copy for DC 311 online: the place in DC, then the note, with no text keyword", () => {
+  assert.equal(reportText("pothole", JUNCTION), "Location: near Q Street Northwest and R Street Northwest, Washington, DC.");
+  assert.equal(reportText("streetlight", TRAIL, "out"), "Location: on the Metropolitan Branch Trail, about 1.2 miles north of Rhode Island Avenue Northeast, Washington, DC. out.");
+  assert.equal(keywordOf("pothole"), "POTHOLE");
+  assert.equal(keywordOf("other"), null);
+});
+
+test("the text: the keyword first, then the place in DC, then the note, tidied and capped", () => {
+  assert.equal(reportText("pothole", JUNCTION, "", true), "POTHOLE Location: near Q Street Northwest and R Street Northwest, Washington, DC.");
   assert.equal(
-    reportText("streetlight", TRAIL, "  out on the  east side "),
+    reportText("streetlight", TRAIL, "  out on the  east side ", true),
     "STREETLIGHT Location: on the Metropolitan Branch Trail, about 1.2 miles north of Rhode Island Avenue Northeast, Washington, DC. out on the east side.",
   );
   assert.equal(reportText("other", JUNCTION, "Tree down across the lane!"), "Location: near Q Street Northwest and R Street Northwest, Washington, DC. Tree down across the lane!");

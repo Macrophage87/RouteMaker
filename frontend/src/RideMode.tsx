@@ -105,7 +105,9 @@ import {
   REPORT_OUTSIDE_DC,
   REPORT_PRIVACY,
   REPORT_SUMMARY,
+  SHORT_CODE_SPOKEN,
   canText,
+  keywordOf,
   reportText,
   smsHref,
   type ReportKind,
@@ -235,8 +237,10 @@ function Report311({ model, progressM, off, idBase }: { model: RideModel; progre
   const [copied, setCopied] = useState("");
   const place = progressM === null ? null : placeOnRoute(model, progressM);
   const outside = progressM !== null && !inDc(pointAt(model, progressM));
+  // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
   const text = outside ? null : reportText(kind, place, note);
-  const keyword = REPORT_KINDS.find((k) => k.kind === kind)?.keyword ?? null;
+  const sms = outside ? null : reportText(kind, place, note, true);
+  const keyword = keywordOf(kind);
   const phone = typeof navigator !== "undefined" && canText(navigator.userAgent, navigator.maxTouchPoints ?? 0);
   const copy = async () => {
     if (!text) return;
@@ -261,7 +265,7 @@ function Report311({ model, progressM, off, idBase }: { model: RideModel; progre
           Note (optional)
           <input type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
         </label>
-        {text === null ? (
+        {text === null || sms === null ? (
           <p className="hint">{outside ? REPORT_OUTSIDE_DC : off ? REPORT_OFF_ROUTE : REPORT_NO_PLACE}</p>
         ) : (
           <>
@@ -269,17 +273,21 @@ function Report311({ model, progressM, off, idBase }: { model: RideModel; progre
               <span className="ride-report-label">The report: </span>
               {text}
             </p>
+            {phone && keyword && <p className="hint">{`The text to 32311 starts with ${keyword}, DC's keyword for it.`}</p>}
+            {/* On a phone the text first; DC 311 online always, since a tablet (or a phone) may not send texts. */}
             <div className="actions ride-report-actions">
               {phone && keyword && (
-                <a className="action-link" href={smsHref(text, navigator.userAgent, navigator.maxTouchPoints ?? 0)}>
+                <a
+                  className="action-link"
+                  href={smsHref(sms, navigator.userAgent, navigator.maxTouchPoints ?? 0)}
+                  aria-label={`Text to DC 311 (${SHORT_CODE_SPOKEN})`}
+                >
                   Text to DC 311 (32311)
                 </a>
               )}
-              {(!phone || !keyword) && (
-                <a className="action-link" href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
-                  Open DC 311 online (new tab)
-                </a>
-              )}
+              <a className={`action-link${phone && keyword ? " secondary" : ""}`} href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
+                Open DC 311 online (new tab)
+              </a>
               <button type="button" className="secondary" onClick={() => void copy()}>
                 Copy the report
               </button>
@@ -616,10 +624,14 @@ export function RideMode({
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
   // Shown under the controls, not said: it changes nothing the rider must do.
   const [corridor, setCorridor] = useState<PrefetchResult | "saving" | null>(null);
+  const firstCorridor = useRef(true);
   useEffect(() => {
     let current = true;
     setCorridor("saving");
-    void keepCorridor(route.geometry.coordinates).then((result) => {
+    // The ride's first route clears whatever an earlier ride or page kept before it fetches.
+    const first = firstCorridor.current;
+    firstCorridor.current = false;
+    void keepCorridor(route.geometry.coordinates, first).then((result) => {
       if (current && !ended.current) setCorridor(result);
     });
     return () => {

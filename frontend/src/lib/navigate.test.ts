@@ -733,8 +733,8 @@ test("placeOnRoute: the nearest junction on a street; on a trail far from one, t
 test("whereAmI on a long trail says the trail marker, US units spoken and metric on screen", () => {
   const model = rideModel(trailRoute());
   const state = { ...startState(), progressM: 1300 };
-  assert.match(whereAmI(model, state), /^On Capital Crescent Trail, about 0\.6 miles north of A Street\. Next, in 0\.7 miles: cross River Road/);
-  assert.match(whereAmI(model, state, true), /^On Capital Crescent Trail, about 0\.6 mi \(1\.0 km\) north of A Street\./);
+  assert.match(whereAmI(model, state), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. Next, in 0\.7 miles: cross River Road/);
+  assert.match(whereAmI(model, state, true), /^On the Capital Crescent Trail, about 0\.6 mi \(1\.0 km\) north of A Street\./);
   // On a street, as before.
   assert.match(whereAmI(model, { ...startState(), progressM: 100 }), /^On A Street\. /);
 });
