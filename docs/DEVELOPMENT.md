@@ -1991,6 +1991,18 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
+**One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
+2026-10-10). Below the top of the slider a longer candidate must also be worth its
+miles, as at the top: the stress it saves (`refine.stress_weight_m`, metres of LTS 3
+with LTS 4, Avoid and the flagged junctions weighted as at the top) must be at least
+the metres it adds over `refine.worth_ratio`, which rises with the calm rate from 1
+just above 80 to 5 at 100 (`WORTH_DEFAULT`): about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+so at 90 a mile [1.6 km] of LTS 3 saved buys about 1.7 mi [2.8 km] of riding. The score
+still decides first. Crossing avoidance alone (80 and below, no calm rate) is
+unchanged. The proposal's worked case, 2.75 mi [4.4 km] more for 650 ft [198 m] less
+LTS 3 with more flagged crossings, is refused at every position, with a target or
+without.
+
 There is no cap on the detour. The search keeps the best-scoring candidate, and
 never one that is busier than the router's own route ("Traffic wins", OWNER-DECISIONS
 61, said of hill avoidance and carried here): a candidate with more than 2 per
@@ -2048,8 +2060,7 @@ climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
 alternative. Not measured on the live router from this branch (it was built where
 the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
 run after deploy). The detour acceptance rule decision 435 asks to revisit is
-unchanged here, pending the owner's answer to the proposal sent with this change
-(PLAN.md, 435, records it).
+the owner's "One rule" ("One rule for the extra miles", below).
 
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
@@ -4117,8 +4128,11 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   in the UI and the link (`targetmi`, miles to a tenth). The API takes whole metres from 1,000
   (0.6 mi) to 1,000,000 (620 mi).
 - **It is a target, not a maximum** (271): the planner aims at or under it, and up to it the extra
-  distance is free (the rider asked for it). Past it a longer route is taken only where the stress it
-  saves pays for the miles past the target at the stricter bar (`refine.WORTH_OVER_TARGET`, below),
+  distance costs half the default's price, 1 mi [1.6 km] of LTS 3 saved per 10 mi [16 km]
+  (`refine.WORTH_UP_TO_TARGET`; OWNER-DECISIONS 435, the owner's "One rule" of 2026-10-10: free
+  until then, so a route a little calmer could add any miles up to the target). Past it a longer
+  route is taken only where the stress it saves pays for the miles past the target at the stricter
+  bar (`refine.WORTH_OVER_TARGET`, below),
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
@@ -4616,8 +4630,8 @@ from, below):
    contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
 
    The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
-   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
-   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance was free
+   within the target, 287(2), until 435 made it half price). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
    replacement is never the main road a few metres on and the case does not arise; and turns are not in
    the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
    own, outside 258 to 262.
