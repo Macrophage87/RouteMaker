@@ -105,4 +105,5 @@ test("the switch is a real checkbox, labelled, and described by its hint; Mass R
   assert.match(block, /id=\{trailsOffHintId\}/);
   assert.match(block, /aria-disabled=\{view\.trailsOff\.locked \|\| undefined\}/);
   assert.doesNotMatch(block, /\sdisabled=/, "a disabled box leaves the Tab order");
+  assert.match(block, /if \(view\.trailsOff\.locked\) return;/, "a press on Mass Ride's changes nothing");
 });

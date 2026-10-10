@@ -653,9 +653,7 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 
 
-def variant_for_ride(
-    name: str, when: str, assist: bool = False, trails_off: bool = False
-) -> str:
+def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: bool = False) -> str:
     """The graph a ride routes on.
 
     A ride with trails off (the rider's "Keep to roads, not trails" switch,

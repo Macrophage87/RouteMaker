@@ -208,7 +208,7 @@ class RouteIn(Schema):
     trails_off: StrictBool = Field(
         default=False,
         description=(
-            "The \"Keep to roads, not trails\" switch: plan on roadways only, with no bike"
+            'The "Keep to roads, not trails" switch: plan on roadways only, with no bike'
             " paths, trails, footways or stairs, and the Key Bridge and Arlington Memorial"
             " Bridge roadways allowed. Any ride type, e-bike rides included. Mass Ride"
             " always rides this way, whatever is sent."
@@ -1333,8 +1333,8 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         elif no_route.no_path and body.trails_off:
             # The same for a ride with "Keep to roads, not trails" on, in its words.
             message += (
-                " With Keep to roads, not trails, this ride routes only on roadways, and"
-                " without trails there may be no roadway-legal connection between two points."
+                ' With "Keep to roads, not trails" on, this ride uses only roadways, and'
+                " there may be no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
     except routing.RouterUnavailable:

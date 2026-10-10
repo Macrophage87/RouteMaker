@@ -3533,10 +3533,9 @@ trail class anyway. If a road inside the coverage is ever tagged so, carrying
 the bar into the no-trail graph is a tile change and a rebuild (a recorded
 follow-up, not built).
 
-Choices made where the owner has not said (they are in the report on the
-branch): Gravel and Mountain Goat with trails off take the no-trail graph, not the
-off-road graph; a weekend ride takes it without a weekend twin, as Mass Ride
-does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
+Confirmed by the owner (OWNER-DECISIONS 463c): Gravel and Mountain Goat with
+trails off take the no-trail graph, not the off-road graph; a weekend ride takes
+it without a weekend twin, as Mass Ride does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
 
 What differs from Mass Ride, which shares the graph (the correctness review of
 wip/trails-off):
@@ -3579,6 +3578,15 @@ roads."), with its own "How this works" (read "How this works: keep to roads");
 on Mass Ride it is checked and `aria-disabled` (in the Tab order, a press changes
 nothing), as "Make it a loop" is when the ride is a loop already. The browser
 check (`scripts/a11y/check.mjs`) covers it.
+
+**Deploying it.** API and front end only: no migration, no data rebuild, no
+tile, router or compose change, and no CD stop path (`src/pipeline/variants.py`
+is as on main). Roads-only rides move load onto `valhalla-no-trail`, which has
+the same limits and threads as the standard router; watch its latency and
+memory on the beta after release. Rollback: revert the API and the front end
+together (a new front end sending `trails_off` to an old API gets a 400 until
+the page reloads); `trailsoff=1` links and GPX files then plan with trails on,
+with no error shown.
 
 `pipeline.variants.inject` calls `close_contraflow` last on the no-trail
 variant, after the trail and sidepath drop. On a way that is one-way for motor
