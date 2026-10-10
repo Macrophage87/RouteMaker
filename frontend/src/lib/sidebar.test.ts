@@ -396,7 +396,7 @@ test("the route's folds: Elevation and stress, Stress and facilities, Directions
   const order = [
     "title={foldName(chartKind(route))}",
     "<Fold title={ROUTE_FOLDS.facilities.title}",
-    "<RouteDescription route={route} fold />",
+    "<RouteDescription route={route} fold rideAction={rideAction} />",
     "foldTitle(ROUTE_FOLDS.junctions.title, junctions)",
     "foldTitle(ROUTE_FOLDS.choices.title, pickerCount)",
   ].map(at);

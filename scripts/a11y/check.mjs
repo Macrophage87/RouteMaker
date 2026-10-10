@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { RIDE_COORDS, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -1809,11 +1809,125 @@ async function saidInDialog(p, text) {
   check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
+// ---- Ride mode (WEB-NAV-plan.md section 11): a simulated GPS stepped along a mocked route ----
+{
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const p = await newPage(b, { width: 390, height: 844, mobile: true });
+  await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, S_RIDE);
+  await media(p, { scheme: "light" });
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: ORIGIN, browserContextId: p.contextId });
+  const [lon0, lat0] = RIDE_COORDS[0];
+  await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
+  // The voice and the wake lock, stubbed to record their calls (the plan's stub envs).
+  await p.s("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      window.__speech = []; window.__wake = [];
+      const synth = { speaking: false, speak(u) { window.__speech.push(u.text); }, cancel() { window.__speech.push('<cancel>'); } };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: synth });
+      window.SpeechSynthesisUtterance = function (text) { this.text = text; this.lang = ''; this.onend = null; };
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wake.push('request'); const s = { released: false, release: async () => { s.released = true; window.__wake.push('release'); } }; return s; } } });
+    })()`,
+  });
+  const hash = hashFor("default", 70);
+  await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
+  if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
+  await sleep(800);
+  const regions = "(() => ({ polite: [...document.querySelectorAll('.ride [role=status]')].map((e) => e.textContent.trim()).join(' | '), urgent: [...document.querySelectorAll('.ride [role=alert]')].map((e) => e.textContent.trim()).join(' | ') }))()";
+  // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
+  await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
+
+  // The first ride asks how to say the cues; its first choice takes the focus.
+  await p.eval("document.querySelector('.start-ride button').click(); true");
+  await sleep(300);
+  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.closest('.ride-ask') === d && document.activeElement.type === 'radio', safety: d?.textContent.includes('you stay responsible') }; })()");
+  check("ride: the first Start ride asks how to say the cues, with the safety note, and takes the focus", ask.shown && ask.role === "dialog" && ask.focus && ask.safety, JSON.stringify(ask));
+  await p.eval("(() => { const labels = [...document.querySelectorAll('.ride-ask label')]; labels.find((l) => l.textContent === 'Both')?.querySelector('input').click(); labels.find((l) => l.textContent.startsWith('Full'))?.querySelector('input').click(); [...document.querySelectorAll('.ride-ask button')].find((b) => b.textContent === 'Start').click(); return true; })()");
+  await sleep(800);
+  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride') }))()");
+  check("ride: Start hides the planner, focuses the ride's heading, unlocks the voice and holds the screen on",
+    started.ride && started.planner === true && started.focus === "ride-heading" && started.speech.includes("Ride started.") && started.speech[started.speech.indexOf("Ride started.") + 1] !== "<cancel>" && started.wake.filter((w) => w === "request").length === 1, JSON.stringify(started));
+  check("ride: the choices are kept on this device, and nothing else", started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), started.kept);
+  await p.shot(`${SHOTS}/ride_start.png`);
+
+  // Along the line towards the turn, a fix every 400 ms (the override's change fires the watch).
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const goTo = async ([lon, lat], ms = 400) => {
+    await p.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
+    await sleep(ms);
+  };
+  // The turn is at 1,000 m of 4,660, so about vertex 8.6 of the 40.
+  for (let i = 0; i <= 50; i += 1) await goTo(lerp(RIDE_COORDS[0], RIDE_COORDS[10], i / 50));
+  const heard = await p.eval("window.__heard.slice()");
+  const turnCues = heard.filter((t) => /R Street Northwest/.test(t));
+  const now = heard.filter((t) => t.startsWith("!Left now onto R Street Northwest"));
+  check("ride: the turn is said ahead in US units (polite) and again as it happens (assertive)",
+    turnCues.some((t) => /^In \d+(\.\d)? (feet|miles?), left onto R Street Northwest at a signal/.test(t)) && now.length === 1 && !heard.some((t) => / m\)| km\)/.test(t)), JSON.stringify(heard));
+  const card = await p.eval("(() => ({ text: document.querySelector('.cue-card')?.textContent, focus: document.activeElement?.id, live: !!document.querySelector('.cue-card [aria-live], .cue-card [role=status]') }))()");
+  check("ride: the cue card shows the next cue with metric in brackets, is not a live region, and the focus never moved",
+    /\(\d+(\.\d)? k?m\)/.test(card.text) && !card.live && card.focus === "ride-heading", JSON.stringify(card));
+  const speech = await p.eval("window.__speech.slice()");
+  check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
+  await p.shot(`${SHOTS}/ride_cue.png`);
+
+  // Where am I? on demand.
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Where am I?').click(); true");
+  await sleep(300);
+  const where = await p.eval(regions);
+  check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
+
+  // A pan by hand stops following; Re-centre (the C key) follows again.
+  const canvas = await p.eval("(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x, y: canvas.y, button: "left", clickCount: 1 });
+  for (let k = 1; k <= 6; k += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: canvas.x + k * 20, y: canvas.y + k * 10, button: "left", buttons: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x + 120, y: canvas.y + 60, button: "left", clickCount: 1 });
+  await sleep(400);
+  const paused = await p.eval("document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  await p.eval("document.querySelector('#ride-heading').focus(); true");
+  await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", text: "c" });
+  await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC" });
+  await sleep(300);
+  const resumed = await p.eval("!document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  check("ride: a pan by hand stops following; Re-centre (C) follows again", paused && resumed, JSON.stringify({ paused, resumed }));
+
+  // Off route: 150 m off the line for over 8 s; exactly one re-plan, from here, and the address bar unchanged.
+  const before = p.routeRequests;
+  const off = [RIDE_COORDS[10][0] + 0.0015, RIDE_COORDS[10][1] + 0.0010];
+  for (let k = 0; k < 12; k += 1) await goTo([off[0] + (k % 2) * 0.00001, off[1]], 1000);
+  await sleep(800);
+  const bodies = (p.routeBodies ?? []).slice(before);
+  const first = bodies.length ? JSON.parse(bodies[0]).points[0] : null;
+  const after = await p.eval("({ hash: location.hash, heard: window.__heard.slice() })");
+  check("ride: off route for over 8 s is said once, assertively, and re-plans once from the rider's position",
+    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
+    JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
+  check("ride: a re-plan never writes the address bar", after.hash === hash, after.hash);
+
+  // 320 px, and Big text.
+  await p.s("Emulation.setDeviceMetricsOverride", { width: 320, height: 700, deviceScaleFactor: 2, mobile: true });
+  await sleep(300);
+  const narrowFit = await p.eval("(() => ({ scroll: document.documentElement.scrollWidth, w: innerWidth, over: [...document.querySelectorAll('.ride button')].filter((b) => b.getBoundingClientRect().right > innerWidth + 1 || b.getBoundingClientRect().height < 43.5).map((b) => b.textContent) }))()");
+  check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').click(); true");
+  await sleep(300);
+  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: [...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').getAttribute('aria-pressed') })");
+  check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
+  await p.shot(`${SHOTS}/ride_big_320.png`);
+
+  // End ride: the planner again, the focus on Start ride, the lock let go.
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'End ride').click(); true");
+  await sleep(500);
+  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
+  check("ride: End ride shows the planner, puts the focus on Start ride and lets the screen lock go",
+    !ended.ride && ended.planner === false && ended.focus === "Start ride" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 319;
+const EXPECTED = 332;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

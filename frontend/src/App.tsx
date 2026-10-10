@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
@@ -48,6 +48,9 @@ import { IntersectionList } from "./IntersectionList.tsx";
 import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
+import { RIDE_SAFETY, RideMode, RideSettingsFields, startRideGesture, type RideView } from "./RideMode.tsx";
+import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
+import { RIDE_MAX_M, RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
@@ -324,6 +327,24 @@ export function App() {
   const rideRef = useRef<Ride>({ preset, dials, imported });
   rideRef.current = { preset, dials, imported };
   const narrow = useNarrow();
+  // Ride mode (WEB-NAV-plan.md; RideMode.tsx): whether a ride is on, the Start ride question, the ride's
+  // own route and the rider for the map (in memory only: never the link, storage or a log), the camera.
+  // A ride's re-plans live here, not in `points`, so the address bar keeps the plan as started (plan Q2).
+  const [ridePrefs, setRidePrefs] = useState<RidePrefs>(() => readRidePrefs());
+  const [riding, setRiding] = useState(false);
+  const [rideAsk, setRideAsk] = useState(false);
+  const [rideView, setRideView] = useState<RideView | null>(null);
+  const [follow, setFollow] = useState(true);
+  const [headingUp, setHeadingUp] = useState(false);
+  const [bigText, setBigText] = useState(false);
+  const startRideRef = useRef<HTMLButtonElement>(null);
+  const rideStartFirstRef = useRef<HTMLButtonElement>(null);
+  const focusStartAfterRide = useRef(false);
+  const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
+  const changeRidePrefs = useCallback((next: RidePrefs) => {
+    writeRidePrefs(next);
+    setRidePrefs(next);
+  }, []);
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
@@ -648,6 +669,8 @@ export function App() {
     mapRef.current?.flyTo({ center: placed.point, zoom: Math.max(mapRef.current.getZoom(), 14) });
   }, [gate, geoEnv, announce, commit]);
   const hereInPlan = here !== null && points.includes(here.point);
+  // The accuracy circle: the located point's while it is in the plan; during a ride, the rider's.
+  const hereCircle = hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null;
 
   const move = useCallback((index: number, point: LonLat) => {
     cancelLocateNotice();
@@ -895,6 +918,44 @@ export function App() {
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
+
+  // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
+  // voice is unlocked inside this press (iOS speaks only after a gesture).
+  const beginRide = (prefs: RidePrefs) => {
+    startRideGesture(prefs);
+    setRideAsk(false);
+    setFollow(true);
+    setBigText(false);
+    setRideView(null);
+    setRiding(true);
+  };
+  const startRide = () => {
+    if (!ridePrefs.chosen) {
+      setRideAsk(true);
+      return;
+    }
+    beginRide(ridePrefs);
+  };
+  const endRide = useCallback(() => {
+    setRiding(false);
+    setRideView(null);
+    setBigText(false);
+    focusStartAfterRide.current = true;
+  }, []);
+  // After End ride the focus goes back to Start ride, once the planner shows again.
+  useEffect(() => {
+    if (riding || !focusStartAfterRide.current) return;
+    focusStartAfterRide.current = false;
+    startRideRef.current?.focus();
+  }, [riding]);
+  // The first ride's question takes the focus to its first choice.
+  useEffect(() => {
+    if (rideAsk) rideStartFirstRef.current?.closest(".ride-ask")?.querySelector<HTMLInputElement>("input")?.focus();
+  }, [rideAsk]);
+  // Big text hides the map; shown again, it fits its box.
+  useEffect(() => {
+    if (!bigText) mapRef.current?.resize();
+  }, [bigText]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -1203,7 +1264,48 @@ export function App() {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
+          ride={{ onStart: startRide, startRef: startRideRef }}
         />
+      )}
+      {shown && rideAsk && (
+        <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
+          onKeyDown={(event) => {
+            if (isCancelKey(event.key)) {
+              event.preventDefault();
+              setRideAsk(false);
+              startRideRef.current?.focus();
+            }
+          }}
+        >
+          <h3 id="ride-ask-title">Start ride</h3>
+          <p id="ride-ask-safety" className="hint">
+            {RIDE_SAFETY}
+          </p>
+          <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="ride-ask" />
+          <div className="actions">
+            <button
+              type="button"
+              ref={rideStartFirstRef}
+              onClick={() => {
+                const prefs = { ...ridePrefs, chosen: true };
+                changeRidePrefs(prefs);
+                beginRide(prefs);
+              }}
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setRideAsk(false);
+                startRideRef.current?.focus();
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -1239,7 +1341,7 @@ export function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
@@ -1253,19 +1355,23 @@ export function App() {
       <MapView
         points={points}
         loopVias={loopVias}
-        route={shown}
-        stale={stale}
+        route={riding && rideView ? rideView.route : shown}
+        stale={riding ? false : stale}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
         onStressAvailability={setStress}
         onMapClick={place}
         onMovePoint={move}
-        lineEdit={lineEdit}
+        lineEdit={riding ? null : lineEdit}
         onLineDrop={insertOnLine}
         onRemovePoint={removeFromMap}
         markerReset={markerReset}
-        accuracy={hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null}
+        accuracy={riding ? rideCircle : hereCircle}
+        rider={riding && rideView?.rider ? rideView.rider : null}
+        follow={riding && follow}
+        headingUp={headingUp}
+        onFollowBroken={() => setFollow(false)}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
         onReady={(map) => {
@@ -1313,7 +1419,7 @@ export function App() {
         onPlace={placeSpot}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
-      {narrow && (can.undo || can.redo) && (
+      {!riding && narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
         // per layout), each shown while it has something to give back.
@@ -1341,12 +1447,33 @@ export function App() {
         {status.kind === "waiting" && <p>{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
       </div>
+      {riding && shown && (
+        <RideMode
+          route={shown}
+          points={routedPoints}
+          loop={routedLoop}
+          preset={shown.preset}
+          dials={planDials}
+          prefs={ridePrefs}
+          onPrefs={changeRidePrefs}
+          follow={follow}
+          onFollow={setFollow}
+          headingUp={headingUp}
+          onHeadingUp={setHeadingUp}
+          big={bigText}
+          onBig={setBigText}
+          onView={setRideView}
+          onEnd={endRide}
+        />
+      )}
+      {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
       <aside
         ref={panelRef}
         id="route-planner"
         tabIndex={-1}
         className={`panel ${panelOpen ? "open" : "closed"}`}
         aria-label="Route planner"
+        hidden={riding}
       >
         <header className="panel-header">
           <div>
@@ -1511,6 +1638,11 @@ export function App() {
                   onChange={(on) => setAccessibility(on)}
                 />
               </section>
+              {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
+              <section aria-labelledby="settings-ride-heading">
+                <h3 id="settings-ride-heading">Ride mode</h3>
+                <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
+              </section>
               <section aria-labelledby="settings-signin-heading">
                 <h3 id="settings-signin-heading">Signing in</h3>
                 <p className="hint">
@@ -1589,10 +1721,13 @@ function RouteSummary({
   onScrub,
   picker,
   pickerCount,
+  ride,
 }: {
   route: RouteResponse;
   points: LonLat[];
   narrow: boolean;
+  /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered under the figures and with the directions. */
+  ride: { onStart: () => void; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -1618,6 +1753,13 @@ function RouteSummary({
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   const junctions = route.intersections == null ? null : junctionItems(route).length;
+  // Start ride is offered with the directions too (plan Q1).
+  const rideable = route.distance_m <= RIDE_MAX_M;
+  const rideAction = rideable ? (
+    <button type="button" className="secondary" onClick={ride.onStart}>
+      Start ride
+    </button>
+  ) : null;
   return (
     <div className="summary">
       {moved && (
@@ -1689,6 +1831,17 @@ function RouteSummary({
         </figure>
       )}
       <QuickFigures figures={quickFigures(route)} />
+      {/* Start ride (WEB-NAV-plan.md Q1): short rides only; a longer one goes to a bike computer (OD 255). */}
+      {rideable ? (
+        <div className="actions start-ride">
+          <button type="button" ref={ride.startRef} onClick={ride.onStart}>
+            Start ride
+          </button>
+          <p className="hint">Turn-by-turn directions on this phone, said aloud. Keep the screen on and this page in front.</p>
+        </div>
+      ) : (
+        <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+      )}
       <FacilityBreakdown route={route} part="notices" />
       {profile && (
         <Fold
@@ -1728,7 +1881,7 @@ function RouteSummary({
         <FacilityBreakdown route={route} part="figures" />
       </Fold>
       )}
-      <RouteDescription route={route} fold />
+      <RouteDescription route={route} fold rideAction={rideAction} />
       {junctions !== null && (
         <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
           <IntersectionList route={route} onSelect={onSelectJunction} />

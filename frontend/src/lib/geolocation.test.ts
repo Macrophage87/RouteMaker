@@ -618,7 +618,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
     /const linkNote = linkLocationNote\(points, fromHere\);/,
     /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
-    /accuracy=\{hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null\}/,
+    /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
   ];
   assert.ok(lines.length >= allowed.length);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
