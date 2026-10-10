@@ -1631,6 +1631,14 @@ Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
   every slider position" asks, and no longer reads as "the fastest legal
   route" there.
 
+**Half steps in the graph** (OWNER-DECISIONS 441i-441l, 461a; HALF-STEP-EDITOR phase 3). A
+half step reaches the transform as `rm:stress_half=yes` beside its lower `rm:stress_tier`
+(`pipeline.run`, from the override's `half`), and `half_step_marks` adds: 3.5 LTS 3's
+`use_sidepath` plus `maxspeed:practical` 90 and 11 lanes each way (0.89-1.14 of the midpoint
+between LTS 3 and LTS 4, modelled as for the table above); 2.5 10 lanes each way and no
+`use_sidepath` (0.4-0.5 of the midpoint, never above LTS 3); 1.5 nothing; 4.5 LTS 4's marks and
+never the alley mark. docs/stress/stress-number.md section 3 has the table and why 2.5 stops short.
+
 **Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
 each leg (one fewer than the points) the index in `geometry.coordinates` of its
 last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to

@@ -1579,7 +1579,12 @@ docker compose exec -T api python manage.py add_stress_half_column --confirm
 ```
 
 The tile ETag gains the letter `h` once the column is there, so browsers fetch the tiles again.
-Valhalla's own costs follow a half step only after a rebuild (phase 3).
+
+**Valhalla's costs (phase 3) need a rebuild.** The weekly rebuild writes `rm:stress_half=yes` on a
+half-step way and the graph's Lua transform prices it between its two levels
+(`lua/routemaker_remap.lua` `half_step_marks`; the figures are in docs/stress/stress-number.md
+section 3). Until the next rebuild after this release, the router prices a half step as its lower
+level; the map, the road panel and RouteMaker's own ranking use the half step at once.
 
 **Not in this phase:** suggestions from other riders, and a named stretch longer than one road
 piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 4 and 5). "Only raise it" is

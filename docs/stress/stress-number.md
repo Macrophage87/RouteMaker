@@ -133,11 +133,29 @@ ranking has no entry charge of its own to halve (the tier-5 charge is Valhalla's
 `summary.cost`), so 4.5 pays none there either; its per-meter worth weight is the
 midpoint, `lts45_m` in `refine.Analysis` (section "Rule effects").
 
-What Valhalla can carry is decided at a rebuild, and only approximately:
+What Valhalla carries is decided at a rebuild, and only approximately (phase 3,
+**built**: the rebuild writes `rm:stress_half=yes` beside `rm:stress_tier`, and
+`lua/routemaker_remap.lua` `half_step_marks` adds the marks below). The figures are
+modelled from Valhalla 3.5.1's bicycle costing (`sif/bicyclecost.cc`: the edge factor
+`1 + grade + accommodation * roadway_stress`, as in docs/DEVELOPMENT.md, "Graded
+stress") over secondary to trunk roads of 1-3 lanes, 25-45 mph, with and without a
+painted lane, at `use_roads` 0.05 to 0.9:
 
-- 2.5 needs a new graph tag that lifts the edge's cost to about the midpoint.
-- 3.5 needs `use_sidepath` plus intermediate speed and lane tags.
-- 4.5 is priced as LTS 4 until a costing fork.
+| Step | Marks | Added cost against the midpoint |
+|---|---|---|
+| 1.5 | none (LTS 1 and 2 cost the same in the graph) | exact |
+| 2.5 | `lanes:forward` / `lanes:backward` 10, no `use_sidepath` | 0.4-0.5 of the midpoint at stress 40 and up (`use_roads` 0.6 and below): about a quarter of the way from LTS 2 to LTS 3, and never above LTS 3 at any slider position |
+| 3.5 | `use_sidepath` (LTS 3's penalty), `maxspeed:practical` 90, lanes 11 each way | 0.89-1.14 of the midpoint between LTS 3 and LTS 4 at every slider position |
+| 4.5 | LTS 4's own marks (140, 15 lanes); no alley mark | priced as LTS 4 |
+
+2.5 cannot reach the midpoint without a costing fork: `use_sidepath` is all of LTS 3's
+extra, and a lane or speed lift large enough for the midpoint at the low-stress end
+prices 2.5 above LTS 3 at the fast end (up to 4 times the midpoint at `use_roads`
+0.9). The default taken (2026-10-10) keeps every level's order at every slider
+position; RouteMaker's own ranking then adds the exact midpoint. 3.5's speed mark is
+written as is, so a 3.5 road posted above 55 mph (rare: such roads are LTS 4) would be
+priced as if at 56 mph. The marks are a cost only: they never open a way
+(`M.may_penalise`; `tests/lua/test_remap.lua`, `tests/test_lua_remap.py`).
 
 All three are HALF-STEP-EDITOR-plan section 7.2, phase 3. RouteMaker's own ranking
 uses the midpoints exactly (phase 2, built: `core.refine` `half_metres`,

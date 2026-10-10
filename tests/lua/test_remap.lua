@@ -1103,5 +1103,51 @@ check("a closed paved singletrack-rated way stays closed",
     return o["mtb:scale"] == M.REMOVE and o.bicycle == "no"
   end)())
 
+-- ---------------------------------------------------------------------------
+-- Half steps (441i-441l, 461a; `rm:stress_half`): each borrows the marks of the
+-- levels around it at an intermediate value, and never opens a way.
+-- ---------------------------------------------------------------------------
+
+do
+  local o = M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true })
+  check("3.5 keeps LTS 3's penalty", o.bicycle == M.STRESS_PENALTY_BICYCLE)
+  check("3.5 adds the intermediate practical speed", o["maxspeed:practical"] == M.HALF_GRADED_SPEED)
+  check("3.5 adds the intermediate lane count both ways",
+    o["lanes:forward"] == M.HALF_GRADED_LANES and o["lanes:backward"] == M.HALF_GRADED_LANES)
+  check("3.5's marks sit between the road's and LTS 4's",
+    tonumber(M.HALF_GRADED_SPEED) < tonumber(M.GRADED_SPEED)
+      and tonumber(M.HALF_GRADED_LANES) < tonumber(M.GRADED_LANES))
+  check("3.5 never writes a forbidden key", not writes_forbidden(o))
+
+  local three = M.remap_way({ highway = "secondary" }, { stress_tier = 3 })
+  check("a whole LTS 3 gets no half-step marks",
+    three["maxspeed:practical"] == nil and three["lanes:forward"] == nil)
+
+  local two = M.remap_way({ highway = "residential" }, { stress_tier = 2, stress_half = true })
+  check("2.5 gets no LTS 3 penalty", two.bicycle == nil)
+  check("2.5 gets the lower lane count and no speed",
+    two["lanes:forward"] == M.HALF_LOW_LANES and two["lanes:backward"] == M.HALF_LOW_LANES
+      and two["maxspeed:practical"] == nil)
+
+  local one = M.remap_way({ highway = "residential" }, { stress_tier = 1, stress_half = true })
+  check("1.5 adds nothing", one["lanes:forward"] == nil and one.bicycle == nil)
+
+  local four = M.remap_way({ highway = "primary" }, { stress_tier = 4, stress_half = true })
+  check("4.5 is priced as LTS 4", four["maxspeed:practical"] == M.GRADED_SPEED
+    and four["lanes:forward"] == M.GRADED_LANES and four.bicycle == M.STRESS_PENALTY_BICYCLE)
+  check("4.5 is never Avoid: no alley mark", four.service == nil)
+
+  check("2.5 never marks a way closed to a bicycle",
+    M.remap_way({ highway = "residential", bicycle = "no" }, { stress_tier = 2, stress_half = true })["lanes:forward"] == nil)
+  check("2.5 never marks a road class closed to a bicycle",
+    M.remap_way({ highway = "motorway" }, { stress_tier = 2, stress_half = true })["lanes:forward"] == nil)
+  check("3.5 never marks a way the penalty cannot land on",
+    M.remap_way({ highway = "secondary", access = "private" }, { stress_tier = 3, stress_half = true })["maxspeed:practical"] == nil)
+  check("a half step on a trail-class way adds nothing",
+    M.remap_way({ highway = "cycleway" }, { stress_tier = 3, stress_half = true, is_trail_class = true })["lanes:forward"] == nil)
+  check("a half step on a facility-neutral way adds nothing",
+    M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true, facility_neutral = true })["maxspeed:practical"] == nil)
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
