@@ -22,6 +22,7 @@
  *   legend. You'll only see this if you really try to force things." So no legend row.
  */
 import type { AvoidJunctionPass, RouteResponse } from "./api.ts";
+import { candidateRoute } from "./candidates.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 
@@ -70,10 +71,11 @@ export function avoidMarkerName(item: Pick<AvoidJunctionPass, "label">): string 
 
 /**
  * How near the spot the road panel was opened on a junction must be for the panel to
- * warn of it, in metres: a little more than the planner's own match (MATCH_RADIUS_M,
- * 49 ft (15 m)), since a finger or the map's centre is rarely right on the point.
+ * warn of it, in metres (82 ft): a little more than the planner's own match
+ * (MATCH_RADIUS_M, 49 ft (15 m)), since a finger or the map's centre is rarely right on
+ * the point, and short of the next junction on most blocks.
  */
-export const AVOID_SPOT_M = 40;
+export const AVOID_SPOT_M = 25;
 
 /** The Avoid-rated junction on the route nearest `point`, within AVOID_SPOT_M; null where none. */
 export function avoidNearSpot(
@@ -123,6 +125,33 @@ export function avoidOffer(answer: Pick<RouteResponse, "avoid_alternate"> | null
   const extra = around.extra_distance_m;
   const longer = extra >= 80 ? `, ${formatDistance(extra)} longer` : "";
   return `Show the route that avoids it: ${formatDistance(around.distance_m)}${longer}`;
+}
+
+/**
+ * The notice for the route the rider has chosen (the answer, or one of the routes to
+ * choose from): its own `avoid_notice`, so a candidate that avoids the junction has none
+ * and one that passes it has its own. The way round (`avoid_alternate`) is the answer's,
+ * so it is offered only while the answer is chosen. Null where the route passes none.
+ */
+export function avoidNoticeFor(
+  answer: RouteResponse | null,
+  choice: number,
+): { notice: string; offer: string | null; none: string | null } | null {
+  const planned = candidateRoute(answer, choice);
+  const notice = planned?.avoid_notice;
+  if (!answer || !notice) return null;
+  const own = planned === answer;
+  return { notice, offer: own ? avoidOffer(answer) : null, none: own ? avoidNoAlternate(answer) : null };
+}
+
+/**
+ * The route to show: the way round in place of the planned route while it is asked for
+ * and the answer is chosen, else the route chosen.
+ */
+export function shownRoute(answer: RouteResponse | null, choice: number, around: boolean): RouteResponse | null {
+  const planned = candidateRoute(answer, choice);
+  const way = answer?.avoid_alternate;
+  return around && way && planned === answer ? way : planned;
 }
 
 /** What the notice says while the way round is shown in place of the planned route. */

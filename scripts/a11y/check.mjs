@@ -2430,9 +2430,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("avoid: the notice says the junction and the reason, and its symbol is hidden from assistive technology", notice && /This route goes through an Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic\./.test(notice.text) && notice.symbolHidden, JSON.stringify(notice));
   const offerName = (await axNode(p, ".avoid-notice button"))?.name ?? "";
   check("avoid: the way round is offered with its length and how much longer, US units first", offerName === "Show the route that avoids it: 3.9 mi (6.3 km), 1.0 mi (1.6 km) longer", offerName);
-  const marker = await p.eval(`(() => { const m = document.querySelector('.avoid-marker'); return m && { role: m.getAttribute('role'), label: m.getAttribute('aria-label'), svgHidden: m.querySelector('svg')?.getAttribute('aria-hidden') === 'true', w: m.getBoundingClientRect().width }; })()`);
-  // Larger than the 24 px junction markers (the owner, 2026-10-10: "Make it larger than a normal icon").
-  check("avoid: the map marker is an image named for the rating, the reason and the plea, never the glyph (309), larger than a junction marker", marker && marker.role === "img" && marker.label === "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route." && marker.svgHidden && !/skull/i.test(marker.label) && marker.w >= 36, JSON.stringify(marker));
+  const marker = await p.eval(`(() => { const m = document.querySelector('.avoid-marker'); return m && { tag: m.tagName, type: m.getAttribute('type'), label: m.getAttribute('aria-label'), svgHidden: m.querySelector('svg')?.getAttribute('aria-hidden') === 'true', w: m.getBoundingClientRect().width }; })()`);
+  // Larger than the 24 px junction markers (the owner, 2026-10-10: "Make it larger than a normal icon"); a
+  // button, as the junction markers are, so the keyboard reaches it (the review of 351e65b).
+  check("avoid: the map marker is a button named for the rating, the reason and the plea, never the glyph (309), larger than a junction marker", marker && marker.tag === "BUTTON" && marker.type === "button" && marker.label === "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route." && marker.svgHidden && !/skull/i.test(marker.label) && marker.w >= 36, JSON.stringify(marker));
   const ax = await axNode(p, ".avoid-marker");
   check("avoid: the marker's accessible name, as the browser computes it", ax?.name === "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.", JSON.stringify(ax?.name));
   const row = await p.eval(`(() => { const l = document.querySelector('.avoid-list'); const li = l?.querySelector('li'); return li && { list: l.getAttribute('aria-label'), text: li.textContent, hidden: li.querySelector('.avoid-symbol')?.getAttribute('aria-hidden') === 'true' }; })()`);
@@ -2470,8 +2471,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
   const clicked = await card();
   const WARN = /Avoid this intersection\.\s*Main St and 1st Ave is rated as dangerous for bikes: no gap in fast traffic\. Riding through it is a really bad idea\. Please reconsider your route\./;
-  check("avoid: a click on the marker opens the road panel led by the warning, an alert, first in the dialog's description",
-    clicked.open && clicked.warn && clicked.role === "alert" && clicked.first && clicked.described && clicked.hidden, JSON.stringify(clicked));
+  // The dialog's opening description, and not also an alert: the two were said twice (the review of 351e65b).
+  check("avoid: a click on the marker opens the road panel led by the warning, first in the dialog's description, not also an alert",
+    clicked.open && clicked.warn && clicked.role === null && clicked.first && clicked.described && clicked.hidden, JSON.stringify(clicked));
   const dialogAx = await axNode(p, "dialog.road-info");
   check("avoid: the warning says plainly it is dangerous, gives the reason and asks the rider to reconsider, and the dialog's computed description starts with it",
     WARN.test(clicked.text) && /^Avoid this intersection\./.test(dialogAx?.description ?? ""), JSON.stringify({ text: clicked.text, description: dialogAx?.description }));
@@ -2485,10 +2487,28 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.key("i", "KeyI", 73);
   await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
   const keyed = await card();
-  check("avoid: the I key with the map's centre on the junction leads with the same warning", keyed.open && keyed.warn && keyed.role === "alert" && WARN.test(keyed.text), JSON.stringify(keyed));
+  check("avoid: the I key with the map's centre on the junction leads with the same warning", keyed.open && keyed.warn && keyed.described && WARN.test(keyed.text), JSON.stringify(keyed));
   await armInfoClose(p);
   await p.key("Escape", "Escape", 27);
   await infoClosed(p, "true");
+  // Tab from the map reaches the marker; Enter on it opens the panel with the warning, and Escape
+  // brings the focus back to it (the review of 351e65b).
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  let tabs = 0;
+  while (tabs < 40 && !(await p.eval("document.activeElement?.classList.contains('avoid-marker') ?? false"))) {
+    await p.tab();
+    tabs += 1;
+  }
+  const reached = await axNode(p, ".avoid-marker");
+  const focusedMarker = await p.eval("document.activeElement?.classList.contains('avoid-marker') ?? false");
+  check("avoid: Tab from the map reaches the marker, a button with its name", focusedMarker && reached?.role === "button" && /^Avoid-rated junction: Main St and 1st Ave/.test(reached?.name ?? ""), JSON.stringify({ tabs, focusedMarker, role: reached?.role }));
+  await p.enter();
+  await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
+  const entered = await card();
+  await armInfoClose(p);
+  await p.key("Escape", "Escape", 27);
+  const backOnMarker = await infoClosed(p, "document.activeElement?.classList.contains('avoid-marker') ?? false");
+  check("avoid: Enter on the marker opens the road panel led by the warning, and Escape brings the focus back to it", entered.open && entered.warn && WARN.test(entered.text) && backOnMarker, JSON.stringify({ entered, backOnMarker }));
   // Away from it (a mile off): the panel has no warning.
   await jumpMap(p, S_AVOID.avoid_junctions[0].lon + 0.02, S_AVOID.avoid_junctions[0].lat, 16);
   await sleep(300);
@@ -2512,7 +2532,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 426;
+const EXPECTED = 428;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

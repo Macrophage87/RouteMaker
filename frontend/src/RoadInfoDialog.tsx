@@ -22,8 +22,9 @@
  *
  * On an Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID; the owner, 2026-10-10
  * 15:08 UTC: "Yes, also when clicking on the intersection. ... Basically something to say: this
- * is a really bad idea, please reconsider.") the panel leads with a warning, above its heading:
- * an alert, so it is said as the panel opens, and the first part of the dialog's description.
+ * is a really bad idea, please reconsider.") the panel leads with a warning, above its heading,
+ * and it opens the dialog's description (`aria-describedby`), so it is said as the panel opens.
+ * Not also an alert: the two together were said twice (the review of 351e65b).
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -260,7 +261,7 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, onClo
     >
       <div className="road-info-body">
         {request && avoid && (
-          <div className="road-info-avoid" role="alert" id={id("avoid")}>
+          <div className="road-info-avoid" id={id("avoid")}>
             <p className="road-info-avoid-heading">
               <span className="avoid-symbol" aria-hidden="true">
                 {AVOID_SYMBOL}

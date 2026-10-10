@@ -16,6 +16,8 @@ import {
   avoidItems,
   avoidMarkerName,
   avoidNearSpot,
+  avoidNoticeFor,
+  shownRoute,
   avoidNoAlternate,
   avoidOffer,
   avoidRowName,
@@ -173,4 +175,37 @@ test("the road panel's warning is plain, gives the stored reason, and asks the r
   );
   assert.equal(avoidCardSaid(PASS), `Avoid this intersection. ${avoidCardText(PASS)}`);
   assert.doesNotMatch(avoidCardSaid(PASS), /skull|\u2620/i);
+});
+
+test("the notice is the chosen route's own, and the way round is offered only with the answer chosen (review of 351e65b)", () => {
+  const notice = "This route goes through an Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. " + AVOID_PLEA;
+  const way = { distance_m: 6270, extra_distance_m: 1610, avoid_junctions: [], avoid_notice: null } as unknown as RouteResponse;
+  const avoids = { distance_m: 5000, avoid_junctions: [], avoid_notice: null } as unknown as RouteResponse;
+  const passes = { distance_m: 4800, avoid_junctions: [PASS], avoid_notice: notice } as unknown as RouteResponse;
+  const answer = {
+    distance_m: 4660,
+    avoid_junctions: [PASS],
+    avoid_notice: notice,
+    avoid_alternate: way,
+    avoid_search: { passed: 1, penalty_s: 1800, decision: "kept", alternate: "found", avoided: 0 },
+    candidates: [avoids, passes],
+  } as unknown as RouteResponse;
+  // The answer: its notice and the way round.
+  const own = avoidNoticeFor(answer, 0);
+  assert.equal(own?.notice, notice);
+  assert.match(own?.offer ?? "", /^Show the route that avoids it: 3\.9 mi/);
+  // A route to choose from that avoids the junction: no notice at all.
+  assert.equal(avoidNoticeFor(answer, 1), null);
+  // One that passes it: its own notice, and no way round (that is the answer's).
+  const other = avoidNoticeFor(answer, 2);
+  assert.equal(other?.notice, notice);
+  assert.equal(other?.offer, null);
+  assert.equal(other?.none, null);
+  // The way round is shown in place of the answer only.
+  assert.equal(shownRoute(answer, 0, true), way);
+  assert.equal(shownRoute(answer, 0, false), answer);
+  assert.equal(shownRoute(answer, 1, true), avoids);
+  assert.equal(shownRoute(answer, 2, true), passes);
+  assert.equal(shownRoute(null, 0, true), null);
+  assert.equal(avoidNoticeFor(null, 0), null);
 });

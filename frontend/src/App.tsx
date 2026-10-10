@@ -30,7 +30,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
-import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
+import { announceHow, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   BEST_ORDER_LABEL,
@@ -55,7 +55,7 @@ import {
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
 import { AvoidNotice } from "./AvoidNotice.tsx";
-import { avoidItems, avoidNearSpot } from "./lib/avoidJunctions.ts";
+import { avoidItems, avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -249,7 +249,7 @@ export function App() {
     setChosen(true);
     setAroundAvoid(false);
   }, []);
-  const route = aroundAvoid && answer?.avoid_alternate ? answer.avoid_alternate : candidateRoute(answer, choice);
+  const route = shownRoute(answer, choice, aroundAvoid);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   // Whether that route was planned as a loop the rider chose, recorded with its
   // points: during a replan the toggle may already say otherwise, and the GPX
@@ -1576,7 +1576,7 @@ export function App() {
         </div>
       )}
       {/* First in the panel and announced first (335): the route goes through an Avoid-rated junction. */}
-      {shown && answer && <AvoidNotice answer={answer} around={aroundAvoid} onAround={setAroundAvoid} />}
+      {shown && answer && <AvoidNotice answer={answer} choice={choice} around={aroundAvoid} onAround={setAroundAvoid} />}
       {shown && (
         <RouteSummary
           route={shown}

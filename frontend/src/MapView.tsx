@@ -1178,9 +1178,10 @@ export function MapView(props: Props) {
   // crossbones on a ringed disc, drawn above the warning markers and larger than them. An
   // image whose name is the rating, the reason and the plea (309; the owner, 2026-10-10:
   // "this is a really bad idea, please reconsider"), never the glyph's; the list and the
-  // description say the same in text. A click (or a tap) on it opens the road panel on the
-  // junction, which leads with its warning ("Yes, also when clicking on the intersection");
-  // by keyboard, the I key or "Road info at map center" does the same.
+  // description say the same in text. A button, as the junction markers are, so Tab reaches
+  // it: a click, a tap, Enter or Space opens the road panel on the junction, which leads
+  // with its warning ("Yes, also when clicking on the intersection"), and the focus comes
+  // back to it when the panel closes. The I key or "Road info at map center" does the same.
   const avoidMarkers = useRef<Marker[]>([]);
   useEffect(() => {
     const map = mapRef.current;
@@ -1188,15 +1189,19 @@ export function MapView(props: Props) {
     avoidMarkers.current = [];
     if (!map || !props.route || props.stale) return;
     avoidMarkers.current = avoidItems(props.route).map((item) => {
-      const element = document.createElement("div");
+      const element = document.createElement("button");
+      element.type = "button";
       element.className = "avoid-marker";
-      element.setAttribute("role", "img");
+      // The name alone, as the junction markers (a title as well is read twice).
       element.setAttribute("aria-label", avoidMarkerName(item));
+      element.setAttribute("aria-haspopup", "dialog");
       element.innerHTML = avoidMarkerSvg();
       element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a via point.
         event.stopPropagation();
         callbacks.current.onRoadInfo?.({ point: [item.lon, item.lat], origin: "spot" });
       });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
       return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
     });
   }, [props.route, props.stale]);

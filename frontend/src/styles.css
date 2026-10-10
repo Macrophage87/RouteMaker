@@ -1781,7 +1781,8 @@ ul.station-links {
   /* A double ring in the system's own pair: Highlight alone was about 1.1:1
      on the light map in a dark theme. The marker keeps its colours
      (forced-color-adjust: none), so its box-shadow is kept too. */
-  .junction-marker:focus-visible {
+  .junction-marker:focus-visible,
+  .avoid-marker:focus-visible {
     outline: 3px solid CanvasText;
     outline-offset: 2px;
     box-shadow: 0 0 0 2px Canvas;
@@ -3293,6 +3294,10 @@ details.zoom-notes {
    assistive technology (the text names the rating, 309). */
 .avoid-marker {
   display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   /* AVOID_ICON_PX: larger than the 24 px junction markers (the owner, 2026-10-10). */
   width: 40px;
   height: 40px;
