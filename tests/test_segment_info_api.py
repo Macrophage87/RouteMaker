@@ -240,6 +240,29 @@ class TestAnswer:
             "Bikes: Allowed",
         ]
 
+    def test_a_judged_bridge_says_its_deck_and_how_the_map_draws_it(
+        self, client, segment_schemas, router
+    ) -> None:
+        """The Seneca Aqueduct (owner, 2026-10-09): a paved deck inside the unpaved
+        towpath, which the map now draws unpaved (`core.stress_tiles.BRIDGE_UNPAVED`)."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            106,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            stress_rule="trail-class way (path, open to bicycles)",
+            is_trail_class=True,
+            facility="path",
+            is_unpaved=False,
+            trail_bridge=2,
+        )
+        router.answers = {"bicycle": [edge(106, use="path")]}
+        riding = section(get(client).json(), "riding")
+        assert riding["Surface"]["value"] == (
+            "Paved (a bridge deck; the map draws it as part of the unpaved trail)"
+        )
+
     def test_street_view_point_is_snapped_onto_the_way(
         self, client, segment_schemas, router
     ) -> None:
@@ -654,3 +677,28 @@ class TestAccessReason:
     )
     def test_reasons(self, tags, kwargs, reason) -> None:
         assert facility.bike_access_reason(tags, **kwargs) == reason
+
+
+@pytest.mark.parametrize(
+    ("row", "words"),
+    [
+        (
+            {"is_unpaved": False, "trail_bridge": 2},
+            "Paved (a bridge deck; the map draws it as part of the unpaved trail)",
+        ),
+        (
+            {"is_unpaved": True, "trail_bridge": 1},
+            "Unpaved (a bridge deck; the map draws it as part of the paved trail)",
+        ),
+        # The deck agrees with its trail, or the way is no judged bridge: the plain words.
+        ({"is_unpaved": True, "trail_bridge": 2}, "Unpaved"),
+        ({"is_unpaved": False, "trail_bridge": 1}, "Paved"),
+        ({"is_unpaved": False, "trail_bridge": 0}, "Paved"),
+        ({"is_unpaved": False}, "Paved"),
+        ({"is_unpaved": None, "trail_bridge": 2}, "Not mapped"),
+    ],
+)
+def test_the_surface_words_name_a_bridge_drawn_in_its_trails_surface(row, words) -> None:
+    from core.segment_info import surface_words
+
+    assert surface_words(row) == words

@@ -200,7 +200,7 @@ export function StressPageLink({ className }: { className?: string }): ReactElem
 
 /** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
 export const UNPAVED_LEGEND =
-  "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has.";
+  "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has. A short bridge is drawn like the trail it is on; tap it to read its own surface.";
 
 /**
  * The surface-unknown line's entry (OWNER-DECISIONS 376, A): the shape that says so, in words, and why.

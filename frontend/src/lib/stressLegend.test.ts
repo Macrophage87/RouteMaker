@@ -263,7 +263,7 @@ test("the Unpaved row draws the brown ramp light to dark, each on its casing wit
       });
     });
   }
-  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\.$/);
+  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\. A short bridge is drawn like the trail it is on; tap it to read its own surface\.$/);
   assert.doesNotMatch(UNPAVED_LEGEND, /path edges/, "plain words (the a11y review's N2)");
 });
 
