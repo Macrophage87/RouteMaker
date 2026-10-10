@@ -7,8 +7,9 @@ import { startDials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import {
   BEST_ORDER_LABEL,
+  STILL_FINDING_ORDER_SAID,
+  applyAnswer,
   bestOrderSaid,
-  bestOrderUnavailableHint,
   fitsOrder,
   reorderedPoints,
   requestStopOrder,
@@ -51,14 +52,6 @@ test("the stops that may move: those between the ends, or every one after a loop
   assert.equal(stopsThatMove([], true), 0);
 });
 
-test("with fewer than two stops there is a reason, said when pressed; with two there is none", () => {
-  assert.match(bestOrderUnavailableHint([S, A, E], false)!, /at least two stops between the start and the end/);
-  assert.match(bestOrderUnavailableHint([S, A], true)!, /at least two stops in the loop/);
-  assert.equal(bestOrderUnavailableHint([S, A, B, E], false), null);
-  assert.equal(bestOrderUnavailableHint([S, A, B], true), null);
-  assert.equal(bestOrderUnavailableHint([S], false), null, "no ride, no reason: there is no button");
-});
-
 test("an answer fits only when it keeps the start, the end unless it is a stop, and every point once", () => {
   assert.ok(fitsOrder([0, 2, 1, 3], [S, A, B, E], false));
   assert.ok(!fitsOrder([0, 2, 3, 1], [S, A, B, E], false), "the end moved");
@@ -75,7 +68,7 @@ test("the points are reordered as the answer says", () => {
   assert.deepEqual(reorderedPoints([S, A, B, E], [0, 2, 1, 3]), [S, B, A, E]);
 });
 
-test("a new order is said stop by stop, by name, with what it saves and how to undo it", () => {
+test("a new order says each stop that moved, by name, how many stayed, what it saves and how to undo it", () => {
   const said = bestOrderSaid(
     [S, A, B, C, E],
     answer({ order: [0, 2, 1, 3, 4], changed: true, before_s: 1500, after_s: 780, before_m: 6000, after_m: 4400 }),
@@ -84,8 +77,8 @@ test("a new order is said stop by stop, by name, with what it saves and how to u
   );
   assert.equal(
     said,
-    "Stops put in the best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1)," +
-      " Stop 3 stays the point at 38.9000, -77.0200. About 12 min less riding, 1.0 mi (1.6 km) shorter." +
+    "Stops put in the best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1)." +
+      " The other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter." +
       " Undo puts the old order back.",
   );
 });
@@ -94,6 +87,14 @@ test("a loop's last stop is said too, and named as a stop", () => {
   const said = bestOrderSaid([S, A, B], answer({ order: [0, 2, 1], changed: true, before_s: 900, after_s: 600 }), names, true);
   assert.match(said, /^Stops put in the best order: Stop 1 is now Eastern Market \(was Stop 2\), Stop 2 is now Union Market \(was Stop 1\)\./);
   assert.match(said, /About 5 min less riding\./);
+  assert.doesNotMatch(said, /stays? where/, "every stop moved");
+});
+
+test("a stop with no name is said by its coordinates, and several unmoved stops are counted", () => {
+  const D: LonLat = [-77.015, 38.9];
+  const said = bestOrderSaid([S, C, A, B, D, E], answer({ order: [0, 4, 2, 3, 1, 5], changed: true }), names, false);
+  assert.match(said, /Stop 1 is now the point at 38\.9000, -77\.0150 \(was Stop 4\), Stop 4 is now the point at 38\.9000, -77\.0200 \(was Stop 1\)\./);
+  assert.match(said, / The other 2 stops stay where they were\./);
 });
 
 test("an order already best says so; straight-line answers say what they are", () => {
@@ -135,6 +136,8 @@ test("the request is the route request's body, without a Mass Ride's loop or the
   assert.equal(sent[0].body.loop, true);
   await requestStopOrder([S, A, B, E], "mass-ride", { ...startDials("mass-ride"), loop: true }, fetchImpl);
   assert.equal(sent[1].body.loop, undefined);
+  for (const { body } of sent) assert.equal(body.system_weight_kg, undefined, "the weight is not sent");
+  assert.equal(sent[0].body.stress, dials.stress, "the dials are");
 });
 
 test("a refusal or a lost connection is a sentence to say", async () => {
@@ -150,15 +153,51 @@ test("a refusal or a lost connection is a sentence to say", async () => {
   assert.ok(!odd.ok);
 });
 
-test("the button is in the point tools, only with two or more stops, and busy while it works", () => {
+const asked = { points: [S, A, B, E] as readonly LonLat[], preset: "default" as const, dials, loop: false };
+const swapped = { ok: true as const, answer: answer({ order: [0, 2, 1, 3], changed: true, before_s: 900, after_s: 600 }) };
+
+test("an answer for the ride asked about is committed and said", () => {
+  const done = applyAnswer(asked, { points: asked.points, preset: "default", dials }, swapped, names);
+  assert.deepEqual(done.commit, [S, B, A, E]);
+  assert.match(done.say, /^Stops put in the best order: Stop 1 is now Eastern Market/);
+});
+
+test("an answer already best is said and not committed, so Undo gets no empty step", () => {
+  const done = applyAnswer(asked, { points: asked.points, preset: "default", dials }, { ok: true, answer: answer({}) }, names);
+  assert.equal(done.commit, undefined);
+  assert.equal(done.say, "The stops are already in the best order.");
+});
+
+test("an answer is not used when the points, ride type or dials changed meanwhile, or when it does not fit", () => {
+  const changed = /The ride changed while the best order was being found/;
+  assert.match(applyAnswer(asked, { points: [S, A, B, E], preset: "default", dials }, swapped, names).say, changed, "new points, same places");
+  assert.match(applyAnswer(asked, { points: asked.points, preset: "group-ride", dials }, swapped, names).say, changed);
+  assert.match(applyAnswer(asked, { points: asked.points, preset: "default", dials: { ...dials } }, swapped, names).say, changed);
+  for (const now of [
+    { points: [S, A, B, E], preset: "default" as const, dials },
+    { points: asked.points, preset: "group-ride" as const, dials },
+    { points: asked.points, preset: "default" as const, dials: { ...dials } },
+  ]) {
+    assert.equal(applyAnswer(asked, now, swapped, names).commit, undefined);
+  }
+  const bad = applyAnswer(asked, { points: asked.points, preset: "default", dials }, { ok: true, answer: answer({ order: [0, 2, 3, 1], changed: true }) }, names);
+  assert.equal(bad.commit, undefined);
+  assert.match(bad.say, /did not fit these points/);
+  const refused = applyAnswer(asked, { points: asked.points, preset: "default", dials }, { ok: false, message: "Best order not found. Busy." }, names);
+  assert.deepEqual(refused, { say: "Best order not found. Busy." });
+});
+
+test("the button is in the point tools, only with two or more stops, and says when it is still working", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.equal(BEST_ORDER_LABEL, "Best order");
+  assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
   assert.match(app, /const orderShown = stopsThatMove\(points, loopVias\) >= 2;/);
-  assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,200}aria-busy=\{ordering \? true : undefined\}/);
-  // The answer is used only for the ride it was asked about, and it is checked before use.
-  assert.match(app, /pointsRef\.current !== current/);
-  assert.match(app, /fitsOrder\(result\.answer\.order, current, loop\)/);
-  // One edit, so Undo takes it back, and the result is said.
-  assert.match(app, /commit\(reorderedPoints\(current, result\.answer\.order\)\)/);
-  assert.match(app, /announce\(bestOrderSaid\(current, result\.answer, namer, loop\)\)/);
+  assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,600}aria-disabled=\{ordering \? true : undefined\}\s*>\s*\{BEST_ORDER_LABEL\}/);
+  // A second press while one is being found is answered, not sent.
+  assert.match(app, /if \(orderingRef\.current\) \{\s*announce\(STILL_FINDING_ORDER_SAID\);\s*return;/);
+  // The answer goes through applyAnswer with the ride as asked and as it is now, and only a new order is committed.
+  assert.match(app, /applyAnswer\(\s*\{ points: current, preset: ride\.preset, dials: ride\.dials, loop \},\s*\{ points: pointsRef\.current, preset: now\.preset, dials: now\.dials \}/);
+  assert.match(app, /if \(applied\.commit\) commit\(applied\.commit\);\s*orderNotice\(applied\.say, pointsRef\.current\);/);
+  // When the button leaves with the focus on it, the focus goes to Reverse.
+  assert.match(app, /if \(orderShown \|\| !orderFocused\.current\) return;[\s\S]{0,200}reverseButton\.current\?\.focus\(\)/);
 });

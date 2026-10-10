@@ -39,6 +39,10 @@ BY_STRAIGHT_LINE = "straight_line"
 MATRIX_TIMEOUT_S = 20
 ORDER_BUDGET_S = 25
 
+# Past this much straight line (the route API's CONFIRM_SPAN_M, 93 mi or 150 km),
+# the order is by straight line and the router is not asked.
+LONG_SPAN_M = 150_000
+
 
 def free_stops(points: list, loop: bool) -> int:
     """How many of `points` the order may move: those between the start and the
@@ -48,9 +52,37 @@ def free_stops(points: list, loop: bool) -> int:
     return max(0, len(points) - 2)
 
 
+def _ask(variant: str, payload: dict, deadline) -> dict:
+    """One matrix call, with /route's handling of a twin graph (`routing.plan`): a
+    weekend or off-road router gets at most `routing.WEEKEND_TIMEOUT_S`, and one that
+    does not answer, or has no tiles (170/171), leaves the standard graph to answer
+    and is remembered as down. Raises RouterUnavailable or RouterRefused."""
+    if variant not in routing.TWIN_VARIANTS:
+        return routing._call(variant, "sources_to_targets", payload, deadline)
+    twin = routing.Deadline(deadline.at, min(deadline.per_call_s, routing.WEEKEND_TIMEOUT_S))
+    try:
+        answer = routing._call(variant, "sources_to_targets", payload, twin)
+    except routing.RouterUnavailable:
+        routing._mark_twin(variant, False)
+        return routing._call(
+            routing.Variant.STANDARD.value, "sources_to_targets", payload, deadline
+        )
+    except routing.RouterRefused as refusal:
+        if refusal.code not in routing.NO_EDGE_CODES:
+            raise
+        answer = routing._call(
+            routing.Variant.STANDARD.value, "sources_to_targets", payload, deadline
+        )
+        routing._mark_twin(variant, False)
+        return answer
+    routing._mark_twin(variant, True)
+    return answer
+
+
 def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list | None:
     """The riding times (seconds) and distances (metres) between every pair, or
-    None if the router would not give them."""
+    None if the router would not give them. Only the variant and the router's
+    error are logged, never the points."""
     locations = [{"lon": lon, "lat": lat} for lon, lat in request_points]
     payload = {
         "sources": locations,
@@ -60,7 +92,7 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
         "units": "kilometers",
     }
     try:
-        answer = routing._call(variant, "sources_to_targets", payload, deadline)
+        answer = _ask(variant, payload, deadline)
     except (routing.RouterUnavailable, routing.RouterRefused) as error:
         logger.warning("the %s router gave no riding-time matrix: %s", variant, error)
         return None
@@ -107,11 +139,14 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
     deadline = routing.Deadline(
         started + ORDER_BUDGET_S - routing.ANSWER_RESERVE_S, MATRIX_TIMEOUT_S
     )
+    # Whether the ride is a loop, and whether it already ends on its start, is read
+    # from the rider's own points, as the page reads it (`fitsOrder`); the router is
+    # asked about the points it would route, a Zoo point moved to the racks.
     moved, _ = routing.move_zoo_points(points)
-    loop = routing.loop_wanted(moved, dials.loop, preset_name)
-    request_points = routing.loop_points(moved, loop)
-    appended = len(request_points) > len(points)
-    if free_stops(moved, loop) < 2:
+    loop = routing.loop_wanted(points, dials.loop, preset_name)
+    appended = loop and not routing.is_round_trip(points)
+    request_points = [*moved, moved[0]] if appended else moved
+    if free_stops(points, loop) < 2:
         # Nothing to choose: the start and destination are fixed.
         return {
             "order": list(range(len(points))),
@@ -140,7 +175,11 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
         preset_name, stress, hills, assist=assist, avoid_gravel=bool(dials.avoid_gravel)
     )
 
-    matrix = _matrix(variant, request_points, costing, deadline)
+    # A long ride is ordered by straight line without asking the router: a matrix
+    # of 26 points over that span holds a router's workers well past the answer's
+    # time limit, and a long /route is limited to one at a time for that reason.
+    long_ride = routing.straight_span_m(request_points) > LONG_SPAN_M
+    matrix = None if long_ride else _matrix(variant, request_points, costing, deadline)
     if matrix is not None:
         times, metres = matrix
         chosen = stoporder.best_order(times)

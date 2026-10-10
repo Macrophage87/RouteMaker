@@ -33,10 +33,9 @@ import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts"
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   BEST_ORDER_LABEL,
-  bestOrderSaid,
-  bestOrderUnavailableHint,
-  fitsOrder,
-  reorderedPoints,
+  FINDING_ORDER_SAID,
+  STILL_FINDING_ORDER_SAID,
+  applyAnswer,
   requestStopOrder,
   stopsThatMove,
 } from "./lib/stopOrder.ts";
@@ -787,51 +786,66 @@ export function App() {
     commit(reversedPoints(current, loopVias));
     announce(reversedSaid(loopVias));
   };
-  // Best order (OWNER-DECISIONS 449): the stops in the order that rides least, as one
-  // edit Undo takes back. The answer is used only if the ride is still the one asked
-  // about; a press while one is being found does nothing more.
+  // Best order (OWNER-DECISIONS 449): the stops in the order with the least riding time, as
+  // one edit Undo takes back. The answer is used only for the ride it was asked about
+  // (stopOrder.applyAnswer). What came of it is the Points notice, a status, so it is seen
+  // and said once; it is cleared once the points change again.
   const [ordering, setOrdering] = useState(false);
   const orderingRef = useRef(false);
+  const orderNoticeFor = useRef<readonly LonLat[] | null>(null);
   // Shown only with two or more stops to order: on a ride of a start, an end and at
   // most one stop it could change nothing, and a standing reason would crowd every
   // short ride's tools (More tips says when it appears).
   const orderShown = stopsThatMove(points, loopVias) >= 2;
+  const reverseButton = useRef<HTMLButtonElement>(null);
+  const orderFocused = useRef(false);
+  // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
+  // had the focus, the focus goes to Reverse beside it rather than to the page's top.
+  useLayoutEffect(() => {
+    if (orderShown || !orderFocused.current) return;
+    orderFocused.current = false;
+    if (document.activeElement === null || document.activeElement === document.body) reverseButton.current?.focus();
+  }, [orderShown]);
+  useEffect(() => {
+    if (orderNoticeFor.current !== null && orderNoticeFor.current !== points) {
+      orderNoticeFor.current = null;
+      setNotice(null);
+    }
+  }, [points]);
+  const orderNotice = (text: string, after: readonly LonLat[]) => {
+    // Cleared and set again a moment later, as the location's notice is, so the same
+    // answer twice is said twice.
+    setNotice(null);
+    window.setTimeout(() => {
+      if (pointsRef.current !== after) return;
+      orderNoticeFor.current = after;
+      setNotice(text);
+    }, 150);
+  };
   const bestOrder = async () => {
+    if (orderingRef.current) {
+      announce(STILL_FINDING_ORDER_SAID);
+      return;
+    }
     const current = pointsRef.current;
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
-    const unavailable = bestOrderUnavailableHint(current, loop);
-    if (unavailable) {
-      announce(unavailable);
-      return;
-    }
-    if (orderingRef.current || current.length < 2) return;
-    setOrdering(true);
-    announce("Finding the best order for the stops.");
-    // No weight: the order does not use it, so it is not sent.
+    if (stopsThatMove(current, loop) < 2) return;
     orderingRef.current = true;
+    setOrdering(true);
+    announce(FINDING_ORDER_SAID);
     const result = await requestStopOrder(current, ride.preset, ride.dials);
     orderingRef.current = false;
     setOrdering(false);
     const now = rideRef.current;
-    if (
-      pointsRef.current !== current ||
-      now.preset !== ride.preset ||
-      loopStops(now.preset, now.dials.loop) !== loop
-    ) {
-      announce("The ride changed while the best order was being found. Press Best order again.");
-      return;
-    }
-    if (!result.ok) {
-      announce(result.message);
-      return;
-    }
-    if (!fitsOrder(result.answer.order, current, loop)) {
-      announce("Best order not found. The planner's answer did not fit these points; try again.");
-      return;
-    }
-    if (result.answer.changed) commit(reorderedPoints(current, result.answer.order));
-    announce(bestOrderSaid(current, result.answer, namer, loop));
+    const applied = applyAnswer(
+      { points: current, preset: ride.preset, dials: ride.dials, loop },
+      { points: pointsRef.current, preset: now.preset, dials: now.dials },
+      result,
+      namer,
+    );
+    if (applied.commit) commit(applied.commit);
+    orderNotice(applied.say, pointsRef.current);
   };
   const clearAll = () => {
     setConfirmedKm(null);
@@ -1143,13 +1157,14 @@ export function App() {
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
           zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
-      {/* The compact row: Reverse, Undo, Redo and Clear. */}
+      {/* The compact row: Reverse, Best order, Undo, Redo and Clear. */}
       <div className="actions point-tools">
         {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
             the Tab order with its reason as its description, as the loop toggle does
             (DialsPanel), and a press says the reason. */}
         <button
           type="button"
+          ref={reverseButton}
           onClick={reverse}
           disabled={points.length < 2}
           aria-disabled={reverseHint ? true : undefined}
@@ -1158,15 +1173,20 @@ export function App() {
           Reverse
         </button>
         {/* Best order (OWNER-DECISIONS 449), with two or more stops to order; aria-disabled
-            and busy while the order is found, so the focus stays on it. */}
+            while the order is found (the focus stays on it, a press says it is still working),
+            with the same label, so the row does not reflow under a finger. */}
         {orderShown && (
           <button
             type="button"
             onClick={() => void bestOrder()}
+            onFocus={() => (orderFocused.current = true)}
+            onBlur={(event) => {
+              // A blur from the button's own removal keeps the mark, so the effect above moves the focus.
+              if (event.currentTarget.isConnected) orderFocused.current = false;
+            }}
             aria-disabled={ordering ? true : undefined}
-            aria-busy={ordering ? true : undefined}
           >
-            {ordering ? "Finding best order…" : BEST_ORDER_LABEL}
+            {BEST_ORDER_LABEL}
           </button>
         )}
         {!narrow && (

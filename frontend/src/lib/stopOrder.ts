@@ -12,7 +12,7 @@ import { dialFields, type Dials } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import { coordinatesText } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
-import { isRoundTrip } from "./loop.ts";
+import { reverseKeepsStart } from "./loop.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
 
@@ -32,22 +32,15 @@ export interface StopOrder {
 
 export type StopOrderResult = { ok: true; answer: StopOrder } | { ok: false; message: string };
 
-/** Whether the last point is a stop that may move: in a loop the rider chose, unless the ride already ends on its start. */
-function lastMoves(points: readonly LonLat[], loop: boolean): boolean {
-  return loop && !isRoundTrip(points);
-}
+/**
+ * Whether the last point is a stop that may move: in a loop the rider chose, unless the ride
+ * already ends on its start. The same test as Reverse keeping the start (loop.ts).
+ */
+const lastMoves = reverseKeepsStart;
 
 /** How many points Best order may move: those between the start and the end, or every one after a loop's start. */
 export function stopsThatMove(points: readonly LonLat[], loop: boolean): number {
   return Math.max(0, points.length - (lastMoves(points, loop) ? 1 : 2));
-}
-
-/** Why Best order cannot help yet, when there is a ride but fewer than two stops to order; null otherwise. */
-export function bestOrderUnavailableHint(points: readonly LonLat[], loop: boolean): string | null {
-  if (points.length < 2 || stopsThatMove(points, loop) >= 2) return null;
-  return loop
-    ? "Best order needs at least two stops in the loop. Add another stop to use it."
-    : "Best order needs at least two stops between the start and the end. Add another stop to use it.";
 }
 
 /** Whether an answer fits these points: every point once, the start first, and the end last unless it is a stop. */
@@ -71,7 +64,7 @@ function looksLikeOrder(value: unknown): value is StopOrder {
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Ask the API for the best order. A Mass Ride has no loop, so its flag is not sent, as for a route. */
+/** Ask the API for the best order. A Mass Ride has no loop, so its flag is not sent, as for a route; nor is the weight. */
 export async function requestStopOrder(
   points: readonly LonLat[],
   preset: PresetId,
@@ -86,7 +79,9 @@ export async function requestStopOrder(
       body: JSON.stringify({
         points,
         preset,
-        ...dialFields(preset === "mass-ride" ? { ...dials, loop: false } : dials),
+        // The order does not use the weight, so it is not sent (OWNER-DECISIONS 264's privacy:
+        // the weight leaves the device only for the plan that uses it).
+        ...dialFields({ ...dials, systemWeightKg: undefined, ...(preset === "mass-ride" ? { loop: false } : {}) }),
       }),
     });
   } catch {
@@ -129,8 +124,8 @@ function savings(answer: StopOrder): string {
 const STRAIGHT_LINE_NOTE = " The router's riding times were not available, so this is by straight-line distance.";
 
 /**
- * What is said after Best order: each stop in its new place, by name, with the
- * number it had where that changed; what it saves; and that Undo puts it back.
+ * What is said after Best order: each stop that moved, in its new place, by name, with the
+ * number it had; how many stayed; what it saves; and that Undo puts it back.
  * `points` are the points as they were before the reorder.
  */
 export function bestOrderSaid(points: readonly LonLat[], answer: StopOrder, names: Names, loop: boolean): string {
@@ -138,12 +133,49 @@ export function bestOrderSaid(points: readonly LonLat[], answer: StopOrder, name
   if (!answer.changed) return `The stops are already in the best order.${note}`;
   const n = points.length;
   const last = lastMoves(points, loop) ? n : n - 1;
-  const stops: string[] = [];
+  const moved: string[] = [];
+  let stayed = 0;
   for (let at = 1; at < last; at++) {
     const was = answer.order[at];
-    const place = placeOf(points[was], names);
-    const now = pointName(at, n, loop);
-    stops.push(was === at ? `${now} stays ${place}` : `${now} is now ${place} (was ${pointName(was, n, loop)})`);
+    if (was === at) {
+      stayed += 1;
+      continue;
+    }
+    moved.push(`${pointName(at, n, loop)} is now ${placeOf(points[was], names)} (was ${pointName(was, n, loop)})`);
   }
-  return `Stops put in the best order: ${stops.join(", ")}.${savings(answer)}${note} Undo puts the old order back.`;
+  const rest = stayed === 0 ? "" : stayed === 1 ? " The other stop stays where it was." : ` The other ${stayed} stops stay where they were.`;
+  return `Stops put in the best order: ${moved.join(", ")}.${rest}${savings(answer)}${note} Undo puts the old order back.`;
 }
+
+/** The ride a press asked about, and the ride when the answer came. */
+export interface OrderAsked {
+  points: readonly LonLat[];
+  preset: PresetId;
+  dials: Dials;
+  loop: boolean;
+}
+
+/**
+ * What to do with an answer: the points to commit (a new order only), and what to say.
+ * It is used only for the ride it was asked about: the same points, ride type and dials
+ * (the costing it was chosen under), and only if it fits them.
+ */
+export function applyAnswer(
+  asked: OrderAsked,
+  now: { points: readonly LonLat[]; preset: PresetId; dials: Dials },
+  result: StopOrderResult,
+  names: Names,
+): { commit?: LonLat[]; say: string } {
+  if (now.points !== asked.points || now.preset !== asked.preset || now.dials !== asked.dials) {
+    return { say: "The ride changed while the best order was being found. Press Best order again." };
+  }
+  if (!result.ok) return { say: result.message };
+  if (!fitsOrder(result.answer.order, asked.points, asked.loop)) {
+    return { say: "Best order not found. The planner's answer did not fit these points; try again." };
+  }
+  const say = bestOrderSaid(asked.points, result.answer, names, asked.loop);
+  return result.answer.changed ? { commit: reorderedPoints(asked.points, result.answer.order), say } : { say };
+}
+
+export const FINDING_ORDER_SAID = "Finding the best order for the stops.";
+export const STILL_FINDING_ORDER_SAID = "Still finding the best order.";

@@ -82,6 +82,24 @@ class TestSolver:
         assert solver.total(cost, [0, 2, 1, 3]) == 995
         assert not solver.best_order(cost).changed
 
+    def test_the_local_search_never_moves_the_ends(self, monkeypatch) -> None:
+        # Asymmetric costs that make reversing a run through the destination cheap.
+        monkeypatch.setattr(solver, "EXACT_MAX_STOPS", 0)
+        rng = random.Random(4493)
+        for _ in range(20):
+            cost = random_matrix(rng, 10)
+            for i in range(9):
+                cost[i][9] = 1000.0  # reaching the destination is dear from anywhere
+                cost[9][i] = 0.1  # leaving it is cheap
+            order = solver.best_order(cost).order
+            assert order[0] == 0 and order[-1] == 9 and sorted(order) == list(range(10))
+
+    def test_a_saving_over_one_percent_is_taken(self) -> None:
+        # Own order costs 1000; 0-2-1-3 costs 980 (2% less).
+        cost = [[0, 300, 300, 0], [0, 0, 400, 300], [0, 380, 0, 300], [0, 0, 0, 0]]
+        chosen = solver.best_order(cost)
+        assert chosen.order == [0, 2, 1, 3] and (chosen.before, chosen.after) == (1000, 980)
+
     def test_a_leg_the_router_could_not_join_is_avoided(self) -> None:
         cost = [[0, 1, 5, 9], [1, 0, None, 1], [5, 1, 0, 1], [9, 1, 1, 0]]
         chosen = solver.best_order(cost)
@@ -123,6 +141,8 @@ class TestSolver:
             cost = [[math.dist(a, b) * rng.uniform(1, 1.3) for b in spots] for a in spots]
             chosen = solver.best_order(cost)
             assert not chosen.exact
+            assert chosen.order[0] == 0 and chosen.order[-1] == 7
+            assert sorted(chosen.order) == list(range(8))
             assert chosen.after <= chosen.before
             assert min(chosen.after, chosen.before) <= brute(cost) * 1.02
 
@@ -205,6 +225,94 @@ class TestEndpoint:
         )
         assert payload["sources"] == payload["targets"]
         assert payload["sources"] == [{"lon": lon, "lat": lat} for lon, lat in POINTS]
+
+    def test_lengths_are_read_in_the_direction_ridden(self, client, router) -> None:
+        times = along_the_line(POINTS)
+        km = [[float(10 * i + j) for j in range(5)] for i in range(5)]  # asymmetric
+        router(FakeRouter({"sources_to_targets": matrix_answer(times, km)}))
+        body = post(client, {"points": POINTS, "preset": "default"}).json()
+        assert body["order"] == [0, 2, 1, 3, 4]
+        # 0->2, 2->1, 1->3, 3->4 against 0->1, 1->2, 2->3, 3->4, in metres.
+        assert body["after_m"] == (2 + 21 + 13 + 34) * 1000
+        assert body["before_m"] == (1 + 12 + 23 + 34) * 1000
+
+    def test_the_matrix_is_on_the_graph_and_costing_the_route_would_use(
+        self, client, router, monkeypatch
+    ) -> None:
+        asked = []
+
+        def no_route(variant, request, deadline):
+            asked.append((variant, request["costing_options"]))
+            raise routing.RouterRefused(400, 442, "no path")
+
+        monkeypatch.setattr(routing, "_route", no_route)
+        fake = router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
+        for body in (
+            {"preset": "default", "stress": 90, "hills": 30, "when": "weekday_rush"},
+            {"preset": "cargo", "carrying": "people", "assist": True, "avoid_gravel": True},
+            {"preset": "gravel", "hills": -60},
+            {"preset": "mass-ride"},
+        ):
+            body = {"points": POINTS, **body}
+            assert (
+                client.post(
+                    "/api/route", data=json.dumps(body), content_type="application/json"
+                ).status_code
+                == 422
+            )
+            assert post(client, body).status_code == 200
+            variant, costing = asked[-1]
+            url, payload = fake.calls[-1]
+            assert url == f"{routing.settings.VALHALLA_UPSTREAMS[variant]}/sources_to_targets"
+            assert payload["costing_options"] == costing
+
+    def test_a_weekend_router_that_does_not_answer_leaves_it_to_the_standard_graph(
+        self, client, router, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: True)
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: False)
+        marked = []
+        monkeypatch.setattr(routing, "_mark_twin", lambda variant, ok: marked.append((variant, ok)))
+        matrix = matrix_answer(along_the_line(POINTS))
+        fake = router(
+            FakeRouter({"sources_to_targets": [routing.RouterUnavailable("hung"), matrix]})
+        )
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "riding_time" and body["order"] == [0, 2, 1, 3, 4]
+        urls = [url for url, _ in fake.calls]
+        assert urls[0].startswith(routing.settings.VALHALLA_UPSTREAMS["weekend"])
+        assert urls[1].startswith(routing.settings.VALHALLA_UPSTREAMS["standard"])
+        assert marked == [("weekend", False)]
+
+    def test_a_weekend_router_with_no_tiles_leaves_it_to_the_standard_graph(
+        self, client, router, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: True)
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: False)
+        marked = []
+        monkeypatch.setattr(routing, "_mark_twin", lambda variant, ok: marked.append((variant, ok)))
+        matrix = matrix_answer(along_the_line(POINTS))
+        refusal = routing.RouterRefused(400, 171, "no suitable edges")
+        router(FakeRouter({"sources_to_targets": [refusal, matrix]}))
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "riding_time"
+        assert marked == [("weekend", False)]
+
+    def test_a_long_ride_is_ordered_by_straight_line_without_the_router(self, client, router):
+        # About 99 mi (159 km) of straight line, past the long-ride line and under the cap.
+        far = [[-77.05, 38.90], [-76.60, 39.30], [-77.00, 38.95], [-76.62, 39.28]]
+        fake = router(FakeRouter({}))
+        response = post(client, {"points": far, "preset": "default", "confirm_long": True})
+        assert response.status_code == 200
+        assert response.json()["by"] == "straight_line"
+        assert fake.calls == []
+
+    def test_a_loop_whose_way_back_is_too_long_is_refused(self, client, router) -> None:
+        router(FakeRouter({}))
+        far = [[-77.40, 38.75], [-76.50, 39.40], [-76.55, 39.35]]
+        response = post(client, {"points": far, "preset": "default", "loop": True})
+        assert response.status_code == 400
+        assert "too long" in response.json()["error"]
 
     def test_an_order_already_best_is_unchanged(self, client, router) -> None:
         ordered = [POINTS[0], POINTS[2], POINTS[1], POINTS[3], POINTS[4]]
@@ -297,6 +405,12 @@ class TestEndpoint:
         response = post(client, {"points": POINTS, "preset": "default"})
         assert response.status_code == 503
         assert response["Retry-After"]
+
+
+def test_the_long_ride_line_is_the_route_apis() -> None:
+    from core import api
+
+    assert stoporder.LONG_SPAN_M == api.CONFIRM_SPAN_M
 
 
 def test_free_stops_counts_the_points_that_may_move() -> None:

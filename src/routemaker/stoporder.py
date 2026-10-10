@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -45,6 +46,11 @@ MIN_SAVING_FRACTION = 0.01
 # The local search's moves are each O(k^2) evaluations of an O(k) total; this
 # bounds the improvement rounds so a pathological matrix cannot spin.
 MAX_ROUNDS = 200
+
+# The local search stops starting again from a new order after this long
+# (seconds), keeping the best found: typical 23-stop problems take under a
+# second in all, and this bounds a slow host's worst case.
+SEARCH_BUDGET_S = 3.0
 
 
 @dataclass(frozen=True)
@@ -194,7 +200,13 @@ def best_order(cost: Sequence[Sequence[float | None]]) -> Ordered:
             middle = own[1:-1]
             shuffler.shuffle(middle)
             starts.append([0, *middle, n - 1])
-        chosen = min((_improve(cost, start) for start in starts), key=lambda o: total(cost, o))
+        ends_at = time.monotonic() + SEARCH_BUDGET_S
+        found = []
+        for start in starts:
+            found.append(_improve(cost, start))
+            if time.monotonic() > ends_at:
+                break
+        chosen = min(found, key=lambda o: total(cost, o))
     after = total(cost, chosen)
     if after == math.inf or not _worth_it(before, after):
         return Ordered(own, before, before, exact=exact)

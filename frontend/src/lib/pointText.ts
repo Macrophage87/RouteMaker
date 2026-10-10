@@ -142,7 +142,7 @@ export function editingTips(accessMode = false): string {
     " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
     ` move the map with the arrow keys and ${mapToolsWays(accessMode).addPoint}; Ctrl+Z undoes the` +
     " last change and Ctrl+Shift+Z redoes it. With two or more stops, Best order puts them in the" +
-    " order that rides least."
+    " order with the least riding time."
   );
 }
 

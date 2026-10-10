@@ -1388,7 +1388,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
     to put the points in. The start stays first and the destination last (in a loop
     the rider chose, every point after the start may move). Nothing is planned: the
     page reorders its points and asks for the route as usual. `confirm_long` and
-    `target_distance_m` are accepted and play no part."""
+    `target_distance_m` are accepted and play no part: past 93 mi (150 km) of straight
+    line the order is by straight line, and the router is not asked."""
+    # A loop is as long as its way back too, as for /route.
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:
+        return Status(400, {"error": too_long()})
     dials = routing.Dials(
         stress=body.stress,
         hills=body.hills,
