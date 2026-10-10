@@ -420,6 +420,16 @@ Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
 every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
+router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
+7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
+search's measurements) and reads each (a trace and its `/locate`s): up to about 30
+calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (5 s)
+before the search's own 14 s, so a round is always left, and a plan whose hills
+slider already asked for them reuses them. Not yet measured from the live router:
+after the deploy that carries it, compare plan times at 100 with the figures below,
+and count the answers whose `calm_search.alternates.limited` is `time` (the log says
+"did not answer the calm search's ask for alternatives").
 Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
 re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
 2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the

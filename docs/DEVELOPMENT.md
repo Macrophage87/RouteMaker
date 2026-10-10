@@ -2018,19 +2018,35 @@ LTS 4 hold, junctions read, within the ceiling). The rounds then start from
 whichever ranks first, so their exclusions are that route's busy stretches; the
 Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
 of the slider every alternative that passes the guards also joins the routes the
-rider is offered (`candidates`). `calm_search.alternates` says how many the router
-gave (`given`, the first route again not counted), how many passed the guards
-(`ranked`) and whether one was taken (`taken`); it is absent where none were asked
-for: a plan with stops or a loop (Valhalla gives alternatives between two
-locations only), a long calm plan's legs (each has only its share of the time,
-and alternatives roughly double a long leg's route; "Time, alternates and
-limits" below), or too little time left for a round. The ask is one more `/route`
-(with alternatives: on the live router a warm 12 km route went from 0.2 s to 1 to
-2 s with them, the climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
-alternative, inside the search's own budget. Not measured on the live router from
-this branch (it was built where the router cannot be reached); the detour
-acceptance rule decision 435 asks to revisit is a proposal to the owner and is
-unchanged here.
+rider is offered (`candidates`).
+
+Where the plan already asked for them with the same request (the hills slider's
+avoid half, `Context.router_trips`) those are ranked and none is asked again, and
+where that ask timed out none is asked at all; a route the target fitting
+(`_fit_target`, `_past_target`) asked for again with another costing gets the
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (5 s,
+a round's least) before the search's own end, so at least one round is always
+left (the rounds were the whole calm search before 435), and the ask is not
+started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
+router's ask is held to its own `WEEKEND_TIMEOUT_S`.
+
+`calm_search.alternates` (`api.AlternatesOut`) says how many routes the router gave
+other than the one the search starts from (`given`: where the hills slider chose
+one of the router's alternatives, the router's first route is one of them), how
+many passed the guards (`ranked`), whether one was taken (`taken`), and `limited`,
+`time` where the ask or a reading ran out of its time (the search's own `limited`
+is unaffected: its rounds still run). It is null where none were asked for: a plan
+with stops or a loop (Valhalla gives alternatives between two locations only), a
+long calm plan's legs (each has only its share of the time, and alternatives
+roughly double a long leg's route; "Time, alternates and limits" below), or too
+little time left. The ask is one more `/route` (with alternatives: on the live
+router a warm 7.5 mi [12 km] route went from 0.2 s to 1 to 2 s with them, the
+climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative. Not measured on the live router from this branch (it was built where
+the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
+run after deploy). The detour acceptance rule decision 435 asks to revisit is
+unchanged here, pending the owner's answer to the proposal sent with this change
+(PLAN.md, 435, records it).
 
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a

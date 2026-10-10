@@ -286,6 +286,11 @@ class Context:
     # ranks them with the rest (OWNER-DECISIONS 435, `_router_alternates`): set by the
     # plan wherever the calm search runs (above the old top of the slider).
     rank_alternates: bool = False
+    # The router's routes for this very request where the plan already asked for its
+    # alternatives (the hills slider's avoid half), its first route first, which the
+    # search ranks instead of asking again; an empty list where that ask timed out (so
+    # none is asked again); None: none asked yet.
+    router_trips: list | None = None
     # Where the search keeps every candidate it read that the hold and the guards
     # allow, as (trip, reading), for a long plan to choose among across its legs
     # (`refine_long`); None: not kept.
@@ -796,50 +801,77 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
 # rounds then start from whichever ranks first. Valhalla gives alternatives only
 # between two locations, and `max_alternates` is 3 (valhalla/valhalla-*.json).
 ROUTER_ALTERNATES = 3
+# The ask and its readings stop this long before the search's own end, so that at
+# least one exclusion round is always left the time to run (the rounds were the
+# whole calm search before 435); and the ask is not started with less than
+# ALTERNATES_MIN_S left before that.
+ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S
+ALTERNATES_MIN_S = 1.0
 
 
 def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     """The best of the router's first route and its alternatives, read and ranked as
-    every other candidate (see ROUTER_ALTERNATES), and its trip. `info["alternates"]`
-    says how many the router gave, how many could be read and ranked, and whether one
-    was taken; it is absent where they were not asked for (`Context.rank_alternates`
-    off, a plan with stops or a loop, or no time for it)."""
+    every other candidate (see ROUTER_ALTERNATES), and its trip. The plan's own
+    alternatives are used where it already asked for them with this request
+    (`Context.router_trips`), and none are asked for again where that ask timed out.
+    `info["alternates"]` says how many routes other than this one the router gave,
+    how many could be read and passed the guards, whether one was taken, and
+    `limited` (`time`: the ask or a reading ran out of its time; null otherwise); it
+    is absent where they were not asked for (`Context.rank_alternates` off, a plan
+    with stops or a loop, or no time for it)."""
     locations = ctx.request.get("locations") or []
-    if not ctx.rank_alternates or len(locations) != 2 or ctx.loop_overlap is not None:
+    if not ctx.rank_alternates or len(locations) != 2:
         return best, trip
-    if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+    alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
+    given = ctx.router_trips
+    if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
         return best, trip
-    request = {k: v for k, v in ctx.request.items() if k != "exclude_locations"}
-    request["alternates"] = ROUTER_ALTERNATES
-    found = {"given": 0, "ranked": 0, "taken": False}
+    found = {"given": 0, "ranked": 0, "taken": False, "limited": None}
     info["alternates"] = found
-    round_deadline = routing.Deadline(
-        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-    )
-    try:
-        answer = routing._call(ctx.variant, "route", request, round_deadline)
-    except routing.RouterRefused:
-        return best, trip
-    except (routing.DeadlineExceeded, routing.RouterUnavailable):
-        info["limited"] = "time"
-        return best, trip
+    if given == []:
+        # The plan's own ask for them timed out (`routing._route`): not asked again.
+        found["limited"] = "time"
+    if given is None:
+        request = {k: v for k, v in ctx.request.items() if k != "exclude_locations"}
+        request["alternates"] = ROUTER_ALTERNATES
+        limit = min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        if ctx.variant in routing.TWIN_VARIANTS:
+            limit = min(limit, routing.WEEKEND_TIMEOUT_S)
+        started = routing.clock()
+        try:
+            answer = routing._call(ctx.variant, "route", request, routing.Deadline(alt_stop, limit))
+        except routing.RouterRefused:
+            return best, trip
+        except (routing.DeadlineExceeded, routing.RouterUnavailable) as error:
+            logger.warning(
+                "the %s router did not answer the calm search's ask for alternatives in"
+                " %.1f s (%s); searching without them",
+                ctx.variant,
+                routing.clock() - started,
+                type(error).__name__,
+            )
+            found["limited"] = "time"
+            return best, trip
+        given = [answer.get("trip") or {}] + [
+            (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
+        ]
     own = tuple(leg.get("shape", "") for leg in trip.get("legs") or [])
-    given = [answer.get("trip") or {}] + [
-        (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
-    ]
     best_trip = trip
     for candidate in given:
         legs = candidate.get("legs") or []
-        # The first route again (the same request less its alternatives) is not new.
+        # The route the search starts from is not an alternative to itself.
         if not legs or tuple(leg.get("shape", "") for leg in legs) == own:
             continue
         found["given"] += 1
         if too_long(_trip_m(candidate), ctx):
             continue
+        if alt_stop - routing.clock() <= 0:
+            found["limited"] = "time"
+            break
         try:
-            read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+            read = analyse(candidate, ctx, routing.Deadline(alt_stop, ctx.deadline.per_call_s))
         except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = "time"
+            found["limited"] = "time"
             break
         # The guards every candidate meets: not busier than the router's first route
         # (Traffic wins), the LTS 4 hold, and junctions that could be read.

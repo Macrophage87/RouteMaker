@@ -607,6 +607,38 @@ class TestStressBreakdown:
 
 
 @db
+class TestTheRoutersOwnAlternatives:
+    """OWNER-DECISIONS 435: the calm search ranks the router's own alternatives."""
+
+    def test_the_answer_says_what_the_search_did_with_them(self, client, segments, router) -> None:
+        router(standard_router())
+        body = post(client, {**good_body("default"), "stress": 90}).json()
+        # The fake gives the first route again, which is no alternative.
+        assert body["calm_search"]["alternates"] == {
+            "given": 0,
+            "ranked": 0,
+            "taken": False,
+            "limited": None,
+        }
+
+    def test_none_without_a_calm_search(self, client, segments, router) -> None:
+        fake = router(standard_router())
+        body = post(client, good_body("default")).json()
+        assert (body.get("calm_search") or {}).get("alternates") is None
+        assert all("alternates" not in p for _u, p in fake.calls)
+
+    def test_the_plans_own_alternatives_are_not_asked_for_twice(
+        self, client, segments, router
+    ) -> None:
+        """The hills slider's avoid half already asked for them with the same request."""
+        fake = router(standard_router())
+        body = post(client, {**good_body("group-ride"), "stress": 90}).json()
+        asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
+        assert len(asks) == 1
+        assert body["calm_search"]["alternates"]["limited"] is None
+
+
+@db
 class TestWhatIsSentToTheRouter:
     @pytest.mark.parametrize("name", sorted(presets.PRESETS))
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:

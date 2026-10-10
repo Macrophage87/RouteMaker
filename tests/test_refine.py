@@ -842,7 +842,7 @@ class TestRouterAlternates:
         assert "exclude_locations" not in ask
         assert world.requests[0] is ask, "before the exclusion rounds"
         # The router's first route again is not an alternative.
-        assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False}
+        assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": None}
 
     def test_a_calmer_alternative_is_taken_and_the_rounds_start_from_it(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY, cost_s=4000.0)
@@ -856,7 +856,7 @@ class TestRouterAlternates:
         )
         kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
         assert kept["legs"][0]["shape"] == "a"
-        assert info["alternates"] == {"given": 1, "ranked": 1, "taken": True}
+        assert info["alternates"] == {"given": 1, "ranked": 1, "taken": True, "limited": None}
         # The first round excludes the alternative's busy stretch, not the first route's.
         lons = [lon for lon, _lat in world.excluded(1)]
         assert lons and all(lon >= BASE[0] + 200 * 100 * 1e-5 - 1e-9 for lon in lons)
@@ -895,7 +895,7 @@ class TestRouterAlternates:
         )
         kept, info = refine.refine(trip_of("o", 4.0), self.ctx(rate=0.585))
         assert kept["legs"][0]["shape"] == "o"
-        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False}
+        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False, "limited": None}
 
     def test_one_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY)
@@ -918,7 +918,7 @@ class TestRouterAlternates:
             [trip_of("o", 4.0), trip_of("far", 9.0)],
         )
         _kept, info = refine.refine(trip_of("o", 4.0), self.ctx(maxcalm=True, ceiling_m=6000.0))
-        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False}
+        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False, "limited": None}
         assert self.asks(world)
 
     def test_at_the_top_they_join_the_routes_offered(self, monkeypatch) -> None:
@@ -963,16 +963,136 @@ class TestRouterAlternates:
         assert kept["legs"][0]["shape"] == "c" and info["rounds"] >= 1
         assert info["alternates"]["given"] == 0
 
-    def test_a_router_that_stops_answering_says_time(self, monkeypatch) -> None:
-        orig = analysis("o", self.BUSY)
+    def test_an_ask_that_fails_says_so_and_the_rounds_still_run(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        calm = analysis("c", "1" * 50, cost_s=4100.0, shift=200)
         AlternatesWorld(
             monkeypatch,
-            {"o": orig},
-            [routing.RouterUnavailable("down")] * 3,
+            {"o": orig, "c": calm},
+            [trip_of("c", 5.0)] * 3,
             routing.RouterUnavailable("down"),
         )
         kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
-        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "time"
+        assert info["alternates"]["limited"] == "time"
+        # The search itself was not cut short: its rounds ran and found the calm route.
+        assert kept["legs"][0]["shape"] == "c" and info["limited"] is None
+
+    def test_a_round_is_always_left_the_time_to_run(self, monkeypatch) -> None:
+        """The ask and its readings end ALTERNATES_ROUND_RESERVE_S before the search's
+        own end (operations and correctness reviews: an 18 s ask could take the whole
+        14 s budget, leaving no round)."""
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [trip_of("o", 4.0)]
+        )
+        deadlines = []
+        call = world.call
+
+        def spy(variant, endpoint, payload, deadline):
+            deadlines.append(("alternates" in payload, deadline))
+            return call(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", spy)
+        now = routing.clock()
+        refine.refine(trip_of("o", 4.0), self.ctx())
+        (ask,) = [d for alt, d in deadlines if alt]
+        (first_round,) = [d for alt, d in deadlines if not alt][:1]
+        assert refine.ALTERNATES_ROUND_RESERVE_S == refine.REFINE_ROUND_MIN_S
+        assert first_round.at - ask.at == pytest.approx(refine.ALTERNATES_ROUND_RESERVE_S)
+        assert ask.at <= now + refine.REFINE_BUDGET_S - refine.REFINE_ROUND_MIN_S + 0.5
+
+    def test_not_asked_when_only_a_round_is_left(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")], [])
+        ctx = self.ctx()
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + refine.ALTERNATES_MIN_S / 2
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == [] and "alternates" not in info
+
+    def test_no_reading_is_started_past_the_reserve(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        alt = analysis("a", "1" * 40, cost_s=100.0, shift=200)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "a": alt},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("a", 4.0)],
+        )
+        ctx = self.ctx()
+        clock = routing.clock
+
+        # The ask itself takes all the time the reserve leaves.
+        def late():
+            return clock() + (refine.REFINE_BUDGET_S if late.asked else 0.0)
+
+        late.asked = False
+        real = refine.routing._call
+
+        def call(variant, endpoint, payload, deadline):
+            if "alternates" in payload:
+                late.asked = True
+            return real(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", call)
+        monkeypatch.setattr(routing, "clock", late)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False, "limited": "time"}
+
+    def test_the_weekend_router_keeps_its_own_limit(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [trip_of("o", 4.0)]
+        )
+        seen = []
+        call = world.call
+
+        def spy(variant, endpoint, payload, deadline):
+            if "alternates" in payload:
+                seen.append(deadline.per_call_s)
+            return call(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", spy)
+        ctx = self.ctx()
+        ctx.variant = next(iter(routing.TWIN_VARIANTS))
+        refine.refine(trip_of("o", 4.0), ctx)
+        assert seen == [min(routing.WEEKEND_TIMEOUT_S, routing.ALTERNATES_TIMEOUT_S)]
+        assert routing.WEEKEND_TIMEOUT_S < routing.ALTERNATES_TIMEOUT_S
+
+    def test_the_plans_own_alternatives_are_ranked_not_asked_again(self, monkeypatch) -> None:
+        """Where the plan already asked for them (the hills slider's avoid half), the
+        search ranks those (operations review: the same search twice)."""
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        alt = analysis("a", "1" * 40, cost_s=4100.0, shift=200)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig, "a": alt}, [routing.RouterRefused(400, 442, "")] * 2, []
+        )
+        ctx = self.ctx()
+        ctx.router_trips = [trip_of("o", 4.0), trip_of("a", 4.0)]
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == []
+        assert kept["legs"][0]["shape"] == "a"
+        assert info["alternates"] == {"given": 1, "ranked": 1, "taken": True, "limited": None}
+
+    def test_the_router_first_route_counts_where_the_plan_chose_another(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        chosen = analysis("h", self.BUSY, cost_s=4000.0, shift=100)
+        World(monkeypatch, {"o": orig, "h": chosen}, [routing.RouterRefused(400, 442, "")] * 2)
+        ctx = self.ctx()
+        ctx.router_trips = [trip_of("o", 4.0), trip_of("h", 4.0)]
+        _kept, info = refine.refine(trip_of("h", 4.0), ctx)
+        assert info["alternates"]["given"] == 1 and info["alternates"]["ranked"] == 1
+
+    def test_none_is_asked_again_where_the_plans_ask_timed_out(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, []
+        )
+        ctx = self.ctx()
+        ctx.router_trips = []
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == []
+        assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False, "limited": "time"}
 
 
 class SeekWorld(World):
