@@ -2774,6 +2774,33 @@ class TestTheHoldInTheSeek(TestTrailSeek):
         assert shape == "t" and info["seek"]["tried"][0]["outcome"] == "taken"
 
 
+class TestTheWorthBelowTheTop(TestSeekLegByLeg):
+    """OWNER-DECISIONS 435, "One rule": below the top a plan with stops' spliced trip
+    must be worth its extra miles too, at the slider's ratio (3 at rate 5)."""
+
+    def run(self, monkeypatch, length_m: float):
+        ctx = self.leg_context()
+        ctx.rate = 5.0
+        spliced = analysis("t1+t2", "1" * 80, cost_s=6000.0)
+        spliced.via_m = [4000.0]
+        spliced.length_m = length_m
+        analyses = {"t1": self.calm(1), "t2": self.calm(2), "t1+t2": spliced}
+        analyses["t1+o2"] = whole_of(leg_orig(1), leg_orig(2))
+        routes = [one_leg("t1", 9.0, 3000.0), one_leg("t2", 9.0, 3000.0)]
+        return self.plan(monkeypatch, analyses, routes, ctx=ctx)
+
+    def test_a_spliced_trip_not_worth_its_miles_is_refused(self, monkeypatch) -> None:
+        # 2,000 m of LTS 3 saved buys up to 6 km more at ratio 3: 8 km plus 7 is too far.
+        _w, kept, info = self.run(monkeypatch, 15_000.0)
+        assert info["seek"]["whole_trip"] == "not_worth" and info["seek"]["taken"] is False
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
+
+    def test_one_that_is_worth_them_is_taken(self, monkeypatch) -> None:
+        _w, kept, info = self.run(monkeypatch, 13_000.0)
+        assert info["seek"]["whole_trip"] == "taken"
+        assert [leg["shape"] for leg in kept["legs"]] == ["t1", "t2"]
+
+
 class TestTheHoldLegByLeg(TestSeekLegByLeg):
     def plan(self, monkeypatch, analyses, routes, legs=2, ctx=None):
         ctx = ctx or self.leg_context(legs)
@@ -2852,7 +2879,7 @@ class TestTheWorthLegByLeg(TestSeekLegByLeg):
         assert info["seek"]["whole_trip"] == "taken"
         assert [leg["shape"] for leg in kept["legs"]] == ["t1", "t2"]
 
-    def test_under_the_target_the_miles_are_free(self, monkeypatch) -> None:
+    def test_under_the_target_the_miles_cost_a_tenth(self, monkeypatch) -> None:
         ctx = self.leg_context()
         ctx.target_m = 30_000.0
         _w, kept, info = self.run(monkeypatch, 25_000.0, ctx)

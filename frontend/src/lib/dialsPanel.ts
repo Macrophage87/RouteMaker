@@ -37,6 +37,7 @@ import {
   stressWords,
   warnsTrafficTolerant,
   type Dials,
+  worthRatio,
 } from "./dials.ts";
 
 export interface SliderView {
@@ -164,10 +165,11 @@ export function targetView(dials: Dials): TargetView {
   };
 }
 
-/** The target's "How this works" (OWNER-DECISIONS 258-262, 267, 271, 287(2), 287(3)). */
+/** The target's "How this works" (OWNER-DECISIONS 258-262, 267, 271, 287(2), 287(3), 435). */
 export const TARGET_HOW =
   "The route is as calm as it can be: the fewest heavy-traffic roads and very high stress junctions first, then busy roads " +
-  "and higher stress junctions, then distance. It goes past your target only where the extra miles avoid enough busy road, " +
+  "and higher stress junctions, then distance. Up to your target, each extra mile must still avoid a tenth of a mile of busy road. " +
+  "It goes past your target only where the extra miles avoid enough busy road, " +
   `and never past ${TARGET_CEILING_RATIO} times it. If the calmest route is longer than your target, it is still the one ` +
   "chosen, and the route summary says how far over your target it is.";
 
@@ -179,8 +181,10 @@ export const MASS_RIDE_TRAFFIC_NOTE =
  * for calmer, longer routes, and says so before it plans one.
  */
 export function calmNote(stress: number, _preset?: PresetId): string | undefined {
-  const rate = calmRate(stress);
-  if (rate <= 0) return undefined;
+  // What the score's rate accepts, capped by the worth bar every longer route must meet
+  // (OWNER-DECISIONS 435, "One rule": `worthRatio`).
+  const rate = Math.min(calmRate(stress), worthRatio(stress));
+  if (calmRate(stress) <= 0) return undefined;
   // The top (OWNER-DECISIONS 256, 257, 271): no rate; the least stressful route towards
   // the target distance, within its ceiling (1.25 times the target, or 1.6 times the
   // usual route with none). The order it weighs things in is CALM_HOW, under "How

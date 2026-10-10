@@ -93,6 +93,14 @@ export function calmRate(stress: number): number {
   return Math.round((CALM_RATE_MAX * Math.expm1(CALM_CURVE * t)) / Math.expm1(CALM_CURVE) * 1000) / 1000;
 }
 
+/** The most metres a calm detour may add for each metre of LTS 3 it avoids below the top
+ * (OWNER-DECISIONS 435, the owner's "One rule"): 1 + 4 x the calm rate over its top, as
+ * `core.refine.worth_ratio`; 5 at the top. */
+export const WORTH_DEFAULT = 5;
+export function worthRatio(stress: number): number {
+  return 1 + ((WORTH_DEFAULT - 1) * calmRate(stress)) / CALM_RATE_MAX;
+}
+
 export const STARTS: Record<PresetId, Start> = {
   default: { stress: 70, hills: 0, seek: true },
   trailmaxxing: { stress: 100, hills: 0, seek: true },

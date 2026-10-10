@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import bisect
 import dataclasses
+import http.client
 import itertools
 import json
 import logging
@@ -74,7 +75,7 @@ from django.utils import timezone
 
 from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -156,7 +157,8 @@ class RouterUnavailable(Exception):
 
 
 class RouterRefused(Exception):
-    """The router answered 4xx; `code` is Valhalla's error_code if it gave one."""
+    """The router answered 4xx, or 500 with one of its catch-all codes;
+    `code` is Valhalla's error_code if it gave one."""
 
     def __init__(self, status: int, code: int | None, message: str) -> None:
         super().__init__(message)
@@ -184,6 +186,10 @@ class DeadlineExceeded(Exception):
     """The request's time budget ran out before the router had answered."""
 
 
+# Valhalla's catch-all error codes, one per service stage (src/exceptions.cc).
+UNKNOWN_ERROR_CODES = frozenset({199, 299, 499})
+
+
 def _transport(url: str, payload: dict, timeout: float) -> dict:
     """POST JSON, return JSON. The one place this module touches the network."""
     request = urllib.request.Request(
@@ -196,11 +202,22 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
-        if 400 <= error.code < 500:
-            try:
-                body = json.loads(error.read() or b"{}")
-            except ValueError:
-                body = {}
+        try:
+            body = json.loads(error.read() or b"{}")
+        except (OSError, http.client.HTTPException, ValueError):
+            # Unreadable, cut off or not JSON: the status alone decides.
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        # From 3.6.0 Valhalla answers its catch-all "Unknown" errors (199, 299,
+        # 499: an exception it did not classify while serving this request) with
+        # 500 rather than 400 (valhalla/valhalla#5359). That is still one
+        # request the router could not serve, not a router that is down, so it
+        # is a refusal as it was under 3.5.1: read as an outage it would mark a
+        # weekend or off-road router down for every rider over one bad request.
+        if 400 <= error.code < 500 or (
+            error.code == 500 and body.get("error_code") in UNKNOWN_ERROR_CODES
+        ):
             raise RouterRefused(
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error
@@ -1472,6 +1489,8 @@ def route_profile(
     flow_stretches: list[tuple] | Callable[[], list[tuple]] | None = None,
     majors: list | None = None,
     majors_complete: bool = True,
+    calm_pricing: calm.Pricing | Callable[[], calm.Pricing] | None = None,
+    events: list | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
     router's per-leg samples (`ELEVATION_INTERVAL_M`): where each sample is along the
@@ -1492,6 +1511,13 @@ def route_profile(
     The Avoid and untraced ranges are the stretches' own (`_stretch_ranges`), and on a
     Mass Ride the riders are read at the stretch boundaries and along legs without
     heights too (`_flow_samples`).
+
+    Off a Mass Ride (`calm_pricing` given) it also has the rolling stress score
+    (`routemaker.calm`, OWNER-DECISIONS 460.12, 461d, 461e): calm miles per mile over the
+    mile around each sample, from the sections (`spans`) and the junction `events` (None:
+    not read, so not counted, and the answer says so); the highest window's sample is kept
+    when a long route is thinned. `calm_pricing` may be a function that makes it. A
+    failure there costs only the score, sent as `calm: null`.
 
     The climbs (`climbs.runs`) are found once, and every figure is worked out on every
     sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
@@ -1546,6 +1572,16 @@ def route_profile(
             rows.append(row)
         heights = [h for _m, h in samples]
         keep = profile_rules.thin(heights, grade_at, riders)
+        pricing = None
+        if calm_pricing is not None:
+            try:
+                pricing = calm_pricing() if callable(calm_pricing) else calm_pricing
+                peak = calm.peak_index(spans, events, pricing, sample_m)
+                if peak is not None and peak not in keep:
+                    keep = sorted([*keep, peak])
+            except Exception:  # noqa: BLE001 - the chart is drawn without the score
+                logger.warning("the rolling stress score could not be built", exc_info=True)
+                pricing = None
         body: dict = {
             "interval_m": ELEVATION_INTERVAL_M,
             "m": [round(sample_m[i]) for i in keep],
@@ -1561,7 +1597,13 @@ def route_profile(
             "unchecked": None,
             "outside_dc": None,
             "crossings_complete": None,
+            "calm": None,
         }
+        if pricing is not None:
+            try:
+                body["calm"] = calm.score(spans, events, pricing, [sample_m[i] for i in keep])
+            except Exception:  # noqa: BLE001 - the chart is drawn without the score
+                logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
             body["riders_per_min"] = [_int_or_none(riders[i]) for i in keep]
             known = [(round(r), m) for m, r in zip(sample_m, riders, strict=True) if r is not None]
@@ -2431,6 +2473,19 @@ def plan(
             (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
             majors if mass_ride else None,
             majors_complete,
+            None
+            if mass_ride
+            else lambda: calm.Pricing(
+                use_roads=presets.use_roads_for(stress_dial),
+                rate=presets.calm_rate_for(stress_dial),
+                weights=(exposure.lts3, exposure.lts4, exposure.avoid),
+                maxcalm=maxcalm,
+                target=target_m is not None,
+                no_trail=variant == Variant.NO_TRAIL.value,
+                quiet_cost_s=refine_context.quiet_cost,
+                junction_weight=refine.intersection_weight(stress_dial),
+            ),
+            events,
         )
         profile_s = clock() - profiled_from
         described = describe_route(
