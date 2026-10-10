@@ -64,6 +64,8 @@ import {
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, browserRideEnv, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import {
+  DETOUR_BUSY,
+  DETOUR_FULL,
   DETOUR_HELP,
   DETOUR_KINDS,
   DETOUR_SUMMARY,
@@ -304,21 +306,44 @@ export function RideMode({
     [notify],
   );
 
+  // The detour's own status (below): said like an answer, since the rider asked for it.
+  const [detourStatus, setDetourStatus] = useState("");
+  const [detourList, setDetourList] = useState<Found | null>(null);
+  const sayDetour = useCallback((text: string) => {
+    setDetourStatus(text);
+    // On demand, as Where am I? is: through the rider's outputs, and the polite region with neither chosen.
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+  }, []);
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
     async (here: LonLat, via?: LonLat) => {
-      if (ended.current || !gate.begin(Date.now())) return;
-      const ticket = (replanTicket.current += 1);
-      setReplanning(true);
-      setReplanNote("");
+      if (ended.current) return;
       const current = rideRef.current;
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       const points = via ? detourPoints(left, via) : left;
+      if (!points) {
+        sayDetour(DETOUR_FULL);
+        return;
+      }
+      if (!gate.begin(Date.now())) {
+        // Only a detour is the rider's own ask; an automatic re-plan held back by the gate says nothing.
+        if (via) sayDetour(DETOUR_BUSY);
+        return;
+      }
+      const ticket = (replanTicket.current += 1);
+      setReplanning(true);
+      setReplanNote("");
       // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
-      // found (plan section 3, off route said once); the note stays on screen for all.
+      // found (plan section 3, off route said once); the note stays on screen for all. A detour's outcome
+      // answers the rider's ask, so it is said whatever the level (sayDetour).
       const tell = (note: string) => {
+        if (via) {
+          sayDetour(note);
+          return;
+        }
         const level = prefsRef.current.verbosity;
         if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) announcer.current?.say(note, false);
       };
@@ -355,7 +380,7 @@ export function RideMode({
       setReplanNote(REPLAN_FOUND);
       tell(REPLAN_FOUND);
     },
-    [dials, preset, gate],
+    [dials, preset, gate, sayDetour],
   );
 
   const onFix = useCallback(
@@ -532,15 +557,7 @@ export function RideMode({
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be
   // detours"): the three nearest by bike from the rider's position, on the ride's own settings; Detour here
   // re-plans through the chosen one. The position is the ride's own fix; nothing new is looked up.
-  const [detourStatus, setDetourStatus] = useState("");
-  const [detourList, setDetourList] = useState<Found | null>(null);
   const detourBusy = useRef(false);
-  const sayDetour = useCallback((text: string) => {
-    setDetourStatus(text);
-    // On demand, as Where am I? is: through the rider's outputs, and the polite region with neither chosen.
-    announcer.current?.answer(text);
-    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-  }, []);
   const findDetour = async (kind: NearestKind) => {
     if (detourBusy.current) {
       sayDetour(STILL_SEARCHING);
@@ -549,7 +566,7 @@ export function RideMode({
     if (!water) return;
     detourBusy.current = true;
     setDetourList(null);
-    setDetourStatus(findingSaid(kind));
+    sayDetour(findingSaid(kind));
     try {
       const fix = rideRef.current.goodFix ?? rideRef.current.fix;
       if (!fix) {
@@ -580,14 +597,16 @@ export function RideMode({
       sayDetour(NO_FIX_YET);
       return;
     }
-    if (replanning) {
-      sayDetour("A new route is already being found; try again in a moment.");
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
       return;
     }
     setKeepPlanned(false);
     // The rider asked: not held back by the automatic re-plans' spacing.
     gate.online();
     setDetourList(null);
+    // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
+    whereRef.current?.focus();
     sayDetour(`Finding a way to ${item.place.title}.`);
     void replan(here, item.place.point);
   };

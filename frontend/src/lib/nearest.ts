@@ -24,7 +24,7 @@
 import { describeError } from "./api.ts";
 import { dialFields, type Dials } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
-import { haversineM, type LonLat } from "./geo.ts";
+import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
 import type { PresetId } from "./presets.ts";
 import { bikeEntrance, entranceNote, linesLabel, type Station } from "./railStations.ts";
@@ -258,9 +258,16 @@ export function rideLocate(fix: { point: LonLat; accuracyM: number } | null | un
  * A re-plan's points with the detour put first: from here, to the place, then on through what was left.
  * `replanned` is navigate.replanPoints's answer, which starts at the rider.
  */
-export function detourPoints(replanned: readonly LonLat[], place: LonLat): LonLat[] {
+export function detourPoints(replanned: readonly LonLat[], place: LonLat): LonLat[] | null {
+  // A route takes at most MAX_POINTS points; with the stops left already at the cap there is no room.
+  if (replanned.length >= MAX_POINTS) return null;
   return [replanned[0], place, ...replanned.slice(1)];
 }
+
+/** Said when a detour has no room: the route already has as many stops as one can take. */
+export const DETOUR_FULL = `This route already has ${MAX_POINTS} points, so no detour can be added.`;
+/** Said when Detour here is pressed while a new route is already being found. */
+export const DETOUR_BUSY = "A new route is already being found; try again in a moment.";
 
 /** What a search needs from the page; each is a function so a test runs the search with stand-ins. */
 export interface SearchDeps {

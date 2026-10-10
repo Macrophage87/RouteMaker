@@ -15,6 +15,7 @@ import {
   metroPlaces,
   nearbyText,
   nearestInStraightLine,
+  DETOUR_FULL,
   DETOUR_KINDS,
   LOCATION_BUSY,
   detourPoints,
@@ -32,7 +33,7 @@ import { NEAREST_SUMMARY, NearestFinder, type FinderProps } from "./nearestFinde
 import type { Station } from "./railStations.ts";
 import { WATER_CAUTION, type WaterPoint } from "./waterRestrooms.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE } from "./geolocation.ts";
-import { insideCoverage } from "./geo.ts";
+import { MAX_POINTS, insideCoverage } from "./geo.ts";
 
 const HERE: LonLat = [-77.05, 38.9];
 
@@ -348,12 +349,28 @@ test("a detour goes from here to the place, then on through the stops left and t
   assert.deepEqual(detourPoints([here, end], fountain), [here, fountain, end]);
 });
 
+test("a detour is refused, not cut short, when the route already has as many points as one can take", () => {
+  const here: LonLat = [-77.05, 38.9];
+  const fountain: LonLat = [-77.04, 38.905];
+  const almost = Array.from({ length: MAX_POINTS - 1 }, (_, i): LonLat => [-77.05 + i * 0.001, 38.9]);
+  assert.equal(detourPoints(almost, fountain)?.length, MAX_POINTS);
+  assert.equal(detourPoints([...almost, here], fountain), null);
+  assert.match(DETOUR_FULL, new RegExp(`${MAX_POINTS} points`));
+});
+
 test("Ride mode wires the detour: the ride's fix, the ride's settings without the loop, and a re-plan through the place", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const points = via \? detourPoints\(left, via\) : left;/);
   assert.match(ride, /locate: async \(\) => rideLocate\(fix\)/);
   assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dials, loop: false \}\)/);
   assert.match(ride, /void replan\(here, item\.place\.point\);/);
+  // The rider's own ask is never dropped in silence: a full route, a busy gate and the outcome are said
+  // through sayDetour (an answer, whatever the verbosity), and the focus goes to Where am I?.
+  assert.match(ride, /if \(!points\) \{\s*sayDetour\(DETOUR_FULL\);/);
+  assert.match(ride, /if \(!gate\.begin\(Date\.now\(\)\)\) \{[^}]*if \(via\) sayDetour\(DETOUR_BUSY\);/);
+  assert.match(ride, /const tell = \(note: string\) => \{\s*if \(via\) \{\s*sayDetour\(note\);/);
+  assert.match(ride, /if \(gate\.busy\) \{\s*sayDetour\(DETOUR_BUSY\);/);
+  assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(`Finding a way to/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /water=\{ensureWater\}/);
 });

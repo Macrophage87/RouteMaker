@@ -2787,6 +2787,8 @@ details.zoom-notes {
 }
 
 .nearest .nearest-kinds button,
+.ride-detour .nearest-kinds button,
+.ride-detour > summary,
 .nearest-list button {
   min-height: 44px;
 }
