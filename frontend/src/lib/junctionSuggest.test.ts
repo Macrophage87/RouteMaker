@@ -5,13 +5,16 @@ import {
   JUNCTION_LEVELS,
   JUNCTION_PRIVACY,
   SHOWN_LEVELS,
+  avoidWarning,
   entrySaid,
   fetchJunctionSuggestions,
   findJunction,
+  junctionEntry,
   junctionLine,
   junctionNote,
   junctionProblem,
   levelWords,
+  loadProblem,
   reviewEntries,
   reviewJunctionSuggestion,
   sendJunctionSuggestion,
@@ -147,4 +150,20 @@ test("the button's note names the junction; the privacy note says only its locat
   assert.equal(junctionNote("An unnamed junction"), "for this unnamed junction.");
   assert.match(JUNCTION_PRIVACY, /junction's location/);
   assert.match(JUNCTION_PRIVACY, /never your name or the spot you clicked/);
+});
+
+test("approving a level short of Avoid where Avoid is approved warns first; anything else approves at once", () => {
+  assert.equal(junctionEntry(JUNCTION).warning, "");
+  assert.equal(junctionEntry({ ...JUNCTION, withdraws_avoid: 0 }).warning, "");
+  const one = junctionEntry({ ...JUNCTION, withdraws_avoid: 1 }).warning;
+  assert.match(one, /^Approving this withdraws the approved Avoid rating here\. .*Approve anyway\?$/);
+  assert.match(avoidWarning(2), /withdraws the 2 approved Avoid ratings here/);
+  assert.equal(avoidWarning(0), "");
+});
+
+test("a list that did not load is named: roads, junctions or both", () => {
+  assert.equal(loadProblem([], []), "");
+  assert.equal(loadProblem("Could not reach the server.", []), "Road suggestions could not load. Could not reach the server.");
+  assert.equal(loadProblem([], "Not allowed."), "Junction suggestions could not load. Not allowed.");
+  assert.equal(loadProblem("A.", "B."), "Road suggestions could not load. A. Junction suggestions could not load. B.");
 });

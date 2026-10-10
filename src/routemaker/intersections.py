@@ -631,10 +631,12 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
     a left across a one-way road gets none. The cost is still the model's.
 
     A junction riders have rated (`Junction.rating`) takes the rating's cost and
-    colour on either reading, a neighbourhood junction included (232)."""
+    colour on either reading, a neighbourhood junction included (232), except
+    that "easy" never costs more than the model's own figure and adds nothing
+    where the model has nothing to say."""
     cost, kind, about = cost_of(junction)
     if junction.rating in RATING_COST_FT:
-        return rated(junction, kind, about)
+        return rated(junction, kind, about, cost, group)
     if kind == "neighbourhood" or about is None:
         return None
     marked = kind == "crossing" and marked_unsignalised(junction)
@@ -688,14 +690,25 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
     )
 
 
-def rated(junction: Junction, kind: str, about: Road | None) -> Event:
+def rated(
+    junction: Junction, kind: str, about: Road | None, model_ft: float = 0.0, group: bool = False
+) -> Event | None:
     """The event at a junction riders have rated: the rating's cost and colour,
     never capped (a person looked at it), with the model's reason where it has
-    one and the riders' rating after it."""
+    one and the riders' rating after it. "Easy" only ever lowers: it costs the
+    lesser of its figure and the model's (`model_ft`), and where the model has
+    no event there it adds none. On a Mass Ride (`group`) the event carries the
+    group reading's flag, so a rated signalized crossing still joins a group."""
     level = junction.rating if junction.rating in RATING_COST_FT else 2
     severity = RATING_SEVERITY[level]
     said = f"Riders rate this junction {RATING_WORDS[level]}"
-    if kind == "neighbourhood" or about is None:
+    quiet = kind == "neighbourhood" or about is None
+    cost = RATING_COST_FT[level]
+    if level == min(RATING_COST_FT):
+        if quiet:
+            return None
+        cost = min(cost, model_ft)
+    if quiet:
         kind = "rated"
         about = max(
             (r for r in (junction.incoming, junction.outgoing) if r.tier is not None),
@@ -712,12 +725,13 @@ def rated(junction: Junction, kind: str, about: Road | None) -> Event:
         kind,
         junction.movement,
         junction.control,
-        RATING_COST_FT[level],
+        cost,
         severity,
         reason,
         about.tier,
         severity is not None,
         junction.approach,
+        group,
         road_names=about.names,
         road_display=about.display,
         road_ways=about.ways,
@@ -752,8 +766,9 @@ def with_ratings(junctions: Sequence[Junction], ratings: Sequence[Rating]) -> li
 # - The merged colour is never more than the worst single event's (item 185: "A
 #   merge must never raise the colour of one road's crossing"); the refuge can
 #   lower it. Only the cost, which a route is chosen by, adds up.
-# - Where riders rated the junction (an approved rating, 232), the rated event
-#   stands for the whole junction: its cost and colour, nothing added.
+# - Where riders rated a junction (an approved rating, 232), its rated event
+#   stands for that junction's own nodes within RATING_MATCH_M along the
+#   route; events beyond are other junctions and add as above.
 MERGE_WITHIN_M = 45.0
 MERGED_SHARE = 0.5
 
@@ -774,10 +789,11 @@ def _divided(crossings: list[Event]) -> bool:
 def _one_road(events: list[Event]) -> list[Event]:
     """A road's events at one junction: its crossings as one (a divided road
     crossed once, with the refuge's credit), every other event as it is."""
-    crossings = [e for e in events if e.kind == "crossing"]
+    # A rated junction's event is the riders' figure, never given a refuge credit.
+    crossings = [e for e in events if e.kind == "crossing" and e.rating is None]
     if len(crossings) < 2:
         return events
-    rest = [e for e in events if e.kind != "crossing"]
+    rest = [e for e in events if e not in crossings]
     worst = max(crossings, key=lambda e: e.cost_ft)
     if not _divided(crossings):
         return [worst, *rest]
@@ -793,6 +809,31 @@ def _one_road(events: list[Event]) -> list[Event]:
     return [refuge, *rest]
 
 
+def _rated_stand_in(events: list[Event]) -> list[Event]:
+    """A run of nearby events with each rated junction standing for its own
+    nodes (232): an unrated event within RATING_MATCH_M along the route of a
+    rated one is that junction's other node and drops out, and of several rated
+    nodes that close the highest rating counts once. Events farther off are
+    other junctions and merge as usual."""
+    rated_here = [e for e in events if e.rating is not None]
+    if not rated_here:
+        return events
+
+    def near(a: Event, b: Event) -> bool:
+        return abs(a.m - b.m) <= RATING_MATCH_M
+
+    out = []
+    for event in events:
+        if event.rating is None:
+            if not any(near(event, r) for r in rated_here):
+                out.append(event)
+            continue
+        best = max((r for r in rated_here if near(event, r)), key=lambda r: (r.rating or 0, -r.m))
+        if best is event:
+            out.append(event)
+    return out
+
+
 def merge_nearby(events: list[Event]) -> list[Event]:
     merged: list[Event] = []
     group: list[Event] = []
@@ -800,16 +841,8 @@ def merge_nearby(events: list[Event]) -> list[Event]:
     def close() -> None:
         if not group:
             return
-        rated_here = [e for e in group if e.rating is not None]
-        if rated_here:
-            # Riders rated the junction as a whole (232): its rating is the
-            # junction's cost and colour, whatever its other nodes add, so an
-            # approved "easy" lowers it as surely as "hard" raises it.
-            merged.append(max(rated_here, key=lambda e: e.rating or 0))
-            group.clear()
-            return
         roads: list[list[Event]] = []
-        for event in group:
+        for event in _rated_stand_in(group):
             for same in roads:
                 if event.road_names & same[0].road_names:
                     same.append(event)

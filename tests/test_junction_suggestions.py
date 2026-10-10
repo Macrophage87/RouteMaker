@@ -106,6 +106,16 @@ class TestLocate:
             suggest(lat=LAT + 0.01, lon=LON + 0.002)
         assert "bend in Pine Lane" in bend.value.message
 
+    def test_two_unnamed_pieces_of_one_road_are_a_bend_too(self, live) -> None:
+        open_to("signed_in")
+        make_segment(live, 7101, 2, lat=LAT + 0.02, trail_name=None, map_class="road")
+        make_segment(
+            live, 7102, 2, lat=LAT + 0.02, lon=LON + 0.002, trail_name=None, map_class="road",
+        )  # fmt: skip
+        with pytest.raises(js.stress_edits.Invalid) as bend:
+            suggest(lat=LAT + 0.02, lon=LON + 0.002)
+        assert "bend in an unnamed road" in bend.value.message
+
     def test_the_endpoint_answers_the_junction_for_a_suggester(self, live) -> None:
         assert Client().get(AT, {"lat": LAT, "lon": LON}, **addr()).status_code == 401
         open_to("signed_in")
@@ -298,7 +308,7 @@ class TestReview:
         assert item["words"] == "Hard: long waits or fast traffic"
         assert set(item) == {
             "id", "junction", "lat", "lon", "current_level", "current_words", "level", "words",
-            "direction", "reason", "status", "created_at", "sent_at",
+            "direction", "reason", "status", "created_at", "sent_at", "withdraws_avoid",
         }  # fmt: skip
 
     def test_approve_now_makes_a_junction_override_the_next_plan_reads(self, live) -> None:
@@ -355,6 +365,10 @@ class TestReview:
         )
         s = suggest(level=None, direction="less")
         client, csrf = admin_client()
+        # The review list says so first, so the admin can be warned before approving.
+        (listed,) = client.get(OPEN, **addr()).json()["suggestions"]
+        assert listed["withdraws_avoid"] == 1
+        assert js.avoid_withdrawn_by(suggest(level=5, lat=LAT, lon=LON + 0.002)) == 0
         assert post(client, ACTION.format(s.pk, "approve"), {}, csrf).status_code == 200
         avoid.refresh_from_db()
         assert avoid.approved is False and avoid.approved_by is None

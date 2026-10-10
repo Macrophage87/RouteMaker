@@ -2810,6 +2810,40 @@ const JUNCTION_BUTTON = "Suggest a junction change";
       p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/3/approve"), JSON.stringify(approved));
   await p.close();
 }
+{
+  // Approving a level short of Avoid where Avoid is approved warns first (it withdraws the Avoid
+  // rating); a list that did not load is named.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.junctionsOpen = [{ ...JUNCTION_ITEM, withdraws_avoid: 1 }];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction h4')", 8000);
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("(() => { const b = [...document.querySelectorAll('.suggestion-item-junction button')].find((e) => e.textContent === 'Approve now'); b.id = '__ja'; b.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction .suggestion-confirm')", 4000);
+  await sleep(150);
+  const group = await p.eval("(() => { const g = document.querySelector('.suggestion-item-junction .suggestion-confirm'); g.id = '__jw'; return true; })()");
+  const warnGroup = await axNode(p, "#__jw");
+  const warned = await p.eval(`({ focus: document.activeElement?.textContent ?? '', expanded: document.getElementById('__ja').getAttribute('aria-expanded'),
+    buttons: [...document.querySelectorAll('.suggestion-item-junction .suggestion-confirm button')].map((b) => b.textContent) })`);
+  const sentEarly = p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/3/approve");
+  await p.eval("[...document.querySelectorAll('.suggestion-item-junction .suggestion-confirm button')].find((b) => b.textContent === \"Don't approve\").click(); true");
+  await sleep(200);
+  const kept = await p.eval("({ group: !!document.querySelector('.suggestion-item-junction .suggestion-confirm'), focus: document.activeElement?.id === '__ja' })");
+  check("junction suggestions: Approve now on a level short of Avoid where Avoid is approved asks first, in a group named by the warning, the focus on Yes, approve, nothing sent; Don't approve closes it and the focus goes back",
+    group && warnGroup?.role === "group" && /^Approving this withdraws the approved Avoid rating here\..*Approve anyway\?$/.test(warnGroup?.name ?? "") && warned.focus === "Yes, approve" && warned.expanded === "true" &&
+      JSON.stringify(warned.buttons) === JSON.stringify(["Yes, approve", "Don't approve"]) && !sentEarly && !kept.group && kept.focus,
+    JSON.stringify({ warn: [warnGroup?.role, warnGroup?.name], warned, sentEarly, kept }));
+
+  p.junctionsFail = true;
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Refresh suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-review [role=alert]')", 8000);
+  const failed = await p.eval(`({ alert: document.querySelector('.suggestion-review [role=alert]')?.textContent ?? '', roads: document.querySelectorAll('.suggestion-item-road').length })`);
+  check("junction suggestions: when the junction list does not load, an alert names it (Junction suggestions could not load) and the road suggestions are still shown",
+    /^Junction suggestions could not load\. /.test(failed.alert) && !/Road suggestions/.test(failed.alert) && failed.roads === 1, JSON.stringify(failed));
+  await p.close();
+}
 
 // ---- 23. Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 301) ----
 {
@@ -3469,7 +3503,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 532;
+const EXPECTED = 534;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

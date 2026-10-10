@@ -60,14 +60,60 @@ class TestRatedJunction:
         (plain,) = m.with_ratings([junction()], [far])
         assert plain.rating is None
 
-    def test_a_rated_junction_stands_for_its_other_nodes_when_merged(self) -> None:
-        # A red crossing 30 m on, one junction as the rider meets it: the riders' "easy" is
-        # the junction's colour and cost, not the other node's red.
-        red = m.assess(junction(m=30.0, crossed=(LTS4,)))
+    def test_a_rated_junction_stands_for_its_own_nodes_within_15_m(self) -> None:
+        # A red crossing 10 m on is the same junction's other node: the riders' "easy" is the
+        # junction's colour and cost, not that node's red.
+        red = m.assess(junction(m=10.0, crossed=(LTS4,)))
         easy = m.assess(junction(m=0.0, crossed=(LTS4,), rating=2))
         (merged,) = m.merge_nearby([easy, red])
         assert merged.rating == 2 and merged.severity is None
         assert merged.cost_ft == m.ALL_WAY_STOP_FT
+
+    def test_a_rating_never_swallows_the_junctions_beyond_15_m(self) -> None:
+        # Easy at 0 m, a signalised LTS 4 crossing at 40 m and an unsignalised one at 80 m: one
+        # chain of nearby events, but the two crossings are other junctions and keep their red.
+        easy = m.assess(junction(m=0.0, crossed=(LTS4,), rating=2))
+        signal = m.assess(junction(m=40.0, crossed=(LTS4,), control=Control.SIGNAL))
+        red = m.assess(junction(m=80.0, crossed=(LTS4,), control=Control.NONE))
+        (unrated,) = m.merge_nearby([signal, red])
+        (merged,) = m.merge_nearby([easy, signal, red])
+        assert merged.severity == "red" and merged.flagged
+        assert merged.cost_ft >= unrated.cost_ft > m.ALL_WAY_STOP_FT
+
+    def test_hard_beside_another_red_crossing_adds_up_as_any_two_do(self) -> None:
+        hard = m.assess(junction(m=0.0, rating=4))
+        red = m.assess(junction(m=40.0, crossed=(LTS4,), control=Control.NONE))
+        (merged,) = m.merge_nearby([hard, red])
+        assert merged.severity == "red"
+        assert merged.cost_ft == min(
+            max(hard.cost_ft, red.cost_ft) + m.MERGED_SHARE * min(hard.cost_ft, red.cost_ft),
+            m.MAX_CROSSING_FT,
+        )
+        assert merged.cost_ft > 3000.0
+
+    def test_easy_never_costs_more_than_the_model_and_adds_nothing_where_it_has_nothing(
+        self,
+    ) -> None:
+        assert m.assess(junction(rating=2)) is None
+        along = junction(incoming=LTS4, outgoing=LTS4, crossed=(QUIET,), control=Control.CROSS_STOP)
+        model = m.assess(along)
+        rated = m.assess(replace(along, rating=2))
+        if model is None:
+            assert rated is None
+        else:
+            assert rated is not None and rated.cost_ft == min(m.ALL_WAY_STOP_FT, model.cost_ft)
+
+    def test_a_rated_signalised_crossing_keeps_its_mass_ride_group(self) -> None:
+        def crossing(at: float, name: str, rating=None):
+            road = replace(LTS4, names=frozenset({name}), ways=frozenset({hash(name) % 1000}))
+            return junction(m=at, crossed=(road,), control=Control.SIGNAL, rating=rating)
+
+        plain = [crossing(0.0, "a"), crossing(300.0, "b"), crossing(600.0, "c")]
+        assert [e.group for e in m.assess_route(plain, group=True)] == [1, 1, 1]
+        rated = [crossing(0.0, "a"), crossing(300.0, "b", 4), crossing(600.0, "c")]
+        events = m.assess_route(rated, group=True)
+        assert [e.group for e in events] == [1, 1, 1]
+        assert events[1].rating == 4 and events[1].group_severity
 
     def test_route_assessment_carries_the_rating(self) -> None:
         events = m.assess_route(m.with_ratings([junction()], [rating(3)]))

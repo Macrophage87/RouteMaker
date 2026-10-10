@@ -29,7 +29,7 @@ import {
   type DiscordPost,
   type ReviewAction,
 } from "./lib/suggestions.ts";
-import { entrySaid, fetchJunctionSuggestions, reviewEntries, reviewJunctionSuggestion, type ReviewEntry } from "./lib/junctionSuggest.ts";
+import { entrySaid, fetchJunctionSuggestions, loadProblem, reviewEntries, reviewJunctionSuggestion, type ReviewEntry } from "./lib/junctionSuggest.ts";
 
 interface Props {
   /** A change was approved: the map asks for its stress tiles again. */
@@ -47,6 +47,8 @@ export function SuggestionReview({ onStressChanged }: Props) {
   const [posts, setPosts] = useState<Record<string, DiscordPost>>({});
   // The suggestion whose Delete is asking "Yes, delete / Keep it", and where the focus goes next.
   const [confirming, setConfirming] = useState<string | null>(null);
+  // The suggestion whose Approve now is waiting on its warning's confirmation.
+  const [warned, setWarned] = useState<string | null>(null);
   const [focusNext, setFocusNext] = useState<string | null>(null);
   // The list as last drawn: an action's answer arrives after a wait, when `items` captured at its
   // start may be out of date (a refresh, another action).
@@ -62,12 +64,12 @@ export function SuggestionReview({ onStressChanged }: Props) {
     if (focusNext === null) return;
     document.getElementById(focusNext)?.focus();
     setFocusNext(null);
-  }, [focusNext, items, confirming]);
+  }, [focusNext, items, confirming, warned]);
 
   const load = async () => {
     const [roads, junctions] = await Promise.all([fetchSuggestions(origin), fetchJunctionSuggestions(origin)]);
-    // Whichever list came is shown; a list that did not come says so.
-    setProblem(typeof roads === "string" ? roads : typeof junctions === "string" ? junctions : "");
+    // Whichever list came is shown; a list that did not come says so, by name.
+    setProblem(loadProblem(roads, junctions));
     if (typeof roads === "string" && typeof junctions === "string") return;
     setItems(reviewEntries(typeof roads === "string" ? [] : roads, typeof junctions === "string" ? [] : junctions));
   };
@@ -102,6 +104,7 @@ export function SuggestionReview({ onStressChanged }: Props) {
     setSaid(entrySaid(action, item, r.body.message));
     if (action === "approve" && item.kind === "road" && typeof r.body.generation === "number") onStressChanged?.(r.body.generation);
     setConfirming(null);
+    setWarned(null);
     const list = itemsNow.current ?? [];
     const at = list.findIndex((s) => s.key === item.key);
     const rest = list.filter((s) => s.key !== item.key);
@@ -162,7 +165,21 @@ export function SuggestionReview({ onStressChanged }: Props) {
                   </a>
                 </p>
                 <div className="stress-editor-buttons">
-                  <button type="button" aria-describedby={head} aria-disabled={busy !== null ? true : undefined} onClick={() => void act(item, "approve")}>
+                  <button
+                    type="button"
+                    id={id(`a${item.key}`)}
+                    aria-describedby={head}
+                    aria-expanded={item.warning ? warned === item.key : undefined}
+                    aria-disabled={busy !== null ? true : undefined}
+                    onClick={() => {
+                      if (!item.warning) {
+                        void act(item, "approve");
+                        return;
+                      }
+                      setWarned(item.key);
+                      setFocusNext(id(`w${item.key}`));
+                    }}
+                  >
                     Approve now
                   </button>
                   <button type="button" className="secondary" aria-describedby={head} aria-disabled={busy !== null ? true : undefined} onClick={() => void act(item, "discord")}>
@@ -183,6 +200,32 @@ export function SuggestionReview({ onStressChanged }: Props) {
                     Delete
                   </button>
                 </div>
+                {item.warning && warned === item.key && (
+                  <div className="suggestion-confirm" role="group" aria-labelledby={id(`wq${item.key}`)}>
+                    <p id={id(`wq${item.key}`)}>{item.warning}</p>
+                    <div className="stress-editor-buttons">
+                      <button
+                        type="button"
+                        id={id(`w${item.key}`)}
+                        aria-describedby={head}
+                        aria-disabled={busy !== null ? true : undefined}
+                        onClick={() => void act(item, "approve")}
+                      >
+                        Yes, approve
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setWarned(null);
+                          setFocusNext(id(`a${item.key}`));
+                        }}
+                      >
+                        Don't approve
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {confirming === item.key && (
                   <div className="suggestion-confirm" role="group" aria-labelledby={id(`q${item.key}`)}>
                     <p id={id(`q${item.key}`)}>Delete this suggestion? It cannot be brought back.</p>

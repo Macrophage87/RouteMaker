@@ -145,15 +145,42 @@ def locate(lat: float, lon: float) -> Node:
         name = names.name(m["way"], point, m["table_name"])
         if name and road_names.key(name) not in {road_names.key(n) for n in found}:
             found.append(name)
-    if len(ways) == 2 and len(found) == 1:
+    # Two ways and no second name: one road's two pieces meeting at a bend, whether both carry
+    # the same name or, ending there end to end, neither has one. (A named road meeting an
+    # unnamed one, such as a service road, is a junction, and so is an unnamed road ending on
+    # another's side.)
+    if len(ways) == 2 and len(found) <= 1:
         named = [names.name(m["way"], point, m["table_name"]) for m in ways]
-        if all(named):
+        if all(named) or (not any(named) and _both_end_at(schema, point)):
+            road = found[0] if found else "an unnamed road"
             raise stress_edits.Invalid(
-                f"That is a bend in {found[0]}, not a junction. Open the panel on a junction.",
+                f"That is a bend in {road}, not a junction. Open the panel on a junction.",
                 "lat",
                 "no_junction",
             )
     return Node(point[0], point[1], tuple(found))
+
+
+def _both_end_at(schema: str, point: tuple[float, float]) -> bool:
+    """Whether every road way at `point` ends there (its piece's first or last vertex), as two
+    pieces of one road meeting end to end do; a way that runs on through the point does not."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            WITH spot AS (SELECT ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326) AS p)
+            SELECT bool_and(ST_DWithin(ST_StartPoint(s.geometry)::geography, spot.p::geography,
+                                       %(touch)s)
+                            OR ST_DWithin(ST_EndPoint(s.geometry)::geography,
+                                          spot.p::geography, %(touch)s))
+            FROM {schema}.segment s, spot
+            WHERE s.map_class = 'road'
+              AND s.geometry && ST_Expand(spot.p, 0.0001)
+              AND ST_DWithin(s.geometry::geography, spot.p::geography, %(touch)s)
+            """,
+            {"lon": point[0], "lat": point[1], "touch": road_names.TOUCH_M},
+        )
+        row = cursor.fetchone()
+    return bool(row and row[0])
 
 
 def _near(lon: float, lat: float) -> dict:
@@ -425,7 +452,20 @@ def summary(suggestion: JunctionSuggestion) -> dict:
         "status": suggestion.status,
         "created_at": suggestion.created_at.isoformat(),
         "sent_at": suggestion.sent_at.isoformat() if suggestion.sent_at else None,
+        # How many approved Avoid junctions Approve now would withdraw (a level short of Avoid
+        # replaces them), so the review can warn before it does.
+        "withdraws_avoid": avoid_withdrawn_by(suggestion),
     }
+
+
+def avoid_withdrawn_by(suggestion: JunctionSuggestion) -> int:
+    """The approved Avoid junctions within RATING_MATCH_M that approving `suggestion` would
+    withdraw: every one, unless it suggests Avoid itself."""
+    if suggestion.target_level >= AVOID:
+        return 0
+    return AvoidJunction.objects.filter(
+        approved=True, **_near(suggestion.lon, suggestion.lat)
+    ).count()
 
 
 def approved_ratings() -> tuple[Rating, ...]:

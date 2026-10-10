@@ -3132,6 +3132,8 @@ class JunctionSuggestionOut(Schema):
     status: Literal["pending", "sent_to_discord"]
     created_at: str
     sent_at: str | None = None
+    # Approved Avoid junctions Approve now would withdraw there; the review warns first.
+    withdraws_avoid: int = 0
 
 
 class JunctionSuggestionListOut(Schema):

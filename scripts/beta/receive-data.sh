@@ -21,7 +21,10 @@
 #            when a safety dump is taken (DATA_ROOT/backups is owned by the container uid).
 #              First restore: into the empty database, before the api has ever started.
 #              --update-data: for a NEW DATA bundle once the beta is running. Restores only the
-#                `live` schema and the data of `override` (and empties the beta's own
+#                `live` schema and the data of `override` and `junction_override` (the approved
+#                junction ratings), both shipped with their person columns blanked; the beta's
+#                own half-step edit history goes with the overrides it pointed at, and its own
+#                junction suggestions lose their link to a rating it replaces. It empties its own
 #                `stress_tile_cache`, which the new live table makes stale), in one
 #                transaction, after a safety dump. Accounts, sessions and everything else the
 #                beta has made of its own are not touched.
@@ -353,6 +356,28 @@ restore_whole() { # dump-file clean(0|1)
 	psql_q "analyze" >/dev/null
 }
 
+# The tables ship-data.sh sends with their person columns blanked (db/blanked/<table>.copy,
+# listed in SHA256SUMS): SQL that loads each named table and moves its id sequence past the
+# loaded rows. Written to the file $1; the tables named in $2 onwards, or every one shipped.
+blanked_tables() { sed -n 's|^[0-9a-f]\{64\}  db/blanked/\([a-z_]*\)\.copy$|\1|p' "$bundle/SHA256SUMS"; }
+blanked_sql() {
+	local out=$1 t header
+	shift
+	: >"$out"
+	for t in "$@"; do
+		[ -r "$bundle/db/blanked/$t.copy" ] || continue
+		header=$(head -n 1 "$bundle/db/blanked/$t.copy" | tr -d '\r' | tr '\t' ',')
+		case "$header" in '' | *[!a-z0-9_,]*) die "db/blanked/$t.copy has an odd header" ;; esac
+		case ",$header," in *,id,*) ;; *) die "db/blanked/$t.copy has no id column" ;; esac
+		{
+			printf 'COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);\n' "$t" "$header"
+			cat "$bundle/db/blanked/$t.copy"
+			printf '\\.\n'
+			printf "SELECT setval(pg_get_serial_sequence('public.%s', 'id'), coalesce(max(id), 1), max(id) IS NOT NULL) FROM public.%s;\n" "$t" "$t"
+		} >>"$out"
+	done
+}
+
 if [ "$command_name" = snapshot-db ]; then
 	case "$label" in '' | *[!A-Za-z0-9._-]*) die "snapshot-db needs --label WORD (letters, digits, dot, dash, underscore)" ;; esac
 	snapshot "$label"
@@ -431,28 +456,46 @@ if [ "$update_data" = 1 ]; then
 	toc=$(mktemp)
 	bc exec -T postgis pg_restore --list <"$dump" >"$toc" || die "could not read the dump's table of contents"
 	use=$(mktemp)
-	# Every entry of the live schema (pre-data, data, post-data), the schema itself, and the data
-	# and sequence position of the one public table that comes from home, override. Nothing
+	# Every entry of the live schema (pre-data, data, post-data) and the schema itself. Nothing
 	# else: no account, session, guild or audit table is named, so none is dropped or written.
-	# (stress_tile_cache is not in the bundle: ship-data.sh says why.)
-	grep -E "^[0-9]+; [0-9]+ [0-9]+ ([A-Z][A-Z ]* $live_schema |SCHEMA - $live_schema |TABLE DATA public override |SEQUENCE SET public override_)" "$toc" >"$use" || true
+	# The public tables that come from home, override and junction_override, are not in the dump:
+	# they come blanked (db/blanked, below). (stress_tile_cache is not in the bundle: ship-data.sh
+	# says why.)
+	grep -E "^[0-9]+; [0-9]+ [0-9]+ ([A-Z][A-Z ]* $live_schema |SCHEMA - $live_schema )" "$toc" >"$use" || true
 	rm -f "$toc"
 	grep -q "TABLE DATA $live_schema " "$use" || { rm -f "$use"; die "the dump has no $live_schema data to update from"; }
-	grep -q "TABLE DATA public override " "$use" || { rm -f "$use"; die "the dump has no override data"; }
+	grep -qx override <<<"$(blanked_tables)" || { rm -f "$use"; die "the bundle has no override data (db/blanked/override.copy)"; }
 	bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
 	rm -f "$use"
+	# override and the approved junction ratings come from home blanked (ship-data.sh). override
+	# was emptied by the TRUNCATE below; the beta's junction ratings are replaced as override's
+	# are, its own junction suggestions letting go of them first (a TRUNCATE would refuse their
+	# foreign key).
+	extra=$(mktemp)
+	blanked_sql "$extra.part" override
+	if grep -qx junction_override <<<"$(blanked_tables)"; then
+		printf 'UPDATE public.junction_suggestion SET override_id = NULL WHERE override_id IS NOT NULL;\nDELETE FROM public.junction_override;\n' >>"$extra.part"
+		blanked_sql "$extra.more" junction_override
+		cat "$extra.more" >>"$extra.part"
+		rm -f "$extra.more"
+	else
+		note "this bundle carries no junction ratings (db/blanked/junction_override.copy); the beta's are left as they are"
+	fi
+	mv "$extra.part" "$extra"
+	bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
+	rm -f "$extra"
 	snapshot update >/dev/null
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
-	note "updating $live_schema and override in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
+	note "updating $live_schema, override and the junction ratings in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
 	# pg_restore writes SQL; psql runs it as ONE transaction that stops at the first error. If
 	# pg_restore itself fails part-way, a deliberately failing statement follows its output so the
 	# transaction rolls back instead of committing half an update. The beta's own
 	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
 	# live table this replaces, so none could be served again (the runbook predraws afterwards).
 	# shellcheck disable=SC2016
-	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
-		{ bc exec -T postgis rm -f /tmp/beta.use </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
-	bc exec -T postgis rm -f /tmp/beta.use </dev/null
+	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
+		{ bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
+	bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null
 	psql_q "analyze" >/dev/null
 	after_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	[ "$before_oid" = "$after_oid" ] || die "public.app_user was recreated by the update; this should not happen, report it"
@@ -478,6 +521,18 @@ else
 	fi
 	note "restoring (this takes a few minutes; postgis is capped at 1 GiB, so the index builds are slow, not failed)"
 	restore_whole "$dump" "$clean"
+	# The tables shipped with their person columns blanked, loaded in one transaction.
+	read -r -a shipped_blank <<<"$(blanked_tables | tr '\n' ' ')"
+	if [ ${#shipped_blank[@]} -gt 0 ]; then
+		extra=$(mktemp)
+		blanked_sql "$extra" "${shipped_blank[@]}"
+		note "loading ${shipped_blank[*]} (shipped with their person columns blanked)"
+		bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
+		rm -f "$extra"
+		bc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -q -1 -v ON_ERROR_STOP=1 -f /tmp/beta-blanked.sql </dev/null >/dev/null ||
+			{ bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null; die "loading the blanked tables failed and was rolled back (above); restore again"; }
+		bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
+	fi
 fi
 
 note "comparing row counts with the bundle's"
@@ -485,7 +540,7 @@ fail=0
 while IFS=$'\t' read -r qualified expected; do
 	[ -n "$qualified" ] || continue
 	if [ "$update_data" = 1 ]; then
-		case "$qualified" in "$live_schema".* | public.override) ;; *) continue ;; esac
+		case "$qualified" in "$live_schema".* | public.override | public.junction_override) ;; *) continue ;; esac
 	fi
 	actual=$(psql_q "select count(*) from \"${qualified%%.*}\".\"${qualified#*.}\"")
 	if [ "$actual" = "$expected" ]; then

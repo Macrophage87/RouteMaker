@@ -88,6 +88,8 @@ export interface JunctionSuggestionItem {
   status: "pending" | "sent_to_discord";
   created_at: string;
   sent_at: string | null;
+  /** How many approved Avoid junctions Approve now would withdraw there (0 for an Avoid suggestion). */
+  withdraws_avoid?: number;
 }
 
 type Fetch = typeof fetch;
@@ -226,6 +228,8 @@ export interface ReviewEntry {
   line: string;
   /** A further line in words ("The rider said: more dangerous than shown."), or "". */
   detail: string;
+  /** Said before Approve now goes ahead, with a confirmation, or "" to approve at once. */
+  warning: string;
   reason: string;
   status: "pending" | "sent_to_discord";
   lat: number;
@@ -241,6 +245,7 @@ export function roadEntry(item: SuggestionItem): ReviewEntry {
     place: item.road,
     line: suggestionLine(item),
     detail: "",
+    warning: "",
     reason: item.reason,
     status: item.status,
     lat: item.lat,
@@ -257,12 +262,28 @@ export function junctionEntry(item: JunctionSuggestionItem): ReviewEntry {
     place: item.junction === UNNAMED_JUNCTION ? "the unnamed junction" : `the junction of ${item.junction}`,
     line: junctionLine(item),
     detail: directionLine(item),
+    warning: avoidWarning(item.withdraws_avoid ?? 0),
     reason: item.reason,
     status: item.status,
     lat: item.lat,
     lon: item.lon,
     created_at: item.created_at,
   };
+}
+
+/** The warning before approving a level short of Avoid where Avoid is approved now. */
+export function avoidWarning(count: number): string {
+  if (count <= 0) return "";
+  const which = count === 1 ? "the approved Avoid rating here" : `the ${count} approved Avoid ratings here`;
+  return `Approving this withdraws ${which}. Routes stop steering around this junction and riders are no longer warned before it. Approve anyway?`;
+}
+
+/** What the review says when a list did not load, naming which; "" when both came. */
+export function loadProblem(roads: unknown, junctions: unknown): string {
+  const said: string[] = [];
+  if (typeof roads === "string") said.push(`Road suggestions could not load. ${roads}`);
+  if (typeof junctions === "string") said.push(`Junction suggestions could not load. ${junctions}`);
+  return said.join(" ");
 }
 
 /** Both lists as one, oldest first (each API answers its own oldest first). */

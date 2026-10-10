@@ -155,6 +155,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // go in `suggestRequests` too, so "asks the suggestion endpoints nothing" covers both.
   page.junctionAt = null;
   page.junctionsOpen = [];
+  // true: the junction list answers an error, as a server that cannot read it would.
+  page.junctionsFail = false;
   page.editRequests = [];
   page.editFail = null;
   page.tileUrls = [];
@@ -254,8 +256,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         status = 200;
         body = JSON.stringify({ id: 1, message: `Thanks. Your suggestion for ${page.junctionAt?.name ?? "the junction"} was sent to the map's admins. Nothing changes on the map until one of them reviews it.` });
       } else if (url.pathname === "/api/junction-suggestions/open" && admin) {
-        status = 200;
-        body = JSON.stringify({ suggestions: page.junctionsOpen });
+        status = page.junctionsFail ? 503 : 200;
+        body = JSON.stringify(page.junctionsFail ? { error: "The map's server is busy. Try again in a minute." } : { suggestions: page.junctionsOpen });
       } else if (action && admin) {
         status = 200;
         const id = Number(action[1]);

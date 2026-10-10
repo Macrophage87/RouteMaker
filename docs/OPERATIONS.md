@@ -1743,7 +1743,7 @@ route that showed Avoid where none is approved any more is refused (`stale`: pla
 
 **Privacy.** Only the junction's node is stored (`junction_suggestion.lon/lat/node`, the shared
 vertex to 6 decimals), never the spot clicked; a spot with no junction within 82 ft (25 m) is
-refused (`no_junction`), and so is a bend in one road (two pieces of one name and nothing else).
+refused (`no_junction`), and so is a bend in one road (two ways there and no second name).
 The poll's place is the junction's two busiest roads in words ("Where: Oak Street at Elm Street")
 and a map link to the node rounded to 4 decimals; nothing about the rider.
 
@@ -1751,12 +1751,15 @@ and a map link to the node rounded to 4 decimals; nothing about the rider.
 4 hard), which the planner reads at request time (`core.junction_suggestions.approved_ratings`): from
 the next plan every route passing within 49 ft (15 m) of the node takes the level's cost and marker
 (`routemaker.intersections.RATING_COST_FT`: 75 ft and no marker, 1,200 ft and orange, 3,000 ft and
-red), raising or lowering the model's own figure, a junction of two quiet streets included; the
-rated junction stands for its other nodes within 148 ft (45 m) too. Avoid makes an approved Avoid
+red), raising or lowering the model's own figure, a junction of two quiet streets included, for
+every movement through it. "Easy" only lowers: it never costs more than the model's own figure, and
+adds nothing where the model has nothing there. The rated junction stands for its own other nodes
+within 49 ft (15 m) along the route; a junction farther on keeps its own marker and cost. Avoid makes an approved Avoid
 junction instead (`source` "community", `suggestion_ref` "junction suggestion N", the rider-facing
 reason "Riders rate it too dangerous to cross"; the rider's own words go to `evidence`, never shown).
 An approval replaces what rated the junction before: earlier overrides there are withdrawn, and a
-level below Avoid withdraws an approved Avoid junction there; the audit entry names each. **Core >
+level below Avoid withdraws an approved Avoid junction there (the review list warns and asks
+first); the audit entry names each. **Core >
 Junction overrides** in the admin lists them; an instance admin may withdraw one there (audited); they
 are made only by approving a suggestion. No rebuild and no restart.
 
@@ -1767,7 +1770,9 @@ per rider (a partial unique constraint on suggester and node). The review endpoi
 /api/junction-suggestions/open`, `POST /api/junction-suggestions/{id}/approve|delete|discord`) share
 the roads' 200-an-hour review budget. Every action is an `audit_log` entry (`junction_suggest`,
 `junction_suggest_approve`, `_delete`, `_discord`). `junction_suggestion` is left out of the beta's
-data shipment; `junction_override` ships, as `override` does.
+data shipment; `junction_override`, `avoid_junction` and `override` ship with their person columns
+(who made and approved each) blanked, and `db --update-data` replaces the beta's junction overrides
+with home's, as it does `override` (docs/BETA-RUNBOOK.md).
 
 **The migration** is `core/migrations/0017_junction_suggestions.py` (two new tables,
 `junction_suggestion` and `junction_override`; nothing else changed), after

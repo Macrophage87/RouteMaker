@@ -1850,28 +1850,105 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
     assert "stress_tile_cache" in excluded
 
 
-def test_every_table_that_points_at_an_excluded_table_is_excluded_too() -> None:
-    """A foreign key from shipped data to stripped data would fail in pg_restore's post-data."""
+def shipped_blanked() -> dict[str, set[str]]:
+    """BLANKED_TABLE_DATA: each table shipped with these (person) columns set to NULL."""
+    text = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    body = re.search(r"^BLANKED_TABLE_DATA=\(\n(.*?)^\)", text, re.M | re.S).group(1)
+    return {entry.split(":")[0]: set(entry.split(":")[1].split(",")) for entry in body.split()}
+
+
+def model_foreign_keys() -> tuple[dict[str, str], list[tuple[str, str, str]]]:
+    """(class -> table, [(table, field, target class)]) for every ForeignKey and OneToOneField in
+    core.models, whether the target is written bare, quoted ("User") or as the user model's
+    setting (settings.AUTH_USER_MODEL)."""
     models = (REPO / "src" / "core" / "models.py").read_text()
     classes = list(re.finditer(r"^class (\w+)\(", models, re.M))
-    tables: dict[str, str] = {}
-    bodies: dict[str, str] = {}
+    tables: dict[str, str] = {"User": "app_user"}
+    keys: list[tuple[str, str, str]] = []
     for i, match in enumerate(classes):
         end = classes[i + 1].start() if i + 1 < len(classes) else len(models)
         body = models[match.start() : end]
         table = re.search(r'db_table = "(\w+)"', body)
-        if table:
-            tables[match.group(1)] = table.group(1)
-            bodies[table.group(1)] = body
-    tables["User"] = "app_user"
+        if not table:
+            continue
+        tables[match.group(1)] = table.group(1)
+        for field, target in re.findall(
+            r"^\s+(\w+) = models\.(?:ForeignKey|OneToOneField)\(\s*[\"']?([\w.]+)[\"']?",
+            body,
+            re.M,
+        ):
+            if target == "settings.AUTH_USER_MODEL":
+                target = "User"
+            keys.append((table.group(1), field, target))
+    return tables, keys
+
+
+def test_the_foreign_key_reader_sees_quoted_and_setting_targets() -> None:
+    tables, keys = model_foreign_keys()
+    users = {(table, field) for table, field, target in keys if tables.get(target) == "app_user"}
+    assert ("junction_override", "created_by") in users
+    assert ("avoid_junction", "approved_by") in users
+    assert ("stress_suggestion", "suggester") in users
+    targets = {target for _, _, target in keys} - {"self"}
+    assert targets <= set(tables), targets - set(tables)
+
+
+def test_every_table_that_points_at_an_excluded_table_is_excluded_or_blanked() -> None:
+    """A foreign key from shipped data to stripped data would fail in pg_restore's post-data, and
+    abort receive-data.sh's single-transaction restore. A table that must ship anyway goes in
+    BLANKED_TABLE_DATA with that column (and its plain user-id copy) set to NULL."""
+    tables, keys = model_foreign_keys()
     excluded = set(shipped_exclusions())
+    blanked = shipped_blanked()
     checked = 0
-    for table, body in bodies.items():
-        for target in re.findall(r"models\.(?:ForeignKey|OneToOneField)\(\s*(\w+)", body):
-            checked += 1
-            if tables.get(target) in excluded:
-                assert table in excluded, f"{table} -> {tables[target]}"
-    assert checked >= 5
+    for table, field, target in keys:
+        checked += 1
+        if tables.get(target) not in excluded or table in excluded:
+            continue
+        assert table in blanked, f"{table}.{field} -> {tables[target]} is shipped whole"
+        assert f"{field}_id" in blanked[table], f"{table}.{field}_id is not blanked"
+    assert checked >= 20
+
+
+def test_the_blanked_tables_are_the_approved_junction_data_and_blank_every_person_column() -> None:
+    blanked = shipped_blanked()
+    assert set(blanked) == {"override", "junction_override", "avoid_junction"}
+    assert blanked["override"] == {
+        "created_by_id",
+        "created_by_user_id",
+        "approved_by_id",
+        "approved_by_user_id",
+    }
+    assert blanked["junction_override"] == {"created_by_id", "created_by_user_id"}
+    assert blanked["avoid_junction"] == {
+        "created_by_id",
+        "created_by_user_id",
+        "approved_by_id",
+        "approved_by_user_id",
+    }
+    assert not set(blanked) & set(shipped_exclusions())
+    text = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    # left out of the dump, refused if the dump carries them, written as COPY text from a SELECT
+    assert "--exclude-table-data=public.${entry%%:*}" in text
+    assert "must ship with its person columns blanked" in text
+    assert 'expr="NULL AS $c"' in text
+    assert "*_by_id | *user_id) die" in text
+    assert "TO STDOUT WITH (FORMAT text, HEADER true)" in text
+
+
+def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings() -> None:
+    text = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
+    assert "COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);" in text
+    assert "setval(pg_get_serial_sequence(" in text
+    # the update path replaces the junction ratings in its one transaction, after letting the
+    # beta's own suggestions go of them (a TRUNCATE would refuse the foreign key)
+    assert "DELETE FROM public.junction_override;" in text
+    assert "UPDATE public.junction_suggestion SET override_id = NULL" in text
+    assert "cat /tmp/beta-blanked.sql; } | psql" in text
+    counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
+    assert "public.junction_override" in counted
+    # and the whole-database path loads every blanked table in one transaction
+    assert "-q -1 -v ON_ERROR_STOP=1 -f /tmp/beta-blanked.sql" in text
 
 
 def test_ship_data_clears_the_remote_manifest_before_sending() -> None:
@@ -1882,11 +1959,12 @@ def test_ship_data_clears_the_remote_manifest_before_sending() -> None:
 
 def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile_cache() -> None:
     text = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
-    line = next(x for x in text.splitlines() if "TABLE DATA public override |" in x)
+    line = next(x for x in text.splitlines() if "SCHEMA - $live_schema )" in x)
     for table in shipped_exclusions():
         assert table not in line, table
-    assert "SEQUENCE SET public override_)" in line
-    assert 'echo "TRUNCATE public.override, public.stress_tile_cache;"' in text
+    assert "public" not in line  # override and junction_override come blanked, not from the dump
+    assert 'blanked_sql "$extra.part" override' in text
+    assert 'echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"' in text
     counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
     assert "stress_tile_cache" not in counted
     assert "-q -1 -v ON_ERROR_STOP=1" in text  # one transaction

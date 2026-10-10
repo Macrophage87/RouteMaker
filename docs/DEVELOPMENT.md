@@ -6532,8 +6532,9 @@ Migration `0017_junction_suggestions` (after `0016_stress_suggestions`, one leaf
 `core.junction_suggestions.locate` takes the nearest vertex, within `SNAP_MAX_M` (82 ft (25 m)), of a
 `map_class = 'road'` row that another way also has a vertex at (within `road_names.TOUCH_M`): OSM
 ways meet at a shared node, and a bridge over a road shares none. The names are the router's, then
-the table's (`road_names.Names`, as the road suggestions' cross streets). Two pieces of one name and
-nothing else are a bend, refused. Nothing about the spot asked is kept.
+the table's (`road_names.Names`, as the road suggestions' cross streets). Two ways and no second
+name are a bend, refused: two pieces of one name, or two unnamed pieces (a named road meeting an
+unnamed one is a junction). Nothing about the spot asked is kept.
 
 ### In the intersection model
 
@@ -6542,10 +6543,15 @@ override. `with_ratings` gives each `Junction` within `RATING_MATCH_M` (15 m, th
 match) its `rating`; `assess` then returns `rated(...)`: the level's cost (`RATING_COST_FT`: the
 all-way stop's 75 ft, the LTS 3 stopped-side crossing's 1,200 ft, the LTS 4's 3,000 ft) and colour
 (`RATING_SEVERITY`: none, orange, red), never capped, on the standard and the Mass Ride reading
-alike, with the riders' words after the model's reason ("Riders rate this junction hard"). A
-junction the model has nothing to say about (two quiet streets) becomes an event of kind "rated".
-`merge_nearby` lets a rated event stand for the whole junction (its other nodes within
-`MERGE_WITHIN_M` add nothing), so "easy" lowers a junction as surely as "hard" raises it.
+alike (on the Mass Ride the event carries `group_severity`, so a rated signalized crossing still
+joins a group), with the riders' words after the model's reason ("Riders rate this junction hard").
+A junction the model has nothing to say about (two quiet streets) becomes an event of kind "rated".
+"Easy" only ever lowers: it costs the lesser of 75 ft and the model's own figure, and where the
+model has no event it adds none. Ratings apply to every movement through the junction.
+`merge_nearby` lets a rated event stand for its own junction's other nodes, the events within
+`RATING_MATCH_M` (15 m) of it along the route (`_rated_stand_in`); events farther off are other
+junctions and merge as before (worst colour, the capped sum), so "easy" at one junction never hides
+a red crossing 40 or 80 m on. A rated event takes no refuge credit (`_one_road`).
 
 `core.junctions.events_of(..., ratings=)` keeps a raw junction that `wanted` would drop (no road
 there can be busy) where one is rated, so it is read at all. The plan reads the active overrides once
@@ -6566,14 +6572,33 @@ suggest); `SuggestionReview.tsx` (roads' and junctions' suggestions in one list,
 
 ### Tests
 
-`tests/test_junction_ratings.py` (the model: raising a quiet junction, lowering a red one, the
-group reading, the 15 m match, the merge, the plan handing its ratings on);
+`tests/test_junction_ratings.py` (the model: raising a quiet junction, lowering a red one, easy
+never above the model, the group reading and Mass Ride groups, the 15 m match, the merge within
+15 m and not beyond, the plan handing its ratings on);
 `tests/test_junction_suggestions.py` (locate, the node kept, bends, the shown level, unclear choices
 refused, the limits shared with roads, the database constraint, the three actions, Avoid and its
 withdrawal, the poll's wording and its 4-decimal link, nothing about the rider);
 `tests/test_suggestion_post.py`; `frontend/src/lib/junctionSuggest.test.ts`; the a11y browser
 check's section 22c (the button and its description, the form's groups and Tab stops, Escape, the
-empty send, the node sent, the card's button, the admin's list, Discord and Approve now).
+empty send, the node sent, the card's button, the admin's list, Discord and Approve now, the
+warning before approving a level that withdraws an approved Avoid junction, and a list that did not
+load named).
+
+The review list's junction entries carry `withdraws_avoid` (`avoid_withdrawn_by`: the approved Avoid
+junctions within 15 m that approving would withdraw); where it is above 0, Approve now opens a
+confirmation group with the warning before anything is sent.
+
+### The beta's data shipment
+
+`junction_override` and `avoid_junction` name a person (`created_by`, `approved_by`), and so does
+`override`; `app_user` is not shipped, so a whole copy would break the restore's foreign keys.
+`scripts/beta/ship-data.sh` ships them in `BLANKED_TABLE_DATA`: left out of the dump and written as
+`db/blanked/<table>.copy` (COPY text format) from a SELECT with NULL in every person column; it
+refuses a table with a `*_by_id` or `*user_id` column not listed. `receive-data.sh` loads them after
+the restore, and `--update-data` replaces `override` and `junction_override` in its one transaction.
+`stress_edit` (the editor's history, `actor` a person) is excluded. `tests/test_beta_overlay.py`
+reads every foreign key in `core/models.py` (bare, quoted or `settings.AUTH_USER_MODEL`) and fails
+when shipped data points at an excluded table without that column blanked.
 
 ## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
 
