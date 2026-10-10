@@ -4,7 +4,9 @@
  * The API's `description` entries come ready-worded (src/routemaker/describe.py:
  * US units first, the legend's tier words, one sentence each); this only lists
  * them, copies them and makes the text file. Nothing here words a stretch
- * itself, so there is one wording to keep right.
+ * itself, so there is one wording to keep right. The one exception is a Mass
+ * Ride's federal-land lines (lib/federalStops.ts, item 239), which come from
+ * the overlay's file in the page and are placed before the entries.
  */
 import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
@@ -155,12 +157,15 @@ export function chevron(open: boolean): string {
 
 /**
  * The description as text for the clipboard or a file: a line saying what
- * route it is, then one numbered line for each entry (and, in full detail, a
+ * route it is, a Mass Ride's lead and federal-land lines (lib/federalStops.ts
+ * federalLines, worded here in the client because the overlay's data is), then
+ * one numbered line for each entry (and, in full detail, a
  * group's crossings under it: `entryLines`).
  */
 export function descriptionText(
   route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans" | "profile">>,
   view: DescriptionView = "overview",
+  federal: readonly string[] = [],
 ): string {
   const shown = viewFor(route, view);
   const entries = descriptionEntries(route, shown) ?? [];
@@ -168,7 +173,7 @@ export function descriptionText(
   const which = hasOverview(route) ? (shown === "full" ? " Full detail." : " Overview, short stretches merged.") : "";
   const head = `RouteMaker ${presetLabel(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
   const lead = capacityLead(route);
-  return [head, ...(lead ? [lead] : []), ...entryLines(entries)].join("\n") + "\n";
+  return [head, ...(lead ? [lead] : []), ...federal, ...entryLines(entries)].join("\n") + "\n";
 }
 
 /**
@@ -190,16 +195,18 @@ export const GPX_FULL_MAX_CHARS = 4000;
  * for a device to show (GPX_FULL_MAX_CHARS), else the overview (never the
  * rider's screen view: a file is read elsewhere). Empty where there is none.
  */
-export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans">>): string {
+export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans">>, federal: readonly string[] = []): string {
   const full = descriptionEntries(route, "full");
-  if (full === null) return "";
+  // The federal-land lines (item 239) are said even where the API gave no entries.
+  if (full === null) return federal.length > 0 ? ["Route description:", ...federal].join("\n") : "";
   const lines = entryLines;
-  const fullText = lines(full).join("\n");
+  // The federal lines go in whichever view is chosen, so they count towards the limit.
+  const fullText = [...federal, ...lines(full)].join("\n");
   const useFull = !hasOverview(route) || fullText.length <= GPX_FULL_MAX_CHARS;
   const entries = useFull ? full : (descriptionEntries(route, "overview") ?? full);
   const label = hasOverview(route) ? (useFull ? "Route description, full detail:" : "Route description, overview:") : "Route description:";
   const lead = capacityLead(route);
-  return [label, ...(lead ? [lead] : []), ...lines(entries)].join("\n");
+  return [label, ...(lead ? [lead] : []), ...federal, ...lines(entries)].join("\n");
 }
 
 /** "routemaker-default-12_1-miles-description.txt", beside the GPX file's name. */

@@ -620,6 +620,20 @@ export const S_MASS = (() => {
   return r;
 })();
 /**
+ * The Mass Ride with a stretch on the Rock Creek and Potomac Parkway (item 239 (d)), by its OpenStreetMap
+ * name. Its end (hashFor's -77.01, 38.89) is in the U.S. Capitol grounds, a stop on federal land (239 (b)).
+ */
+export const S_MASS_FEDERAL = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS));
+  const parkway = entry("stretch", 3000, 3600, "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Parkway Northwest, busy road (LTS 3).", {
+    tier: 3,
+    street: "Rock Creek and Potomac Parkway Northwest",
+  });
+  r.description = [...r.description.slice(0, -1), parkway, ...r.description.slice(-1)];
+  r.description_overview = [...r.description_overview.slice(0, -1), parkway, ...r.description_overview.slice(-1)];
+  return r;
+})();
+/**
  * A Mass Ride on a rebuilt table (OWNER-DECISIONS 325-327, 387): its sections carry riders per
  * minute, one in each band, and a stretch marked Avoid.
  */

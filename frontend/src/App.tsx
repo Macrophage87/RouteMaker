@@ -71,7 +71,8 @@ import { stationEdit, type RailVisibility, type StationRole } from "./lib/railSt
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
-import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
+import { FEDERAL_POINTS_NONE, FederalLandFor, type FederalStatus } from "./lib/federalLegend.ts";
+import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import {
   CAPACITY_FOLD_TITLE,
@@ -1250,6 +1251,13 @@ export function App() {
         : null,
     [waterOn, waterData, waterPrefs, shown],
   );
+  // A Mass Ride's federal-land lines for the description and the GPX file (item 239; lib/federalStops.ts):
+  // the stops on federal land and the parkway stretches, from the route as planned, or one line saying
+  // federal land could not be checked while the data is loading or unavailable.
+  const federalRoute = useMemo(
+    () => (shown ? federalRouteLines(shown, routedPoints, federalData) : []),
+    [shown, routedPoints, federalData],
+  );
   // Named in the plan as the list says it, as a place picked from search is.
   const addWaterStop = (item: WaterAlong) => {
     const point: LonLat = [item.point.lon, item.point.lat];
@@ -1343,15 +1351,13 @@ export function App() {
     });
     wasCompact.current = compactPoints;
   }, [compactPoints]);
-  const federalPlanner = federalShown(preset, true) && (
-    // Mass Ride's points on federal land, in words, in the planner as well as the Map layers
-    // sheet: the text the map's permit shading stands for (the correctness review's S3).
-    <FederalPointsList
-      found={federalData ? federalPoints(points, federalData) : null}
-      count={points.length}
-      nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
-      headingId="federal-points-planner-heading"
-    />
+  // Mass Ride's points on federal land (item 239; lib/federalStops.ts): each one's warning, on its row in
+  // the points list and on its marker. The planner says so when none is (the correctness review's S3);
+  // the Map layers sheet keeps its own list.
+  const federalAreas = useMemo(() => pointAreas(points, federalData, federalShown(preset, true)), [points, federalData, preset]);
+  const pointWarnings = federalAreas.map((area) => (area ? stopWarningShort(area) : null));
+  const federalPlanner = federalShown(preset, true) && federalData && points.length > 0 && federalAreas.every((area) => area === null) && (
+    <p className="hint federal-points">{FEDERAL_POINTS_NONE}</p>
   );
   const loop = loopView(preset, dials.loop, points);
   const loopHintId = useId();
@@ -1411,6 +1417,7 @@ export function App() {
         <PointsList
           rows={pointRows(points, namer, loopVias)}
           onRemove={removeAt}
+          warnings={pointWarnings}
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}
@@ -1579,6 +1586,7 @@ export function App() {
         <RouteSummary
           route={shown}
           points={routedPoints}
+          federal={federalRoute}
           narrow={narrow}
           onSelectJunction={(index) => setJunctionFocus((f) => ({ index, nonce: (f?.nonce ?? 0) + 1 }))}
           onScrub={setScrubPoint}
@@ -1693,6 +1701,7 @@ export function App() {
       <MapView
         points={riding ? NO_POINTS : points}
         loopVias={loopVias}
+        pointWarnings={riding ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale}
         stressVisible={stressVisible && stress === "available"}
@@ -1753,6 +1762,7 @@ export function App() {
         request={roadInfo}
         massRide={massMap}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
         onStressChanged={(generation) => {
@@ -1973,6 +1983,7 @@ export function App() {
                 route={shown}
                 routedPoints={routedPoints}
                 loop={routedLoop}
+                federal={federalRoute}
                 points={points}
                 planStatus={status.kind}
                 imported={imported}
@@ -2023,7 +2034,7 @@ export function App() {
           {/* Pinned under the scrolling part while a route is shown: its file and its link. */}
           {view === "planner" && shown && (
             <div className="route-actions">
-              <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop)}>
+              <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)}>
                 Download GPX
               </button>
               <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
@@ -2079,6 +2090,7 @@ function useSettled(text: string, waitMs: number): string {
 function RouteSummary({
   route,
   points,
+  federal,
   narrow,
   onSelectJunction,
   onScrub,
@@ -2090,6 +2102,8 @@ function RouteSummary({
 }: {
   route: RouteResponse;
   points: LonLat[];
+  /** A Mass Ride's federal-land lines for the description (lib/federalStops.ts federalLines, item 239). */
+  federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered under the figures and with the directions. */
   ride: { onStart: () => void; startRef: RefObject<HTMLButtonElement | null> };
@@ -2253,7 +2267,7 @@ function RouteSummary({
         <FacilityBreakdown route={route} part="figures" />
       </Fold>
       )}
-      <RouteDescription route={route} fold rideAction={rideAction} />
+      <RouteDescription route={route} fold rideAction={rideAction} federal={federal} />
       {junctions !== null && (
         <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
           <IntersectionList route={route} onSelect={onSelectJunction} />
