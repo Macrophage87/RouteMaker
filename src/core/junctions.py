@@ -59,7 +59,12 @@ from dataclasses import dataclass, field, replace
 from django.conf import settings
 from django.db import connection
 
-from pipeline.schema import ROAD_TRAIT_COLUMNS, UNSMOOTHED_TIER_COLUMN, validate_schema_name
+from pipeline.schema import (
+    ROAD_TRAIT_COLUMNS,
+    STRESS_HALF_COLUMN,
+    UNSMOOTHED_TIER_COLUMN,
+    validate_schema_name,
+)
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Control,
@@ -114,11 +119,11 @@ TRAIL_USES = (
 AT_START, AT_END = 0.001, 0.999
 
 _ROADS_BY_WAY = """
-SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway
+SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway, seg.half
 FROM unnest(%s::int[], %s::bigint[], %s::float8[], %s::float8[]) AS j(idx, way, lon, lat)
 CROSS JOIN LATERAL (
     SELECT {tier} AS tier, s.volume_aadt AS aadt, {speed} AS speed,
-           {lanes} AS lanes, {oneway} AS oneway
+           {lanes} AS lanes, {oneway} AS oneway, {half} AS half
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = j.way
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
@@ -127,6 +132,25 @@ CROSS JOIN LATERAL (
 """
 
 _has_trait_columns_seen = False
+_has_half_column_seen = False
+
+
+def has_half_column(schema: str) -> bool:
+    """Whether the live segment table has the half-step column (`STRESS_HALF_COLUMN`).
+    Remembered once seen."""
+    global _has_half_column_seen
+    if _has_half_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, STRESS_HALF_COLUMN],
+        )
+        _has_half_column_seen = cursor.fetchone()[0] == 1
+    return _has_half_column_seen
+
+
 _has_unsmoothed_tier_seen = False
 
 
@@ -771,6 +795,13 @@ def roads_by_way(
         if has_unsmoothed_tier(schema)
         else "s.stress_tier"
     )
+    # A half step (461a): its costs are the midpoints (`intersections._table`). Not where
+    # smoothing raised the junction's tier above the link's, nor on a road closed to cars.
+    half = "false"
+    if has_half_column(schema):
+        half = f"(s.{STRESS_HALF_COLUMN} AND {link_tier} = s.stress_tier)"
+        if with_facility:
+            half = f"({half} AND NOT (%s = ANY(s.car_free_when)))"
     query = _ROADS_BY_WAY.format(
         schema=schema,
         tier=(
@@ -778,22 +809,24 @@ def roads_by_way(
             if with_facility
             else link_tier
         ),
+        half=half,
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",
     )
     arrays = [list(column) for column in zip(*wanted_ways, strict=True)]
-    params = [*arrays, *([when] if with_facility else [])]
+    params = [*arrays, *([when] if with_facility else []), *([when] if "%s" in half else [])]
     found: dict[tuple[int, int], Road] = {}
     with connection.cursor() as cursor:
         cursor.execute(query, params)
-        for idx, way_id, tier, aadt, speed, lanes, oneway in cursor.fetchall():
+        for idx, way_id, tier, aadt, speed, lanes, oneway, half_step in cursor.fetchall():
             found[(idx, way_id)] = Road(
                 tier=int(tier) if tier is not None else None,
                 speed_mph=float(speed) if speed is not None else None,
                 lanes=int(lanes) if lanes is not None else None,
                 oneway=oneway,
                 aadt=int(aadt) if aadt is not None else None,
+                half=half_step is True,
             )
     return found
 

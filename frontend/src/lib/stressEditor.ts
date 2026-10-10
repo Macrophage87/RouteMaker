@@ -4,15 +4,20 @@
  * what the editor asks the API, the words it says, and what it checks before it asks.
  * StressEditor.tsx draws it.
  *
- * Phase 1 is whole steps, 1 to 5 (5 is Avoid). The words are the API's (`steps` in the editor's
- * starting state, core/segment_info.TIER_WORDS), so the panel, the editor and the map's legend
- * cannot disagree. Nothing here carries a name or an id of a person: the page learns three yes/no
+ * Steps run 1 to 5 by halves (441i: "Have a slider from LTS 1-5. We can put half steps as well"):
+ * 1.5, 2.5, 3.5 and 4.5 are half steps, 5 is Avoid and 4.5 is never Avoid (441k). The words are
+ * the API's (`steps` in the editor's starting state, core/segment_info.STEP_WORDS, 441l), so the
+ * panel, the editor and the map's legend cannot disagree. A live table built before half steps
+ * cannot hold one (`half_steps` false): the slider then moves in whole steps. Nothing here carries a name or an id of a person: the page learns three yes/no
  * flags (`/api/me`), a CSRF token it reads from its own cookie, and an OSM way id.
  *
  * Screen-reader first: every state change is a sentence (`savedSaid`, `undoneSaid`), the slider's
  * value is read as its words (`stepValueText`), an error names its field so the form can move the
  * focus to it, and none of it needs a pointer.
  */
+
+import { formatDistance } from "./format.ts";
+import { UNNAMED_TITLES } from "./roadInfo.ts";
 
 /** GET /api/me: three yes/no flags, no name and no id. */
 export interface Me {
@@ -63,6 +68,83 @@ export interface EditorState {
   note_max: number;
   recent_edit: RecentEdit | null;
   pieces: number;
+  /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
+  half_steps?: boolean;
+}
+
+/** The ways of one name end to end, to the next high-stress crossing (core/stress_edits.named_stretch). */
+export interface EditorStretch {
+  name: string;
+  osm_way_ids: number[];
+  pieces: number;
+  length_m: number;
+  /** The stretch goes on past the most one change takes (40 pieces). */
+  capped: boolean;
+  /** The stretch's own token, sent back with a change of it. */
+  expected: string;
+}
+
+export type Extent = "piece" | "stretch";
+
+export const EXTENT_LEGEND = "What to change";
+export const STRETCH_HELP =
+  "A named stretch is the pieces of this road, end to end, up to a busy crossing.";
+export const STRETCH_CAPPED = "It goes on further; one change takes at most 40 pieces.";
+export const STRETCH_FINDING = "Finding the whole named stretch…";
+export const STRETCH_ALONE =
+  "Nothing else of this name joins this piece before a busy crossing, so this road piece is the whole stretch.";
+export const STRETCH_WAIT = "Wait until the whole named stretch is found, or choose this road piece.";
+
+/** The stretch as the extent choice holds it: asked only when the admin chooses it. */
+export type StretchLoad =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "ready"; stretch: EditorStretch }
+  | { kind: "alone" }
+  | { kind: "error"; message: string };
+
+/** Whether a road can have a named stretch at all: an unnamed one cannot. */
+export function mayHaveStretch(title: string): boolean {
+  const t = title.trim();
+  return t !== "" && !UNNAMED_TITLES.includes(t);
+}
+
+/** The extent choice's two options, US units first with metric in brackets. */
+export function extentOptions(title: string, stretch: EditorStretch | null): { value: Extent; text: string }[] {
+  return [
+    { value: "piece", text: `This road piece: ${title}` },
+    {
+      value: "stretch",
+      text: stretch
+        ? `The whole named stretch of ${stretch.name}: ${stretch.pieces} pieces, ${formatDistance(stretch.length_m)}`
+        : `The whole named stretch of ${title}`,
+    },
+  ];
+}
+
+/** What the choice's polite status line says about the stretch. */
+export function stretchSaid(load: StretchLoad): string {
+  if (load.kind === "loading") return STRETCH_FINDING;
+  if (load.kind === "alone") return STRETCH_ALONE;
+  if (load.kind === "error") return load.message;
+  if (load.kind === "ready") {
+    const s = load.stretch;
+    return `The whole named stretch of ${s.name}: ${s.pieces} pieces, ${formatDistance(s.length_m)}.${s.capped ? ` ${STRETCH_CAPPED}` : ""}`;
+  }
+  return "";
+}
+
+/** The ways a save sends and the token that goes with them (null: the stretch is not found yet). */
+export function saveTarget(
+  state: EditorState,
+  extent: Extent,
+  stretch: StretchLoad = { kind: "none" },
+): { osm_way_ids: number[]; expected: string } | null {
+  if (extent === "stretch") {
+    if (stretch.kind === "ready") return { osm_way_ids: stretch.stretch.osm_way_ids, expected: stretch.stretch.expected };
+    if (stretch.kind === "loading") return null;
+  }
+  return { osm_way_ids: [state.osm_way_id], expected: state.expected };
 }
 
 export interface EditedWay {
@@ -126,20 +208,40 @@ export const DISPLAY_OPTIONS: ReadonlyArray<{ value: DisplayWhere; text: string 
   { value: "map", text: "Also when someone clicks the road on the map" },
 ];
 export const UNDO_MINUTES = 30;
+/** The slider's help, by whether half steps are offered. */
+export function sliderHelp(halfSteps: boolean): string {
+  return halfSteps
+    ? "1 is the calmest, 5 is Avoid. The arrow keys move half a step; Home goes to 1 and End to 5."
+    : "1 is the calmest, 5 is Avoid. Use the arrow keys to change the level; Home goes to 1 and End to 5.";
+}
+export const HALF_STEP_HELP =
+  "Half steps (1.5, 2.5, 3.5, 4.5) look like the level below on the map, with a dash of the next level's colour from street level. Routes count them halfway between the two levels.";
+export const HALF_STEPS_LATER = "Half steps arrive with the next data update.";
+
+/** The slider's step: half a level where the data can hold it, else a whole level. */
+export function sliderStep(state: Pick<EditorState, "half_steps"> | null): number {
+  return state?.half_steps === true ? 0.5 : 1;
+}
+
+/** A step as written: "3" or "3.5". */
+export function stepLabel(step: number): string {
+  return Number.isInteger(step) ? String(step) : step.toFixed(1);
+}
 export const AFTER_REBUILD =
   "The map shows it now; routes fully use it after the next weekly data update.";
 
 /** The slider's value as it is read out: "3, For experienced cyclists". */
 export function stepValueText(step: number, steps: readonly EditorStep[]): string {
   const words = steps.find((s) => s.value === step)?.words;
-  return words ? `${step}, ${words}` : String(step);
+  return words ? `${stepLabel(step)}, ${words}` : stepLabel(step);
 }
 
 /** A level in a sentence: "LTS 3, for experienced cyclists" or "Avoid". */
 export function levelPhrase(step: number, steps: readonly EditorStep[]): string {
   const words = steps.find((s) => s.value === step)?.words ?? "";
   if (step === 5) return "Avoid";
-  return words ? `LTS ${step}, ${words[0].toLowerCase()}${words.slice(1)}` : `LTS ${step}`;
+  const level = `LTS ${stepLabel(step)}`;
+  return words ? `${level}, ${words[0].toLowerCase()}${words.slice(1)}` : level;
 }
 
 /** Where the road's level now comes from, said once above the slider. */
@@ -174,6 +276,18 @@ export function savedSaid(result: EditResult, steps: readonly EditorStep[], floo
   const way = result.ways[0];
   const undo = `You can undo it for ${UNDO_MINUTES} minutes.`;
   if (!way) return `Saved. ${undo}`;
+  if (result.ways.length > 1) {
+    const n = result.ways.length;
+    const changed = result.ways.filter((w) => w.changed).length;
+    if (changed === 0) {
+      return floorOnly
+        ? `Saved. All ${n} road pieces are already at least that level, so nothing changed. ${undo}`
+        : `Saved. All ${n} road pieces already had ${levelPhrase(way.step, steps)}, so nothing changed on the map. ${undo}`;
+    }
+    const which = changed === n ? `all ${n} road pieces` : `${changed} of the ${n} road pieces`;
+    const level = floorOnly ? "at least " : "";
+    return `Changed ${which} to ${level}${levelPhrase(Math.min(...result.ways.map((w) => w.step)), steps)}. ${AFTER_REBUILD} ${undo}`;
+  }
   if (!way.changed) {
     return floorOnly
       ? `Saved. This road is already at least that level, so nothing changed. ${undo}`
@@ -184,6 +298,12 @@ export function savedSaid(result: EditResult, steps: readonly EditorStep[], floo
 
 export function undoneSaid(result: EditResult, steps: readonly EditorStep[]): string {
   const way = result.ways[0];
+  if (result.ways.length > 1) {
+    const levels = new Set(result.ways.map((w) => w.step));
+    return levels.size === 1
+      ? `Undone. All ${result.ways.length} road pieces are back to ${levelPhrase(way.step, steps)}.`
+      : `Undone. All ${result.ways.length} road pieces are back to their earlier levels.`;
+  }
   return way ? `Undone. This road is back to ${levelPhrase(way.step, steps)}.` : "Undone.";
 }
 
@@ -294,6 +414,26 @@ export async function fetchEditorState(
       return { kind: "error", message: refusalText(response.status, body.message) };
     }
     return { kind: "ready", state: (await response.json()) as EditorState };
+  } catch (error) {
+    if ((error as { name?: string })?.name === "AbortError") throw error;
+    return { kind: "error", message: refusalText(500, null) };
+  }
+}
+
+/** GET /api/stress-edits/way/{id}/stretch: the named stretch, asked when the admin chooses it. */
+export async function fetchStretch(origin: string, wayId: number, signal?: AbortSignal, get: Fetch = fetch): Promise<StretchLoad> {
+  try {
+    const response = await get(`${origin}/api/stress-edits/way/${wayId}/stretch`, {
+      signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      const body = await errorBody(response);
+      return { kind: "error", message: refusalText(response.status, body.message) };
+    }
+    const body = (await response.json()) as { stretch: EditorStretch | null };
+    return body.stretch ? { kind: "ready", stretch: body.stretch } : { kind: "alone" };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;
     return { kind: "error", message: refusalText(500, null) };

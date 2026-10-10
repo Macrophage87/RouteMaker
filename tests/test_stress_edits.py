@@ -73,8 +73,14 @@ def live_row(schema, way=WAY, ordinal=0) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _columns():
+def _columns(monkeypatch):
     segment_info.forget_columns()
+
+    # No router here: road names are the table's (core.road_names; tests/test_named_stretch.py).
+    def silent(lat, lon, costing, timeout_s=None):
+        raise segment_info.RouterSilent("no router in these tests")
+
+    monkeypatch.setattr(segment_info, "locate_edges", silent)
     yield
     segment_info.forget_columns()
 
@@ -322,7 +328,7 @@ class TestRefusals:
         with pytest.raises(stress_edits.NotFound):
             stress_edits.apply(make_user(), [999], spec(), "x")
 
-    def test_one_road_piece_at_a_time(self, live) -> None:
+    def test_one_road_piece_or_one_named_stretch_at_a_time(self, live) -> None:
         with pytest.raises(stress_edits.Invalid):
             stress_edits.apply(make_user(), [WAY, OTHER_WAY], spec(), "x")
 
@@ -841,9 +847,9 @@ class TestStateEndpoint:
         state = r.json()
         assert state["classifier_step"] == 3 and state["can_raise_only"] is True
         assert state["current"]["source"] == "classifier" and state["current"]["step"] == 3
-        assert [s["value"] for s in state["steps"]] == [1, 2, 3, 4, 5]
-        assert state["steps"][1]["words"] == "Fine for adults"
-        assert state["steps"][4]["words"] == "Avoid"
+        assert [s["value"] for s in state["steps"]] == [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+        assert state["steps"][2]["words"] == "Fine for adults"
+        assert state["steps"][8]["words"] == "Avoid"
         assert {c["id"] for c in state["categories"]} >= {"speed", "other"}
         assert state["expected"] and state["reason_max"] == 500 and state["note_max"] == 200
 
@@ -916,7 +922,7 @@ class TestCreateEndpoint:
     @pytest.mark.parametrize(
         ("change", "field"),
         [
-            ({"step": 2.5}, "step"),
+            ({"step": 2.25}, "step"),
             ({"step": "3"}, "step"),
             ({"step": True}, "step"),
             ({"step": 6}, "step"),

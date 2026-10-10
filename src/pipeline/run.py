@@ -2690,6 +2690,10 @@ def build_handlers(
                     derived["bridge_bicycle"] = legal
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
+                    # A half step (`rm:stress_half`, 461a): lua/routemaker_remap.lua
+                    # `half_step_marks` prices it between its two levels.
+                    if writers._half(stress):
+                        derived["stress_half"] = True
                 derived.update(
                     facility_derived(
                         variant, way.osm_id, context.facility_by_way, context.car_free_by_way
@@ -2998,6 +3002,7 @@ def build_handlers(
                 is_trail_class=trail,
                 stress_tier=int(stress.tier),
                 map_class=way_map_class,
+                stress_half=writers._half(stress),
             )
             # Why a bicycle may not use it, or why an override reopened it, for the map's
             # road panel (OWNER-DECISIONS 441a); the router says whether it may.

@@ -1747,6 +1747,17 @@ Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
   every slider position" asks, and no longer reads as "the fastest legal
   route" there.
 
+**Half steps in the graph** (OWNER-DECISIONS 441i-441l, 461a; HALF-STEP-EDITOR phase 3). A
+half step reaches the transform as `rm:stress_half=yes` beside its lower `rm:stress_tier`
+(`pipeline.run`, from the override's `half`), and `half_step_marks` adds: 3.5 LTS 3's
+`use_sidepath` plus `maxspeed:practical` at the road's own speed but at least 90 and 11 lanes
+each way (0.8-1.2 of the midpoint between LTS 3 and LTS 4, modelled as for the table above); 2.5
+10 lanes each way and no `use_sidepath` (short of the midpoint, below LTS 3 except at
+`use_roads` 1.0); 1.5 nothing; 4.5 LTS 4's marks and never the alley mark. The rolling chart
+reads the same marks (`calm.road_multiplier`'s `half`, `HALF_GRADED_LANES`). docs/stress/
+stress-number.md section 3 has the table, why 2.5 stops short, and the one exception;
+`tests/test_half_step_model.py` pins them.
+
 **Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
 each leg (one fewer than the points) the index in `geometry.coordinates` of its
 last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to
@@ -6075,9 +6086,15 @@ section (a heading each, the figures a description list with the source in words
 way's OSM id and distance, and the credit; then the bottom action row (441m), links drawn
 as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
 (`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
-OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
-release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
-passes it yet. A polite status region inside the dialog (always rendered, empty until the
+OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is an instance
+admin's third button in the row (StressEditor.tsx; docs/OPERATIONS.md, "Change LTS"); a rider
+the suggestion setting allows gets "Suggest a change" there instead (SuggestChange.tsx,
+`core.suggestions`; the admin reviews in the Settings sheet, SuggestionReview.tsx, and "Send to
+Discord" builds the copy-paste poll in `core.suggestion_post`; docs/OPERATIONS.md, "Rider
+suggestions"). Where the piece is part of a named stretch, the editor's "What to change" radio
+group offers the whole stretch (its pieces and length, miles first, kilometres in brackets;
+`core.stress_edits.named_stretch`, names from `core.road_names`; docs/OPERATIONS.md, "The whole
+named stretch"). A polite status region inside the dialog (always rendered, empty until the
 answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
 cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
 silent, since the modal makes everything outside it inert. On a phone it is a sheet from
@@ -6095,8 +6112,10 @@ otherwise), a drawn way winning over a hidden one (a mapped sidewalk) up to 15 m
 Its name and kind come from the standard router's `/locate` at the spot on the way, as the
 route's street names do, matched by OSM way id; the bicycle costing's edges say whether the
 graph lets a bicycle on, and the pedestrian then auto costing name a way it does not. Then:
-the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", whole tiers;
-441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
+the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", and the
+half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children", 2.5 "Fine
+for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
+high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
 (posted 55 mph)"), an override's tier before it and its category, its note only where the
 row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each

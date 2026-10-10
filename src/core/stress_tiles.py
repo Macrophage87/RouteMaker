@@ -109,6 +109,7 @@ from pipeline.schema import (
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
+    STRESS_HALF_COLUMN,
     TRAIL_BRIDGE_COLUMN,
     TRAIL_NETWORK_FACILITY,
     TRAIL_ROUTE_COLUMN,
@@ -334,6 +335,11 @@ OPTIONAL_PROPERTIES = {
     # The Mass Ride capacity (OWNER-DECISIONS 325-327, 387), riders a minute, from the
     # usable width (404-407).
     "rpm": MASS_WIDTH_COLUMN,
+    # A half step (OWNER-DECISIONS 441r-441v, 458-458b, 460.1): true, or left out. `tier`
+    # stays the lower level, so the map draws the lower level's whole look at every zoom
+    # and, from z15, a dash in the next level's base colour over it (stressStyle.js,
+    # `halfStepLayers`).
+    "half": STRESS_HALF_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -362,6 +368,7 @@ OPTIONAL_EXPRESSIONS = {
     "mtb": f"NULLIF(s.{MTB_ONLY_COLUMN}, false)",
     "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
     "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
+    "half": f"NULLIF(s.{STRESS_HALF_COLUMN}, false)",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -588,6 +595,8 @@ ETAG_LETTERS = {
     ROADSIDE_COLUMN: "e",
     # `w` for width: `r` is the rough surface's (the bundle's two branches both took it).
     MASS_WIDTH_COLUMN: "w",
+    # `h` for a half step.
+    STRESS_HALF_COLUMN: "h",
     # `d` for difficulty: `m` is the map class's and `l` the trail run's.
     MTB_LEVEL_COLUMN: "d",
     # `n` for the mountain-bike trail's name.
@@ -603,14 +612,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, fourteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and fourteen letters, `-v8"`, 39 characters), in the order of the
+    # key with all of them (a `+` and one letter each, fifteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and fifteen letters, `-v8"`, 40 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 47 characters, inside the cache's 64.
+    # digits makes the longest tag 48 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

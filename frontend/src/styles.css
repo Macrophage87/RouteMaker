@@ -1491,6 +1491,42 @@ dialog.road-info::backdrop {
   overflow-wrap: anywhere;
 }
 
+/* The extent choice (a named stretch, HALF-STEP-EDITOR phase 5): native radios, 44px rows. */
+.stress-editor-extent-choice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.stress-editor-extent-choice > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.stress-editor-radio {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-radio input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-radio > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
 .stress-editor-check {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -1897,7 +1933,7 @@ ul.station-links {
 /* The routes to choose from (OWNER-DECISIONS 265): a radio group, one row each, the
    figures in words (no colour carries the difference). */
 fieldset.candidates {
-  border: 1px solid var(--border, currentColor);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 12px 0;
@@ -3481,6 +3517,68 @@ details.zoom-notes {
 }
 .station-refresh {
   min-height: 44px;
+}
+
+/* An instance admin's review of rider suggestions (SuggestionReview.tsx; OWNER-DECISIONS 460.5). */
+.suggestion-review > button,
+.suggestion-post > button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.suggestion-review-said:empty {
+  display: none;
+}
+
+.suggestion-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.suggestion-item {
+  border-top: 1px solid var(--swatch-border);
+  padding: 10px 0;
+}
+
+.suggestion-item h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.suggestion-post {
+  margin-top: 10px;
+}
+
+.suggestion-post label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.suggestion-post textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
 }
 
 /* --- The installable app (WEB-NAV-plan.md section 8; InstallableApp.tsx): the status bar at the top of

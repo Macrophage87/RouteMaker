@@ -73,7 +73,7 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
+from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
@@ -346,7 +346,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -378,6 +378,27 @@ def _has_capacity_column(schema: str) -> bool:
         )
         _capacity_column_seen = cursor.fetchone()[0] == 1
     return _capacity_column_seen
+
+
+# Whether the live segment table has the half-step column (`pipeline.schema.
+# STRESS_HALF_COLUMN`): written by the first rebuild after half steps shipped, or added in
+# place by `manage.py add_stress_half_column`. Without it every piece is a whole step.
+# Remembered once seen, as above.
+_half_column_seen = False
+
+
+def _has_half_column(schema: str) -> bool:
+    global _half_column_seen
+    if _half_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, STRESS_HALF_COLUMN],
+        )
+        _half_column_seen = cursor.fetchone()[0] == 1
+    return _half_column_seen
 
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -443,6 +464,11 @@ class PieceClass(tuple):
     # capacity map always agree (`_flow_stretches`).
     width_m: float | None
     rpm: int | None
+    # A half step (OWNER-DECISIONS 441i-441l, 461a): the piece is half a level above its
+    # stress key ("3" and half is 3.5). The key stays the whole level, so the breakdown and
+    # every reader that compares keys read the lower level; the ranking reads the half as
+    # the midpoint (`core.refine`, docs/stress/stress-number.md section 3).
+    half: bool
 
     def __new__(
         cls,
@@ -452,6 +478,7 @@ class PieceClass(tuple):
         lanes: int | None = None,
         oneway: bool | None = None,
         width_m: float | None = None,
+        half: bool = False,
     ):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
@@ -459,10 +486,11 @@ class PieceClass(tuple):
         pair.oneway = oneway
         pair.width_m = width_m
         pair.rpm = round(flow.level_riders_per_min(width_m)) if width_m is not None else None
+        pair.half = bool(half) and tier in ("1", "2", "3", "4")
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m)
+        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half)
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -479,29 +507,42 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
+    with_half = _has_half_column(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
-        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else ""),
+        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
+        + (f", s.{STRESS_HALF_COLUMN}" if with_half else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
             else "NULL::smallint AS road_lanes, NULL::boolean AS road_oneway"
         ),
         capacity_out=f", seg.{MASS_WIDTH_COLUMN}" if with_capacity else "",
+        # A road closed to cars in this ride time is a path at tier 1, never a half step.
+        half_out=(
+            ""
+            if not with_half
+            else ", CASE WHEN %s = ANY(seg.car_free_when) THEN false "
+            f"ELSE seg.{STRESS_HALF_COLUMN} END"
+            if with_facility
+            else f", seg.{STRESS_HALF_COLUMN}"
+        ),
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
+    whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
     classes = []
     with connection.cursor() as cursor:
-        cursor.execute(query, ([when, when] if with_facility else []) + arrays)
+        cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
             width = row[5] if with_capacity and len(row) > 5 and row[5] is not None else None
+            half = bool(row[-1]) if with_half and row[-1] is True else False
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -512,6 +553,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     lanes,
                     oneway,
                     None if width is None else float(width),
+                    half,
                 )
             )
     return classes
@@ -550,8 +592,8 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC]]]) in the order
-    ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half]]]]) in
+    the order ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
@@ -573,6 +615,10 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     spans: list[list] = []  # [length, tier, facility, unpaved, band, lowest rpm]
     for stretch in stretches:
         metres, tier, kind = stretch[:3]
+        # A half step is a section of its own (OWNER-DECISIONS 461a): its key carries the
+        # half ("3h"), and the section says `half: true`.
+        if len(stretch) > 6 and stretch[6] and tier in ("1", "2", "3", "4"):
+            tier = f"{tier}h"
         unpaved = stretch[3] if len(stretch) > 3 else None
         outside = capacity and len(stretch) > 5 and bool(stretch[5])
         rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
@@ -606,6 +652,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         if out and out[-1]["to_m"] == round(at):
             out[-1]["to_m"] = round(at)
             continue
+        half = tier.endswith("h")
+        tier = tier.removesuffix("h")
         entry = {
             "from_m": round(start),
             "to_m": round(at),
@@ -613,6 +661,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
             "facility": kind if kind != "unknown" else None,
             "unpaved": unpaved,
         }
+        if half:
+            entry["half"] = True
         if capacity:
             entry["rpm"] = None if tier == "5" else rpm
             if _band == "outside":
@@ -1382,6 +1432,7 @@ def _calm_pieces(leg_runs: list, pieces: list[Piece], classes: list) -> list[cal
                         int(tier) if tier in STRESS_KEYS and tier != "unknown" else None,
                         kind if kind != "unknown" else None,
                         pieces[i].road,
+                        getattr(classes[i], "half", False) is True,
                     )
                 )
         else:
@@ -2518,6 +2569,7 @@ def plan(
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
                         preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                        getattr(classes[i], "half", False),
                     )
                     for i in range(run[0], run[1])
                 )

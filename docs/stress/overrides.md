@@ -31,7 +31,7 @@ a path for the facility class, and then the car-free rule makes it LTS 1
 
 | Key | Meaning |
 |---|---|
-| `tier` | Integer 1-5 (`:119`, `:155-159`). It may be below the classifier's: a down-adjustment ("down adjust a road if this is the better route among similar routes"). Half steps are **planned** (the editor stores the lower level plus a flag; HALF-STEP-EDITOR-plan section 4.1). |
+| `tier` | Integer 1-5 (`:119`, `:155-159`). It may be below the classifier's: a down-adjustment ("down adjust a road if this is the better route among similar routes"). A half step is `"half": true` beside the lower tier (1.5-4.5; never above 5, so not with tier 5); **built** (HALF-STEP-EDITOR-plan section 4.1). A floor (`at_least`) with a half compares the full step: a 3.5 floor raises a 3 road to 3.5 and leaves a 4 road alone. |
 | `at_least` | Optional. `true` makes the row a **floor**: the way gets max(its tier at that point, `tier`), where its tier at that point is the classifier's after the curated lanes, the corridors and any earlier row for the way (`:436-443`). A way already at or above it keeps its own tier, its rule and no adjustment, and the row is not counted as applied (`:113-118`, `:438-444`; OWNER-DECISIONS 445a-c). |
 | `adjustment_id` | Lower-case words joined by hyphens, at most 64 characters (`:121-122`), shared by every way of one stretch and stable across rebuilds. |
 | `category` | `speed`, `road_conditions`, `driver_behaviour`, `intersection`, `sightlines`, `better_among_alternatives`, `other` (`src/routemaker/stress.py:326-334`). |
@@ -98,10 +98,16 @@ corrections"; `src/routemaker/agency_roads.py`, `withheld_blocks`, `resolve_with
 - The owner's acceptance of specific overrides **in chat is the sign-off**. An operator
   may then load them: dry run first, then `--confirm` as the instance admin, stopping on
   any mismatch.
-- The planned half-step editor keeps the rule. An instance admin's edit is that
-  admin's own act. A signed-in rider's suggestion goes to a separate table and is never
-  applied automatically: an admin approves, declines or (460.5) sends it to Discord for
-  discussion (HALF-STEP-EDITOR-plan sections 5.1-5.3). **Planned.**
+- The stress editor keeps the rule. An instance admin's edit is that admin's own act. A
+  signed-in rider's suggestion goes to a separate table (`stress_suggestion`) and is never
+  applied automatically: an admin approves it now (as their own edit), deletes it, or
+  (460.5) sends it to Discord as a copy-paste plain-English poll and decides later
+  (HALF-STEP-EDITOR-plan sections 5.1-5.3; the owner, 2026-10-10; docs/OPERATIONS.md,
+  "Rider suggestions"). **Built.**
+- The editor can change a whole named stretch at once (441g, 460.3): one override row a
+  way, all sharing one `adjustment_id`, so the stretch reads as one adjustment. It ends
+  at a junction with a road of another name at 2.5 or above (docs/OPERATIONS.md, "The
+  whole named stretch"). **Built.**
 
 ## Re-matching by fingerprint (OWNER-DECISIONS 282)
 

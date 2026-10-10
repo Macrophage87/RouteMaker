@@ -26,7 +26,8 @@ intersection stress rather than roadway stress." (402a). So a calm road's run is
   junction model (`routemaker.intersections`) gives a junction a rating of its own only
   where a road of `BUSY_TIER` or above is in it, so on the map's data the one test covers
   both. A bridge or an underpass shares no node with the road it passes and does not break
-  a run.
+  a run. A 2.5 road breaks a run too: an on/off rule takes a half step's cautious side
+  (OWNER-DECISIONS 461a), and 2.5 is not a calm road itself (`is_calm_candidate`).
 
 The run's length is stored on each of its ways as `calm_run_m`; a way that a busy road
 crosses in its middle is in two runs and keeps the longer. The z12-13 layer keeps a way whose
@@ -49,6 +50,7 @@ from routemaker.intersections import BUSY_TIER
 
 from .schema import (
     CALM_RUN_COLUMN,
+    STRESS_HALF_COLUMN,
     TRAIL_NAME_COLUMN,
     UNSMOOTHED_TIER_COLUMN,
     trails_predicate,
@@ -95,7 +97,8 @@ busy_pts AS (
            round(ST_Y(d.geom) * {grid})::bigint AS ky
     FROM {schema}.segment AS b CROSS JOIN LATERAL ST_DumpPoints(b.geometry) AS d
     WHERE b.map_class IN ('road', 'barred')
-      AND GREATEST(b.stress_tier, COALESCE(b.{unsmoothed}, 0)) >= {busy_tier}
+      AND (GREATEST(b.stress_tier, COALESCE(b.{unsmoothed}, 0)) >= {busy_tier}
+           OR (b.stress_tier = {busy_tier} - 1 AND b.{half}))
 ),
 busy AS (
     SELECT DISTINCT kx, ky FROM busy_pts
@@ -139,6 +142,7 @@ def junctions_sql(schema: str) -> str:
         trails=trails_predicate(True, True),
         unsmoothed=UNSMOOTHED_TIER_COLUMN,
         busy_tier=BUSY_TIER,
+        half=STRESS_HALF_COLUMN,
         grid=_GRID,
     )
 

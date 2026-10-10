@@ -1244,6 +1244,10 @@ class StressEdit(models.Model):
     replaced = models.ForeignKey(
         Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # Every way's pair, [{"way", "override", "replaced"}] (row ids or null): a named stretch
+    # has one a way (HALF-STEP-EDITOR phase 5). `override`/`replaced` above are the first
+    # way's; an edit from before phase 5 has only those.
+    override_rows = models.JSONField(default=list, blank=True)
     # For an undo, the edit it undid.
     undoes = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="undone_by"
@@ -1319,6 +1323,107 @@ class BikeshareFeedCache(models.Model):
 
     def __str__(self) -> str:
         return f"bikeshare feeds as of {self.fetched_at}"
+
+
+class SuggestionSettings(models.Model):
+    """Who may suggest a change to a road's traffic stress from the road panel (460.4).
+
+    One row (pk 1), edited in the admin. The default is nobody, the safest choice until an
+    instance admin opens it (HALF-STEP-EDITOR phase 4; docs/OPERATIONS.md, "Rider
+    suggestions").
+    """
+
+    class Who(models.TextChoices):
+        NOBODY = "nobody", "Nobody"
+        SIGNED_IN = "signed_in", "Anyone signed in"
+        MEMBERS = "members", "Members of a configured Discord server"
+
+    who = models.CharField(max_length=16, choices=Who.choices, default=Who.NOBODY)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "suggestion_settings"
+        verbose_name = "suggestion settings"
+        verbose_name_plural = "suggestion settings"
+
+    def __str__(self) -> str:
+        return f"Who may suggest: {self.get_who_display()}"
+
+    @classmethod
+    def current(cls) -> SuggestionSettings:
+        row = cls.objects.filter(pk=1).first()
+        return row if row is not None else cls(pk=1)
+
+
+class StressSuggestion(models.Model):
+    """A rider's suggested traffic stress level for one road piece (441h, 460.5).
+
+    Never applied by itself. An instance admin approves it now (it is applied as the admin's
+    own edit, `core.stress_edits.apply`), deletes it, or sends it to Discord - a ready-to-paste
+    poll (`core.suggestion_post`) - and approves or deletes it later (the owner, 2026-10-10).
+    The rider's reason may be quoted in that post without their name; the account is kept
+    here only so an admin can see a pattern of abuse, and is never in the post.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for review"
+        SENT = "sent_to_discord", "Sent to Discord"
+        APPROVED = "approved", "Approved"
+        DELETED = "deleted", "Deleted"
+
+    class Kind(models.TextChoices):
+        ROAD = "road", "Road piece"
+
+    created_at = models.DateTimeField(default=timezone.now)
+    suggester = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    suggester_user_id = models.BigIntegerField(null=True, blank=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.ROAD)
+    osm_way_id = models.BigIntegerField()
+    # The spot the rider asked about, and the road as it was then.
+    lat = models.FloatField()
+    lon = models.FloatField()
+    road_name = models.TextField(blank=True)
+    current_tier = models.SmallIntegerField()
+    current_half = models.BooleanField(default=False)
+    tier = models.SmallIntegerField()
+    half = models.BooleanField(default=False)
+    reason = models.TextField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    edit = models.ForeignKey(
+        StressEdit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "stress_suggestion"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "-created_at"], name="stress_suggestion_open")]
+        # One open suggestion per rider per road, held by the database: the check in
+        # core.suggestions counts rows, which locks nothing against a second send at once.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggester", "osm_way_id"],
+                condition=models.Q(status__in=["pending", "sent_to_discord"]),
+                name="stress_suggestion_one_open_per_road",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"way {self.osm_way_id}: {self.get_status_display()}"
+
+    @property
+    def step(self) -> float:
+        return self.tier + 0.5 if self.half else self.tier
+
+    @property
+    def current_step(self) -> float:
+        return self.current_tier + 0.5 if self.current_half else self.current_tier
 
 
 class AvoidJunction(models.Model):

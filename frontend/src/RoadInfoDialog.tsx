@@ -55,9 +55,11 @@ import { stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
 import { StressPageLink } from "./lib/stressLegend.ts";
-import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
+import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
+import { SuggestChange } from "./SuggestChange.tsx";
+import { SUGGEST_TEXT } from "./lib/suggestions.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 
@@ -96,6 +98,12 @@ interface Props {
 const FOCUSABLE =
   "button:not([disabled]), [href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
+/** Whether an element is shown and so can take the focus (`checkVisibility` sees a closed fold). */
+function isShown(el: HTMLElement): boolean {
+  const check = (el as HTMLElement & { checkVisibility?: () => boolean }).checkVisibility;
+  return typeof check === "function" ? check.call(el) : el.getClientRects().length > 0;
+}
+
 /** The stop after (or before) `from` in page order among `items`, wrapping round at the ends. */
 function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean): HTMLElement {
   if (backwards) {
@@ -129,6 +137,10 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
   // said with the previous spot's road.
   const stateFor = useRef<InfoRequest | null>(null);
   const [editing, setEditing] = useState(false);
+  // A rider's "Suggest a change" form (OWNER-DECISIONS 441h; SuggestChange.tsx), open in place of the row.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestButton = useRef<HTMLButtonElement>(null);
+  const returnToSuggest = useRef(false);
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
   const changeButton = useRef<HTMLButtonElement>(null);
@@ -155,6 +167,7 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     setState({ kind: "loading" });
     setSaid("");
     setEditing(false);
+    setSuggesting(false);
     setReload(0);
     void fetchMe(window.location.origin).then(setMe);
     const controller = new AbortController();
@@ -194,6 +207,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     }
   }, [editing]);
 
+  // Back from the suggestion form: its button takes the focus.
+  useEffect(() => {
+    if (!suggesting && returnToSuggest.current) {
+      returnToSuggest.current = false;
+      suggestButton.current?.focus();
+    }
+  }, [suggesting]);
   // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
   // is said again with the area, so a screen reader hears it without reading on.
   useEffect(() => {
@@ -231,17 +251,33 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     setEditing(false);
   };
 
+  const closeSuggest = () => {
+    returnToSuggest.current = true;
+    setSuggesting(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
       // Escape cancels the editor, not the whole panel.
       if (editing) closeEditor();
+      else if (suggesting) closeSuggest();
       else close();
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
-    const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const active = document.activeElement as HTMLElement | null;
+    // One stop a radio group (the named stretch's What to change), as the browser's Tab order has it.
+    // Only what is shown: a link inside a closed fold (`details`, hidden by content-visibility, which
+    // still lays out a box) takes no focus, so a stop on it would leave the focus where it was.
+    const shown = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el === document.activeElement || isShown(el));
+    const items = tabStops(shown as (HTMLElement & TabCandidate)[]);
+    let active = document.activeElement as HTMLElement | null;
+    const radio = active as (HTMLElement & TabCandidate) | null;
+    if (radio?.type === "radio" && radio.name && !items.includes(radio)) {
+      // An unchecked radio of a group with a checked one (the choice moved under the focus):
+      // Tab goes on from the group's stop, as the browser's own order does.
+      active = items.find((i) => (i as HTMLElement & TabCandidate).type === "radio" && (i as HTMLElement & TabCandidate).name === radio.name) ?? active;
+    }
     const index = items.indexOf(active as HTMLElement);
     if (index < 0 && active && active !== dialogRef.current && dialogRef.current.contains(active) && items.length > 0) {
       // On something the dialog focuses but Tab does not visit (a heading): move to the next stop in
@@ -265,6 +301,10 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
   const osmEdit = ready ? osmEditUrl(ready) : null;
   const actions = spotActions(plan.count, plan.loop);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
+  // A rider the settings allow may suggest a level (an instance admin changes it instead).
+  const suggestWay =
+    ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
+  const suggestingNow = suggesting && suggestWay !== null;
 
   return (
     <dialog
@@ -455,7 +495,20 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
             />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && (
+        {request && suggestingNow && ready && suggestWay !== null && (
+          <div className="road-info-actions">
+            <SuggestChange
+              origin={window.location.origin}
+              wayId={suggestWay}
+              title={ready.title}
+              current={ready.step ?? ready.tier ?? 3}
+              point={streetViewPoint(ready, request.point)}
+              halfSteps={ready.half_steps === true}
+              onClose={closeSuggest}
+            />
+          </div>
+        )}
+        {request && !(editing && editableWay !== null) && !suggestingNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -486,6 +539,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
                 <li>
                   <button type="button" className="road-info-button" ref={changeButton} onClick={() => setEditing(true)}>
                     {CHANGE_LTS_TEXT}
+                  </button>
+                </li>
+              )}
+              {suggestWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
+                    {SUGGEST_TEXT}
                   </button>
                 </li>
               )}

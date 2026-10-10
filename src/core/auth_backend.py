@@ -84,6 +84,10 @@ class DiscordStandingBackend:
             # the list empties. Nothing registers it in the admin today; naming
             # it here is what keeps that true if something ever does.
             "bootstrapclaim",
+            # Who may suggest a road's stress, and the riders' suggestions: an
+            # instance admin's to open or close and to review (core.suggestions).
+            "suggestionsettings",
+            "stresssuggestion",
         }
     )
     WRITE_ACTIONS = ("add_", "change_", "delete_")

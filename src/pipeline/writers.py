@@ -82,6 +82,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),
             row.get("mass_usable_width_m"),
             row.get("bike_access_reason"),
+            _half(row["stress"]),
             row.get("mtb_level"),
             row.get("mtb_name"),
         )
@@ -94,7 +95,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -129,6 +130,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         unsmoothed_tier,
                         mass_capacity,
                         access_reason,
+                        half,
                         mtb_level,
                         mtb_name,
                     ),
@@ -167,6 +169,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     unsmoothed_tier,
                     mass_capacity,
                     access_reason,
+                    half,
                     mtb_level,
                     mtb_name,
                 ) in batch
@@ -183,11 +186,18 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
-                     mtb_level, mtb_name)
+                     stress_half, mtb_level, mtb_name)
                     VALUES {args}"""
             )
             written += len(batch)
     return written
+
+
+def _half(stress: StressResult) -> bool:
+    """Whether an owner's override rated the way a half step (`StressAdjustment.half`).
+    The level is public whatever the adjustment's visibility: only its reason is not."""
+    adjustment = getattr(stress, "adjustment", None)
+    return bool(adjustment is not None and getattr(adjustment, "half", False))
 
 
 def _tier_or_none(tier) -> int | None:
