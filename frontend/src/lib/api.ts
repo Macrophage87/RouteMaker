@@ -201,7 +201,8 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  kind: "stretch" | "junction" | "via" | "walk";
+  /** "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. */
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -215,7 +216,7 @@ export interface DescriptionEntry {
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
   } | null;
-  severity?: "orange" | "red" | null;
+  severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
   /**
    * On a stretch: its surface where the route's segments say it is unpaved
@@ -415,7 +416,40 @@ export interface BikesharePlan {
   credit: string;
 }
 
+/**
+ * An Avoid-rated junction the route passes (core.api.AvoidJunctionOut;
+ * FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310): rated by a person, never by the model.
+ */
+export interface AvoidJunctionPass {
+  id: number;
+  name: string;
+  reason: string;
+  lon: number;
+  lat: number;
+  /** Metres along the route. */
+  m: number;
+  /** The accessible name (309): "Avoid-rated junction: <name>, <reason>". */
+  label: string;
+}
+
+/** What the plan did about Avoid-rated junctions (core.api.AvoidSearchOut, 308, 335). */
+export interface AvoidSearch {
+  passed: number;
+  penalty_s: number;
+  decision: "kept" | "avoided";
+  alternate: "found" | "no_route" | "time" | null;
+  avoided: number;
+}
+
 export interface RouteResponse {
+  /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
+  avoid_junctions?: AvoidJunctionPass[];
+  /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */
+  avoid_notice?: string | null;
+  /** On the answer: what the plan did about them; null where the route passed none. */
+  avoid_search?: AvoidSearch | null;
+  /** On the answer: the best route round them, however much longer (335); null otherwise. */
+  avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
   /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
   bikeshare?: BikesharePlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */

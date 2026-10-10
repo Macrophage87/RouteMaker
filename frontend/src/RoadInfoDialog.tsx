@@ -19,6 +19,11 @@
  * empty until the answer comes, as the weight dialog's total is), so a rider who stays on
  * the heading hears it come in: the page's own region is outside the modal, which makes it
  * inert and drops it from the accessibility tree (the a11y review's S1).
+ *
+ * On an Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID; the owner, 2026-10-10
+ * 15:08 UTC: "Yes, also when clicking on the intersection. ... Basically something to say: this
+ * is a really bad idea, please reconsider.") the panel leads with a warning, above its heading:
+ * an alert, so it is said as the panel opens, and the first part of the dialog's description.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -51,6 +56,7 @@ import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
+import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -59,6 +65,8 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
+  avoid?: AvoidItem | null;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -90,7 +98,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, avoid = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -237,7 +245,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       ref={dialogRef}
       className="road-info"
       aria-labelledby={id("title")}
-      aria-describedby={id("where")}
+      aria-describedby={avoid ? `${id("avoid")} ${id("where")}` : id("where")}
       aria-busy={state.kind === "loading" ? true : undefined}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => {
@@ -251,6 +259,17 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       }}
     >
       <div className="road-info-body">
+        {request && avoid && (
+          <div className="road-info-avoid" role="alert" id={id("avoid")}>
+            <p className="road-info-avoid-heading">
+              <span className="avoid-symbol" aria-hidden="true">
+                {AVOID_SYMBOL}
+              </span>{" "}
+              <strong>{AVOID_CARD_HEADING}.</strong>
+            </p>
+            <p className="road-info-avoid-text">{avoidCardText(avoid)}</p>
+          </div>
+        )}
         <header>
           <h2 id={id("title")} ref={headingRef} tabIndex={-1}>
             {infoHeading(state)}

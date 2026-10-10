@@ -3286,3 +3286,65 @@ details.zoom-notes {
 .station-refresh {
   min-height: 44px;
 }
+
+/* Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335): the skull on a
+   dark disc ringed in white, above the warning markers; the notice at the top of the route
+   panel; the symbol beside the list rows and the description's entries, hidden from
+   assistive technology (the text names the rating, 309). */
+.avoid-marker {
+  display: block;
+  /* AVOID_ICON_PX: larger than the 24 px junction markers (the owner, 2026-10-10). */
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  line-height: 0;
+  z-index: 4;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.avoid-notice {
+  border: 2px solid var(--text);
+  border-left-width: 6px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 12px;
+  background: var(--bg);
+  color: var(--text);
+}
+.avoid-notice p {
+  margin: 0 0 6px;
+}
+.avoid-notice .avoid-symbol {
+  font-size: 1.25em;
+  margin-right: 4px;
+}
+.avoid-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.junction-avoid {
+  padding: 4px 0;
+}
+
+/* The road panel on an Avoid-rated junction (the owner, 2026-10-10): a strong warning first. */
+.road-info-avoid {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 3px solid var(--text);
+  border-left-width: 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.road-info-avoid p {
+  margin: 0;
+}
+.road-info-avoid-heading {
+  font-size: 1.15rem;
+}
+.road-info-avoid .avoid-symbol {
+  font-size: 1.3em;
+}
+.road-info-avoid-text {
+  margin-top: 0.25rem !important;
+}

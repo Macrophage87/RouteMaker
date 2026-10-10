@@ -385,8 +385,12 @@ test("the route's folds: Elevation and stress, Stress and facilities, Directions
   // The edges (the mutation re-check's NIT B): a count of 0 is still said, as "(0)" and "0 steps".
   assert.equal(foldTitle("x", 0), "x (0)");
   assert.equal(stepsCount(0), "0 steps");
-  // The Junctions fold: drawn only when the route has intersections, and counted by what the list shows.
-  assert.match(app, /const junctions = route\.intersections == null \? null : junctionItems\(route\)\.length;/);
+  // The Junctions fold: drawn only when the route has intersections (or Avoid-rated junctions, OWNER-DECISIONS
+  // 307, which come from the route's line), and counted by what the list shows.
+  assert.match(
+    app,
+    /const junctions = route\.intersections == null \? \(avoidCount > 0 \? avoidCount : null\) : junctionItems\(route\)\.length \+ avoidCount;/,
+  );
   assert.match(app, /\{junctions !== null && \(\s*<Fold title=\{foldTitle\(ROUTE_FOLDS\.junctions\.title, junctions\)\}/);
   const at = (text: string) => {
     const i = app.indexOf(text, app.indexOf("function RouteSummary"));

@@ -7,7 +7,8 @@ import { inflateSync } from "node:zlib";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function connect(port = 9222) {
+// The debugging port: 9222 (run.sh's container), or A11Y_CDP_PORT to run beside another browser.
+export async function connect(port = Number(process.env.A11Y_CDP_PORT || 9222)) {
   let version;
   for (let i = 0; i < 100 && !version; i++) {
     try {
@@ -549,6 +550,34 @@ export const S_DEFAULT = (() => {
   const r = copy();
   r.dials = { stress: 70, hills: 0, when: "weekday", carrying: null };
   r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
+  return r;
+})();
+/**
+ * The default ride through an Avoid-rated junction (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS
+ * 307-310, 335): the notice, the marker, the list row, the description's entry, and the
+ * way round offered as an alternate, 1.0 mi longer.
+ */
+export const S_AVOID = (() => {
+  const r = JSON.parse(JSON.stringify(S_DEFAULT));
+  const [lon, lat] = coords[10];
+  const label = "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic";
+  r.avoid_junctions = [{ id: 7, name: "Main St and 1st Ave", reason: "no gap in fast traffic", lon, lat, m: 1200, label }];
+  r.avoid_notice = "This route goes through an Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.";
+  r.avoid_search = { passed: 1, penalty_s: 1800, decision: "kept", alternate: "found", avoided: 0 };
+  r.description = [
+    entry("stretch", 0, 1200, "0.0 to 0.7 mi (0.0 to 1.2 km): Capital Crescent Trail, traffic-free path.", { tier: 1, facility: "path" }),
+    entry("avoid", 1200, 1200, "Avoid-rated junction ahead at 0.7 mi (1.2 km): Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.", { severity: "avoid", street: "Main St and 1st Ave" }),
+    entry("stretch", 1200, 4660, "0.7 to 2.9 mi (1.2 to 4.7 km): Leland Street, quiet street.", { tier: 2 }),
+  ];
+  r.description_overview = r.description;
+  const around = JSON.parse(JSON.stringify(S_DEFAULT));
+  around.distance_m = 6270;
+  around.duration_s = 2470;
+  around.avoid_junctions = [];
+  around.avoid_notice = null;
+  around.extra_distance_m = 1610;
+  around.extra_duration_s = 634;
+  r.avoid_alternate = around;
   return r;
 })();
 /**

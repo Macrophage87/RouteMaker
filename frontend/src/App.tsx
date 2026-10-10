@@ -54,6 +54,8 @@ import {
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
+import { AvoidNotice } from "./AvoidNotice.tsx";
+import { avoidItems, avoidNearSpot } from "./lib/avoidJunctions.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -235,15 +237,19 @@ export function App() {
   const [choice, setChoice] = useState(0);
   // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
   const [chosen, setChosen] = useState(false);
+  // The way round an Avoid-rated junction shown in place of the planned route (OWNER-DECISIONS 335).
+  const [aroundAvoid, setAroundAvoid] = useState(false);
   useEffect(() => {
     setChoice(0);
     setChosen(false);
+    setAroundAvoid(false);
   }, [answer]);
   const choose = useCallback((index: number) => {
     setChoice(index);
     setChosen(true);
+    setAroundAvoid(false);
   }, []);
-  const route = candidateRoute(answer, choice);
+  const route = aroundAvoid && answer?.avoid_alternate ? answer.avoid_alternate : candidateRoute(answer, choice);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   // Whether that route was planned as a loop the rider chose, recorded with its
   // points: during a replan the toggle may already say otherwise, and the GPX
@@ -1569,6 +1575,8 @@ export function App() {
           )}
         </div>
       )}
+      {/* First in the panel and announced first (335): the route goes through an Avoid-rated junction. */}
+      {shown && answer && <AvoidNotice answer={answer} around={aroundAvoid} onAround={setAroundAvoid} />}
       {shown && (
         <RouteSummary
           route={shown}
@@ -1746,6 +1754,7 @@ export function App() {
         request={roadInfo}
         massRide={massMap}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
         onStressChanged={(generation) => {
@@ -2110,7 +2119,9 @@ function RouteSummary({
   // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
-  const junctions = route.intersections == null ? null : junctionItems(route).length;
+  // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
+  const avoidCount = avoidItems(route).length;
+  const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
   const bikeshare = bikeshareOf(route);
   // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
   // is only the ride between the docks, so the walk to the first dock would read as off route.

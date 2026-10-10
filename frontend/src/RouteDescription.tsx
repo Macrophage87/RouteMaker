@@ -19,6 +19,7 @@
  * summary's folds: `fold` draws the same list, checkbox and buttons inside a native <details> with
  * that summary, in place of its own heading and toggle button. Without `fold` it is as it was.
  */
+import { AVOID_SYMBOL } from "./lib/avoidJunctions.ts";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
@@ -117,6 +118,12 @@ export function RouteDescription({
     const crossings = crossingsOf(entry);
     return (
       <li key={i} className={`description-${entry.kind}`}>
+        {/* An Avoid-rated junction (307, 310): the symbol is seen, not heard; the text names it (309). */}
+        {entry.kind === "avoid" && (
+          <span className="avoid-symbol" aria-hidden="true">
+            {AVOID_SYMBOL}{" "}
+          </span>
+        )}
         {entry.text}
         {crossings.length > 0 ? (
           // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).

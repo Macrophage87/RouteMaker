@@ -211,7 +211,7 @@ export function cueSheetFileName(route: Pick<RouteResponse, "preset" | "distance
 /** Whether a junction or stretch entry's severity is said in words in its text (never by colour alone). */
 export function saysItsSeverity(entry: DescriptionEntry): boolean {
   if (!entry.severity && !entry.turn?.severity) return true;
-  return /Higher stress|Very high stress/.test(entry.text);
+  return /Higher stress|Very high stress|Avoid-rated junction/.test(entry.text);
 }
 
 const OPEN_KEY = "routemaker.description.open";

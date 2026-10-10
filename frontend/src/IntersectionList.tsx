@@ -25,6 +25,7 @@ import {
   warningIconSvg,
 } from "./lib/intersectionMarkers.ts";
 import { chevron } from "./lib/routeDescription.ts";
+import { AVOID_SYMBOL, avoidItems, avoidRowName } from "./lib/avoidJunctions.ts";
 
 interface Props {
   route: RouteResponse;
@@ -81,16 +82,41 @@ function JunctionGroupRow({ group, onSelect }: { group: JunctionGroupItem; onSel
   );
 }
 
+/**
+ * The Avoid-rated junctions the route passes (OWNER-DECISIONS 307-310), first: rated by
+ * a person, and the worst there is. The symbol is seen, not heard; each row's name is
+ * the rating and the reason (309).
+ */
+export function AvoidJunctionList({ route }: { route: RouteResponse }) {
+  const avoid = avoidItems(route);
+  if (avoid.length === 0) return null;
+  return (
+    <ul className="junction-list avoid-list" aria-label="Avoid-rated junctions, in route order">
+      {avoid.map((item, i) => (
+        <li key={`${item.id}-${i}`} className="junction-avoid">
+          <span className="avoid-symbol" aria-hidden="true">
+            {AVOID_SYMBOL}
+          </span>{" "}
+          {/* One string, read as written: the rating, the junction, the reason, where. */}
+          <span className="junction-reason">{avoidRowName(item)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function IntersectionList({ route, onSelect }: Props) {
   // Null: the API could not read the junctions in time, or is older than the
-  // model; there is nothing true to say, so nothing is said.
-  if (route.intersections == null) return null;
+  // model; there is nothing true to say, so nothing is said (the Avoid-rated
+  // junctions, which come from the route's line, are said all the same).
+  if (route.intersections == null) return <AvoidJunctionList route={route} />;
   const items = junctionItems(route);
   const counts = junctionCounts(items);
   const rows = junctionRows(route);
   return (
     <figure className="junctions">
       <figcaption>{junctionHeadline(counts)}</figcaption>
+      <AvoidJunctionList route={route} />
       {items.length > 0 && (
         <>
           <ul className="junction-list" aria-label="Stressful junctions, in route order">
