@@ -1338,6 +1338,24 @@ class TestOptionC:
             Road(4, speed_mph=30)
         )
 
+    def test_an_unposted_road_is_read_at_its_statutory_default(self) -> None:
+        """OWNER-DECISIONS 469: the jurisdiction's default replaces the blanket
+        45 mph, on any tier, for cost only."""
+        rural_va = Road(4, default_speed_mph=55.0)
+        assert m.cost_speed(rural_va) == 55.0 and m.speed_assumed(rural_va)
+        assert m.scale(rural_va, True) == pytest.approx(m.scale(Road(4, speed_mph=55), True))
+        dc = Road(4, default_speed_mph=20.0)
+        assert m.cost_speed(dc) == 20.0
+        assert m.scale(dc, True) < m.scale(Road(4), True)
+        lts3 = Road(3, default_speed_mph=30.0)
+        assert m.cost_speed(lts3) == 30.0 and m.speed_assumed(lts3)
+        # A posted speed always wins over the default.
+        both = Road(4, speed_mph=35.0, default_speed_mph=55.0)
+        assert m.cost_speed(both) == 35.0 and not m.speed_assumed(both)
+        # Never said.
+        event = m.assess(junction(crossed=(rural_va,), control=Control.NONE))
+        assert "55" not in event.reason and event.assumed_speed
+
     def test_the_event_says_when_the_speed_was_assumed(self) -> None:
         assert m.assess(junction(crossed=(Road(4),), control=Control.NONE)).assumed_speed
         assert not m.assess(
@@ -1371,14 +1389,29 @@ class TestOptionC:
 
 
 class TestTimeOfDay:
-    """OWNER-DECISIONS 468a: more intersection stress at rush hour, a little
-    less at weekends; quiet-street stops unchanged."""
+    """OWNER-DECISIONS 468a, 469c-469e: more intersection stress at rush hour,
+    a little less at weekends, about half at night in town and a little less at
+    night outside it; quiet-street stops unchanged."""
 
     def test_the_factors(self) -> None:
         assert m.time_factor("weekday_rush") == 1.25
         assert m.time_factor("weekday_offpeak") == 1.0
         assert m.time_factor("weekend") == 0.85
         assert m.time_factor(None) == 1.0 and m.time_factor("nonsense") == 1.0
+
+    def test_night_is_half_in_town_and_less_outside(self) -> None:
+        assert m.time_factor("night", urban=True) == 0.5
+        assert m.time_factor("night", urban=False) == 0.85
+        # Not known (a table before `road_urban`): the smaller reduction.
+        assert m.time_factor("night") == 0.85
+
+    def test_a_night_junction_follows_the_crossed_roads_urban_flag(self) -> None:
+        town = junction(crossed=(Road(3, urban=True),), control=Control.STOP)
+        country = junction(crossed=(Road(3, urban=False),), control=Control.STOP)
+        base = m.assess(town).cost_ft
+        assert m.assess(town, when="night").cost_ft == pytest.approx(base * 0.5)
+        assert m.assess(country, when="night").cost_ft == pytest.approx(base * 0.85)
+        assert m.assess(town, when="night").time_factor == 0.5
 
     def test_a_busy_junction_costs_by_the_ride_time(self) -> None:
         j = junction(crossed=(Road(3),), control=Control.STOP)

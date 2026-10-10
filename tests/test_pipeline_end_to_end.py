@@ -4349,6 +4349,29 @@ def test_a_posted_one_way_laned_road_stores_the_classifier_s_traits(workspace, s
     assert _segment_traits(overlaid.staging_schema)[100][:3] == (25, 2, True)
 
 
+def _segment_cost_columns(schema: str) -> dict[int, tuple]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT osm_way_id, road_default_speed_mph, road_urban "
+            f"FROM {schema}.segment ORDER BY osm_way_id"
+        )
+        return {way: (speed, urban) for way, speed, urban in cursor.fetchall()}
+
+
+def test_an_unposted_road_stores_its_statutory_default_and_urban_flag(states) -> None:
+    """OWNER-DECISIONS 469, 469d-e: the segment row keeps the speed the classifier
+    assumed (an urban Maryland or Virginia secondary road's 35 mph here) and
+    whether the way is in an urban area, for the junction model; a posted road
+    keeps no default."""
+    road = _one_road("secondary", name="Test Road")
+    context, _ = run_pipeline(road, road.parent, skip=NOT_SWAPPED)
+    assert context.stress_by_way[100].default_speed_mph == 35
+    assert _segment_cost_columns(context.staging_schema)[100] == (35, True)
+    road = _one_road("secondary", name="Test Road", maxspeed="35 mph")
+    rural, _ = run_pipeline(road, road.parent, urban=(), skip=NOT_SWAPPED)
+    assert _segment_cost_columns(rural.staging_schema)[100] == (None, False)
+
+
 def test_a_car_free_agency_way_keeps_its_provenance_and_every_block_to_the_cap(states) -> None:
     """Mutation review R1, R12 and W5: a road closed to motor traffic for good is
     tier 1 (`car_free_tier_1`) and keeps the attr_sources its blocks gave it

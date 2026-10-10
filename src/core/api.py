@@ -183,8 +183,9 @@ class RouteIn(Schema):
     when: WhenName | None = Field(
         default=None,
         description=(
-            "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19) or weekday_offpeak."
-            " Absent: the setting of the moment the plan is made, in the region's time."
+            "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19), weekday_offpeak"
+            " or night (21-07 any day). Absent: the setting of the moment the plan is made, in"
+            " the region's time."
         ),
     )
     carrying: CarryingName | None = Field(
@@ -533,8 +534,13 @@ class JunctionDebugOut(Schema):
     text: str = Field(description='"0.55 calm mi (0.88 calm km)".')
     severity: Literal["orange", "red"] | None
     flagged: bool
-    time_factor: float = Field(description="The ride-time factor applied (468a).")
-    assumed_speed: bool = Field(description="The cost assumed 45 mph for a road with no speed.")
+    time_factor: float = Field(description="The ride-time factor applied (468a, 469c-469e).")
+    assumed_speed: bool = Field(
+        description=(
+            "The cost read a speed the map does not give: the jurisdiction's statutory"
+            " default (469), or 45 mph for an LTS 4 or Avoid road on an older table."
+        )
+    )
     reason: str
 
 

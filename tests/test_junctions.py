@@ -1021,6 +1021,38 @@ class TestRoadsByWay:
         assert not junctions.has_trait_columns(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)] == Road(4)
 
+    def test_the_statutory_default_and_the_urban_flag_are_read(self, segment_schemas) -> None:
+        """OWNER-DECISIONS 469, 469d-e: an unposted road's default speed and whether
+        it lies in an urban area reach the junction model."""
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, road_default_speed_mph, road_urban) "
+                "VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test', 55, false)",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_trait_columns_seen = False
+        junctions._has_cost_columns_seen = False
+        road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
+        assert (road.speed_mph, road.default_speed_mph, road.urban) == (None, 55.0, False)
+
+    def test_a_table_before_the_cost_columns_reads_none(self, segment_schemas) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            for column in ("road_default_speed_mph", "road_urban"):
+                cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN {column}")
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_cost_columns_seen = False
+        assert not junctions.has_cost_columns(live)
+        road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
+        assert (road.default_speed_mph, road.urban) == (None, None)
+        junctions._has_cost_columns_seen = False
+
     def test_a_smoothed_link_is_crossed_at_its_raw_count_and_tier(self, segment_schemas) -> None:
         """1st St NW at Q St (OWNER-DECISIONS 285, 303; ARTERIAL review r0, SF1): the
         link is LTS 2 on the street's median, the crossing is LTS 3 on DDOT's 10,665,

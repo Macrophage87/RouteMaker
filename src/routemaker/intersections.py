@@ -153,35 +153,46 @@ SEVERE_SPEED_FACTORS = ((25.0, 0.8), (30.0, 0.9), (35.0, 1.0), (40.0, 1.2), (45.
 SEVERE_SPEED_FACTOR_FASTER = 1.6
 SEVERE_LANE_FACTORS = {1: 1.0, 2: 1.25}
 SEVERE_LANE_FACTOR_WIDER = 1.6
-# 468: "rural MD LTS 4 roads with no speed assumed 45 mph for junction cost only,
-# never shown". The data cannot say which roads are rural, so an LTS 4 or Avoid
-# road with no speed in the data is read at this speed for the cost; the words
-# (`describe_road`) only ever say what the map gave.
+# An unposted road is priced at its jurisdiction's statutory default
+# (OWNER-DECISIONS 469: "use each jurisdiction's statutory default instead"),
+# which the classifier already reads it at (`routemaker.stress`: the District's
+# 20 mph, Maryland's and Virginia's urban and rural figures) and the segment
+# table keeps as `road_default_speed_mph`. For cost only; the words
+# (`describe_road`) only ever say what the map gave. On a table built before that
+# column, an LTS 4 or Avoid road with no speed is read at 468's stopgap, 45 mph,
+# and any other unposted road at none (a factor of 1.0).
 UNKNOWN_SPEED_SEVERE_MPH = 45.0
 
 # The most any one junction costs: 10,560 ft = 2.00 calm mi (468; 467: "I'd
 # detour 2 miles to avoid"). It was 4,500 ft = 0.85 calm mi. Above the literature.
 MAX_CROSSING_FT = 10560.0
 
-# --- Time of day (OWNER-DECISIONS 468a) --------------------------------------
+# --- Time of day (OWNER-DECISIONS 468a, 469c-469e) -------------------------
 #
 # "Put some more intersection stress during rush hour too and a little less on
-# weekends and off hours." A busy-road junction's cost is times this by the
-# ride's setting (`routemaker.ridetime`: weekend, weekday_rush, weekday_offpeak):
-# rush x1.25, weekday off-peak x1.0, weekend (federal holidays included) x0.85.
-# The owner's 468a splits the weekday off-peak into daytime x1.0 and
-# evening/night x0.85; the ride settings have no evening, so the whole
-# off-peak is x1.0 until one is added. Quiet-street stops are not scaled.
+# weekends and off hours" (468a), then "Evenings are probably 1x till about 9.
+# Then reduced to about half to 7" (469c), "at least in the city" (469d), and
+# x0.85 outside it (469e). A busy-road junction's cost is times this by the
+# ride's setting (`routemaker.ridetime`): weekday rush (07-10, 16-19) x1.25,
+# weekday off-peak (to 9 PM) x1.0, weekend daytime (federal holidays included)
+# x0.85, and night (9 PM-7 AM, any day) x0.5 where the crossed road lies in a
+# Census urban area and x0.85 where it does not. A road whose urban flag is not
+# known (a table built before `road_urban`) takes the rural x0.85, the smaller
+# reduction. Typical values, not a promise. Quiet-street stops are not scaled.
 TIME_FACTORS = {
     ridetime.WEEKDAY_RUSH: 1.25,
     ridetime.WEEKDAY_OFFPEAK: 1.0,
     ridetime.WEEKEND: 0.85,
 }
+NIGHT_URBAN_FACTOR = 0.5
+NIGHT_RURAL_FACTOR = 0.85
 
 
-def time_factor(when: str | None) -> float:
+def time_factor(when: str | None, urban: bool | None = None) -> float:
     """The multiplier on a busy-road junction's cost at a ride time; 1.0 where
-    the setting is unknown."""
+    the setting is unknown. At night it depends on `urban`, the crossed road's."""
+    if when == ridetime.NIGHT:
+        return NIGHT_URBAN_FACTOR if urban else NIGHT_RURAL_FACTOR
     return TIME_FACTORS.get(when or "", 1.0)
 
 
@@ -295,6 +306,11 @@ class Road:
     display: tuple[str, ...] = field(default=(), compare=False)
     # The OSM ways of it at the junction (a carriageway's, where it is one).
     ways: frozenset[int] = frozenset()
+    # The speed the classifier assumed where none is posted (the jurisdiction's
+    # statutory default; `cost_speed`), and whether the road lies in a Census
+    # urban area (`time_factor` at night). None on a table built before them.
+    default_speed_mph: float | None = field(default=None, compare=False)
+    urban: bool | None = field(default=None, compare=False)
 
     @property
     def busy(self) -> bool:
@@ -371,10 +387,10 @@ class Event:
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
     group: int | None = None
-    # The cost read the road's speed as the assumed 45 mph (`cost_speed`): for
-    # the debug list; never said to a rider.
+    # The cost read a speed the map did not give (the statutory default, or the
+    # 45 mph stopgap; `cost_speed`): for the debug list; never said to a rider.
     assumed_speed: bool = field(default=False, compare=False)
-    # The ride-time factor that was applied (`time_factor`, 468a).
+    # The ride-time factor that was applied (`time_factor`, 468a, 469c-469e).
     time_factor: float = field(default=1.0, compare=False)
 
 
@@ -399,15 +415,19 @@ def severe(road: Road) -> bool:
 
 
 def cost_speed(road: Road) -> float | None:
-    """The speed the cost reads: the map's, or for an LTS 4 / Avoid road with none
-    the assumed 45 mph (468). For cost only; never said."""
+    """The speed the cost reads: the map's, else the jurisdiction's statutory
+    default (469, `Road.default_speed_mph`), else for an LTS 4 / Avoid road the
+    stopgap 45 mph. For cost only; never said."""
     if road.speed_mph is not None:
         return road.speed_mph
+    if road.default_speed_mph is not None:
+        return road.default_speed_mph
     return UNKNOWN_SPEED_SEVERE_MPH if severe(road) else None
 
 
 def speed_assumed(road: Road) -> bool:
-    return road.speed_mph is None and severe(road)
+    """Whether the cost read a speed the map did not give (`cost_speed`)."""
+    return road.speed_mph is None and cost_speed(road) is not None
 
 
 def scale(road: Road, stopped_side: bool) -> float:
@@ -677,8 +697,9 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     cost, kind, about = cost_of(junction)
     if kind == "neighbourhood" or about is None:
         return None
-    # 468a: a busy-road junction costs more at rush hour, less at the weekend.
-    factor = time_factor(when)
+    # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
+    # weekend and at night.
+    factor = time_factor(when, about.urban)
     cost = min(cost * factor, MAX_CROSSING_FT)
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)

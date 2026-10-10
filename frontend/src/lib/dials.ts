@@ -11,7 +11,7 @@
  */
 import type { PresetId } from "./presets.ts";
 
-export type When = "weekend" | "weekday_rush" | "weekday_offpeak";
+export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
 
 export interface Dials {
@@ -110,6 +110,8 @@ export const WHENS: readonly { id: When; label: string }[] = [
   { id: "weekend", label: "Weekend" },
   { id: "weekday_rush", label: "Weekday rush" },
   { id: "weekday_offpeak", label: "Weekday off-hours" },
+  // OWNER-DECISIONS 469c: 9 PM to 7 AM on any day; busy-road junctions count for less.
+  { id: "night", label: "Night (9 PM to 7 AM)" },
 ];
 
 export const CARRYINGS: readonly { id: Carrying; label: string; hint: string }[] = [

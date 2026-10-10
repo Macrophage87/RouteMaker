@@ -453,6 +453,12 @@ class StressResult:
     # of 2b0cf00, blocker 1).
     oneway: bool | None = None
     graph_oneway: bool | None = None
+    # The speed the classifier assumed where nothing was posted: the
+    # jurisdiction's statutory default (the District's 20 mph, Maryland's and
+    # Virginia's urban and rural figures above). None where a speed was read.
+    # Never said to a rider; the junction model prices an unposted road at it
+    # (OWNER-DECISIONS 469: "use each jurisdiction's statutory default").
+    default_speed_mph: float | None = None
     # The tier the classifier gave on the agency's own count, where the street's
     # median (`pipeline.aadt_smoothing`) lowered it; None everywhere else, and
     # dropped by anything that sets the tier afresh (an override row, a named
@@ -1146,6 +1152,7 @@ def _classify(
         lanes=None if "lanes" in assumed else lanes,
         oneway=oneway,
         graph_oneway=is_oneway(tags),
+        default_speed_mph=speed_mph if "maxspeed" in assumed else None,
     )
 
 

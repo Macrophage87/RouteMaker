@@ -438,6 +438,10 @@ MTB_ONLY_COLUMN = "mtb_only"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
+# What the junction model prices an unposted road at, and whether the road lies in
+# a Census urban area (OWNER-DECISIONS 469, 469d-e); absent on a table built
+# before them, where `routemaker.intersections` falls back as it says.
+ROAD_COST_COLUMNS = ("road_default_speed_mph", "road_urban")
 # The tier the junction model reads where AADT smoothing lowered the link's
 # (SEGMENT_DDL); absent on a table built before it.
 UNSMOOTHED_TIER_COLUMN = "stress_unsmoothed_tier"
@@ -546,6 +550,13 @@ CREATE TABLE {schema}.segment (
     road_speed_mph  smallint,
     road_lanes      smallint,
     road_oneway     boolean,
+    -- The speed the classifier assumed where none was posted: the
+    -- jurisdiction's statutory default (`routemaker.stress`), null where a
+    -- speed was read. For the junction model's cost only, never said to a
+    -- rider (OWNER-DECISIONS 469). And whether the way lies in a Census urban
+    -- area, which sets the night factor on its junctions (469d, 469e).
+    road_default_speed_mph smallint,
+    road_urban      boolean,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
     -- `stress_adjustment_id` is stable across rebuilds and shared by the ways

@@ -1234,9 +1234,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   says when it was not done.
   Mass Ride refuses `hills > 0` (400).
 - `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
-  America/New_York; federal holidays count as weekend) or `weekday_offpeak`;
-  absent, the setting of the moment. It sets Valhalla's `date_time` (the next
-  Saturday 09:00, Tuesday 08:00 or Tuesday 12:00), which is what the
+  America/New_York; federal holidays count as weekend), `weekday_offpeak` or
+  `night` (21:00-07:00 on any day, OWNER-DECISIONS 469c; it routes on the
+  standard graph, as a weekday does); absent, the setting of the moment. It
+  sets Valhalla's `date_time` (the next Saturday 09:00, Tuesday 08:00, Tuesday
+  12:00 or Tuesday 22:00), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`
   and as tier 1 in `stress_m`. The closure is read from
@@ -1942,17 +1944,33 @@ avoid, though rare").
 | Severe tier speed factors (LTS 4, Avoid) | 1.1 / 1.2 / 1.3 at 40 / 45 / above | 1.2 / 1.4 / 1.6 | |
 | Severe tier lane factors | 1.1 / 1.25 | 1.25 (two lanes a direction) / 1.6 (three or more) | |
 | Rural factor (45 mph and over) | stopped side only | also a left off a severe road | |
-| `UNKNOWN_SPEED_SEVERE_MPH` | none | 45 mph for an LTS 4 / Avoid road with no speed, for cost only, never said | |
+| Unposted speed (469) | none | the jurisdiction's statutory default, as the classifier reads it (`road_default_speed_mph`): the District's 20 mph, Maryland's and Virginia's urban 25-35 mph by class, the rural 50-55 mph; any tier, for cost only, never said | on a table built before that column, `UNKNOWN_SPEED_SEVERE_MPH` 45 mph for an LTS 4 / Avoid road (468's stopgap) |
 | `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
 | `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
 | `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 2,900 | 0.55 [0.88] |
-| `TIME_FACTORS` (468a) | none | rush x1.25, weekday off-peak x1.0, weekend x0.85 | on busy-road junctions only |
+| `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25, weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
 
-The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`). 468a
-asks for evening and night at x0.85 too; there is no evening setting, so the whole weekday
-off-peak is x1.0. `debug_junctions: true` on a route request adds `junctions_debug`, every
-junction event with its cost, calm miles, severity, ride-time factor and whether the speed
-was assumed. The answer's `intersections` rows carry `calm_mi` and `calm_km`.
+The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`, `night`).
+The owner's words: "Put some more intersection stress during rush hour too and a little less
+on weekends and off hours" (468a); "Evenings are probably 1x till about 9. Then reduced to
+about half to 7" (469c); "in most cases, intersection stress is a lot lower. At least on the
+city" (469d); "Yes, do that for rural areas" (469e, x0.85 outside urban areas). The rush
+windows are the existing 07-10 and 16-19 (469c: "existing is fine"). These are typical values,
+not measured ones: the literature's peak-hour figure is a small Portland wearable study
+(about 1.75 times the stress at peak), and nothing published gives a night factor. The two new
+segment columns, `road_default_speed_mph` and `road_urban`, arrive with the next rebuild;
+until then an unposted LTS 4 road is read at 45 mph and every night junction at x0.85.
+
+Owner 469 also asks that the classifier read the same statutory defaults. It already does in
+the District (20 mph) and in Maryland's and Virginia's urban areas (OWNER-DECISIONS 112's
+MDOT figures, 25-35 mph by class). Outside urban areas it reads one table for both states
+(unclassified and tertiary 50 mph, secondary, primary and trunk 55), where the statutes differ:
+Maryland is 50 undivided and 55 divided, Virginia 55 on most highways. Changing it moves some
+rural tiers, so it is left for the owner to confirm and is not in this change.
+
+`debug_junctions: true` on a route request adds `junctions_debug`, every junction event with
+its cost, calm miles, severity, ride-time factor and whether the speed was assumed. The
+answer's `intersections` rows carry `calm_mi` and `calm_km`.
 
 **Which slip lanes are crossed** (item 195, `core.junctions.crossed_links`). The
 owner: "Flag only when you cross it (Recommended)"; "no marker when the rider
@@ -5462,13 +5480,15 @@ target, the graph and `refine.quiet_cost_per_m`):
   a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
   `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
 - Every junction the model charges for, flagged or not, adds what the ranking charges for
-  it, at its point: its cost (`cost_ft`) times `refine.intersection_weight` at the slider
+  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25,
+  weekend x0.85, night x0.5 in town and x0.85 outside; "Intersection costs", option C)
+  times `refine.intersection_weight` at the slider
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
   0.679 at 40, 1 from 70). At the top of the slider the worth rule's exchange stands in
   (`refine.stress_weight_m`): a red junction 5 x 2 x its cost, an orange one 5 x 1, an
   unflagged one nothing (2.5 in place of 5 with a target). This is not 469b(5)'s
-  `calm_mi`, which is the junction's own cost for the junction list on
-  `wip/isect-costs-c`; at 70 and above the two agree. Each is counted once in every
+  `calm_mi`, which is the junction's own cost for the junction list (the
+  `intersections` rows); at 70 and above the two agree. Each is counted once in every
   window that holds it, so a crossing raises the mile around it. A junction or Avoid
   entry on an unrated stretch is not counted (it has no miles to be over).
 - The window is `calm.WINDOW_M` (1 mi, one setting), centred and cut at the route's ends.

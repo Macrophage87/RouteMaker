@@ -269,7 +269,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
         <p className="hint">
           On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
           are planned as traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in
-          the breakdown.
+          the breakdown. Crossing a busy road counts for more at rush hour and for less at the weekend, and at
+          night it is usually calmer, most of all in town.
         </p>
       </fieldset>
       {view.target && (
