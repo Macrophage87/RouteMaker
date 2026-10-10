@@ -2313,6 +2313,10 @@ OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
 `frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
 by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
 not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+Since 2026-10-10 the script merges a restroom node into the restroom building
+around it and leaves out historic springs (rules and merge order in that
+README); the committed file predates both until the next refresh by hand,
+which is the only step a release carrying the change needs.
 It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
 federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its
