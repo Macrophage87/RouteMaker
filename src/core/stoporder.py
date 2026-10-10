@@ -99,13 +99,6 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     return variant, costing
 
 
-def ask_matrix(variant: str, payload: dict, deadline) -> dict:
-    """One matrix call, with /route's handling of a twin graph (`_ask`). Shared with
-    `core.nearest`. Raises RouterUnavailable, RouterRefused or DeadlineExceeded."""
-    answer, _ = _ask(variant, "sources_to_targets", payload, deadline)
-    return answer
-
-
 def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, str]:
     """One router call, and the graph that answered it, with /route's handling of a
     twin graph (`routing.plan`): a weekend or off-road router gets at most
@@ -129,6 +122,11 @@ def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, st
         return answer, standard
     routing._mark_twin(variant, True)
     return answer, variant
+
+
+def ask_matrix(variant: str, payload: dict, deadline) -> dict:
+    """One matrix call on the ride's graph (`_ask`); shared with `core.nearest`."""
+    return _ask(variant, "sources_to_targets", payload, deadline)[0]
 
 
 def _pairs_chains(n: int) -> list[list[int]]:
@@ -248,7 +246,7 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
         "units": "kilometers",
     }
     try:
-        answer, _ = _ask(variant, "sources_to_targets", payload, deadline)
+        answer = ask_matrix(variant, payload, deadline)
     except (routing.RouterUnavailable, routing.RouterRefused, routing.DeadlineExceeded) as error:
         # Out of time too: the straight-line order needs no router, so it is still answered.
         logger.warning("the %s router gave no riding-time matrix: %s", variant, error)
