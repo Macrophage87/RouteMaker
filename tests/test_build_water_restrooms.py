@@ -86,6 +86,7 @@ def _kind(tags: dict[str, str]) -> tuple[str | None, str | None] | None:
         ({"natural": "spring", "historic": "no"}, ("n", None)),
         ({"natural": "spring", "historic": "yes", "drinking_water": "yes"}, ("p", None)),
         ({"amenity": "drinking_water", "natural": "spring", "historic": "yes"}, ("p", None)),
+        ({"amenity": "water_point", "natural": "spring", "historic": "yes"}, ("p", None)),
         # A historic fountain that still runs is drinking water.
         ({"amenity": "drinking_water", "historic": "yes"}, ("p", None)),
     ],
@@ -247,13 +248,38 @@ def test_a_node_outside_the_building_stays_its_own_place():
     assert [e.osm for e in mod.merge_restrooms([node], [bare])] == ["n5"]
 
 
-def test_a_merged_place_that_is_not_all_public_is_left_out():
+def test_a_building_that_is_not_public_is_left_out_with_what_is_inside():
     building = _building({"amenity": "toilets", "access": "customers"})
     node = mod.Element("n5", {"amenity": "toilets", "access": "yes"}, -77.01, 38.93)
     assert mod.merge_restrooms([node], [building]) == []
-    building = _building({"building": "toilets"})
-    node = mod.Element("n5", {"amenity": "toilets", "access": "private"}, -77.01, 38.93)
-    assert mod.merge_restrooms([node], [building]) == []
+
+
+def test_a_private_node_inside_a_public_building_is_left_out_alone():
+    building = _building({"amenity": "toilets", "name": "Comfort station"})
+    staff = mod.Element("n5", {"amenity": "toilets", "access": "private"}, -77.01, 38.93)
+    merged = mod.merge_restrooms([staff], [building])
+    assert [e.osm for e in merged] == ["w10"]
+    assert merged[0].tags.get("access") is None
+    # A bare building=toilets whose only node is private shows nothing.
+    bare = _building({"building": "toilets"})
+    assert mod.merge_restrooms([staff], [bare]) == []
+
+
+def test_a_node_in_the_box_but_outside_a_concave_building_is_not_merged():
+    # An L: the square with its north-east quarter cut away.
+    ell = (
+        (-77.02, 38.92),
+        (-77.0, 38.92),
+        (-77.0, 38.93),
+        (-77.01, 38.93),
+        (-77.01, 38.94),
+        (-77.02, 38.94),
+    )
+    building = mod.Element("w10", {"amenity": "toilets"}, -77.013, 38.928, ell)
+    notch = mod.Element("n5", {"amenity": "toilets"}, -77.005, 38.935)
+    assert [e.osm for e in mod.merge_restrooms([notch], [building])] == ["w10", "n5"]
+    inner = mod.Element("n6", {"amenity": "toilets"}, -77.015, 38.925)
+    assert [e.osm for e in mod.merge_restrooms([inner], [building])] == ["w10"]
 
 
 def test_reads_an_extract_and_writes_the_file(tmp_path):

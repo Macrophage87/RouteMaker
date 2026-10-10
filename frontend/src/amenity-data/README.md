@@ -25,13 +25,16 @@ work; not yet in an OWNER-DECISIONS file):
   (`DETAIL_KEYS`: name, access, fee, wheelchair, opening hours, seasonal,
   disposal, portable, drinking water, bottle) wins, and the node on a tie, as it
   is the element mapped as the restroom itself. Several nodes in one building
-  become one place. If any of them is not public or not in use, the place is
-  left out (unclear access is closed). A `building=toilets` with no node inside
+  become one place. A building that is not public or not in use is left out
+  with what is inside it (unclear access is closed); a non-public node inside a
+  public building is left out on its own. A `building=toilets` with no public node inside
   and no `amenity=toilets` stays out, as before.
 - No historic springs. A `natural=spring` with `historic=*` (any value but
   `no`) or `ruins=yes` is a landmark, not a water source, and is left out unless
-  it is also `drinking_water=yes` (or `amenity=drinking_water`), which says it
-  is still usable. The file is one point per line, short keys:
+  it is also `drinking_water=yes` (or `amenity=drinking_water` or
+  `amenity=water_point`), which says it is still usable.
+
+The file is one point per line, short keys:
 
 | Key | Meaning |
 | --- | --- |

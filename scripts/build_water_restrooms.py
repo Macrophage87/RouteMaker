@@ -40,8 +40,9 @@ What counts, from the OSM wiki's own tag definitions
   keys such as disused:amenity never match in the first place).
 - historic springs are left out: a natural=spring with historic=* (any value
   but "no", <https://wiki.openstreetmap.org/wiki/Key:historic>) or ruins=yes
-  is a landmark, not a source, unless it is also marked drinking_water=yes
-  (owner request, 2026-10-10: drop historic springs).
+  is a landmark, not a source, unless it is also marked drinking_water=yes,
+  amenity=drinking_water or amenity=water_point (owner request, 2026-10-10:
+  drop historic springs).
 
 Nodes and ways are read (a restroom building is often a way); a way is placed
 at the mean of its nodes. Points outside the coverage box are dropped, and
@@ -55,9 +56,11 @@ the same restroom mapped again inside it) and the tags of both: for each key
 the richer element's value wins, richer meaning more of the details the layer
 shows (DETAIL_KEYS), the node on a tie as it is the element mapped as the
 restroom itself; tags only one of them has are kept. Several nodes in one
-building merge into it the same way. If any of them is not public or not in use
-(access, disused, abandoned), the whole place is left out, as unclear access is
-closed. A building=toilets way with no amenity=toilets and no node inside stays
+building merge into it the same way. A building that is not public or not in
+use (access, disused, abandoned) is left out with every node inside it, as
+unclear access is closed; a node inside a public building that is not public
+(a staff toilet, say) is left out on its own, and the building still shows.
+A building=toilets way with no amenity=toilets and no public node inside stays
 out, as before (it says nothing about public use). Areas mapped as relations
 (multipolygons) are not read; restroom buildings are plain ways.
 
@@ -250,9 +253,15 @@ def merged_tags(members: list[Element]) -> dict[str, str] | None:
     """One restroom's tags from its building and the nodes inside, or None to leave it out.
 
     Per key the richest element's value wins; keys only one has are kept. A
-    member that is not public or not in use takes the whole place out.
+    building that is not public or not in use takes the whole place out; a node
+    inside that is not public is left out on its own (and a bare building=toilets
+    left with no public node goes too).
     """
-    if not all(is_public(m.tags) for m in members):
+    if not all(is_public(m.tags) for m in members if not m.osm.startswith("n")):
+        return None
+    members = [m for m in members if not m.osm.startswith("n") or is_public(m.tags)]
+    if not any(m.tags.get("amenity") == "toilets" for m in members):
+        # A bare building=toilets whose only restroom node was not public.
         return None
     tags: dict[str, str] = {}
     for m in sorted(members, key=_richness, reverse=True):
