@@ -26,6 +26,7 @@ import {
   MTB_LABEL_LAYER_ID,
   mtbLabelColor,
   unpavedLayers,
+  halfStepLayers,
   UNPAVED_DASH,
   accessibilityOn,
   massRideOn,
@@ -166,7 +167,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
   // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
   const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
   for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
@@ -177,6 +178,8 @@ export function setStressPalette(
     if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
     // The surface-unknown edge's dashes are in its own width, which the switch changes (stressStyle.js, unknownSurfaceLayers).
     if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
+    // A half step's outline is the dash's pattern in its own width, which the switch changes.
+    if (layer.id.startsWith("stress-half-outline-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;

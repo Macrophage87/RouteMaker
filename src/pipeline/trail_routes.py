@@ -168,6 +168,7 @@ def is_calm_candidate(
     is_trail_class: bool,
     stress_tier: int,
     map_class: str,
+    stress_half: bool = False,
 ) -> bool:
     """Whether the way can be in the z12-13 ride layer (OWNER-DECISIONS 391, 402a),
     and so is written with a `calm_run_m` of 0 for `derive_calm_runs` to set: a path
@@ -175,10 +176,17 @@ def is_calm_candidate(
     LTS 2 that is not a trail, of any class ("LTS2 counts"); never a mountain-bike
     trail (a way in a route=mtb relation, one tagged as such, or one the no-bike-paths
     rules call mountain-bike only), and nothing that is not a drawn road (a hidden,
-    barred or alley way)."""
+    barred or alley way).
+
+    A half step above the top calm level (2.5) is not a member: an on/off rule takes the
+    cautious side of a half step (OWNER-DECISIONS 461a; docs/stress/stress-number.md
+    section 3). 1.5 is."""
     if mountain_bike or mtb_only or map_class != "road":
         return False
-    return zoomed_out_trail or (stress_tier <= CALM_ROAD_MAX_TIER and not is_trail_class)
+    calm = stress_tier < CALM_ROAD_MAX_TIER or (
+        stress_tier == CALM_ROAD_MAX_TIER and not stress_half
+    )
+    return zoomed_out_trail or (calm and not is_trail_class)
 
 
 class Routes(NamedTuple):

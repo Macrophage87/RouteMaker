@@ -9,6 +9,26 @@
 import { PRESETS, type PresetId } from "./presets.ts";
 import { startDials, type Carrying, type Dials } from "./dials.ts";
 
+/** A focusable element as the Tab trap sees it: a radio has a type, a group name and a state. */
+export type TabCandidate = { type?: string; name?: string; checked?: boolean };
+
+/**
+ * The Tab stops among a dialog's focusable elements, as the browser's own Tab order has them: a
+ * group of radios (one name) is one stop, its checked radio (or its first, when none is checked);
+ * the arrow keys move within the group. A trap that walked every radio would make each a stop.
+ */
+export function tabStops<T extends TabCandidate>(items: T[]): T[] {
+  const checked = new Set(items.filter((i) => i.type === "radio" && i.name && i.checked).map((i) => i.name));
+  const seen = new Set<string>();
+  return items.filter((i) => {
+    if (i.type !== "radio" || !i.name) return true;
+    if (checked.has(i.name)) return i.checked === true;
+    if (seen.has(i.name)) return false;
+    seen.add(i.name);
+    return true;
+  });
+}
+
 /** Tab and Shift+Tab inside the dialog wrap around; focus never leaves it. */
 export function nextFocus(index: number, count: number, backwards: boolean): number {
   if (count <= 0) return -1;

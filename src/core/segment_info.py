@@ -30,6 +30,7 @@ from django.db import connection
 
 from pipeline.schema import validate_schema_name
 from routemaker import flow
+from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -46,6 +47,11 @@ CANDIDATES = 24
 # How far around the spot on the way `/locate` looks for its edges.
 LOCATE_RADIUS_M = 8
 LOCATE_TIMEOUT_S = 3.0
+# The panel's title for a way with no name: the route description's words (`describe`),
+# capitalised. The front end reads the same titles (frontend/src/lib/roadInfo.ts
+# UNNAMED_TITLES; tests/test_segment_info_api.py ties the two).
+UNNAMED_ROAD_TITLE = UNNAMED_ROAD[:1].upper() + UNNAMED_ROAD[1:]
+UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
 # Missing optional columns are looked for again this often, so the first
 # answer after a rebuild's swap sees the new ones without a restart.
 COLUMN_RECHECK_S = 300.0
@@ -59,7 +65,7 @@ OWNER = "Owner override"
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
 NEXT_UPDATE = "Available after the next data update"
 
-# The step words (OWNER-DECISIONS 441i-l: whole tiers only in this release).
+# The step words (OWNER-DECISIONS 441i-441l; 441j: "5 is just avoid").
 TIER_WORDS = {
     1: "Comfortable for everyone",
     2: "Fine for adults",
@@ -67,6 +73,38 @@ TIER_WORDS = {
     4: "High stress: busy, fast traffic",
     5: "Avoid",
 }
+# The half steps' words (441i, 441l), keyed by their lower level: 1.5 is 1 plus a half.
+HALF_WORDS = {
+    1: "Probably comfortable for older children",
+    2: "Fine for most confident adults",
+    3: "Stressful even for experienced cyclists",
+    4: "A very high-stress road",
+}
+# Every step, 1 to 5 by halves, with its words: the editor's slider and the panel.
+STEP_WORDS: dict[float, str] = dict(
+    sorted(
+        [(float(t), w) for t, w in TIER_WORDS.items()]
+        + [(t + 0.5, w) for t, w in HALF_WORDS.items()]
+    )
+)
+
+
+def step_value(tier: int, half: bool = False) -> float | int:
+    """The level as a number: an int for a whole step (3), a float for a half (3.5)."""
+    return int(tier) + 0.5 if half and int(tier) < 5 else int(tier)
+
+
+def step_label(step: float) -> str:
+    """'3' or '3.5'."""
+    return f"{step:g}"
+
+
+def words_for(tier: int, half: bool = False) -> str:
+    """A step's words; a half step's own (441l)."""
+    if half and int(tier) in HALF_WORDS:
+        return HALF_WORDS[int(tier)]
+    return TIER_WORDS.get(int(tier), "")
+
 
 # Who published a traffic count (`segment.volume_source`), in the words
 # docs/SOURCES.md credits them by.
@@ -199,6 +237,7 @@ OPTIONAL_COLUMNS = (
     "bike_access_reason",
     "mtb_only",
     "trail_bridge",
+    "stress_half",
     "mtb_level",
     "mtb_name",
 )
@@ -315,8 +354,11 @@ class RouterSilent(Exception):
     """The router did not answer; the panel says what the table alone knows."""
 
 
-def locate_edges(lat: float, lon: float, costing: str) -> list[dict]:
-    """The router's edges around a spot for one costing (`/locate`, verbose)."""
+def locate_edges(
+    lat: float, lon: float, costing: str, timeout_s: float = LOCATE_TIMEOUT_S
+) -> list[dict]:
+    """The router's edges around a spot for one costing (`/locate`, verbose), waiting at most
+    `timeout_s` (a caller with a deadline of its own passes what is left of it)."""
     from . import routing
 
     payload = {
@@ -326,7 +368,7 @@ def locate_edges(lat: float, lon: float, costing: str) -> list[dict]:
     }
     url = f"{settings.VALHALLA_UPSTREAMS['standard'].rstrip('/')}/locate"
     try:
-        answer = routing._transport(url, payload, LOCATE_TIMEOUT_S)
+        answer = routing._transport(url, payload, min(LOCATE_TIMEOUT_S, timeout_s))
     except (routing.RouterUnavailable, routing.RouterRefused) as error:
         raise RouterSilent(str(error)) from error
     if not isinstance(answer, list):
@@ -480,9 +522,9 @@ ADJUSTMENT_CATEGORIES = {
 }
 
 
-def tier_text(tier: int) -> str:
-    words = TIER_WORDS.get(tier, "")
-    return words if tier == 5 else f"LTS {tier}: {words}"
+def tier_text(tier: int, half: bool = False) -> str:
+    words = words_for(tier, half)
+    return words if tier == 5 else f"LTS {step_label(step_value(tier, half))}: {words}"
 
 
 def _row(label: str, value: str, source: str | None) -> dict:
@@ -491,12 +533,13 @@ def _row(label: str, value: str, source: str | None) -> dict:
 
 def stress_rows(row: dict) -> list[dict]:
     tier = int(row["stress_tier"])
+    half = row.get("stress_half") is True
     adjusted = row.get("stress_adjustment_id") is not None or str(
         row.get("stress_rule", "")
     ).startswith(("override:", "named corridor:"))
     source = OWNER if adjusted else CLASSIFIER
     rows = [
-        _row("Level", tier_text(tier), source),
+        _row("Level", tier_text(tier, half), source),
         _row("Why", rule_words(row["stress_rule"]), source),
     ]
     computed = row.get("stress_computed_tier")
@@ -796,10 +839,10 @@ def mtb_summary(row: dict) -> str:
 _LANE_PARTS = frozenset({"single lane", "urban multilane", "multilane"})
 
 
-def stress_short(tier: int) -> str:
+def stress_short(tier: int, half: bool = False) -> str:
     """'LTS 3 · For experienced cyclists', or 'Avoid'."""
-    words = TIER_WORDS.get(tier, "")
-    return words if tier == 5 else f"LTS {tier} · {words}"
+    words = words_for(tier, half)
+    return words if tier == 5 else f"LTS {step_label(step_value(tier, half))} · {words}"
 
 
 def why_short(rule: str) -> str | None:
@@ -820,7 +863,8 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     tier = int(row["stress_tier"])
     path = bool(row.get("is_trail_class"))
     assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
-    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier)}]
+    half = row.get("stress_half") is True
+    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier, half)}]
 
     def add(id_: str, label: str, value: str) -> None:
         rows.append({"id": id_, "label": label, "value": value})
@@ -894,7 +938,9 @@ def describe(row: dict, router: dict) -> dict:
     name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
-    title = name or ("Unnamed path" if path or router.get("use") in PATH_USES else "Unnamed road")
+    title = name or (
+        UNNAMED_PATH_TITLE if path or router.get("use") in PATH_USES else UNNAMED_ROAD_TITLE
+    )
     open_, access = access_rows(row, router.get("bicycle"))
     sections = [
         {
@@ -916,6 +962,12 @@ def describe(row: dict, router: dict) -> dict:
         "found": True,
         "title": title,
         "tier": int(row["stress_tier"]),
+        # The exact step (441k: "The panel always shows the exact step and its words"): the
+        # tier, or the tier and a half. `tier` stays the whole level the map colours by.
+        "step": step_value(int(row["stress_tier"]), row.get("stress_half") is True),
+        # Whether the live table can hold a half step yet: the suggestion form offers whole
+        # steps only until it can.
+        "half_steps": "stress_half" in row,
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),

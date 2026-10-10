@@ -35,10 +35,10 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, port = PORT, before = null, init = "" } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, port = PORT, before = null, init = "" } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles, admin });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
@@ -2043,8 +2043,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const slider = await p.eval(`(() => { const r = document.querySelector('${levelSlider}'); return { type: r?.type, min: r?.min, max: r?.max, step: r?.step,
     out: document.querySelector('${EDITOR} output')?.textContent }; })()`);
   const sliderAx = await axNode(p, levelSlider);
-  check("stress editor: the level is a native range control 1 to 5 in whole steps, named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
-    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "1" && sliderAx?.name === "Traffic stress level" &&
+  check("stress editor: the level is a native range control 1 to 5 by half steps (441i), named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
+    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "0.5" && sliderAx?.name === "Traffic stress level" &&
       sliderAx?.valuetext === "3, For experienced cyclists" && slider.out === "3, For experienced cyclists", JSON.stringify({ slider, sliderAx }));
   await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
   await p.key("End", "End", 35);
@@ -2053,19 +2053,21 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const atHome = (await axNode(p, levelSlider))?.valuetext;
   await p.key("End", "End", 35);
   await p.key("ArrowLeft", "ArrowLeft", 37);
+  const atHalf = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   const atFour = (await axNode(p, levelSlider))?.valuetext;
-  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; then one back, 4)",
-    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atFour }));
+  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; back a half, 4.5, A very high-stress road; then 4)",
+    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atHalf === "4.5, A very high-stress road" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atHalf, atFour }));
 
   // Tab visits every control in order and stays in the dialog.
   await p.eval(`document.querySelector('${EDITOR} h3').focus(); true`);
   const visited = [];
   for (let i = 0; i < 9; i++) {
     await p.tab();
-    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
+    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.type === 'radio' ? 'radio:' + e.value : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
   }
-  check("stress editor: Tab goes through the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
-    JSON.stringify(visited.slice(0, 7)) === JSON.stringify(["range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
+  check("stress editor: Tab goes through What to change (one stop for its radio group, on This road piece), the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
+    JSON.stringify(visited.slice(0, 8)) === JSON.stringify(["radio:piece", "range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
 
   // The private reason is required: a message, the focus on the field, nothing sent.
   await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
@@ -2133,6 +2135,109 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const cancel = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'), focus: document.activeElement?.textContent ?? '' })`);
   check("stress editor: Escape and Cancel close the editor and not the panel, and the focus goes back to the Change LTS button",
     esc.open && !esc.editor && esc.focus === "Change LTS" && esc.tag === "BUTTON" && cancel.open && !cancel.editor && cancel.focus === "Change LTS", JSON.stringify({ esc, cancel }));
+  await p.close();
+}
+{
+  // A half step (441i, 441l): one arrow from 3 is 3.5, saved as 3.5, said and shown in its own words.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  const half = (await axNode(p, levelSlider))?.valuetext;
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast merges at the ramp");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed to /.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const post = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 3.5')", 8000);
+  const line = await p.eval("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent ?? ''");
+  check("stress editor: one arrow from 3 is read as 3.5, Stressful even for experienced cyclists; Save sends 3.5, the status region says LTS 3.5 in its words, and the panel shows LTS 3.5",
+    half === "3.5, Stressful even for experienced cyclists" && post?.body.step === 3.5 && /^Changed to LTS 3\.5, stressful even for experienced cyclists\./.test(said) && /LTS 3\.5/.test(line),
+    JSON.stringify({ half, step: post?.body.step, said, line }));
+
+  // 458b: the outlined half-step dashes keep 3:1 from their dash and their line, in the page's own style.
+  const outlines = await p.eval(`(async () => { const s = await import('/src/stressStyle.js'); const out = [];
+    for (const palette of Object.keys(s.PALETTES)) { const tiers = s.tiersFor(palette);
+      for (let t = 1; t <= 4; t++) { const h = s.halfStep(t, tiers); if (!h.outline) continue;
+        out.push({ palette, step: h.step, dash: +s.contrastRatio(h.outline, h.color).toFixed(2), line: +s.contrastRatio(h.outline, h.line).toFixed(2) }); } }
+    return out; })()`);
+  check("stress editor: the half-step dashes too close to their line (two-tone 3.5, colour-blind 4.5) carry an outline at least 3:1 from both the dash and the line (458b)",
+    Array.isArray(outlines) && outlines.length >= 2 && outlines.some((o) => o.palette === "twotone" && o.step === 3.5) && outlines.some((o) => o.palette === "cvd" && o.step === 4.5) &&
+      outlines.every((o) => o.dash >= 3 && o.line >= 3), JSON.stringify(outlines));
+  await p.close();
+}
+{
+  // A named stretch (HALF-STEP-EDITOR phase 5): a radio group, the piece by default, the stretch's
+  // pieces and length in miles with kilometres in brackets; Save sends every piece and says how many.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.editRoad.stretch = true;
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  const group = await p.eval(`(() => { const f = document.querySelector('${EDITOR} fieldset'); const r = [...f.querySelectorAll('input[type=radio]')];
+    r.forEach((x, i) => { x.dataset.n = i; });
+    return { legend: f.querySelector('legend')?.textContent, count: r.length, checked: r.map((x) => x.checked), same: new Set(r.map((x) => x.name)).size === 1,
+      rows: [...f.querySelectorAll('.stress-editor-radio')].map((d) => Math.round(d.getBoundingClientRect().height)), help: document.getElementById(f.getAttribute('aria-describedby'))?.textContent ?? '' }; })()`);
+  const piece = await axNode(p, `${EDITOR} fieldset input[data-n="0"]`);
+  const whole = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  const askedEarly = p.editRequests.some((r) => r.path.endsWith("/stretch"));
+  check("named stretch: a labelled group (What to change) of two radios, This road piece checked, the stretch named by its road; rows at least 44px; the stretch is not looked for until it is chosen",
+    group.legend === "What to change" && group.count === 2 && group.checked[0] && !group.checked[1] && group.same && group.rows.every((h) => h >= 44) &&
+      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest" &&
+      /busy crossing/.test(group.help) && !askedEarly, JSON.stringify({ group, piece, whole, askedEarly }));
+
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[data-n="0"]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  const moved = await p.eval(`({ checked: document.querySelector('${EDITOR} fieldset input[data-n="1"]').checked, focus: document.activeElement?.dataset?.n })`);
+  check("named stretch: the arrow key moves the choice to the whole stretch, as native radios do", moved.checked && moved.focus === "1", JSON.stringify(moved));
+  await p.waitFor(`/pieces/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  const found = await p.eval(`(() => { const s = document.querySelector('${EDITOR} .stress-editor-stretch-said'); return { role: s?.getAttribute('role'), text: s?.textContent ?? '' }; })()`);
+  const wholeFound = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  check("named stretch: once chosen it is looked for, and a status line says what was found: its pieces and length in miles, kilometres in brackets, as the radio now reads too",
+    p.editRequests.some((r) => r.method === "GET" && r.path === "/api/stress-edits/way/101/stretch") && found.role === "status" &&
+      found.text === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)." &&
+      wholeFound?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)", JSON.stringify({ found, whole: wholeFound?.name }));
+
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast traffic the whole way");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed all/.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  check("named stretch: Save sends every piece with the stretch's own token, and the status region says how many pieces changed and to what",
+    JSON.stringify(sent?.body.osm_way_ids) === "[100,101,102]" && sent?.body.expected === "stretch-0" && sent?.body.step === 3.5 &&
+      /^Changed all 3 road pieces to LTS 3\.5, stressful even for experienced cyclists\./.test(said), JSON.stringify({ body: sent?.body, said }));
+  await p.close();
+}
+{
+  // A piece that is its own whole stretch: chosen by the keyboard, the choice goes back to the piece,
+  // says why, and the focus moves with it to the radio now checked, so Shift+Tab leaves the group.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[value=piece]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await p.waitFor(`/whole stretch/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  await sleep(200);
+  const back = await p.eval(`({ said: document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '', piece: document.querySelector('${EDITOR} fieldset input[value=piece]').checked,
+    focus: document.activeElement?.value ?? document.activeElement?.tagName })`);
+  await p.tab(true);
+  const before = await p.eval(`(() => { const e = document.activeElement; return { radio: e?.type === 'radio', inside: !!e?.closest('dialog.road-info') }; })()`);
+  check("named stretch: a piece with no stretch beyond it goes back to This road piece, says why in the status line, keeps the focus on the radio now checked, and Shift+Tab leaves the group",
+    /this road piece is the whole stretch/.test(back.said) && back.piece && back.focus === "piece" && !before.radio && before.inside, JSON.stringify({ back, before }));
   await p.close();
 }
 {
@@ -2432,6 +2537,147 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
   const ranges = await p.eval(idb("store.count()"));
   check("ride: End ride empties the base map's kept ranges (IndexedDB)", sentinel === 1 && ranges === 0, JSON.stringify({ sentinel, ranges }));
+  await p.close();
+}
+
+// ---- 22b. Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; the owner, 2026-10-10) ----
+const SUGGEST = "dialog.road-info .suggest-change";
+{
+  // A rider the settings allow: Suggest a change in the panel's row, in place of Change LTS.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change')", 8000);
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
+    const last = ul?.querySelector('li:last-child > *');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("suggestions: a rider the settings allow gets a Suggest a change button (not Change LTS) in the panel's bottom row, at least 44px tall",
+    opened && row.names.at(-1) === "Suggest a change" && !row.names.includes("Change LTS") && row.tag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Suggest a change').click(); true");
+  await p.waitFor(`!!document.querySelector('${SUGGEST} input[type=range]')`, 8000);
+  await sleep(100);
+  const slider = `${SUGGEST} input[type=range]`;
+  const form = await p.eval(`(() => { const e = document.querySelector('${SUGGEST}'); const h = e?.querySelector('h3'); const r = e?.querySelector('input[type=range]');
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, step: r?.step, rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons') }; })()`);
+  const ax = await axNode(p, slider);
+  await p.eval(`document.querySelector('${slider}').focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const half = (await axNode(p, slider))?.valuetext;
+  check("suggestions: it opens in the same dialog, its heading focused, an empty status region in the page, and a half-step level control named and read as its words (3, then 2.5, Fine for most confident adults)",
+    form.heading === "Suggest a traffic stress level" && form.focus && form.status === "" && form.step === "0.5" && form.rowGone &&
+      ax?.name === "The level you suggest" && ax?.valuetext === "3, For experienced cyclists" && half === "2.5, Fine for most confident adults", JSON.stringify({ form, ax, half }));
+
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`!!document.querySelector('${SUGGEST} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const t = document.querySelector('${SUGGEST} textarea'); return { alert: document.querySelector('${SUGGEST} [role=alert]')?.textContent ?? '', focus: document.activeElement === t, invalid: t?.getAttribute('aria-invalid') }; })()`);
+  check("suggestions: sending with no reason says so in an alert, moves the focus to the reason marked invalid, and sends nothing",
+    /why/i.test(empty.alert) && empty.focus && empty.invalid === "true" && !p.suggestRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.type("A protected lane opened this summer.");
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${SUGGEST} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.suggestRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${SUGGEST} [role=status]')?.textContent ?? ''`);
+  check("suggestions: Send posts the way, the nearest point on the road (never the spot clicked), the level 2.5 and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/stress-suggestions" && sent.body.osm_way_id === 101 && sent.body.step === 2.5 && sent.body.lat === 38.91 && sent.body.lon === -77.04 &&
+      sent.body.reason === "A protected lane opened this summer." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.suggest-change'), focus: document.activeElement?.textContent ?? '' })");
+  check("suggestions: Escape closes the form, not the panel, and the focus goes back to Suggest a change", back.open && !back.form && back.focus === "Suggest a change", JSON.stringify(back));
+  await p.close();
+}
+{
+  // The instance admin's review, in the Settings sheet: the three actions, the poll to copy, "Copied".
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  // Two waiting: Approve now moves the focus on to the next one, and Delete the last to the empty line.
+  p.suggestionsOpen = [...p.suggestionsOpen, { ...p.suggestionsOpen[0], id: 42, osm_way_id: 102, road: "Pine Street" }];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item h4')", 8000);
+  await p.eval(`(() => { const item = document.querySelector('.suggestion-item'); [...item.querySelectorAll('button')].forEach((b, i) => { b.id = '__sg' + i; }); return true; })()`);
+  const names = [];
+  for (const i of [0, 1, 2]) names.push(await axNode(p, `#__sg${i}`));
+  const heading = await p.eval("document.querySelector('.suggestion-item h4')?.textContent ?? ''");
+  const statusWords = await p.eval("document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? ''");
+  check("suggestions: the admin's list names each suggestion's road and both levels in words, says its status in words, and each of Approve now, Send to Discord and Delete is described by that heading",
+    heading === "Oak Street: from LTS 3 (For experienced cyclists) to LTS 2.5 (Fine for most confident adults)" && statusWords === "Waiting for review." &&
+      JSON.stringify(names.map((n) => n?.name)) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) && names.every((n) => n?.description === heading), JSON.stringify({ heading, statusWords, names }));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("document.getElementById('__sg1').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-post textarea')", 8000);
+  const post = await p.eval(`(() => { const t = document.querySelector('.suggestion-post textarea'); const l = document.querySelector('.suggestion-post label');
+    return { value: t?.value ?? '', readOnly: t?.readOnly, labelled: l?.htmlFor === t?.id, label: l?.textContent ?? '', said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '',
+      status: document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? '' }; })()`);
+  const sentReq = p.suggestRequests.find((r) => r.path === "/api/stress-suggestions/41/discord");
+  check("suggestions: Send to Discord shows the plain-English poll (no LTS number, no mention, at most 2,000 characters) in a labelled read-only box, says so, and marks the suggestion as sent in words",
+    sentReq?.headers["X-CSRFToken"] === "test-csrf-token" && post.readOnly && post.labelled && /^Post for Discord/.test(post.label) && post.value.length <= 2000 &&
+      !/LTS/.test(post.value) && !/@/.test(post.value) && /^\*\*How comfortable is biking on Oak Street/.test(post.value) && /marked as sent to Discord/.test(post.said) &&
+      /Sent to Discord/.test(post.status), JSON.stringify(post).slice(0, 600));
+
+  try {
+    await b.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  } catch {
+    // An older Chrome: the copy falls back to the selection method.
+  }
+  await p.eval("[...document.querySelectorAll('.suggestion-post button')].find((b) => b.textContent === 'Copy post').focus(); true");
+  await p.key("Enter", "Enter", 13);
+  await p.waitFor("/^Copied/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 4000);
+  const copied = await p.eval("document.querySelector('.suggestion-review [role=status]')?.textContent ?? ''");
+  const clip = await p.eval("navigator.clipboard.readText().catch(() => '')");
+  check("suggestions: Copy post works from the keyboard (Enter) and says Copied in the status region; the clipboard holds the post",
+    /^Copied\./.test(copied) && (clip === "" || clip.startsWith("**How comfortable")), JSON.stringify({ copied, clip: clip.slice(0, 60) }));
+
+  await p.eval("document.getElementById('__sg0').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const approved = await p.eval(`({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.suggestion-item').length,
+    focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
+  check("suggestions: Approve now says the road's new level in words in the status region and the suggestion leaves the list",
+    /^Approved\. Oak Street is now LTS 2\.5/.test(approved.said) && approved.left === 1 && p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/41/approve"), JSON.stringify(approved));
+  check("suggestions: after Approve now the focus moves to the next suggestion's heading, not lost to the page",
+    approved.focus === "H4" && approved.focusTab === -1 && /^Pine Street: from LTS 3/.test(approved.focusText), JSON.stringify(approved));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await sleep(150);
+  const asking = await p.eval(`(() => { const g = document.querySelector('.suggestion-confirm'); const d = [...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete');
+    return { role: g?.getAttribute('role'), label: document.getElementById(g?.getAttribute('aria-labelledby') ?? '')?.textContent ?? '', expanded: d?.getAttribute('aria-expanded'),
+      focus: document.activeElement?.textContent ?? '', buttons: [...g.querySelectorAll('button')].map((b) => b.textContent) }; })()`);
+  const sentEarly = p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete");
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Keep it').click(); true");
+  await sleep(150);
+  const kept = await p.eval(`({ open: !!document.querySelector('.suggestion-confirm'), focus: document.activeElement?.textContent ?? '', expanded: document.activeElement?.getAttribute('aria-expanded') })`);
+  check("suggestions: Delete first asks, in a group labelled by its question, with the focus on Yes, delete and nothing sent; Keep it closes the question and puts the focus back on Delete",
+    asking.role === "group" && asking.label === "Delete this suggestion? It cannot be brought back." && asking.expanded === "true" && asking.focus === "Yes, delete" &&
+      JSON.stringify(asking.buttons) === JSON.stringify(["Yes, delete", "Keep it"]) && !sentEarly && !kept.open && kept.focus === "Delete" && kept.expanded === "false", JSON.stringify({ asking, sentEarly, kept }));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Yes, delete').click(); true");
+  await p.waitFor("/^Deleted/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const deleted = await p.eval(`({ left: document.querySelectorAll('.suggestion-item').length, focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
+  check("suggestions: Yes, delete sends the delete, says Deleted, and with nothing left the focus moves to the line saying no suggestions are waiting",
+    p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete") && deleted.left === 0 && deleted.focus === "P" && deleted.focusTab === -1 &&
+      deleted.focusText.trim() === "No suggestions are waiting.", JSON.stringify(deleted));
+  await p.close();
+}
+{
+  // Nobody else sees the review or the button.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await openSheet(p, "Settings");
+  await sleep(400);
+  const opened = await panelByKey(p);
+  await sleep(300);
+  const none = await p.eval("({ review: !!document.querySelector('.suggestion-review'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change') })");
+  check("suggestions: a visitor the settings do not allow sees no Suggest a change and no review, and the page asks the suggestion endpoints nothing",
+    opened && !none.review && !none.button && p.suggestRequests.length === 0, JSON.stringify({ opened, none, asked: p.suggestRequests.length }));
   await p.close();
 }
 
@@ -3093,7 +3339,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 502;
+const EXPECTED = 522;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

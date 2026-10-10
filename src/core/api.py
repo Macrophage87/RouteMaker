@@ -56,7 +56,14 @@ from django.http import HttpResponse, JsonResponse
 from ninja import Field, NinjaAPI, Query, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
@@ -1571,7 +1578,7 @@ def unexpected(request, exc: Exception):
 # The place-search endpoints, whose unexpected failure is not a route's.
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 # The road panel's stress editor, whose answers are private and name the form field.
-STRESS_EDIT_PATHS = ("/api/stress-edits", "/api/me")
+STRESS_EDIT_PATHS = ("/api/stress-edits", "/api/stress-suggestions", "/api/me")
 
 
 def errors_as_json(view):
@@ -2373,6 +2380,16 @@ class SegmentInfoOut(Schema):
         description="The way's name, 'Unnamed road' or 'Unnamed path', or 'No road here'."
     )
     tier: int | None = Field(default=None, description="Traffic stress, 1-4, or 5 for Avoid.")
+    step: float | None = Field(
+        default=None,
+        description=(
+            "The exact step, half steps included (1, 1.5, ... 4.5, 5); `tier` is its whole level."
+        ),
+    )
+    half_steps: bool | None = Field(
+        default=None,
+        description="Whether the road data can hold a half step yet; null with no road.",
+    )
     open: bool | None = Field(
         default=None, description="Whether a bicycle may use it; null when not known."
     )
@@ -2439,7 +2456,7 @@ class MeOut(Schema):
         description="An active instance admin: the road panel offers Change LTS."
     )
     can_suggest: bool = Field(
-        description="Always false until riders can suggest changes (a later phase)."
+        description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
     )
 
 
@@ -2562,17 +2579,22 @@ def me(request, response: HttpResponse):
     """No name and no id, so nothing here can leak into a link or a log."""
     from django.middleware.csrf import get_token
 
+    from . import suggestions
+
     signed = signed_in(request)
     can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
-    if can_change:
+    can_suggest = bool(signed and suggestions.may_suggest(request.user))
+    if can_change or can_suggest:
         # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
         get_token(request)
     _private(response)
-    return Status(200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": False})
+    return Status(
+        200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": can_suggest}
+    )
 
 
 class StepOut(Schema):
-    value: int
+    value: float = Field(description="1 to 5 by halves (1.5 is a half step; 5 is Avoid).")
     words: str
 
 
@@ -2582,7 +2604,7 @@ class CategoryOut(Schema):
 
 
 class CurrentOut(Schema):
-    step: int
+    step: float = Field(description="The road's level now, half steps included.")
     words: str
     source: Literal["classifier", "file", "admin", "panel"]
     at_least: bool
@@ -2603,6 +2625,22 @@ class RecentEditOut(Schema):
     can_undo: bool
 
 
+class StretchOut(Schema):
+    name: str
+    osm_way_ids: list[int] = Field(description="Send these as osm_way_ids to change them all.")
+    pieces: int
+    length_m: float
+    capped: bool = Field(description="True where the stretch goes on past the most one edit takes.")
+    expected: str = Field(description="The stretch's own token, sent back with a stretch edit.")
+
+
+class StretchStateOut(Schema):
+    stretch: StretchOut | None = Field(
+        default=None,
+        description="The named stretch the road piece is in, or null where it is the only piece.",
+    )
+
+
 class EditorStateOut(Schema):
     osm_way_id: int
     classifier_step: int | None = Field(
@@ -2617,6 +2655,10 @@ class EditorStateOut(Schema):
     note_max: int
     recent_edit: RecentEditOut | None = None
     pieces: int
+    half_steps: bool = Field(
+        default=True,
+        description="False until the live table can hold a half step (the next data update).",
+    )
 
 
 @api.get(
@@ -2651,13 +2693,46 @@ def stress_edit_state(request, osm_way_id: int, response: HttpResponse):
     return Status(200, state)
 
 
+@api.get(
+    "/stress-edits/way/{osm_way_id}/stretch",
+    response={
+        200: StretchStateOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        404: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="The named stretch a road piece is in, for the editor's extent choice (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_edit_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
+
+
 class StressEditIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     osm_way_ids: list[StrictInt] = Field(
-        min_length=1, max_length=1, description="The road piece to change (one, for now)."
+        min_length=1,
+        max_length=40,
+        description="One road piece, or a named stretch's pieces (the editor state's stretch).",
     )
-    step: StrictInt = Field(description="The level, 1 to 5 (5 is Avoid).")
+    step: StrictFloat = Field(
+        description="The level, 1 to 5 by halves (1.5, 2.5, 3.5, 4.5 are half steps; 5 is Avoid)."
+    )
     at_least: StrictBool = Field(
         default=False, description="Only raise it: keep the current level where it is higher."
     )
@@ -2674,7 +2749,7 @@ class StressEditIn(Schema):
 
 class EditedWayOut(Schema):
     osm_way_id: int
-    step: int
+    step: float
     changed: bool = Field(
         description="False where the road already had this level (or met the floor)."
     )
@@ -2739,8 +2814,13 @@ STRESS_WRITE = (
 def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
     from . import stress_edits
 
+    try:
+        tier, half = stress_edits.split_step(body.step)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
     spec = stress_edits.Spec(
-        tier=body.step,
+        tier=tier,
+        half=half,
         at_least=body.at_least,
         category=body.category,
         reason=body.reason,
@@ -2774,3 +2854,233 @@ def stress_edit_undo(request, edit_id: int, body: UndoIn, response: HttpResponse
         return _edit_refusal(request, refused)
     _private(response)
     return Status(200, _edit_out(result))
+
+
+# ---- Rider suggestions (441h, 460.4, 460.5; core.suggestions) ----
+
+
+def suggester_only(view):
+    """A session of an account the suggestion setting allows, or 401 / 403 (audited)."""
+    from . import suggestions
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not signed_in(request):
+            return _stress_error(401, "Sign in to suggest a change.", code="signed_out")
+        if not suggestions.may_suggest(request.user):
+            _refused(request, request.user, "may not suggest")
+            return _stress_error(
+                403, "Suggestions are not open to your account.", code="not_allowed"
+            )
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+class SuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(ge=-90, le=90, description="The spot the rider asked about.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    step: StrictFloat = Field(description="The suggested level, 1 to 5 by halves.")
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class SuggestionCreatedOut(Schema):
+    id: int
+    message: str
+
+
+class SuggestionOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    lat: float
+    lon: float
+    current_step: float
+    current_words: str
+    step: float
+    words: str
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+
+
+class SuggestionListOut(Schema):
+    suggestions: list[SuggestionOut]
+
+
+class SuggestionDoneOut(Schema):
+    id: int
+    status: str
+    message: str
+    generation: int | None = None
+
+
+class PollOptionOut(Schema):
+    letter: str
+    label: str
+    tier: int | None = Field(description="The level a vote for it means; null for Not sure.")
+
+
+class DiscordPostOut(Schema):
+    id: int
+    status: str
+    post: str = Field(description="Ready to paste: at most 2,000 characters, no mentions.")
+    characters: int
+    options: list[PollOptionOut]
+
+
+SUGGESTION_RESPONSES = {
+    400: StressEditErrorOut,
+    401: StressEditErrorOut,
+    403: StressEditErrorOut,
+    404: StressEditErrorOut,
+    409: StressEditErrorOut,
+    429: ErrorOut,
+    500: ErrorOut,
+}
+
+# The review's three actions: the editor's guards with a count of their own (a larger one), so a
+# long review does not use up the admin's editing budget.
+REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    *STRESS_WRITE[1:],
+)
+
+SUGGEST_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_WRITES),
+    csrf_protected,
+    suggester_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+@api.post(
+    "/stress-suggestions",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a road's traffic stress level (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.create(
+            request.user, body.osm_way_id, body.lat, body.lon, body.step, body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": "Thanks. Your suggestion was sent to the map's admins. "
+            "Nothing changes on the map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/stress-suggestions/open",
+    response={200: SuggestionListOut, **SUGGESTION_RESPONSES},
+    summary="The suggestions waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import suggestions
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200, {"suggestions": [suggestions.summary(s) for s in suggestions.open_suggestions()]}
+    )
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a suggestion now: applied at once as your edit (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_approve(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import segment_info, stress_edits, suggestions
+
+    try:
+        suggestion, result = suggestions.approve(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    words = segment_info.words_for(suggestion.tier, suggestion.half)
+    level = "Avoid" if suggestion.tier == 5 else f"LTS {segment_info.step_label(suggestion.step)}"
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "message": f"Approved. {suggestion.road_name or 'The road'} is now {level}"
+            + (f", {words[0].lower()}{words[1:]}." if suggestion.tier != 5 else ".")
+            + " The map shows it now.",
+            "generation": result.generation,
+        },
+    )
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a suggestion (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_delete(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.delete(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": suggestion.pk, "status": suggestion.status, "message": "Deleted."})
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/discord",
+    response={200: DiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a suggestion to Discord: the poll to paste, and the suggestion marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_discord(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion, post = suggestions.send_to_discord(
+            request.user, suggestion_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
+            ],
+        },
+    )

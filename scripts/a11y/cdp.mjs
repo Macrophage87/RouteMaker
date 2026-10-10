@@ -134,7 +134,7 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false } = {}) {
   page.routeRequests = 0;
   // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
   page.routeBodies = [];
@@ -144,7 +144,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
   // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
   // the next write instead ({ status, body }).
-  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0 };
+  // `stretch` true makes the road one piece of a three-piece named stretch (phase 5).
+  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0, stretch: false };
+  // Rider suggestions (core/suggestions.py): `suggester` makes this visitor a rider the settings allow;
+  // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
+  page.suggestRequests = [];
+  page.suggestionsOpen = [SUGGESTION_ITEM];
   page.editRequests = [];
   page.editFail = null;
   page.tileUrls = [];
@@ -205,15 +210,44 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       type = "application/json";
     } else if (url.pathname === "/api/me") {
       status = 200;
-      body = JSON.stringify({ signed_in: admin, can_change_lts: admin, can_suggest: false });
+      body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
       type = "application/json";
+    } else if (url.pathname.startsWith("/api/stress-suggestions")) {
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.suggestRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/stress-suggestions\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/stress-suggestions" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: "Thanks. Your suggestion was sent to the map's admins. Nothing changes on the map until one of them reviews it." });
+      } else if (url.pathname === "/api/stress-suggestions/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ suggestions: page.suggestionsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          page.suggestionsOpen = page.suggestionsOpen.map((x) => (x.id === id ? { ...x, status: "sent_to_discord" } : x));
+          body = JSON.stringify({ id, status: "sent_to_discord", post: DISCORD_POST, characters: DISCORD_POST.length, options: [] });
+        } else {
+          page.suggestionsOpen = page.suggestionsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is now LTS 2.5, fine for most confident adults. The map shows it now." : "Deleted.", generation: 1 });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
     } else if (admin && url.pathname.startsWith("/api/stress-edits")) {
       const road = page.editRoad;
       const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
       page.editRequests.push(record);
       type = "application/json";
       const undo = /^\/api\/stress-edits\/(\d+)\/undo$/.exec(url.pathname);
-      if (request.method === "GET") {
+      if (request.method === "GET" && url.pathname.endsWith("/stretch")) {
+        // Asked for only once the whole stretch is chosen (it needs the router's names).
+        status = 200;
+        body = JSON.stringify({ stretch: stretchState(road) });
+      } else if (request.method === "GET") {
         status = 200;
         body = JSON.stringify(editorState(road));
       } else if (page.editFail) {
@@ -227,14 +261,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         status = 200;
         body = JSON.stringify({ edit_id: road.edits + 1, ways: [{ osm_way_id: 101, step: road.tier, changed: true }], generation: road.generation, undo_until: new Date().toISOString() });
         road.edits += 1;
-      } else if (!undo && record.body && record.body.expected === `tok-${road.generation}`) {
+      } else if (!undo && record.body && (record.body.expected === `tok-${road.generation}` || (road.stretch && record.body.expected === `stretch-${road.generation}`))) {
         road.was = road.tier;
         road.tier = record.body.step;
         road.edits += 1;
         road.edit = road.edits;
         road.generation += 1;
         status = 200;
-        body = JSON.stringify({ edit_id: road.edit, ways: [{ osm_way_id: 101, step: road.tier, changed: road.tier !== road.was }], generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
+        const ways = record.body.osm_way_ids.map((id) => ({ osm_way_id: id, step: road.tier, changed: road.tier !== road.was }));
+        body = JSON.stringify({ edit_id: road.edit, ways, generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
       } else {
         status = 409;
         body = JSON.stringify({ error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" });
@@ -724,8 +759,41 @@ export const RIDE_COORDS = coords;
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
 
-/** The step words (core/segment_info.py TIER_WORDS; OWNER-DECISIONS 441l). */
-export const STEP_WORDS = { 1: "Comfortable for everyone", 2: "Fine for adults", 3: "For experienced cyclists", 4: "High stress: busy, fast traffic", 5: "Avoid" };
+/** The step words, half steps too (core/segment_info.py STEP_WORDS; OWNER-DECISIONS 441i, 441l). */
+export const STEP_WORDS = {
+  1: "Comfortable for everyone", 1.5: "Probably comfortable for older children", 2: "Fine for adults", 2.5: "Fine for most confident adults",
+  3: "For experienced cyclists", 3.5: "Stressful even for experienced cyclists", 4: "High stress: busy, fast traffic", 4.5: "A very high-stress road", 5: "Avoid",
+};
+const STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+/** One rider suggestion waiting for review (core/suggestions.py summary). */
+export const SUGGESTION_ITEM = {
+  id: 41, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, current_step: 3, current_words: STEP_WORDS[3],
+  step: 2.5, words: STEP_WORDS[2.5], reason: "A protected lane opened this summer.", status: "pending",
+  created_at: "2026-10-10T14:00:00+00:00", sent_at: null,
+};
+/** The plain-English poll the Discord action answers (core/suggestion_post.py). */
+export const DISCORD_POST = [
+  "**How comfortable is biking on Oak Street, between Elm Street and Ash Avenue?**",
+  "A rider suggested it's calmer than we rate it.",
+  "",
+  "We currently show it as: OK for confident riders",
+  'The rider suggested: Between "Fine for most people, even nervous riders" and "OK for confident riders"',
+  "> A protected lane opened this summer.",
+  "",
+  "Where: Oak Street between Elm Street and Ash Avenue",
+  "Map: <http://127.0.0.1/#at=-77.0300,38.9000>",
+  "",
+  "Please weigh in by reacting with one letter:",
+  "\u{1F1E6} Fine for anyone, kids included",
+  "\u{1F1E7} Fine for most people, even nervous riders",
+  "\u{1F1E8} OK for confident riders",
+  "\u{1F1E9} Only for very experienced riders",
+  "\u{1F1EA} Avoid it",
+  "\u{1F1EB} Not sure",
+  "",
+  "Votes help set how the road is shown on the bike map.",
+].join("\n");
 
 /** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */
 export function editorState(road) {
@@ -739,7 +807,8 @@ export function editorState(road) {
       when: road.edit ? new Date().toISOString() : null, by: road.edit ? "you" : null,
     },
     expected: `tok-${road.generation}`,
-    steps: [1, 2, 3, 4, 5].map((value) => ({ value, words: STEP_WORDS[value] })),
+    steps: STEPS.map((value) => ({ value, words: STEP_WORDS[value] })),
+    half_steps: true,
     categories: [
       { id: "speed", label: "speed" }, { id: "road_conditions", label: "road conditions" }, { id: "driver_behaviour", label: "driver behaviour" },
       { id: "intersection", label: "an intersection" }, { id: "sightlines", label: "sightlines" },
@@ -752,11 +821,19 @@ export function editorState(road) {
   };
 }
 
+/** The named stretch the road is in (GET /api/stress-edits/way/{id}/stretch), or null. */
+export function stretchState(road) {
+  return road.stretch
+    ? { name: "Connecticut Avenue Northwest", osm_way_ids: [100, 101, 102], pieces: 3, length_m: 1207, capped: false, expected: `stretch-${road.generation}` }
+    : null;
+}
+
 /** The road panel's answer at a level: the fixed road with its stress rows changed. */
 export function segmentInfoAt(tier) {
   if (tier === 3) return S_SEGMENT_INFO;
   const info = JSON.parse(JSON.stringify(S_SEGMENT_INFO));
-  info.tier = tier;
+  info.tier = Math.floor(tier);
+  info.step = tier;
   info.summary.find((r) => r.id === "stress").value = tier === 5 ? "Avoid" : `LTS ${tier} \u00b7 ${STEP_WORDS[tier]}`;
   info.sections.find((x) => x.id === "stress").rows[0] = { label: "Level", value: tier === 5 ? "Avoid" : `LTS ${tier}: ${STEP_WORDS[tier]}`, source: "Owner override" };
   return info;
@@ -855,6 +932,8 @@ export const S_SEGMENT_INFO = {
   distance_m: 2.4,
   // The nearest point on the way: the Street View link opens here (OWNER-DECISIONS 441o).
   on_way: [-77.04, 38.91],
+  // The road data holds half steps, so a rider may suggest one.
+  half_steps: true,
   kind: "Main road",
   summary: [
     { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },

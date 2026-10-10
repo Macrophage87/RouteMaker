@@ -543,6 +543,10 @@ class TestHasPerm:
                 # it belongs with the tables that grant standing even though
                 # nothing registers it in the admin.
                 "bootstrapclaim",
+                # Who may suggest a stress change, and the suggestions with their
+                # suggesters (half-step editor step 4): an instance admin's alone.
+                "suggestionsettings",
+                "stresssuggestion",
             }
         )
 

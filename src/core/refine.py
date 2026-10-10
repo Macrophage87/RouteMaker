@@ -347,6 +347,9 @@ class Analysis:
     lts3_m: float = 0.0
     # Of `lts4_m`, the metres of Avoid (the diminishing-returns weights tell them apart).
     avoid_m: float = 0.0
+    # Of `lts4_m`, the metres of 4.5 (a half step above LTS 4, never Avoid: 441k), which the
+    # worth rule counts at the midpoint of LTS 4's and Avoid's weights (461a).
+    lts45_m: float = 0.0
     # Metres of LTS 2, and what one counts in metres of LTS 3 on this plan's ride
     # (`presets.Exposure.lts2`, FOLLOWUP-LTS2-WEIGHT: a quarter on Trailmaxxing and
     # Cargo with passengers, a half on Riding with kids, nothing elsewhere).
@@ -512,6 +515,7 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
         w.lts3 * read.lts3_m
         + w.lts4 * lts4_only
         + w.avoid * read.avoid_m
+        + (w.avoid - w.lts4) / 2 * read.lts45_m
         + w.lts4 * read.red_m
         + w.lts3 * read.orange_m
         + read.avoid_junction_m
@@ -526,6 +530,7 @@ def _top_weight_m(read: Analysis) -> float:
     return (
         w.lts4 * (read.lts4_m - read.avoid_m)
         + w.avoid * read.avoid_m
+        + (w.avoid - w.lts4) / 2 * read.lts45_m
         + w.lts4 * read.red_m
         + read.avoid_junction_m
     )
@@ -716,21 +721,20 @@ def analyse(
     classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
+    halves = half_metres(pieces, classes)
     weights = ctx.exposure.weights
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
-        exposure_m=sum(weights[tier] * stress[tier] for tier in weights),
+        exposure_m=sum(weights[tier] * stress[tier] for tier in weights)
+        + half_exposure_m(halves, weights),
         climb_m=routing._climb_of(trip),
         pieces=pieces,
         classes=classes,
         events=events_of_raws(raws, ctx, deadline) if with_events else None,
         via_m=via_m,
         marks=marks,
-        lts4_m=stress["4"] + stress["5"],
-        lts3_m=stress["3"],
-        avoid_m=stress["5"],
-        lts2_m=stress["2"],
+        **stress_totals(stress, halves),
         lts2_weight=ctx.exposure.lts2,
         effort_m=effort.effort_equivalent_m(
             routing.grade_profile(trip),
@@ -746,6 +750,54 @@ def analyse(
     if with_events:
         ctx.analyses[key] = result
     return result
+
+
+def stress_totals(stress: dict, halves: dict) -> dict[str, float]:
+    """The LTS 2, LTS 3, LTS 4 and Avoid metres the worth rule and the LTS 4 hold read, half
+    steps at the midpoints of the strict order's figures (461a; stress-number.md section 3):
+    1.5 counts half a metre of LTS 2; 2.5 half of LTS 2 and half of LTS 3; 3.5 half of LTS 3
+    and half of LTS 4; 4.5 a whole metre of LTS 4 (never Avoid, 441k), kept apart (`lts45_m`)
+    for its midpoint weight. A half step's metres are in its lower level's `stress` figure."""
+    return {
+        "lts4_m": stress["4"] + stress["5"] + 0.5 * halves["3"],
+        "lts3_m": stress["3"] + 0.5 * halves["2"] - 0.5 * halves["3"],
+        "lts2_m": stress["2"] + 0.5 * halves["1"] - 0.5 * halves["2"],
+        "avoid_m": stress["5"],
+        "lts45_m": halves["4"],
+    }
+
+
+def half_metres(pieces, classes) -> dict[str, float]:
+    """The metres of each half step, keyed by its lower level ("3" is 3.5)."""
+    out = dict.fromkeys(("1", "2", "3", "4"), 0.0)
+    for piece, cls in zip(pieces, classes, strict=False):
+        if getattr(cls, "half", False) and cls[0] in out:
+            out[cls[0]] += piece.metres
+    return out
+
+
+def half_weight(tier: str, weights: dict[str, float]) -> float:
+    """A half step's weight: the midpoint of its two levels' (461a). LTS 1 and 2 weigh 0."""
+    if tier not in ("1", "2", "3", "4"):
+        return weights.get(tier, 0.0)
+    return (weights.get(tier, 0.0) + weights.get(str(int(tier) + 1), 0.0)) / 2
+
+
+def half_exposure_m(halves: dict[str, float], weights: dict[str, float]) -> float:
+    """What the half steps add to `exposure_m` over their lower levels' weights."""
+    return sum(m * (half_weight(t, weights) - weights.get(t, 0.0)) for t, m in halves.items())
+
+
+def cautious_tier(cls) -> int | None:
+    """A piece's level for an on/off rule (461a): a half step takes the cautious side, the
+    level above, except that 4.5 is never Avoid (441k). None where it is not rated."""
+    tier = cls[0]
+    if tier not in ("1", "2", "3", "4", "5"):
+        return None
+    level = int(tier)
+    if getattr(cls, "half", False) and level < 4:
+        level += 1
+    return level
 
 
 def _clear_of_ends(along_m: float, total_m: float, vias: list[float]) -> bool:
@@ -795,14 +847,14 @@ def calm_targets(analysis: Analysis, ctx: Context, min_tier: int = 3) -> list[Ta
     for at, lon, lat, metres in _marks(analysis):
         if metres < CALM_MIN_EDGE_M:
             continue
-        tier, _kind = analysis.classes[min(bisect.bisect_left(ends, at), len(ends) - 1)]
-        if tier not in ("3", "4", "5") or int(tier) < min_tier:
+        level = cautious_tier(analysis.classes[min(bisect.bisect_left(ends, at), len(ends) - 1)])
+        if level is None or level < 3 or level < min_tier:
             continue
         point = (lon, lat)
         if kept and haversine(Point(*kept[-1].point), Point(*point)) < CALM_SAMPLE_M:
             continue
         if _clear_of_ends(at, total, analysis.via_m):
-            kept.append(Target(point, int(tier)))
+            kept.append(Target(point, level))
     if len(kept) > CALM_POINTS_PER_ROUND:
         step = len(kept) / CALM_POINTS_PER_ROUND
         kept = [kept[int(i * step)] for i in range(CALM_POINTS_PER_ROUND)]
@@ -1085,13 +1137,17 @@ def lts4_by_leg(analysis: Analysis) -> list[float]:
     bounds = leg_bounds(analysis)
     out = [0.0] * len(bounds)
     along = 0.0
-    for piece, (tier, _kind) in zip(analysis.pieces, analysis.classes, strict=False):
+    for piece, cls in zip(analysis.pieces, analysis.classes, strict=False):
+        tier = cls[0]
         a, b = along, along + piece.metres
         along = b
-        if tier not in LTS4_TIERS:
+        # 3.5 counts half a metre (461a: the midpoint of LTS 3's 0 and LTS 4's 1).
+        half = getattr(cls, "half", False)
+        share = 1.0 if tier in LTS4_TIERS else 0.5 if tier == "3" and half else 0.0
+        if not share:
             continue
         for k, (lo, hi) in enumerate(bounds):
-            out[k] += max(0.0, min(b, hi) - max(a, lo))
+            out[k] += share * max(0.0, min(b, hi) - max(a, lo))
     return out
 
 
@@ -1125,13 +1181,15 @@ def route_spans(
     weights = EXPOSURE_WEIGHTS if weights is None else weights
     busy: Spans = []
     along = 0.0
-    for piece, (tier, _kind) in zip(analysis.pieces, analysis.classes, strict=False):
+    for piece, cls in zip(analysis.pieces, analysis.classes, strict=False):
+        tier = cls[0]
         a, b = along, along + piece.metres
         along = b
         if b <= lo or (hi is not None and a >= hi):
             continue
         a, b = max(a, lo), b if hi is None else min(b, hi)
-        weight = weights.get(tier, 0.0)
+        half = getattr(cls, "half", False)
+        weight = half_weight(tier, weights) if half else weights.get(tier, 0.0)
         if weight:
             busy.append((a - lo, b - lo, weight))
     traced = (along if hi is None else min(hi, along)) - lo
@@ -1765,7 +1823,8 @@ LONG_LTS4_PRIORITY = 8.0
 
 
 def _busy_flags(analysis: Analysis) -> list[bool]:
-    return [tier in ("3", "4", "5") for tier, _kind in analysis.classes]
+    # A half step on the cautious side (461a): 2.5 is busy.
+    return [(cautious_tier(cls) or 0) >= 3 for cls in analysis.classes]
 
 
 def long_legs(whole: Analysis, ctx: Context) -> list[dict]:
@@ -2196,6 +2255,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         lts4_m=sum(r.lts4_m for r in reads),
         lts3_m=sum(r.lts3_m for r in reads),
         avoid_m=sum(r.avoid_m for r in reads),
+        lts45_m=sum(r.lts45_m for r in reads),
         lts2_m=sum(r.lts2_m for r in reads),
         lts2_weight=max((r.lts2_weight for r in reads), default=0.0),
         effort_m=sum(r.effort_m for r in reads),

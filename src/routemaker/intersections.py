@@ -221,10 +221,21 @@ class Road:
     display: tuple[str, ...] = field(default=(), compare=False)
     # The OSM ways of it at the junction (a carriageway's, where it is one).
     ways: frozenset[int] = frozenset()
+    # A half step (OWNER-DECISIONS 441i-441l, 461a): the road is half a level above `tier`.
+    # Its base costs are the midpoints of its two levels' (`_table`); an on/off rule
+    # takes the cautious side, so 2.5 is busy.
+    half: bool = False
+
+    @property
+    def level(self) -> float:
+        """The tier as a number, half step included (0 where unknown)."""
+        if self.tier is None:
+            return 0.0
+        return self.tier + (0.5 if self.half and self.tier < 5 else 0.0)
 
     @property
     def busy(self) -> bool:
-        return self.tier is not None and self.tier >= BUSY_TIER
+        return self.tier is not None and self.level >= BUSY_TIER - 0.5
 
 
 @dataclass(frozen=True)
@@ -339,24 +350,33 @@ def _tier(road: Road) -> int:
     return min(max(road.tier or BUSY_TIER, BUSY_TIER), 5)
 
 
-def crossing_ft(road: Road, control: Control, rider_tier: int | None) -> float:
+def _table(table: dict[int, float], road: Road) -> float:
+    """A busy road's base value from a table by tier. A half step takes the midpoint of
+    its two levels' values (461a: 2.5 is half of LTS 3's, since LTS 2 costs nothing
+    here; 3.5 between LTS 3's and LTS 4's; 4.5 as LTS 4, which equals Avoid's here)."""
+    if road.half and road.tier is not None and 2 <= road.tier <= 4:
+        low = table.get(road.tier, 0.0) if road.tier >= BUSY_TIER else 0.0
+        return (low + table[min(road.tier + 1, 5)]) / 2
+    return table[_tier(road)]
+
+
+def crossing_ft(road: Road, control: Control, rider_tier: float | None) -> float:
     """Straight across `road` (busy) from the rider's road.
 
     The big cost is the STOPPED side against free-flowing traffic; at a signal
     it is much lower; on the free-flowing road, through a junction where the
     cross traffic stops, it is small (items 165 and 169)."""
-    tier = _tier(road)
     if control is Control.SIGNAL:
-        return SIGNALISED_CROSSING_FT[tier]
+        return _table(SIGNALISED_CROSSING_FT, road)
     if control is Control.ALL_STOP:
         return ALL_WAY_STOP_FT
     # The rider's own road has priority: it is the busier road, or the cross
     # traffic is the one facing the sign.
     if control is Control.CROSS_STOP:
         return PRIORITY_SIDE_FT
-    if control is Control.NONE and rider_tier is not None and rider_tier > (road.tier or 0):
+    if control is Control.NONE and rider_tier is not None and rider_tier > road.level:
         return PRIORITY_SIDE_FT
-    return min(STOPPED_CROSSING_FT[tier] * scale(road, stopped_side=True), MAX_CROSSING_FT)
+    return min(_table(STOPPED_CROSSING_FT, road) * scale(road, stopped_side=True), MAX_CROSSING_FT)
 
 
 def merge_ft(road: Road) -> float:
@@ -370,7 +390,7 @@ def left_from_ft(road: Road, control: Control) -> float:
     """A left turn off a busy road: across its oncoming lanes (none on a
     one-way) and over its other lanes to the left-turn position. At a signal
     never more than the box turn the rider can make instead (item 186)."""
-    oncoming = 0.0 if road.oneway else LEFT_ACROSS_ONCOMING_FT[_tier(road)]
+    oncoming = 0.0 if road.oneway else _table(LEFT_ACROSS_ONCOMING_FT, road)
     if oncoming:
         oncoming *= scale(road, stopped_side=False)
         if control is Control.SIGNAL:
@@ -410,17 +430,17 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
     turning_from_busy_onto = (
         j.incoming.busy
         and j.movement is not Movement.STRAIGHT
-        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)
+        and (j.outgoing.level > j.incoming.level or j.control is Control.STOP)
     )
     if j.outgoing.busy and not j.continues and (not j.incoming.busy or turning_from_busy_onto):
         # Entering a busy road from a quieter one, or from the stopped side:
         # the stopped side's crossing cost, by the movement.
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
-        base = crossing_ft(j.outgoing, j.control, j.incoming.tier)
+        base = crossing_ft(j.outgoing, j.control, _rider(j.incoming))
         take(min(base * factor, MAX_CROSSING_FT), f"{j.movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
-            value = crossing_ft(road, j.control, j.incoming.tier)
+            value = crossing_ft(road, j.control, _rider(j.incoming))
             if marked_unsignalised(j):
                 value *= MARKED_CROSSING_FACTOR
             # On a busy road of its own the rider only meets a side street's
@@ -432,18 +452,23 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
             )
         elif j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy:
             # A left from a quiet street across one busy road to a quiet one beyond.
-            value = crossing_ft(road, j.control, j.incoming.tier) * MOVEMENT_FACTOR_ONTO["left"]
+            value = crossing_ft(road, j.control, _rider(j.incoming)) * MOVEMENT_FACTOR_ONTO["left"]
             take(min(value, MAX_CROSSING_FT), "left_across", road)
     if j.slip_lane:
         # About the busiest road the channel leaves or joins.
         roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]
-        busiest = max(roads, key=lambda r: r.tier or 0) if roads else None
+        busiest = max(roads, key=lambda r: r.level) if roads else None
         take(slip_ft(j.control) if busiest else 0.0, "slip_lane", busiest)
     if about is None and not j.incoming.busy and not j.outgoing.busy:
         # Quiet street meets quiet street: a stop sign here is the owner's
         # "rolls through when safe", priced near zero.
         cost = NEIGHBOURHOOD_STOP_FT if j.control in {Control.STOP, Control.ALL_STOP} else 0.0
     return cost, kind, about
+
+
+def _rider(road: Road) -> float | None:
+    """The rider's road's level for the priority test, half step included."""
+    return None if road.tier is None else road.level
 
 
 def marked_unsignalised(junction: Junction) -> bool:
@@ -566,7 +591,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             return None
         if kind not in {"crossing", "left_from", "left_across", "left_onto", "slip_lane"}:
             return None
-        severity = RED if (about.tier or 0) >= 4 else ORANGE
+        # A half step on the cautious side (461a): 2.5 orange, 3.5 red.
+        severity = RED if about.level >= 3.5 else ORANGE
         return Event(
             junction.m,
             junction.lon,

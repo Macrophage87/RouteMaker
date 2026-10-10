@@ -1568,8 +1568,160 @@ reason is never in `live.segment`, the tiles, a route answer or a public panel; 
 surfaces still say "Owner override" and name nobody. `GET /api/me` answers three yes/no flags
 and nothing else.
 
-**Not in this phase:** half steps, suggestions from other riders, and a named stretch longer
-than one road piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 2 to 5). "Only raise it" is
+**Half steps (phase 2; 441i-441l, 461a).** The slider moves by halves (1, 1.5, ... 5; never
+above 5). A half step is stored as the lower tier plus a flag: the override value's
+`"half": true` and the live table's `stress_half` column (boolean, default false, never true
+at tier 5). A table built before this release has no `stress_half` column: the editor then
+offers whole steps only (its help says half steps arrive with the next data update) and the
+API refuses a half step (400, `half_unavailable`). Either rebuild, or add the column to the live
+table in place (dry run first; it takes a brief lock, 10 s at most, and does nothing when the
+column is there):
+
+```sh
+docker compose exec -T api python manage.py add_stress_half_column             # dry: says what it would do
+docker compose exec -T api python manage.py add_stress_half_column --confirm
+docker compose exec -T api python manage.py predraw_stress_tiles    # then warm the tile cache again
+```
+
+The tile ETag gains the letter `h` once the column is there, so browsers fetch the tiles again.
+
+**Valhalla's costs (phase 3) need a rebuild.** The weekly rebuild writes `rm:stress_half=yes` on a
+half-step way and the graph's Lua transform prices it between its two levels
+(`lua/routemaker_remap.lua` `half_step_marks`; the figures are in docs/stress/stress-number.md
+section 3). Until the next rebuild after this release, the router prices a half step as its lower
+level; the map, the road panel and RouteMaker's own ranking use the half step at once.
+
+**The whole named stretch (phase 5; 441g, 460.3).** Where the road piece is one of several of
+the same name end to end, the editor asks **What to change**: "This road piece: <name>" (the
+default) or "The whole named stretch of <name>". The stretch is looked for only once the admin
+chooses it (`GET /api/stress-edits/way/{id}/stretch`, admin only, as the editor state), since it
+needs the router's names; a status line then says "The whole named stretch of <name>: N pieces,
+X mi (Y km)", or that the piece is the whole stretch (the choice goes back to the piece), and
+Save waits until it is found. The stretch
+(`core.stress_edits.named_stretch`) is the drawn road pieces of that name connected end to end,
+out from the piece opened, and it ends:
+
+- at a junction with a road of another name at 2.5 or above (the higher of its tier and its
+  unsmoothed tier, plus its half step): where an unsignalized crossing would carry the orange
+  "higher stress" warning or worse (`routemaker.intersections`; an unsignalized crossing of a 2.5
+  road costs 600 ft, the orange line). The segment table holds no signals, so every junction is
+  read as unsignalized: the cautious reading of the owner's "any crossing that would carry a high
+  stress intersection warning" (460.3). A stretch can end at a decent signal the full junction
+  model would not warn at; the admin then changes the next stretch too. (Default taken
+  2026-10-10.)
+- at 40 pieces (one change takes at most 40; the editor says when the stretch goes on).
+
+Names are the router's, as the road panel shows them, else the table's (`core.road_names`: the
+table keeps a name only on calm and long-trail ways). The router has 3 seconds in all to name a
+stretch's ends (`road_names.NAMES_BUDGET_S`); past that, or with the router down, the table's
+names stand, so a busy road has no name and so no stretch: the editor says the piece is the whole
+stretch. A stretch change whose names cannot be checked is refused plainly (400,
+`names_unavailable`: "try again in a minute, or change this road piece alone"), and a set that is
+no longer one stretch is 400 `not_a_stretch`.
+
+A stretch change is one adjustment: one approved override row a way (each superseding that way's
+live row), all with the same `adjustment_id` (`edit-<first row id>`), one `stress_edit` row
+listing every way and every pair (`override_rows`), one audit entry and one tile refresh over
+them all. Undo (30 minutes) puts every piece back and reinstates every replaced row; it touches a
+pair's rows only when they are that way's stress rows, and is refused (409, `later_edit`) when any
+piece's row has been replaced since. The API takes the stretch only as the editor offered it:
+`osm_way_ids` must be exactly a named stretch (else 400), with the stretch's own token from the
+stretch endpoint (`stretch.expected`; a change to any piece in between is a 409). A single piece's
+token and request are as before.
+
+## Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; HALF-STEP-EDITOR phase 4)
+
+A signed-in rider the settings allow sees **Suggest a change** in the road panel (in place of
+Change LTS, which stays an instance admin's): a level from 1 to 5 by halves (whole steps only
+until the road data holds half steps; a half step is refused, `half_unavailable`, until then) and
+a required reason (500 characters at most). Nothing changes on the map until an instance admin reviews it. The owner's
+words, 2026-10-10 (UTC):
+
+- 13:57: "So there's one of three options: I know that that road probably should be
+  rescheduled, so I'll make it happen immediately; that request seems absurd, so I delete
+  it; or I don't know enough about the road or the area, so I'll let the community decide."
+- 13:59: "I meant discord itself." (The third action sends the suggestion to Discord; no
+  voting inside RouteMaker.)
+- 14:00: "If it's too much to send directly, then provide something I can copy paste as a
+  post to discord."
+- 14:01: "I like the fallback because I can also poll one of several bike groups I'm a part
+  of." (The copy is the action that is always there; direct posting is optional.)
+- 14:08: "Not everyone is familiar with that scale, so give a plain english request." (The
+  poll's question and options are plain US English, never an LTS number alone.)
+
+**Who may suggest** is the admin's **Suggestion settings** page: nobody (the default, until an
+instance admin opens it), anyone signed in, or members of a configured Discord server (a usable
+membership in a guild in standing). An instance admin is never offered it; they edit directly.
+
+**The review** is in the map's Settings sheet, **Rider suggestions**, for an instance admin only.
+Each waiting suggestion has the owner's three actions:
+
+1. **Approve now**: applied at once as the admin's own edit, by the editor's path
+   (`stress_edits.apply`: the override row, the live rows, the edit history, the tiles). Its
+   private reason is "Rider suggestion N, approved: " and the rider's reason. Undo it from the road
+   panel's editor within 30 minutes, as any edit.
+2. **Delete**, after a confirm step ("Delete this suggestion? It cannot be brought back.", Yes,
+   delete / Keep it).
+3. **Send to Discord**: shows a ready-to-paste poll with a **Copy post** button (it says "Copied")
+   and marks the suggestion as sent. It stays in the list to approve or delete after the community
+   has weighed in. Nothing is posted by RouteMaker itself: the copy works for any server or group,
+   and a direct webhook is not built (optional, the owner's 14:01).
+
+After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
+suggestions are waiting."
+
+**Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
+`on_way`), never the spot clicked, and the server keeps only the nearest point on that way
+(`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the
+road (400, field `lat`). The poll prints no coordinates: the place is the road and its cross
+streets in words, and the map link points at the road piece's middle, rounded to 4 decimals
+(a grid of about 36 ft, 11 m). The form's note says the road's location and the reason may be shared in a
+public poll, never the rider's name or the spot clicked.
+
+The poll (`core/suggestion_post.py`) is at most 2,000 characters (Discord's limit; the reason is
+shortened first), uses bold for the question and a quote for the reason and no other markdown,
+mentions nobody, pings no role, names no server or channel, and carries nothing about the rider. It
+asks in plain words, for example "**How comfortable is biking on Oak Street, between Elm Street and
+Ash Avenue?** A rider suggested it's calmer than we rate it.", then "We currently show it as: OK for
+confident riders" and "The rider suggested: Fine for most people, even nervous riders", the reason,
+the place in words (road and cross streets where the map data has them) and a link to the road
+piece's middle on RouteMaker's map (`/#at=lon,lat` to 4 decimals, which opens the map there at
+street level). A rider's reason has mentions, links and markdown made inert: emphasis, code,
+spoilers, brackets and parentheses (masked links) are escaped, and a heading, subtext or quote at
+its start is escaped too. The
+options are lettered reactions, each standing for one level, so the votes can be read back
+(`suggestion_post.tier_for_vote`):
+
+| Reaction | Option | Level |
+|---|---|---|
+| A | Fine for anyone, kids included | LTS 1 |
+| B | Fine for most people, even nervous riders | LTS 2 |
+| C | OK for confident riders | LTS 3 |
+| D | Only for very experienced riders | LTS 4 |
+| E | Avoid it | Avoid |
+| F | Not sure | none |
+
+A half step is said as the two it lies between ('Between "Fine for most people, even nervous
+riders" and "OK for confident riders"'). The same builder has a junction's wording ("Is crossing
+New York Avenue NE at Florida Avenue NE harder or easier than we show?", options Easy / Takes
+patience / Hard / Avoid crossing here / Not sure), for when junction suggestions arrive; the panel
+suggests road pieces only today.
+
+**Security.** `POST /api/stress-suggestions` needs a session of an account the setting allows
+(401 / 403, audited), a JSON body, the CSRF token, a same-site request, the address count (120 a
+minute) and 10 suggestions an hour per account; one waiting suggestion per road per rider (held by
+the database too: a partial unique constraint on suggester and road while waiting) and 20 waiting
+in all. The review endpoints (`GET /api/stress-suggestions/open`, `POST
+/api/stress-suggestions/{id}/approve|delete|discord`) need an active instance admin, CSRF and a
+same-site request, and have their own budget of 200 actions an hour (`stress-suggest-review`), so
+clearing a queue does not spend the editor's 60 edits an hour. Every action is an `audit_log` entry. All answer
+`Cache-Control: no-store`. The suggester's account is on the `stress_suggestion` row for the admin
+only; the table is left out of the beta's data shipment (`scripts/beta/ship-data.sh`).
+
+**The migration** is `core/migrations/0016_stress_suggestions.py` (two new tables with the one
+open suggestion per road per rider constraint, and the named stretch's `stress_edit.override_rows`,
+a JSON list defaulting to empty; nothing else changed). It follows the Avoid junctions'
+`0015_avoid_junction` (after the mountain-bike levels' 0013 and 0014), so the chain is linear. `migrate` runs at `up`, as always. "Only raise it" is
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
@@ -4433,7 +4585,8 @@ column of its own, not `trail_name`, which chains the long trails' named runs an
 mountain-bike way must never join (378). The stress tiles carry it as `name` (left out when null)
 where the live table has the column, with ETag letter `n`: with every optional column the tag now
 reads `+kcfrmwdnoesbtl-v8"`, fourteen letters, 39 characters (47 with the longest edit
-generation), inside the cache's 64; `FORMAT_VERSION` stays 8 for the same reason as `d`. The
+generation), inside the cache's 64 (with the half step's `h` too, `+kcfrmwdnoeshbtl-v8"`: fifteen
+letters, 40 characters, 48 with the longest edit generation); `FORMAT_VERSION` stays 8 for the same reason as `d`. The
 level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.mtb_name_counts`).
 The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
 layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
