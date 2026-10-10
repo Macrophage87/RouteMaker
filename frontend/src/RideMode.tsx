@@ -24,9 +24,10 @@ import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import type { Dials } from "./lib/dials.ts";
 import type { LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
-import { formatDistance, formatDuration } from "./lib/format.ts";
+import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
+  POOR_FIX_M,
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
@@ -71,6 +72,10 @@ export const RIDE_ENDED = "Ride ended.";
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
+/** A re-plan that has not answered in this long is given up as no signal (a hung connection). */
+export const REPLAN_TIMEOUT_MS = 25_000;
+/** No fix for this long and a failure from the watch: the rider is told (once) that GPS is lost. */
+export const GPS_LOST_MS = 30_000;
 
 /** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
 export const RIDE_SAFETY =
@@ -220,12 +225,23 @@ export function RideMode({
   const [wakeNote, setWakeNote] = useState("");
   const [replanning, setReplanning] = useState(false);
   const [replanNote, setReplanNote] = useState("");
-  // "Keep the planned route": no automatic re-plan until the rider is back on it.
+  // "Keep the planned route": no automatic re-plan until the rider is back on it (or presses it again).
   const [keepPlanned, setKeepPlanned] = useState(false);
   const keepRef = useRef(keepPlanned);
   keepRef.current = keepPlanned;
   const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  // The last GPS failure and wake note said, so each is said once, not on every repeat.
+  const gpsSaid = useRef<string | null>(null);
+  const wakeSaid = useRef("");
+  const lastFixAt = useRef(Date.now());
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const whereRef = useRef<HTMLButtonElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
+  const ended = useRef(false);
+  // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
+  const replanTicket = useRef(0);
   const settingsId = useId();
   const gate = useRef(new ReplanGate()).current;
   const wake = useRef(new ScreenWake(browserWake())).current;
@@ -245,48 +261,86 @@ export function RideMode({
   const say = useCallback((events: RideEvent[]) => {
     for (const event of events) announcer.current?.say(event.spoken, event.urgent);
   }, []);
+  // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, and through
+  // the polite region even with "neither" chosen, since it changes what the rider must do.
+  const notify = useCallback((text: string) => {
+    if (!text) return;
+    announcer.current?.say(text, false);
+    if (!toScreenReader(prefsRef.current.output)) setPolite((s) => ({ text, count: s.count + 1 }));
+  }, []);
+  const noteWake = useCallback(
+    (held: boolean) => {
+      const note = held ? "" : WAKE_UNAVAILABLE;
+      if (note && note !== wakeSaid.current) notify(note);
+      wakeSaid.current = note;
+      setWakeNote(note);
+    },
+    [notify],
+  );
 
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   const replan = useCallback(
     async (here: LonLat) => {
-      if (!gate.begin(Date.now())) return;
+      if (ended.current || !gate.begin(Date.now())) return;
+      const ticket = (replanTicket.current += 1);
       setReplanning(true);
       setReplanNote("");
       const current = rideRef.current;
       const points = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
-      const result = await requestRoute(points, preset, { dials: { ...dials, loop: false } });
+      // A hung connection is no signal: given up after REPLAN_TIMEOUT_MS (the request itself is left to
+      // finish, so the server's one-request rule holds; its answer is then ignored).
+      let timer: number | undefined;
+      const timedOut = new Promise<"timeout">((resolve) => {
+        timer = window.setTimeout(() => resolve("timeout"), REPLAN_TIMEOUT_MS);
+      });
+      const result = await Promise.race([requestRoute(points, preset, { dials: { ...dials, loop: false } }), timedOut]);
+      window.clearTimeout(timer);
+      const ok = result !== "timeout" && result.ok;
+      gate.finish(ok);
+      if (ended.current || ticket !== replanTicket.current) return;
       setReplanning(false);
-      if (!result.ok) {
-        gate.finish(false);
-        const note = result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+      // The quiet level hears nothing unprompted but arrival (plan section 3): the note stays on screen.
+      const tell = (note: string) => {
+        if (prefsRef.current.verbosity !== "quiet") announcer.current?.say(note, false);
+      };
+      if (result === "timeout" || !result.ok) {
+        const note = result === "timeout" || result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(note);
-        announcer.current?.say(note, false);
+        tell(note);
         return;
       }
-      gate.finish(true);
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
+      const model = rideModel(result.route);
+      modelRef.current = model;
       setRoute(result.route);
-      const fresh = startState();
+      // The rider stays where they are on the map until the next fix places them on the new route.
+      const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
       setKeepPlanned(false);
       setReplanNote(REPLAN_FOUND);
-      announcer.current?.say(REPLAN_FOUND, false);
+      tell(REPLAN_FOUND);
     },
     [dials, preset, gate],
   );
 
   const onFix = useCallback(
     (fix: RideFix) => {
+      if (ended.current) return;
+      gpsSaid.current = null;
+      lastFixAt.current = Date.now();
       setGps("");
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
       setRide(out.state);
       say(out.events);
-      if (out.state.off && auto && !gate.busy) void replan(fix.point);
+      // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
+      if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
+      // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) void replan(out.state.goodFix.point);
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
         announcer.current?.answer(whereAmI(modelRef.current, out.state));
@@ -307,6 +361,13 @@ export function RideMode({
       (reason) => {
         if (reason === "timeout") setGps(WAITING_FOR_GPS);
         else {
+          // Said once: at once where the watch has stopped for good, else only once no fix has come for
+          // GPS_LOST_MS (a lone failure between fixes is common, and would talk over the cues).
+          const final = reason === "denied" || reason === "insecure" || reason === "unsupported";
+          if (gpsSaid.current !== reason && (final || Date.now() - lastFixAt.current >= GPS_LOST_MS)) {
+            notify(LOCATE_MESSAGES[reason]);
+            gpsSaid.current = reason;
+          }
           setGps(LOCATE_MESSAGES[reason]);
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
@@ -315,20 +376,22 @@ export function RideMode({
         }
       },
     );
-  }, [env]);
+  }, [env, notify]);
 
   useEffect(() => {
+    ended.current = false;
     startWatch();
-    void wake.hold().then((held) => setWakeNote(held ? "" : WAKE_UNAVAILABLE));
+    void wake.hold().then(noteWake);
     headingRef.current?.focus();
     return () => {
+      ended.current = true;
       stopWatch.current?.();
       stopWatch.current = null;
       void wake.letGo();
       announcer.current?.drop();
       // The voice is not stopped here: End ride says "Ride ended." as the ride goes (end, below).
     };
-  }, [startWatch, wake]);
+  }, [startWatch, wake, noteWake]);
 
   // The page hidden and shown again (plan section 5): the lock again, a fresh place said once; hidden
   // over HIDDEN_STOP_MS, the watch stops and Resume is offered.
@@ -339,11 +402,18 @@ export function RideMode({
         timer = window.setTimeout(() => {
           stopWatch.current?.();
           stopWatch.current = null;
+          pausedRef.current = true;
           setPaused(true);
+          void wake.letGo();
         }, HIDDEN_STOP_MS);
       } else {
         window.clearTimeout(timer);
-        void wake.again().then((held) => setWakeNote(held ? "" : WAKE_UNAVAILABLE));
+        if (pausedRef.current) {
+          // Back after the watch stopped: say so; the lock waits for Resume.
+          notify(PAUSED_SAID);
+          return;
+        }
+        void wake.again().then(noteWake);
         if (stopWatch.current) sayWhereNext.current = true;
       }
     };
@@ -352,14 +422,14 @@ export function RideMode({
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [wake]);
+  }, [wake, notify, noteWake]);
 
   // No signal: a failed re-plan tries again as the connection comes back.
   useEffect(() => {
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && state.fix) void replan(state.fix.point);
+      if (state.off && !keepRef.current && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -372,10 +442,13 @@ export function RideMode({
   }, [route, fix, onView]);
 
   const resume = () => {
+    pausedRef.current = false;
     setPaused(false);
     sayWhereNext.current = true;
     startWatch();
-    void wake.hold().then((held) => setWakeNote(held ? "" : WAKE_UNAVAILABLE));
+    void wake.hold().then(noteWake);
+    // The Resume button goes: the focus goes to Where am I? rather than the page's top.
+    whereRef.current?.focus();
   };
   const askWhere = useCallback(() => {
     const spoken = whereAmI(modelRef.current, rideRef.current);
@@ -386,6 +459,7 @@ export function RideMode({
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
   }, []);
   const end = () => {
+    ended.current = true;
     stopWatch.current?.();
     stopWatch.current = null;
     announcer.current?.drop();
@@ -393,34 +467,57 @@ export function RideMode({
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
     onEnd();
   };
+  // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
+  // pressed again, re-planning is back on.
   const keep = () => {
+    if (keepPlanned) {
+      setKeepPlanned(false);
+      return;
+    }
+    replanTicket.current += 1;
+    setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");
+    const back = wayBack(modelRef.current, rideRef.current);
+    if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
   };
   const replanNow = () => {
+    if (replanning) return;
     setKeepPlanned(false);
     gate.online();
-    const here = rideRef.current.fix?.point;
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
     if (here) void replan(here);
   };
 
-  // Keys while riding (outside a text field): W where am I, C re-centre.
+  // Off route over (back on, or a new route): its buttons go; a focus inside them goes to Where am I?.
+  const wasOff = useRef(false);
+  useEffect(() => {
+    if (wasOff.current && !ride.off) {
+      const active = document.activeElement;
+      if (!active || active === document.body || !active.isConnected) whereRef.current?.focus();
+    }
+    wasOff.current = ride.off;
+  }, [ride.off]);
+
+  // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
+  // (WCAG 2.1.4), so speech input or a stray key elsewhere on the page fires neither.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (!target || !sectionRef.current?.contains(target)) return;
+      if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       if (event.key === "w" || event.key === "W") {
         event.preventDefault();
         askWhere();
-      } else if (event.key === "c" || event.key === "C") {
+      } else if ((event.key === "c" || event.key === "C") && !big) {
         event.preventDefault();
         onFollow(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [askWhere, onFollow]);
+  }, [askWhere, onFollow, big]);
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
@@ -429,7 +526,7 @@ export function RideMode({
   const shape = arrowFor(cue);
 
   return (
-    <section className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
+    <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
@@ -502,7 +599,7 @@ export function RideMode({
         ) : null}
         {ride.off && (
           <div className="actions ride-off-actions">
-            <button type="button" onClick={replanNow} disabled={replanning}>
+            <button type="button" onClick={replanNow} aria-disabled={replanning}>
               Re-plan from here
             </button>
             <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
@@ -512,12 +609,10 @@ export function RideMode({
         )}
         {!follow && !big && <p className="hint">The map stopped following you. Re-centre follows again.</p>}
         {where && (
-          <p className="ride-where" aria-hidden="true">
-            {where}
-          </p>
+          <p className="ride-where">{where}</p>
         )}
         <div className="actions ride-actions">
-          <button type="button" onClick={askWhere} aria-keyshortcuts="W">
+          <button type="button" ref={whereRef} onClick={askWhere} aria-keyshortcuts="W">
             Where am I?
           </button>
           <button type="button" className="secondary" onClick={() => onFollow(true)} aria-keyshortcuts="C" hidden={big}>
@@ -530,11 +625,12 @@ export function RideMode({
             End ride
           </button>
         </div>
-        <details className="fold ride-settings">
+        <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>
           <div className="fold-body">
             <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
-            <label className="toggle">
+            <p className="hint">{RIDE_SAFETY}</p>
+            <label className="toggle ride-toggle">
               <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
               Turn the map to my heading
             </label>

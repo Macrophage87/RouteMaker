@@ -131,8 +131,14 @@ export class Announcer {
     }
   }
 
-  /** On demand ("Where am I?"): at once, outside the throttle, and not counted in it. */
+  /**
+   * On demand ("Where am I?"): at once, whatever the throttle says; a polite cue then waits a full gap
+   * so it does not cut the answer off, and anything already waiting is dropped (the answer covers it).
+   */
   answer(text: string): void {
+    if (!text) return;
+    this.drop();
+    this.lastPolite = this.now();
     this.deliver({ text, urgent: false });
   }
 

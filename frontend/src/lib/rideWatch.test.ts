@@ -81,3 +81,10 @@ test("privacy: rideWatch.ts is the only watcher, and it stores, logs and sends n
   assert.doesNotMatch(code(readFileSync(join(here, "navigate.ts"), "utf8")), LEAKS);
   assert.doesNotMatch(code(readFileSync(join(here, "rideOutput.ts"), "utf8")).replace(/browserStore|KeyValueStore/g, ""), /sessionStorage|console\.|fetch\(|indexedDB|sendBeacon/);
 });
+
+test("privacy: Ride mode's screen writes no address, storage or log, and asks nothing about a live position", () => {
+  const ride = code(readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8"));
+  assert.doesNotMatch(ride, /history\.|location\.hash|localStorage|sessionStorage|console\.|segment-info|\/api\/reverse|reverseGeocode|segmentInfo|sendBeacon/);
+  // Its only request is the re-plan, through the planner's own requestRoute (a POST body).
+  assert.deepEqual(ride.match(/\b(requestRoute|fetch)\(/g), ["requestRoute("]);
+});

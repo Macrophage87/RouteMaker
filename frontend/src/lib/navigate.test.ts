@@ -431,3 +431,195 @@ test("privacy: the engine reads no storage and calls no network", () => {
   const source = readFileSync(new URL("./navigate.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB|fetch\(|segment-info|\/api\/reverse/);
 });
+
+/** A route of `coordinates` with no description but the end. */
+function bare(coordinates: LonLat[]): RideModel {
+  return rideModel({ ...lRoute(), geometry: { type: "LineString", coordinates }, leg_ends: [coordinates.length - 1], description: [] });
+}
+
+test("out-and-back on one street (or a lane 10 m over): the way back is followed and arrives", () => {
+  for (const gap of [0, 10]) {
+    const model = bare([at(0, 0), at(1000, 0), at(1000, gap), at(0, gap)]);
+    const r = ride(model, "full", 0, model.lengthM);
+    assert.equal(r.state.arrived, true, `gap ${gap}`);
+    assert.ok((r.state.progressM ?? 0) > model.lengthM - 25, `gap ${gap}: ${r.state.progressM}`);
+  }
+});
+
+test("a figure eight: through the crossing, progress stays on the pass being ridden", () => {
+  // East 600 m, a square north and back down through the first leg's middle, then on south.
+  const model = bare([at(0, 0), at(600, 0), at(600, 300), at(300, 300), at(300, -300)]);
+  const first = ride(model, "full", 0, 300).state;
+  assert.ok(Math.abs((first.progressM ?? 0) - 300) < 6, `${first.progressM}`);
+  // The second pass of the crossing is at 600 + 300 + 300 + 300 = 1,500 m: well ahead of the window.
+  const second = ride(model, "full", 305, 1600, 5, first).state;
+  assert.ok(Math.abs((second.progressM ?? 0) - 1600) < 6, `${second.progressM}`);
+});
+
+test("a gap in the fixes (a tunnel): the window grows, progress carries on", () => {
+  const model = rideModel(lRoute());
+  const s = ride(model, "full", 0, 200).state;
+  // 20 s without a fix, then 400 m on: past the usual 250 m window.
+  const out = step(model, s, fix(pointAt(model, 600), { at: (clock += 20_000) }), "full");
+  assert.ok(Math.abs((out.state.progressM ?? 0) - 600) < 2, `${out.state.progressM}`);
+  assert.equal(out.state.off, false);
+});
+
+test("off route, then rejoining far ahead: back on there, the cues carry on, and it arrives", () => {
+  const model = rideModel(lRoute());
+  let s = ride(model, "full", 0, 300).state;
+  // 200 m north of A Street, east, then back onto B Street at 1,200 m.
+  for (let east = 300; east <= 900; east += 10) s = step(model, s, fix(at(east, 200)), "full", false).state;
+  assert.equal(s.off, true);
+  assert.ok(Math.abs((s.progressM ?? 0) - 300) < 0.01, "progress waits while off route");
+  const back = step(model, s, fix(at(1000, 200)), "full", false);
+  assert.equal(back.state.off, false);
+  assert.ok(Math.abs((back.state.progressM ?? 0) - 1200) < 2, `${back.state.progressM}`);
+  const rest = ride(model, "full", 1205, 2000, 5, back.state);
+  assert.equal(rest.state.arrived, true);
+  assert.ok(rest.events.some((e) => e.cue?.kind === "hazard"), "the red crossing at 1,500 m is still said");
+});
+
+test("a loop: a first fix near the start but nearer the return leg starts at the start", () => {
+  // A square loop back from the north; the rider is 18 m north of the start, 2 m off the return leg.
+  const model = bare([at(0, 0), at(500, 0), at(500, 500), at(2, 500), at(2, 0), at(0, 0)]);
+  const out = step(model, startState(), fix(at(0, 18)), "full");
+  assert.equal(out.state.arrived, false);
+  assert.ok((out.state.progressM ?? 99) < 30, `${out.state.progressM}`);
+});
+
+test("off route edges: 3 fixes over exactly 8 s are off; 2 fixes or 7.9 s are not", () => {
+  const model = rideModel(lRoute());
+  const base = ride(model, "full", 0, 300).state;
+  const far = (s: RideState, t: number) => step(model, s, { point: at(300, 60), accuracyM: 5, speedMs: 5, headingDeg: null, at: t }, "full").state;
+  const t0 = clock + 1000;
+  clock += 20_000;
+  assert.equal(far(far(far(base, t0), t0 + 4000), t0 + 8000).off, true);
+  assert.equal(far(far(base, t0), t0 + 10_000).off, false);
+  assert.equal(far(far(far(base, t0), t0 + 4000), t0 + 7900).off, false);
+});
+
+test("back on route: within half the threshold clears (14 m of 30), outside it does not (16 m)", () => {
+  const model = rideModel(lRoute());
+  let s = ride(model, "full", 0, 300).state;
+  for (let i = 0; i < 12; i += 1) s = step(model, s, fix(at(300, 60)), "full").state;
+  assert.equal(step(model, s, fix(at(300, 16)), "full").state.off, true);
+  const back = step(model, s, fix(at(300, 14)), "full");
+  assert.equal(back.state.off, false);
+  assert.equal(back.events[0].urgent, false, "back on route is polite");
+});
+
+test("off and back at the quiet level: nothing said, the state still kept; stoker hears only the leaving", () => {
+  for (const [level, said] of [
+    ["quiet", []],
+    ["stoker", [OFF_ROUTE_SAID]],
+  ] as const) {
+    const model = rideModel(lRoute());
+    let s = ride(model, level, 0, 300).state;
+    const events: RideEvent[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const out = step(model, s, fix(at(300, 60)), level);
+      s = out.state;
+      events.push(...out.events);
+    }
+    assert.equal(s.off, true, level);
+    const back = step(model, s, fix(at(305, 2)), level);
+    assert.equal(back.state.off, false, level);
+    assert.deepEqual([...events, ...back.events].map((e) => e.spoken), said, level);
+  }
+});
+
+test("at 10 m/s the cues move out with speed: advance about 270 m, prepare 100 m, now 20 m", () => {
+  const model = rideModel(lRoute());
+  let s = startState();
+  s = { ...s, speedMs: 10 };
+  const heard: { phase: string; progress: number }[] = [];
+  for (let m = 0; m <= 1000; m += 5) {
+    const out = step(model, s, fix(pointAt(model, m), { speedMs: 10, at: (clock += 500) }), "full");
+    s = out.state;
+    for (const e of out.events) if (e.cue?.kind === "turn") heard.push({ phase: e.phase ?? "", progress: m });
+  }
+  const where = (phase: string) => 1000 - (heard.find((h) => h.phase === phase)?.progress ?? -1);
+  assert.ok(Math.abs(where("advance") - 270) <= 5, `advance ${where("advance")}`);
+  assert.ok(Math.abs(where("prepare") - 100) <= 5, `prepare ${where("prepare")}`);
+  assert.ok(Math.abs(where("now") - 20) <= 5, `now ${where("now")}`);
+  // The stoker's warning at 10 m/s: 17 s, 170 m.
+  let t = startState();
+  t = { ...t, speedMs: 10 };
+  let ahead = -1;
+  for (let m = 0; m <= 1000 && ahead < 0; m += 5) {
+    const out = step(model, t, fix(pointAt(model, m), { speedMs: 10, at: (clock += 500) }), "stoker");
+    t = out.state;
+    if (out.events.some((e) => e.phase === "ahead")) ahead = 1000 - m;
+  }
+  assert.ok(Math.abs(ahead - 170) <= 5, `ahead ${ahead}`);
+});
+
+test("arrival at a stop and the end is urgent; at most one sentence a fix", () => {
+  const model = rideModel(twoLegs());
+  let s = startState();
+  for (let m = 0; m <= model.lengthM; m += 5) {
+    const out = step(model, s, fix(pointAt(model, m)), "full");
+    s = out.state;
+    assert.ok(out.events.length <= 1, `${m}: ${out.events.map((e) => e.spoken)}`);
+    for (const e of out.events) if (e.phase === "arrive") assert.equal(e.urgent, true, e.spoken);
+  }
+  assert.equal(s.arrived, true);
+});
+
+test("jitter back 50 m: progress goes back exactly the tolerance", () => {
+  const model = rideModel(lRoute());
+  const s = ride(model, "full", 0, 400).state;
+  const out = step(model, s, fix(pointAt(model, 350)), "full");
+  assert.ok(Math.abs((out.state.progressM ?? 0) - 370) < 0.01, `${out.state.progressM}`);
+});
+
+test("speech has no metric: a cue with metres, two brackets in one sentence", () => {
+  assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "10 mph for 1 mi.");
+  const cue = { ...rideModel(lRoute()).cues[0], text: "Walk 300 ft (90 m) across the bridge." };
+  assert.equal(cueSpoken(cue, "advance", 150), "In 500 feet, walk 300 ft across the bridge.");
+});
+
+test("measureMap: a stop off the uniform scale maps onto its vertex", () => {
+  const along = new Float64Array([0, 500, 1000, 1500, 2000]);
+  const map = measureMap(
+    {
+      distance_m: 2000,
+      leg_ends: [1, 4],
+      description: [stretch(0, 1000, "x"), { ...stretch(1000, 1000, "Stop 1."), kind: "via", via: 1 }, stretch(1000, 2000, "y")],
+    },
+    along,
+  );
+  assert.equal(map(1000), 500);
+  assert.equal(map(500), 250);
+});
+
+test("ReplanGate: the numbers, a success resets the backoff, online in flight changes nothing", () => {
+  assert.equal(REPLAN_GAP_MS, 30_000);
+  assert.equal(REPLAN_BACKOFF_MS, 120_000);
+  const gate = new ReplanGate();
+  gate.begin(0);
+  gate.finish(false);
+  gate.begin(30_000);
+  gate.finish(false);
+  gate.begin(150_000);
+  gate.finish(true);
+  assert.equal(gate.begin(180_000), true, "after a success the gap is 30 s again");
+  gate.online();
+  gate.finish(true);
+  assert.equal(gate.begin(180_001), false, "online while in flight did not lift the gap");
+});
+
+test("replanPoints: a stop already reached is dropped, matched by its number", () => {
+  const model = rideModel(twoLegs());
+  const plan: LonLat[] = [at(0, 0), at(1000, 0), at(1000, 1000)];
+  const stopAt = model.cues.find((c) => c.kind === "stop")?.atM ?? 0;
+  assert.deepEqual(replanPoints(model, stopAt - 10, at(0, 0), plan, false), [at(0, 0), plan[2]], "within 20 m of it");
+});
+
+test("goodFix: the last fix good enough for cues, what a re-plan starts from", () => {
+  const model = rideModel(lRoute());
+  const s = ride(model, "full", 0, 100).state;
+  const out = step(model, s, fix(at(600, 300), { accuracyM: 400 }), "full");
+  assert.deepEqual(out.state.goodFix, s.fix);
+});

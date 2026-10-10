@@ -1837,10 +1837,10 @@ async function saidInDialog(p, text) {
   // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
   await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
 
-  // The first ride asks how to say the cues; its first choice takes the focus.
+  // The first ride asks how to say the cues; its heading takes the focus, so the safety note is read first.
   await p.eval("document.querySelector('.start-ride button').click(); true");
   await sleep(300);
-  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.closest('.ride-ask') === d && document.activeElement.type === 'radio', safety: d?.textContent.includes('you stay responsible') }; })()");
+  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.id === 'ride-ask-title' && document.activeElement.closest('.ride-ask') === d, safety: d?.textContent.includes('you stay responsible') }; })()");
   check("ride: the first Start ride asks how to say the cues, with the safety note, and takes the focus", ask.shown && ask.role === "dialog" && ask.focus && ask.safety, JSON.stringify(ask));
   await p.eval("(() => { const labels = [...document.querySelectorAll('.ride-ask label')]; labels.find((l) => l.textContent === 'Both')?.querySelector('input').click(); labels.find((l) => l.textContent.startsWith('Full'))?.querySelector('input').click(); [...document.querySelectorAll('.ride-ask button')].find((b) => b.textContent === 'Start').click(); return true; })()");
   await sleep(800);
@@ -1890,6 +1890,19 @@ async function saidInDialog(p, text) {
   const resumed = await p.eval("!document.querySelector('.ride-controls').textContent.includes('stopped following')");
   check("ride: a pan by hand stops following; Re-centre (C) follows again", paused && resumed, JSON.stringify({ paused, resumed }));
 
+  // A tap on the map during a ride adds no point and plans nothing (the plan stays as started); the
+  // skip link goes to Ride mode, since the planner is hidden.
+  const tapBefore = p.routeRequests;
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x - 40, y: canvas.y - 40, button: "left", clickCount: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x - 40, y: canvas.y - 40, button: "left", clickCount: 1 });
+  await sleep(1200);
+  const tapped = await p.eval("({ hash: location.hash, pins: document.querySelectorAll('.point-marker, .maplibregl-marker:not(.rider-marker)').length, skip: document.querySelector('.skip-link')?.textContent, skipTo: document.querySelector('.skip-link')?.getAttribute('href') })");
+  check("ride: a tap on the map changes no plan and sends no request; the skip link goes to Ride mode",
+    tapped.hash === hash && p.routeRequests === tapBefore && tapped.skip === "Skip to ride mode" && tapped.skipTo === "#ride-heading", JSON.stringify({ ...tapped, requests: p.routeRequests - tapBefore }));
+  await p.eval("document.querySelector('.skip-link').click(); true");
+  const skipped = await p.eval("document.activeElement?.id");
+  check("ride: the skip link takes the focus to Ride mode's heading", skipped === "ride-heading", String(skipped));
+
   // Off route: 150 m off the line for over 8 s; exactly one re-plan, from here, and the address bar unchanged.
   const before = p.routeRequests;
   const off = [RIDE_COORDS[10][0] + 0.0015, RIDE_COORDS[10][1] + 0.0010];
@@ -1927,7 +1940,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 332;
+const EXPECTED = 334;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

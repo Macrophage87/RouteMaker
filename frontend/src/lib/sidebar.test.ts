@@ -198,7 +198,7 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.ok(labels.every((i) => i > 0));
   assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
-  assert.match(app, /accessMode \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
+  assert.match(app, /accessMode && !riding \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
     searchLede(false),
     "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).",

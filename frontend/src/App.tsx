@@ -24,7 +24,7 @@ import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
-import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
+import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
 import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
@@ -182,6 +182,10 @@ function useNarrow(): boolean {
 }
 
 /** The points notice for a point outside the map, from a click, a station, or the rider's location. */
+/** During a ride the map takes no edits and shows no plan pins (plan Q2: the plan stays as started). */
+const NO_POINTS: LonLat[] = [];
+const ignore = () => undefined;
+
 const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
 
 export function App() {
@@ -332,6 +336,9 @@ export function App() {
   // A ride's re-plans live here, not in `points`, so the address bar keeps the plan as started (plan Q2).
   const [ridePrefs, setRidePrefs] = useState<RidePrefs>(() => readRidePrefs());
   const [riding, setRiding] = useState(false);
+  // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
+  // which a failed or changed plan could take away mid-ride.
+  const [rideStart, setRideStart] = useState<{ route: RouteResponse; points: LonLat[]; loop: boolean; dials: Dials } | null>(null);
   const [rideAsk, setRideAsk] = useState(false);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
@@ -340,6 +347,8 @@ export function App() {
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   const focusStartAfterRide = useRef(false);
+  // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
+  const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
   const changeRidePrefs = useCallback((next: RidePrefs) => {
     writeRidePrefs(next);
@@ -604,7 +613,8 @@ export function App() {
   // anywhere but a text field, which has its own.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (typesText(event.target as HTMLElement | null)) return;
+      // A ride keeps the plan as started (plan Q2): no undo or redo under it.
+      if (riding || typesText(event.target as HTMLElement | null)) return;
       if (isUndoKey(event)) {
         event.preventDefault();
         undo();
@@ -615,7 +625,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, riding]);
 
   const place = useCallback((point: LonLat) => {
     cancelLocateNotice();
@@ -922,7 +932,9 @@ export function App() {
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   const beginRide = (prefs: RidePrefs) => {
+    if (!shown) return;
     startRideGesture(prefs);
+    setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
     setRideAsk(false);
     setFollow(true);
     setBigText(false);
@@ -930,14 +942,21 @@ export function App() {
     setRiding(true);
   };
   const startRide = () => {
+    const opener = document.activeElement;
+    rideOpener.current = opener instanceof HTMLElement && opener.classList.contains("start-ride") ? opener : startRideRef.current;
     if (!ridePrefs.chosen) {
       setRideAsk(true);
       return;
     }
     beginRide(ridePrefs);
   };
+  const backToRideOpener = () => {
+    const opener = rideOpener.current;
+    (opener?.isConnected ? opener : startRideRef.current)?.focus();
+  };
   const endRide = useCallback(() => {
     setRiding(false);
+    setRideStart(null);
     setRideView(null);
     setBigText(false);
     focusStartAfterRide.current = true;
@@ -946,11 +965,12 @@ export function App() {
   useEffect(() => {
     if (riding || !focusStartAfterRide.current) return;
     focusStartAfterRide.current = false;
-    startRideRef.current?.focus();
+    backToRideOpener();
   }, [riding]);
-  // The first ride's question takes the focus to its first choice.
+  // The first ride's question takes the focus to its heading, so its safety note is read before the
+  // choices (VoiceOver skips a dialog's description when the focus lands inside it).
   useEffect(() => {
-    if (rideAsk) rideStartFirstRef.current?.closest(".ride-ask")?.querySelector<HTMLInputElement>("input")?.focus();
+    if (rideAsk) document.getElementById("ride-ask-title")?.focus();
   }, [rideAsk]);
   // Big text hides the map; shown again, it fits its box.
   useEffect(() => {
@@ -1273,11 +1293,13 @@ export function App() {
             if (isCancelKey(event.key)) {
               event.preventDefault();
               setRideAsk(false);
-              startRideRef.current?.focus();
+              backToRideOpener();
             }
           }}
         >
-          <h3 id="ride-ask-title">Start ride</h3>
+          <h3 id="ride-ask-title" tabIndex={-1}>
+            Start ride
+          </h3>
           <p id="ride-ask-safety" className="hint">
             {RIDE_SAFETY}
           </p>
@@ -1299,7 +1321,7 @@ export function App() {
               className="secondary"
               onClick={() => {
                 setRideAsk(false);
-                startRideRef.current?.focus();
+                backToRideOpener();
               }}
             >
               Cancel
@@ -1349,11 +1371,18 @@ export function App() {
       <button type="button" className="access-link" aria-pressed={accessMode} onClick={() => toggleAccessMode(true)}>
         {ACCESS_LABEL}
       </button>
-      <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
-        {SKIP_LINK_TEXT}
-      </a>
+      {riding ? (
+        // During a ride the planner is hidden: the link goes to Ride mode instead.
+        <a className="skip-link" href="#ride-heading" onClick={(event) => skipToPlanner(event, document.getElementById("ride-heading"))}>
+          {SKIP_TO_RIDE_TEXT}
+        </a>
+      ) : (
+        <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
+          {SKIP_LINK_TEXT}
+        </a>
+      )}
       <MapView
-        points={points}
+        points={riding ? NO_POINTS : points}
         loopVias={loopVias}
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale}
@@ -1361,15 +1390,15 @@ export function App() {
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
         onStressAvailability={setStress}
-        onMapClick={place}
-        onMovePoint={move}
+        onMapClick={riding ? ignore : place}
+        onMovePoint={riding ? ignore : move}
         lineEdit={riding ? null : lineEdit}
-        onLineDrop={insertOnLine}
-        onRemovePoint={removeFromMap}
+        onLineDrop={riding ? ignore : insertOnLine}
+        onRemovePoint={riding ? ignore : removeFromMap}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}
-        follow={riding && follow}
+        follow={riding && follow && !bigText /* Big text hides the map: no camera work for it */}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
         junctionFocus={junctionFocus}
@@ -1397,7 +1426,7 @@ export function App() {
         onStationPoint={placeStation}
         onRoadInfo={setRoadInfo}
         tools={
-          accessMode ? (
+          accessMode && !riding ? (
           <MapTools
             toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
@@ -1447,13 +1476,13 @@ export function App() {
         {status.kind === "waiting" && <p>{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
       </div>
-      {riding && shown && (
+      {riding && rideStart && (
         <RideMode
-          route={shown}
-          points={routedPoints}
-          loop={routedLoop}
-          preset={shown.preset}
-          dials={planDials}
+          route={rideStart.route}
+          points={rideStart.points}
+          loop={rideStart.loop}
+          preset={rideStart.route.preset}
+          dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}
           follow={follow}
@@ -1837,7 +1866,7 @@ function RouteSummary({
           <button type="button" ref={ride.startRef} onClick={ride.onStart}>
             Start ride
           </button>
-          <p className="hint">Turn-by-turn directions on this phone, said aloud. Keep the screen on and this page in front.</p>
+          <p className="hint">Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.</p>
         </div>
       ) : (
         <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>

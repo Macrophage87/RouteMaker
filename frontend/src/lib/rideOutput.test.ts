@@ -96,12 +96,43 @@ test("Announcer: urgent goes at once and drops the waiting polite one", () => {
   ]);
 });
 
-test("Announcer: an answer is outside the throttle", () => {
-  const { a, said } = announcer();
+test("Announcer: an answer is outside the throttle, and the next polite cue waits a gap after it", () => {
+  const { a, said, advance } = announcer();
   a.say("cue", false);
   a.answer("On A Street.");
-  a.say("next", false);
   assert.deepEqual(said.map((s) => s.text), ["cue", "On A Street."]);
+  advance(1000);
+  a.say("next", false);
+  advance(POLITE_GAP_MS - 1001);
+  assert.equal(said.length, 2, "not over the answer");
+  advance(1);
+  assert.deepEqual(said.map((s) => s.text), ["cue", "On A Street.", "next"]);
+});
+
+test("Announcer: the timing of the gap, to the millisecond", () => {
+  assert.equal(POLITE_GAP_MS, 8000);
+  const { a, said, advance } = announcer();
+  a.say("one", false);
+  advance(3000);
+  a.say("two", false);
+  advance(4999);
+  assert.equal(said.length, 1);
+  advance(1);
+  assert.equal(said.length, 2, "at 8 s, not 3 + 8");
+  // After a deferred delivery at 8 s, the next waits until 16 s.
+  advance(2000);
+  a.say("three", false);
+  advance(5999);
+  assert.equal(said.length, 2);
+  advance(1);
+  assert.deepEqual(said.map((s) => s.text), ["one", "two", "three"]);
+  // Exactly a gap after the last: at once.
+  advance(8000);
+  a.say("four", false);
+  assert.equal(said.length, 4);
+  a.say("", false);
+  advance(20_000);
+  assert.equal(said.length, 4, "nothing for an empty sentence");
 });
 
 function speech() {

@@ -63,6 +63,8 @@ export const STOKER_MIN_M = 90;
 export const PASSED_M = 10;
 /** Arrival at a stop or the end: within this of it along the line (and the fix close to it). */
 export const ARRIVE_M = 20;
+/** A first fix this close to the route's start starts at the start (a loop's start is its end too). */
+export const START_M = 50;
 /** Progress never moves back by more than this while on route (GPS jitter at a light). */
 export const BACK_TOLERANCE_M = 30;
 /** The search for the rider's place on the line looks this far behind the last progress... */
@@ -256,10 +258,19 @@ export interface Snap {
 
 /**
  * The nearest point of the line to `p` among the segments that overlap [fromM, toM] along it; among
- * points within `tieM` of the nearest, the first along (a loop's start and finish, an out-and-back's
- * two passes: the one the ride reaches first). Null on a line of fewer than two vertices.
+ * points within `tieM` of the nearest (a loop's start and finish, an out-and-back's two passes), the one
+ * nearest `preferM` along: by default the first along, the one a ride reaches first; during a ride, where
+ * the rider is expected to be, so the way back of an out-and-back is not taken for the way out. Null on a
+ * line of fewer than two vertices.
  */
-export function snap(model: Pick<RideModel, "coordinates" | "along">, p: LonLat, fromM = -Infinity, toM = Infinity, tieM = 15): Snap | null {
+export function snap(
+  model: Pick<RideModel, "coordinates" | "along">,
+  p: LonLat,
+  fromM = -Infinity,
+  toM = Infinity,
+  tieM = 15,
+  preferM = -Infinity,
+): Snap | null {
   const { coordinates: c, along } = model;
   if (c.length < 2) return null;
   const kx = M_PER_DEG_LAT * Math.cos((p[1] * Math.PI) / 180);
@@ -289,7 +300,9 @@ export function snap(model: Pick<RideModel, "coordinates" | "along">, p: LonLat,
     found.push({ alongM, offM: off, point: [c[i - 1][0] + t * (c[i][0] - c[i - 1][0]), c[i - 1][1] + t * (c[i][1] - c[i - 1][1])] });
   }
   if (!found.length) return null;
-  return found.filter((s) => s.offM <= best + tieM).sort((a, b) => a.alongM - b.alongM)[0];
+  const tied = found.filter((s) => s.offM <= best + tieM);
+  if (preferM === -Infinity) return tied.sort((a, b) => a.alongM - b.alongM)[0];
+  return tied.sort((a, b) => Math.abs(a.alongM - preferM) - Math.abs(b.alongM - preferM) || a.alongM - b.alongM)[0];
 }
 
 /** The point `m` metres along the line. */
@@ -342,6 +355,8 @@ export interface RideState {
   progressM: number | null;
   /** The last fix, any quality: the marker. */
   fix: RideFix | null;
+  /** The last fix good enough for cues (POOR_FIX_M): where a re-plan starts from. */
+  goodFix: RideFix | null;
   /** The last good fix's time, for the window's growth over a gap. */
   goodAt: number | null;
   speedMs: number;
@@ -358,7 +373,7 @@ export interface RideState {
 }
 
 export function startState(): RideState {
-  return { progressM: null, fix: null, goodAt: null, speedMs: 0, offM: 0, said: {}, off: false, offSince: null, offCount: 0, arrived: false };
+  return { progressM: null, fix: null, goodFix: null, goodAt: null, speedMs: 0, offM: 0, said: {}, off: false, offSince: null, offCount: 0, arrived: false };
 }
 
 /** How far off the line counts as off route for a fix of this accuracy (plan section 4). */
@@ -433,16 +448,25 @@ export function step(
   const accuracy = fix.accuracyM > 0 ? fix.accuracyM : 0;
   if (accuracy > POOR_FIX_M || state.arrived) return { state: next, events };
 
-  // Where on the line: a window round the last progress, growing over a gap in the fixes.
+  next.goodFix = fix;
+
+  // Where on the line: a window round the last progress, growing over a gap in the fixes; among two
+  // passes of the same street, the one nearest where the rider is expected to be by now.
   let found: Snap | null;
   if (state.progressM === null) {
-    found = snap(model, fix.point);
+    // The first fix: near the start, the start (a loop's return leg passes it too); else anywhere.
+    const start = model.coordinates[0];
+    found = start && haversineM(fix.point, start) <= START_M ? snap(model, fix.point, 0, WINDOW_AHEAD_M) : null;
+  } else if (state.off) {
+    // Off route: back on anywhere ahead (or just behind), however far the detour went.
+    found = snap(model, fix.point, state.progressM - WINDOW_BEHIND_M, Infinity, 15, state.progressM);
   } else {
     const gapS = state.goodAt === null ? 0 : Math.max(0, (fix.at - state.goodAt) / 1000);
-    found = snap(model, fix.point, state.progressM - WINDOW_BEHIND_M, state.progressM + WINDOW_AHEAD_M + FAST_MS * gapS);
-    // Off the window entirely (a long gap): the whole line, as at the start.
-    if (found === null) found = snap(model, fix.point);
+    const expected = state.progressM + Math.max(state.speedMs, MIN_SPEED_MS) * gapS;
+    found = snap(model, fix.point, state.progressM - WINDOW_BEHIND_M, state.progressM + WINDOW_AHEAD_M + FAST_MS * gapS, 15, expected);
   }
+  // Off the window entirely (a long gap) or a first fix away from the start: the whole line.
+  if (found === null) found = snap(model, fix.point);
   if (found === null) return { state: next, events };
 
   // Speed: the browser's where it gives one, else from progress over time, smoothed.
@@ -477,7 +501,8 @@ export function step(
     next.offCount = 0;
     next.offSince = null;
     next.progressM = found.alongM;
-    if (level !== "quiet") events.push({ kind: "back-on-route", spoken: BACK_ON_ROUTE_SAID, urgent: false });
+    // Full only: the stoker hears leaving the route once (plan section 3), quiet nothing.
+    if (level === "full") events.push({ kind: "back-on-route", spoken: BACK_ON_ROUTE_SAID, urgent: false });
   }
   if (next.off || next.progressM === null) return { state: next, events };
 
@@ -636,9 +661,8 @@ function capital(text: string): string {
 export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean): LonLat[] {
   const stops = loop ? points.slice(1) : points.slice(1, -1);
   const end = loop ? points[0] : points[points.length - 1];
-  const stopCues = model.cues.filter((c) => c.kind === "stop");
   const left = stops.filter((_, i) => {
-    const cue = stopCues[i];
+    const cue = model.cues.find((c) => c.kind === "stop" && c.stop === i + 1);
     // A stop the description does not place (an older API) is kept: better one extra point than one lost.
     return cue === undefined || cue.atM > progressM + ARRIVE_M;
   });

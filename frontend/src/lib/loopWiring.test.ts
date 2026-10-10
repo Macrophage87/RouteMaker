@@ -124,7 +124,7 @@ test("App: Reverse in a loop of a start and one stop is aria-disabled with its r
 test("App hands the toggle to the search, the map, the points list and the GPX", () => {
   const app = source("../App.tsx");
   assert.match(app, /<PlaceSearch\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
-  assert.match(app, /<MapView\s+points=\{points\}\s+loopVias=\{loopVias\}/);
+  assert.match(app, /<MapView\s+points=\{riding \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
   assert.match(app, /rows=\{pointRows\(points, namer, loopVias\)\}/);
 });
 

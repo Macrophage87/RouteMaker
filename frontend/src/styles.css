@@ -2694,8 +2694,12 @@ details.zoom-notes {
   padding: 10px 14px;
 }
 
+/* Long sentences at 200% text or 320 px wide scroll inside the card rather than off the screen. */
 .cue-card {
   border-bottom: 1px solid var(--border);
+  min-height: 0;
+  max-height: 50%;
+  overflow-y: auto;
 }
 
 .ride-controls {
@@ -2773,7 +2777,7 @@ details.zoom-notes {
   padding: 8px 14px;
 }
 
-button.danger {
+.ride button.danger {
   background: transparent;
   color: var(--error-text);
   border-color: var(--error-text);
@@ -2783,8 +2787,15 @@ button.danger {
   margin: 6px 0;
 }
 
-.ride-settings > summary {
+.ride-mode-settings > summary {
   min-height: 44px;
+}
+
+.ride-toggle {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ride-choice {
@@ -2832,7 +2843,12 @@ button.danger {
 
 .ride-big .cue-card {
   flex: 1;
+  max-height: none;
   box-shadow: none;
+}
+
+.ride-big .ride-heading {
+  font-size: 1.25rem;
 }
 
 .ride-big .cue-distance {

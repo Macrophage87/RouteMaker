@@ -1153,6 +1153,7 @@ export function MapView(props: Props) {
 
   // Ride mode's "you" marker and the follow camera.
   const riderMarker = useRef<Marker | null>(null);
+  const following = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
     const rider = props.rider ?? null;
@@ -1175,10 +1176,17 @@ export function MapView(props: Props) {
     }
     riderMarker.current.setRotation(rider.headingDeg ?? 0);
     riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
-    if (props.follow) {
-      const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
-      map.easeTo({ center: rider.point, bearing, zoom: Math.max(map.getZoom(), 16), duration: 400 });
+    if (!props.follow) {
+      following.current = false;
+      return;
     }
+    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
+    // Close in once as following starts; a pinch out after that is kept (it does not stop following).
+    const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
+    following.current = true;
+    // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
 
