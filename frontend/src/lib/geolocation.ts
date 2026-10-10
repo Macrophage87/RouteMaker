@@ -4,8 +4,10 @@
  * so tests stub success, each error and the insecure context; `browserEnv`
  * is the one place that reads `window`.
  *
- * No watchPosition and no tracking: `locate` asks once (and once more, less
- * precisely, after a timeout). Nothing here stores or logs the position. The
+ * No watchPosition and no tracking here: `locate` asks once (and once more, less
+ * precisely, after a timeout). The one watcher in the app is Ride mode's
+ * (lib/rideWatch.ts), started by the rider's Start ride press and cleared at
+ * End ride. Nothing here stores or logs the position. The
  * point itself goes into the plan like any clicked point, so it is in the
  * address bar, the copied link and a GPX file at full precision, by design.
  * What is never in the link, a GPX file, storage or a log is the flag that a

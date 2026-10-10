@@ -250,7 +250,7 @@ test("App: the accessibility mode switch is the first thing in the page, before 
 });
 
 test("App: Map tools is rendered only in accessibility mode; the toggle is in More tips too (455)", () => {
-  assert.match(app, /tools=\{\s*accessMode \? \(\s*<MapTools/);
+  assert.match(app, /tools=\{\s*accessMode && !riding \? \(\s*<MapTools/);
   assert.match(app, /\) : null\s*\}\s*\/>/);
   const tips = app.slice(app.indexOf("<MoreTips>"), app.indexOf("</MoreTips>"));
   assert.match(tips, /infoHelp\(accessMode\)/);

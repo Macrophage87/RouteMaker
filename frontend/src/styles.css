@@ -2581,6 +2581,25 @@ details.zoom-notes {
   pointer-events: none;
 }
 
+/* Ride mode's "you" marker (WEB-NAV-plan.md section 1): an arrow, a different shape from the chart's
+   ring, pointing the way the rider is heading; a plain dot while the heading is not known. */
+.rider-marker {
+  width: 30px;
+  height: 30px;
+  pointer-events: none;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath d='M15 2 L26 27 L15 21 L4 27 Z' fill='%231d4ed8' stroke='white' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rider-marker.rider-marker-still {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1d4ed8;
+  border: 3px solid white;
+  box-shadow: 0 0 0 2px #1d4ed8;
+}
+
 /* Forced colours: the chart keeps its band colours and patterns, and so does its key, so the two
    still match (the a11y review's S6, as .legend svg above); the chart's words and lines follow the
    system's text colour, so they read on the system's background. */
@@ -2758,4 +2777,214 @@ details.zoom-notes {
 .water-kinds legend {
   padding: 0;
   color: var(--text-muted);
+}
+
+/*
+ * Ride mode (WEB-NAV-plan.md; RideMode.tsx). The planner is hidden; a cue card sits at the top of the
+ * map and the ride's buttons at the bottom, each on the page's own background so its text keeps the
+ * panel's contrast over any map. Buttons are at least 44 px tall: they are pressed on the move.
+ * Big text hides the map (no rendering, less battery) and gives the card the screen.
+ */
+.ride {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 3;
+}
+
+.ride > * {
+  pointer-events: auto;
+}
+
+.cue-card,
+.ride-controls {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+}
+
+/* Long sentences at 200% text or 320 px wide scroll inside the card rather than off the screen. */
+.cue-card {
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+  max-height: 50%;
+  overflow-y: auto;
+}
+
+.ride-controls {
+  border-top: 1px solid var(--border);
+  max-height: 50%;
+  overflow-y: auto;
+}
+
+.ride-heading {
+  font-size: 0.85rem;
+  margin: 0 0 4px;
+  color: var(--text-muted);
+}
+
+.cue-next,
+.cue-off {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.cue-shape {
+  flex: none;
+  width: 56px;
+  height: 64px;
+  color: var(--text);
+}
+
+.cue-distance {
+  font-size: 1.9rem;
+  font-weight: 700;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cue-text {
+  font-size: 1.25rem;
+  margin: 2px 0;
+}
+
+.cue-then {
+  margin: 2px 0;
+}
+
+.ride-togo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 6px 0 0;
+}
+
+.ride-togo div {
+  display: flex;
+  gap: 6px;
+}
+
+.ride-togo dt {
+  color: var(--text-muted);
+}
+
+.ride-togo dt::after {
+  content: ":";
+}
+
+.ride-togo dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.ride-actions button,
+.ride-off-actions button,
+.ride-notes button,
+.start-ride button {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
+.ride button.danger {
+  background: transparent;
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+
+.ride-where {
+  margin: 6px 0;
+}
+
+.ride-mode-settings > summary {
+  min-height: 44px;
+}
+
+.ride-toggle {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ride-choice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 4px 10px 8px;
+}
+
+.ride-choice .radio {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.ride-ask {
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 10px 0;
+}
+
+.ride-ask h3 {
+  margin: 0 0 4px;
+}
+
+.start-ride {
+  align-items: center;
+}
+
+.start-ride .hint {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+/* Big text: the map is hidden, and the card takes the screen. */
+.riding-big .map {
+  display: none;
+}
+
+.ride-big {
+  background: var(--bg);
+}
+
+.ride-big .cue-card {
+  flex: 1;
+  max-height: none;
+  box-shadow: none;
+}
+
+.ride-big .ride-heading {
+  font-size: 1.25rem;
+}
+
+.ride-big .cue-distance {
+  font-size: 3rem;
+}
+
+.ride-big .cue-text {
+  font-size: 1.9rem;
+}
+
+.ride-big .cue-shape {
+  width: 96px;
+  height: 110px;
+}
+
+@media (forced-colors: active) {
+  .rider-marker,
+  .rider-marker.rider-marker-still {
+    forced-color-adjust: none;
+  }
+}
+
+/* The planner is hidden during a ride: the attribute wins over the panel's own display. */
+.panel[hidden] {
+  display: none;
 }

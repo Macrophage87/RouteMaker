@@ -163,3 +163,16 @@ export function formatSpeedRange(lowMph: number, highMph: number): string {
 export function formatSeconds(seconds: number): string {
   return seconds === 1 ? "1 second" : `${seconds} seconds`;
 }
+
+/** The distance as said, US units only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "0.4 miles", "1 mile". */
+export function spokenDistance(metres: number): string {
+  const m = Math.max(0, metres);
+  if (m < METRES_PER_MILE / 10) {
+    const feet = m * FEET_PER_METRE;
+    const rounded = feet >= 200 ? Math.round(feet / 50) * 50 : Math.max(10, Math.round(feet / 10) * 10);
+    return `${rounded} feet`;
+  }
+  const miles = Math.round((m / METRES_PER_MILE) * 10) / 10;
+  if (miles === 1) return "1 mile";
+  return `${Number.isInteger(miles) ? miles.toFixed(0) : miles.toFixed(1)} miles`;
+}
