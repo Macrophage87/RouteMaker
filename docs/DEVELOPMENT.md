@@ -607,8 +607,9 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
-- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
-  own, for every ride type (the owner: "I want people to know where the trails
+- **Mountain-bike trails (452a, 454).** Drawn, while the "Mountain-bike
+  trails" map layer is on (454, below), in a not-for-routes look of their
+  own (the owner: "I want people to know where the trails
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
@@ -623,8 +624,10 @@ alone. Shape comes first and colour second:
   base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
   `routableMtb` is the switch a future MTB mode turns on: the class moves back
   into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
-  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
-  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  `isRoad` leaves `mtb` out; the routable stress layers stay hidden there, but
+  `mtb-trail` follows its own switch and keeps its filter without `massHides`
+  (nearly every trail row carries a capacity), and the Mass Ride legend gets
+  its row too (`MtbTrailLegend`). The tiles' `rough` is a rough surface, not this class. The
   legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
   `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
   the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
@@ -632,6 +635,18 @@ alone. Shape comes first and colour second:
   `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
   nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
   ride the class on the off-road graph, and their route draws over the dots.
+  Since 454 the line is an optional map layer, off until the rider turns it on:
+  the "Mountain-bike trails" switch under "Trails and terrain" in the Map
+  layers sheet (`lib/mtbTrailsSwitch.ts`; `stressStyle.js` `mtbTrailsOn`,
+  `setMtbTrails`, kept per browser under `routemaker.mtbTrails`, "on" or
+  "off"). `overlayLayerShown` shows `mtb-trail` by that switch alone, with the
+  stress map on or off and in every ride type, Mass Ride too; MapView sets the
+  visibility again in place when it changes. The legend row shows only while
+  the layer is on. The road panel answers from the segment table, so it still
+  describes a mountain-bike trail with the layer off; its Bike access line
+  says the dotted line is drawn "when the Mountain-bike trails map layer is
+  on". docs/MTB-TOPO-PLAN.md has the
+  rest of the mountain-bike and topo work.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -1991,6 +2006,18 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
+**One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
+2026-10-10). Below the top of the slider a longer candidate must also be worth its
+miles, as at the top: the stress it saves (`refine.stress_weight_m`, metres of LTS 3
+with LTS 4, Avoid and the flagged junctions weighted as at the top) must be at least
+the metres it adds over `refine.worth_ratio`, which rises with the calm rate from 1
+just above 80 to 5 at 100 (`WORTH_DEFAULT`): about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+so at 90 a mile [1.6 km] of LTS 3 saved buys about 1.7 mi [2.8 km] of riding. The score
+still decides first. Crossing avoidance alone (80 and below, no calm rate) is
+unchanged. The proposal's worked case, 2.75 mi [4.4 km] more for 650 ft [198 m] less
+LTS 3 with more flagged crossings, is refused at every position, with a target or
+without.
+
 There is no cap on the detour. The search keeps the best-scoring candidate, and
 never one that is busier than the router's own route ("Traffic wins", OWNER-DECISIONS
 61, said of hill avoidance and carried here): a candidate with more than 2 per
@@ -2005,6 +2032,50 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 `no_route`, `untraceable` or, where it did not run, `span` (past 19 mi
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
+
+**The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
+alternatives by our own stress measures"; found comparing a planned route with a
+ridden one: the search only rerouted around the router's first route and never
+looked at the router's own alternatives). Wherever the calm search runs (above
+80, `Context.rank_alternates`), before its first round it asks the router once for
+the same route with `alternates` 3 (`refine.ROUTER_ALTERNATES`, the service's
+`max_alternates`), reads each alternative (its trace, stress and junctions) and
+ranks it with the first route by the rule every candidate meets (`refine.better`:
+below the top of the slider the score above, so the slider's rate sets how much
+distance a metre of LTS 3 avoided is worth; at the top the stress order and the
+worth of the extra miles) and the same guards (not busier than the first route, the
+LTS 4 hold, junctions read, within the ceiling). The rounds then start from
+whichever ranks first, so their exclusions are that route's busy stretches; the
+Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
+of the slider every alternative that passes the guards also joins the routes the
+rider is offered (`candidates`).
+
+Where the plan already asked for them with the same request (the hills slider's
+avoid half, `Context.router_trips`) those are ranked and none is asked again, and
+where that ask timed out none is asked at all; a route the target fitting
+(`_fit_target`, `_past_target`) asked for again with another costing gets the
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (6 s,
+a round's least and a second) before the search's own end, so at least one round is always
+left (the rounds were the whole calm search before 435), and the ask is not
+started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
+router's ask is held to its own `WEEKEND_TIMEOUT_S`.
+
+`calm_search.alternates` (`api.AlternatesOut`) says how many routes the router gave
+other than the one the search starts from (`given`: where the hills slider chose
+one of the router's alternatives, the router's first route is one of them), how
+many passed the guards (`ranked`), whether one was taken (`taken`), and `limited`,
+`time` where the ask or a reading ran out of its time (the search's own `limited`
+is unaffected: its rounds still run). It is null where none were asked for: a plan
+with stops or a loop (Valhalla gives alternatives between two locations only), a
+long calm plan's legs (each has only its share of the time, and alternatives
+roughly double a long leg's route; "Time, alternates and limits" below), or too
+little time left. The ask is one more `/route` (with alternatives: on the live
+router a warm 7.5 mi [12 km] route went from 0.2 s to 1 to 2 s with them, the
+climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative. Not measured on the live router from this branch (it was built where
+the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
+run after deploy). The detour acceptance rule decision 435 asks to revisit is
+the owner's "One rule" ("One rule for the extra miles", below).
 
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
@@ -2047,8 +2118,7 @@ the host took 4 to 17 s, and the first plan after a process starts a few seconds
 more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
-`max_alternates` 3 (the search does not use alternates; Valhalla's alternates
-are near-optimal in its own cost, which is not where a calmer route is) and
+`max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
 - starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
@@ -4073,8 +4143,11 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   in the UI and the link (`targetmi`, miles to a tenth). The API takes whole metres from 1,000
   (0.6 mi) to 1,000,000 (620 mi).
 - **It is a target, not a maximum** (271): the planner aims at or under it, and up to it the extra
-  distance is free (the rider asked for it). Past it a longer route is taken only where the stress it
-  saves pays for the miles past the target at the stricter bar (`refine.WORTH_OVER_TARGET`, below),
+  distance costs half the default's price, 1 mi [1.6 km] of LTS 3 saved per 10 mi [16 km]
+  (`refine.WORTH_UP_TO_TARGET`; OWNER-DECISIONS 435, the owner's "One rule" of 2026-10-10: free
+  until then, so a route a little calmer could add any miles up to the target). Past it a longer
+  route is taken only where the stress it saves pays for the miles past the target at the stricter
+  bar (`refine.WORTH_OVER_TARGET`, below),
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
@@ -4209,11 +4282,13 @@ were not worth it:
   LTS 4 saving, against 287(1), which keeps LTS 4 first in the stress order. `choose_options` and the loop's way
   back use the same rule through `worth_it`.
 - **The charge** (`refine.distance_charge_m`), the stress the extra distance must save:
-  - no target: the metres added over `WORTH_DEFAULT` = **5** (1 mi of LTS 3 per 5 mi), measured as
-    the Hills slider weighs distance (`level3`), so a longer route that is less effort with Hills set
-    to avoid is not charged for it;
-  - with a target (271): nothing up to it, and the actual metres past it over `WORTH_OVER_TARGET` =
-    **2.5** (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
+  - no target: the metres added over the slider's `worth_ratio` (435, "One rule"): `WORTH_DEFAULT` =
+    **5** at the top (1 mi of LTS 3 per 5 mi), and below it about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+    measured as the Hills slider weighs distance (`level3`), so a longer route that is less effort
+    with Hills set to avoid is not charged for it;
+  - with a target (271): the actual metres up to it over `WORTH_UP_TO_TARGET` = **10** (1 mi of LTS 3
+    per 10 mi; 435, where 271 made them free), and those past it over `WORTH_OVER_TARGET` = **2.5**
+    (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
   - a leg of a plan with stops is charged at the whole trip's length (`rest_m`), and a spliced trip
     is checked again as a whole (`seek.whole_trip: "not_worth"`).
 - **A long plan**: each leg's search keeps every option with no price on distance of its own
@@ -4572,8 +4647,8 @@ from, below):
    contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
 
    The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
-   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
-   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance was free
+   within the target, 287(2), until 435 made it half price). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
    replacement is never the main road a few metres on and the case does not arise; and turns are not in
    the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
    own, outside 258 to 262.
@@ -5345,8 +5420,9 @@ target, the graph and `refine.quiet_cost_per_m`):
   `refine.QUIET_COST_FACTOR`, and the calm-rate term is the score's above 80. Avoid is LTS
   4 per metre plus its 1,800 s entry charge, as quiet metres at the ride's speed, where the
   route enters it. On the no-trail graph LTS 4 costs what LTS 3 does (no grading). At the
-  top of the slider the worth rule stands in: `1 + 5 x w` with no target, `1 + 2.5 x w`
-  with one (1 / 2 / 3). At LTS 1-2 the facility class sets it: a path `(1.1 + 0.9u) / 2.2`,
+  top of the slider the worth rule stands in: `1 + 5 x w` with no target, `1 + 10 x w`
+  with one (`refine.WORTH_UP_TO_TARGET`, 435 "One rule": the answer is fitted to the
+  target, so the price of the miles up to it stands) (1 / 2 / 3). At LTS 1-2 the facility class sets it: a path `(1.1 + 0.9u) / 2.2`,
   a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
   `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
 - Every junction the model charges for, flagged or not, adds what the ranking charges for

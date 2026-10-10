@@ -80,12 +80,12 @@ class TestMultiplier:
     def test_the_top_of_the_slider_uses_the_worth_rule(self) -> None:
         top = calm.Pricing(use_roads=0.0, maxcalm=True)
         assert [calm.multiplier(t, None, top) for t in (3, 4, 5)] == [6.0, 11.0, 16.0]
-        past = calm.Pricing(use_roads=0.0, maxcalm=True, target=True)
-        assert [calm.multiplier(t, None, past) for t in (3, 4, 5)] == [3.5, 6.0, 8.5]
+        within = calm.Pricing(use_roads=0.0, maxcalm=True, target=True)
+        assert [calm.multiplier(t, None, within) for t in (3, 4, 5)] == [11.0, 21.0, 31.0]
 
     def test_the_worth_figures_are_refines_own(self) -> None:
         assert calm.WORTH_DEFAULT == refine.WORTH_DEFAULT
-        assert calm.WORTH_OVER_TARGET == refine.WORTH_OVER_TARGET
+        assert calm.WORTH_UP_TO_TARGET == refine.WORTH_UP_TO_TARGET
         w = refine.WORTH_WEIGHTS
         assert calm.WORTH_WEIGHTS == {3: w.lts3, 4: w.lts4, 5: w.avoid}
         assert calm.QUIET_FACTOR == refine.QUIET_COST_FACTOR

@@ -28,8 +28,9 @@ costs, at the rider's preset and slider position:
 - **Above 80 on the slider.** The calm rate prices each tier's metres at its exposure weight
   (`refine.Analysis.score`): `+ rate x w(L)`.
 - **The top of the slider (100).** There is no per-metre price; the worth rule's exchange
-  stands in: `1 + 5 x w(L)` with no target, `1 + 2.5 x w(L)` with one, at the standard
-  1 / 2 / 3 weights (`refine.WORTH_*`).
+  stands in: `1 + 5 x w(L)` with no target, `1 + 10 x w(L)` with one (the price up to the
+  target, 435 "One rule", since the answer is fitted to it), at the standard 1 / 2 / 3
+  weights (`refine.WORTH_*`).
 
 A junction counts what the ranking charges for it (461c, 461d: "today's distance-equivalent
 penalty ... times its factors and the preset's intersection weight"): the junction model's
@@ -72,10 +73,11 @@ ADDED: tuple[tuple[float, float, float], ...] = (
     (1.0, 0.0, (0.82 + 1.14) / 2),
 )
 
-# The worth rule's exchange at the top of the slider (refine.WORTH_DEFAULT, WORTH_OVER_TARGET)
-# and its level weights (refine.WORTH_WEIGHTS: the standard 1 / 2 / 3).
+# The worth rule's exchange at the top of the slider (refine.WORTH_DEFAULT; with a target,
+# refine.WORTH_UP_TO_TARGET, the price of the miles up to it, OWNER-DECISIONS 435) and its
+# level weights (refine.WORTH_WEIGHTS: the standard 1 / 2 / 3).
 WORTH_DEFAULT = 5.0
-WORTH_OVER_TARGET = 2.5
+WORTH_UP_TO_TARGET = 10.0
 WORTH_WEIGHTS = {3: 1.0, 4: 2.0, 5: 3.0}
 
 # Avoid's entry charge (presets.AVOID_ENTRY_PENALTY_S), cost seconds.
@@ -135,7 +137,7 @@ def multiplier(tier: int | None, facility: str | None, pricing: Pricing) -> floa
         return 1.0 if pricing.no_trail else facility_factor(facility, pricing.use_roads)
     level = min(tier, 5)
     if pricing.maxcalm:
-        worth = WORTH_OVER_TARGET if pricing.target else WORTH_DEFAULT
+        worth = WORTH_UP_TO_TARGET if pricing.target else WORTH_DEFAULT
         return 1.0 + worth * WORTH_WEIGHTS[level]
     lts3, lts4 = _added(pricing.use_roads)
     added = lts3 if level == 3 or pricing.no_trail else lts4
@@ -152,7 +154,7 @@ def junction_m(cost_ft: float, severity: str | None, flagged: bool, pricing: Pri
     """Calm metres a junction counts for at this ride's position."""
     cost_m = max(cost_ft, 0.0) * METRES_PER_FOOT
     if pricing.maxcalm:
-        worth = WORTH_OVER_TARGET if pricing.target else WORTH_DEFAULT
+        worth = WORTH_UP_TO_TARGET if pricing.target else WORTH_DEFAULT
         level = {"red": 4, "orange": 3}.get(severity or "") if flagged else None
         return worth * WORTH_WEIGHTS[level] * cost_m if level else 0.0
     return cost_m * pricing.junction_weight
