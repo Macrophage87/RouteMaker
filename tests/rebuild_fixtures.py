@@ -120,6 +120,10 @@ ALPHA_EAST_ID = 2101
 ALPHA_BRIDGE_ID = 2102
 REGIONAL_ROUTE_ID = 2200
 MOUNTAIN_BIKE_ID = 2300
+# A dirt trail on a national bicycle route that a mountain-bike route also takes in: the
+# C&O towpath east of Seneca Creek (the owner, 2026-10-09), which the national route keeps
+# on the map (`pipeline.trail_routes.is_mountain_bike`).
+NATIONAL_MTB_ID = 2301
 NAMED_STREET_ID = 2400
 # The ride layer's (OWNER-DECISIONS 391, 402a) and the surface rules' (376, 403): a second
 # way of the street's name and a third of another name carrying straight on, which are one
@@ -155,6 +159,8 @@ def build_long_trails_extract(path: Path) -> None:
             # The mountain-bike trail, and the street.
             31: (-77.050, 38.900),
             32: (-77.040, 38.900),
+            33: (-77.080, 38.880),
+            34: (-77.070, 38.880),
             41: (-77.050, 38.890),
             42: (-77.040, 38.890),
             43: (-77.030, 38.890),
@@ -190,6 +196,16 @@ def build_long_trails_extract(path: Path) -> None:
                 [31, 32],
                 {"highway": "path", "bicycle": "yes", "surface": "dirt", "name": "Rocky Loop"},
             ),
+            (
+                NATIONAL_MTB_ID,
+                [33, 34],
+                {
+                    "highway": "path",
+                    "bicycle": "designated",
+                    "surface": "dirt",
+                    "name": "Canal Trail",
+                },
+            ),
             (NAMED_STREET_ID, [41, 42], {"highway": "residential", "name": "Gamma Street"}),
             (NAMED_STREET_EAST_ID, [42, 43], {"highway": "residential", "name": "Gamma Street"}),
             (NAMED_ROAD_ON_ID, [43, 44], {"highway": "residential", "name": "Delta Road"}),
@@ -209,7 +225,11 @@ def build_long_trails_extract(path: Path) -> None:
             ),
             (
                 {"type": "route", "route": "mtb", "name": "Rocky Loop MTB"},
-                [("w", MOUNTAIN_BIKE_ID, "")],
+                [("w", MOUNTAIN_BIKE_ID, ""), ("w", NATIONAL_MTB_ID, "")],
+            ),
+            (
+                {"type": "route", "route": "bicycle", "network": "ncn", "name": "National Route"},
+                [("w", NATIONAL_MTB_ID, "")],
             ),
         ]
         for relation_id, (tags, members) in enumerate(relations, start=1):
