@@ -1468,8 +1468,8 @@ def test_the_violation_report_says_and_more_only_when_there_is_more() -> None:
 def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states) -> None:
     """PLAN:13 commits to valhalla_build_admins and valhalla_build_timezones and
     nothing ran either. Both paths are retargeted into the dated build directory
-    with every other tile path, and 3.5.1 warns and carries on without them
-    (src/mjolnir/graphbuilder.cc:431-444), so the graph silently has no
+    with every other tile path, and Valhalla warns and carries on without them
+    (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3), so the graph silently has no
     timezone and `date_time.type: 3` evaluates nothing."""
     source, root = workspace
     # Distinct build ids: the dated directory is named to the second, so two

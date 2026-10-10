@@ -19,7 +19,7 @@
  * summary's folds: `fold` draws the same list, checkbox and buttons inside a native <details> with
  * that summary, in place of its own heading and toggle button. Without `fold` it is as it was.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import { useHighStressLanes } from "./useStressStyle.ts";
@@ -52,7 +52,16 @@ function copy(text: string): Promise<boolean> {
   return copyText(text, navigator.clipboard, selectionCopy);
 }
 
-export function RouteDescription({ route, fold = false }: { route: RouteResponse; fold?: boolean }) {
+export function RouteDescription({
+  route,
+  fold = false,
+  rideAction = null,
+}: {
+  route: RouteResponse;
+  fold?: boolean;
+  /** Ride mode's Start ride, offered with the directions too (WEB-NAV-plan.md Q1, OWNER-DECISIONS 465). */
+  rideAction?: ReactNode;
+}) {
   const [open, setOpen] = useState<boolean>(() => readOpen());
   const [chosen, setChosen] = useState<DescriptionView>(() => readView());
   const choice = hasOverview(route);
@@ -129,6 +138,7 @@ export function RouteDescription({ route, fold = false }: { route: RouteResponse
       <button type="button" onClick={onDownload}>
         Download as text
       </button>
+      {rideAction}
       <span role="status" className="hint description-status">
         {copied === "done" ? "Copied." : copied === "failed" ? "Could not copy. Use Download as text." : ""}
       </span>

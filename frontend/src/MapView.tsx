@@ -26,7 +26,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -50,7 +50,7 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
-import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
+import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
 import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -59,6 +59,8 @@ import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
+import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
+import { attachWaterInteraction } from "./waterInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
@@ -131,6 +133,17 @@ interface Props {
   junctionFocus: { index: number; nonce: number } | null;
   /** The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null: a ringed marker, not in the tab order. */
   scrubPoint?: LonLat | null;
+  /**
+   * Ride mode (WEB-NAV-plan.md section 1): the rider's position, a "you" arrow distinct from the scrub ring
+   * (drawn over the accuracy circle, which `accuracy` carries), or null outside a ride. With `follow` the map
+   * centres on it at each fix (one easeTo, no continuous animation); a pan by hand calls `onFollowBroken`.
+   * `headingUp` turns the map to the rider's heading; north-up otherwise. While riding the route is not
+   * re-framed when it changes (a re-plan).
+   */
+  rider?: { point: LonLat; headingDeg: number | null } | null;
+  follow?: boolean;
+  headingUp?: boolean;
+  onFollowBroken?: () => void;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -150,6 +163,10 @@ interface Props {
   onFederalStatus: (status: FederalStatus) => void;
   /** The federal-land data once it has come: App lists the plan's points on it (lib/federalLand.ts federalPoints). */
   onFederalData?: (data: FederalData) => void;
+  /** The public water and restrooms (lib/waterRestrooms.ts), once App has loaded them; null before. */
+  water?: readonly WaterPoint[] | null;
+  /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
+  waterPrefs?: WaterPrefs;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
   /**
@@ -325,6 +342,8 @@ export function MapView(props: Props) {
   const loaded = useRef(false);
   /** Set once the map has loaded: puts the federal-land layers in line with the prop. */
   const federalSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: puts the water and restrooms layer in line with the props. */
+  const waterSync = useRef<(() => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -399,6 +418,22 @@ export function MapView(props: Props) {
     let rail: ReturnType<typeof attachRailInteraction> | null = null;
     let federal: ReturnType<typeof attachFederalInteraction> | null = null;
     let federalLoading = false;
+    let water: ReturnType<typeof attachWaterInteraction> | null = null;
+    let waterById = new Map<string, WaterPoint>();
+    /** Add the water and restrooms layer when its data has come, then show or hide it with the switch. */
+    const syncWater = () => {
+      const prefs = callbacks.current.waterPrefs ?? { on: false, basic: true, untreated: true };
+      if (map.getSource(WATER_SOURCE_ID)) {
+        setWaterPrefs(map as unknown as WaterMap, prefs);
+        water?.close();
+        return;
+      }
+      const data = callbacks.current.water;
+      if (!data || data.length === 0) return;
+      waterById = new Map(data.map((p) => [p.id, p]));
+      // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
+      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+    };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
     const syncFederal = () => {
@@ -834,9 +869,17 @@ export function MapView(props: Props) {
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
       // the first time it is shown, under the stress overlay and the route.
+      // The water and restrooms card first, so a tap on a fountain on federal land shows the fountain's.
+      water = attachWaterInteraction(map, {
+        visible: () => callbacks.current.waterPrefs?.on === true,
+        otherPopupOpen: () => anyPopupOpen(),
+        point: (id) => waterById.get(id),
+      });
+      waterSync.current = () => syncWater();
+      syncWater();
       federal = attachFederalInteraction(map, {
         visible: () => callbacks.current.federalVisible,
-        otherPopupOpen: () => anyPopupOpen(),
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
       });
       federalSync.current = () => syncFederal();
       syncFederal();
@@ -858,6 +901,8 @@ export function MapView(props: Props) {
       rail?.close();
       federal?.detach();
       federalSync.current = null;
+      water?.detach();
+      waterSync.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -997,6 +1042,16 @@ export function MapView(props: Props) {
   useEffect(
     () =>
       subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+    [],
+  );
+
+  // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
+  useEffect(
+    () =>
+      subscribeMtbTrails(() => {
+        const map = mapRef.current;
+        if (map && loaded.current) setStressVisibility(map, callbacks.current.stressVisible);
+      }),
     [],
   );
 
@@ -1140,6 +1195,62 @@ export function MapView(props: Props) {
     if (!map.getBounds().contains(point)) map.easeTo({ center: point, duration: 250, padding: callbacks.current.framePadding() });
   }, [props.scrubPoint]);
 
+  // Ride mode's "you" marker and the follow camera.
+  const riderMarker = useRef<Marker | null>(null);
+  const following = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    const rider = props.rider ?? null;
+    if (!map) return;
+    if (rider === null) {
+      riderMarker.current?.remove();
+      riderMarker.current = null;
+      following.current = false;
+      return;
+    }
+    if (!riderMarker.current) {
+      const element = document.createElement("div");
+      element.className = "rider-marker";
+      // The ride's own words say where the rider is (Where am I?); the arrow is for the eye.
+      element.setAttribute("aria-hidden", "true");
+      riderMarker.current = new maplibregl.Marker({ element, anchor: "center", rotationAlignment: "map", pitchAlignment: "map" })
+        .setLngLat(rider.point)
+        .addTo(map);
+    } else {
+      riderMarker.current.setLngLat(rider.point);
+    }
+    riderMarker.current.setRotation(rider.headingDeg ?? 0);
+    riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
+    if (!props.follow) {
+      following.current = false;
+      return;
+    }
+    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
+    // Close in once as following starts; a pinch out after that is kept (it does not stop following).
+    const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
+    following.current = true;
+    // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
+  }, [props.rider, props.follow, props.headingUp]);
+  useEffect(() => () => void riderMarker.current?.remove(), []);
+
+  // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
+  // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !props.follow) return;
+    const broken = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) callbacks.current.onFollowBroken?.();
+    };
+    map.on("dragstart", broken);
+    map.on("rotatestart", broken);
+    return () => {
+      map.off("dragstart", broken);
+      map.off("rotatestart", broken);
+    };
+  }, [props.follow]);
+
   // The rail stations' toggles.
   useEffect(() => {
     const map = mapRef.current;
@@ -1151,6 +1262,11 @@ export function MapView(props: Props) {
   useEffect(() => {
     federalSync.current?.();
   }, [props.federalVisible, props.federalWanted]);
+
+  // The water and restrooms layer: its data when it comes, and the switch.
+  useEffect(() => {
+    waterSync.current?.();
+  }, [props.water, props.waterPrefs]);
 
   return (
     <>
@@ -1226,7 +1342,8 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
       : { type: "FeatureCollection", features: [] },
   );
   setRouteSections(map, route, stale);
-  if (!route || stale || route.geometry.coordinates.length < 2) return;
+  // A ride's camera follows the rider; a re-planned route is not framed over it.
+  if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();
   if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
   fitted.current = true;

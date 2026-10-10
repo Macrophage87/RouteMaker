@@ -11,6 +11,7 @@ reads graph_lua_name from that subtree.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -398,7 +399,8 @@ def test_the_traffic_extract_key_is_upstreams_and_its_warnings_are_expected() ->
     """Recorded because it is the source of log lines a reviewer will meet.
 
     `mjolnir.traffic_extract` names /data/valhalla/traffic.tar, which no
-    deployment here has. src/baldr/graphreader.cc:121 acts on any value that is
+    deployment here has. src/baldr/graphreader.cc:121 (3.5.1; :124 at 3.6.3)
+    acts on any value that is
     present - `if (pt.get_optional<std::string>("traffic_extract"))` - hands it
     to midgard::tar, which throws for a file that is not there, and the handler
     emits two warnings at :158-159. So every read of a build writes at least
@@ -407,7 +409,8 @@ def test_the_traffic_extract_key_is_upstreams_and_its_warnings_are_expected() ->
 
     Dropping the key would silence them, and it cannot be done from the
     overrides: the vendored generator gives it a plain string default
-    (valhalla/vendor/valhalla_build_config.py:36) rather than an `Optional`, so
+    (valhalla/vendor/valhalla_build_config.py:129 at 3.6.3; :36 at 3.5.1, which
+    quoted it with single quotes) rather than an `Optional`, so
     `load_upstream_defaults` keeps it and
     `test_the_config_covers_every_key_upstream_defines` requires it. Upstream's
     own default set is the definition of complete here, and three predictable
@@ -416,8 +419,8 @@ def test_the_traffic_extract_key_is_upstreams_and_its_warnings_are_expected() ->
     generator = (
         Path(__file__).resolve().parents[1] / "valhalla" / "vendor" / "valhalla_build_config.py"
     ).read_text()
-    assert "'traffic_extract': '/data/valhalla/traffic.tar'" in generator
-    assert "'traffic_extract': Optional" not in generator
+    assert re.search(r"""["']traffic_extract["']: ["']/data/valhalla/traffic\.tar["']""", generator)
+    assert not re.search(r"""["']traffic_extract["']: Optional""", generator)
 
 
 def test_every_configured_path_is_mounted_for_the_service_that_uses_it() -> None:

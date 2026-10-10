@@ -46,6 +46,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from . import facility, singletrack, surfaces
+from . import tags as osm_tags
 
 PRIVATE = "private"
 SAC_SCALE = "sac_scale"
@@ -136,6 +137,30 @@ UPSTREAM_BICYCLE_OPEN = frozenset(
 UPSTREAM_ACCESS_CLOSED = frozenset(
     {"no", "agricultural", "discouraged", "forestry", "emergency", "psv"}
 )
+# Upstream's `vehicle` table, which from 3.6.2 is its `motor_vehicle` table
+# (lua/vendor/graph_upstream.lua, `vehicle = motor_vehicle`): what a way's
+# `vehicle` value says about a bicycle when no bicycle tag speaks.
+UPSTREAM_VEHICLE_ACCESS = {
+    **dict.fromkeys(("no", "agricultural", "discouraged", "forestry"), False),
+    **dict.fromkeys(
+        (
+            "yes",
+            "private",
+            "permissive",
+            "delivery",
+            "designated",
+            "destination",
+            "customers",
+            "official",
+            "public",
+            "restricted",
+            "allowed",
+            "permit",
+            "residents",
+        ),
+        True,
+    ),
+}
 HIKING_ROUTES = frozenset({"hiking", "foot", "walking"})
 KEEPING_NETWORKS = frozenset({"ncn", "icn"})
 DISMOUNT_KEEP_M = 150.0
@@ -190,18 +215,40 @@ def _scale(tags: dict[str, str]) -> int | None:
 
 
 def upstream_open(tags: dict[str, str]) -> bool:
-    """Whether Valhalla's transform leaves a candidate way open to bicycles,
-    from the tags alone: highway default (path open; footway, pedestrian,
-    bridleway closed), the bicycle table, sac_scale without a bicycle tag
-    (hiking grants, any other value closes), then access."""
+    """Whether the shipped transform (upstream's, with this project's remap)
+    leaves a candidate way open to bicycles, from the tags alone. Access lists
+    are narrowed first (`tags.narrow_access_lists`). Then: the bicycle table;
+    then `vehicle`, which upstream reads for bicycles from 3.6.2
+    (valhalla/valhalla#5802) - a public grant (`yes`, `designated`, ...) opens
+    the way, a restricted one (`private`, `delivery`, ...) only where the class
+    and `access` leave it open (the remap's `vehicle_reopens_for_bicycle`
+    closes the rest), and `no`, `agricultural`, `forestry` or `discouraged`
+    close it; then access; then impassability (`smoothness=impassable` closes
+    from 3.6.0, valhalla/valhalla#5023); then sac_scale (hiking grants, any
+    other value closes); then the class default (path open; footway,
+    pedestrian, bridleway closed)."""
     highway = tags.get("highway")
     if highway not in CANDIDATE_HIGHWAY:
         return False
+    tags = osm_tags.narrow_access_lists(tags)
     bicycle = tags.get("bicycle")
-    if tags.get("access") in UPSTREAM_ACCESS_CLOSED or tags.get("vehicle") == "no":
-        return bicycle in UPSTREAM_BICYCLE_OPEN
     if bicycle is not None:
-        return bicycle in UPSTREAM_BICYCLE_OPEN
+        # A list still standing after the narrowing is grants alone, which
+        # upstream reads part by part (valhalla/valhalla#5560).
+        return any(part.strip() in UPSTREAM_BICYCLE_OPEN for part in bicycle.split(";"))
+    vehicle = tags.get("vehicle")
+    if vehicle is not None:
+        parts = [part.strip() for part in vehicle.split(";")]
+        if any(UPSTREAM_VEHICLE_ACCESS.get(part) for part in parts):
+            if all(part in osm_tags.PERMISSIVE_ACCESS for part in parts):
+                return True
+            return highway == "path" and tags.get("access") not in UPSTREAM_ACCESS_CLOSED
+        if UPSTREAM_VEHICLE_ACCESS.get(vehicle) is False:
+            return False
+    if tags.get("access") in UPSTREAM_ACCESS_CLOSED:
+        return False
+    if tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable":
+        return False
     sac_scale = tags.get("sac_scale")
     if sac_scale is not None:
         return sac_scale == "hiking"
