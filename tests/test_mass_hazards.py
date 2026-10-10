@@ -118,6 +118,24 @@ class TestReport:
             report(way=7001, lat=LAT + 0.01)
         assert avoid.value.code == "avoid" and "only Avoid" in avoid.value.message
 
+    def test_a_way_avoid_along_part_of_it_is_judged_by_the_piece_opened(self, live) -> None:
+        open_to("signed_in")
+        make_segment(live, 7002, 3, lat=LAT + 0.01, map_class="road", trail_name="Pine Street")
+        make_segment(
+            live, 7002, 5, ordinal=1, lon=LON + 0.002, lat=LAT + 0.01, map_class="road",
+            trail_name="Pine Street",
+        )  # fmt: skip
+        # The Avoid piece (past its first row) is refused...
+        with pytest.raises(suggestions.stress_edits.Invalid) as avoid:
+            report(way=7002, lat=LAT + 0.01, lon=LON + 0.003)
+        assert avoid.value.code == "avoid"
+        # ...the routable piece takes the hazard, and the rail draws only along it.
+        h = report(way=7002, lat=LAT + 0.01, lon=LON + 0.001)
+        mass_hazards.approve(make_user(), h.pk)
+        (feature,) = mass_hazards.approved_layer()[0]["features"]
+        xs = [x for x, _y in feature["geometry"]["coordinates"]]
+        assert max(xs) <= LON + 0.002 + 1e-9
+
     def test_one_open_report_per_rider_per_road(self, live) -> None:
         open_to("signed_in")
         rider = make_user(admin=False)
@@ -302,6 +320,27 @@ class TestReview:
         with pytest.raises(mass_hazards.Conflict):
             mass_hazards.remove(admin, h.pk)
 
+    def test_one_approved_hazard_per_road_even_for_two_approvals_at_once(
+        self, live, monkeypatch
+    ) -> None:
+        open_to("signed_in")
+        admin = make_user()
+        first, second = report(), report(level="warning")
+        mass_hazards.approve(admin, first.pk)
+        # The database holds it, whatever the code does.
+        with pytest.raises(IntegrityError), transaction.atomic():
+            MassHazard.objects.filter(pk=second.pk).update(status="approved")
+        # The second approval looked before the first had landed: it finds nothing to replace,
+        # so the database refuses it, and the admin hears so with the report still waiting.
+        monkeypatch.setattr(mass_hazards, "_earlier_approved", lambda way_id: [])
+        with pytest.raises(mass_hazards.Conflict) as clash:
+            mass_hazards.approve(admin, second.pk)
+        assert "at the same moment" in clash.value.message
+        second.refresh_from_db()
+        first.refresh_from_db()
+        assert (first.status, second.status) == ("approved", "pending")
+        assert MassHazard.objects.filter(osm_way_id=WAY, status="approved").count() == 1
+
 
 @db
 class TestLayer:
@@ -315,7 +354,24 @@ class TestLayer:
         assert len(r.json()["features"]) == 1
         again = client.get(REPORT, HTTP_IF_NONE_MATCH=r["ETag"], **addr())
         assert again.status_code == 304 and again["ETag"] == r["ETag"]
+        # If-None-Match is the weak comparison, as the tiles' (stress_tiles._matches).
+        weak = client.get(REPORT, HTTP_IF_NONE_MATCH=f'"x", W/{r["ETag"]}', **addr())
+        assert weak.status_code == 304
+        assert client.get(REPORT, HTTP_IF_NONE_MATCH="*", **addr()).status_code == 304
         assert client.get(REPORT, HTTP_SEC_FETCH_SITE="cross-site", **addr()).status_code == 403
+
+    def test_a_stale_etag_gets_the_new_layer_after_approve_and_remove(self, live) -> None:
+        open_to("signed_in")
+        admin = make_user()
+        client = Client()
+        empty = client.get(REPORT, **addr())
+        h = mass_hazards.approve(admin, report().pk)
+        after_approve = client.get(REPORT, HTTP_IF_NONE_MATCH=empty["ETag"], **addr())
+        assert after_approve.status_code == 200 and len(after_approve.json()["features"]) == 1
+        assert after_approve["ETag"] != empty["ETag"]
+        mass_hazards.remove(admin, h.pk)
+        after_remove = client.get(REPORT, HTTP_IF_NONE_MATCH=after_approve["ETag"], **addr())
+        assert after_remove.status_code == 200 and after_remove.json()["features"] == []
 
     def test_the_layer_starts_empty(self, live) -> None:
         r = Client().get(REPORT, **addr())

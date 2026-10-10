@@ -12,6 +12,7 @@ import {
   hazardForWay,
   hazardLegendText,
   hazardLines,
+  hazardOnPiece,
   hazardPanelText,
   hazardProblem,
   hazardReportLine,
@@ -25,6 +26,7 @@ import { HAZARD_REVIEW, STRESS_REVIEW } from "./reviewSources.ts";
 import { announceRoute } from "./summary.ts";
 import { descriptionText, gpxDescriptionText } from "./routeDescription.ts";
 import type { MassHazardSpan, RouteResponse } from "./api.ts";
+import { infoSaid, refreshedSaid, type InfoRequest, type InfoState } from "./roadInfo.ts";
 
 const LAYER: HazardCollection = {
   type: "FeatureCollection",
@@ -72,6 +74,20 @@ test("the road panel finds the hazard on its way and says it with its reason", (
   assert.equal(hazardSaid(null), "");
 });
 
+test("a piece marked Avoid names no hazard, even where the rest of its way has one", () => {
+  assert.equal(hazardOnPiece(LAYER, { osm_way_id: 101, tier: 3 })?.level, "warning");
+  assert.equal(hazardOnPiece(LAYER, { osm_way_id: 101, tier: 5 }), null, "there the map shows only Avoid");
+  assert.equal(hazardOnPiece(LAYER, null), null);
+});
+
+test("hazards that come after the road's answer are said again with it, before the federal area", () => {
+  const ready = { kind: "ready", info: { found: true, title: "Oak Street", tier: 3, open: true, osm_way_id: 101, distance_m: 2, sections: [], attribution: [] } } as InfoState;
+  const spot: InfoRequest = { point: [-77.04, 38.91], origin: "centre" };
+  const hazard = hazardSaid(hazardOnPiece(LAYER, { osm_way_id: 101, tier: 3 }));
+  assert.equal(refreshedSaid(spot, spot, ready, "", hazard), `${infoSaid(ready)} Rider-marked hazard: Warning.`);
+  assert.equal(refreshedSaid(spot, spot, ready, "Federal.", hazard), `${infoSaid(ready)} Rider-marked hazard: Warning. Federal.`);
+});
+
 test("the directions list the route's hazards in riding order, miles first and kilometres in brackets", () => {
   const lines = hazardLines({ mass_hazards: SPANS });
   assert.deepEqual(lines, [
@@ -110,6 +126,9 @@ test("the layer is read from its own endpoint, and a failure draws none", async 
   const seen: { url: string; init: RequestInit }[] = [];
   assert.deepEqual(await fetchHazards("https://x.test", fakeFetch({ status: 200, body: LAYER }, seen)), LAYER);
   assert.equal(seen[0].url, "https://x.test/api/mass-hazards");
+  assert.equal(seen[0].init.cache, undefined);
+  await fetchHazards("https://x.test", fakeFetch({ status: 200, body: LAYER }, seen), true);
+  assert.equal(seen[1].init.cache, "no-cache", "after an approval the browser's minute of cache is skipped");
   assert.equal(await fetchHazards("https://x.test", fakeFetch({ status: 500, body: {} })), null);
   assert.equal(await fetchHazards("https://x.test", fakeFetch({ status: 200, body: { nope: 1 } })), null);
 });

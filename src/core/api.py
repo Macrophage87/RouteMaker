@@ -3170,8 +3170,9 @@ def mass_hazard_layer(request, response: HttpResponse):
     from . import mass_hazards
 
     body, etag = mass_hazards.approved_layer()
-    sent = [t.strip() for t in request.META.get("HTTP_IF_NONE_MATCH", "").split(",")]
-    if etag in sent:
+    from .stress_tiles import _matches
+
+    if _matches(request, etag):
         answer = HttpResponse(status=304)
     else:
         answer = JsonResponse(body, content_type="application/geo+json")

@@ -95,6 +95,11 @@ class Migration(migrations.Migration):
                         fields=("reporter", "osm_way_id"),
                         name="mass_hazard_one_open_per_road",
                     ),
+                    models.UniqueConstraint(
+                        condition=models.Q(("status", "approved")),
+                        fields=("osm_way_id",),
+                        name="mass_hazard_one_approved_per_road",
+                    ),
                     models.CheckConstraint(
                         condition=models.Q(("level__in", ["caution", "warning"])),
                         name="mass_hazard_level_known",

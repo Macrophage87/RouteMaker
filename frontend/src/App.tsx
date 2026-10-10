@@ -329,7 +329,8 @@ export function App() {
   useEffect(() => {
     if (!massMap) return;
     let live = true;
-    void fetchHazards(window.location.origin).then((found) => {
+    // After an approval (hazardsAsked > 0) past the browser's cache, so the admin sees the rail now.
+    void fetchHazards(window.location.origin, fetch, hazardsAsked > 0).then((found) => {
       if (live) setHazards(found);
     });
     return () => {

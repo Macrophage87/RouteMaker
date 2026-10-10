@@ -1260,24 +1260,28 @@ hazards will be marked by riders and will be for this mode only." (325)
   only, and not on an Avoid road. The form (`HazardReport.tsx`) asks "How serious is it?" with two radios,
   **Caution** and **Warning** (326: "Severity only", both routable), and a required reason of at most
   500 characters. The level and the reason are in words, and the result is said in a polite status region.
-  The server reads the road's name and tier from the live table (`suggestions._road`), refuses tier 5
-  (`avoid`), snaps the clicked point with `suggestions.snap` (refused past 98 ft (30 m)), throws that point
-  away, and refuses the same level already approved (`same`). Only `osm_way_id` is stored: no lat/lon
+  The server reads the road's name from the live table (`suggestions._road`), snaps the clicked point
+  with `suggestions.snap` (refused past 98 ft (30 m)), refuses it (`avoid`) when the way's segment nearest
+  the point is tier 5 (`_piece_tier`: a way can be Avoid along only part of it, so not its first row),
+  throws the point away, and refuses the same level already approved (`same`). Only `osm_way_id` is stored: no lat/lon
   column exists. The checks match the suggestions': one open report per rider per road (a partial unique
   constraint `mass_hazard_one_open_per_road`), 20 open in all, the shared 10 writes an hour
   (`SUGGEST_WRITES`), CSRF and same-site. Instance admins review rather than report.
 * **Review** (`SuggestionReview.tsx`, now generic over a `ReviewSource`, `lib/reviewSources.ts`;
   `HAZARD_REVIEW`). The same three actions: **Approve now** (an earlier approved hazard on that way
-  becomes `removed`), **Delete**, and **Send to Discord**, which gives a copy-paste poll built by
+  becomes `removed`; the partial unique constraint `mass_hazard_one_approved_per_road` keeps one approved
+  per way, so of two approvals at the same moment the second is a 409 and its report stays waiting), **Delete**, and **Send to Discord**, which gives a copy-paste poll built by
   `suggestion_post.build_hazard` ("Should the Mass Ride map warn big group rides about ...?",
   options Warning / Caution / No mark needed / Not sure). The Django admin's `MassHazardAdmin`
   is read-only, with one action, **Take the selected approved hazards off the Mass Ride map**. Every action is an
   `audit_log` entry (`mass_hazard_report|approve|delete|discord|remove`).
 * **The layer: API, not tiles.** The approved hazards are few, so they come from
   `GET /api/mass-hazards`, a GeoJSON FeatureCollection with one feature per way (geometry from the
-  live table, Avoid-rated ways left out; properties `way`, `level`, `level_name`, `words`, `reason`,
-  `road`). It is public, with `Cache-Control: public, max-age=60` and an ETag (304). The tiles, their ETags
-  and the tile cache do not change. `App.tsx` fetches it only on a Mass Ride and re-asks after an approval.
+  live table, Avoid-rated pieces left out; properties `way`, `level`, `level_name`, `words`, `reason`,
+  `road`). It is public, with `Cache-Control: public, max-age=60` and an ETag (304; `If-None-Match` is
+  compared weakly, `W/` and `*` too, by the tiles' `stress_tiles._matches`). The tiles, their ETags and the
+  tile cache do not change. `App.tsx` fetches it only on a Mass Ride, and again after an approval with
+  `cache: "no-cache"`, so the admin sees the rail now. It does not poll.
   `MapView` hands it to `setHazardData`, which fills the `mass-hazards` GeoJSON source that
   `addStressOverlay` adds.
 * **The rails** (`massStyle.js` `MASS_HAZARDS`, `hazardLayers`; 327). Near-black (#111111) rails on a

@@ -67,15 +67,16 @@ def create(user, way_id: int, lat: float, lon: float, level: str, reason: str) -
         raise stress_edits.Invalid("Say what happened here, in a sentence or two.", "reason")
     if len(reason) > REASON_MAX:
         raise stress_edits.Invalid(f"The reason is at most {REASON_MAX} characters.", "reason")
-    row, name = suggestions._road(way_id)
-    if int(row[stress_edits.TIER_COLUMN]) == 5:
+    _row, name = suggestions._road(way_id)
+    # Checked, then dropped: only the road is kept.
+    suggestions.snap(way_id, lat, lon)
+    # The piece the rider opened, not the way's first row: a way can be Avoid along part of it.
+    if _piece_tier(way_id, lat, lon) == 5:
         raise stress_edits.Invalid(
             "This road is marked Avoid already, so the Mass Ride map shows only Avoid here.",
             "level",
             "avoid",
         )
-    # Checked, then dropped: only the road is kept.
-    suggestions.snap(way_id, lat, lon)
     if MassHazard.objects.filter(
         osm_way_id=way_id, status=MassHazard.Status.APPROVED, level=level
     ).exists():
@@ -94,6 +95,21 @@ def create(user, way_id: int, lat: float, lon: float, level: str, reason: str) -
         user, "mass_hazard_report", "mass_hazard", hazard.pk, AuditLogEntry.Outcome.ALLOWED
     )
     return hazard
+
+
+def _piece_tier(way_id: int, lat: float, lon: float) -> int | None:
+    """The stress tier of the way's segment nearest (lat, lon): the piece the road panel opened."""
+    schema = stress_edits.live_schema()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT stress_tier FROM {schema}.segment WHERE osm_way_id = %s
+            ORDER BY geometry <-> ST_SetSRID(ST_MakePoint(%s, %s), 4326), ordinal LIMIT 1
+            """,
+            [way_id, float(lon), float(lat)],
+        )
+        row = cursor.fetchone()
+    return None if row is None or row[0] is None else int(row[0])
 
 
 def _record(user, way_id, name, level, reason) -> MassHazard:
@@ -140,20 +156,33 @@ def _decide(admin, hazard: MassHazard, status: str) -> None:
     hazard.save(update_fields=["status", "decided_at", "decided_by"])
 
 
+def _earlier_approved(way_id: int) -> list[int]:
+    """The approved hazards on this way, locked for the replacement."""
+    return list(
+        MassHazard.objects.select_for_update()
+        .filter(osm_way_id=way_id, status=MassHazard.Status.APPROVED)
+        .values_list("pk", flat=True)
+    )
+
+
 def approve(admin, hazard_id: int) -> MassHazard:
     """On the Mass Ride map now. An earlier approved hazard on the same way is taken off it:
-    a road piece has one level at a time."""
-    with transaction.atomic():
-        hazard = _open(hazard_id)
-        replaced = list(
-            MassHazard.objects.select_for_update()
-            .filter(osm_way_id=hazard.osm_way_id, status=MassHazard.Status.APPROVED)
-            .values_list("pk", flat=True)
-        )
-        MassHazard.objects.filter(pk__in=replaced).update(
-            status=MassHazard.Status.REMOVED, decided_at=timezone.now(), decided_by=admin
-        )
-        _decide(admin, hazard, MassHazard.Status.APPROVED)
+    a road piece has one level at a time. The database holds that too
+    (`mass_hazard_one_approved_per_road`): of two approvals on one road at the same moment, the
+    second is refused with a Conflict and its report stays waiting."""
+    try:
+        with transaction.atomic():
+            hazard = _open(hazard_id)
+            replaced = _earlier_approved(hazard.osm_way_id)
+            MassHazard.objects.filter(pk__in=replaced).update(
+                status=MassHazard.Status.REMOVED, decided_at=timezone.now(), decided_by=admin
+            )
+            _decide(admin, hazard, MassHazard.Status.APPROVED)
+    except IntegrityError as error:
+        raise Conflict(
+            "Another hazard on this road was approved at the same moment. Reload the list and "
+            "decide this report again."
+        ) from error
     detail = f"replaced {', '.join(map(str, replaced))}" if replaced else ""
     audit.record(
         admin, "mass_hazard_approve", "mass_hazard", hazard.pk,

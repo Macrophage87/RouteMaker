@@ -1731,14 +1731,21 @@ A signed-in rider whom the **Suggestion settings** allow sees **Mark a hazard** 
 Ride. They choose **Caution** or **Warning** and give a reason of up to 500 characters. Both levels stay
 routable. Avoid is still the Change LTS level that removes a stretch, and an Avoid road shows only Avoid.
 Only the road (way id) is kept: the clicked point is snapped as a suggestion's is, refused past 98 ft
-(30 m), and never stored.
+(30 m), and never stored. A way that is Avoid along only part of its length is judged by the piece the
+rider opened. The Avoid piece takes no report and names no hazard, while its routable pieces can.
 
 **Reviewing.** Reports wait in the planner's **Mass Ride hazard reports**, under the suggestions,
-with the same three actions: **Approve now** (on the map within a minute; an earlier approved hazard on
-that road is replaced), **Delete**, and **Send to Discord** (a poll to copy into the server; it names the
+with the same three actions: **Approve now**, **Delete**, and **Send to Discord** (a poll to copy into the server; it names the
 road, the level and the reason, never the rider). To take an approved hazard off the map, use the Django
 admin's **Mass hazards** page, select it, and run **Take the selected approved hazards off the Mass Ride
 map**. The row is kept with status `removed`. Every action is an `audit_log` entry (`mass_hazard_*`).
+
+An approved hazard is on the map now, as the approval's message says. The server's layer changes at
+once, and the reviewing admin's map reads it again past the browser's cache. Another browser that read
+the layer in the last minute keeps its copy for that minute at most. A road has one approved hazard at a
+time: a newer approval replaces the older one. A partial unique constraint
+(`mass_hazard_one_approved_per_road`) also enforces this, so if two admins approve on one road at the
+same moment, the second gets a 409 and its report stays waiting.
 
 **The layer is the API's, not the tiles'.** `GET /api/mass-hazards` returns the approved hazards as
 GeoJSON (public, `max-age=60`, an ETag and 304, its own address budget of 60 a minute,

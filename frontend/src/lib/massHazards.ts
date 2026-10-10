@@ -45,10 +45,15 @@ export interface HazardCollection {
 
 type Fetch = typeof fetch;
 
-/** GET /api/mass-hazards: the approved hazards, or null where they could not be read (the map then draws none). */
-export async function fetchHazards(origin: string, run: Fetch = fetch): Promise<HazardCollection | null> {
+/**
+ * GET /api/mass-hazards: the approved hazards, or null where they could not be read (the map then draws none).
+ * `fresh` (after an admin's approval) revalidates past the browser's minute of cache, so the new rail shows now.
+ */
+export async function fetchHazards(origin: string, run: Fetch = fetch, fresh = false): Promise<HazardCollection | null> {
   try {
-    const response = await run(`${origin}/api/mass-hazards`, { headers: { Accept: "application/geo+json, application/json" } });
+    const init: RequestInit = { headers: { Accept: "application/geo+json, application/json" } };
+    if (fresh) init.cache = "no-cache";
+    const response = await run(`${origin}/api/mass-hazards`, init);
     if (!response.ok) return null;
     const body = (await response.json()) as HazardCollection;
     return body && body.type === "FeatureCollection" && Array.isArray(body.features) ? body : null;
@@ -61,6 +66,18 @@ export async function fetchHazards(origin: string, run: Fetch = fetch): Promise<
 export function hazardForWay(hazards: HazardCollection | null | undefined, way: number | null | undefined): HazardProps | null {
   if (!hazards || way == null) return null;
   return hazards.features.find((f) => f.properties?.way === way)?.properties ?? null;
+}
+
+/**
+ * The approved hazard the road panel names for the piece it opened, or null. A piece marked Avoid names
+ * none, even where the rest of its way carries one: there the map shows only Avoid (325).
+ */
+export function hazardOnPiece(
+  hazards: HazardCollection | null | undefined,
+  piece: { osm_way_id?: number | null; tier?: number | null } | null | undefined,
+): HazardProps | null {
+  if (!piece || piece.tier === 5) return null;
+  return hazardForWay(hazards, piece.osm_way_id);
 }
 
 /** The legend's row for a level: its look in words, then what it means. */

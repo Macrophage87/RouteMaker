@@ -1558,6 +1558,13 @@ class MassHazard(models.Model):
                 condition=models.Q(status__in=["pending", "sent_to_discord"]),
                 name="mass_hazard_one_open_per_road",
             ),
+            # One approved hazard per road piece: a piece has one level at a time, and two
+            # approvals at once cannot both land (core.mass_hazards.approve).
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(status="approved"),
+                name="mass_hazard_one_approved_per_road",
+            ),
             models.CheckConstraint(
                 condition=models.Q(level__in=["caution", "warning"]),
                 name="mass_hazard_level_known",

@@ -344,8 +344,9 @@ test("the map's markers say the warning in their name and title and wear the bad
 
 test("the road panel says the area again when the federal data comes after the road's answer", () => {
   const dialog = source("../RoadInfoDialog.tsx");
-  assert.match(dialog, /const again = refreshedSaid\(request, stateFor\.current, state, federalSaid\);\s+if \(again !== null\) setSaid\(again\);/);
-  assert.match(dialog, /\}, \[federalSaid\]\);/);
+  // With a Mass Ride's hazard on the piece too (lib/massHazards.ts), which can also come late.
+  assert.match(dialog, /const again = refreshedSaid\(request, stateFor\.current, state, federalSaid, hazardSaidNow\);\s+if \(again !== null\) setSaid\(again\);/);
+  assert.match(dialog, /\}, \[federalSaid, hazardSaidNow\]\);/);
   // `stateFor` is cleared with the loading state and set with the answer, for the request it answers.
   assert.match(dialog, /stateFor\.current = null;\s+setState\(\{ kind: "loading" \}\);/);
   assert.match(dialog, /\(next\) => \{\s+stateFor\.current = request;\s+setState\(next\);/);

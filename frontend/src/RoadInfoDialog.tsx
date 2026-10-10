@@ -63,7 +63,7 @@ import { SUGGEST_TEXT } from "./lib/suggestions.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 import { HazardReport } from "./HazardReport.tsx";
-import { HAZARD_REPORT_TEXT, hazardForWay, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
+import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -192,8 +192,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
         setState(next);
         // The spot's federal area, after the road, in the same status sentence (item 239), and a Mass
         // Ride's rider-marked hazard on the road (325), so it is heard with the road.
-        const way = next.kind === "ready" && next.info.found ? next.info.osm_way_id : null;
-        const hazard = hazardSaid(hazardForWay(hazardsRef.current, way));
+        const hazard = hazardSaid(hazardOnPiece(hazardsRef.current, next.kind === "ready" && next.info.found ? next.info : null));
         setSaid([infoSaid(next), hazard, federalSaidRef.current].filter(Boolean).join(" "));
       },
       () => undefined,
@@ -240,13 +239,15 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
       hazardButton.current?.focus();
     }
   }, [reporting]);
-  // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
-  // is said again with the area, so a screen reader hears it without reading on.
+  // The federal data and a Mass Ride's hazards can come after the road's answer (a Mass Ride's first
+  // look): the status sentence is said again with them, so a screen reader hears it without reading on.
+  const readyNow = state.kind === "ready" && state.info.found ? state.info : null;
+  const hazardSaidNow = hazardSaid(hazardOnPiece(massRide ? hazards : null, readyNow));
   useEffect(() => {
-    const again = refreshedSaid(request, stateFor.current, state, federalSaid);
+    const again = refreshedSaid(request, stateFor.current, state, federalSaid, hazardSaidNow);
     if (again !== null) setSaid(again);
-    // Only a change of the area's words: the answer's own arrival sets `said` above.
-  }, [federalSaid]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Only a change of the area's or the hazard's words: the answer's own arrival sets `said` above.
+  }, [federalSaid, hazardSaidNow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
@@ -339,7 +340,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
   const suggestingNow = suggesting && suggestWay !== null;
   // A Mass Ride's rider-marked hazard on this road (325), and whether this rider may mark one: a road
   // not marked Avoid (there the map shows only Avoid), by a rider the settings allow.
-  const hazard = massRide && ready ? hazardForWay(hazards, ready.osm_way_id) : null;
+  const hazard = massRide ? hazardOnPiece(hazards, ready) : null;
   const hazardWay =
     massRide && ready && me.can_suggest && ready.osm_way_id != null && ready.tier != null && ready.tier !== 5 ? ready.osm_way_id : null;
   const reportingNow = reporting && hazardWay !== null;
