@@ -946,7 +946,8 @@ drew before: the paths and the roads at LTS 3 and above, faint, with the front e
 `FAINT` rules) on one that does not, so a table promoted before this rebuild draws
 today's z12-13 until the data rebuild promotes the column. The ETag names it with
 `k` (`+kcfrmwoesbtl-v8"` with all twelve optional columns, `e` being 403's `roadside` and
-`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 8
+`w` the Mass Ride width, about 37 characters, inside the cache's 64; since 456 thirteen, with
+`d` for `mtb_level`: "Mountain-bike difficulty levels" below) and `FORMAT_VERSION` is 8
 (the rebuild bundle's format, 7, with the surface-unknown properties below and the Mass Ride
 capacity: the tile cache key changes, so run the pre-draw as the steps
 below say). The ride layer has its own partial index,
@@ -957,7 +958,8 @@ below say). The ride layer has its own partial index,
 and this branch each moved `FORMAT_VERSION` to 6 and each took the letter `r`. In the bundle
 the format is 7, past both, so neither branch's cached tiles are taken for the other's; `r` is
 `is_rough`'s, the Mass Ride width column (`MASS_WIDTH_COLUMN`) is `w`, `k` is `calm_run_m`'s
-and `e` is `roadside`'s, one letter per column (a test holds them distinct).
+and `e` is `roadside`'s, one letter per column (a test holds them distinct); since 456 `d` is
+`mtb_level`'s.
 
 **Decision 390 at z12-13.** "Solid is probably fine" for LTS 3 and 4 below zoom
 14 is moot where no busy road is drawn there. On a live table without
@@ -4118,7 +4120,9 @@ answer's `moved_points` says so.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
-tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
+tile property `mtb` (and `rough`), facility `none`, and since 456 so does rated singletrack that
+nothing but its rating closes, with its level (`mtb_level`; "Mountain-bike difficulty levels"
+below). The front end draws an `mtb`
 trail in no routable layer but in its own not-for-routes look: a thin
 mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
 superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
@@ -4143,6 +4147,73 @@ read, which needs the owner's approval as a fetch.
 **The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
 graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
 does the same after the swap and now reads the off-road router too.
+
+## Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)
+
+Slice 2 of docs/MTB-TOPO-PLAN.md (OWNER-DECISIONS 456, 456a-c). **Needs a data rebuild**:
+nothing changes on the map until the rebuild promotes a table with the new column; until then
+the Mountain-bike trails layer draws every mountain-bike trail as the grey dots, as before.
+
+**The column.** `segment.mtb_level` (smallint, 1 to 4, null otherwise; a CHECK holds the range),
+written by the rebuild on the mountain-bike-only ways (`mtb_only`) from
+`routemaker.singletrack.mtb_level`: the higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3
+and S4-S6 (IMBA 4) to 4. Values such as `2+`, `1-` and `S2` read as their number; a range or
+list (`1-2`, `1;2`) as its higher end; a number past the scale's top (7 on `mtb:scale`, 5 on
+IMBA) is ignored. **A rating of 0 is no level**: 0 is the easiest grade on both scales, and a way
+rated 0 on its scale or scales, and not 1 or more on the other, is a gravel trail, not an MTB level
+(456b), so its `mtb_level` is null, like an unrated way's. The model's migration (core 0013,
+after 0012, the bikeshare cache) is state-only, as 0010 was: the table is unmanaged and created
+whole by the rebuild.
+
+**Rated singletrack is drawn on the layer.** Before this, rated singletrack (rated 1 or more,
+unpaved, trail class; `routemaker.singletrack`) was `map_class='hidden'` and never in a tile, so
+the levels would have had almost nothing to draw. It is now `road` with `mtb` (so only the
+mountain-bike layer draws it; every routable layer and the Mass Ride map leave it out, as they do
+the mountain-bike class), facility `none`, **only where nothing but its rating closes it**
+(`pipeline.trail_closures.drawn_singletrack`): a way the tag rules would close without the rating
+(`bicycle=no` read as barred, private, a park path, a footpath for walkers, err closed and the
+rest) or a walk-your-bike way stays hidden. Routing is unchanged: singletrack stays closed on every
+graph (`rm:no_bicycle=singletrack`).
+
+**Tiles and ETag.** The stress tiles carry `mtb_level` (1-4, left out when null) where the live
+table has the column (`core.stress_tiles.OPTIONAL_PROPERTIES`). Its ETag letter is `d` (for
+difficulty; `m` and `l` were taken): with every optional column the tag reads
+`+kcfrmwdoesbtl-v8"`, thirteen letters, 38 characters, inside the cache's 64 (46 with the longest
+edit generation). `FORMAT_VERSION` stays 8: the property arrives only with a new table (a new oid)
+and the letter names it, so no cached tile is taken for a table it was not drawn from. The
+pre-draw after the swap draws the new tiles as after any rebuild.
+
+**The rebuild log** has a line "mountain-bike levels (ways, mi, mi drawn): {1: (...), ...}" after
+the segments are written (`pipeline.trail_routes.mtb_level_counts`): the counts per level that
+slice 3 (Gravel's "roughest I'll ride" setting) is to be shown to the owner with.
+
+**The front end** (`stressStyle.js`, `MTB_LEVELS`, `mtbTrailLayers`): with the layer on, each
+level is drawn in its colour with a pattern of its own (in line widths) over a solid white casing,
+from zoom 14, under every routable line; an unrated mountain-bike trail keeps the grey dots
+(`mtb-trail`, the plan's default):
+
+| Level | Rated | Colour | Pattern | Lowest ratio to the base map |
+| --- | --- | --- | --- | --- |
+| 1 | S1 or IMBA 1 | green #2e7d32 | long dashes [6, 2] | 3.00:1 (scrub) |
+| 2 | S2 or IMBA 2 | blue #1565c0 | short dashes [3, 2] | 3.36:1 (scrub) |
+| 3 | S3 or IMBA 3 | black #1c1917 | dash-dot [4, 1.5, 1, 1.5] | 10.24:1 (scrub) |
+| 4 | S4 to S6 or IMBA 4 | red #c62828 | dash-dot-dot [4, 1.5, 1, 1.5, 1, 1.5] | 3.29:1 (scrub) |
+
+Each colour is at least 3:1 from every surface of the light base map (the green only just, 3.0009:1
+on scrub, which the white casing backs up) and at least 5:1 from its casing (mtbLevels.test.ts).
+Lines are 2 px with a 1 px casing a side, 3 px and 1.5 px with the accessibility switch. The legend
+has a row a level while the layer is on ("Level 2 (blue)", "Mountain-bike trail rated S2 or IMBA 2:
+blue short dashes on a white edge. Not used for routes."), in the Mass Ride legend too, and the road
+panel names the level: the Bikes line reads "Mountain-bike trail, level 2 (blue), not used for
+routes" (with "(Gravel and Mountain Goat may use it)" only on the mountain-bike class, which the
+off-road graph opens; rated singletrack is closed on every graph), and the Riding section has a
+"Mountain-bike difficulty" row ("Level 2 (blue): rated S2 or IMBA 2 (the higher of mtb:scale and
+mtb:scale:imba)"). The switch's description is now "From zoom 14: levels 1 to 4 by colour and
+pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
+
+**Deploy order.** The front end and api may ship before the rebuild: on today's table there is no
+`mtb_level`, so the layer draws the grey dots and the panel names no level. After the rebuild,
+check a z14 tile's ETag carries `d` and the log line has counts for each level.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 

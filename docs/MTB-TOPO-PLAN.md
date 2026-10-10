@@ -72,6 +72,39 @@ slices (2-6) wait for bikeshare.
    per level, and the road panel names the level ("Mountain-bike trail, level 2 (blue)").
    Needs: a core migration (0013 or later: the stress editor took 0011 and bikeshare 0012), a tile ETag letter, and a rebuild on the
    owner's host.
+   - Status: built on `claude/v0-4-0-mtb-levels` (from release/v0.4.0); waits for a rebuild on the
+     owner's host (docs/OPERATIONS.md, "Mountain-bike difficulty levels"). `segment.mtb_level`
+     (smallint 1-4, CHECK), migration core 0013 (state-only, after 0012), tile property
+     `mtb_level` (left out when null), ETag letter `d`; `FORMAT_VERSION` stays 8 (the property
+     comes only with a new table). The front end draws each level in the starting colours, each
+     with its own dash pattern (long dashes, short dashes, dash-dot, dash-dot-dot) over a white
+     casing; legend rows per level while the layer is on (Mass Ride legend too); the road panel's
+     Bikes line reads "Mountain-bike trail, level 2 (blue), not used for routes" and its Riding
+     section has a "Mountain-bike difficulty" row. The rebuild log gives the ways and miles per level
+     (drawn and not) that slice 3 is to be shown with.
+   - Default picked: **a rating of 0 is no level** (null), on either scale, unless the other scale
+     says 1 or more, as 456b has it (a gravel trail, not an MTB level): such a way keeps the look
+     it has unrated (an ordinary unpaved path, or the grey dots if it is mountain-bike class).
+   - Default picked: values read as their number (`2+` 2, `1-` 1, `S2` 2); a range or list (`1-2`,
+     `1;2`) as its higher end, so a trail is never drawn easier than its mapper rated any part of
+     it; a number past the scale's top (7 on `mtb:scale`, 5 on IMBA) is ignored.
+   - Default picked: the level is written on the mountain-bike-only ways (`mtb_only`: the
+     mountain-bike class and rated singletrack), not on every rated way; a paved trail with a rating
+     (Upper Rock Creek, the Cross County Trail) is not a mountain-bike trail.
+   - Default picked, and a change the levels need: **rated singletrack is now drawn on the layer**.
+     It was `map_class='hidden'` (never in a tile), so with no change the levels would have had
+     almost nothing to draw. It is now drawn (with `mtb`, so only on this layer) where nothing but
+     its rating closes it; where the tag rules would close it anyway (`bicycle=no`, private, park
+     paths, err closed and the rest) or it is a walk-your-bike way, it stays hidden, so the layer
+     never draws a trail a bicycle may not be allowed on. Routing is unchanged.
+   - Default picked: one white casing for every level (`MTB_LEVEL.casing`), the colour and the
+     pattern differing by level; lines 2 px with a 1 px casing a side (3 px and 1.5 px with the
+     accessibility switch). Contrast against the base map, lowest surface (scrub): green 3.00:1
+     (just at the bar), blue 3.36:1, black 10.24:1, red 3.29:1; each at least 5:1 from the casing.
+     The green is the one to darken if the owner wants more margin.
+   - Default picked: the switch's description names the levels ("From zoom 14: levels 1 to 4 by
+     colour and pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use
+     unrated ones."), since rated singletrack is closed for Gravel and Mountain Goat too.
 3. **Gravel's "roughest I'll ride" setting** (FOLLOWUP-GRAVEL-MTB). Needs slice 2's level per
    way in the graph: a per-level `rm:no_bicycle` variant, or Valhalla's own `mtb:scale` reading
    in the off-road graph's costing. To be designed once slice 2's counts per level are known,
