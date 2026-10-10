@@ -64,9 +64,10 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
  * routedLoop, from loop.loopStops; OWNER-DECISIONS 374), not the live toggle
  * and not the API's echoed `dials.loop`, which is also true for a ride that
  * ends on its start with the toggle off; such a ride keeps Start and End.
- * Mass Ride has no loop.
+ * Mass Ride has no loop. `federal` is a Mass Ride's federal-land lines
+ * (lib/federalStops.ts federalLines, item 239), carried in the description.
  */
-export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false): GpxExport {
+export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false, federal: readonly string[] = []): GpxExport {
   const dials: ExportDials | undefined = route.dials
     ? {
         stress: route.dials.stress,
@@ -84,7 +85,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
     preset: route.preset,
     ...(dials ? { dials } : {}),
     rideText: rideText(route),
-    ...(gpxDescriptionText(route) ? { routeText: gpxDescriptionText(route) } : {}),
+    ...(gpxDescriptionText(route, federal) ? { routeText: gpxDescriptionText(route, federal) } : {}),
     planPoints: points,
     ...(loop && route.preset !== "mass-ride" ? { loop: true } : {}),
     geometry: route.geometry.coordinates,

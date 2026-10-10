@@ -169,6 +169,11 @@ interface Props {
   massArea?: boolean;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
+  /**
+   * A Mass Ride's points on federal land (lib/federalStops.ts stopWarningShort, item 239): each
+   * point's warning, or null; the marker gets a badge and says it in its name and title.
+   */
+  pointWarnings?: ReadonlyArray<string | null>;
   /** Whether to load the federal-land data even with the shading off: a Mass Ride's planner lists the points on it. */
   federalWanted?: boolean;
   onFederalStatus: (status: FederalStatus) => void;
@@ -972,11 +977,15 @@ export function MapView(props: Props) {
       const { text, name, kind } = pointLabel(index, props.points.length, props.loopVias === true);
       const via = kind === "via";
       const element = document.createElement("div");
-      element.className = `pin pin-${kind}`;
+      const warning = props.pointWarnings?.[index] ?? null;
+      element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
       element.textContent = text;
       element.setAttribute("role", "img");
-      element.setAttribute("aria-label", via ? `${name}. Drag to move; click for Remove.` : `${name}. Drag to move.`);
-      element.title = via ? `${name} - drag to move, click for Remove, double-click to remove` : `${name} - drag to move`;
+      // The warning ends with its own full stop.
+      const named = warning ? `${name}. ${warning}` : name;
+      const said = warning ? named : `${name}.`;
+      element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
+      element.title = via ? `${named} - drag to move, click for Remove, double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
@@ -1034,7 +1043,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, markerDeps(props.points, props.markerReset, props.loopVias));
+  }, markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings));
 
   // The route line.
   useEffect(() => {

@@ -51,6 +51,7 @@ import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
+import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -59,6 +60,11 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /**
+   * On a Mass Ride, the federal area the spot is in (lib/federalStops.ts federalAreaAt; item 239), or
+   * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
+   */
+  federal?: FederalArea | null;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -90,7 +96,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -105,6 +111,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const [said, setSaid] = useState("");
   // Who is asking (three yes/no flags, once per page) and whether the stress editor is open.
   const [me, setMe] = useState<Me>(NO_ME);
+  // The federal area's sentence, read when the answer comes (the prop is the spot's, set with the request).
+  const federalSaid = federal ? stopWarningShort(federal) : "";
+  const federalSaidRef = useRef(federalSaid);
+  federalSaidRef.current = federalSaid;
   const [editing, setEditing] = useState(false);
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
@@ -137,7 +147,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
         setState(next);
-        setSaid(infoSaid(next));
+        // The spot's federal area, after the road, in the same status sentence (item 239).
+        setSaid([infoSaid(next), federalSaidRef.current].filter(Boolean).join(" "));
       },
       () => undefined,
     );
@@ -303,6 +314,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
         {state.kind === "loading" && <p className="road-info-status">Looking up this road…</p>}
         {state.kind === "error" && <p className="road-info-status">{state.message}</p>}
         {state.kind === "ready" && !state.info.found && <p className="road-info-status">{NO_ROAD_HINT}</p>}
+        {federal && (
+          // In view whatever the road answer is: a spot in a park may have no road within reach.
+          <p className="road-info-federal">
+            <span className="road-info-label">Federal land:</span> {federalSaid}{" "}
+            <span className="road-info-federal-note">{FEDERAL_ADVICE}</span>
+          </p>
+        )}
         {summary.length > 0 && (
           <ul className="road-info-summary" aria-label="Summary">
             {summary.map((row) => (

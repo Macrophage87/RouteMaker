@@ -153,7 +153,8 @@ test("nothing is announced on a route change: no live region but the copy reply"
 
 test("App places it in the route summary and the component stays separate", () => {
   // In the sidebar redesign (312) it is the "Directions" fold of the route summary: `fold`.
-  assert.match(app, /<RouteDescription route=\{route\} fold rideAction=\{rideAction\} \/>/);
+  // A Mass Ride's federal-land lines (item 239) are handed in from the App, which has the overlay's data.
+  assert.match(app, /<RouteDescription route=\{route\} fold rideAction=\{rideAction\} federal=\{federal\} \/>/);
 });
 
 // --- OWNER-DECISIONS 224: stops are "Stop N" everywhere ---
@@ -262,7 +263,7 @@ test("the chosen view is remembered, the overview by default and where storage f
 test("the component offers Full detail as a checkbox, only where there is a choice, and its copy and download use the view", () => {
   assert.match(component, /type="checkbox" checked=\{view === "full"\}/);
   assert.match(component, /\{choice \? \(/);
-  assert.equal((component.match(/descriptionText\(route, view\)/g) ?? []).length, 2);
+  assert.equal((component.match(/descriptionText\(route, view, federal\)/g) ?? []).length, 2);
   assert.match(component, /writeView\(next\)/);
   assert.match(component, /useState<DescriptionView>\(\(\) => readView\(\)\)/);
 });

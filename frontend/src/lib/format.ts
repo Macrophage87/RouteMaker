@@ -50,6 +50,16 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
   return `${minMiles} to ${maxMiles} ${MILES_WORD} (${km(minM)} to ${km(maxM)} km)`;
 }
 
+/**
+ * A stretch of the route, as the API's description words one (src/routemaker/describe.py):
+ * "1.1 to 1.8 mi (1.7 to 2.9 km)", miles to a tenth and kilometres to a tenth in brackets.
+ */
+export function formatMileRange(fromM: number, toM: number): string {
+  const mi = (m: number) => (m / METRES_PER_MILE).toFixed(1);
+  const km = (m: number) => (m / 1000).toFixed(1);
+  return `${mi(fromM)} to ${mi(toM)} mi (${km(fromM)} to ${km(toM)} km)`;
+}
+
 /** "55 to 1,543 pounds (25 to 700 kg)": a weight range, pounds first. */
 export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: number): string {
   return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
