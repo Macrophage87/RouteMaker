@@ -142,6 +142,7 @@ import {
   findingSaid,
   requestNearest,
   searchNearest,
+  NEAREST_STALE,
   STILL_SEARCHING,
   type Found,
   type Nearby,
@@ -802,9 +803,14 @@ export function App() {
   };
   // A list is for the ride and the spot it was found for: a new ride type or slider (other distances),
   // a new "Search from", or a start that moved under a "start" search put it away.
+  // Not the loop: Ride here turns it off in its own edit, and the list stays for a second pick. A search
+  // under way when one changes is thrown away when it answers (the epoch).
+  const nearestKey = JSON.stringify([preset, { ...dials, loop: false }, nearestFrom]);
+  const nearestEpoch = useRef(0);
   useEffect(() => {
+    nearestEpoch.current += 1;
     setNearestList(null);
-  }, [preset, dials, nearestFrom]);
+  }, [nearestKey]);
   useEffect(() => {
     if (nearestList?.from === "start" && String(points[0]) !== String(nearestList.origin)) setNearestList(null);
   }, [points, nearestList]);
@@ -818,6 +824,7 @@ export function App() {
     setNearestList(null);
     sayNearest(findingSaid(kind));
     const ride = rideRef.current;
+    const epoch = nearestEpoch.current;
     try {
       const outcome = await searchNearest({
         kind,
@@ -843,6 +850,10 @@ export function App() {
         request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
       });
       if (outcome.fix) setHere(outcome.fix);
+      if (outcome.found && epoch !== nearestEpoch.current) {
+        sayNearest(NEAREST_STALE);
+        return;
+      }
       if (outcome.found) setNearestList(outcome.found);
       sayNearest(outcome.said);
     } finally {

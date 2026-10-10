@@ -235,6 +235,7 @@ export const noneKnownSaid = (kind: NearestKind): string => `No ${nounOf(kind)} 
 export const WATER_NOT_LOADED = "Water and restrooms are unavailable for now; try again shortly.";
 export const LOCATION_BUSY = "Your location is already being found; try again in a moment.";
 export const STILL_SEARCHING = "Still searching.";
+export const NEAREST_STALE = "The ride or where to search from changed during the search; search again.";
 
 /** What a search needs from the page; each is a function so a test runs the search with stand-ins. */
 export interface SearchDeps {
