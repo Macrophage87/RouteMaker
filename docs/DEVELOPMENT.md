@@ -5363,10 +5363,11 @@ leg had any elevation), built by `core.routing.route_profile`:
 
 **The flow model** is `routemaker.flow`; there was no flow code before it, only PLAN's
 "The headline number: modelled throughput". It is accepted as the working model
-(OWNER-DECISIONS 394); sources pending FOLLOWUP-FLOW-CALIBRATION (docs/SOURCES.md, "The
-Mass Ride flow model"). The level figure rests on the owner's DC Bike Party counts (item
-173, indicative, good to about ±25%, item 175); the grade factors are not from a
-measurement.
+(OWNER-DECISIONS 394); FOLLOWUP-FLOW-CALIBRATION's literature check is in
+docs/FLOW-CALIBRATION.md, its references in docs/SOURCES.md ("The Mass Ride flow
+model"), and the owner's video check is pending. The level figure rests on the owner's
+DC Bike Party counts (item 173, indicative, good to about ±25%, item 175); the grade
+factors are not from a measurement.
 
 - Level capacity: `60 x 0.37 riders/m2 x 0.7 utilisation x usable width x 1.9 m/s`, about
   99 riders a minute for an 11 ft (3.35 m) lane.
