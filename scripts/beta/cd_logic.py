@@ -103,7 +103,7 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
 STOP_PREFIXES: Sequence[tuple] = (
     (
         "deploy/",
-        "the nginx site, its 401 page or the env template changed (owner steps, with sudo)",
+        "the nginx site, its 401 or 502 page or the env template changed (owner steps, with sudo)",
     ),
     (
         "scripts/prepare_data_root.sh",

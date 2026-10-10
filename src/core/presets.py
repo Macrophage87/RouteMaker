@@ -152,8 +152,13 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # is not an alley (sif/dynamiccost.h, base_transition_cost). It does not depend
 # on use_roads, so it reaches every preset, Mass Ride at the direct end of the
 # stress slider included, and the way stays routable when it is the only one.
-# Half an hour: a detour of up to 30 minutes' riding is preferred to entering
-# one (4.8 km at Mass Ride's parade pace, 9 km at Hybrid's 18 km/h). Only
+# This is 1,800 s of cost, not 30 minutes of riding. An edge costs its time
+# times a factor of 1 or more (1 + grade + accommodation * roadway stress,
+# more on bad surfaces; sif/bicyclecost.cc), so a detour's extra cost is more than its extra time:
+# the penalty alone buys under 30 minutes of detour (4.8 km at Mass Ride's
+# parade pace, 9 km at Hybrid's 18 km/h, only at a factor of 1), and less the
+# hillier or busier the detour. What the router weighs is the penalty plus
+# the tier-5 way's own LTS 4 cost against the detour's cost. Only
 # tier-5 ways pay it (the owner, 2026-09-27: "Only tier-5 roads"): OSM's own
 # alleys are service roads in the graph, and `destination_only_penalty` is not
 # sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
@@ -268,8 +273,9 @@ def calm_rate_for(stress: int) -> float:
 # How far it may go (271: "Change the name from max distance to target distance,
 # because it can get longer"):
 # - The rider's "Target distance" (the request's `target_distance_m`) is a soft goal:
-#   the planner aims at or under it, and goes past it only where the extra miles buy
-#   enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar than the default's),
+#   the planner aims at or under it, the miles up to it at half the default's price
+#   (`core.refine.WORTH_UP_TO_TARGET`, OWNER-DECISIONS 435), and goes past it only where
+#   the extra miles buy enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar),
 #   and never past TARGET_CEILING_RATIO times it (the hard ceiling). The answer says
 #   how far over it is.
 # - With no target, the ceiling is DEFAULT_CEILING_RATIO times the router's own route

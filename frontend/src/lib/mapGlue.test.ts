@@ -103,7 +103,9 @@ test("the overlay is added with the toggle's visibility", () => {
     const { map, added } = fakeMap(BASE);
     addStressOverlay(map, "https://example.test", visible);
     for (const a of added) {
-      assert.equal(a.layer.layout?.visibility, MASS_IDS.has(a.layer.id) ? "none" : visibility, a.layer.id);
+      // The mountain-bike trails follow their own layer switch, off by default (OWNER-DECISIONS 454).
+      const expected = MASS_IDS.has(a.layer.id) || a.layer.id === "mtb-trail" ? "none" : visibility;
+      assert.equal(a.layer.layout?.visibility, expected, a.layer.id);
     }
   }
 });
@@ -128,7 +130,8 @@ test("the toggle sets every overlay layer that is on the map", () => {
     setStressVisibility(map, visible);
     assert.deepEqual(
       layout,
-      stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => [l.id, "visibility", MASS_IDS.has(l.id) ? "none" : visibility]),
+      // The mountain-bike trails keep to their own layer switch, off here (OWNER-DECISIONS 454).
+      stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => [l.id, "visibility", MASS_IDS.has(l.id) || l.id === "mtb-trail" ? "none" : visibility]),
     );
   }
   const empty = fakeMap(BASE);

@@ -243,17 +243,85 @@ class TestDiminishingReturns:
         far = with_(reading(length=10_000.0 + 50 * 1609.0), exposure_m=0.0)
         assert refine.better(far, base, ctx)
 
-    def test_below_the_top_the_rule_does_not_apply(self) -> None:
-        ctx = context(rate=2.0)
+    def test_below_the_top_a_longer_route_must_be_worth_its_miles(self) -> None:
+        """OWNER-DECISIONS 435, "One rule": the bar holds wherever the calm search runs,
+        not only at the top; crossing avoidance alone (no calm rate) keeps the score."""
         cheap = with_(analysis("c", "1" * 40, cost_s=3000.0), length_m=1e6)
         dear = analysis("d", "1" * 40, cost_s=4000.0)
-        assert refine.better(cheap, dear, ctx)
+        assert not refine.better(cheap, dear, context(rate=2.0))
+        assert refine.better(cheap, dear, context(rate=0.0))
+        # As long, the score alone decides.
+        same = with_(analysis("s", "1" * 40, cost_s=3000.0), length_m=dear.length_m)
+        assert refine.better(same, dear, context(rate=2.0))
+
+    def test_the_ratio_rises_with_the_slider_to_the_tops(self) -> None:
+        """About 1.2 at 85, 1.7 at 90, 2.8 at 95 and WORTH_DEFAULT (5) at 100: metres a
+        route may add for each metre of LTS 3 it saves."""
+        got = {
+            stress: refine.worth_ratio(context(rate=presets.calm_rate_for(stress)))
+            for stress in (81, 85, 90, 95)
+        }
+        assert got[85] == pytest.approx(1.23, abs=0.01)
+        assert got[90] == pytest.approx(1.73, abs=0.01)
+        assert got[95] == pytest.approx(2.78, abs=0.01)
+        assert 1.0 < got[81] < got[85] < got[90] < got[95] < refine.WORTH_DEFAULT
+        assert refine.worth_ratio(top_context()) == refine.WORTH_DEFAULT == 5.0
+        assert refine.worth_ratio(context(rate=presets.CALM_RATE_MAX)) == pytest.approx(5.0)
+
+    @pytest.mark.parametrize("stress", [85, 90, 95, 100])
+    @pytest.mark.parametrize("target", [None, 40_000.0])
+    def test_the_owners_case_is_refused_everywhere(self, stress, target) -> None:
+        """OWNER-DECISIONS 435's example: 2.75 mi (4,426 m) more to avoid about 650 ft
+        (198 m) of LTS 3, with a flagged (orange) crossing more. Refused at every calm
+        position, with a target past it or none, however cheap the router finds it."""
+        if stress == 100:
+            ctx = top_context(target_m=target, ceiling_m=60_000.0)
+        else:
+            ctx = context(rate=presets.calm_rate_for(stress))
+        base = reading(lts3=198.0, length=10_000.0)
+        detour = reading(orange=[600.0], length=10_000.0 + 4_426.0)
+        base = with_(base, cost_s=9_000.0, exposure_m=198.0)
+        detour = with_(detour, cost_s=1_000.0, exposure_m=0.0)
+        assert not refine.better(detour, base, ctx)
+
+    def test_below_the_top_the_charge_is_at_the_sliders_ratio(self) -> None:
+        # 600 m of LTS 3 saved at 90 (ratio about 1.73) buys about 1,040 m of riding.
+        ctx = context(rate=presets.calm_rate_for(90))
+        base = with_(analysis("b", "1" * 34 + "3" * 6, cost_s=9000.0), exposure_m=600.0)
+        ok = with_(analysis("o", "1" * 40, cost_s=4000.0), length_m=4000.0 + 1000.0)
+        far = with_(analysis("f", "1" * 40, cost_s=4000.0), length_m=4000.0 + 1100.0)
+        assert refine.better(ok, base, ctx)
+        assert not refine.better(far, base, ctx)
+
+    def test_below_the_top_a_leg_is_charged_at_the_whole_trips_length(self) -> None:
+        """A leg of a plan with stops (`rest_m`) is charged where the whole trip
+        stands against the target below the top as well (mutation r2)."""
+        ctx = context(rate=5.0, target_m=20_000.0, ceiling_m=25_000.0)
+        base = with_(reading(lts3=400.0, length=5_000.0), cost_s=9_000.0, exposure_m=400.0)
+        longer = with_(reading(length=8_000.0), cost_s=1_000.0, exposure_m=0.0)
+        assert refine.better(longer, base, ctx)  # 8 km, under the target: 300 m needed
+        assert not refine.better(longer, base, ctx, rest_m=15_000.0)  # 23 km: 1,200 m needed
+
+    def test_below_the_top_a_shorter_route_needs_only_the_score(self) -> None:
+        """No longer, a lower score is enough below the top: a route as long but more
+        effort (Hills set to avoid) is never charged for its effort (mutation r2)."""
+        ctx = dataclasses.replace(context(rate=5.0), hills_weight=1.0)
+        base = with_(reading(length=10_000.0), cost_s=9_000.0)
+        for length in (10_000.0, 9_000.0):
+            hilly = with_(reading(lts3=100.0, effort=14_000.0, length=length), cost_s=1_000.0)
+            assert refine.better(hilly, base, ctx), length
+
+    def test_the_ratio_stays_in_its_range(self) -> None:
+        assert refine.worth_ratio(context(rate=-1.0)) == 1.0
+        assert refine.worth_ratio(top_context()) == refine.WORTH_DEFAULT
+        top = dataclasses.replace(top_context(), rate=20.0)
+        assert refine.worth_ratio(top) == refine.WORTH_DEFAULT
 
 
 class TestTheTargetDistance:
-    """OWNER-DECISIONS 271: a target, not a maximum. Up to it, distance is free; past
-    it, the extra must buy stress at the stricter WORTH_OVER_TARGET; never past the
-    ceiling (1.25 times it)."""
+    """OWNER-DECISIONS 271: a target, not a maximum. Up to it, distance costs 1 in 10
+    (WORTH_UP_TO_TARGET; 435, "One rule"); past it, the extra must buy stress at the
+    stricter WORTH_OVER_TARGET; never past the ceiling (1.25 times it)."""
 
     def ctx(self, target=20_000.0) -> refine.Context:
         return top_context(target_m=target, ceiling_m=presets.target_ceiling_m(target))
@@ -263,19 +331,27 @@ class TestTheTargetDistance:
         assert presets.target_ceiling_m(80_000.0) == pytest.approx(100_000.0)
         assert refine.too_long(25_001.0, self.ctx()) and not refine.too_long(25_000.0, self.ctx())
 
-    def test_below_the_target_distance_is_free(self) -> None:
+    def test_below_the_target_distance_costs_half(self) -> None:
+        """OWNER-DECISIONS 435, "One rule": the miles up to the target cost 1 in 10
+        (WORTH_UP_TO_TARGET), where 271 made them free."""
         ctx = self.ctx()
+        assert refine.WORTH_UP_TO_TARGET == 10.0
         base = with_(reading(lts3=60.0, length=5_000.0), exposure_m=60.0)
         far = with_(reading(lts3=0.0, length=19_900.0), exposure_m=0.0)
-        assert refine.distance_charge_m(5_000.0, 19_900.0, ctx) == 0.0
-        assert refine.better(far, base, ctx)
+        assert refine.distance_charge_m(5_000.0, 19_900.0, ctx) == pytest.approx(1490.0)
+        assert not refine.better(far, base, ctx)
+        enough = with_(reading(lts3=1500.0, length=5_000.0), exposure_m=1500.0)
+        assert refine.better(far, enough, ctx)
 
     def test_past_the_target_the_bar_is_stricter(self) -> None:
         ctx = self.ctx()
-        assert refine.distance_charge_m(19_000.0, 22_000.0, ctx) == pytest.approx(2000.0 / 2.5)
+        # 1 km up to the target at 1 in 10 and 2 km past it at 1 in 2.5.
+        assert refine.distance_charge_m(19_000.0, 22_000.0, ctx) == pytest.approx(
+            1000.0 / 10 + 2000.0 / 2.5
+        )
         assert refine.distance_charge_m(21_000.0, 22_000.0, ctx) == pytest.approx(1000.0 / 2.5)
         base = with_(reading(lts3=900.0, length=19_000.0), exposure_m=900.0)
-        ok = with_(reading(length=22_000.0), exposure_m=0.0)  # 900 saved, 800 needed
+        ok = with_(reading(length=22_000.0), exposure_m=0.0)  # 900 saved, 900 needed
         assert refine.better(ok, base, ctx)
         thin = reading(lts3=200.0, length=22_000.0)  # 700 saved
         assert not refine.better(thin, base, ctx)
@@ -289,9 +365,9 @@ class TestTheTargetDistance:
 
     def test_a_leg_is_charged_at_the_whole_trips_length(self) -> None:
         ctx = self.ctx()
-        base = with_(reading(lts3=100.0, length=5_000.0), exposure_m=100.0)
+        base = with_(reading(lts3=400.0, length=5_000.0), exposure_m=400.0)
         longer = with_(reading(length=8_000.0), exposure_m=0.0)
-        assert refine.better(longer, base, ctx)  # 8 km, under the target
+        assert refine.better(longer, base, ctx)  # 8 km, under the target: 300 m needed
         assert not refine.better(longer, base, ctx, rest_m=15_000.0)  # 23 km: 3 km over
 
     def test_a_candidate_goes_no_further_past_the_target_than_the_answer(self) -> None:
@@ -359,12 +435,13 @@ class TestTheHillsLevel:
         assert refine.level3(hard, ctx) < refine.level3(easy, ctx)
         assert refine.better(hard, easy, ctx)
         assert not refine.better(hard, easy, top_context()), "without the hook the two tie"
-        # Under a target the miles are free (268, 271): there the hook may take the longer one.
+        # Under a target the miles cost half (435, "One rule"), so the hook alone does not
+        # buy them: a longer route must still save stress for them.
         under = top_context(target_m=20_000.0)
         under.hills_seek_weight = 0.5
         longer_hard = reading(length=12_000.0, effort=30_000.0)
         shorter_easy = reading(length=9_000.0, effort=9_000.0)
-        assert refine.better(longer_hard, shorter_easy, under)
+        assert not refine.better(longer_hard, shorter_easy, under)
 
     def test_seeking_climbs_never_buys_miles_the_charge_has_no_seek_credit(self) -> None:
         """The release re-check's S1 probe: 20 km flat with 1 km of LTS 3, against
@@ -917,6 +994,23 @@ class TestTheLongSearch:
         assert seen and all(got == (False, None) for got in seen)
         assert ctx.worth_rule is True and ctx.target_m == 40_000.0
 
+    def test_a_legs_search_asks_for_no_router_alternatives(self, monkeypatch) -> None:
+        """OWNER-DECISIONS 435's alternatives are not asked on a long plan's legs: each
+        has only its share of the time."""
+        legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append(ctx.rank_alternates)
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        ctx = long_context(ceiling_m=50_000.0)
+        ctx.rank_alternates = True
+        refine.refine_long(whole_trip(), ctx)
+        assert seen and not any(seen)
+
     def test_the_detour_goes_where_it_buys_the_most(self, monkeypatch) -> None:
         # L1's search finds a route 0.6 km longer that clears its LTS 4 and LTS 3; L2's
         # finds one 0.6 km longer that clears 2,000 m of LTS 3. With 0.7 km to spare only
@@ -1223,16 +1317,20 @@ class TestChoosingOptions:
         assert refine.choose_options([chain], [20_000.0], None, ctx) == [0]
 
     def test_a_free_upgrade_is_taken_though_it_saves_no_stress(self) -> None:
-        """The `charge > 0.0` guard (the mutation re-check's N4): under a target the miles
-        are free (268, 271), so an option that ranks better on the blended distance (much
-        flatter, with Hills set to avoid) is taken though it carries 10 m more LTS 3."""
-        ctx = top_context(target_m=20_000.0)
+        """The `charge > 0.0` guard (the mutation re-check's N4): with no target, a longer
+        option that is less effort on the distance the Hills slider weighs (much flatter,
+        Hills set to avoid) is charged nothing, so it is taken though it carries 10 m
+        more LTS 3. Under a target its miles cost half (435, "One rule") and it is not."""
+        ctx = top_context()
         ctx.hills_weight = 1.0
         hilly = reading(length=10_000.0, effort=30_000.0, lts3=100.0)
         flat = reading(length=11_000.0, effort=11_000.0, lts3=110.0)
         assert refine.stress_saved_m(hilly, flat, ctx) < 0, "the premise: no stress saved"
         chain = [({"legs": [{"shape": "h"}]}, hilly), ({"legs": [{"shape": "f"}]}, flat)]
         assert refine.choose_options([chain], [10_000.0], None, ctx) == [1]
+        under = top_context(target_m=20_000.0)
+        under.hills_weight = 1.0
+        assert refine.choose_options([chain], [10_000.0], None, under) == [0]
 
     def test_the_total_is_never_past_the_limit(self) -> None:
         chains = self.chains()
@@ -1288,7 +1386,8 @@ class TestChoosingOptions:
         )
         assert refine.choose_options([worth], [10_000.0], 16_000.0, self.ctx) == [1]
 
-    def test_under_the_target_the_miles_are_free(self) -> None:
+    def test_under_the_target_the_miles_cost_half(self) -> None:
+        # 2 km at 1 in 10 needs 200 m: the 300 m saved is enough.
         ctx = top_context(target_m=12_000.0, ceiling_m=15_000.0)
         assert refine.choose_options([self.dear()], [10_000.0], 15_000.0, ctx) == [1]
 
@@ -1296,9 +1395,13 @@ class TestChoosingOptions:
         # 1 km past an 11 km target needs 400 m: 300 m is not enough.
         ctx = top_context(target_m=11_000.0, ceiling_m=13_750.0)
         assert refine.choose_options([self.dear()], [10_000.0], 13_750.0, ctx) == [0]
-        # Half a kilometre past it needs 200 m: 300 m is.
+        # A quarter of a kilometre past an 11.75 km target needs 100 m, and the 1.75 km up
+        # to it 175 m (435): the 300 m saved is enough.
+        ctx = top_context(target_m=11_750.0, ceiling_m=14_687.5)
+        assert refine.choose_options([self.dear()], [10_000.0], 14_687.5, ctx) == [1]
+        # Half a kilometre past an 11.5 km target: 200 m, and 150 m up to it, is not.
         ctx = top_context(target_m=11_500.0, ceiling_m=14_375.0)
-        assert refine.choose_options([self.dear()], [10_000.0], 14_375.0, ctx) == [1]
+        assert refine.choose_options([self.dear()], [10_000.0], 14_375.0, ctx) == [0]
 
     def test_the_charge_is_at_the_whole_trips_length(self) -> None:
         # With a 10 km fixed leg the same upgrade is 2 km past a 20 km target.

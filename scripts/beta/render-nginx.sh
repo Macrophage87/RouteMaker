@@ -23,7 +23,9 @@
 #                            sites do not listen on IPv6; docs/BETA-RUNBOOK.md, step 1)
 #   --no-401-page            leave out the sign-in page (error_page 401 and its location), so
 #                            Cancel shows nginx's own 401 page: the runbook's recovery when nginx
-#                            cannot read deploy/beta/401.html (step 10)
+#                            cannot read deploy/beta/401.html (step 10). The "back soon" page
+#                            (error_page 502, deploy/beta/502.html) is read from the same
+#                            directory, so it goes too and a 502 is nginx's own again.
 set -eu
 
 die() { echo "render-nginx: $*" >&2; exit 2; }
@@ -82,10 +84,13 @@ safe api-port "$api_port"
 safe data-root "$data_root"
 safe htpasswd "$htpasswd"
 safe acme-root "$acme_root"
-# The sign-in page (deploy/beta/401.html) is served from this checkout; nginx must be able to read it.
+# The sign-in and "back soon" pages (deploy/beta/401.html, 502.html) are served from this
+# checkout; nginx must be able to read them.
 pages_dir="$repo/deploy/beta"
 safe pages-dir "$pages_dir"
-[ "$page401" = 0 ] || [ -r "$pages_dir/401.html" ] || die "cannot read $pages_dir/401.html (or render with --no-401-page)"
+for page in 401.html 502.html; do
+	[ "$page401" = 0 ] || [ -r "$pages_dir/$page" ] || die "cannot read $pages_dir/$page (or render with --no-401-page)"
+done
 case "$api_port" in *[!0-9]*) die "--api-port must be a number" ;; esac
 case "$data_root" in /?*) ;; *) die "--data-root must be an absolute path" ;; esac
 case "$data_root" in / | /etc | /usr | /var | /home | /root | /data) die "--data-root '$data_root' is not a RouteMaker directory" ;; esac
@@ -129,10 +134,10 @@ if [ "$ipv6" = 0 ]; then
 fi
 
 if [ "$page401" = 0 ]; then
-	# the error_page line, and the location from its opening line to its closing brace
+	# the error_page lines, and each page's location from its opening line to its closing brace
 	rendered=$(printf '%s\n' "$rendered" | awk '
-		/^[[:space:]]*error_page 401 / { next }
-		/^[[:space:]]*location = \/rmbeta-401\.html \{/ { skip = 1; next }
+		/^[[:space:]]*error_page (401|502) / { next }
+		/^[[:space:]]*location = \/rmbeta-(401|502)\.html \{/ { skip = 1; next }
 		skip && /^[[:space:]]*\}[[:space:]]*$/ { skip = 0; next }
 		!skip { print }
 	')

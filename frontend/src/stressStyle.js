@@ -851,7 +851,8 @@ export function subscribeMassRide(listener) {
  * no rails and no stress colour, under every routable layer, from MTB_MIN_ZOOM (the zoom the
  * tiles carry them from, as before). The dots carry the meaning, not the grey: no routable
  * line on the map is a row of separate dots on nothing. This supersedes 290(b)'s "draw them
- * faint" (FOLLOWUP-MTB-FAINT). Not the tiles' `rough`: that is a rough surface (`is_rough`,
+ * faint" (FOLLOWUP-MTB-FAINT). Since 454 the line is an optional map layer, off until the rider
+ * turns it on (mtbTrailsOn, below; lib/mapGlue.ts overlayLayerShown). Not the tiles' `rough`: that is a rough surface (`is_rough`,
  * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
  *
  * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
@@ -897,11 +898,14 @@ export function mtbTrailPaint(strong = accessibilityOn()) {
   };
 }
 
+/** The not-for-routes layer's id. */
+export const MTB_TRAIL_LAYER_ID = "mtb-trail";
+
 /** The not-for-routes layer (452a): the mountain-bike trails, drawn under every routable layer. */
 export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
   return [
     {
-      id: "mtb-trail",
+      id: MTB_TRAIL_LAYER_ID,
       type: "line",
       source: sourceId,
       "source-layer": STRESS_TILE_LAYER,
@@ -917,12 +921,14 @@ export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong 
  * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
  * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
  * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
- * that carry a capacity (massStyle.js, massHides).
+ * that carry a capacity (massStyle.js, massHides), but `mtb-trail`, which is a layer of its own (454).
  */
 export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
   const filters = stressFiltersOf(when, showHighLanes, routableMtb);
   if (!mass) return filters;
-  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
+  // The mountain-bike trails' line keeps its own filter: their layer shows in every ride type (454), and nearly
+  // every trail row carries a capacity (`rpm`, a path's default width), so `massHides` would draw none of them.
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, id === MTB_TRAIL_LAYER_ID ? filter : ["all", filter, massHides]]));
 }
 
 function stressFiltersOf(when, showHighLanes, routableMtb) {
@@ -1255,6 +1261,62 @@ export function subscribeHighStressLanes(listener) {
   laneListeners.add(listener);
   return () => {
     laneListeners.delete(listener);
+  };
+}
+
+/**
+ * The "Mountain-bike trails" map layer (OWNER-DECISIONS 454): one of the optional layers every
+ * ride type has, signed in or out, off until the rider turns it on. It shows or hides the
+ * not-for-routes line (`mtb-trail`, 452a) and nothing else: the routable layers never draw these
+ * trails either way, and routing is unchanged. Kept per browser like the lane switch: "on" or "off".
+ */
+export const MTB_TRAILS_STORAGE_KEY = "routemaker.mtbTrails";
+
+/** What this browser remembers of the layer: true, false, or null (nothing, a value this page did not write, or storage throws). */
+export function storedMtbTrails(storage = browserStorage()) {
+  try {
+    const value = storage?.getItem(MTB_TRAILS_STORAGE_KEY);
+    return value === "on" ? true : value === "off" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember the layer for this browser; false when storage refused. */
+export function rememberMtbTrails(on, storage = browserStorage()) {
+  try {
+    if (!storage) return false;
+    storage.setItem(MTB_TRAILS_STORAGE_KEY, on ? "on" : "off");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Off until the rider turns it on (454). */
+let mtbTrails = storedMtbTrails() === true;
+/** @type {Set<(on: boolean) => void>} */
+const mtbListeners = new Set();
+
+/** Whether the mountain-bike trail layer is on. */
+export function mtbTrailsOn() {
+  return mtbTrails;
+}
+
+/** Turn the layer on or off now and tell the subscribers; kept for this browser unless `remember` is false. */
+export function setMtbTrails(on, { remember = true, storage } = {}) {
+  const next = on === true;
+  if (remember) rememberMtbTrails(next, storage);
+  if (next === mtbTrails) return;
+  mtbTrails = next;
+  for (const listener of [...mtbListeners]) listener(next);
+}
+
+/** Call `listener(on)` whenever the layer is turned on or off; returns the way to stop. */
+export function subscribeMtbTrails(listener) {
+  mtbListeners.add(listener);
+  return () => {
+    mtbListeners.delete(listener);
   };
 }
 

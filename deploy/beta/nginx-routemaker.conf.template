@@ -137,6 +137,11 @@ server {
     # and the WWW-Authenticate header stays, so the browser's own sign-in box still comes first
     # (scripts/beta/smoke-test.sh --public checks both).
     error_page 401 /rmbeta-401.html;
+    # What a tester sees when the api is not answering at all (a release restarting it, the
+    # runbook's "Updates"), instead of nginx's bare "502 Bad Gateway": what is happening, that
+    # Back returns to the route, and when to tell someone. Only nginx's own 502: without
+    # proxy_intercept_errors the api's own answers, its JSON 502 included, pass through as they are.
+    error_page 502 /rmbeta-502.html;
 
     client_max_body_size 1m;
 
@@ -164,6 +169,19 @@ server {
         internal;
         auth_basic off;
         alias @PAGES_DIR@/401.html;
+        default_type text/html;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "no-store" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" always;
+    }
+
+    # --- the "back soon" page (error_page 502 above): internal only. Unlike the sign-in page it
+    # stays behind the password, since a 502 only follows a request that got past it.
+    # deploy/beta/502.html in the checkout. ----------------------------------------------------
+    location = /rmbeta-502.html {
+        internal;
+        alias @PAGES_DIR@/502.html;
         default_type text/html;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;

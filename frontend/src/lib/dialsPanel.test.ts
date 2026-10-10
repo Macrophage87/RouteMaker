@@ -95,7 +95,10 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.equal(calmNote(80), undefined);
   assert.equal(panelView("default", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   const near = panelView("default", dials, { ...dials, stress: 99 }).traffic.note ?? "";
-  assert.match(near, /^Calm detour: up to about 8\.5 mi \(13\.7 km\) of extra riding for every mile of busy road \(LTS 3\)/);
+  // The score's rate (8.5 at 99) capped by the worth bar every longer route must meet (435, "One rule": 4.4).
+  assert.match(near, /^Calm detour: up to about 4\.4 mi \(7\.1 km\) of extra riding for every mile of busy road \(LTS 3\)/);
+  const low = panelView("default", dials, { ...dials, stress: 85 }).traffic.note ?? "";
+  assert.match(low, /^Calm detour: up to about 0\.6 mi/, "below the cap the rate decides");
   assert.match(near, /Twice that for a heavy-traffic road \(LTS 4\)\. Three times that for a road best avoided\./);
   assert.match(near, /many times the straight-line distance/);
   // The very top has no rate (OWNER-DECISIONS 256, 257, 271): the least stressful route towards the target distance.
@@ -115,7 +118,7 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.equal(panelView("default", dials, { ...dials, stress: 99 }).traffic.how, undefined, "only the top has it");
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.how, undefined);
   // Miles first, to a tenth below ten miles, and a rate that rises with the position.
-  assert.match(calmNote(90) ?? "", /about 1\.8 mi \(2\.9 km\)/);
+  assert.match(calmNote(90) ?? "", /about 1\.7 mi \(2\.7 km\)/);
   assert.match(calmNote(85) ?? "", /about 0\.6 mi \(1\.0 km\)/);
   // Mass Ride's slider is locked and keeps its own note.
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.note, MASS_RIDE_TRAFFIC_NOTE);
