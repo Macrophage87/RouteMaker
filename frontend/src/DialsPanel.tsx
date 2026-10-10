@@ -90,10 +90,14 @@ function Slider(props: {
 }
 
 /** The detail a description would be too long for (the a11y review's N1): read when opened, not on every focus. */
-function HowThisWorks({ text }: { text: string }) {
+function HowThisWorks({ text, about }: { text: string; about?: string }) {
+  // `about`: a suffix read but not shown, so this one does not sound like the others in a list of
+  // controls (the a11y review of wip/trails-off, N4).
   return (
     <details className="how">
-      <summary>How this works</summary>
+      <summary>
+        How this works{about && <span className="visually-hidden">: {about}</span>}
+      </summary>
       <p className="hint">{text}</p>
     </details>
   );
@@ -200,11 +204,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
     else keys.current.now(commitDraft);
   };
   const view = panelView(preset, dials, draft);
+  const trailsOffHintId = useId();
   return (
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
-          sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, avoid
-          gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
+          sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
+          roads (OWNER-DECISIONS 463, 463b), avoid gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
       <h3 id="dials-heading">Ride settings</h3>
       {view.assistToggle && (
         <label className="toggle">
@@ -268,8 +273,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
         ))}
         <p className="hint">
           On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
-          are planned as traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in
-          the breakdown.
+          are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only
+          as paths in the breakdown.
         </p>
       </fieldset>
       {view.target && (
@@ -293,6 +298,27 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           onClear={weight.onClear}
         />
       )}
+      <div className="dial trails-off">
+        <label className="toggle">
+          {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+              reason in its description, and a press changes nothing (as the loop box does). */}
+          <input
+            type="checkbox"
+            checked={view.trailsOff.checked}
+            aria-disabled={view.trailsOff.locked || undefined}
+            aria-describedby={trailsOffHintId}
+            onChange={(event) => {
+              if (view.trailsOff.locked) return;
+              onCommit({ ...dials, trailsOff: event.target.checked });
+            }}
+          />
+          {view.trailsOff.label}
+        </label>
+        <p className="hint" id={trailsOffHintId}>
+          {view.trailsOff.hint}
+        </p>
+        <HowThisWorks text={view.trailsOff.how} about={view.trailsOff.howAbout} />
+      </div>
       <label className="toggle">
         <input
           type="checkbox"

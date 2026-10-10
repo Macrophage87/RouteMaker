@@ -242,6 +242,9 @@ class Context:
     # more of, the slider over 100 at the top of the stress slider (298(3)), else 0.
     hills_weight: float = 0.0
     hills_seek_weight: float = 0.0
+    # Whether bike lanes count as "none" in the breakdown (`routing.classify`): on
+    # Mass Ride, which takes the roadway, not on every ride on the no-trail graph.
+    lanes_as_roadway: bool = False
     # The rider's total system weight in kilograms (item 264), which the effort
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
@@ -649,7 +652,7 @@ def analyse(
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
-    classes = routing.classify(pieces, ctx.when, ctx.roadway_only)
+    classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
     weights = ctx.exposure.weights
     result = Analysis(
@@ -1101,7 +1104,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         "legs": 0,
     }
     if ctx.roadway_only:
-        # A ride on the no-trail graph (Group Ride with trails off): there are
+        # A ride on the no-trail graph (Mass Ride, or any ride with trails off): there are
         # no trails to seek, and through points would snap to the roads beside
         # them (review r1).
         seek["limited"] = "roadway_only"

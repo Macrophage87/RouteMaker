@@ -82,6 +82,23 @@ test("an export's sliders and its points' names come back with its ride type", (
   assert.equal(plan.preset, "cargo");
   assert.deepEqual(plan.dials, { stress: 95, hills: -40, when: "weekday_rush", carrying: "people", assist: true });
   assert.deepEqual(plan.pointNames, ["Start", "Stop 1", "End"]);
+  // "Keep to roads, not trails" comes back too (the trails-off correctness review, 4).
+  const roads = planFromGpx(
+    parseGpx(
+      writeGpx({
+        name: "n",
+        description: "d",
+        attribution: [],
+        preset: "default",
+        dials: { stress: 70, hills: 0, trailsOff: true },
+        planPoints: points,
+        geometry: points,
+      }),
+    ),
+  );
+  assert.equal(roads.preset, "default");
+  assert.deepEqual(roads.dials, { stress: 70, hills: 0, trailsOff: true });
+  assert.equal(planFromGpx(parseGpx(text)).dials?.trailsOff, undefined, "absent is trails on");
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({

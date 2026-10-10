@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, fitTarget, stressMax, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, fitTarget, stressMax, trailsOffLocked, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { presetLabel, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -57,7 +57,7 @@ export function targetShort(metres: Dials["targetDistanceM"]): string | null {
   return target === undefined ? null : `about ${formatDistance(target)}`;
 }
 
-/** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, gravel). */
+/** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, roads only, gravel). */
 export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
   const locked = stressMax(preset) === 0;
   const target = targetShort(dials.targetDistanceM);
@@ -68,6 +68,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
     whenShort(dials.when),
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? ["loop"] : []),
+    ...(dials.trailsOff === true && !trailsOffLocked(preset) ? ["roads only"] : []),
     ...(dials.avoidGravel === true ? ["avoids gravel"] : []),
   ];
 }

@@ -814,6 +814,42 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 16b. Keep to roads, not trails (OWNER-DECISIONS 463, 463b): one switch on every ride type ----
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const sw = await axNode(p, ".trails-off input");
+  check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
+  const how = await p.eval("(() => { const d = document.querySelector('.trails-off details.how'); const s = d?.querySelector('summary'); const hidden = s?.querySelector('.visually-hidden'); return d ? { summary: s.textContent, shown: s.textContent.replace(hidden?.textContent ?? '', ''), open: d.open, said: /Chain Bridge/.test(d.textContent), tall: Math.round(s.getBoundingClientRect().height) } : null; })()");
+  check("roads only: what is left out is under a closed \"How this works\" (read \": keep to roads\"), not in the description", how?.summary === "How this works: keep to roads" && how.shown === "How this works" && how.open === false && how.said === true && !/Chain Bridge/.test(sw?.description ?? ""), JSON.stringify(how));
+  // The a11y review's SF1: `details.how summary` (24 px) used to beat `.panel summary` (44 px) here.
+  check("roads only: its \"How this works\" is a 44 px target (the owner's 44 px rule)", how?.tall >= 44, `${how?.tall} px`);
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const on = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '' })");
+  check("roads only: Space turns it on, plans once, keeps the focus, and puts it in the link and the Ride line", on.checked && on.focus && p.routeRequests - before === 1 && /trailsoff=1/.test(await p.eval("location.hash")) && /roads only/.test(on.line), JSON.stringify({ ...on, plans: p.routeRequests - before }));
+  const middle = p.routeRequests;
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const off = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '', hash: location.hash })");
+  check("roads only: Space again turns it off, plans once, and takes it out of the link and the Ride line", !off.checked && off.focus && p.routeRequests - middle === 1 && !/trailsoff/.test(off.hash) && !/roads only/.test(off.line), JSON.stringify({ ...off, plans: p.routeRequests - middle }));
+  await p.close();
+}
+{
+  // Mass Ride always keeps to roads: checked from a link that does not say so, in the Tab order, unchangeable.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  const sw = await axNode(p, ".trails-off input");
+  // `disabled` is the accessibility tree's, what screen readers announce ("unavailable", "dimmed"): the a11y review's SF2.
+  check("roads only: on Mass Ride it is checked and unavailable to AT, and its description says a mass ride always keeps to roads", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === true && sw?.disabled === true && /^A mass ride always keeps to roads\./.test(sw?.description ?? ""), JSON.stringify(sw));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1000);
+  const after = await p.eval("(() => { const i = document.querySelector('.trails-off input'); return { checked: i.checked, attr: i.getAttribute('aria-disabled'), disabled: i.disabled, focus: document.activeElement === i }; })()");
+  check("roads only: on Mass Ride it keeps the focus, and Space neither unchecks it nor plans", after.checked && after.attr === "true" && !after.disabled && after.focus && p.routeRequests === before && !/trailsoff/.test(await p.eval("location.hash")), JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  await p.close();
+}
 // ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 {
