@@ -917,6 +917,23 @@ class TestTheLongSearch:
         assert seen and all(got == (False, None) for got in seen)
         assert ctx.worth_rule is True and ctx.target_m == 40_000.0
 
+    def test_a_legs_search_asks_for_no_router_alternatives(self, monkeypatch) -> None:
+        """OWNER-DECISIONS 435's alternatives are not asked on a long plan's legs: each
+        has only its share of the time."""
+        legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append(ctx.rank_alternates)
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        ctx = long_context(ceiling_m=50_000.0)
+        ctx.rank_alternates = True
+        refine.refine_long(whole_trip(), ctx)
+        assert seen and not any(seen)
+
     def test_the_detour_goes_where_it_buys_the_most(self, monkeypatch) -> None:
         # L1's search finds a route 0.6 km longer that clears its LTS 4 and LTS 3; L2's
         # finds one 0.6 km longer that clears 2,000 m of LTS 3. With 0.7 km to spare only

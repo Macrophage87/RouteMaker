@@ -351,7 +351,8 @@ class TestAnswer:
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
             "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
-            " Mountain Goat ride types (drawn as a thin grey dotted line)"
+            " Mountain Goat ride types (drawn as a thin grey dotted line when the"
+            " Mountain-bike trails map layer is on)"
         )
 
     def test_the_mtb_property_alone_marks_one(self, client, segment_schemas, router) -> None:

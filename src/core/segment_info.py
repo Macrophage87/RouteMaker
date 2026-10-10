@@ -37,7 +37,8 @@ from routemaker import flow
 SNAP_RADIUS_M = 30.0
 # A drawn road or path this much further than a hidden way (a sidewalk mapped
 # beside it, a driveway) or a mountain-bike trail (drawn only as a thin dotted
-# line, not for routes: OWNER-DECISIONS 452a) is still the one meant: the rider
+# line, not for routes, and only while its map layer is on: OWNER-DECISIONS
+# 452a, 454) is still the one meant: the rider
 # clicked what the map shows as a way to ride.
 DRAWN_PREFERENCE_M = 15.0
 # Rows the nearest-neighbour scan reads before the distances are compared.
@@ -159,7 +160,8 @@ ACCESS_WORDS = {
     "mtb": (
         False,
         "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
-        " Mountain Goat ride types (drawn as a thin grey dotted line)",
+        " Mountain Goat ride types (drawn as a thin grey dotted line when the"
+        " Mountain-bike trails map layer is on)",
     ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
     "sac_scale": (False, "Closed: a rough hiking trail"),

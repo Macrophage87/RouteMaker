@@ -591,6 +591,26 @@ class LongSearchOut(Schema):
     )
 
 
+class AlternatesOut(Schema):
+    """The router's own alternative routes the calm search ranked with its own
+    (OWNER-DECISIONS 435, docs/DEVELOPMENT.md, "The router's own alternatives")."""
+
+    given: int = Field(
+        description="Routes the router gave other than the one the search started from."
+    )
+    ranked: int = Field(
+        description=(
+            "Of those, the ones read and ranked: not busier than the router's first route,"
+            " within the LTS 4 hold and the ceiling, their junctions read."
+        )
+    )
+    taken: bool = Field(description="Whether one ranked first and the search started from it.")
+    limited: str | None = Field(
+        default=None,
+        description="`time`: the ask for them or a reading ran out of its time; null otherwise.",
+    )
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
@@ -617,6 +637,14 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
+    alternates: AlternatesOut | None = Field(
+        default=None,
+        description=(
+            "The router's own alternatives ranked with the search's routes (OWNER-DECISIONS"
+            " 435); null where none were asked for (no calm search, stops, a loop, a long"
+            " calm plan, or no time)."
+        ),
+    )
     target_distance_m: float | None = Field(
         default=None,
         description=(
