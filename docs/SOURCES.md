@@ -300,7 +300,8 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   https://arxiv.org/abs/1904.06084). 100 riders on a 10 ft (3 m) wide ring track. "The
   flow rate then becomes almost constant until the density reaches 0.50 bicycles/m²";
   free flow below 0.17/m²; "The density in the jam is around ρ1 =0.8 bicycles/m²";
-  moving ("go") flow "~0.55 bicycles/s/m"; "The maximum speed of a bicycle is around 15
+  the moving ("go") flow inside the stop-and-go waves of its densest run "~0.55
+  bicycles/s/m" (the paper gives no single plateau figure); "The maximum speed of a bicycle is around 15
   km/h." Used for: density, pace and the level figure.
 - Guo, N., Wong, W., Jiang, R., Wong, S. C., Hao, Q.-Y. and Wu, C.-Y. (2024). "Bicycle
   Flow Dynamics of Cyclist Loading and Unloading Processes at Bottlenecks."
@@ -318,11 +319,12 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   per hour"; "For an additional meter of path width ... the capacity increases by 1.11
   cyc/s"; "the flow rate drops 0.45 cyc/s when the cycling conditions change from free
   flow to congested." Used for: the level figure's range, compression.
-- Kaths, H., Roosta, A., Fischer, J., Kathmann, T. and Pusica, A. (2025). "Mapping
+- Kaths, H., Roosta, A., Fischer, J., Kathmann, T. and Pušica, A. (2025). "Mapping
   Bicycle Traffic Flow Across the Width of a Bicycle Path to Inform Facility Design."
   *Transportation Research Record*. https://doi.org/10.1177/03611981251353715. Its Table 1
   lists capacities per metre of width: experiments ~4,500 (Navin), ~3,600 (Zhang et al.),
-  ~2,000 (Wierbos, 1 m path), ~1,800 (Guo et al.); field 1,500 (Greibe and Buch), 1,531
+  ~2,000 (Wierbos, 1 m path; Kaths' source for this is Wierbos' 2021 PhD thesis, not
+  read), ~1,800 (Guo et al.); field 1,500 (Greibe and Buch), 1,531
   (Hoogendoorn and Daamen). Density "built first on the right-hand side"; "Only very low
   densities occurred on the far left-hand sublane." Used for: the level figure's range
   (Navin, Zhang and Hoogendoorn and Daamen are cited from this table only; their papers
@@ -333,7 +335,7 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   https://trafitec.dk/wp-content/uploads/2023/05/183-Bredde-af-cykelstier-Analyse-af-adfaerd-og-kapacitet-Baggrundsrapport.pdf.
   Eight Copenhagen one-way tracks, 5.7 to 9.4 ft (1.73 to 2.85 m). "Kapaciteten for en 2,0 meter bred sti
   (ekskl. kantsten) er ca. 3.000 cykler pr. time" (about 3,000 an hour on a 6.6 ft (2.0 m) track);
-  mean speed 13.5 mph (21.7 km/h); second rider abreast 4.3 to 6.1 ft (1.30 to 1.85 m) from the kerb; a third
+  mean speed 13.5 mph (21.7 km/h); second rider abreast with the front wheel 4.3 to 6.1 ft (1.30 to 1.85 m) from the kerb; a third
   abreast "Kun i få tilfælde og kun på de fire bredeste stier" (only in a few cases, and
   only on the four widest tracks). Used for: the level figure, utilisation, pace.
 - Seriani, S., Fernández, R. and Hermosilla, E. (2015). "Experimental study for
@@ -365,7 +367,7 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   Lateral Acceleration While Negotiating a Curve: A Closed Course Pilot Study." *Accident
   Reconstruction Journal*, 19-21.
   https://jsheld.com/uploads/Cyclists-Choice-of-Speed-Radius-and-Lateral-Acceleration-While-Negotiating-a-Curve.pdf.
-  Speed in the turns 6.6 mph (10.6 km/h), radius 12.8 ft (3.9 m), lateral acceleration 0.23 g. Used for: pace
+  42 riders, each riding alone. Speed in the turns 6.6 mph (10.6 km/h), radius 12.8 ft (3.9 m), lateral acceleration 0.23 g. Used for: pace
   at turns (a small pilot).
 - National Association of City Transportation Officials. *Urban Street Design Guide*,
   "Lane Width."
@@ -375,10 +377,13 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   for: the lane, parking and wide-lane width rules (OWNER-DECISIONS 404, 407).
 - National Cooperative Highway Research Program (2014). *Recommended Bicycle Lane Widths
   for Various Roadway Characteristics.* NCHRP Report 766. National Academies Press.
-  https://doi.org/10.17226/22350 (read: https://nap.nationalacademies.org/read/22350/chapter/2).
-  "the open door zone width of parked vehicles extends approximately 11 ft from the curb",
-  "assuming the 95th-percentile parked vehicle displacement and an open door width of 45
-  in"; "the suggested width for the parking lane is 8 ft". Used for: the door zone and
+  https://doi.org/10.17226/22350 (read: the report PDF as NACTO hosts it,
+  https://nacto.org/wp-content/uploads/Part-III-Section-2-Citation-19_-NCHRP-766-1.pdf).
+  Summary, p. 3, design guidance item 5: "the open door zone width of parked vehicles
+  extends approximately 11 ft from the curb", "assuming the 95th-percentile parked
+  vehicle displacement and an open door width of 45 in". Summary, p. 2, design guidance
+  item 3: "In most situations where a bicycle lane is adjacent to on-street parking, the
+  suggested width for the parking lane is 8 ft". Used for: the door zone and
   parking width (OWNER-DECISIONS 404 (1), 407 (1) and (2)).
 
 ## Used inside the project only (no credit)
