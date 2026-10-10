@@ -215,13 +215,15 @@ class LegRouter(FakeRouter):
             legs.append({"summary": summary})
         return {"trip": {"legs": legs, "summary": {}}}
 
+    def pairs_of(self, call) -> list[tuple[int, int]]:
+        url, payload = call
+        if not url.endswith("/route"):
+            return []
+        ids = [self._index(loc, k > 0) for k, loc in enumerate(payload["locations"])]
+        return list(zip(ids, ids[1:], strict=False))
+
     def pairs(self) -> list[tuple[int, int]]:
-        asked = []
-        for url, payload in self.calls:
-            if url.endswith("/route"):
-                ids = [self._index(loc, k > 0) for k, loc in enumerate(payload["locations"])]
-                asked.extend(zip(ids, ids[1:], strict=False))
-        return asked
+        return [pair for call in self.calls for pair in self.pairs_of(call)]
 
 
 @pytest.fixture
@@ -371,7 +373,116 @@ class TestEndpoint:
             u for u, _ in fake.calls if u.startswith(routing.settings.VALHALLA_UPSTREAMS["weekend"])
         ]
         assert len(weekend) == 1, "asked once, then the standard graph answers the rest"
+        standard = routing.settings.VALHALLA_UPSTREAMS["standard"]
+        asked = [p for c in fake.calls if c[0].startswith(standard) for p in fake.pairs_of(c)]
+        assert len(asked) == 3 * 4, "nothing was filled from the weekend graph to ask again"
         assert down == {"weekend"}
+
+    def _weekend(self, monkeypatch):
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: True)
+        down = set()
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: variant in down)
+        monkeypatch.setattr(
+            routing, "_mark_twin", lambda v, ok: (down.discard if ok else down.add)(v)
+        )
+        return down
+
+    def test_a_weekend_router_silent_past_the_legs_time_leaves_the_matrix_to_standard(
+        self, client, router, monkeypatch
+    ) -> None:
+        down = self._weekend(monkeypatch)
+        weekend = routing.settings.VALHALLA_UPSTREAMS["weekend"]
+
+        class WeekendLate(LegRouter):
+            def __call__(self, url, payload, timeout):
+                if url.startswith(weekend):
+                    self.calls.append((url, payload))
+                    raise routing.DeadlineExceeded("late")
+                if url.endswith("/route"):
+                    raise AssertionError("the legs are not asked again on the standard graph")
+                return super().__call__(url, payload, timeout)
+
+        times = along_the_line(POINTS)
+        fake = router(WeekendLate(POINTS, times, matrix=matrix_answer(times)))
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "riding_time"
+        urls = [u for u, _ in fake.calls]
+        assert sum(u.startswith(weekend) for u in urls) == 1
+        assert urls[-1] == f"{routing.settings.VALHALLA_UPSTREAMS['standard']}/sources_to_targets"
+        assert down == set(), "not remembered as down: it had less than its own limit"
+
+    def test_a_weekend_router_that_drops_part_way_leaves_every_leg_to_the_standard_graph(
+        self, client, router, monkeypatch
+    ) -> None:
+        down = self._weekend(monkeypatch)
+        weekend = routing.settings.VALHALLA_UPSTREAMS["weekend"]
+        standard = routing.settings.VALHALLA_UPSTREAMS["standard"]
+        cheap = [[1.0] * 5 for _ in range(5)]  # the weekend graph's costs, if kept, would tie
+
+        class WeekendDrops(LegRouter):
+            answered = 0
+
+            def __call__(self, url, payload, timeout):
+                if url.startswith(weekend):
+                    WeekendDrops.answered += 1
+                    if WeekendDrops.answered > 1:
+                        self.calls.append((url, payload))
+                        raise routing.RouterUnavailable("dropped")
+                    saved, self.cost = self.cost, cheap
+                    try:
+                        return super().__call__(url, payload, timeout)
+                    finally:
+                        self.cost = saved
+                return super().__call__(url, payload, timeout)
+
+        fake = router(WeekendDrops(POINTS, along_the_line(POINTS)))
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "route_cost" and body["order"] == [0, 2, 1, 3, 4]
+        on_standard = [
+            pair
+            for (url, _), pairs in ((c, fake.pairs_of(c)) for c in fake.calls)
+            if url.startswith(standard)
+            for pair in pairs
+        ]
+        wanted = {(0, s) for s in (1, 2, 3)} | {(s, 4) for s in (1, 2, 3)}
+        wanted |= {(s, t) for s in (1, 2, 3) for t in (1, 2, 3) if s != t}
+        assert set(on_standard) == wanted, "every pair asked again of the standard graph"
+        # The weekend graph's ties are not kept: the order is the standard graph's.
+        assert down == {"weekend"}
+
+    def test_a_weekend_refusal_that_is_not_missing_tiles_is_not_asked_again(
+        self, client, router, monkeypatch
+    ) -> None:
+        self._weekend(monkeypatch)
+        times = along_the_line(POINTS)
+        fake = router(LegRouter(POINTS, times, matrix=matrix_answer(times)))
+        fake.answers["route"] = NO_PATH
+        weekend = routing.settings.VALHALLA_UPSTREAMS["weekend"]
+        original = LegRouter.__call__
+
+        def call(self, url, payload, timeout):
+            if url.endswith("/route"):
+                self.calls.append((url, payload))
+                raise NO_PATH
+            return original(self, url, payload, timeout)
+
+        monkeypatch.setattr(LegRouter, "__call__", call)
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "riding_time"
+        routes = [u for u, _ in fake.calls if u.endswith("/route")]
+        assert routes == [f"{weekend}/route"]
+
+    def test_legs_of_the_wrong_number_leave_the_order_to_the_matrix(self, client, router) -> None:
+        class ShortLegs(LegRouter):
+            def __call__(self, url, payload, timeout):
+                answer = super().__call__(url, payload, timeout)
+                if "trip" in answer:
+                    answer["trip"]["legs"].pop()
+                return answer
+
+        times = along_the_line(POINTS)
+        router(ShortLegs(POINTS, times, matrix=matrix_answer(times)))
+        assert post(client, {"points": POINTS, "preset": "default"}).json()["by"] == "riding_time"
 
     def test_without_leg_costs_the_matrixs_riding_times_order_them(self, client, router) -> None:
         fake = router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
@@ -620,7 +731,8 @@ def test_free_stops_counts_the_points_that_may_move() -> None:
 def test_the_chains_ride_every_pair_an_order_may_use_once(n) -> None:
     pairs = []
     for chain in stoporder._pairs_chains(n):
-        requests = stoporder._requests_of(chain)
+        points = [[-77.05 + 0.001 * i, 38.90] for i in range(n)]
+        requests = stoporder._requests_of(chain, points)
         assert all(2 <= len(r) <= stoporder.ROUTE_MAX_LOCATIONS for r in requests)
         assert [i for r in requests for i in r[:-1]] + [requests[-1][-1]] == chain
         for r in requests:
@@ -640,6 +752,29 @@ def test_a_request_holds_no_more_locations_than_the_routers_allow() -> None:
     path = Path(__file__).resolve().parents[1] / "scripts" / "build_valhalla_configs.py"
     text = path.read_text()
     assert f'"max_locations": {stoporder.ROUTE_MAX_LOCATIONS},' in text
+
+
+def test_a_request_is_split_before_the_routers_distance_limit() -> None:
+    # Points far apart: about 56 mi (90 km) between each and the next.
+    points = [[-77.40 + 0.5 * (i % 2), 38.75 + 0.5 * (i % 2)] for i in range(12)]
+    chain = list(range(12))
+    requests = stoporder._requests_of(chain, points)
+    assert len(requests) > 1
+    for r in requests:
+        span = sum(
+            stoporder.haversine(stoporder.Point(*points[a]), stoporder.Point(*points[b]))
+            for a, b in zip(r, r[1:], strict=False)
+        )
+        assert span <= stoporder.ROUTE_MAX_SPAN_M
+    assert [i for r in requests for i in r[:-1]] + [requests[-1][-1]] == chain
+    assert stoporder.ROUTE_MAX_SPAN_M < 500_000, "under the routers' max_distance"
+
+
+def test_the_page_knows_where_the_routers_cost_stops() -> None:
+    from pathlib import Path
+
+    page = Path(__file__).resolve().parents[1] / "frontend" / "src" / "lib" / "stopOrder.ts"
+    assert f"export const COST_MAX_STOPS = {stoporder.COST_MAX_STOPS};" in page.read_text()
 
 
 def test_the_routers_serve_the_matrix() -> None:

@@ -123,7 +123,7 @@ test("a quicker order that is longer says it is longer; an unknown saving is lef
     names,
     false,
   );
-  assert.match(unknown, /\(was Stop 1\)\. This is by riding time alone/);
+  assert.match(unknown, /\(was Stop 1\)\. The router could not weigh traffic stress and hills for these stops, so this is by riding time alone\./);
 });
 
 test("an order chosen by the router's cost that rides longer says it is calmer or flatter", () => {
@@ -133,9 +133,16 @@ test("an order chosen by the router's cost that rides longer says it is calmer o
     names,
     false,
   );
-  assert.match(slower, / About 3 min more riding, 0\.2 mi \(0\.4 km\) longer, on calmer or flatter ways\. Undo puts/);
+  assert.match(slower, / About 3 min more riding and 0\.2 mi \(0\.4 km\) longer, but on calmer or flatter roads\. Undo puts/);
   const same = bestOrderSaid([S, A, B, E], answer({ order: [0, 2, 1, 3], changed: true }), names, false);
-  assert.match(same, /\(was Stop 1\)\. It is on calmer or flatter ways\. Undo puts/);
+  assert.match(same, /\(was Stop 1\)\. The new order is on calmer or flatter roads\. Undo puts/);
+  const shorter = bestOrderSaid(
+    [S, A, B, E],
+    answer({ order: [0, 2, 1, 3], changed: true, before_s: 600, after_s: 780, before_m: 2400, after_m: 2000 }),
+    names,
+    false,
+  );
+  assert.match(shorter, / About 3 min more riding and 0\.2 mi \(0\.4 km\) shorter, on calmer or flatter roads\. Undo/);
   const quicker = bestOrderSaid([S, A, B, E], answer({ order: [0, 2, 1, 3], changed: true, after_s: 500 }), names, false);
   assert.doesNotMatch(quicker, /calmer/, "a quicker order needs no reason");
 });
@@ -147,7 +154,7 @@ test("an order by riding time alone says it did not weigh stress and hills", () 
     names,
     false,
   );
-  assert.match(said, /About 5 min less riding\. This is by riding time alone, without weighing traffic stress and hills as a route does\. Undo/);
+  assert.match(said, /About 5 min less riding\. The router could not weigh traffic stress and hills for these stops, so this is by riding time alone\. Undo/);
   assert.doesNotMatch(said, /more riding|calmer/);
   const slower = bestOrderSaid(
     [S, A, B, E],
@@ -156,7 +163,29 @@ test("an order by riding time alone says it did not weigh stress and hills", () 
     false,
   );
   assert.doesNotMatch(slower, /more riding/);
-  assert.match(bestOrderSaid([S, A, B, E], answer({ by: "riding_time" }), names, false), /^The stops are already in the best order\. This is by riding time alone/);
+  assert.match(bestOrderSaid([S, A, B, E], answer({ by: "riding_time" }), names, false), /^The stops are already in the best order\. The router could not weigh/);
+  const many: LonLat[] = Array.from({ length: 13 }, (_, i) => [-77.05 + 0.001 * i, 38.9] as LonLat);
+  assert.match(
+    bestOrderSaid(many, answer({ order: many.map((_, i) => i), by: "riding_time" }), names, false),
+    / With more than 10 stops, this is by riding time alone, without traffic stress and hills\.$/,
+  );
+  assert.doesNotMatch(
+    bestOrderSaid(many.slice(0, 12), answer({ order: many.slice(0, 12).map((_, i) => i), by: "riding_time" }), names, false),
+    /more than 10/,
+    "ten stops are within the router's cost",
+  );
+  // A loop the rider chose: 11 points are ten stops (every one after the start), 12 are eleven.
+  const loopSaid = (k: number) =>
+    bestOrderSaid(many.slice(0, k), answer({ order: many.slice(0, k).map((_, i) => i), by: "riding_time" }), names, true);
+  assert.match(loopSaid(11), /The router could not weigh/);
+  assert.match(loopSaid(12), /With more than 10 stops/);
+  const straightTimes = bestOrderSaid(
+    [S, A, B, E],
+    answer({ order: [0, 2, 1, 3], changed: true, by: "straight_line", before_s: 900, after_s: 600 }),
+    names,
+    false,
+  );
+  assert.doesNotMatch(straightTimes, /less riding/, "a straight-line answer says no riding time");
 });
 
 const dials: Dials = { ...startDials("default"), loop: true };

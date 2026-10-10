@@ -4416,7 +4416,8 @@ and "End". Mass Ride has no loop, and its hints do not mention the toggle.
 Reverse; `lib/stopOrder.ts`; a one-press button, the owner's choice of 2026-10-10 over 449's switch)
 puts the stops in the order that is best as any route is best (the owner, 2026-10-10: "the same
 best as any other route. It's adjusted by both traffic stress and elevation"): least by the router's
-own cost, riding time with the ride's stress and hills penalties priced in. It is never shown on a Mass Ride, and the API
+own cost: riding time (a climb counting through the router's grade-speed model) with the ride's
+stress penalties, and below the hills slider's middle its hills penalty, priced in. It is never shown on a Mass Ride, and the API
 refuses one (400). Otherwise it shows only with two or more stops to order (`stopsThatMove`): the points between the start and the end, or in a
 loop the rider chose every point after the start (a ride that already ends on its start keeps that
 end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
@@ -4433,7 +4434,7 @@ ride type and dials are still those it was asked for, and only if it fits them (
 already best commits nothing. What came of it is the Points notice (a status, so it is seen and said
 once; cleared when the points change again): each stop that moved, by place name or coordinates, with
 its old number, how many stayed, and what it saves (`bestOrderSaid`; an order no quicker, chosen for
-its cost, says "on calmer or flatter ways"), for example "Stops put in the
+its cost, says "but on calmer or flatter roads"; an order by riding time alone says why), for example "Stops put in the
 best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1). The
 other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter. Undo puts the old
 order back." An order already best, an answer by straight line, a refusal and a ride changed meanwhile
@@ -4446,8 +4447,12 @@ matrix answers only times and distances, so up to ten stops (`COST_MAX_STOPS`; k
 pairs, 110 at ten) the costs are the legs' `summary.cost` from ordinary `/route` requests with
 `break` locations and the plan's `date_time` (`_leg_costs`), chained so each pair is one leg once
 (`_pairs_chains`: an Euler walk through every stop-to-stop pair from the start to the end, and a
-start-stop-end chain for each other stop; at most 50 locations a request, the routers'
-`max_locations`), within 12 s (`COST_BUDGET_S`). Past ten stops, or when the legs are refused (a
+start-stop-end chain for each other stop; a request holds at most 50 locations, the routers'
+`max_locations`, and 250 mi (400 km) of straight line between them in turn, under their
+`max_distance`), within 12 s (`COST_BUDGET_S`). Every cost comes from one graph: a weekend or
+off-road router that stops answering part way leaves the standard graph to answer every leg again,
+and one still silent when the 12 s end is not marked down (it had less than its own limit) but the
+matrix asks the standard graph. Past ten stops, or when the legs are refused (a
 pair the router cannot join refuses its whole request), out of time or carry no cost, the order is by
 the riding times of Valhalla's matrix (`sources_to_targets`, added to `loki.actions` by
 `scripts/build_valhalla_configs.py`) along the same least-cost ways, and the page says it did not
@@ -4461,7 +4466,9 @@ read in the direction ridden (one-way streets, climbs); a pair the router cannot
 The rider's order is kept unless the new one saves at least 1% (`MIN_SAVING_FRACTION`), so a
 reshuffle for nothing does not renumber the stops. The times are the router's own routes between the
 points, not the calm search's or the hills slider's choice, which run only when the route itself is
-planned (on a ride with stops they do not run), and the matrix is asked without a `date_time`. Past 93 mi (150 km) of straight line (the
+planned (the hills slider's search among alternatives does not run on a ride with stops; the calm
+search does, leg by leg, so a planned route can differ from the legs ordered), and the matrix is
+asked without a `date_time`. Past 93 mi (150 km) of straight line (the
 route API's long-ride line) the router is not asked, and a ride past 124 mi (200 km), a loop's way
 back included, is refused as `/route` refuses it. A router out of time also leaves the straight-line order. A router that does not serve the matrix (one started
 before this change, or one that is down) is not an error: the order is chosen by straight-line

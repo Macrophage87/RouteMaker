@@ -1,4 +1,4 @@
-"""Stops in any order (OWNER-DECISIONS 449): the order of a ride's stops that rides least.
+"""Stops in any order (OWNER-DECISIONS 449): the order of a ride's stops that rides best.
 
 The rider presses "Best order"; the page sends the ride as it would ask for a
 route (`core.api.RouteIn`), and this answers the order to put the points in.
@@ -7,15 +7,18 @@ edit it can undo, and asks for the route as it always does.
 
 "Best" is the best any route is (the owner, 2026-10-10: "the same best as any
 other route. It's adjusted by both traffic stress and elevation"): the order
-whose legs cost least by the router's own cost, the riding time with the
-ride's stress and hills penalties priced in, on the graph and with the costing
-the ride itself would use. Valhalla's matrix (`sources_to_targets`) answers
-only times and distances, not that cost, so the cost between each pair of
-points comes from the legs of ordinary /route requests (`_leg_costs`), the
-same requests a plan makes, chained so each leg is one pair the order may use.
-They are the router's own route's costs, not the calm search's or the hills
-slider's choice among alternatives, which run only when the route is planned
-(and not on a ride with stops).
+whose legs cost least by the router's own cost, on the graph and with the
+costing the ride itself would use: the riding time (in which a climb counts
+through the router's grade-speed model) with the ride's stress penalties, and
+below the hills slider's middle its hills penalty, priced in. Valhalla's
+matrix (`sources_to_targets`) answers only times and distances, not that cost,
+so the cost between each pair of points comes from the legs of ordinary
+/route requests (`_leg_costs`), the same requests a plan makes, chained so
+each leg is one pair the order may use.
+They are the router's own route's costs, as a plan's route starts from;
+what a plan then does to its legs (the calm search's re-ranking, and the hills
+slider's weighing of long climbs among alternatives, which a ride with stops
+does not get) runs only when the route is planned.
 
 With more than `COST_MAX_STOPS` stops the pairs are too many to route one by
 one inside the answer's time, and the order is by the matrix's riding times
@@ -56,6 +59,9 @@ COST_BUDGET_S = 12
 # A /route request carries at most this many locations (the routers'
 # service_limits.bicycle.max_locations, scripts/build_valhalla_configs.py).
 ROUTE_MAX_LOCATIONS = 50
+# ... and at most service_limits.bicycle.max_distance (500 km) of straight line
+# between its locations in turn; this keeps well under it.
+ROUTE_MAX_SPAN_M = 400_000
 
 # Past this much straight line (the route API's CONFIRM_SPAN_M, 93 mi or 150 km),
 # the order is by straight line and the router is not asked.
@@ -116,28 +122,45 @@ def _pairs_chains(n: int) -> list[list[int]]:
     return [[0, *walk, n - 1]] + [[0, s, n - 1] for s in stops[1:]]
 
 
-def _requests_of(chain: list[int]) -> list[list[int]]:
-    """A chain split into /route requests of at most ROUTE_MAX_LOCATIONS
-    locations, each starting where the last ended."""
-    step = ROUTE_MAX_LOCATIONS - 1
-    return [chain[i : i + ROUTE_MAX_LOCATIONS] for i in range(0, len(chain) - 1, step)]
+def _requests_of(chain: list[int], points: list) -> list[list[int]]:
+    """A chain split into /route requests, each starting where the last ended, of
+    at most ROUTE_MAX_LOCATIONS locations and ROUTE_MAX_SPAN_M of straight line
+    between them in turn (the routers refuse a request past either)."""
+    requests, current, span = [], [chain[0]], 0.0
+    for nxt in chain[1:]:
+        step = haversine(Point(*points[current[-1]]), Point(*points[nxt]))
+        if len(current) >= ROUTE_MAX_LOCATIONS or (
+            len(current) > 1 and span + step > ROUTE_MAX_SPAN_M
+        ):
+            requests.append(current)
+            current, span = [current[-1]], 0.0
+        current.append(nxt)
+        span += step
+    requests.append(current)
+    return requests
 
 
 def _leg_costs(
     variant: str, request_points: list, costing: dict, when: str, deadline
-) -> tuple[list, list, list, str] | None:
+) -> tuple[tuple[list, list, list] | None, str]:
     """The router's cost, riding time (seconds) and length (metres) of the route
     between every pair of points an order may ride, from the legs of /route
-    requests as a plan asks them, and the graph that answered; None if the router
-    would not give them all (a pair it cannot join refuses its whole request, and
-    the matrix, which can say so pair by pair, takes over). Only the variant and
-    the router's error are logged, never the points."""
+    requests as a plan asks them, or None if the router would not give them all
+    (a pair it cannot join refuses its whole request, and the matrix, which can
+    say so pair by pair, takes over); and the graph the matrix should ask next.
+
+    Every cost is from one graph: a weekend or off-road router that stops
+    answering part way leaves the standard graph to answer them all again. One
+    still silent when the legs' time runs out is not remembered as down (it had
+    less than its own limit), but the matrix asks the standard graph. Only the
+    variant and the router's error are logged, never the points."""
     n = len(request_points)
     cost = [[None] * n for _ in range(n)]
     times = [[None] * n for _ in range(n)]
     metres = [[None] * n for _ in range(n)]
+    asked, filled = variant, False
     for chain in _pairs_chains(n):
-        for indices in _requests_of(chain):
+        for indices in _requests_of(chain, request_points):
             payload = {
                 "locations": [
                     {"lon": request_points[i][0], "lat": request_points[i][1], "type": "break"}
@@ -150,31 +173,36 @@ def _leg_costs(
                 "units": "kilometers",
             }
             try:
-                answer, variant = _ask(variant, "route", payload, deadline)
-            except (
-                routing.RouterUnavailable,
-                routing.RouterRefused,
-                routing.DeadlineExceeded,
-            ) as error:
+                answer, answered = _ask(variant, "route", payload, deadline)
+            except routing.DeadlineExceeded as error:
                 logger.warning("the %s router gave no leg costs: %s", variant, error)
-                return None
+                return None, routing.Variant.STANDARD.value
+            except (routing.RouterUnavailable, routing.RouterRefused) as error:
+                logger.warning("the %s router gave no leg costs: %s", variant, error)
+                return None, variant
+            if answered != variant:
+                if filled and variant == asked and asked in routing.TWIN_VARIANTS:
+                    # The twin went down part way: ask the standard graph for every leg.
+                    return _leg_costs(answered, request_points, costing, when, deadline)
+                variant = answered
             legs = (answer.get("trip") or {}).get("legs")
             if not isinstance(legs, list) or len(legs) != len(indices) - 1:
                 logger.warning("the %s router's legs had the wrong shape", variant)
-                return None
+                return None, variant
             for a, b, leg in zip(indices, indices[1:], legs, strict=False):
                 summary = leg.get("summary") if isinstance(leg, dict) else None
                 values = [(summary or {}).get(key) for key in ("cost", "time", "length")]
                 if not all(isinstance(v, int | float) for v in values):
                     # An older router without a leg's cost: the matrix orders by time.
                     logger.warning("the %s router's legs carried no cost", variant)
-                    return None
+                    return None, variant
+                filled = True
                 cost[a][b], times[a][b], metres[a][b] = (
                     float(values[0]),
                     float(values[1]),
                     float(values[2]) * 1000.0,
                 )
-    return cost, times, metres, variant
+    return (cost, times, metres), variant
 
 
 def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list | None:
@@ -283,9 +311,9 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
     legs = None
     if not long_ride and len(request_points) - 2 <= COST_MAX_STOPS:
         legs_by = routing.Deadline(min(deadline.at, started + COST_BUDGET_S), deadline.per_call_s)
-        legs = _leg_costs(variant, request_points, costing, when, legs_by)
+        legs, variant = _leg_costs(variant, request_points, costing, when, legs_by)
     if legs is not None:
-        cost, times, metres, _ = legs
+        cost, times, metres = legs
         chosen = stoporder.best_order(cost)
         own = list(range(len(request_points)))
         body = {
@@ -297,9 +325,6 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
         }
         new = chosen.order[:-1] if appended else chosen.order
         return {"order": new, "changed": chosen.changed, "exact": chosen.exact} | body
-    if variant in routing.TWIN_VARIANTS and routing._twin_down(variant):
-        # The legs found the twin graph down: the matrix asks the standard one.
-        variant = routing.Variant.STANDARD.value
     matrix = None if long_ride else _matrix(variant, request_points, costing, deadline)
     if matrix is not None:
         times, metres = matrix

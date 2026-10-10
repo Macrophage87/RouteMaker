@@ -1468,7 +1468,7 @@ class StopOrderOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The order of a ride's stops that rides least (OWNER-DECISIONS 449)",
+    summary="The order of a ride's stops that rides best (OWNER-DECISIONS 449)",
     by_alias=True,
 )
 @decorate_view(

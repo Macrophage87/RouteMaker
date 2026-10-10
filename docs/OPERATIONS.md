@@ -2795,15 +2795,19 @@ routers serve only once their config lists it in
 are read when a router starts, so after deploying the release that adds it, restart the routers once,
 as after a rebuild (below); the beta's CD restarts them itself when a `loki` key changes. Until then
 nothing fails: a press that needs the matrix orders the stops by straight-line distance, the answer's `by` is
-`straight_line`, the page says the router's riding times were not available, and the api logs "the
+`straight_line`, the page says the router's riding times were not available (a press ordered by the matrix says it
+is by riding time alone, without traffic stress and hills), and the api logs "the
 <variant> router gave no riding-time matrix" at WARNING (the variant and the router's error only,
 never the points).
 
 What one press costs, up to ten stops: k(k+1) route legs for k stops (12 at three stops, 42 at six,
 110 at ten), asked as one chained request through the stop-to-stop pairs (split at 50 locations)
 and one start-stop-end request for each other stop, one after another inside 12 s (`COST_BUDGET_S`),
-each request bounded like a route's call; a request is about as heavy as a plan through the same
-legs. The legs are logged at WARNING as "the <variant> router gave no leg costs" when they fail.
+each request bounded like a route's call and holding at most 50 locations and 250 mi (400 km) of
+straight line (under the routers' `max_distance`, 500 km). That is about k plans' worth of routing
+for k stops (about ten plans at ten stops), yet it counts as one request against the per-client
+limit and holds one routing slot, like a route; and as with `/route`, legs the api gave up on at
+12 s keep running on the router while the matrix is asked. The legs are logged at WARNING as "the <variant> router gave no leg costs" when they fail.
 They have not been measured on a real router: measure a ten-stop press on a ride of about 30 mi
 (50 km) before relying on it, and lower `COST_MAX_STOPS` if it runs near 12 s. Past ten stops, or
 when the legs fail: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`

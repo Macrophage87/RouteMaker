@@ -1,7 +1,7 @@
 """The best order to visit a ride's stops in (OWNER-DECISIONS 449, "Stops in any order").
 
 A rider who has placed several stops can ask for them in the order that rides
-least. The start stays first and the destination stays last; in a loop the
+best (least by the costs given). The start stays first and the destination stays last; in a loop the
 start is also the finish, so the loop's points arrive here with the start
 again at the end and both ends are fixed the same way. Only the stops between
 the two ends move.
