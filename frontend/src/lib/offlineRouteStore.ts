@@ -54,14 +54,24 @@ async function run<T>(name: Store, mode: IDBTransactionMode, act: (store: IDBObj
 
 // ---- The routes ------------------------------------------------------------------------------------
 
+/** For the list on screen: [] when the database cannot be read. Never for deciding what to free. */
 export async function listKept<A = unknown>(): Promise<KeptRoute<A>[]> {
   try {
-    const all = await run<KeptRoute<A>[]>("routes", "readonly", (s) => s.getAll() as IDBRequest<KeptRoute<A>[]>);
-    writeCount(all.length);
-    return all;
+    return await listKeptOrThrow<A>();
   } catch {
     return [];
   }
+}
+
+/**
+ * Every kept route, or a throw when the database cannot be read (iOS drops the connection after the app
+ * is in the background: "Connection to Indexed Database server lost"). Whatever decides what to free
+ * reads this one, so a failed read frees nothing rather than everything.
+ */
+export async function listKeptOrThrow<A = unknown>(): Promise<KeptRoute<A>[]> {
+  const all = await run<KeptRoute<A>[]>("routes", "readonly", (s) => s.getAll() as IDBRequest<KeptRoute<A>[]>);
+  writeCount(all.length);
+  return all;
 }
 
 export async function putKept(route: KeptRoute): Promise<void> {

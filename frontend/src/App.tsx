@@ -1265,11 +1265,13 @@ export function App() {
     setKeepSpoken((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
     void askPersist();
     const title = keptTitle();
-    const { outcome } = await keepRoute({ plan, title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }, controller.signal).catch(() => ({ outcome: "failed" as const }));
+    const { outcome, removed } = await keepRoute({ plan, title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }, controller.signal).catch(() => ({ outcome: "failed" as const, removed: false }));
     if (keepAbort.current === controller) keepAbort.current = null;
     setKeeping(false);
     setKeptVersion((v) => v + 1);
-    setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+    // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
+    if (removed) setKeepSpoken({ text: "", count: 0 });
+    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
   };
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {

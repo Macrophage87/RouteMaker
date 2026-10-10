@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { KeptRange, PrefetchResult } from "./corridor.ts";
 import { LAST_RIDE_ID, type KeptRoute } from "./offlineRoutes.ts";
-import { keepLastRide, keepRoute, keptLocks, removeKept, setKeptDeps, sweepKept, type KeptStore, type LockManagerLike, type MapKeeping } from "./offlineKeep.ts";
+import { keepLastRide, keepRoute, keptLocks, lastRideAdopter, removeKept, setKeptDeps, sweepKept, type KeptStore, type LockManagerLike, type MapKeeping } from "./offlineKeep.ts";
 
 function memoryStore() {
   const records = new Map<string, KeptRoute>();
@@ -14,6 +14,7 @@ function memoryStore() {
   const copy = <T>(r: T): T => structuredClone(r);
   const store: KeptStore = {
     listKept: async <A>() => [...records.values()].map(copy) as KeptRoute<A>[],
+    listKeptOrThrow: async <A>() => [...records.values()].map(copy) as KeptRoute<A>[],
     getKept: async <A>(id: string) => (records.has(id) ? (copy(records.get(id)) as KeptRoute<A>) : undefined),
     putKept: async (route) => void records.set(route.id, copy(route)),
     deleteKept: async (id) => void records.delete(id),
@@ -180,4 +181,73 @@ test("with no Web Locks, the sweep is skipped and a freeing still waits for this
   await keeping;
   await freed;
   assert.ok(m.tiles.has(tile(8)), "B names it now");
+});
+
+test("a list that cannot be read (iOS after the background) frees nothing: no sweep, no Remove freeing, no last-ride freeing, and a keep fails", async () => {
+  const m = memoryStore();
+  m.records.set("#a", kept("#a", [tile(1)]));
+  m.records.set("#b", kept("#b", [tile(1), tile(2)]));
+  m.records.set(LAST_RIDE_ID, kept(LAST_RIDE_ID, [tile(2)], { lastRide: true }));
+  for (const n of [1, 2, 3]) m.tiles.set(tile(n), new ArrayBuffer(3));
+  const lost = () => Promise.reject(new Error("Connection to Indexed Database server lost"));
+  const broken: KeptStore = { ...m.store, listKeptOrThrow: lost, listKept: async () => [] };
+  setKeptDeps({ store: broken, locks: keptLocks(fakeLockManager()), walk: async () => RESULT });
+  await sweepKept();
+  const { freed } = await removeKept("#a");
+  await freed;
+  await keepLastRide({ plan: "#ride", title: "ride", distanceM: 3000, answer: null });
+  assert.deepEqual([...m.tiles.keys()].sort(), [tile(1), tile(2), tile(3)], "every tile is still there");
+  assert.equal(m.records.get(LAST_RIDE_ID)?.plan, LAST_RIDE_ID, "the last ride is not replaced unread");
+  const result = await keepRoute(request("#b"));
+  assert.equal(result.outcome, "failed", "a keep that cannot read the record before fails, and says so");
+  assert.deepEqual(m.records.get("#b")?.tiles, [tile(1), tile(2)], "the record before keeps its names");
+});
+
+test("End ride's hand-on adopts the corridor into its own ride's record only, never a next ride's that got there first", async () => {
+  const m = memoryStore();
+  setKeptDeps({ store: m.store, locks: keptLocks(fakeLockManager()), walk: async () => RESULT });
+  await keepLastRide({ plan: "#ride-1", title: "ride 1", distanceM: 3000, answer: null });
+  const handOn = lastRideAdopter(); // End ride of ride 1
+  await keepLastRide({ plan: "#ride-2", title: "ride 2", distanceM: 4000, answer: null }); // Start ride 2 wins the lock
+  await handOn({ ranges: [], tiles: [{ url: tile(4), data: new ArrayBuffer(3) }] });
+  const last = m.records.get(LAST_RIDE_ID);
+  assert.equal(last?.plan, "#ride-2");
+  assert.deepEqual(last?.tiles, [], "ride 1's map is not put on ride 2");
+  assert.equal(last?.complete, false);
+  // In order, the hand-on adopts.
+  const again = lastRideAdopter();
+  await again({ ranges: [], tiles: [{ url: tile(5), data: new ArrayBuffer(3) }] });
+  assert.ok(m.records.get(LAST_RIDE_ID)?.tiles.includes(tile(5)));
+});
+
+test("a keep stopped by Remove of its own route says it was removed, so its press stays quiet", async () => {
+  const m = memoryStore();
+  const walk = async (_line: unknown, _k: MapKeeping, signal: AbortSignal) => {
+    await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+    return { ...RESULT, stopped: true };
+  };
+  setKeptDeps({ store: m.store, locks: keptLocks(fakeLockManager()), walk });
+  const keeping = keepRoute(request("#c"));
+  await tick();
+  await removeKept("#c");
+  assert.equal((await keeping).removed, true);
+});
+
+test("without Web Locks, a keep asked for during a freeing waits for it, and freeings take turns", async () => {
+  const locks = keptLocks(undefined);
+  const order: string[] = [];
+  let release = () => {};
+  const first = locks.exclusive(async () => {
+    order.push("free 1 start");
+    await new Promise<void>((resolve) => (release = resolve));
+    order.push("free 1 end");
+  });
+  const second = locks.exclusive(async () => void order.push("free 2"));
+  const keep = locks.shared(async () => void order.push("keep"));
+  await tick();
+  assert.deepEqual(order, ["free 1 start"]);
+  release();
+  await Promise.all([first, second, keep]);
+  assert.deepEqual(order.slice(0, 2), ["free 1 start", "free 1 end"]);
+  assert.ok(order.includes("free 2") && order.includes("keep"));
 });

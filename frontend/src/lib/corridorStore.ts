@@ -253,7 +253,7 @@ export async function keepCorridor(line: readonly LonLat[], first = false): Prom
   return prefetchCorridor(line, { fetch: fetchJob, extras: done.size ? undefined : fetchExtras, full: () => budget.full, signal: controller.signal, done });
 }
 
-/** What the ride kept, for the installed app's last-ride route (lib/offlineKeep.ts `adoptCorridor`). */
+/** What the ride kept, for the installed app's last-ride route (lib/offlineKeep.ts `lastRideAdopter`). */
 export interface CorridorSnapshot {
   ranges: KeptRange[];
   /** Each stress tile under the URL the map asks for (with its `?rev=`, as kept beside it). */

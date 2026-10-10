@@ -6608,14 +6608,18 @@ so the Web Locks lock `routemaker-kept` orders every tab: a keep and a hand-on h
 whole run, the final record write included; Remove's freeing, the last ride's replacement and
 `sweepKept` (what no record names, after a Remove and 20 s after load) take it exclusive and work out
 what to free only once they hold it. Remove deletes the record at once and frees later; Remove of the
-route being kept stops that keep and waits for it first. Without Web Locks the freeing waits for this
-page's keeps and the sweep is skipped (`keptLocks`; `offlineKeep.test.ts` runs each order with an
+route being kept stops that keep and waits for it first (and that keep's press stays quiet). Whatever
+decides what to free reads the list strictly (`listKeptOrThrow`): iOS drops the IndexedDB connection
+after the app is in the background, and a read that fails frees nothing (a keep then fails) rather than
+reading as "no routes". Without Web Locks this page's keeps wait for a freeing asked for before them,
+freeings take turns and wait for the keeps before them, and the sweep is skipped (`keptLocks`; `offlineKeep.test.ts` runs each order with an
 in-memory store and a fake lock manager). Start ride stops a keep still fetching, and the last ride's
 freeing waits for its final write.
 In the installed app (465a) the last ride's route is kept automatically: at End ride, RideMode's
-`clearCorridor(adoptCorridor)` hands the ride's own corridor over, so nothing is fetched twice. End ride
-stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for it
-and is never stopped by the old ride's clear.
+`clearCorridor(lastRideAdopter())` hands the ride's own corridor over, so nothing is fetched twice. End
+ride stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for
+it and is never stopped by the old ride's clear. The hand-on is bound to its ride's record (the savedAt
+taken at Start ride) and adopts nothing into a next ride's record that got there first.
 Reading back: `CorridorSource` takes a read-only `fallback` (the kept ranges), consulted only when the
 network fails; `corridorStress.kept` reads the ride's copy and then the kept routes'. When a plan
 request fails with a network error, App's scheduler answers from the kept route with a notice that it

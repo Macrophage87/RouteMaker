@@ -92,7 +92,7 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, keepCorridor } from "./lib/corridorStore.ts";
-import { adoptCorridor } from "./lib/offlineKeep.ts";
+import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { inDc } from "./lib/dcBoundary.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import {
@@ -639,7 +639,7 @@ export function RideMode({
     };
   }, [route]);
   const handsOn = useRef(keepLastRide);
-  useEffect(() => () => void clearCorridor(handsOn.current ? adoptCorridor : undefined), []);
+  useEffect(() => () => void clearCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
   const corridorText = corridorNote(corridor);
 
   const resume = () => {

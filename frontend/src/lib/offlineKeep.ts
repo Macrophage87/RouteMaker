@@ -6,7 +6,7 @@
  * What is already kept (by another route, or by the ride under way) is not fetched again.
  *
  * The last ride (the installed app only) needs no fetch at all: End ride hands this module what the
- * ride kept (`adoptCorridor`) before clearing it.
+ * ride kept (`lastRideAdopter`) before clearing it.
  *
  * Tiles and ranges are shared between routes, so nothing may delete one a keep under way is about to
  * name. The Web Locks lock KEPT_LOCK orders it, across every tab of the site: each keep and each
@@ -34,7 +34,10 @@ export interface KeepRequest<A> {
 
 /** What this module reads and writes (lib/offlineRouteStore.ts; a test gives an in-memory one). */
 export interface KeptStore {
+  /** The routes, [] when the database cannot be read: for showing only. */
   listKept<A = unknown>(): Promise<KeptRoute<A>[]>;
+  /** The routes, or a throw when the database cannot be read: for anything that decides what to free. */
+  listKeptOrThrow<A = unknown>(): Promise<KeptRoute<A>[]>;
   getKept<A = unknown>(id: string): Promise<KeptRoute<A> | undefined>;
   putKept(route: KeptRoute): Promise<void>;
   deleteKept(id: string): Promise<void>;
@@ -52,6 +55,7 @@ export interface KeptStore {
 
 const browserStore: KeptStore = {
   listKept: idb.listKept,
+  listKeptOrThrow: idb.listKeptOrThrow,
   getKept: idb.getKept,
   putKept: idb.putKept,
   deleteKept: idb.deleteKept,
@@ -93,21 +97,32 @@ export function keptLocks(manager: LockManagerLike | undefined): KeptLocks {
       acrossTabs: true,
     };
   }
+  // This page only: a shared run waits for the exclusive ones asked for before it; an exclusive one
+  // waits for the exclusive ones before it and for the shared runs asked for before it (not later ones,
+  // which wait for it).
   const running = new Set<Promise<unknown>>();
+  let exclusives: Promise<unknown> = Promise.resolve();
+  const settle = (p: Promise<unknown>) =>
+    p.then(
+      () => undefined,
+      () => undefined,
+    );
   return {
     shared<T>(work: () => Promise<T>): Promise<T> {
-      const run = work();
-      const settled = run.then(
-        () => undefined,
-        () => undefined,
-      );
+      const run = exclusives.then(work);
+      const settled = settle(run);
       running.add(settled);
       void settled.then(() => running.delete(settled));
       return run;
     },
-    async exclusive<T>(work: () => Promise<T>): Promise<T> {
-      while (running.size) await Promise.all([...running]);
-      return work();
+    exclusive<T>(work: () => Promise<T>): Promise<T> {
+      const before = Promise.all([...running]);
+      const run = exclusives.then(async () => {
+        await before;
+        return work();
+      });
+      exclusives = settle(run);
+      return run;
     },
     acrossTabs: false,
   };
@@ -167,32 +182,39 @@ export function setKeptDeps(deps: { store?: KeptStore; locks?: KeptLocks; walk?:
 }
 
 /** This page's keeps under way, by route id: Remove of that route stops it and waits for it first. */
-const keeping = new Map<string, { controller: AbortController; done: Promise<unknown> }>();
+const keeping = new Map<string, { controller: AbortController; done: Promise<unknown>; removed: boolean }>();
 
 /**
  * Keep a route: its record at once (so it is listed, and opens with no signal, even before the map
  * along it is in), then the map along it. Resolves with what the keep press says. `signal` stops it
  * (Start ride); what was kept by then stays named.
  */
-export function keepRoute<A>(request: KeepRequest<A>, signal?: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A> }> {
+export function keepRoute<A>(request: KeepRequest<A>, signal?: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A>; removed?: boolean }> {
   const id = keptId(request.plan, false);
   const controller = new AbortController();
   if (signal) {
     if (signal.aborted) controller.abort();
     else signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  const done = locks.shared(() => keepRouteNow(id, request, controller.signal));
-  const entry = { controller, done };
+  const run = locks.shared(() => keepRouteNow(id, request, controller.signal));
+  const entry = { controller, done: run as Promise<unknown>, removed: false };
   keeping.set(id, entry);
-  void done.then(
+  void run.then(
     () => keeping.get(id) === entry && keeping.delete(id),
     () => keeping.get(id) === entry && keeping.delete(id),
   );
-  return done;
+  // Stopped by Remove of this route: `removed`, so the keep press says nothing (Remove says what happened).
+  return run.then((result) => (entry.removed ? { ...result, removed: true } : result));
 }
 
 async function keepRouteNow<A>(id: string, request: KeepRequest<A>, signal: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A> }> {
-  const existing = await store.listKept<A>();
+  let existing: KeptRoute<A>[];
+  try {
+    existing = await store.listKeptOrThrow<A>();
+  } catch {
+    // Unread, the record before (and what it names) would be lost: the keep fails, and says so.
+    return { outcome: "failed" };
+  }
   if (!canKeep(existing, id)) return { outcome: "full" };
   const before = existing.find((r) => r.id === id);
   const route = keptRecord({ id, plan: request.plan, title: request.title, distanceM: request.distanceM, answer: request.answer, lastRide: false }, before, Date.now());
@@ -272,27 +294,45 @@ async function keepMap<A>(line: readonly LonLat[], route: KeptRoute<A>, signal: 
 
 /**
  * Start ride in the installed app: the ride's route is kept as the last ride (replacing the one
- * before), with no map yet; End ride hands it the ride's own (`adoptCorridor`). Its freeing waits for
+ * before), with no map yet; End ride hands it the ride's own (`lastRideAdopter`). Its freeing waits for
  * any keep under way (a Keep for offline Start ride has just stopped included) to write its record.
  */
 export function keepLastRide<A>(request: Omit<KeepRequest<A>, "line">): Promise<void> {
+  // The ride's own token, taken now (Start ride): End ride's hand-on adopts into this record only.
+  const savedAt = Math.max(Date.now(), lastRideSavedAt + 1);
+  lastRideSavedAt = savedAt;
   return locks.exclusive(async () => {
-    const before = await store.getKept<A>(LAST_RIDE_ID);
+    let all: KeptRoute<A>[];
+    try {
+      all = await store.listKeptOrThrow<A>();
+    } catch {
+      // Unread: the last ride is not replaced, and nothing is freed.
+      return;
+    }
+    const before = all.find((r) => r.id === LAST_RIDE_ID);
     // Not one of the rider's ten (canKeep): the next ride replaces it.
-    const route = keptRecord({ id: LAST_RIDE_ID, plan: request.plan, title: request.title, distanceM: request.distanceM, answer: request.answer, lastRide: true }, undefined, Date.now());
+    const route = keptRecord({ id: LAST_RIDE_ID, plan: request.plan, title: request.title, distanceM: request.distanceM, answer: request.answer, lastRide: true }, undefined, savedAt);
     await store.putKept(route);
     if (before) await freeFor(before);
   });
 }
 
-/** End ride in the installed app: what the ride kept becomes the last ride's map. */
-export function adoptCorridor(kept: CorridorSnapshot): Promise<void> {
-  return locks.shared(() => adoptNow(kept));
+/** The last ride's token (its record's savedAt), set at Start ride. */
+let lastRideSavedAt = 0;
+
+/**
+ * End ride in the installed app (RideMode, as the ride's screen goes): the hand-on for clearCorridor,
+ * bound now to this ride's last-ride record. Run later in the clears' chain, it adopts the ride's
+ * corridor only if that record is still this ride's, never into a next ride's that got there first.
+ */
+export function lastRideAdopter(): (kept: CorridorSnapshot) => Promise<void> {
+  const savedAt = lastRideSavedAt;
+  return (kept) => locks.shared(() => adoptNow(kept, savedAt));
 }
 
-async function adoptNow(kept: CorridorSnapshot): Promise<void> {
+async function adoptNow(kept: CorridorSnapshot, savedAt: number): Promise<void> {
   const route = await store.getKept(LAST_RIDE_ID);
-  if (!route) return;
+  if (!route || route.savedAt !== savedAt) return;
   // Named before they are copied, so a copy cut short leaves nothing unnamed (a name with no tile is harmless).
   route.ranges = kept.ranges.map((r) => r.key);
   route.tiles = [...new Set([...kept.tiles.map((t) => t.url), ...styleExtraUrls()])];
@@ -333,7 +373,14 @@ async function adoptNow(kept: CorridorSnapshot): Promise<void> {
 
 /** Inside the exclusive lock, once `removed`'s record is gone or replaced: what it used that no record names now. */
 async function freeFor(removed: KeptRoute): Promise<void> {
-  const free = orphans(removed, await store.listKept());
+  let remaining: KeptRoute[];
+  try {
+    remaining = await store.listKeptOrThrow();
+  } catch {
+    // Unread: nothing is freed (a later sweep frees what is still unnamed).
+    return;
+  }
+  const free = orphans(removed, remaining);
   await store.deleteTiles(free.tiles).catch(() => undefined);
   await store.deleteRanges(free.ranges).catch(() => undefined);
 }
@@ -346,13 +393,13 @@ async function freeFor(removed: KeptRoute): Promise<void> {
 export async function removeKept(id: string): Promise<{ freed: Promise<void> }> {
   const running = keeping.get(id);
   if (running) {
+    running.removed = true;
     running.controller.abort();
     await running.done.catch(() => undefined);
   }
   const removed = await store.getKept(id);
   if (!removed) return { freed: Promise.resolve() };
   await store.deleteKept(id);
-  await store.listKept();
   // Resolves now (the list and the announcement need not wait); the storage is freed when the lock allows.
   const freed = locks
     .exclusive(async () => {
@@ -378,7 +425,8 @@ async function sweepNow(): Promise<void> {
   // Nothing counted and no bucket: nothing to sweep, and the database is not opened.
   if (!store.anyKept() && !(await store.hasBucket())) return;
   try {
-    const routes = await store.listKept();
+    // A failed read throws (caught below): never "no routes", which would free every tile.
+    const routes = await store.listKeptOrThrow();
     const tiles = await store.tileKeys();
     const ranges = await store.rangeKeys().catch(() => [] as string[]);
     const base = typeof location === "undefined" ? "http://localhost/" : location.href;
