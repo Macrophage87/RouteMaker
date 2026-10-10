@@ -68,9 +68,9 @@ export function canKeep(routes: readonly KeptRoute[], id: string): boolean {
 
 /**
  * Whether a browser tab offers "Keep for offline" too. OWNER-DECISIONS 465a names the installed app;
- * the owner may yet allow tabs (PLAN.md FOLLOWUP-WEB-NAV): this is the one switch.
+ * the owner chose "Browser tabs too" on 2026-10-10 (PLAN.md FOLLOWUP-WEB-NAV). The one switch.
  */
-export const KEEP_IN_BROWSER_TAB = false;
+export const KEEP_IN_BROWSER_TAB = true;
 
 /** Whether "Keep for offline" is offered: in the installed app (running standalone), or in a tab when allowed. */
 export function keepOffered(standalone: boolean, inTab: boolean = KEEP_IN_BROWSER_TAB): boolean {

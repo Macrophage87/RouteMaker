@@ -617,7 +617,7 @@ export function App() {
   const [keeping, setKeeping] = useState(false);
   const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
   const keepAbort = useRef<AbortController | null>(null);
-  // Keep for offline is the installed app's (OWNER-DECISIONS 465a; keepOffered is the one switch).
+  // Keep for offline: the installed app's (465a) and, by the owner's choice of 2026-10-10, a tab's too (keepOffered is the one switch).
   const keepShown = keepOffered(isStandalone());
   // Once a while after load (not at it: the store's first open takes about a second), what a keep or a
   // removal cut short left unnamed is deleted (offlineKeep.ts sweepKept).

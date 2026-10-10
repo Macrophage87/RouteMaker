@@ -2670,12 +2670,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
   await p.waitFor("!!document.querySelector('.summary')", 40000);
   await sleep(800);
-  check("keep for offline: a browser tab does not offer it (OWNER-DECISIONS 465a: the installed app's)", await p.eval("!document.querySelector('.keep-offline') && !document.querySelector('#keep-offline-said')"));
-  // From here the page runs as the installed app does (isStandalone: navigator.standalone, as iOS's home-screen app has it).
-  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'standalone', { configurable: true, get: () => true });" });
-  await p.s("Page.reload", {});
-  await p.waitFor("!!document.querySelector('.summary') && !!document.querySelector('.keep-offline')", 40000);
-  await sleep(800);
+  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10)", await p.eval("!!document.querySelector('.keep-offline') && !!document.querySelector('#keep-offline-said')"));
 
   // Keep for offline: a real button under the route; what it did is said politely.
   const keep = await p.eval("(() => { const b = document.querySelector('.route-actions .keep-offline'); const r = b?.getBoundingClientRect(); return { name: b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('#keep-offline-said')?.getAttribute('role') }; })()");

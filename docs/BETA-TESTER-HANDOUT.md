@@ -168,16 +168,15 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   there all have it. The Settings page says the same.
 - The installed app may ask for the beta's user name and password once more the first time it
   opens. That is expected.
-- In the installed app, "Keep for offline", under a route, saves the route and the map along it
-  on this device. (A browser tab does not offer it.) Open it again from Settings, "Routes kept
-  for offline", with no signal at all; the planner says it is the route you kept and may be out
-  of date. "Remove" there deletes it. Up to 10 routes.
-- The route of your last ride is kept too ("Last ride"), with the map saved during the ride; it
-  is not one of the 10, and the next ride replaces it.
+- "Keep for offline", under a route, saves the route and the map along it on this device. Open
+  it again from Settings, "Routes kept for offline", with no signal at all; the planner says it
+  is the route you kept and may be out of date. "Remove" there deletes it. Up to 10 routes.
+- In the installed app, the route of your last ride is kept too ("Last ride"), with the map
+  saved during the ride; it is not one of the 10, and the next ride replaces it.
 - Kept routes stay on this device only, until you remove them, and are never sent anywhere,
   even a route that started from "Use my location". Your position along a ride is never kept.
-  (Only the installed app keeps routes: on an iPhone, Safari may clear what a browser tab saved
-  after seven days without a visit.)
+  In a browser tab on an iPhone, Safari may clear them after seven days without a visit; the
+  installed app keeps them.
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
   press "End ride". With no signal, a line there says you are offline.

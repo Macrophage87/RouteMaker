@@ -6420,8 +6420,9 @@ waits; `lib/appWorker.ts` (registered only in a production build in a secure con
 `swKill.mjs`, deletes the worker's own caches, unregisters, and reloads only the pages it controls (no
 loop); the owner copies it over `sw.js` on disk (OPERATIONS, "The app's service worker").
 
-**Routes kept for offline (P3).** "Keep for offline" under a route's figures, in the installed app only
-(465a; `keepOffered` with its one switch `KEEP_IN_BROWSER_TAB` in `lib/offlineRoutes.ts`;
+**Routes kept for offline (P3).** "Keep for offline" under a route's figures, in the installed app
+(465a) and in a browser tab (the owner's choice of 2026-10-10; `keepOffered` with its one switch
+`KEEP_IN_BROWSER_TAB` in `lib/offlineRoutes.ts`;
 `keepForOffline` in App, `lib/offlineKeep.ts`) saves the plan, its API answer and its title first (IndexedDB
 `routemaker-offline`, store `routes`), then walks the corridor with N5's `prefetchCorridor` (same
 pacing and caps) into its own store: base map ranges in the store `ranges`, stress tiles, glyphs and the
@@ -6463,5 +6464,4 @@ check, activate, the kill switch, the generated scripts run in `vm`); `npm test`
 for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback and End ride's hand-on
 order (`corridorStore.test.ts`); the browser suite's installable-app
 group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
-debugging port), with offline emulated on the page and the worker's target, and the page made to run
-as the installed app (`navigator.standalone`) for Keep for offline.
+debugging port), with offline emulated on the page and the worker's target,.

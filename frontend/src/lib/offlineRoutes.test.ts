@@ -55,11 +55,11 @@ test("at most ten kept; replacing one already kept is always allowed", () => {
   assert.equal(canKeep(full.slice(1), "new"), true);
 });
 
-test("Keep for offline is the installed app's (465a), with one switch for browser tabs", () => {
-  assert.equal(KEEP_IN_BROWSER_TAB, false);
+test("Keep for offline is offered in the installed app and, by the owner's choice of 2026-10-10, in a browser tab too", () => {
+  assert.equal(KEEP_IN_BROWSER_TAB, true);
   assert.equal(keepOffered(true), true);
-  assert.equal(keepOffered(false), false);
-  assert.equal(keepOffered(false, true), true);
+  assert.equal(keepOffered(false), true);
+  assert.equal(keepOffered(false, false), false, "the switch off: the installed app only");
 });
 
 test("the last ride is not one of the ten: it is always kept, replacing the one before, and never blocks the rider's own", () => {
