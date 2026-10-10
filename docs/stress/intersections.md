@@ -15,7 +15,7 @@ the intersection weight at the ride's slider position (section 8; `junction_m`,
 
 ## 1. Why it is not in the graph
 
-Valhalla's bicycle costing (3.6.3, as 3.5.1 before it) cannot tell which road is crossed or which way the
+Valhalla's bicycle costing (3.9.1, as 3.5.1 and 3.6.3 before it) cannot tell which road is crossed or which way the
 rider turns. So the model runs on the traced route, where every road's tier at every
 junction, the movement and Valhalla's own control flags are known (`:11-22`). One
 function gives two outputs. The first is a cost, which the router's choice between
@@ -130,7 +130,7 @@ only where a busy road meets there (`:433-437`).
   `:548-583`). The cost is still the model's.
 - **Red is also the avoidance trigger.** RouteMaker's search plans again around the
   approaches to junctions whose cost is red or more (`REFINE_MIN_EVENT_FT = RED_MIN_FT`,
-  `src/core/refine.py:111`; used at `src/core/refine.py:737-749`). It does not do this on
+  `src/core/refine.py:111`; used at `src/core/refine.py:740-752`). It does not do this on
   Mass Ride.
 
 ## 8. The preset's weight
@@ -138,12 +138,12 @@ only where a busy road meets there (`:433-437`).
 How much of a junction's cost counts depends on the traffic-stress slider: 0.25 at 0,
 rising in a straight line to 1.0 at 70 (Default) and staying at 1.0 above that
 (`intersection_weight`, `src/core/refine.py:214-219`; `INTERSECTION_WEIGHT_AT_ZERO`,
-`src/core/refine.py:148`; `STRESS_DEFAULT_AT = 70`, `src/core/presets.py:231`). Mass
+`src/core/refine.py:148`; `STRESS_DEFAULT_AT = 70`, `src/core/presets.py:232`). Mass
 Ride's routing charges no junction cost, because the calm search that adds it does not
 run for Mass Ride ([routing-costs.md](routing-costs.md)). The rolling stress chart
 ([stress-number.md](stress-number.md) section 4) uses the same weight, for every junction
 the model charges for, flagged or not (`src/routemaker/calm.py:153-160`, `:219-230`;
-the weight is passed in at `src/core/routing.py:2466`). At the top of the slider it
+the weight is passed in at `src/core/routing.py:2486`). At the top of the slider it
 counts the worth rule's exchange instead (red 5 x 2 x the cost, orange 5 x 1, unflagged
 0; 10 in place of 5 with a target). Mass Ride has no rolling stress chart.
 

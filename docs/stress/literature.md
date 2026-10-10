@@ -213,7 +213,7 @@ five riders (we have not confirmed the sample size from the full text).
   (`tl_2024_us_uac20`; U.S. public domain; full record in
   [docs/SOURCES.md](../SOURCES.md)): which places are urban, for the default speed
   limits.
-- **Valhalla** 3.6.3 ([bicyclecost.cc](https://github.com/valhalla/valhalla/blob/master/src/sif/bicyclecost.cc)):
+- **Valhalla** 3.9.1 ([bicyclecost.cc](https://github.com/valhalla/valhalla/blob/master/src/sif/bicyclecost.cc)):
   the router. It cannot see which road is crossed at a junction, which is why the
   junction model works on the traced route ([intersections.md](intersections.md),
   section 1).

@@ -50,17 +50,17 @@ today's code, in three parts.
   Valhalla's factor depends on the road's speed and lanes, so a range is given over the
   five modeled road types.
 - **Calm rate above 80.** Plus `rate x w(L)`, the exposure weight `w` at that position's
-  calm rate (`Analysis.score`, `refine.py:336-340`).
+  calm rate (`Analysis.score`, `refine.py:339-343`).
 - **Top of the slider (100).** There is no per-meter price. Ranking is in the strict
   order, and the worth rule sets the exchange: a meter of LTS 3-equivalent stress saved
   is worth 5 m of extra distance with no target, and 2.5 m past a target
-  (`refine.py:420-543`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
+  (`refine.py:423-546`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
   past a target. Up to a rider's target distance a meter of stress saved is worth 10 m
-  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py:441`; the owner's "One rule",
+  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py:444`; the owner's "One rule",
   2026-10-10, filed under 435; not yet in OWNER-DECISIONS), so the multiplier there is `1 + 10 x w_std(L)`. The rolling chart uses that
   price wherever a target is set (section 4).
 
-Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py:166`). It is
+Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py:167`). It is
 shown as quiet-street distance at the preset's planning speed
 (`1800 / (2.2 x 3.6 / km/h)` meters).
 
@@ -86,15 +86,15 @@ Notes:
 
 - The stress-averse weights (1/8/16) count in the score only above 80. At 80 (Cargo with
   passengers) and at 100 (Trailmaxxing) they reach only the Traffic-wins guard,
-  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:442-448`).
+  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:445-451`).
 - The tier adds nothing at LTS 1 or LTS 2, in any layer: no rule separates them. The
   facility class still changes the cost. A traffic-free path costs `0.1 + 0.9u` of its
-  time with no roadway term (`lua/routemaker_remap.lua:1224-1229`), a factor of about
+  time with no roadway term (`lua/routemaker_remap.lua:1240-1245`), a factor of about
   1.19 at Default, against about 2.2 for a quiet street (`QUIET_COST_FACTOR`). So a path
   meter counts about 0.55 quiet meters, on every graph except no-trail (Mass Ride), which
   has no facility classes. A street with a protected lane is priced `(0.15 + 0.6u)` times
   its stress, about 1.25 at Default, so it counts for about 0.57, the same as a path
-  (`lua/routemaker_remap.lua:1221-1224`). The 1 in the table is a quiet street: a quiet
+  (`lua/routemaker_remap.lua:1237-1240`). The 1 in the table is a quiet street: a quiet
   street counts as 1, and paths and protected bike lanes count for less (except on Mass
   Ride). It is not every calm way.
 - The Fast and Group columns are interpolated between the modeled positions
@@ -147,7 +147,7 @@ use the midpoints exactly (phase 2).
 | Exposure weight, standard (0 / 1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
 | Exposure weight, stress-averse (0 / 1 / 8 / 16) | 0 | 0.5 | 4.5 | 12 |
 | Worth rule weight (1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
-| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:957`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
+| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:960`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
 | Strict order: top / second figure | - | 0 / 0.5 | 0.5 / 0.5 | 1 / 0 |
 | Junction, stopped side (0 / 1,200 / 3,000 ft, before factors) | 0 | 600 ft (orange) | 2,100 ft (red) | 3,000 ft |
 | Junction at a signal (0 / 150 / 300 ft) | 0 | 75 ft | 225 ft | 300 ft |
@@ -178,9 +178,9 @@ That way, spikes show up." 461c: build it from the costs the routing already cha
 
 It was built in PR #34 (merged to `main` as 3164c02). The score is
 `src/routemaker/calm.py` (cited below as `calm.py:N`), called from
-`route_profile` (`src/core/routing.py:1502-1507`, `:1563-1592`) with a `calm.Pricing`
-made in `plan` from the slider position (`src/core/routing.py:2455-2467`). The answer
-carries it as `profile.calm` (`ProfileCalmOut`, `src/core/api.py:936-966`, `:1023-1028`).
+`route_profile` (`src/core/routing.py:1515-1520`, `:1563-1592`) with a `calm.Pricing`
+made in `plan` from the slider position (`src/core/routing.py:2475-2487`). The answer
+carries it as `profile.calm` (`ProfileCalmOut`, `src/core/api.py:946-976`, `:1033-1038`).
 The chart is drawn in `frontend/src/ElevationChart.tsx` from the rules in
 `frontend/src/lib/profileChart.ts`, "The rolling stress chart" (`:1079-1345`).
 docs/DEVELOPMENT.md, "The rolling stress chart", has the developer's account. Where the
@@ -252,7 +252,7 @@ length `w` centered on the point at distance `x`:
   charges for counts, flagged or not: its cost (`cost_ft`, `intersections.cost_of`, see
   [intersections.md](intersections.md), after factors, merges and the cap) times the
   intersection weight at the ride's slider position (`junction_m`, `calm.py:153-160`;
-  `refine.intersection_weight`, `src/core/routing.py:2466`): 0.25 at 0, 0.679 at 40, 1.0
+  `refine.intersection_weight`, `src/core/routing.py:2486`): 0.25 at 0, 0.679 at 40, 1.0
   from 70. 1,200 ft at weight 1.0 is about 0.23 calm mi [0.37 km]. At the top of the
   slider the worth rule's exchange applies instead: a red junction counts 5 x 2 x its
   cost, an orange one 5 x 1, and an unflagged one 0 (10 in place of 5 with a target).
@@ -301,7 +301,7 @@ marker, so averaging never hides a very high-stress crossing.
   in place of the stress strip (`ElevationChart.tsx:137-138`, `:292-362`). An answer with
   no score (an older one, or `calm: null` where the score failed) keeps the strip
   (`usableCalm`, `profileChart.ts:1108-1113`; `ElevationChart.tsx:156`, `:364-370`). A
-  failure costs only the score (`src/core/routing.py:1563-1592`). The route panel's
+  failure costs only the score (`src/core/routing.py:1576-1605`). The route panel's
   stress bar is unchanged ([drawing.md](drawing.md)).
 - **Scale.** A log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
   value, the highest step and 1.15 times the upper guide, and at least 2 (`CALM_FLOOR`,
@@ -344,12 +344,12 @@ marker, so averaging never hides a very high-stress crossing.
   `:731-755`).
 - **Long routes.** Where a long route's profile is thinned, the sample at the highest
   window is kept, so the most stressful mile survives (`peak_index`,
-  `calm.py:318-335`; `src/core/routing.py:1563-1569`).
+  `calm.py:318-335`; `src/core/routing.py:1576-1582`).
 
 ### Mass Ride
 
 Mass Ride has no rolling score: `plan` passes no pricing for it
-(`src/core/routing.py:2455-2458`), and its chart keeps the riders per minute. Its
+(`src/core/routing.py:2475-2478`), and its chart keeps the riders per minute. Its
 routing charges no junction cost. The proposal to show the model's cost at weight 1,
 labeled "not used to choose the route", is still an **owner question** and is not
 built.

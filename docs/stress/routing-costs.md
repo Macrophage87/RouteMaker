@@ -5,7 +5,7 @@
 
 Stress reaches a route in three layers:
 
-1. **The Valhalla graph** (Valhalla 3.6.3, MIT license). Tags are written per way at
+1. **The Valhalla graph** (Valhalla 3.9.1, MIT license). Tags are written per way at
    graph build, and a weight, `use_roads`, is sent per request.
 2. **RouteMaker's own ranking** (`src/core/refine.py`, `src/core/routing.py`). It
    reads the live segment table at route time and runs the calm search, the guards,
@@ -14,31 +14,31 @@ Stress reaches a route in three layers:
    on a traced route a cost in feet of quiet riding, which the ranking adds in.
 
 Turn, gate, surface and hill costs are sent at every slider position and do not
-depend on the tier (`src/core/presets.py:439-475`).
+depend on the tier (`src/core/presets.py:440-476`).
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 
-The tier reaches the transform as `rm:stress_tier` (`src/pipeline/run.py:2402`, read at
+The tier reaches the transform as `rm:stress_tier` (`src/pipeline/run.py:2681`, read at
 `lua/graph.lua:67`). Valhalla's bicycle edge cost is `time x (1 + grade +
 accommodation x roadway stress)` (sif/bicyclecost.cc). The three writes below change
 the cost and never the reported time. Each is written only where the way is already
-open to a bicycle (`may_penalise`, `:1179-1192`) and never on a trail-class way.
+open to a bicycle (`may_penalise`, `:1195-1208`) and never on a trail-class way.
 
 | Write | Tiers | Effect | Graphs | Lines |
 |---|---|---|---|---|
-| `bicycle=use_sidepath` | 3, 4, 5 (and OSM's own alleys, priced as LTS 3) | Adds `3 x (1 - use_roads)` to the accommodation factor | All | `:531-576`; `STRESS_PENALTY_TIER = 3` `:1196` |
-| Graded: `maxspeed:practical=140`, `lanes:forward`/`backward=15` | 4, 5 | The graph's top speed and lane count, which raise roadway stress. LTS 4's added cost is at least 2x LTS 3's at old slider positions 5-100 (today's about 4 and up) on roads posted up to 50 mph (1.99x at 55, 1.75x at 65) | All but no-trail (`facility_neutral`, `src/pipeline/run.py:1449-1450`) | `:578-611`; `GRADED_*` `:1200-1202` |
-| `service=alley` | 5 | Valhalla charges `alley_penalty` each time a route enters an alley from a way that is not one. RouteMaker sends 1,800 s on every preset (`AVOID_ENTRY_PENALTY_S`, `presets.py:166`, sent at `:461`). The edge stays routable | All | `:613-643`; `AVOID_TIER = 5` `:1205` |
-| Facility class (not stress) | any | Path `0.1+0.9u`, protected `(0.15+0.6u) x stress`, painted `(0.9+0.05u) x stress`, none `1.0 x stress`; `highway=cycleway` `0.8u` | Not on no-trail | `:1214-1245`, `:1290-` |
+| `bicycle=use_sidepath` | 3, 4, 5 (and OSM's own alleys, priced as LTS 3) | Adds `3 x (1 - use_roads)` to the accommodation factor | All | `:531-576`; `STRESS_PENALTY_TIER = 3` `:1212` |
+| Graded: `maxspeed:practical=140`, `lanes:forward`/`backward=15` | 4, 5 | The graph's top speed and lane count, which raise roadway stress. LTS 4's added cost is at least 2x LTS 3's at old slider positions 5-100 (today's about 4 and up) on roads posted up to 50 mph (1.99x at 55, 1.75x at 65) | All but no-trail (`facility_neutral`, `src/pipeline/run.py:1547-1548`) | `:578-611`; `GRADED_*` `:1216-1218` |
+| `service=alley` | 5 | Valhalla charges `alley_penalty` each time a route enters an alley from a way that is not one. RouteMaker sends 1,800 s on every preset (`AVOID_ENTRY_PENALTY_S`, `presets.py:167`, sent at `:462`). The edge stays routable | All | `:613-643`; `AVOID_TIER = 5` `:1221` |
+| Facility class (not stress) | any | Path `0.1+0.9u`, protected `(0.15+0.6u) x stress`, painted `(0.9+0.05u) x stress`, none `1.0 x stress`; `highway=cycleway` `0.8u` | Not on no-trail | `:1230-1261`, `:1306-` |
 
 Graph variants (`src/pipeline/variants.py`; chosen by `variant_for_ride`,
-`presets.py:661-677`):
+`presets.py:662-695`):
 
 | Variant | Used by | Stress on it |
 |---|---|---|
 | standard | Default, Trailmaxxing, Group Ride, Fast, Cargo Bike (no assist) | All three writes |
-| weekend (twin of standard) | The same rides at a weekend time | As standard. A road closed to cars all weekend is a path at tier 1 (`run.py:1451-1452`) |
-| off-road | Gravel, Mountain Goat (`OFFROAD_PRESETS`, `presets.py:658`) | All three writes. The mountain-bike class is open |
+| weekend (twin of standard) | The same rides at a weekend time | As standard. A road closed to cars all weekend is a path at tier 1 (`run.py:1549-1550`) |
+| off-road | Gravel, Mountain Goat (`OFFROAD_PRESETS`, `presets.py:659`) | All three writes. The mountain-bike class is open |
 | e-bike | E-bike, and Cargo Bike with assist | All three writes |
 | no-trail | Mass Ride | `use_sidepath` (weighted at nothing, since `use_roads` is 1) and the alley charge. No grading, no facility classes |
 
@@ -63,9 +63,9 @@ The five road types are a 30 mph secondary with 1 lane each way; 35 mph and 40 m
 primary with 2 lanes. Values marked interpolated are linear between the table's
 columns.
 
-## 2. The slider (`presets.py:174-263`; mirrored in `frontend/src/lib/dials.ts:76-87`)
+## 2. The slider (`presets.py:175-264`; mirrored in `frontend/src/lib/dials.ts:83-94`)
 
-| Position | `use_roads` (`use_roads_for`, `:246-254`) | Calm rate (`calm_rate_for`, `:257-263`) | Intersection weight (`refine.intersection_weight`, `refine.py:214-219`) | Ranking |
+| Position | `use_roads` (`use_roads_for`, `:247-255`) | Calm rate (`calm_rate_for`, `:258-264`) | Intersection weight (`refine.intersection_weight`, `refine.py:214-219`) | Ranking |
 |---|---|---|---|---|
 | 0 | 1.000 | 0 | 0.25 | Score |
 | 10 | 0.871 | 0 | 0.357 | Score |
@@ -75,20 +75,20 @@ columns.
 | 85 | 0.000 | 0.585 | 1.0 | Score |
 | 90 | 0.000 | 1.824 | 1.0 | Score |
 | 95 | 0.000 | 4.447 | 1.0 | Score |
-| 100 | 0.000 | 10.0 (`CALM_RATE_MAX`) | 1.0 | Strict order + worth rule (`maxcalm_for`, `:309-312`) |
+| 100 | 0.000 | 10.0 (`CALM_RATE_MAX`) | 1.0 | Strict order + worth rule (`maxcalm_for`, `:310-313`) |
 
 0-70 is the old 0-90, 70-80 the old 90-100, and 80-100 is new. The calm rate is
 `10 x (e^(3t) - 1) / (e^3 - 1)` with `t = (s - 80)/20`. A rider may move the slider on
-every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py:542`).
+every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py:543`).
 
-## 3. Each preset's values (`presets.py:478-635`)
+## 3. Each preset's values (`presets.py:479-636`)
 
 | Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid) | LTS 4 hold | Bike type, planning speed | Calm search runs |
 |---|---|---|---|---|---|---|---|---|---|
 | Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
 | Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
 | Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
-| Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1195-1196`) |
+| Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
 | Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else one crossing round |
 | Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
 | Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
@@ -96,81 +96,81 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 | Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
 | E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, one crossing round |
 
-Every preset sends `alley_penalty` 1,800 s (`presets.py:461`). "Calm search runs" means
+Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes one crossing-only round
-(`CROSSING_ONLY_ROUNDS`, `refine.py:89`, `:1523`), and above 0 up to 5 exclusion
+(`CROSSING_ONLY_ROUNDS`, `refine.py:89`, `:1526`), and above 0 up to 5 exclusion
 rounds (`REFINE_MAX_ROUNDS`, `:88`). The search does not run for Mass Ride, fewer than
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
-Trailmaxxing), or too little time (`routing.py:1180-1207`). The exposure weights
-come from `Exposure` (`presets.py:338-354`), chosen per carrying choice on Cargo Bike
-(`:357-364`, `:606-607`).
+Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
+come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
+(`:358-365`, `:607-608`).
 
 ## 4. RouteMaker's ranking
 
 ### The score (below the top of the slider)
 
-`Analysis.score`, `refine.py:336-340`, in the router's cost seconds:
+`Analysis.score`, `refine.py:339-343`, in the router's cost seconds:
 
     score = router cost + quiet_cost x (rate x exposure_m + weight x junction_m + climb_weight x climb_m)
 
 - `quiet_cost` = 2.2 x the time of a meter at the request's speed (`QUIET_COST_FACTOR`,
   `refine.py:141-144`, `quiet_cost_per_m` `:179-186`). That is 0.44 cost-seconds a meter
   at 11.2 mph [18 km/h].
-- `exposure_m` = the meters of each tier times its exposure weight (`refine.py:654-658`).
+- `exposure_m` = the meters of each tier times its exposure weight (`refine.py:657-661`).
   LTS 1-2 and unknown count 0.
 - `junction_m` = the summed junction costs in meters (`intersections.penalty_m`).
 - A candidate replaces the best only if it beats it by more than 10 cost-seconds
-  (`IMPROVEMENT_EPS_S`, `refine.py:140`, `:567`). Where the calm search runs with a calm
+  (`IMPROVEMENT_EPS_S`, `refine.py:140`, `:570`). Where the calm search runs with a calm
   rate (above 80), a longer one must also be worth its extra miles, by the worth rule
-  below at `worth_ratio` (`refine.py:519-525`, `:564-569`): 1 + 4 x the calm rate over
+  below at `worth_ratio` (`refine.py:522-528`, `:567-572`): 1 + 4 x the calm rate over
   its top, about 1.2 at 85, 1.7 at 90 and 2.8 at 95 (with a target, the target prices
   below apply instead: 10 up to it and 2.5 past it, `distance_charge_m`,
-  `refine.py:511-516`) (the owner's "One rule", 2026-10-10,
+  `refine.py:514-519`) (the owner's "One rule", 2026-10-10,
   filed under OWNER-DECISIONS 435; not yet in the decisions file). Crossing avoidance
   alone (80 and below) has no such bar.
 
-### The calm search (`refine.refine`, `refine.py:752-821`; `_search` `:1518-`)
+### The calm search (`refine.refine`, `refine.py:755-824`; `_search` `:1521-`)
 
 It reads the router's route, then excludes (`exclude_locations`) the LTS 4 and Avoid
 stretches first, and later every LTS 3 stretch of the newest candidate. Each sample
 is one point per edge middle, 131 ft [40 m] apart, at most 60 a round and 150 in
 all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:112-130`,
-`calm_targets` `:709-734`, worst first `:1532-1533`, `:1554-1556`). In the
+`calm_targets` `:712-737`, worst first `:1535-1536`, `:1554-1556`). In the
 crossing-only round it excludes the approaches to junctions of 2,000 ft or more (red),
-at most 3 (`crossing_targets`, `:737-749`). Mass Ride is skipped (`ctx.group`).
+at most 3 (`crossing_targets`, `:740-752`). Mass Ride is skipped (`ctx.group`).
 
 ### The guards
 
 - **Traffic wins**: a candidate whose exposure is more than 2% plus 164 ft [50 m] over
   the router's first route's is not taken (`EXPOSURE_TOLERANCE`, `EXPOSURE_SLACK_M`,
-  `refine.py:131-138`, `_allowance` `:1443-1446`).
+  `refine.py:131-138`, `_allowance` `:1446-1449`).
 - **`calmer_or_own`**: an alternative the hills slider picked is kept only if its
-  exposure is no worse than the router's own route (`routing.py:1002-1037`).
+  exposure is no worse than the router's own route (`routing.py:1009-1044`).
 - **LTS 4 hold** (stress-averse rides only): refuse a candidate whose top figure (LTS 4
   and Avoid meters plus red junction cost) is more than 1 m over the router's first
-  route, for the whole trip or for any leg (`more_lts4`, `refine.py:956-1009`;
-  `routing._hold_refuses`, `routing.py:993-999`).
+  route, for the whole trip or for any leg (`more_lts4`, `refine.py:959-1012`;
+  `routing._hold_refuses`, `routing.py:1000-1006`).
 
 ### The top of the slider (100): strict order and worth rule
 
-- `Analysis.key` = (top, second, distance) (`refine.py:353-371`). Top = LTS 4 +
+- `Analysis.key` = (top, second, distance) (`refine.py:356-374`). Top = LTS 4 +
   Avoid meters + red junction cost in meters. Second = LTS 3 meters + orange junction
   cost. Distance = actual and effort-equivalent distance blended by the Hills slider
-  (`level3` `:374-387`). Tie steps are 49 ft, 164 ft and 164 ft [15 m, 50 m and 50 m] (`MAXCALM_STEPS`, `:417`).
+  (`level3` `:377-390`). Tie steps are 49 ft, 164 ft and 164 ft [15 m, 50 m and 50 m] (`MAXCALM_STEPS`, `:420`).
 - **Worth rule** (OWNER-DECISIONS 268, 271): a longer candidate replaces a shorter one
   only when the stress it saves pays for the distance it adds (`worth_it`,
-  `refine.py:528-543`). Stress saved is counted in LTS 3-equivalent meters with the
+  `refine.py:531-546`). Stress saved is counted in LTS 3-equivalent meters with the
   *standard* weights on every ride (LTS 3 x1, LTS 4 x2, Avoid x3, red junction cost x2,
-  orange x1; `WORTH_WEIGHTS`, `stress_weight_m`, `:442-464`). The price per meter saved:
+  orange x1; `WORTH_WEIGHTS`, `stress_weight_m`, `:445-467`). The price per meter saved:
   - no target distance: 5 m added (`WORTH_DEFAULT`), up to 1.6 x the router's route
-    and at least 1 mi [1.6 km] more (`presets.py:286-287`);
+    and at least 1 mi [1.6 km] more (`presets.py:287-288`);
   - up to a rider's target distance: 10 m added per meter saved (`WORTH_UP_TO_TARGET`,
-    `refine.py:441`; the owner's "One rule", 2026-10-10, filed under 435), half the
+    `refine.py:444`; the owner's "One rule", 2026-10-10, filed under 435), half the
     default's price;
   - past the target: 2.5 m added per meter saved (`WORTH_OVER_TARGET`), never past
-    1.25 x the target (`presets.py:288`).
+    1.25 x the target (`presets.py:289`).
 - If the top figure improves by more than its tie step, its saving counts on its own,
-  so LTS 4 never loses to extra LTS 3 (`stress_saved_m`, `:478-497`).
+  so LTS 4 never loses to extra LTS 3 (`stress_saved_m`, `:481-500`).
 
 ## 5. The junction model (`src/routemaker/intersections.py`)
 
