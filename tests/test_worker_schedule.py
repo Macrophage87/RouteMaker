@@ -2717,6 +2717,71 @@ def test_timeout_retries_are_capped_per_job(rebuild_environment, monkeypatch) ->
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("broken", ["record_timeout_retry", "timeout_retries"])
+def test_a_timeout_retry_that_cannot_be_counted_is_not_made(
+    rebuild_environment, monkeypatch, broken
+) -> None:
+    """Mutation review r2, M22: a read-only or full work directory must not turn into
+    up to five more budgets. Failing to count is terminal, and the note on the red row
+    does not promise a next attempt."""
+    _root, binaries = rebuild_environment
+    timeout = subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=1)
+    fail_tile_build_of(monkeypatch, binaries, "no-trail", timeout)
+
+    def boom(*args, **kwargs):
+        raise OSError(30, "read-only file system")
+
+    monkeypatch.setattr("pipeline.checkpoint." + broken, boom)
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(job_context(62), timestamp=0)
+    assert "could not be counted" in str(abandoned.value)
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None
+    # Terminal, so the row says that, not that "the next attempt" resumes.
+    notes = "\n".join(abandoned.value.__notes__)
+    assert "this failure is final" in notes and "not retried" in notes
+    assert "the next attempt of job" not in notes
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_note_on_a_retried_failure_still_promises_the_resume(
+    rebuild_environment, monkeypatch
+) -> None:
+    from pipeline.rebuild import RebuildFailed
+
+    _root, binaries = rebuild_environment
+    fail_tile_build_of(monkeypatch, binaries, "offroad")
+    with pytest.raises(RebuildFailed) as failed:
+        app.tasks["weekly_rebuild"].func(job_context(63), timestamp=0)
+    assert not isinstance(failed.value, RebuildAbandoned)
+    notes = "\n".join(failed.value.__notes__)
+    assert "the next attempt of job 63" in notes and "this failure is final" not in notes
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("checkpoints", [True, False])
+def test_the_note_on_an_abandoned_failure_does_not_promise_a_retry(
+    rebuild_environment, monkeypatch, checkpoints
+) -> None:
+    """Correctness r2 N3 / operations r2 N3: a validation failure is terminal."""
+    from pipeline.run import ValidationFailed
+
+    monkeypatch.setattr(settings, "REBUILD_CHECKPOINTS", checkpoints)
+    monkeypatch.setattr(
+        "pipeline.run.assert_no_rule_violations",
+        lambda *a, **k: (_ for _ in ()).throw(ValidationFailed("a rule was violated")),
+    )
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(job_context(64), timestamp=0)
+    notes = "\n".join(abandoned.value.__notes__)
+    assert "next attempt" not in notes and "a retry starts fresh" not in notes
+    if checkpoints:
+        assert "this failure is final" in notes and "run_rebuild_now" in notes
+    else:
+        assert "a new job starts fresh" in notes
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_budget_the_settings_could_not_read_stops_only_the_rebuild(
     rebuild_environment, monkeypatch
 ) -> None:

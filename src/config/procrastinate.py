@@ -316,7 +316,7 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         except Exception as failure:
             # What the attempt kept, on the red row: whether the next attempt resumes
             # (and from which build) or starts fresh is what the operator decides on.
-            failure.add_note(_checkpoint_note(context))
+            failure.add_note(_checkpoint_note(context, failure))
             raise
         finally:
             # On every path, not only the successful one. A rebuild that died
@@ -355,12 +355,18 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
         run.save(update_fields=["detail"])
 
 
-def _checkpoint_note(context) -> str:
-    """One sentence for a failed attempt's run row: what it kept and what a retry of
-    this job would do with it."""
+def _checkpoint_note(context, failure: BaseException | None = None) -> str:
+    """One sentence for a failed attempt's run row: what it kept and what happens to it.
+
+    Only a plain `RebuildFailed` is retried (the retry strategy). Anything else - a
+    `RebuildAbandoned`, a refusal, an unexpected error - ends the job, and a failed job
+    cannot be requeued by `unwedge_job` either, so the sentence must not promise a
+    "next attempt" for it: only a new job comes, and it starts fresh.
+    """
     from django.conf import settings
 
     from pipeline import checkpoint
+    from pipeline.rebuild import RebuildFailed
 
     try:
         _kept, resumable = checkpoint.find_resumable(
@@ -370,8 +376,20 @@ def _checkpoint_note(context) -> str:
         )
     except Exception:  # noqa: BLE001 - a note must not replace the failure it is on
         resumable = None
+    retried = isinstance(failure, RebuildFailed) and not isinstance(failure, RebuildAbandoned)
     if not settings.REBUILD_CHECKPOINTS:
-        then = "checkpoints are off (REBUILD_CHECKPOINTS=0), so a retry starts fresh"
+        then = (
+            "checkpoints are off (REBUILD_CHECKPOINTS=0), so "
+            + ("a retry" if retried else "a new job")
+            + " starts fresh"
+        )
+    elif not retried:
+        kept = f"; build {resumable['build_id']} is kept until then" if resumable else ""
+        then = (
+            "this failure is final, so the job is not retried and nothing resumes it "
+            "(a new job, `manage.py run_rebuild_now`, starts fresh and removes the old "
+            f"build{kept})"
+        )
     elif resumable is not None:
         then = (
             f"the next attempt of job {context.job_id} (a retry, or an `unwedge_job` "

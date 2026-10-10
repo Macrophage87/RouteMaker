@@ -889,6 +889,16 @@ def test_the_classification_check_itself_refuses_another_jobs_manifest(tmp_path)
             hasher=checkpoint.Hasher(),
         )
         assert problem and "job" in problem
+    # A manifest that names no job does not match a caller that names none either.
+    problem, _ = checkpoint.classification_problem(
+        {"format": 1, "job_id": None, "build_id": FIRST},
+        job_id=None,
+        tiles_dir=tmp_path,
+        measure_fingerprint=must_not_measure,
+        variant_pbfs={},
+        hasher=checkpoint.Hasher(),
+    )
+    assert problem and "job" in problem
 
 
 # --- T6: staging -------------------------------------------------------------------------
@@ -1456,6 +1466,11 @@ def test_canonical_text_handles_any_mapping_key_and_tags_its_type() -> None:
     assert checkpoint.canonical({frozenset({1, 2}): 0}) == checkpoint.canonical(
         {frozenset({2, 1}): 0}
     )
+    # The type tag is what keeps two keys that encode the same way apart.
+    assert checkpoint.canonical({(1, 2): 0, 3: 0}) != checkpoint.canonical(
+        {frozenset({1, 2}): 0, 3: 0}
+    )
+    assert checkpoint.canonical({Path("a"): 0, 1: 0}) != checkpoint.canonical({"a": 0, 1: 0})
 
 
 # --- Review r2: checkpoints are best effort --------------------------------------------------
@@ -1683,3 +1698,146 @@ def test_a_commands_own_time_limit_is_not_the_budget_running_out() -> None:
     assert not timed_out_with_progress(budget.value, refused), (
         "an attempt whose resume was refused started fresh: what it wrote is not progress"
     )
+
+
+# --- Review r3: tests that pin what r2's mutants showed was unpinned ---------------------------
+
+
+def test_canonical_text_is_the_same_in_every_process() -> None:
+    """Every attempt is a new process with its own hash seed; a set emitted in iteration
+    order would make the fingerprint differ on each, and every resume would be refused."""
+    import subprocess
+    import sys
+
+    code = (
+        "from pipeline.checkpoint import canonical; "
+        "print(canonical({'s': frozenset('abcdefghij'), 'm': {frozenset('xyzuvw'): 1, 2: 3}}))"
+    )
+    outputs = set()
+    for seed in ("1", "2", "3"):
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=REPO / "src",
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(REPO / "src")},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        outputs.add(result.stdout)
+    assert len(outputs) == 1, outputs
+
+
+def test_the_guarded_delete_uses_the_adopted_manifests_build_not_the_contexts(
+    env, monkeypatch
+) -> None:
+    """Review r2 nit 5, M11: on a resume `context.build_id` equals the manifest's, so the
+    spy test cannot tell the two sources apart. Make them differ: the delete must be
+    refused against the manifest's build, and the other build's directory must survive."""
+    drift = "20261002T000000Z"
+    first_attempt_fails_at(env, "offroad")
+    (env.build_dir("weekend") / checkpoint.GRAPH_MANIFEST).unlink()
+    other = env.build_dir("weekend", drift)
+    other.mkdir(parents=True)
+    (other / "tiles.tar").write_text("someone else's")
+    seen = []
+    real_handlers = build_handlers
+    real_problem = checkpoint.graph_problem
+
+    def capture(context, **kwargs):
+        seen.append(context)
+        return real_handlers(context, **kwargs)
+
+    def drifting(build_dir, **kwargs):
+        problem = real_problem(build_dir, **kwargs)
+        if kwargs["variant"] is Variant.WEEKEND:
+            seen[0].build_id = drift
+        return problem
+
+    monkeypatch.setitem(globals(), "build_handlers", capture)
+    monkeypatch.setattr(checkpoint, "graph_problem", drifting)
+    second = attempt(env, build_id=None)
+    assert second.error is not None and isinstance(second.error.cause, CheckpointRefused)
+    assert "is not this rebuild's build" in str(second.error.cause)
+    assert (other / "tiles.tar").is_file(), "another build's directory was deleted"
+
+
+def test_the_resume_gate_sizes_a_variant_with_no_served_graph_at_its_share_of_the_floor(
+    tmp_path,
+) -> None:
+    from collections import namedtuple
+
+    Usage = namedtuple("Usage", "total used free")
+    disk = lambda path: Usage(total=10**12, used=1000, free=10**12 - 1000)  # noqa: E731
+    gate = tiles.check_resume_disk_gate(
+        tmp_path / "tiles", [Variant.OFFROAD], 500, 10**9, 0.8, disk
+    )
+    assert gate.required == 10**9 // len(Variant) + 500
+
+
+def test_the_resume_gate_refuses_when_less_is_free_than_is_needed_at_a_low_percent_full(
+    tmp_path,
+) -> None:
+    """Reserved blocks make `used + free < total`: the volume is 11% full by the gate's
+    own arithmetic and still has less free than the build needs."""
+    from collections import namedtuple
+
+    Usage = namedtuple("Usage", "total used free")
+    tiles_dir = tmp_path / "tiles"
+    (tiles_dir / "offroad" / FIRST).mkdir(parents=True)
+    (tiles_dir / "offroad" / FIRST / "tiles.tar").write_bytes(b"x" * 1000)
+    (tiles_dir / "offroad" / "current").symlink_to(FIRST)
+    scarce = lambda path: Usage(total=100_000, used=10_000, free=1_000)  # noqa: E731
+    with pytest.raises(tiles.DiskGateRefused, match="still has to build offroad"):
+        tiles.check_resume_disk_gate(tiles_dir, [Variant.OFFROAD], 500, 10**9, 0.8, scarce)
+
+
+@pytest.mark.parametrize("failing", ["graph_fingerprint", "elevation_digest", "binaries_digest"])
+def test_a_graph_fingerprint_that_cannot_be_measured_does_not_fail_the_rebuild(
+    env, monkeypatch, failing
+) -> None:
+    """M19: fingerprinting a graph is bookkeeping; the rebuild builds and validates
+    every graph and writes no graph manifest."""
+
+    def hiccup(*args, **kwargs):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(checkpoint, failing, hiccup)
+    outcome = attempt(env)
+    assert outcome.error is None, outcome.error
+    assert Stage.VALIDATE_TILES in outcome.report.completed
+    assert not outcome.context.checkpoints
+    assert built(outcome.binaries) == ORDER
+    assert not any((env.build_dir(v) / checkpoint.GRAPH_MANIFEST).exists() for v in ORDER)
+
+
+def test_a_build_log_that_cannot_be_written_does_not_fail_the_rebuild(env, monkeypatch) -> None:
+    real = Path.write_text
+
+    def full(self, *args, **kwargs):
+        if self.name == checkpoint.BUILD_LOG:
+            raise OSError(28, "No space left on device")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", full)
+    outcome = attempt(env)
+    assert outcome.error is None, outcome.error
+    assert Stage.VALIDATE_TILES in outcome.report.completed
+    assert not outcome.context.checkpoints
+    assert not any((env.build_dir(v) / checkpoint.BUILD_LOG).exists() for v in ORDER)
+
+
+def test_new_validation_numbers_that_cannot_be_recorded_do_not_fail_the_resume(
+    env, monkeypatch
+) -> None:
+    first_attempt_fails_at(env, "offroad")
+    monkeypatch.setattr(settings, "REBUILD_MASS_CAPACITY_MEDIAN_RANGE", (1, 100000))
+
+    def full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(checkpoint, "atomic_write_json", full)
+    second = attempt(env, build_id=None)
+    assert second.error is None, second.error
+    assert second.context.resumed and second.context.revalidate_staging
+    assert not second.context.checkpoints
+    assert built(second.binaries) == ["offroad"]

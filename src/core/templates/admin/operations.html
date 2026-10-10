@@ -52,7 +52,7 @@ list is an alert.</p>
 <h2>Wedged jobs</h2>
 {% if wedged_jobs %}
 <p>Each of these is <code>doing</code> with no worker left to finish it (its
-worker row is gone, or has sent no heartbeat for over 30 seconds), or has been
+worker row is gone, or has sent no heartbeat for over {{ stalled_worker_timeout_s|floatformat:0 }} seconds), or has been
 running for longer than the budget its task enforces on itself, which means
 nothing enforced it: a worker killed mid-job leaves its row <code>doing</code>
 for ever, because the process that would have finished it is gone. Everything on
@@ -67,7 +67,7 @@ rebuild then resumes from its checkpoints).</p>
       <th scope="row">{{ entry.id }}</th>
       <td>{{ entry.task }}</td>
       <td>{{ entry.queue }}</td>
-      <td>{% if entry.worker_gone %}gone{% else %}still beating{% endif %}</td>
+      <td>{% if entry.worker_gone %}gone (no heartbeat){% else %}alive{% endif %}</td>
       <td>{{ entry.age_s|floatformat:0 }} s</td>
       <td>{{ entry.budget_s|floatformat:0 }} s</td>
       <td>{{ entry.started_at }}</td>
@@ -76,7 +76,7 @@ rebuild then resumes from its checkpoints).</p>
   </tbody>
 </table>
 {% else %}
-<p id="no-wedged-jobs">No job has outlived the budget of the task it is running, and every running job's worker is still beating.</p>
+<p id="no-wedged-jobs">No job has outlived the budget of the task it is running, and every running job's worker is still sending heartbeats.</p>
 {% endif %}
 
 <h2>Free space</h2>
