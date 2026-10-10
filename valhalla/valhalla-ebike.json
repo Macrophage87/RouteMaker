@@ -18,7 +18,8 @@
       "trace_route",
       "trace_attributes",
       "locate",
-      "status"
+      "status",
+      "sources_to_targets"
     ],
     "logging": {
       "color": false,
@@ -32,6 +33,17 @@
     "service_defaults": {
       "heading_tolerance": 60,
       "minimum_reachability": 50,
+      "mvt_cache_min_zoom": 11,
+      "mvt_min_zoom_road_class": [
+        7,
+        7,
+        8,
+        11,
+        11,
+        12,
+        13,
+        14
+      ],
       "node_snap_tolerance": 5,
       "radius": 0,
       "search_cutoff": 35000,
@@ -121,6 +133,8 @@
     "include_driving": true,
     "include_pedestrian": true,
     "include_platforms": false,
+    "keep_all_osm_node_ids": false,
+    "keep_osm_node_ids": false,
     "landmarks": "/data/valhalla/landmarks.sqlite",
     "logging": {
       "color": false,
@@ -157,6 +171,7 @@
     }
   },
   "service_limits": {
+    "allow_hard_exclusions": false,
     "auto": {
       "max_distance": 5000000.0,
       "max_locations": 20,
@@ -185,6 +200,42 @@
       "max_distance": 200000.0,
       "max_locations": 5
     },
+    "hierarchy_limits": {
+      "allow_modification": false,
+      "bidirectional_astar": {
+        "max_allowed_up_transitions": {
+          "1": 400,
+          "2": 100
+        },
+        "max_expand_within_distance": {
+          "0": 100000000.0,
+          "1": 20000,
+          "2": 5000
+        }
+      },
+      "costmatrix": {
+        "max_allowed_up_transitions": {
+          "1": 400,
+          "2": 100
+        },
+        "max_expand_within_distance": {
+          "0": 100000000.0,
+          "1": 100000,
+          "2": 5000
+        }
+      },
+      "unidirectional_astar": {
+        "max_allowed_up_transitions": {
+          "1": 400,
+          "2": 100
+        },
+        "max_expand_within_distance": {
+          "0": 100000000.0,
+          "1": 100000,
+          "2": 5000
+        }
+      }
+    },
     "isochrone": {
       "max_contours": 4,
       "max_distance": 25000.0,
@@ -196,10 +247,12 @@
     "max_distance_disable_hierarchy_culling": 0,
     "max_exclude_locations": 200,
     "max_exclude_polygons_length": 50000,
+    "max_linear_cost_edges": 50000,
     "max_radius": 200,
     "max_reachability": 100,
     "max_timedep_distance": 500000,
     "max_timedep_distance_matrix": 0,
+    "min_linear_cost_factor": 1,
     "motor_scooter": {
       "max_distance": 500000.0,
       "max_locations": 50,
@@ -265,9 +318,41 @@
     "prefix": "valhalla"
   },
   "thor": {
+    "bidirectional_astar": {
+      "alternative_cost_extend": 1.2,
+      "alternative_iterations_delta": 100000,
+      "hierarchy_limits": {
+        "expand_within_distance": {
+          "0": 100000000.0,
+          "1": 20000,
+          "2": 5000
+        },
+        "max_up_transitions": {
+          "1": 400,
+          "2": 100
+        }
+      },
+      "threshold_delta": 420.0
+    },
     "clear_reserved_memory": false,
-    "costmatrix_allow_second_pass": false,
-    "costmatrix_check_reverse_connection": false,
+    "costmatrix": {
+      "allow_second_pass": false,
+      "check_reverse_connection": true,
+      "hierarchy_limits": {
+        "expand_within_distance": {
+          "0": 100000000.0,
+          "1": 20000,
+          "2": 5000
+        },
+        "max_up_transitions": {
+          "1": 400,
+          "2": 100
+        }
+      },
+      "max_iterations": 2800,
+      "max_reserved_locations": 25,
+      "min_iterations": 100
+    },
     "extended_search": false,
     "logging": {
       "color": false,
@@ -279,10 +364,22 @@
     "max_reserved_labels_count_bidir_astar": 1000000,
     "max_reserved_labels_count_bidir_dijkstras": 2000000,
     "max_reserved_labels_count_dijkstras": 4000000,
-    "max_reserved_locations_costmatrix": 25,
     "service": {
       "proxy": "ipc:///tmp/thor"
     },
-    "source_to_target_algorithm": "select_optimal"
+    "source_to_target_algorithm": "select_optimal",
+    "unidirectional_astar": {
+      "hierarchy_limits": {
+        "expand_within_distance": {
+          "0": 100000000.0,
+          "1": 100000,
+          "2": 5000
+        },
+        "max_up_transitions": {
+          "1": 400,
+          "2": 100
+        }
+      }
+    }
   }
 }

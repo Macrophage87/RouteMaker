@@ -4,7 +4,8 @@ Valhalla 3.5.1 can abort a multi-threaded tile build with "double free or
 corruption" (valhalla/valhalla#5005, fixed in 3.6.0): each build thread frees its
 spatialite connections on exit through a libxml2 call that is not thread-safe.
 It is a race, so the rebuild builds with fewer threads and runs an aborted
-`valhalla_build_tiles` once more before failing. See docs/OPERATIONS.md, "Tile
+`valhalla_build_tiles` once more before failing. The pinned 3.6.3 has the fix;
+both guards stay until 3.6.3 rebuilds on the host have shown it. See docs/OPERATIONS.md, "Tile
 build threads".
 """
 

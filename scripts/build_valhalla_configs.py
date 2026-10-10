@@ -47,7 +47,7 @@ TILE_ROOT = "/data/tiles/{variant}/current"
 # The elevation directory. Skadi reads it from the top-level additional_data
 # key and nowhere else: valhalla_build_tiles' elevation builder is constructed
 # from config.get_child("additional_data"), and there is no read of a
-# mjolnir.additional_data in 3.5.1. An earlier version of this file set both and
+# mjolnir.additional_data in 3.5.1 or 3.6.3. An earlier version of this file set both and
 # claimed both were needed, and its test asserted the one that is read by
 # nothing. Baking weighted_grade at build time is what this key is for:
 # without it, use_hills is inert on every preset that sets it and the Mass Ride
@@ -79,8 +79,16 @@ OVERRIDES: dict = {
     "additional_data": {"elevation": ELEVATION_DIR},
     "loki": {
         # trace_attributes is what the stats block comes from; without it every
-        # route reports nothing.
-        "actions": ["route", "trace_route", "trace_attributes", "locate", "status"],
+        # route reports nothing. sources_to_targets is the riding-time matrix
+        # "Best order" orders a ride's stops by (OWNER-DECISIONS 449, core.stoporder).
+        "actions": [
+            "route",
+            "trace_route",
+            "trace_attributes",
+            "locate",
+            "status",
+            "sources_to_targets",
+        ],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
         "logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS},
     },
