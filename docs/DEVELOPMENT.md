@@ -5186,7 +5186,8 @@ stays hidden. Tests: `tests/test_facility.py`.
 ## Hard surfaces (OWNER-DECISIONS 440)
 
 `routemaker.surfaces` is the one definition of a paved surface. `is_paved` is the
-map's and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
+map's (but for a judged short bridge, drawn in its trail's surface: `core.stress_tiles.
+BRIDGE_UNPAVED`, docs/OPERATIONS.md "Short bridges") and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
 graph's (`lua/routemaker_remap.lua`, `M.PAVED_SURFACES` and `M.PAVED_PREFIXES`, kept
 equal by `tests/test_surfaces.py`): road paving and its `:` variants, wood and
 `boardwalk`, metal and `metal_grid`, brick, bricks, sett, tartan, rubber, cobblestone and
