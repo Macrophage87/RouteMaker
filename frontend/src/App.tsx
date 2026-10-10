@@ -815,8 +815,10 @@ export function App() {
   const orderNotice = (text: string, after: readonly LonLat[]) => {
     // Cleared and set again a moment later, as the location's notice is, so the same
     // answer twice is said twice.
+    // The location's timer, shared, so a later notice of either is not overwritten by the other's.
+    cancelLocateNotice();
     setNotice(null);
-    window.setTimeout(() => {
+    locateNoticeTimer.current = window.setTimeout(() => {
       if (pointsRef.current !== after) return;
       orderNoticeFor.current = after;
       setNotice(text);
@@ -1181,8 +1183,9 @@ export function App() {
             onClick={() => void bestOrder()}
             onFocus={() => (orderFocused.current = true)}
             onBlur={(event) => {
-              // A blur from the button's own removal keeps the mark, so the effect above moves the focus.
-              if (event.currentTarget.isConnected) orderFocused.current = false;
+              // Only a move to another element clears the mark: a blur from the button's own removal
+              // has none, so the effect above moves the focus (and only if it is on nothing).
+              if (event.relatedTarget) orderFocused.current = false;
             }}
             aria-disabled={ordering ? true : undefined}
           >

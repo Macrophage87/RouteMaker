@@ -93,7 +93,8 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
     }
     try:
         answer = _ask(variant, payload, deadline)
-    except (routing.RouterUnavailable, routing.RouterRefused) as error:
+    except (routing.RouterUnavailable, routing.RouterRefused, routing.DeadlineExceeded) as error:
+        # Out of time too: the straight-line order needs no router, so it is still answered.
         logger.warning("the %s router gave no riding-time matrix: %s", variant, error)
         return None
     rows = answer.get("sources_to_targets")

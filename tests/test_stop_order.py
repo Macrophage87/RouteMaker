@@ -395,16 +395,25 @@ class TestEndpoint:
         assert response.status_code == 400
         assert "outside the area" in response.json()["error"]
 
-    def test_a_router_past_the_budget_is_a_busy_answer(self, client, router, monkeypatch) -> None:
-        router(FakeRouter({}))
-        monkeypatch.setattr(
-            stoporder,
-            "_matrix",
-            lambda *a: (_ for _ in ()).throw(routing.DeadlineExceeded("late")),
-        )
+    def test_a_router_past_the_budget_leaves_the_straight_line_order(self, client, router):
+        router(FakeRouter({"sources_to_targets": routing.DeadlineExceeded("late")}))
         response = post(client, {"points": POINTS, "preset": "default"})
-        assert response.status_code == 503
-        assert response["Retry-After"]
+        assert response.status_code == 200
+        assert response.json()["by"] == "straight_line"
+
+    def test_a_weekend_router_gets_the_shorter_limit(self, client, router, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: True)
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: False)
+        monkeypatch.setattr(routing, "_mark_twin", lambda variant, ok: None)
+        limits = []
+
+        def transport(url, payload, timeout):
+            limits.append(timeout)
+            return matrix_answer(along_the_line(POINTS))
+
+        monkeypatch.setattr(routing, "_transport", transport)
+        post(client, {"points": POINTS, "preset": "default", "when": "weekend"})
+        assert limits and limits[0] <= routing.WEEKEND_TIMEOUT_S
 
 
 def test_the_long_ride_line_is_the_route_apis() -> None:

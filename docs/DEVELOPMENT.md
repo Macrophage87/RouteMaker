@@ -4366,8 +4366,8 @@ The rider's order is kept unless the new one saves at least 1% (`MIN_SAVING_FRAC
 reshuffle for nothing does not renumber the stops. The times are the router's own routes between the
 points, not the calm search's or the hills slider's choice, which run only when the route itself is
 planned, and the matrix is asked without a `date_time`. Past 93 mi (150 km) of straight line (the
-route API's long-ride line) the router is not asked, and a loop whose way back takes it past 124 mi
-(200 km) is refused as `/route` refuses it. A router that does not serve the matrix (one started
+route API's long-ride line) the router is not asked, and a ride past 124 mi (200 km), a loop's way
+back included, is refused as `/route` refuses it. A router out of time also leaves the straight-line order. A router that does not serve the matrix (one started
 before this change, or one that is down) is not an error: the order is chosen by straight-line
 distance and the answer's `by` says so, as the page then does. Whether the ride is a loop and ends on
 its start is read from the rider's points, as the page reads it; the router is asked about the
