@@ -1576,7 +1576,7 @@ The stress levels, LTS 3 / LTS 4 (and the ratio), modelled from the costing
 code for representative roadways at each slider position. (Positions in this
 table and the measurements below it are on the scale before the 2026-10-01
 rescale: the old position `q` is now `q * 7 / 9` up to 90, so the columns are
-today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is today's 4 to 80.)
+about today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is about today's 4 to 80.)
 
 | Roadway | 0 | 25 | 50 | 75 | 90 | 100 |
 |---|---|---|---|---|---|---|

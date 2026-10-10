@@ -690,7 +690,8 @@ sudo nginx -t && sudo nginx -s reload
 Use the same options as in 9c, plus `--no-401-page`. Cancel then shows nginx's own plain
 "401 Authorization Required" page; the sign-in box itself is unchanged. The flag also leaves out
 the "Back soon" page (`deploy/beta/502.html`, read from the same directory), so a 502 shows nginx's
-own page again. Rerun the smoke test with
+own page again. The same goes for a 403 or 404 where a 502 was expected (nginx cannot read
+`deploy/beta/502.html`): the same re-render is the recovery. Rerun the smoke test with
 `--no-401-page` too: it then skips (and says so) the one line about the sign-in page's text, and
 every other line must PASS.
 

@@ -154,7 +154,7 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # stress slider included, and the way stays routable when it is the only one.
 # This is 1,800 s of cost, not 30 minutes of riding. An edge costs its time
 # times a factor of 1 or more (1 + grade + accommodation * roadway stress,
-# sif/bicyclecost.cc), so a detour's extra cost is more than its extra time:
+# more on bad surfaces; sif/bicyclecost.cc), so a detour's extra cost is more than its extra time:
 # the penalty alone buys under 30 minutes of detour (4.8 km at Mass Ride's
 # parade pace, 9 km at Hybrid's 18 km/h, only at a factor of 1), and less the
 # hillier or busier the detour. What the router weighs is the penalty plus

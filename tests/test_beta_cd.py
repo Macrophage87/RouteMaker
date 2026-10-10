@@ -1614,11 +1614,11 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     for needed in (
         "Router unavailable",
         "not available right now",
-        "Back soon",
         "502 Bad Gateway",
         "half an hour",
     ):
         assert needed in section7, needed
+    assert '"Back soon"' in tester[tester.index("8. Updates") :]
     assert "nightly" not in tester.lower() and "every night" not in tester.lower()
     runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
     by_hand = runbook[

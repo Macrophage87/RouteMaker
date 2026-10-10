@@ -794,6 +794,14 @@ def test_the_back_soon_page_replaces_only_nginxs_own_502_and_stays_behind_the_pa
     assert "default-src 'none'" in page
 
 
+def test_the_runbook_checks_nginx_can_read_both_pages() -> None:
+    runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
+    loop = next(
+        ln for ln in runbook.splitlines() if ln.startswith("for f in ") and "401.html" in ln
+    )
+    assert '"$RM_SRC/deploy/beta/502.html"' in loop
+
+
 def test_the_back_soon_page_is_small_plain_and_says_what_to_do() -> None:
     page = (REPO / "deploy" / "beta" / "502.html").read_text()
     assert page.startswith("<!doctype html>") and '<html lang="en">' in page
