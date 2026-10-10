@@ -967,7 +967,7 @@ order), and nothing asks for hazards.
   every segment of one value into one feature, are not split a feature per integer. ETag letter
   `w` (`r` is the rough surface's; the tag is `+kcfrmwoesbtl` on a full table). FORMAT_VERSION 7
   (the rebuild bundle).
-* **The VALIDATE sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
+* **The VALIDATE_SEGMENTS sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
   least 98% of the road rows and of the path rows carry a figure; no road row is under 44 or over
   1,181 riders a minute; and the median road lies in `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`,
   60 to 200 since 404 (90 to 260 while a two-way street counted both directions; a model in the
@@ -4143,11 +4143,11 @@ docs/OPERATIONS.md, "The ride layer (z12-13)".
   `RIDE_ROAD_RUN_MI`, `CALM_ROAD_MAX_TIER`, `CALM_PATH_GAP_M`; 403's `ROADSIDE_M`,
   `ROADSIDE_FRACTION`, `ROADSIDE_SAMPLE_M`),
   `ride_layer_predicate` and the partial index; `pipeline.trail_routes` holds
-  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE
+  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE_SEGMENTS
   summary (`calm_run_summary`); `pipeline.run.assert_calm_runs` is the check, and the
   tests' autouse fixture (`tests/conftest.py`) blanks its sentinels and floors as it does the
   long trails'. `routemaker.stress.inferred_unpaved` is 376 C.
-- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE), `tests/test_stress.py`
+- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE_SEGMENTS), `tests/test_stress.py`
   (the track rule), `tests/test_stress_tiles.py` (`TestRideLayer`, which adds the column back:
   every other test of that file runs on a table without it, the fallback, so they hold
   today's z12-13 and each is one `DROP COLUMN` from the new one), and the front end's
@@ -5063,7 +5063,7 @@ the 22 ways it lifts. Direction on a hill is FOLLOWUP-GRADE-STRESS, not here.
 (`settings.REBUILD_SENTINEL_LTS4_STREET`, "CONNECTICUT AVE NW"), its segment rows by
 `attr_sources->'blocks'` (the classifier records up to 12 matched blocks a way), lengths by
 row (both carriageways of a divided stretch), a row's latitude at its middle, LTS 4 meaning
-tier 4 or Avoid. VALIDATE (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
+tier 4 or Avoid. VALIDATE_SEGMENTS (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
 overall or under 95% north of 38.9126 N (R St NW). Skipped, with a warning, when no agency
 street layer is installed; refused when the layer has no block of that name; off with an
 empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 build: 49%
@@ -5158,7 +5158,7 @@ over every highway way and the `landuse=military` / `military=*` areas of the so
   `WHY_TAGGED_OPEN` and closed.
 - Closed ways are `rm:no_bicycle=military` (first in `trail_closures.ORDER`, on every graph);
   closed roads are left off the map. `military-closures.csv` lists every way with its share.
-- **VALIDATE** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
+- **VALIDATE_SEGMENTS** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
   installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name, or a tuple of names held
   as one sum where outlines overlap, as Bolling's old outline and JBAB do; empty in the test
   settings), and `through_networks`: an open network inside a base that meets the bicycle-open
@@ -5201,7 +5201,7 @@ by the military rule.
   ways. Every reason a secured way can be open today is in `THROUGH_EXCEPTIONS` (override,
   numbered route, the listed public roads, the Visitor Center ways, signed for bicycles),
   so this check cannot refuse a build yet; it guards an open reason added later.
-- **VALIDATE** (`run.assert_secured_closures`): the Rowley sentinel ways
+- **VALIDATE_SEGMENTS** (`run.assert_secured_closures`): the Rowley sentinel ways
   (`REBUILD_SENTINEL_SECURED_CLOSED_WAYS`, closed where the extract has them; a missing one
   is warned about) and a floor per compound (`REBUILD_SENTINEL_SECURED_MIN_CLOSED`, by its
   `SECURED_AREAS` name, or OSM's for Goddard), about three quarters of the 2026-10-03

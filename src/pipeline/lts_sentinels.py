@@ -1,4 +1,4 @@
-"""The owner's reference LTS 4 road, read back at VALIDATE (OWNER-DECISIONS 408, 409).
+"""The owner's reference LTS 4 road, read back at VALIDATE_SEGMENTS (OWNER-DECISIONS 408, 409).
 
 The owner, 2026-10-05: "Most of Conn Ave is LTS4. It's the road I'd keep using as an
 example of LTS4." and "I'd say it's LTS4 north of R." So a rebuild whose classifier, its

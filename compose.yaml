@@ -100,6 +100,11 @@ x-django-env: &django-env
   # rebuild after its swap, and in `manage.py predraw_stress_tiles` run in the
   # api. A PostgreSQL core each; two measured fastest, a third bought nothing.
   STRESS_PREDRAW_WORKERS: ${STRESS_PREDRAW_WORKERS:-2}
+  # One attempt of the weekly rebuild may run this many seconds (default 28800, 8 h;
+  # at most 82800). Every service that loads the settings carries it, because the
+  # operations page and `check_operations` call a rebuild wedged past this budget.
+  # A bad value is the default everywhere, and the rebuild alone refuses to start.
+  REBUILD_TIMEOUT_S: ${REBUILD_TIMEOUT_S:-}
 
 services:
   caddy:
@@ -780,6 +785,9 @@ services:
       # Threads per valhalla_build_tiles run (docs/OPERATIONS.md, "Tile build
       # threads"). Empty: the default in settings, 2.
       REBUILD_TILE_CONCURRENCY: ${REBUILD_TILE_CONCURRENCY:-}
+      # 0 turns the rebuild's checkpoints off (docs/OPERATIONS.md, "Rebuild
+      # checkpoints"). Empty: on.
+      REBUILD_CHECKPOINTS: ${REBUILD_CHECKPOINTS:-}
       # 1 or true pauses the scheduled Tuesday rebuild (OWNER-DECISIONS 355); a
       # hand-fired `run_rebuild_now` still runs. Empty, the default: not paused.
       WEEKLY_REBUILD_PAUSED: ${WEEKLY_REBUILD_PAUSED:-}

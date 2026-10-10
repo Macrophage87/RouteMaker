@@ -152,23 +152,41 @@ def operations_url() -> str:
     return reverse("routemaker_admin:core_scheduledrun_changelist")
 
 
-def make_job(task_name: str, status: str, event_age: timedelta) -> int:
+def make_job(task_name: str, status: str, event_age: timedelta, worker: str = "live") -> int:
     """One Procrastinate job row with one event, at whatever age is wanted.
 
     Written with SQL because the Django models the integration exposes are
     deliberately read-only - the CLI and the worker own those tables - and the
     thing under test reads and deletes them through SQL too.
+
+    A `doing` job is held by a worker that is still beating unless `worker` says
+    "gone" (no worker row), "stale" (a row silent for a minute), or "inside" /
+    "just_past" (silent for 5 s less / more than the stalled-worker timeout): a job whose
+    worker is gone is wedged at once, whatever its age (`core.runs.wedged_jobs`).
     """
     at = timezone.now() - event_age
+    worker_id = None
+    if status == "doing" and worker != "gone":
+        from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
+
+        silent_for = {
+            "stale": timedelta(minutes=1),
+            "inside": timedelta(seconds=STALLED_WORKER_TIMEOUT_S - 5),
+            "just_past": timedelta(seconds=STALLED_WORKER_TIMEOUT_S + 5),
+        }.get(worker, timedelta(0))
+        beat = timezone.now() - silent_for
+        worker_id = register_worker(beat)
     with connection.cursor() as cursor:
         cursor.execute(
             """
             INSERT INTO procrastinate_jobs
-                (queue_name, task_name, priority, args, status, attempts, abort_requested)
-            VALUES ('maintenance', %s, 0, '{}'::jsonb, %s::procrastinate_job_status, 5, false)
+                (queue_name, task_name, priority, args, status, attempts, abort_requested,
+                 worker_id)
+            VALUES ('maintenance', %s, 0, '{}'::jsonb, %s::procrastinate_job_status, 5, false,
+                    %s)
             RETURNING id
             """,
-            [task_name, status],
+            [task_name, status, worker_id],
         )
         job_id = cursor.fetchone()[0]
         cursor.execute(
@@ -608,6 +626,7 @@ def test_the_operations_page_says_so_when_no_job_is_wedged(client) -> None:
     body = client.get(operations_url()).content.decode()
 
     assert 'id="no-wedged-jobs"' in body
+    assert "still sending heartbeats" in body and "beating" not in body
     assert 'class="wedged-job"' not in body
 
 
@@ -1997,3 +2016,119 @@ def test_unwedge_job_is_not_blocked_by_the_lock_its_own_row_holds() -> None:
     call_command("unwedge_job", str(job_id))
 
     assert job_status(job_id) == "todo"
+
+
+# --- Review r2: a job whose worker is gone is wedged at once -------------------------------
+
+
+@db
+@pytest.mark.parametrize("worker", ["gone", "stale", "just_past"])
+def test_a_job_whose_worker_is_gone_is_wedged_at_once(worker) -> None:
+    """Operations review r2, 4: a rebuild killed at hour three was on no surface until
+    its budget ran out at hour eight (or 23). The test is `unwedge_job`'s own."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, wedged_jobs
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    job_id = make_job("weekly_rebuild", "doing", timedelta(hours=3), worker=worker)
+    [entry] = wedged_jobs()
+    assert entry["id"] == job_id and entry["worker_gone"]
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 1
+    assert f"wedged job: {job_id} weekly_rebuild" in printed
+    assert "its worker is gone" in printed, printed
+
+
+@db
+@pytest.mark.parametrize("worker", ["live", "inside"])
+def test_a_job_whose_worker_is_beating_is_left_alone_inside_its_budget(worker) -> None:
+    """A heartbeat 5 s inside the stalled-worker timeout is not "gone": a threshold
+    looser than `unwedge_job`'s would flag it, and the `just_past` case above pins the
+    other side."""
+    from core.runs import wedged_jobs
+
+    make_job("weekly_rebuild", "doing", timedelta(hours=3), worker=worker)
+    assert wedged_jobs() == []
+
+
+@db
+def test_the_operations_page_says_the_worker_is_gone(client) -> None:
+    from core.models import User
+
+    job_id = make_job("weekly_rebuild", "doing", timedelta(minutes=5), worker="gone")
+    admin = User.objects.create(discord_user_id=9012, is_instance_admin=True)
+    sign_in(client, admin)
+    body = client.get(operations_url()).content.decode()
+    wedged_section = body.split("<h2>Wedged jobs</h2>")[1].split("<h2>Failed jobs</h2>")[0]
+    assert f">{job_id}<" in wedged_section and "<td>gone (no heartbeat)</td>" in wedged_section
+    assert "beating" not in body
+    # The window is the constant the command uses, not a number typed into the page.
+    assert "no heartbeat for over 30 seconds" in wedged_section
+
+
+@db
+def test_the_operations_page_says_alive_for_a_job_past_its_budget_with_a_live_worker(
+    client,
+) -> None:
+    from config.procrastinate import REBUILD_TIMEOUT_S
+    from core.models import User
+
+    make_job("weekly_rebuild", "doing", timedelta(seconds=REBUILD_TIMEOUT_S + 60))
+    admin = User.objects.create(discord_user_id=9013, is_instance_admin=True)
+    sign_in(client, admin)
+    body = client.get(operations_url()).content.decode()
+    wedged_section = body.split("<h2>Wedged jobs</h2>")[1].split("<h2>Failed jobs</h2>")[0]
+    assert "<td>alive</td>" in wedged_section and "beating" not in body
+
+
+@db
+def test_the_operations_page_takes_the_heartbeat_window_from_the_constant(
+    client, monkeypatch
+) -> None:
+    import core.admin_operations as page
+
+    monkeypatch.setattr(page, "STALLED_WORKER_TIMEOUT_S", 45.0)
+    from core.models import User
+
+    make_job("weekly_rebuild", "doing", timedelta(minutes=5), worker="gone")
+    sign_in(client, User.objects.create(discord_user_id=9014, is_instance_admin=True))
+    body = client.get(operations_url()).content.decode()
+    assert "no heartbeat for over 45 seconds" in body
+
+
+@db
+def test_check_operations_reports_a_rebuild_budget_it_could_not_read(settings) -> None:
+    """Operations review r2, 1: every service runs on the default, and the alert names
+    the value the rebuild refuses."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    settings.REBUILD_TIMEOUT_INVALID = "10h"
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 1, printed
+    assert "config: REBUILD_TIMEOUT_S='10h' is not" in printed
+    assert "1 setting(s) invalid" in printed
