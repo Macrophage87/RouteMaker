@@ -632,6 +632,15 @@ alone. Shape comes first and colour second:
   `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
   nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
   ride the class on the off-road graph, and their route draws over the dots.
+  Since 454 the line is an optional map layer, off until the rider turns it on:
+  the "Mountain-bike trails" switch under "Trails and terrain" in the Map
+  layers sheet (`lib/mtbTrailsSwitch.ts`; `stressStyle.js` `mtbTrailsOn`,
+  `setMtbTrails`, kept per browser under `routemaker.mtbTrails`, "on" or
+  "off"). `overlayLayerShown` shows `mtb-trail` by that switch alone, with the
+  stress map on or off and in every ride type, Mass Ride too; MapView sets the
+  visibility again in place when it changes. The legend row shows only while
+  the layer is on. The road panel is unchanged. docs/MTB-TOPO-PLAN.md has the
+  rest of the mountain-bike and topo work.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

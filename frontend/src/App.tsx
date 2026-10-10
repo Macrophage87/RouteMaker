@@ -19,9 +19,10 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
-import { useHighStressLanes } from "./useStressStyle.ts";
+import { MtbTrailsSwitch } from "./lib/mtbTrailsSwitch.ts";
+import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
@@ -228,6 +229,7 @@ export function App() {
   const [stressVisible, setStressVisible] = useState(true);
   useStressStyle();
   const showHighLanes = useHighStressLanes();
+  const showMtbTrails = useMtbTrails();
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -1528,6 +1530,13 @@ export function App() {
               />
 
               {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+              {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. Topo lines
+                  and climbs join the mountain-bike trails here once the tiles carry them (docs/MTB-TOPO-PLAN.md). */}
+              <section aria-labelledby="terrain-heading">
+                <h3 id="terrain-heading">Trails and terrain</h3>
+                <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+              </section>
 
               {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
               {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
