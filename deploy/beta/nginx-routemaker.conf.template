@@ -245,6 +245,38 @@ server {
         add_header Cache-Control "public, max-age=86400" always;
     }
 
+    # The installable app (Caddyfile @frontend; WEB-NAV-plan.md section 8): its service worker and
+    # manifest revalidate on every load, as index.html does, so a deploy or the kill switch
+    # (docs/OPERATIONS.md) reaches every browser at once; its icons keep a day, like the favicon.
+    # All three stay behind the password: index.html asks for the manifest with credentials
+    # (crossorigin="use-credentials"), and the browser sends them with the worker's own fetches.
+    # sw-kill.js is not served: it is copied over sw.js on disk when needed.
+    location = /sw.js {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /manifest.webmanifest {
+        root @DATA_ROOT@/frontend;
+        # An older nginx's mime.types has no webmanifest line.
+        types { }
+        default_type application/manifest+json;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location ^~ /icons/ {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+
     # Hashed file names: a changed file is a new name, so they never change.
     location ^~ /assets/ {
         root @DATA_ROOT@/frontend;

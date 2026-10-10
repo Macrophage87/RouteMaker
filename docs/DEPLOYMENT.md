@@ -1072,7 +1072,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -1081,7 +1081,14 @@ copies the hashed files under `assets/` first and replaces `index.html` last,
 by a rename, so a page loaded mid-deploy gets either the old app or the new
 one and never an `index.html` naming files that are not there yet. The page
 on how stress ratings work, `about/stress.html`, is replaced by a rename too,
-so nobody reads it half written. Older
+so nobody reads it half written, and so is the installable app's service
+worker, `sw.js` (docs/DEVELOPMENT.md, "The installable app"); the app's
+manifest, its icons under `icons/` and the worker's kill switch `sw-kill.js`
+(docs/OPERATIONS.md, "The app's service worker") are copied beside them. The
+worker is copied before `index.html` is renamed, and that is safe: a browser
+that fetches the new `sw.js` while the edge still serves the old `index.html`
+finds the two builds' ids differ, refuses to install it, and tries again on
+its next load. Older
 hashed files are left behind: they are what a tab opened before the deploy
 still asks for, and they cost about 2 MB a release. `cp -n` leaves a hashed
 file that is already there alone rather than rewriting it under a reader

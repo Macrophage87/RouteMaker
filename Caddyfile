@@ -174,9 +174,22 @@
 	# the preset links' reason above: a browser keeps a permanent redirect with no
 	# way for us to take it back, so a rollback or a later move of the page would
 	# leave it pointing at the API's 404.
+	#
+	# The installable app (WEB-NAV-plan.md section 8; docs/DEVELOPMENT.md, "The
+	# installable app"): /sw.js is its service worker, /manifest.webmanifest its
+	# manifest and /icons/* its home-screen icons. Unlisted they would fall
+	# through to the API's 404 and the app could not be installed. The worker
+	# and the manifest revalidate on every load, like index.html, so a deploy
+	# (or the kill switch, docs/OPERATIONS.md) reaches every browser at once;
+	# the browser itself never keeps a worker script past a day either. The
+	# icons keep a day, like the favicon. The worker's scope is /, which its
+	# own path allows without a Service-Worker-Allowed header, and the CSP
+	# below already permits it (worker-src 'self'; manifest-src falls back to
+	# default-src 'self'). sw-kill.js, the kill switch, is deliberately not
+	# served: it is copied over sw.js on disk when needed.
 	@stress-page path /about/stress /about/stress/
 	redir @stress-page /about/stress.html 302
-	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /assets/*
+	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /assets/* /sw.js /manifest.webmanifest /icons/*
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
@@ -193,6 +206,15 @@
 		header /licenses.txt Cache-Control "no-cache"
 		header /about/stress.html Cache-Control "no-cache"
 		header /favicon.svg Cache-Control "public, max-age=86400"
+		header /sw.js Cache-Control "no-cache"
+		header /manifest.webmanifest Cache-Control "no-cache"
+		header /manifest.webmanifest Content-Type "application/manifest+json"
+		# Only the icons that exist, as for /assets/ above: a missing one is not kept a day.
+		@icons {
+			path /icons/*
+			file
+		}
+		header @icons Cache-Control "public, max-age=86400"
 		file_server
 	}
 

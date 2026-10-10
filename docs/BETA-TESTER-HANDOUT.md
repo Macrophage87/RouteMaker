@@ -88,6 +88,11 @@ needed; reload the page to get the box back.
   never move your focus: they are said through two live regions (the urgent ones, such as
   "Left now" and leaving the route, interrupt), or by RouteMaker's own voice, as you chose. With
   the focus anywhere in Ride mode, W says where you are and C puts the map back on you.
+- Installing and offline (section 10): "Install the app" and "Routes kept for offline" are
+  headings on the Settings page. Each kept route has an "Open" and a "Remove" button that name
+  the route. Remove says what it removed and puts the focus on the next route's Remove, or on
+  the heading when none is left. "A new version of RouteMaker is ready" and "You are offline"
+  are said once, politely, and never move your focus.
 
 
 7. Reporting a problem
@@ -146,3 +151,30 @@ You stay responsible for riding safely; the route can be wrong.
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
 - "Big text" hides the map and shows the next cue large. "End ride" goes back to the planner.
+
+
+10. Installing RouteMaker, and routes for places with no signal
+---------------------------------------------------------------
+
+RouteMaker can be installed like an app: it then opens from your home screen in its own window
+(the phone's clock and battery stay in view), and it opens even with no signal.
+
+- Android, and Chrome or Edge on a computer: press "Install RouteMaker" on the Settings page
+  (also under "More tips"), then confirm in the browser's own box. If there is no such button,
+  the browser's menu has "Install app" or "Add to Home screen".
+- iPhone or iPad: in Safari, press Share, then Add to Home Screen. The Settings page says the
+  same.
+- The installed app may ask for the beta's user name and password once more the first time it
+  opens. That is expected.
+- "Keep for offline", under a route, saves the route and the map along it on this device. Open
+  it again from Settings, "Routes kept for offline", with no signal at all; the planner says it
+  is the route you kept and may be out of date. "Remove" there deletes it. Up to 10 routes.
+- In the installed app, the route of your last ride is kept too ("Last ride"), with the map
+  saved during the ride, and the next ride replaces it.
+- Kept routes stay on this device only, until you remove them, and are never sent anywhere,
+  even a route that started from "Use my location". Your position along a ride is never kept.
+  In a browser tab on an iPhone, Safari may clear them after seven days without a visit; the
+  installed app keeps them.
+- When a new version is ready, a line at the top of the planner says "A new version of
+  RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
+  press "End ride". With no signal, a line there says you are offline.

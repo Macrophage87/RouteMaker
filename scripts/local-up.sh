@@ -299,7 +299,7 @@ else
   # that are not there.
   run "$DOCKER" run --rm --quiet -u 10001:10001 \
     -v "$REPO_DIR/frontend/dist:/dist:ro" -v "$DATA_ROOT/frontend:/out" "$BUSYBOX" \
-    sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html && echo "$1" >/out/.local-up-source' \
+    sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html && echo "$1" >/out/.local-up-source' \
     sh "$frontend_tree"
 fi
 

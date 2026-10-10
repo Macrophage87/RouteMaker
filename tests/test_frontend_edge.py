@@ -36,6 +36,9 @@ SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
 STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 STATIC = b"body{}"
+WORKER = b"// RouteMaker's service worker\n"
+MANIFEST = b'{"name": "RouteMaker"}'
+ICON = b"\x89PNG\r\n\x1a\nicon"
 
 
 def docker_ready() -> bool:
@@ -74,6 +77,11 @@ def edge(tmp_path_factory):
     (frontend / "licenses.txt").write_bytes(LICENCES)
     (frontend / "about").mkdir()
     (frontend / "about" / "stress.html").write_bytes(STRESS_PAGE)
+    (frontend / "sw.js").write_bytes(WORKER)
+    (frontend / "sw-kill.js").write_bytes(b"// kill\n")
+    (frontend / "manifest.webmanifest").write_bytes(MANIFEST)
+    (frontend / "icons").mkdir()
+    (frontend / "icons" / "icon-192.png").write_bytes(ICON)
     static = root / "static"
     (static / "admin").mkdir(parents=True)
     (static / "admin" / "base.css").write_bytes(STATIC)
@@ -139,6 +147,27 @@ def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
     status, headers, body = get(edge, "/licenses.txt")
     assert (status, body) == (200, LICENCES)
     assert "no-cache" in headers.get("Cache-Control", ""), headers
+
+
+def test_the_installable_apps_files_are_the_apps(edge) -> None:
+    """WEB-NAV-plan.md section 8 (P1): unlisted, these fell through to the API (502 here)."""
+    status, headers, body = get(edge, "/sw.js")
+    assert (status, body) == (200, WORKER), (status, headers)
+    assert "javascript" in headers.get("Content-Type", ""), headers
+    assert headers.get("Cache-Control") == "no-cache", headers
+    status, headers, body = get(edge, "/manifest.webmanifest")
+    assert (status, body) == (200, MANIFEST), (status, headers)
+    assert headers.get("Content-Type", "").startswith("application/manifest+json"), headers
+    assert headers.get("Cache-Control") == "no-cache", headers
+    status, headers, body = get(edge, "/icons/icon-192.png")
+    assert (status, body) == (200, ICON), (status, headers)
+    assert headers.get("Cache-Control") == "public, max-age=86400", headers
+    # A missing icon is the file server's 404, and is not kept a day.
+    status, headers, _ = get(edge, "/icons/missing.png")
+    assert status == 404 and "max-age" not in headers.get("Cache-Control", ""), headers
+    # The kill switch is copied over sw.js on disk, never served under its own name.
+    status, _, _ = get(edge, "/sw-kill.js")
+    assert status == 502
 
 
 class _Unfollowed(urllib.request.HTTPRedirectHandler):

@@ -910,6 +910,12 @@ sudo cp -p "$RM_DATA/frontend/index.html" "$RM_DATA/backups/index.html.pre-front
 Nothing restarts; `index.html` is read per request. **Undo** (the old hashed assets are still on disk, so this brings the old
 app back): `sudo cp -p "$RM_DATA/backups/index.html.pre-frontend-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"`.
 
+Once the front end has the installable app's service worker (`sw.js`), save it beside `index.html` the same way
+(`sudo cp -p "$RM_DATA/frontend/sw.js" "$RM_DATA/backups/sw.js.pre-frontend-<time>"`) and put it back with the same
+`cp` and `mv -T` in an undo, so the worker and the page stay the same build (OPERATIONS.md, "The app's service worker:
+updates, rollback and the kill switch", which also has the kill switch). The installable app's edge changes, in this
+template and the Caddyfile, are OPERATIONS.md, "The installable app at the edge".
+
 ## Continuous deployment
 
 OWNER-DECISIONS 431: the beta server checks GitHub for a new release tag itself and ships it with

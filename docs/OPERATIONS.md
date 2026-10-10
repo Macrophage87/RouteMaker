@@ -2477,6 +2477,109 @@ seen at once. The routers still read their config only at start; see "After a
 rebuild: restart the routers". `tests/test_deploy_docs.py` fails if a second
 single-file bind appears without this procedure covering it.
 
+## The installable app at the edge (WEB-NAV P1-P4)
+
+The installable app (docs/DEVELOPMENT.md, "The installable app") adds four kinds of
+file to the front end's directory: `sw.js` (its service worker), `sw-kill.js` (the
+worker's kill switch, below), `manifest.webmanifest` and `icons/*.png`. The repository
+carries the edge changes they need; **the owner ships them by hand**, as every
+`Caddyfile` and `deploy/` change (PLAN.md: the agent stops at `deploy/`):
+
+1. **The front end first.** `/sw.js` and the rest are only asked for by the new
+   `index.html`, so publishing the new build (docs/DEPLOYMENT.md, "The public front
+   end", whose publish step now copies them) before the edge change is harmless:
+   until the edge lists them, those paths are the API's 404, the worker does not
+   register and the browser offers no install. Nothing breaks either way round.
+2. **Caddy** (the home stack and any Caddy deployment): the `Caddyfile` change adds
+   `/sw.js /manifest.webmanifest /icons/*` to `@frontend`, `Cache-Control: no-cache`
+   on the worker and the manifest, `Content-Type: application/manifest+json` on the
+   manifest, and a day's cache on the icons that exist. Apply it with "Applying a
+   Caddyfile change" above (validate in a throwaway container, then recreate caddy
+   alone). Then check:
+
+   ```sh
+   curl -sI https://<site>/sw.js | grep -iE '^(HTTP|content-type|cache-control)'
+   # 200, text/javascript, no-cache
+   curl -sI https://<site>/manifest.webmanifest | grep -iE '^(HTTP|content-type|cache-control)'
+   # 200, application/manifest+json, no-cache
+   curl -sI https://<site>/icons/icon-192.png | grep -iE '^(HTTP|cache-control)'
+   # 200, public, max-age=86400
+   curl -sI https://<site>/sw-kill.js | head -1
+   # 404 (the API's): the kill switch is never served under its own name
+   ```
+
+   `tests/test_frontend_edge.py` runs the same checks against the pinned Caddy image
+   where Docker is available.
+3. **The beta's nginx**: the template gains `location = /sw.js`, `location =
+   /manifest.webmanifest` (with its own type: an older nginx's `mime.types` has no
+   `webmanifest` line) and `location ^~ /icons/`, all behind the basic-auth password
+   like the rest of the app. Re-render and install it as BETA-RUNBOOK.md, "Shipping
+   an update later", step 9 says (`nginx -t` before the reload), then run the same
+   `curl` lines with the tester's user name (`curl -u <name> ...`). The beta's own
+   front-end install (`receive-data.sh files`, the CD agent) copies every file of the
+   build, so it needs no change.
+4. **Then, on a phone** (plan section 10, "basic auth on beta may block the manifest
+   or worker fetch; test on the beta early"): open the beta in Chrome on Android and
+   Safari on an iPhone, sign in through the password box, and check that Settings
+   offers "Install RouteMaker" (Android) or the Share line (iPhone), that the installed
+   app opens (it may ask for the password once more: an installed app keeps its own
+   sign-ins), and that, in airplane mode, the installed app still opens and a route
+   kept with "Keep for offline" opens from Settings with its map.
+
+The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
+and `manifest-src` falls back to `default-src 'self'`.
+
+## The app's service worker: updates, rollback and the kill switch
+
+`/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
+and carries the build's id; `index.html` carries the same id in `<meta
+name="routemaker-build">`. What it does, and what it never touches, is the table
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
+`index.html`, answers a navigation to `/` from the network first (3 s, then the
+kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
+the base map archive, the admin path and every non-GET included. It caches no API
+answer and nothing private.
+
+**A deploy.** Browsers check `/sw.js` on every load (it is `no-cache` at the edge, and
+the page registers it with `updateViaCache: 'none'`). A new worker installs only if
+the edge's `index.html` already carries its build id, so the publish order cannot
+leave a worker holding a mismatched shell: copied before `index.html` is renamed, the
+first browsers refuse it and take it on their next load. Installed, it waits; open
+pages say "A new version of RouteMaker is ready" with a Reload button (never during a
+ride) and switch only on that press. The new worker deletes the older builds' caches
+when it takes over. Online, a page load always gets the edge's current `index.html`
+anyway, so nobody is held on an old version by the worker while they have a signal.
+
+**A rollback** ("Deploying a planner and front-end release:
+rollback points and verification", and BETA-RUNBOOK.md's undo lines): put the old
+`sw.js` back with the old `index.html`. The beta's tooling saves and restores every
+top-level file of the front end, `sw.js` included. On the home stack, copy it back from
+the old build's `dist/` (or rebuild the old tag). If only `index.html` goes back, the new
+worker refuses to install against it and browsers that already have the new worker
+still load the old app from the network; restoring both keeps the two in step.
+
+**The kill switch**, for a worker that misbehaves in a way a normal deploy cannot fix
+(plan section 10: "service-worker bugs outlive a deploy"). Every build writes
+`sw-kill.js` beside `sw.js` (from `frontend/src/sw/swKill.mjs`); it is never served
+under its own name. To use it, copy it over `sw.js` in the front end's directory, as
+the directory's owner:
+
+```sh
+docker run --rm -u 10001:10001 -v <DATA_ROOT>/frontend:/out \
+  docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+  sh -c 'cp /out/sw-kill.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js'
+```
+
+(on the beta: `sudo` with the same `cp` and `mv` in `$RM_DATA/frontend`). Each browser
+picks it up on its next load of the page, or within a day by the browser's own rule. It
+takes over at once, deletes every cache the worker made (`routemaker-app-*`) and nothing
+else (the routes riders kept for offline and a ride's corridor are theirs and stay),
+unregisters itself and reloads the pages it controlled, which then run with no worker.
+While it is in place, a page that registers `/sw.js` again gets the kill switch again,
+which finds no page to reload and unregisters: there is no loop. The next normal deploy
+publishes a real `sw.js` and the worker comes back. Nothing else is needed: no edge
+change, no restart.
+
 ## Pausing the weekly rebuild
 
 OWNER-DECISIONS 355 ("Pause until our rebuild"): set `WEEKLY_REBUILD_PAUSED=1` (or

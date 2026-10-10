@@ -869,6 +869,9 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
         "= /favicon.svg",
         "= /licenses.txt",
         "= /about/stress.html",
+        "= /sw.js",
+        "= /manifest.webmanifest",
+        "^~ /icons/",
         "^~ /assets/",
         "^~ /static/",
         "^~ /basemap/",
@@ -912,6 +915,44 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     target, status = caddy.groups()
     assert target == "/about/stress.html"
     assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
+
+
+def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:
+    """WEB-NAV-plan.md section 8 (P1): the worker, the manifest and the icons are the app's
+    files, listed in the Caddyfile's @frontend and given a location here each, from the app's
+    own root; the worker and manifest revalidate on every load, the icons keep a day, and
+    the manifest has its own type even on an nginx whose mime.types lacks it. The kill
+    switch is not served by either edge, and all of it stays behind the password."""
+    frontend = re.search(r"@frontend path (.+)", CADDYFILE).group(1).split()
+    for path in ("/sw.js", "/manifest.webmanifest", "/icons/*"):
+        assert path in frontend, path
+    assert not any("sw-kill" in p for p in frontend)
+    assert re.search(r'^\s*header /sw\.js Cache-Control "no-cache"$', CADDYFILE, re.M)
+    assert re.search(
+        r'^\s*header /manifest\.webmanifest Cache-Control "no-cache"$', CADDYFILE, re.M
+    )
+    assert re.search(
+        r'^\s*header /manifest\.webmanifest Content-Type "application/manifest\+json"$',
+        CADDYFILE,
+        re.M,
+    )
+    assert re.search(r'^\s*header @icons Cache-Control "public, max-age=86400"$', CADDYFILE, re.M)
+
+    full = stage("full")
+    by_path = dict(locations(full))
+    root = re.findall(r"^\s*root (\S+);", by_path["= /"], re.M)
+    for path, cache in (
+        ("= /sw.js", "no-cache"),
+        ("= /manifest.webmanifest", "no-cache"),
+        ("^~ /icons/", "public, max-age=86400"),
+    ):
+        body = by_path[path]
+        assert re.findall(r"^\s*root (\S+);", body, re.M) == root, path
+        assert f'add_header Cache-Control "{cache}" always;' in body, path
+        assert "auth_basic off" not in body, path
+    manifest = by_path["= /manifest.webmanifest"]
+    assert "types { }" in manifest and "default_type application/manifest+json;" in manifest
+    assert "sw-kill" not in " ".join(path for path, _ in locations(full))
 
 
 def test_the_basemap_is_same_origin_only_with_the_caddyfiles_three_paths() -> None:
@@ -2822,6 +2863,30 @@ def test_ship_data_refuses_a_dump_that_carries_excluded_data(tmp_path: Path) -> 
     )
     assert done.returncode == 2, done.stderr
     assert "the dump carries data for app_user, which must be excluded" in done.stderr
+
+
+def test_the_tester_handout_says_how_to_install_and_keep_routes_for_offline() -> None:
+    """WEB-NAV-plan.md section 8 (P4) and OWNER-DECISIONS 465a: the install offer's words as
+    the page has them, the iOS line, the kept routes' privacy, and the screen-reader notes."""
+    handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
+    tester = handout[handout.index("cut here: send everything below") :]
+    section = tester[tester.index("10. Installing RouteMaker") :]
+    page_words = (REPO / "frontend" / "src" / "lib" / "installOffer.ts").read_text()
+    kept_words = (REPO / "frontend" / "src" / "lib" / "offlineRoutes.ts").read_text()
+    worker_words = (REPO / "frontend" / "src" / "lib" / "appWorker.ts").read_text()
+    for needed, source in (
+        ("Install RouteMaker", page_words),
+        ("press Share, then Add to Home Screen.", page_words),
+        ("Keep for offline", kept_words),
+        ("Routes kept for offline", kept_words),
+        ("A new version of RouteMaker is ready", worker_words),
+    ):
+        assert needed in " ".join(section.split()), needed
+        assert needed in source, f"{needed!r} is not the page's own wording"
+    for needed in ("never sent anywhere", "Use my location", "seven days", "End ride", "Remove"):
+        assert needed in section, needed
+    six = tester[tester.index("6. Once you are in") : tester.index("7. Reporting")]
+    assert "Routes kept for offline" in six and "never move your focus" in six
 
 
 def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:
