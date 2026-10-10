@@ -258,8 +258,14 @@ SIGNALISED_SLIP_FACTOR = 0.5
 # 468: orange from 800 ft = 0.15 calm mi, red from 2,900 ft = 0.55 calm mi (they
 # were 600 and 2,000 ft), so the mix of markers holds with the higher costs. Red
 # is also the search's avoidance trigger (`core.refine.REFINE_MIN_EVENT_FT`).
+# 2026-10-10: red from 3,100 ft = 0.59 calm mi [0.94 km], so an ordinary
+# unsignalised left onto an LTS 3 road (2,400 ft, x1.25 at rush hour = 3,000 ft)
+# stays orange at rush hour. The 468 sample re-run that day: 21 of the 38
+# rush-hour orange-to-red changes were this one case, pushed just over 2,900 ft
+# by the 1.25 factor. The owner chose this on 2026-10-10
+# ("Raise red slightly").
 ORANGE_MIN_FT = 800.0
-RED_MIN_FT = 2900.0
+RED_MIN_FT = 3100.0
 ORANGE = "orange"
 RED = "red"
 

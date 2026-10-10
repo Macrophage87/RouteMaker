@@ -208,16 +208,19 @@ at x0.75 (`:107`, `merge_nearby` `:660-`). Several events within 148 ft [45 m] a
 after the costliest at half its cost (`:608-624`). The cost of each junction is the
 worst of its movements (`cost_of`, `:384-442`).
 
-**Severity** (`severity_of`, `:454-459`): orange (higher stress) from 600 ft, red (very
-high stress) from 2,000 ft (`ORANGE_MIN_FT`, `RED_MIN_FT`, `:176-177`). **Mass Ride**
-reads it differently (`assess(group=True)`, `:560-584`): orange for any flagged
-crossing or left of an LTS 3 road, red for LTS 4 or Avoid, no marker for a left across
-a one-way, and the cost unchanged.
+**Severity** (`severity_of`, `:604-609`): orange (higher stress) from 0.15 calm mi [0.24
+km; 800 ft], red (very high stress) from 0.59 calm mi [0.94 km; 3,100 ft] (`ORANGE_MIN_FT`,
+`RED_MIN_FT`, `:267-268`; red was 2,900 ft until 2026-10-10, see
+[intersections.md](intersections.md) section 7). **Mass Ride** reads it differently
+(`assess(group=True)`, `:560-584`): orange for any flagged crossing or left of an LTS 3
+road, red for LTS 4 or Avoid, no marker for a left across a one-way, and the cost
+unchanged.
 
 How the cost is used: in the score at the intersection weight (section 4), as targets
-for exclusion from 2,000 ft (`REFINE_MIN_EVENT_FT`, `refine.py:111`), and at the top of
-the slider as part of the top (red) and second (orange) figures. Junctions under
-600 ft count in the score and not at the top of the slider.
+for exclusion from 0.59 calm mi [0.94 km; 3,100 ft] (`REFINE_MIN_EVENT_FT`,
+`refine.py:111`), and at the top of the slider as part of the top (red) and second
+(orange) figures. Junctions under 0.15 calm mi [0.24 km; 800 ft] count in the score and
+not at the top of the slider.
 
 ## 6. Avoid, in one place
 

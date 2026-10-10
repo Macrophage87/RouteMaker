@@ -1954,7 +1954,7 @@ avoid, though rare").
 | Unposted speed (469, 469a) | none | the jurisdiction's statutory default (`stress.statutory_default_mph`, stored as `road_default_speed_mph`): the District 20 mph (alleys 15); Maryland 30 in an urban area (35 divided), 50 elsewhere (55 divided); Virginia 25 in an urban area, 55 elsewhere, 35 unpaved; where the state is unknown, the classifier's assumption. Any tier, for cost only, never said. An assumed speed inside an urban area never adds the rural factor | on a table built before that column, `UNKNOWN_SPEED_SEVERE_MPH` 45 mph for an LTS 4 / Avoid road (468's stopgap) |
 | `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
 | `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
-| `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 2,900 | 0.55 [0.88] |
+| `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 3,100 (2,900 in 468; raised 2026-10-10, below) | 0.59 [0.94] (was 0.55 [0.88]) |
 | `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25, weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
 
 The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`, `night`).
@@ -1972,6 +1972,21 @@ The factor is applied before the colour, so a rush-hour plan has more orange and
 junctions and refines more often (the red trigger reads the factored cost), and a night plan
 fewer. A signalised left stays at the box-turn cap at every hour (468: "box-turn cap at
 signals"), so rush hour never lifts one to orange.
+
+**Red from 3,100 ft (owner, 2026-10-10: "Raise red slightly").** The 468 sample re-run
+on 2026-10-10 showed that 21 of its 38 rush-hour orange-to-red changes were one case: an
+ordinary unsignalised left onto an LTS 3 road, 0.45 calm mi [0.73 km; 2,400 ft], times 1.25
+at rush hour = 0.57 calm mi [0.91 km; 3,000 ft], pushed just over the 2,900 ft line by the
+factor. `RED_MIN_FT` (and with it `core.refine.REFINE_MIN_EVENT_FT`, which is defined as
+`RED_MIN_FT`) is now 0.59 calm mi [0.94 km; 3,100 ft], so that left stays orange at rush hour
+(`tests/test_intersections.py`,
+`TestTimeOfDay.test_a_plain_left_onto_an_lts3_road_stays_orange_at_rush_hour`). This is the
+recommended option on the owner's decision card, not yet confirmed. Off-peak it also turns
+a few junctions from red to orange: those costing 2,900 to 3,099 ft, such as a stopped
+crossing of a 45 mph LTS 3 road with three lanes each way (3,000 ft), a left onto a 35 mph
+LTS 3 road with three lanes (3,000 ft) or a 40 mph one with two (2,904 ft), each with no
+traffic count mapped. With none mapped, a stopped crossing of an LTS 3 road is now red
+off-peak only at 50 mph or more with three lanes (3,250 ft).
 
 The statutory sources (469, 469a): the District's 20 mph default since 2020-06-01 (DDOT,
 https://ddot.dc.gov/page/twenty-mph-20-mph-default-speed-limit-frequently-asked-questions);

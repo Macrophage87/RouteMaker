@@ -10,7 +10,7 @@ default speeds of decisions 469 and 469a and the time-of-day bands of decisions 
 Every cost is given first in **calm miles** (a mile of quiet-street riding, 5,280 ft),
 with kilometers in brackets (decision 467). The code's own unit is feet of equivalent
 quiet-street riding (`Event.cost_ft`), so the feet follow the kilometers in the brackets
-(`calm_miles`, `:587-589`). The `calm_mi` and `calm_km` on each of the answer's
+(`calm_miles`, `:593-595`). The `calm_mi` and `calm_km` on each of the answer's
 `intersections` rows are the junction's own cost, without the preset's weight (decision
 469b; `src/core/routing.py:1692-1695`). The rolling stress chart counts a junction at its
 cost times the intersection weight at the ride's slider position (section 8;
@@ -31,9 +31,9 @@ draws as a marker on the route.
 A junction costs something only if it involves a **busy road**, meaning tier 3 or
 higher (`BUSY_TIER = 3`, `:60`). Where two neighborhood streets (LTS 1 or 2) meet,
 nothing is charged. `cost_of` gives a stop sign or an all-way stop there a token 0.002
-calm mi [3 m; 10 ft] (`NEIGHBOURHOOD_STOP_FT`, `:91`, used at `:571-574`), but such a
-junction makes no event (`assess`, `:700-701`), and a route's junction cost is the sum of
-its events (`penalty_m`, `:1078-1080`). So it is never charged to a route and never
+calm mi [3 m; 10 ft] (`NEIGHBOURHOOD_STOP_FT`, `:91`, used at `:577-580`), but such a
+junction makes no event (`assess`, `:706-707`), and a route's junction cost is the sum of
+its events (`penalty_m`, `:1084-1086`). So it is never charged to a route and never
 drawn. This rests on the owner's account that DC law lets a bicycle roll through a stop
 sign when it is safe. Tier 5 (Avoid) is priced as tier 4: every table gives tier 5 the
 tier 4 value (`:70`, `:76`, `:216`, `:233`, `:238`), and the severe tier of section 3
@@ -42,7 +42,7 @@ takes both (`SEVERE_MIN_TIER = 4`, `:151`).
 ## 3. Crossing a busy road, from the stopped side
 
 The big cost is waiting at a stop sign, or at no control at all, to cross free-flowing
-traffic (`crossing_ft`, `:465-482`). The base cost depends on the crossed road's tier
+traffic (`crossing_ft`, `:471-488`). The base cost depends on the crossed road's tier
 (`STOPPED_CROSSING_FT`, `:70`). Both are the top of the published ranges (decision 468):
 
 | Crossed road | Base |
@@ -50,7 +50,7 @@ traffic (`crossing_ft`, `:465-482`). The base cost depends on the crossed road's
 | LTS 3 | 0.30 calm mi [0.49 km; 1,600 ft] |
 | LTS 4 or Avoid | 0.76 calm mi [1.22 km; 4,000 ft] |
 
-The base is then multiplied by factors for the crossed road (`scale`, `:433-457`). An
+The base is then multiplied by factors for the crossed road (`scale`, `:439-463`). An
 input that is not known counts as 1.0, except the speed, as the last bullet says.
 
 - Speed limit (`SPEED_FACTORS`, `:129-130`): 0.8 up to 25 mph [40 km/h], 0.9 up to 30
@@ -60,22 +60,22 @@ input that is not known counts as 1.0, except the speed, as the last bullet says
   for three or more.
 - Traffic count (`VOLUME_FACTORS`, `:136-137`): 0.85 up to 5,000 vehicles a day, 0.95 up
   to 10,000, 1.05 up to 20,000, and 1.2 above that.
-- Rural (`RURAL_SPEED_MPH`, `RURAL_FACTOR`, `:140-141`; applied at `:446-449`): a speed
+- Rural (`RURAL_SPEED_MPH`, `RURAL_FACTOR`, `:140-141`; applied at `:452-455`): a speed
   of 45 mph [72 km/h] or more, crossed from the stopped side, is taken as rural and
   multiplied by a further 1.25. A speed the map does not give, read inside a Census urban
-  area, never counts as rural (`:446-447`).
+  area, never counts as rural (`:452-453`).
 - **The severe tier** (`:143-155`): an LTS 4 or Avoid road scales more steeply. The speed
   factors are 1.2 up to 40 mph [64 km/h], 1.4 up to 45 mph [72 km/h] and 1.6 above that,
   in place of 1.1, 1.2 and 1.3 (`SEVERE_SPEED_FACTORS`, `:152-153`). The lane factors
   are 1.25 for two lanes in each direction and 1.6 for three or more
   (`SEVERE_LANE_FACTORS`, `:154-155`). The rural factor applies to a left off the road
-  as well (section 5; `:448`). A signal, an all-way stop or the priority side is not
-  scaled at all (`:472-481`), so in practice the severe tier prices unsignalized
+  as well (section 5; `:454`). A signal, an all-way stop or the priority side is not
+  scaled at all (`:478-487`), so in practice the severe tier prices unsignalized
   junctions. It is above anything the literature gives: it is the owner's weighting of
   the worst junctions (decision 467).
-- **A road with no mapped speed** (`cost_speed`, `:417-425`) is read at its
+- **A road with no mapped speed** (`cost_speed`, `:423-431`) is read at its
   jurisdiction's statutory default (decisions 469 and 469a; `Road.default_speed_mph`,
-  `:309-312`, from `statutory_default_mph`, `src/routemaker/stress.py:243-255`): the
+  `:315-318`, from `statutory_default_mph`, `src/routemaker/stress.py:243-255`): the
   District 20 mph [32 km/h] (alleys 15 mph [24 km/h]); Maryland 30 mph [48 km/h] in an
   urban area (35 mph [56 km/h] divided) and 50 mph [80 km/h] elsewhere (55 mph [89 km/h]
   divided); Virginia 25 mph [40 km/h] in an urban area, 55 mph [89 km/h] elsewhere and 35
@@ -84,7 +84,7 @@ input that is not known counts as 1.0, except the speed, as the last bullet says
   a segment table built before that column, an LTS 4 or Avoid road with no speed is read
   at 45 mph [72 km/h], decision 468's stopgap (`UNKNOWN_SPEED_SEVERE_MPH`, `:164`), and
   any other unposted road at none. This is for the cost only. The words on the marker
-  only ever say what the map gave (`describe_road`, `:635-651`), and an assumed speed is
+  only ever say what the map gave (`describe_road`, `:641-657`), and an assumed speed is
   never said to a rider.
 
 The result is capped at **2.00 calm mi [3.22 km; 10,560 ft]** (`MAX_CROSSING_FT`,
@@ -98,15 +98,15 @@ stopped crossing of an LTS 4 road about 0.52 to 2.00 calm mi [0.83 to 3.22 km; 2
 
 | Situation | Cost | Code |
 |---|---|---|
-| A signal, crossing LTS 3 / LTS 4 or Avoid | 0.03 / 0.11 calm mi [0.05 / 0.18 km; 150 / 600 ft] | `:76`, `:472-473` |
-| An all-way stop | 0.014 calm mi [23 m; 75 ft] | `:80`, `:474-475` |
-| The priority side: the cross traffic faces the stop sign, or, with no control, the rider's road is the busier one | 0.005 calm mi [8 m; 25 ft] | `:85`, `:476-481` |
-| A straight crossing at a mapped trail crossing with no signal mapped | the stopped-side cost times 0.5, and never drawn red (orange at most) | `:104`, `:110`, `:553-554`, `:740-741` |
-| A divided road, its two carriageways crossed as one crossing | the costlier carriageway's cost times 0.75 (credit for the median refuge) | `:123`, `:797-814` |
+| A signal, crossing LTS 3 / LTS 4 or Avoid | 0.03 / 0.11 calm mi [0.05 / 0.18 km; 150 / 600 ft] | `:76`, `:478-479` |
+| An all-way stop | 0.014 calm mi [23 m; 75 ft] | `:80`, `:480-481` |
+| The priority side: the cross traffic faces the stop sign, or, with no control, the rider's road is the busier one | 0.005 calm mi [8 m; 25 ft] | `:85`, `:482-487` |
+| A straight crossing at a mapped trail crossing with no signal mapped | the stopped-side cost times 0.5, and never drawn red (orange at most) | `:104`, `:110`, `:559-560`, `:746-747` |
+| A divided road, its two carriageways crossed as one crossing | the costlier carriageway's cost times 0.75 (credit for the median refuge) | `:123`, `:803-820` |
 
 ## 5. Movements
 
-- **Onto a busy road** (`MOVEMENT_FACTOR_ONTO`, `:204`; applied at `:535-549`): the
+- **Onto a busy road** (`MOVEMENT_FACTOR_ONTO`, `:204`; applied at `:541-555`): the
   crossing cost for the junction's own control, times 1.5 for a left, 1.0 for straight
   on, and 0.1 for a right, capped at 2.00 calm mi. The crossing cost is the one
   `crossing_ft` gives: the stopped-side cost of section 3, or the signal, all-way stop or
@@ -114,46 +114,46 @@ stopped crossing of an LTS 4 road about 0.52 to 2.00 calm mi [0.83 to 3.22 km; 2
   It also applies when the rider turns off one busy road onto a busier one, or turns with
   a stop sign on their own approach.
 - **A left off a busy road**, where the rider on the busy road turns across its oncoming
-  traffic (`left_from_ft`, `:498-510`). The oncoming part is 0.15 calm mi [0.24 km; 800
+  traffic (`left_from_ft`, `:504-516`). The oncoming part is 0.15 calm mi [0.24 km; 800
   ft] for LTS 3 and 0.76 calm mi [1.22 km; 4,000 ft] for LTS 4 or Avoid
   (`LEFT_ACROSS_ONCOMING_FT`, `:216`): a left off an unsignalized LTS 4 road costs as
   much as crossing it from a stop (decision 468). It is multiplied by the same speed, lane
   and count factors. The rural factor counts here only on an LTS 4 or Avoid road (the
   severe tier). A one-way road has no oncoming part, though the merge below still counts.
   At a signal the oncoming part is multiplied by 0.4 (`SIGNALISED_LEFT_FACTOR`, `:217`).
-- **The merge before a left** (`merge_ft`, `:485-495`), priced only as part of a left
-  off a busy road (`:507`), and priced by the road (decision 468): 0.15 calm mi [0.24 km;
+- **The merge before a left** (`merge_ft`, `:491-501`), priced only as part of a left
+  off a busy road (`:513`), and priced by the road (decision 468): 0.15 calm mi [0.24 km;
   792 ft] for each lane the rider must cross on an LTS 3 road, and 0.30 calm mi [0.48 km;
   1,584 ft] for each lane on an LTS 4 or Avoid road (`MERGE_MILES_PER_LANE`, `:233`). The
   lanes crossed are the road's lanes in one direction, minus one. Where the lane count is
   not known, the road is read as 1 lane (LTS 3) or 2 lanes (LTS 4 or Avoid)
   (`ASSUMED_LANES`, `:238`). On a fast road the merge rises by the severe speed factors,
   never below 1: 1.2 up to 40 mph [64 km/h], 1.4 up to 45 mph [72 km/h] and 1.6 above
-  that (`:234`, `:490-493`). So a two-lane merge and then a left on a fast LTS 4 road
+  that (`:234`, `:496-499`). So a two-lane merge and then a left on a fast LTS 4 road
   reaches the 2.00 calm mi cap. Away from a signal the merge is not capped at the box turn
-  (decision 469b); only the 2.00 calm mi cap applies (`:495`, `:510`).
-- **The box-turn cap** (`BOX_TURN_CAP_FT`, `:235`; applied at `:495`, `:508-509` and
-  `:706-709`): at a signal, the whole left, oncoming part and merge together, never costs
+  (decision 469b); only the 2.00 calm mi cap applies (`:501`, `:516`).
+- **The box-turn cap** (`BOX_TURN_CAP_FT`, `:235`; applied at `:501`, `:514-515` and
+  `:712-715`): at a signal, the whole left, oncoming part and merge together, never costs
   more than 0.14 calm mi [0.23 km; 750 ft]. That is the price of the two-stage box turn
   the rider can make instead. The cap is applied again after the time of day (section 7),
   so rush hour never lifts a signalized left above it. Away from a signal the whole left
   is capped only at 2.00 calm mi.
 - **A right off a busy road**: 0.003 calm mi [5 m; 15 ft], since it is only slowing down
-  (`RIGHT_FROM_BUSY_FT`, `:218`; `:533-534`).
+  (`RIGHT_FROM_BUSY_FT`, `:218`; `:539-540`).
 - **A left across a busy road, from one quiet street to another**: the crossing cost
-  times 1.5, capped at 2.00 calm mi (`:562-565`).
+  times 1.5, capped at 2.00 calm mi (`:568-571`).
 
 ## 6. Slip lanes
 
 Crossing the path of a free-flowing channelized right-turn lane costs 0.19 calm mi [0.30
 km; 1,000 ft] (`SLIP_LANE_FT`, `:250`), and half that, 0.09 calm mi [0.15 km; 500 ft], at
-a signal (`SIGNALISED_SLIP_FACTOR`, `:251`; `slip_ft`, `:513-514`). It counts only where
+a signal (`SIGNALISED_SLIP_FACTOR`, `:251`; `slip_ft`, `:519-520`). It counts only where
 the route crosses the channel's path, not where it rides straight past it, and only
-where a busy road meets there (`:566-570`).
+where a busy road meets there (`:572-576`).
 
 ## 7. Time of day, combining, severity and the avoidance trigger
 
-- **Time of day** (`time_factor`, `:170-196`; applied in `assess`, `:702-705`): a
+- **Time of day** (`time_factor`, `:170-196`; applied in `assess`, `:708-711`): a
   junction with a busy road is multiplied by a factor for the plan's ride time (`when`,
   `src/routemaker/ridetime.py:39-48`). Weekday rush hours, 7 to 10 AM and 4 to 7 PM, are
   x1.25. Other weekday hours, to 9 PM, are x1.0. Weekend daytime, federal holidays
@@ -166,24 +166,30 @@ where a busy road meets there (`:566-570`).
   they make no event. The factored cost is capped at 2.00 calm mi, and a signalized left
   is held at the box-turn cap (section 5). These are typical values, not measured ones.
 - A junction takes the **largest** of the costs that apply to it, not their sum (`take`
-  in `cost_of`, `:517-575`).
+  in `cost_of`, `:523-581`).
 - Events that follow one another no more than 148 ft [45 m] apart along the route are
-  combined into one (`merge_nearby`, `:817-847`; `MERGE_WITHIN_M` and `MERGED_SHARE`,
-  `:780-781`). This catches a divided road's two carriageways, or a trail crossing beside
+  combined into one (`merge_nearby`, `:823-853`; `MERGE_WITHIN_M` and `MERGED_SHARE`,
+  `:786-787`). This catches a divided road's two carriageways, or a trail crossing beside
   a road junction. Within the group, several crossings of the same road (matched by name)
   count once: the costliest, with the median credit if it is a divided road. The combined
   cost is then the costliest event plus half of each of the others, capped at 2.00 calm
-  mi (`:833-835`). Combining never makes the color worse than the worst single event's.
-- **Severity** (`ORANGE_MIN_FT` and `RED_MIN_FT`, `:261-262`; `severity_of`,
-  `:598-603`): **orange** from 0.15 calm mi [0.24 km; 800 ft], and **red** from 0.55 calm
-  mi [0.88 km; 2,900 ft]. The color is read after the time of day, so a rush-hour plan
-  has more orange and red junctions and a night plan fewer. A stopped crossing of an LTS 3
-  road is orange, or red when the road is fast and wide. A stopped crossing of an LTS 4
-  road is red, unless the road is both slow (25 mph [40 km/h] or less) and lightly used
-  (5,000 vehicles a day or fewer), when it is orange. A signal is neither, at any hour.
+  mi (`:839-841`). Combining never makes the color worse than the worst single event's.
+- **Severity** (`ORANGE_MIN_FT` and `RED_MIN_FT`, `:267-268`; `severity_of`,
+  `:604-609`): **orange** from 0.15 calm mi [0.24 km; 800 ft], and **red** from 0.59 calm
+  mi [0.94 km; 3,100 ft]. The color is read after the time of day, so a rush-hour plan
+  has more orange and red junctions and a night plan fewer. Red was 0.55 calm mi [0.88
+  km; 2,900 ft] until 2026-10-10, when the 468 sample re-run showed that 21 of its 38
+  rush-hour orange-to-red changes were one case: an ordinary unsignalized left onto an
+  LTS 3 road (0.45 calm mi [0.73 km; 2,400 ft], times 1.25 at rush hour = 0.57 calm mi
+  [0.91 km; 3,000 ft]), pushed just over the line by the factor. At 3,100 ft it stays
+  orange at rush hour. The owner chose this on 2026-10-10 ("Raise red slightly"). A stopped crossing of an LTS 3 road is orange, or red when the
+  road is fast and wide (with no traffic count mapped, 50 mph [80 km/h] or more with three
+  lanes each way: 0.62 calm mi [0.99 km; 3,250 ft]). A stopped crossing of an LTS 4 road is red, unless the road is
+  both slow (25 mph [40 km/h] or less) and lightly used (5,000 vehicles a day or fewer),
+  when it is orange. A signal is neither, at any hour.
 - On **Mass Ride** the color follows the busy road's own tier instead: orange for LTS 3,
   red for LTS 4 or Avoid, and only for crossings, lefts and slip lanes (`assess`,
-  `:713-739`). The cost is still the model's.
+  `:719-745`). The cost is still the model's.
 - **Red is also the avoidance trigger.** RouteMaker's search plans again around the
   approaches to junctions whose cost, after the time of day, is red or more
   (`REFINE_MIN_EVENT_FT = RED_MIN_FT`, `src/core/refine.py:111`; used at

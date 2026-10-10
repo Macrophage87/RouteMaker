@@ -573,7 +573,7 @@ class TestWhatItMustAvoid:
 
     def test_the_cost_of_junctions_counts_as_stress(self) -> None:
         """A red junction as LTS 4 and an orange one as LTS 3, in their own cost."""
-        red = 3000.0
+        red = 3300.0
         orange = 1500.0
         assert dedodge.avoided_m(read(), read(red=[red])) == pytest.approx(red * FT)
         assert dedodge.avoided_m(read(), read(orange=[orange])) == pytest.approx(orange * FT)
@@ -624,7 +624,7 @@ class TestTheVerdict:
         assert verdict(read(turns=2, lts4=0.0), read(lts4=top)).remove
 
     def test_the_top_figure_includes_red_junctions(self) -> None:
-        got = verdict(read(turns=2), read(red=[3000.0]))
+        got = verdict(read(turns=2), read(red=[3300.0]))
         assert not got.remove and got.reason == "top"
 
     def test_an_orange_junction_is_second_figure_stress(self) -> None:

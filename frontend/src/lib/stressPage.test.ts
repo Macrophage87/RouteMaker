@@ -152,6 +152,8 @@ test("US units first, metric in brackets", () => {
   assert.match(text, /1 mile \[1\.6 km\]/);
   // Junction costs are in calm miles first, then [km; ft] (OWNER-DECISIONS 467; option C, 468).
   assert.match(text, /0\.30 calm miles \[0\.49 km; 1,600 ft\]/);
+  // The red junction threshold, `RED_MIN_FT` (3,100 ft since 2026-10-10; it was 2,900).
+  assert.match(text, /\(red marker\): 0\.59 calm miles \[0\.94 km; 3,100 ft\] or more/);
   assert.doesNotMatch(text, /\b\d+ (m|km)\b(?![^[]*\])/, "a metric figure outside brackets");
   // And every US figure has its metric (the accessibility review's N6): "20 mph" alone fails.
   // Junction costs in calm miles count too (a rate, "calm miles per mile", has no metric).

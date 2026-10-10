@@ -59,7 +59,7 @@ def analysis(
     )
 
 
-def event(m: float, cost_ft: float = 3000.0, approach=None) -> Event:
+def event(m: float, cost_ft: float = 3300.0, approach=None) -> Event:
     return Event(
         m=m,
         lon=BASE[0],
@@ -175,15 +175,15 @@ class TestCrossingAvoidance:
         self, monkeypatch
     ) -> None:
         original = analysis(
-            "o", events=[event(1500.0, 3000.0), event(2500.0, 2950.0), event(3000.0, 1300.0)]
+            "o", events=[event(1500.0, 3300.0), event(2500.0, 3150.0), event(3000.0, 1300.0)]
         )
         better = analysis("b", cost_s=4050.0, events=[])
         world = World(monkeypatch, {"o": original, "b": better}, [trip_of("b", 4.2)])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "b"
         assert info["rounds"] == 1 and info["limited"] is None
-        # The two red events (2,900 ft and up since 468; they were 2,000); an orange
-        # one is not worth a second route.
+        # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
+        # before); an orange one is not worth a second route.
         assert len(world.requests[0]["exclude_locations"]) == 2
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
         assert "alternates" not in world.requests[0], "one route, not alternatives"
@@ -199,7 +199,7 @@ class TestCrossingAvoidance:
         assert kept["legs"][0]["shape"] == "o"
 
     def test_the_intersection_weight_scales_what_a_crossing_is_worth(self, monkeypatch) -> None:
-        original = analysis("o", events=[event(1500.0, 3000.0)])
+        original = analysis("o", events=[event(1500.0, 3300.0)])
         mid = analysis("m", cost_s=4300.0, events=[])
         for weight, taken in ((1.0, "m"), (0.05, "o")):
             World(monkeypatch, {"o": original, "m": mid}, [trip_of("m", 4.5)] * 2)
@@ -207,14 +207,14 @@ class TestCrossingAvoidance:
             assert kept["legs"][0]["shape"] == taken, weight
 
     def test_nothing_to_avoid_asks_the_router_nothing(self, monkeypatch) -> None:
-        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 2800.0)])}, [])
+        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 3000.0)])}, [])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
 
     def test_crossing_avoidance_alone_is_one_round(self, monkeypatch) -> None:
-        original = analysis("o", events=[event(1500.0, 3000.0)])
-        again = analysis("a", cost_s=4100.0, events=[event(1700.0, 3000.0)])
+        original = analysis("o", events=[event(1500.0, 3300.0)])
+        again = analysis("a", cost_s=4100.0, events=[event(1700.0, 3300.0)])
         world = World(monkeypatch, {"o": original, "a": again}, [trip_of("a", 4.1)] * 3)
         refine.refine(trip_of("o", 4.0), context())
         assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 1
@@ -224,12 +224,12 @@ class TestCrossingAvoidance:
 
     def test_a_mass_ride_has_none(self, monkeypatch) -> None:
         """Items 133 to 136 and 171: a group's crossings are priced for the group."""
-        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 3000.0)])}, [])
+        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 3300.0)])}, [])
         refine.refine(trip_of("o", 4.0), context(group=True))
         assert world.requests == []
 
     def test_a_crossing_near_either_end_is_left_alone(self, monkeypatch) -> None:
-        near = analysis("o", events=[event(100.0, 3000.0), event(3900.0, 3000.0)])
+        near = analysis("o", events=[event(100.0, 3300.0), event(3900.0, 3300.0)])
         world = World(monkeypatch, {"o": near}, [])
         refine.refine(trip_of("o", 4.0), context())
         assert world.requests == []
@@ -494,7 +494,7 @@ class TestStopping:
             "s",
             "1" * 15 + "3" * 8 + "1" * 17,
             cost_s=4300.0,
-            events=[event(2500.0, 3000.0, approach=later)],
+            events=[event(2500.0, 3300.0, approach=later)],
         )
         world = World(monkeypatch, {"o": orig, "s": step}, [trip_of("s", 4.3)] * 3)
         refine.refine(trip_of("o", 4.0), context(rate=10.0))

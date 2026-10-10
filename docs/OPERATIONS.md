@@ -425,9 +425,9 @@ read the signals and stop signs OSM puts on the stop lines up the approaches
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
-avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
-route), one `/trace_attributes` for it and its `/locate`s, and one more route for
-the detour warning when the route is at least twice the straight line, or above
+avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
+are worth a second route), one `/trace_attributes` for it and its `/locate`s, and one
+more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so

@@ -474,7 +474,7 @@ class TestNeighbourhoodStopSigns:
 class TestSeverity:
     @pytest.mark.parametrize(
         ("feet", "colour"),
-        [(0, None), (799, None), (800, m.ORANGE), (2899, m.ORANGE), (2900, m.RED), (10560, m.RED)],
+        [(0, None), (799, None), (800, m.ORANGE), (3099, m.ORANGE), (3100, m.RED), (10560, m.RED)],
     )
     def test_the_thresholds(self, feet, colour) -> None:
         assert m.severity_of(feet) == colour
@@ -482,8 +482,9 @@ class TestSeverity:
     def test_the_thresholds_sit_between_the_literature_tiers(self) -> None:
         # Orange from an LTS 3 stopped-side crossing's low end, red from an LTS 4's.
         assert m.SIGNALISED_CROSSING_FT[4] < m.ORANGE_MIN_FT <= 800
-        # 468: orange 0.15 calm mi, red 0.55 calm mi.
-        assert m.ORANGE_MIN_FT == 800.0 and m.RED_MIN_FT == 2900.0
+        # 468: orange 0.15 calm mi; red 0.59 calm mi [0.94 km; 3,100 ft] since
+        # 2026-10-10 (468 set it at 0.55 calm mi, 2,900 ft).
+        assert m.ORANGE_MIN_FT == 800.0 and m.RED_MIN_FT == 3100.0
 
     def test_an_unsignalised_lts3_crossing_is_orange_and_lts4_red(self) -> None:
         assert m.assess(junction(crossed=(Road(3),), control=Control.STOP)).severity == m.ORANGE
@@ -1291,7 +1292,7 @@ class TestOptionC:
         assert m.SLIP_LANE_FT == 1000.0
         assert m.MAX_CROSSING_FT == 10560.0 == 2.0 * mi
         assert m.ORANGE_MIN_FT / mi == pytest.approx(0.15, abs=0.01)
-        assert m.RED_MIN_FT / mi == pytest.approx(0.55, abs=0.005)
+        assert m.RED_MIN_FT / mi == pytest.approx(0.59, abs=0.005)
 
     def test_the_search_trigger_follows_red(self) -> None:
         from core import refine
@@ -1428,10 +1429,22 @@ class TestTimeOfDay:
         assert rush.cost_ft == pytest.approx(plain.cost_ft * 1.25)
 
     def test_the_colour_follows_the_cost(self) -> None:
-        # 2,400 ft (a fast LTS 3 stop): orange off-peak, red at rush (3,000 ft).
-        j = junction(crossed=(Road(3, speed_mph=45),), control=Control.STOP)
+        # 2,600 ft (a 50 mph LTS 3 stop): orange off-peak, red at rush (3,250 ft).
+        j = junction(crossed=(Road(3, speed_mph=50),), control=Control.STOP)
+        assert m.assess(j, when="weekday_offpeak").cost_ft == pytest.approx(2600.0)
         assert m.assess(j, when="weekday_offpeak").severity == m.ORANGE
         assert m.assess(j, when="weekday_rush").severity == m.RED
+
+    def test_a_plain_left_onto_an_lts3_road_stays_orange_at_rush_hour(self) -> None:
+        """2026-10-10: red from 3,100 ft so an ordinary unsignalised left onto an
+        LTS 3 road (2,400 ft, x1.25 at rush hour = 3,000 ft) stays orange. In the
+        468 sample re-run, 21 of 38 rush-hour orange-to-red changes were this case."""
+        j = junction(movement=Movement.LEFT, outgoing=Road(3))
+        assert m.assess(j).cost_ft == pytest.approx(2400.0)
+        rush = m.assess(j, when="weekday_rush")
+        assert rush.cost_ft == pytest.approx(3000.0)
+        assert rush.cost_ft < m.RED_MIN_FT
+        assert rush.severity == m.ORANGE
 
     def test_quiet_street_stops_are_unchanged_and_never_flagged(self) -> None:
         j = junction(crossed=(QUIET,), control=Control.STOP)
