@@ -72,10 +72,11 @@ export const RIDE_ENDED = "Ride ended.";
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
-/** A re-plan that has not answered in this long is given up as no signal (a hung connection). */
+/** A re-plan that has not answered in this long is said as no signal (a hung connection); its answer still counts. */
 export const REPLAN_TIMEOUT_MS = 25_000;
 /** No fix for this long and a failure from the watch: the rider is told (once) that GPS is lost. */
 export const GPS_LOST_MS = 30_000;
+export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
 
 /** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
 export const RIDE_SAFETY =
@@ -231,6 +232,7 @@ export function RideMode({
   keepRef.current = keepPlanned;
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
+  const pausedSaid = useRef(false);
   // The last GPS failure and wake note said, so each is said once, not on every repeat.
   const gpsSaid = useRef<string | null>(null);
   const wakeSaid = useRef("");
@@ -265,7 +267,7 @@ export function RideMode({
   // the polite region even with "neither" chosen, since it changes what the rider must do.
   const notify = useCallback((text: string) => {
     if (!text) return;
-    announcer.current?.say(text, false);
+    announcer.current?.note(text);
     if (!toScreenReader(prefsRef.current.output)) setPolite((s) => ({ text, count: s.count + 1 }));
   }, []);
   const noteWake = useCallback(
@@ -287,24 +289,27 @@ export function RideMode({
       setReplanNote("");
       const current = rideRef.current;
       const points = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
-      // A hung connection is no signal: given up after REPLAN_TIMEOUT_MS (the request itself is left to
-      // finish, so the server's one-request rule holds; its answer is then ignored).
-      let timer: number | undefined;
-      const timedOut = new Promise<"timeout">((resolve) => {
-        timer = window.setTimeout(() => resolve("timeout"), REPLAN_TIMEOUT_MS);
-      });
-      const result = await Promise.race([requestRoute(points, preset, { dials: { ...dials, loop: false } }), timedOut]);
+      // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
+      // found (plan section 3, off route said once); the note stays on screen for all.
+      const tell = (note: string) => {
+        const level = prefsRef.current.verbosity;
+        if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) announcer.current?.say(note, false);
+      };
+      // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
+      // (the gate stays busy until it settles, so no second one joins it at the server; a late new
+      // route is still taken).
+      const timer = window.setTimeout(() => {
+        if (ended.current || ticket !== replanTicket.current) return;
+        setReplanNote(REPLAN_NO_SIGNAL);
+        tell(REPLAN_NO_SIGNAL);
+      }, REPLAN_TIMEOUT_MS);
+      const result = await requestRoute(points, preset, { dials: { ...dials, loop: false } });
       window.clearTimeout(timer);
-      const ok = result !== "timeout" && result.ok;
-      gate.finish(ok);
+      gate.finish(result.ok);
       if (ended.current || ticket !== replanTicket.current) return;
       setReplanning(false);
-      // The quiet level hears nothing unprompted but arrival (plan section 3): the note stays on screen.
-      const tell = (note: string) => {
-        if (prefsRef.current.verbosity !== "quiet") announcer.current?.say(note, false);
-      };
-      if (result === "timeout" || !result.ok) {
-        const note = result === "timeout" || result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+      if (!result.ok) {
+        const note = result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(note);
         tell(note);
         return;
@@ -359,8 +364,14 @@ export function RideMode({
       env,
       (fix) => onFixRef.current(fix),
       (reason) => {
-        if (reason === "timeout") setGps(WAITING_FOR_GPS);
-        else {
+        if (reason === "timeout") {
+          // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
+          if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
+            notify(GPS_LOST_SAID);
+            gpsSaid.current = reason;
+          }
+          setGps(WAITING_FOR_GPS);
+        } else {
           // Said once: at once where the watch has stopped for good, else only once no fix has come for
           // GPS_LOST_MS (a lone failure between fixes is common, and would talk over the cues).
           const final = reason === "denied" || reason === "insecure" || reason === "unsupported";
@@ -409,8 +420,9 @@ export function RideMode({
       } else {
         window.clearTimeout(timer);
         if (pausedRef.current) {
-          // Back after the watch stopped: say so; the lock waits for Resume.
-          notify(PAUSED_SAID);
+          // Back after the watch stopped: say so, once; the lock waits for Resume.
+          if (!pausedSaid.current) notify(PAUSED_SAID);
+          pausedSaid.current = true;
           return;
         }
         void wake.again().then(noteWake);
@@ -443,6 +455,7 @@ export function RideMode({
 
   const resume = () => {
     pausedRef.current = false;
+    pausedSaid.current = false;
     setPaused(false);
     sayWhereNext.current = true;
     startWatch();

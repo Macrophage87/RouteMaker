@@ -472,10 +472,14 @@ test("off route, then rejoining far ahead: back on there, the cues carry on, and
   for (let east = 300; east <= 900; east += 10) s = step(model, s, fix(at(east, 200)), "full", false).state;
   assert.equal(s.off, true);
   assert.ok(Math.abs((s.progressM ?? 0) - 300) < 0.01, "progress waits while off route");
-  const back = step(model, s, fix(at(1000, 200)), "full", false);
+  // Far ahead: back on after three fixes riding along B Street, not on the first.
+  let back = step(model, s, fix(at(1000, 200)), "full", false);
+  assert.equal(back.state.off, true, "one fix on the line far ahead is not yet back");
+  back = step(model, back.state, fix(at(1000, 205)), "full", false);
+  back = step(model, back.state, fix(at(1000, 210)), "full", false);
   assert.equal(back.state.off, false);
-  assert.ok(Math.abs((back.state.progressM ?? 0) - 1200) < 2, `${back.state.progressM}`);
-  const rest = ride(model, "full", 1205, 2000, 5, back.state);
+  assert.ok(Math.abs((back.state.progressM ?? 0) - 1210) < 2, `${back.state.progressM}`);
+  const rest = ride(model, "full", 1215, 2000, 5, back.state);
   assert.equal(rest.state.arrived, true);
   assert.ok(rest.events.some((e) => e.cue?.kind === "hazard"), "the red crossing at 1,500 m is still said");
 });
@@ -622,4 +626,49 @@ test("goodFix: the last fix good enough for cues, what a re-plan starts from", (
   const s = ride(model, "full", 0, 100).state;
   const out = step(model, s, fix(at(600, 300), { accuracyM: 400 }), "full");
   assert.deepEqual(out.state.goodFix, s.fix);
+});
+
+test("a detour that only crosses the route far ahead does not rejoin it, nor skip the stop between", () => {
+  const model = rideModel(twoLegs());
+  let s = ride(model, "full", 0, 300).state;
+  for (let east = 300; east <= 900; east += 10) s = step(model, s, fix(at(east, 200)), "full", false).state;
+  assert.equal(s.off, true);
+  // East across B Street (the second leg, past stop 1 at 1,000 m) and on.
+  const said: string[] = [];
+  for (let east = 980; east <= 1100; east += 5) {
+    const out = step(model, s, fix(at(east, 200)), "full", false);
+    s = out.state;
+    said.push(...out.events.map((e) => e.spoken));
+  }
+  assert.equal(s.off, true);
+  assert.ok(Math.abs((s.progressM ?? 0) - 300) < 0.01, `${s.progressM}`);
+  assert.deepEqual(said, []);
+  assert.equal(replanPoints(model, s.progressM ?? 0, at(1100, 200), [at(0, 0), at(1000, 0), at(1000, 1000)], false).length, 3, "stop 1 still sent");
+});
+
+test("off route scales with a fix's accuracy: 60 m off is on route at 40 m accuracy, off at 5 m", () => {
+  const model = rideModel(lRoute());
+  for (const [accuracyM, off] of [
+    [40, false],
+    [5, true],
+  ] as const) {
+    let s = ride(model, "full", 0, 300).state;
+    for (let i = 0; i < 12; i += 1) s = step(model, s, fix(at(300, 50), { accuracyM }), "full").state;
+    assert.equal(s.off, off, `accuracy ${accuracyM}`);
+  }
+});
+
+test("replanPoints with two stops: each matched by its number", () => {
+  const coordinates = [at(0, 0), at(500, 0), at(1000, 0), at(1500, 0)];
+  const description: DescriptionEntry[] = [
+    stretch(0, 500, "a"),
+    { ...stretch(500, 500, "Stop 1."), kind: "via", via: 1 },
+    stretch(500, 1000, "b"),
+    { ...stretch(1000, 1000, "Stop 2."), kind: "via", via: 2 },
+    stretch(1000, 1500, "c"),
+  ];
+  const model = rideModel({ ...lRoute(), geometry: { type: "LineString", coordinates }, distance_m: 1500, leg_ends: [1, 2, 3], description });
+  const plan: LonLat[] = [at(0, 0), at(500, 0), at(1000, 0), at(1500, 0)];
+  assert.deepEqual(replanPoints(model, 700, at(700, 50), plan, false), [at(700, 50), plan[2], plan[3]]);
+  assert.deepEqual(replanPoints(model, 100, at(100, 50), plan, false), [at(100, 50), plan[1], plan[2], plan[3]]);
 });

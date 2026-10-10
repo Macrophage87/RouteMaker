@@ -142,6 +142,16 @@ export class Announcer {
     this.deliver({ text, urgent: false });
   }
 
+  /**
+   * A note about the ride itself (GPS lost, the screen may sleep): at once, never replaced by a cue; a
+   * cue waiting is kept and goes when its gap is over.
+   */
+  note(text: string): void {
+    if (!text) return;
+    this.lastPolite = this.now();
+    this.deliver({ text, urgent: false });
+  }
+
   /** Drop what is waiting (End ride, a re-plan). */
   drop(): void {
     this.waiting = null;

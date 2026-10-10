@@ -943,7 +943,7 @@ export function App() {
   };
   const startRide = () => {
     const opener = document.activeElement;
-    rideOpener.current = opener instanceof HTMLElement && opener.classList.contains("start-ride") ? opener : startRideRef.current;
+    rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
     if (!ridePrefs.chosen) {
       setRideAsk(true);
       return;
@@ -1423,8 +1423,8 @@ export function App() {
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
-        onStationPoint={placeStation}
-        onRoadInfo={setRoadInfo}
+        onStationPoint={riding ? ignore : placeStation}
+        onRoadInfo={riding ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride */}
         tools={
           accessMode && !riding ? (
           <MapTools

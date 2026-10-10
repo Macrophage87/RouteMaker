@@ -205,3 +205,27 @@ test("ScreenWake: held, re-held after a hide, let go; unsupported and refused sa
   assert.equal(await new ScreenWake({ request: undefined }).hold(), false);
   assert.equal(await new ScreenWake({ request: async () => { throw new Error("NotAllowed"); } }).hold(), false);
 });
+
+test("Announcer: a note goes at once and keeps a waiting cue, which goes after its gap", () => {
+  const { a, said, advance } = announcer();
+  a.say("one", false);
+  a.say("two", false);
+  a.note("No GPS signal.");
+  assert.deepEqual(said.map((s) => s.text), ["one", "No GPS signal."]);
+  advance(POLITE_GAP_MS);
+  assert.deepEqual(said.map((s) => s.text), ["one", "No GPS signal.", "two"]);
+});
+
+test("Announcer: an answer drops what waits, and the next cue waits a full gap after the answer", () => {
+  const { a, said, advance } = announcer();
+  a.answer("On A Street.");
+  a.say("cue", false);
+  advance(POLITE_GAP_MS - 1);
+  assert.deepEqual(said.map((s) => s.text), ["On A Street."]);
+  advance(1);
+  assert.deepEqual(said.map((s) => s.text), ["On A Street.", "cue"]);
+  a.say("waiting", false);
+  a.answer("Off the planned route.");
+  advance(POLITE_GAP_MS * 2);
+  assert.deepEqual(said.map((s) => s.text), ["On A Street.", "cue", "Off the planned route."]);
+});

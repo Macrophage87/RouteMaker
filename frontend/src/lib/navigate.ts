@@ -76,6 +76,11 @@ export const FAST_MS = 15;
 export const OFF_MIN_M = 30;
 export const OFF_MAX_M = 100;
 export const OFF_ACCURACY_FACTOR = 1.5;
+/**
+ * Rejoining the line beyond WINDOW_AHEAD_M of where the rider left it takes this many near fixes in a
+ * row, each farther along: a detour that only crosses the route does not skip the stops between.
+ */
+export const REJOIN_FIXES = 3;
 /** ...for at least 3 good fixes in a row over at least 8 s. */
 export const OFF_FIXES = 3;
 export const OFF_MS = 8_000;
@@ -368,12 +373,14 @@ export interface RideState {
   off: boolean;
   offSince: number | null;
   offCount: number;
+  /** Off route and near the line far ahead: the fixes so far, and the last one's place along it. */
+  rejoin: { count: number; alongM: number } | null;
   /** Arrived at the end. */
   arrived: boolean;
 }
 
 export function startState(): RideState {
-  return { progressM: null, fix: null, goodFix: null, goodAt: null, speedMs: 0, offM: 0, said: {}, off: false, offSince: null, offCount: 0, arrived: false };
+  return { progressM: null, fix: null, goodFix: null, goodAt: null, speedMs: 0, offM: 0, said: {}, off: false, offSince: null, offCount: 0, rejoin: null, arrived: false };
 }
 
 /** How far off the line counts as off route for a fix of this accuracy (plan section 4). */
@@ -430,6 +437,11 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
 export const OFF_ROUTE_SAID = "Off the planned route; finding a new way.";
 export const OFF_ROUTE_KEPT_SAID = "Off the planned route.";
 export const BACK_ON_ROUTE_SAID = "Back on the planned route.";
+
+/** Near fixes in a row along the line far ahead, counting this one (each at least 2 m farther on). */
+function rejoinCount(state: RideState, found: Snap): number {
+  return state.rejoin === null || found.alongM <= state.rejoin.alongM + 2 ? 1 : state.rejoin.count + 1;
+}
 
 /**
  * One fix into the ride: the new state and what to say. `replan` says whether a new way is looked for
@@ -496,7 +508,13 @@ export function step(
     if (found.offM <= threshold || state.progressM === null) {
       next.progressM = state.progressM === null ? found.alongM : Math.max(found.alongM, state.progressM - BACK_TOLERANCE_M);
     }
-  } else if (found.offM <= threshold / 2) {
+  } else if (found.offM > threshold / 2) {
+    next.rejoin = null;
+  } else if (state.progressM !== null && found.alongM - state.progressM > WINDOW_AHEAD_M && rejoinCount(state, found) < REJOIN_FIXES) {
+    // Near the line far ahead: back on only after REJOIN_FIXES fixes in a row riding along it.
+    next.rejoin = { count: rejoinCount(state, found), alongM: found.alongM };
+  } else {
+    next.rejoin = null;
     next.off = false;
     next.offCount = 0;
     next.offSince = null;

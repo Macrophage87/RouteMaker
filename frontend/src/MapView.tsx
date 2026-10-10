@@ -1161,6 +1161,7 @@ export function MapView(props: Props) {
     if (rider === null) {
       riderMarker.current?.remove();
       riderMarker.current = null;
+      following.current = false;
       return;
     }
     if (!riderMarker.current) {
