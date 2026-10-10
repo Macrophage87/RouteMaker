@@ -613,7 +613,8 @@ alone. Shape comes first and colour second:
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
-  `routemaker.trailaccess.MTB` and rated singletrack, which is hidden anyway).
+  `routemaker.trailaccess.MTB` and rated singletrack, which was hidden until
+  456 and is now drawn where only its rating closes it: next bullet).
   `stressFilters` puts `mtbHides` (`["!=", ["get", "mtb"], true]`) into every
   routable layer's filter, right after the ride time's drawn-at clause, and
   the one layer `mtb-trail` (`mtbTrailLayers`, the bottom of
@@ -647,6 +648,33 @@ alone. Shape comes first and colour second:
   says the dotted line is drawn "when the Mountain-bike trails map layer is
   on". docs/MTB-TOPO-PLAN.md has the
   rest of the mountain-bike and topo work.
+- **Mountain-bike levels (456, 456a-c; MTB-TOPO-PLAN slice 2).** The tiles
+  carry `mtb_level` (1-4, left out when null; `segment.mtb_level` from
+  `routemaker.singletrack.mtb_level`, the higher of `mtb:scale` and
+  `mtb:scale:imba`, 0 being no level, 456b). `MTB_LEVELS` in `stressStyle.js`
+  holds each level's colour, name, dash (in line widths) and pattern words;
+  `mtbTrailLayers` adds, after the grey dots (now filtered to the trails with
+  no `mtb_level`), `mtb-level-casing-1..4` (the shared dark cross-ticks,
+  `MTB_LEVEL.tick` in `MTB_LEVEL.tickDash`; 452a) and then
+  `mtb-level-1..4` (`mtbLevelPaint`), all from zoom 14 and all in
+  `MTB_LAYER_IDS`, which `overlayLayerShown` (`isMtbLayerId`) shows by the
+  layer's switch alone and the Mass Ride filter leaves without `massHides`.
+  `setStressPalette` re-applies the widths with the accessibility switch.
+  The legend adds a row a level after the dots' row (`mtbLevelLegend`,
+  `MtbLevelSwatch`, aria-hidden swatch; "Level 2 (blue)" then the rating,
+  colour and pattern in words), in the Mass Ride legend too. The road panel
+  (`core.segment_info`, `mtb_summary`, `MTB_LEVEL_COLOURS`, held equal to the
+  front end's names by a test) says "Mountain-bike trail, level 2 (blue), not
+  used for routes" and adds a "Mountain-bike difficulty" row under Riding.
+  The rebuild draws rated singletrack (`map_class` road, with `mtb`) where
+  nothing but its rating closes it (`pipeline.trail_closures.drawn_singletrack`),
+  and hides the rest as before. mtbLevels.test.ts holds each colour at 3:1
+  from the base map (`testSupport/baseSurfaces.ts`, shared with
+  mtbTrail.test.ts), each pattern distinct from the others and from every
+  other line pattern on the map, every level unlike every stress tier on
+  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
+  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
+  only (`pipeline.trail_closures.mtb_level`).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -6165,3 +6193,88 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
+
+**The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
+`keepCorridor(line)` (`lib/corridorStore.ts`), which fetches every tile within `CORRIDOR_M` (300 m,
+about 1,000 ft) of the line (`corridorTiles`, `corridorJobs` in `lib/corridor.ts`): the stress tiles at
+z14, 13 and 12 and the base map at z15 down to z12, deepest first and each in route order, leaving out
+any a previous route of the ride already kept. `prefetchCorridor` runs them one at a time,
+`STRESS_GAP_MS` (450 ms, after a random wait of up to `START_JITTER_MS`, 2 s, so riders behind one carrier NAT stay under the per-address tile limit) after a stress tile and `BASE_GAP_MS` after a base map tile; a stress tile goes
+through `fetchTile` and so the protocol's page queue (two of the page's requests in flight, the API's
+per-client draw cap, `TILES_IN_FLIGHT`) and its 429/503 backoff. At most `MAX_JOBS` tiles a route and
+`MAX_BYTES` (40 MB) kept in all (`ByteBudget`: full once a take is refused, since tiles never fill it
+to the byte, and freed again when bytes are given back); a tile counts as kept only when its write
+succeeded (the Cache Storage put resolved, every IndexedDB range's transaction completed; a failed
+write gives its bytes back), and the counts are per kind; a kind failing `STOP_AFTER_FAILURES` times in a row is
+dropped (no signal at the start, or a base map that is not served). Where they are kept:
+
+* Stress tiles: the Cache Storage bucket `routemaker-corridor-v1`, keyed by the tile's URL without its
+  `?rev=` (`stressKey`), the edit generation kept beside it in a header, so an admin's edit mid-ride
+  replaces the tile rather than orphaning it. The protocol's loader (`loadTile` in
+  `lib/stressProtocol.ts`, given `corridorStress` by App) during a ride reads a kept tile of the same
+  generation first (in a real dead spot the phone often still says it is online, and a request hangs
+  rather than fails), then gives the network `NETWORK_TIMEOUT_MS` (6 s, above the 5.46 s cold draw in docs/OPERATIONS.md) before falling back to a kept
+  tile of any generation; it keeps each tile the map loads during a ride. Outside a ride the bucket is
+  neither read nor opened (opening would create it).
+* The base map: `region.pmtiles` is read by HTTP range, and Cache Storage refuses 206 answers, so
+  MapView adds the protocol's archive itself (`basemapArchive`), a `PMTiles` over a `CorridorSource`
+  over the usual `FetchSource`. While keeping, it stores every range it reads (header, root and leaf
+  directories, tiles) in IndexedDB (`routemaker-corridor`, store `ranges`, keyed `offset:length`) with
+  the archive's ETag (an answer with no ETag is not kept, since a later file could not be told
+  apart); a range asked for with that ETag is answered from the store first, the header
+  (asked with none) from the network first, and any kept range answers when the network fails. A new
+  ETag (the archive refreshed under the same name) empties the store. Outside a ride with nothing kept,
+  the store is never touched: a first IndexedDB open takes about a second, and a header refusal held
+  back that long kept MapLibre's style from loading in the browser suite.
+* Glyphs (the style's Latin stacks, `fontStacks`, ranges 0-255, 256-511 and 8192-8447) and the sprite:
+  fetched once into the browser's HTTP cache, which the edge lets keep them a day
+  (`/basemap/fonts/*`, `/sprites/*`: `private, max-age=86400`) and which answers MapLibre's own
+  requests with no network.
+
+What is kept is for one ride: a ride never outlives the page (no service worker yet). End ride clears
+it (`clearCorridor`, from RideMode's unmount), the next ride's first `keepCorridor` (`first`) clears
+before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a time and never a place)
+lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
+opens nothing). The clears run in order on one promise chain and End ride bumps a generation, so a
+quick Start ride after End ride waits for the clear and a `keepCorridor` still waiting when End ride
+comes starts nothing. RideMode shows `corridorNote` under its controls, which says what was saved
+("Only the stress lines along the route are saved for dead spots, not the base map." when the base
+map was not); it is not said, since it changes nothing the rider must do. A re-plan still needs a
+signal.
+
+**The 311 report (N6).** "Report a problem to DC 311" (`Report311` in `RideMode.tsx`,
+`lib/report311.ts`), inside DC only (`inDc` on the rider's place on the line). DC's Text to 311 page
+(ouc.dc.gov/service/text-311, read 2026-10-10) gives the short code 32311 and the keywords POTHOLE,
+STREETLIGHT and TRASH that go straight to a request; it names none for a fallen tree, and anything else
+goes through MENU to "Other Service Requests", which sends the texter to 311 Online. So Pothole and
+Streetlight out, on a phone (`canText`: Android, iPhone, an iPad that says it is a Mac), are a Text to
+DC 311 link first, `smsHref` (iOS reads `sms:32311&body=`, Android `sms:32311?body=`, RFC 5724),
+named "Text to DC 311 (3 2 3 1 1)" so a screen reader reads the code digit by digit. "Open DC 311
+online (new tab)" (https://311.dc.gov/) and Copy the report are always there too, since a tablet or a
+phone may not send texts; for Something else, and on a desktop (370), they are the way. `reportText`
+is "Location: <place>, Washington, DC." then the rider's note (at most 120 characters), shown and
+copied as is; the text adds DC's keyword in front (`forText`), which a hint says. US units only, since
+it is the message itself. Whether DC's service reads a keyword and a place in one message is not
+verified until a real text is sent (the owner's).
+
+The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
+position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
+between two stretches and each flagged crossing (a junction entry names the street crossed), and the
+nearest to the rider's progress, behind or ahead, is the place ("near Q Street Northwest and R Street
+Northwest"), which may be the last junction passed, as the owner accepted. On a named trail (a path
+stretch with a name) with no junction within `TRAIL_MARKER_M` (a quarter mile), 465's trail marker:
+the trail, the distance along the line from its last junction behind (else its next ahead) and the
+compass direction from there ("on the Capital Crescent Trail, about 1.2 miles northwest of
+Massachusetts Avenue Northwest"). Where am I? says the same on such a trail. OSM's posted mile markers
+(`highway=milestone`) and the trail's own start are not in the route's data, so this is a distance
+from a junction rather than a mile number (PLAN.md, FOLLOWUP-WEB-NAV, for the owner to confirm).
+
+**Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
+`loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
+tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
+network emulated offline (`Network.emulateNetworkConditions`; the mock serves no base map archive, so
+its ranges are not shown there), that End ride clears the bucket and empties the IndexedDB store, and the report's words, links,
+radios, note field and 44 px targets, on a desktop and (with an Android user agent) a phone. The ride
+on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, are the owner's.

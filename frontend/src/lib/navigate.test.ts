@@ -19,7 +19,11 @@ import {
   measureMap,
   nextAction,
   offThreshold,
+  otherStreet,
+  placeOnRoute,
   pointAt,
+  routeJunctions,
+  TRAIL_MARKER_M,
   replanPoints,
   rideModel,
   says,
@@ -671,4 +675,66 @@ test("replanPoints with two stops: each matched by its number", () => {
   const plan: LonLat[] = [at(0, 0), at(500, 0), at(1000, 0), at(1500, 0)];
   assert.deepEqual(replanPoints(model, 700, at(700, 50), plan, false), [at(700, 50), plan[2], plan[3]]);
   assert.deepEqual(replanPoints(model, 100, at(100, 50), plan, false), [at(100, 50), plan[1], plan[2], plan[3]]);
+});
+
+/** East 300 m on A Street, left onto the Capital Crescent Trail north for 2,700 m, crossing River Road at 2,500 m. */
+function trailRoute(): RouteResponse {
+  const description: DescriptionEntry[] = [
+    stretch(0, 300, "0.0 to 0.2 mi (0.0 to 0.3 km): A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(300, 3000, "0.2 to 1.9 mi (0.3 to 3.0 km): Left onto Capital Crescent Trail, low stress (LTS 1), path.", {
+      street: "Capital Crescent Trail",
+      facility: "path",
+      turn: { movement: "left", onto: "Capital Crescent Trail", control: null, severity: null },
+    }),
+    {
+      ...stretch(2500, 2500, "At 1.6 mi (2.5 km): Cross River Road (LTS 3), no signal mapped (Higher stress junction)."),
+      kind: "junction",
+      street: "River Road",
+      tier: null,
+      severity: "orange",
+    },
+  ];
+  return { ...lRoute(), geometry: { type: "LineString", coordinates: [at(0, 0), at(300, 0), at(300, 1500), at(300, 2700)] }, distance_m: 3000, leg_ends: [3], description } as RouteResponse;
+}
+
+test("routeJunctions: each change of named street and each flagged crossing, from the route's own data", () => {
+  const junctions = routeJunctions(rideModel(trailRoute()));
+  assert.deepEqual(
+    junctions.map((j) => [Math.round(j.atM), j.streets]),
+    [
+      [300, ["A Street", "Capital Crescent Trail"]],
+      [2500, ["Capital Crescent Trail", "River Road"]],
+    ],
+  );
+});
+
+test("placeOnRoute: the nearest junction on a street; on a trail far from one, the trail marker (OWNER-DECISIONS 465)", () => {
+  const model = rideModel(trailRoute());
+  const onStreet = placeOnRoute(model, 100);
+  assert.equal(onStreet?.kind, "junction");
+  assert.deepEqual(onStreet?.kind === "junction" && onStreet.junction.streets, ["A Street", "Capital Crescent Trail"]);
+  // Mid-trail, 1,000 m from the junction behind and 1,200 m from the one ahead: the trail, from where the route met it.
+  const midTrail = placeOnRoute(model, 1300);
+  assert.equal(midTrail?.kind, "trail");
+  if (midTrail?.kind === "trail") {
+    assert.equal(midTrail.trail, "Capital Crescent Trail");
+    assert.equal(otherStreet(midTrail.junction, midTrail.trail), "A Street");
+    assert.ok(Math.abs(midTrail.metres - 1000) < 3, `${midTrail.metres}`);
+    assert.equal(midTrail.direction, "north");
+  }
+  // Within a quarter mile of a crossing: the crossing.
+  const nearCrossing = placeOnRoute(model, 2400);
+  assert.deepEqual(nearCrossing?.kind === "junction" && nearCrossing.junction.streets, ["Capital Crescent Trail", "River Road"]);
+  // Past it by more than TRAIL_MARKER_M: measured from it.
+  const past = placeOnRoute(model, 2500 + TRAIL_MARKER_M + 40);
+  assert.ok(past?.kind === "trail" && otherStreet(past.junction, past.trail) === "River Road" && past.direction === "north", JSON.stringify(past));
+});
+
+test("whereAmI on a long trail says the trail marker, US units spoken and metric on screen", () => {
+  const model = rideModel(trailRoute());
+  const state = { ...startState(), progressM: 1300 };
+  assert.match(whereAmI(model, state), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. Next, in 0\.7 miles: cross River Road/);
+  assert.match(whereAmI(model, state, true), /^On the Capital Crescent Trail, about 0\.6 mi \(1\.0 km\) north of A Street\./);
+  // On a street, as before.
+  assert.match(whereAmI(model, { ...startState(), progressM: 100 }), /^On A Street\. /);
 });

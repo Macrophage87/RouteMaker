@@ -17,7 +17,7 @@ import {
   massBandsAt,
   massLayers,
 } from "./massStyle.js";
-import { setMassRide, stressFilters, stressOverlayLayers } from "./stressStyle.js";
+import { isMtbLayerId, setMassRide, stressFilters, stressOverlayLayers } from "./stressStyle.js";
 import { VISIONS, deltaE2000, simulate } from "./testSupport/colourVision.ts";
 import { contrastRatio } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
@@ -206,7 +206,7 @@ test("in the Mass Ride mode every stress and facility layer excludes the feature
     setMassRide(true);
     const filters = stressFilters("weekday_offpeak");
     for (const [id, filter] of Object.entries(filters)) {
-      if (id === "mtb-trail") continue; // its own layer (454): mtbTrailsLayer.test.ts
+      if (isMtbLayerId(id)) continue; // its own layer (454): mtbTrailsLayer.test.ts
       const layer = { id, filter } as Layer;
       assert.equal(draws(layer, { rpm: 100, tier: 3, facility: "lane" }), false, `${id} drew a feature with a capacity`);
     }
@@ -214,7 +214,7 @@ test("in the Mass Ride mode every stress and facility layer excludes the feature
     const plain = stressFilters("weekday_offpeak", undefined, false);
     for (const [id, filter] of Object.entries(plain)) {
       // The mountain-bike trails' line is a layer of its own in every ride type (454): its filter is unchanged.
-      const expected = id === "mtb-trail" ? filter : ["all", filter, massHides];
+      const expected = isMtbLayerId(id) ? filter : ["all", filter, massHides];
       assert.deepEqual((filters as Record<string, unknown>)[id], expected, id);
     }
   } finally {
