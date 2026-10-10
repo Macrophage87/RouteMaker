@@ -49,7 +49,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing, segment_info
+from . import geocode, presets, ratelimit, routing, segment_info, stoporder
 
 logger = logging.getLogger(__name__)
 
@@ -591,6 +591,26 @@ class LongSearchOut(Schema):
     )
 
 
+class AlternatesOut(Schema):
+    """The router's own alternative routes the calm search ranked with its own
+    (OWNER-DECISIONS 435, docs/DEVELOPMENT.md, "The router's own alternatives")."""
+
+    given: int = Field(
+        description="Routes the router gave other than the one the search started from."
+    )
+    ranked: int = Field(
+        description=(
+            "Of those, the ones read and ranked: not busier than the router's first route,"
+            " within the LTS 4 hold and the ceiling, their junctions read."
+        )
+    )
+    taken: bool = Field(description="Whether one ranked first and the search started from it.")
+    limited: str | None = Field(
+        default=None,
+        description="`time`: the ask for them or a reading ran out of its time; null otherwise.",
+    )
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
@@ -617,6 +637,14 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
+    alternates: AlternatesOut | None = Field(
+        default=None,
+        description=(
+            "The router's own alternatives ranked with the search's routes (OWNER-DECISIONS"
+            " 435); null where none were asked for (no calm search, stops, a loop, a long"
+            " calm plan, or no time)."
+        ),
+    )
     target_distance_m: float | None = Field(
         default=None,
         description=(
@@ -1337,6 +1365,81 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             )
         else:
             refusal = _error(503, "Planning this route took too long; try again shortly.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+
+
+class StopOrderOut(Schema):
+    order: list[int] = Field(
+        description=(
+            "The rider's points in the best order, as indices into `points`: the start first,"
+            " the destination last unless the ride is a loop the rider chose, every point once."
+        )
+    )
+    changed: bool = Field(description="Whether `order` differs from the order sent.")
+    by: Literal["riding_time", "straight_line"] | None = Field(
+        description=(
+            "What chose the order: the router's riding times on the ride's own graph and"
+            " settings, straight-line distance when the router gave none, or null when there"
+            " was nothing to choose (fewer than two stops)."
+        )
+    )
+    exact: bool = Field(
+        description="Whether the order is proven the best (up to 13 stops) or only improved."
+    )
+    before_s: int | None = Field(description="Riding time of the order sent, seconds.")
+    after_s: int | None = Field(description="Riding time of `order`, seconds.")
+    before_m: int | None = Field(description="Length of the order sent, metres.")
+    after_m: int | None = Field(description="Length of `order`, metres.")
+
+
+@api.post(
+    "/stop-order",
+    response={
+        200: StopOrderOut,
+        400: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The order of a ride's stops that rides least (OWNER-DECISIONS 449)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    json_body_only,
+    errors_as_json,
+)
+def stop_order(request, body: RouteIn, response: HttpResponse):
+    """Stops in any order: the body is the route request's, and the answer is the order
+    to put the points in. The start stays first and the destination last (in a loop
+    the rider chose, every point after the start may move). Nothing is planned: the
+    page reorders its points and asks for the route as usual. `confirm_long` and
+    `target_distance_m` are accepted and play no part: past 93 mi (150 km) of straight
+    line the order is by straight line, and the router is not asked."""
+    if body.preset == "mass-ride":
+        # OWNER-DECISIONS 449: hidden and off for Mass Ride, whose field rides the
+        # route in the order the organiser set.
+        return Status(400, {"error": "Mass Ride keeps its stops in the order given"})
+    # A loop is as long as its way back too, as for /route.
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:
+        return Status(400, {"error": too_long()})
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+        loop=body.loop,
+    )
+    started = getattr(request, "routing_started", None)
+    try:
+        return Status(200, stoporder.order(body.points, body.preset, dials, started=started))
+    except routing.DeadlineExceeded:
+        refusal = _error(503, "Finding the best order took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
 

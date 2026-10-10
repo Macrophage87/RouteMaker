@@ -420,6 +420,16 @@ Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
 every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
+router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
+7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
+search's measurements) and reads each (a trace and its `/locate`s): up to about 30
+calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (6 s)
+before the search's own 14 s, so a round is always left, and a plan whose hills
+slider already asked for them reuses them. Not yet measured from the live router:
+after the deploy that carries it, compare plan times at 100 with the figures below,
+and count the answers whose `calm_search.alternates.limited` is `time` (the log says
+"did not answer the calm search's ask for alternatives").
 Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
 re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
 2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the
@@ -2742,6 +2752,30 @@ What the strip changes besides access, so it is not mistaken for a fault:
   `bicycle:backward=no` as well as `bicycle=no`, so no directional grant
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
+
+## Best order needs the routers restarted once (OWNER-DECISIONS 449)
+
+"Best order" (`POST /api/stop-order`, `core.stoporder`) asks each router for a riding-time matrix,
+Valhalla's `sources_to_targets`, which the routers serve only once their config lists it in
+`loki.actions` (`valhalla/valhalla-*.json`, from `scripts/build_valhalla_configs.py`). The configs
+are read when a router starts, so after deploying the release that adds it, restart the routers once,
+as after a rebuild (below); the beta's CD restarts them itself when a `loki` key changes. Until then
+nothing fails: each press orders the stops by straight-line distance, the answer's `by` is
+`straight_line`, the page says the router's riding times were not available, and the api logs "the
+<variant> router gave no riding-time matrix" at WARNING (the variant and the router's error only,
+never the points).
+
+What one press costs: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`
+of 2,500), bounded on the api by `MATRIX_TIMEOUT_S` (20 s; 15 s on a weekend or off-road router) inside
+a 25 s budget, plus at most a few seconds of ordering in the worker (about a quarter of a second up to
+13 stops; new local-search starts stop after 3 s). It takes a routing slot and counts toward the
+per-client 60 requests a minute like a route, and the route the page asks for after a reorder counts
+again, so heavy reordering can meet a 429 sooner. As with `/route`, a matrix the api gave up on keeps
+running on the router until it finishes: the slot bounds the api's workers, not the router's. That is
+why a ride past 93 mi (150 km) of straight line is ordered by straight line without asking the router
+(`LONG_SPAN_M`, the route API's long-ride line): a matrix over that span is the long ride's search
+many times over. Its time and memory on a real router have not been measured; measure one 25-point
+matrix at about 90 mi (145 km) before relying on it near that line.
 
 ## After a rebuild: restart the routers
 
