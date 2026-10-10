@@ -591,6 +591,26 @@ class LongSearchOut(Schema):
     )
 
 
+class AlternatesOut(Schema):
+    """The router's own alternative routes the calm search ranked with its own
+    (OWNER-DECISIONS 435, docs/DEVELOPMENT.md, "The router's own alternatives")."""
+
+    given: int = Field(
+        description="Routes the router gave other than the one the search started from."
+    )
+    ranked: int = Field(
+        description=(
+            "Of those, the ones read and ranked: not busier than the router's first route,"
+            " within the LTS 4 hold and the ceiling, their junctions read."
+        )
+    )
+    taken: bool = Field(description="Whether one ranked first and the search started from it.")
+    limited: str | None = Field(
+        default=None,
+        description="`time`: the ask for them or a reading ran out of its time; null otherwise.",
+    )
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
@@ -617,6 +637,14 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
+    alternates: AlternatesOut | None = Field(
+        default=None,
+        description=(
+            "The router's own alternatives ranked with the search's routes (OWNER-DECISIONS"
+            " 435); null where none were asked for (no calm search, stops, a loop, a long"
+            " calm plan, or no time)."
+        ),
+    )
     target_distance_m: float | None = Field(
         default=None,
         description=(
@@ -881,6 +909,63 @@ class ProfileRangeOut(Schema):
     to_m: int
 
 
+class ProfileCalmStepOut(Schema):
+    """One stretch of the route at its own multiplier: the faint step line behind the
+    rolling score."""
+
+    from_m: int
+    to_m: int
+    ratio: float | None = Field(
+        description="Calm miles a mile of it counts for; null where it is not rated."
+    )
+    tier: int | None
+
+
+class ProfileCalmPointOut(Schema):
+    """Calm metres counted at one place: a flagged junction, or an entry into Avoid. Every
+    other junction counts in `ratio` and the total but is not listed."""
+
+    m: int
+    calm_m: int = Field(description="The calm (quiet-street) metres it counts for.")
+    kind: Literal["junction", "avoid_entry"]
+    severity: Literal["orange", "red"] | None = Field(
+        default=None, description="A flagged junction's marker; null for the others."
+    )
+
+
+class ProfileCalmOut(Schema):
+    """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
+    calm miles per actual mile over the window centred on each sample (cut at the route's
+    ends), each junction's cost at the ride's intersection weight counted once in every
+    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
+    all quiet-street riding; a path or a protected lane counts below it. Every ride type
+    but Mass Ride."""
+
+    window_m: int = Field(description="The window's length, metres (461e: about a mile).")
+    ratio: list[float | None] = Field(
+        description="At each of `profile.m`; null where the window holds nothing rated."
+    )
+    steps: list[ProfileCalmStepOut]
+    points: list[ProfileCalmPointOut]
+    total_calm_m: int = Field(description="The route's calm metres, junctions included.")
+    rated_m: int = Field(description="The rated metres they are over.")
+    junctions_counted: bool = Field(
+        description="False where the junctions could not be read, so none are counted."
+    )
+    bands: list[float] = Field(
+        description=(
+            "Where the words change: the 2.5 and 3.5 half-step midpoints at this ride's"
+            " slider position (LTS 1-2 below the first, LTS 3 to the second, LTS 4 above)."
+        )
+    )
+    estimate: bool = Field(
+        description=(
+            "True while each tier's cost is the middle of its modelled range, not the"
+            " road's own speed and lanes."
+        )
+    )
+
+
 class ProfileOut(Schema):
     """The route's elevation along its distance, for the route chart (OWNER-DECISIONS
     322, 323; Mass Ride 328, 332, 333, 396). Parallel arrays, one entry a router sample, in
@@ -933,6 +1018,13 @@ class ProfileOut(Schema):
         description=(
             "Mass Ride only: the stretches on a leg that could not be traced, where neither"
             " the width nor the junctions are known."
+        ),
+    )
+    calm: ProfileCalmOut | None = Field(
+        default=None,
+        description=(
+            "The rolling stress score, calm miles per mile (every ride type but Mass Ride);"
+            " null on a Mass Ride or where it could not be built."
         ),
     )
 

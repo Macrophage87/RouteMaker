@@ -26,7 +26,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -131,6 +131,17 @@ interface Props {
   junctionFocus: { index: number; nonce: number } | null;
   /** The point on the route the elevation chart is reading (OWNER-DECISIONS 322), or null: a ringed marker, not in the tab order. */
   scrubPoint?: LonLat | null;
+  /**
+   * Ride mode (WEB-NAV-plan.md section 1): the rider's position, a "you" arrow distinct from the scrub ring
+   * (drawn over the accuracy circle, which `accuracy` carries), or null outside a ride. With `follow` the map
+   * centres on it at each fix (one easeTo, no continuous animation); a pan by hand calls `onFollowBroken`.
+   * `headingUp` turns the map to the rider's heading; north-up otherwise. While riding the route is not
+   * re-framed when it changes (a re-plan).
+   */
+  rider?: { point: LonLat; headingDeg: number | null } | null;
+  follow?: boolean;
+  headingUp?: boolean;
+  onFollowBroken?: () => void;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -1000,6 +1011,16 @@ export function MapView(props: Props) {
     [],
   );
 
+  // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
+  useEffect(
+    () =>
+      subscribeMtbTrails(() => {
+        const map = mapRef.current;
+        if (map && loaded.current) setStressVisibility(map, callbacks.current.stressVisible);
+      }),
+    [],
+  );
+
   // The route's stressful junctions: orange and red warning markers on the line,
   // a click on one showing why (OWNER-DECISIONS 172). They go while the route
   // is being planned again, as the line's own colours dim.
@@ -1140,6 +1161,62 @@ export function MapView(props: Props) {
     if (!map.getBounds().contains(point)) map.easeTo({ center: point, duration: 250, padding: callbacks.current.framePadding() });
   }, [props.scrubPoint]);
 
+  // Ride mode's "you" marker and the follow camera.
+  const riderMarker = useRef<Marker | null>(null);
+  const following = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    const rider = props.rider ?? null;
+    if (!map) return;
+    if (rider === null) {
+      riderMarker.current?.remove();
+      riderMarker.current = null;
+      following.current = false;
+      return;
+    }
+    if (!riderMarker.current) {
+      const element = document.createElement("div");
+      element.className = "rider-marker";
+      // The ride's own words say where the rider is (Where am I?); the arrow is for the eye.
+      element.setAttribute("aria-hidden", "true");
+      riderMarker.current = new maplibregl.Marker({ element, anchor: "center", rotationAlignment: "map", pitchAlignment: "map" })
+        .setLngLat(rider.point)
+        .addTo(map);
+    } else {
+      riderMarker.current.setLngLat(rider.point);
+    }
+    riderMarker.current.setRotation(rider.headingDeg ?? 0);
+    riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
+    if (!props.follow) {
+      following.current = false;
+      return;
+    }
+    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
+    // Close in once as following starts; a pinch out after that is kept (it does not stop following).
+    const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
+    following.current = true;
+    // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
+  }, [props.rider, props.follow, props.headingUp]);
+  useEffect(() => () => void riderMarker.current?.remove(), []);
+
+  // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
+  // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !props.follow) return;
+    const broken = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) callbacks.current.onFollowBroken?.();
+    };
+    map.on("dragstart", broken);
+    map.on("rotatestart", broken);
+    return () => {
+      map.off("dragstart", broken);
+      map.off("rotatestart", broken);
+    };
+  }, [props.follow]);
+
   // The rail stations' toggles.
   useEffect(() => {
     const map = mapRef.current;
@@ -1226,7 +1303,8 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
       : { type: "FeatureCollection", features: [] },
   );
   setRouteSections(map, route, stale);
-  if (!route || stale || route.geometry.coordinates.length < 2) return;
+  // A ride's camera follows the rider; a re-planned route is not framed over it.
+  if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();
   if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
   fitted.current = true;

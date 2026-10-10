@@ -27,8 +27,8 @@ from django.test import override_settings
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, routing
-from routemaker import flow
+from core import presets, refine, routing
+from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -324,6 +324,43 @@ class TestAnswer:
         assert profile["riders_per_min"] is None
         assert profile["flow"] is None and profile["crossings"] is None
 
+    def test_off_a_mass_ride_the_profile_has_the_rolling_stress_score(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 460.12, 461d: calm miles per mile at each sample, priced at the
+        ride's own slider position (here Default: the bands are the half-step midpoints
+        2.67 and 9.34), and a Mass Ride has none (it keeps its riders chart)."""
+        router(standard_router())
+        profile = post(client, good_body()).json()["profile"]
+        score = profile["calm"]
+        assert len(score["ratio"]) == len(profile["m"])
+        assert all(r is not None and r > 0 for r in score["ratio"])
+        assert score["window_m"] == round(calm.WINDOW_M)
+        assert score["bands"] == pytest.approx([2.67, 9.34], abs=0.02)
+        assert score["junctions_counted"] is True and score["estimate"] is True
+        assert score["rated_m"] > 0 and score["total_calm_m"] >= score["rated_m"] * 0.5
+        mass = post(client, good_body("mass-ride")).json()["profile"]
+        assert mass["calm"] is None
+
+    def test_the_rolling_score_follows_the_slider(self, client, segments, router) -> None:
+        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16),
+        so the bands are 3.5 and 8.5."""
+        router(standard_router())
+        profile = post(client, {**good_body(), "stress": 100}).json()["profile"]
+        assert profile["calm"]["bands"] == [3.5, 8.5]
+        # Test strength review, survivor 1: priced at the dial, not the preset's start.
+        group = calm.Pricing(use_roads=presets.use_roads_for(40))
+        at40 = post(client, {**good_body(), "stress": 40}).json()["profile"]["calm"]
+        assert at40["bands"] == pytest.approx(list(calm.bands(group)), abs=0.01)
+
+    def test_junctions_not_read_are_not_counted_in_the_score(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        router(standard_router())
+        monkeypatch.setattr(routing, "_events", lambda *_args: None)
+        score = post(client, good_body()).json()["profile"]["calm"]
+        assert score["junctions_counted"] is False and score["points"] == []
+
     def test_a_route_with_no_elevation_has_a_null_profile(self, client, segments, router) -> None:
         answers = standard_router()
         answers.answers["route"] = route_answer([(VERTICES, 2.2, [])])
@@ -607,6 +644,67 @@ class TestStressBreakdown:
 
 
 @db
+class TestTheRoutersOwnAlternatives:
+    """OWNER-DECISIONS 435: the calm search ranks the router's own alternatives."""
+
+    def test_the_answer_says_what_the_search_did_with_them(self, client, segments, router) -> None:
+        fake = router(standard_router())
+        body = post(client, {**good_body("default"), "stress": 90}).json()
+        asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
+        assert [p["alternates"] for p in asks] == [refine.ROUTER_ALTERNATES]
+        # The fake gives the first route again, which is no alternative.
+        assert body["calm_search"]["alternates"] == {
+            "given": 0,
+            "ranked": 0,
+            "taken": False,
+            "limited": None,
+        }
+
+    def test_none_without_a_calm_search(self, client, segments, router) -> None:
+        fake = router(standard_router())
+        body = post(client, good_body("default")).json()
+        assert (body.get("calm_search") or {}).get("alternates") is None
+        assert all("alternates" not in p for _u, p in fake.calls)
+
+    def test_the_plans_own_alternatives_are_not_asked_for_twice(
+        self, client, segments, router
+    ) -> None:
+        """The hills slider's avoid half already asked for them with the same request."""
+        fake = router(standard_router())
+        body = post(client, {**good_body("group-ride"), "stress": 90}).json()
+        asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
+        assert len(asks) == 1
+        assert body["calm_search"]["alternates"]["limited"] is None
+
+
+class TestPlanAlternates:
+    """Which of the plan's own routes the calm search ranks (`routing.plan_alternates`)."""
+
+    TRIPS = [{"legs": [{"shape": "a"}]}, {"legs": [{"shape": "b"}]}]
+
+    def test_the_plans_own_where_it_asked(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, False, False) is self.TRIPS
+
+    def test_none_again_where_its_ask_timed_out(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, True, False) == []
+
+    def test_the_search_asks_where_the_plan_did_not(self) -> None:
+        assert routing.plan_alternates({}, self.TRIPS, False, False) is None
+
+    def test_the_search_asks_where_the_target_fitting_asked_again(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, False, True) is None
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, True, True) is None
+
+    def test_the_answer_schema_carries_them(self) -> None:
+        from core import api
+
+        fields = api.AlternatesOut.model_fields
+        assert set(fields) == {"given", "ranked", "taken", "limited"}
+        assert fields["limited"].annotation == str | None
+        assert api.CalmSearchOut.model_fields["alternates"].annotation == api.AlternatesOut | None
+
+
+@db
 class TestWhatIsSentToTheRouter:
     @pytest.mark.parametrize("name", sorted(presets.PRESETS))
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:
@@ -625,10 +723,12 @@ class TestWhatIsSentToTheRouter:
             assert set(fake.endpoints()[2:]) == {"trace_attributes"}
             assert fake.calls[1][1]["costing_options"] == middle
         elif name == "trailmaxxing":
-            # The top of the slider offers other routes (OWNER-DECISIONS 265): once the route is
-            # traced the router is asked for one more that avoids its roads, and the fake gives
-            # the same route, which is no different, so the asking ends.
-            assert fake.endpoints() == ["route", "trace_attributes", "route"]
+            # The calm search asks for the router's own alternatives (OWNER-DECISIONS 435),
+            # and the top of the slider offers other routes (265): once the route is traced
+            # the router is asked for one more that avoids its roads, and the fake gives the
+            # same route, which is no different, so the asking ends.
+            assert fake.endpoints() == ["route", "trace_attributes", "route", "route"]
+            assert "alternates" in fake.calls[2][1]
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)

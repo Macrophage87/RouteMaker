@@ -273,8 +273,9 @@ def calm_rate_for(stress: int) -> float:
 # How far it may go (271: "Change the name from max distance to target distance,
 # because it can get longer"):
 # - The rider's "Target distance" (the request's `target_distance_m`) is a soft goal:
-#   the planner aims at or under it, and goes past it only where the extra miles buy
-#   enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar than the default's),
+#   the planner aims at or under it, the miles up to it at half the default's price
+#   (`core.refine.WORTH_UP_TO_TARGET`, OWNER-DECISIONS 435), and goes past it only where
+#   the extra miles buy enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar),
 #   and never past TARGET_CEILING_RATIO times it (the hard ceiling). The answer says
 #   how far over it is.
 # - With no target, the ceiling is DEFAULT_CEILING_RATIO times the router's own route

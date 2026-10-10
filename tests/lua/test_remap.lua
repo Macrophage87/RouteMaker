@@ -292,9 +292,10 @@ local lit_absent = M.remap_way({ highway = "residential", lit = "yes" }, {})
 check("a way with no lit opinion keeps its own tagging",
   lit_absent.lit == nil, tostring(lit_absent.lit))
 
--- Directional conditional access, for the parkway reversal. Valhalla reads
--- bicycle:forward and bicycle:backward and reads no *:conditional key at all -
--- its own graph.lua carries a bare "TODO access:conditional" - so a road signed
+-- Directional conditional access, for the parkway reversal. Valhalla's Lua
+-- transform reads bicycle:forward and bicycle:backward and no *:conditional key
+-- (its C++ parser reads them as timed restrictions; see M.remap_conditional_access
+-- in the remap) - so, by its static tags, a road signed
 -- against bicycles except at certain hours reaches the graph as simply barred,
 -- in both directions, at every hour of the week.
 

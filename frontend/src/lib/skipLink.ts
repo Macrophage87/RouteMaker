@@ -17,6 +17,8 @@
  */
 
 export const SKIP_LINK_TEXT = "Skip to the route planner";
+/** During a ride the planner is hidden; the same link goes to Ride mode. */
+export const SKIP_TO_RIDE_TEXT = "Skip to ride mode";
 
 /** The parts of the link's click and of the planner this uses. */
 export interface SkipEvent {

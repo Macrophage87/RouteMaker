@@ -28,7 +28,7 @@ import {
   legendWidths,
   unpavedWidth,
 } from "../stressStyle.js";
-import { useHighStressLanes, useStressStyle } from "../useStressStyle.ts";
+import { useHighStressLanes, useMtbTrails, useStressStyle } from "../useStressStyle.ts";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./signIn.ts";
 
@@ -73,7 +73,7 @@ export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_RO
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
-  return `Paths on local routes and other connected paths show from zoom ${ride}; mountain-bike trails and every short path show from zoom ${STRESS_ZOOMS.quiet}.`;
+  return `Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}, and mountain-bike trails too when their layer is on.`;
 }
 
 /**
@@ -86,7 +86,7 @@ export function rideLayerText(ride: number, quiet: number): string {
     `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
     `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
     `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
-    `and best avoided), mountain-bike trails, shorter paths, the other streets and the junction warnings on the map ` +
+    `and best avoided), shorter paths, the other streets and the junction warnings on the map ` +
     `show from zoom ${quiet}.`
   );
 }
@@ -114,7 +114,7 @@ export function stressZoomNotice(zoom: number | null, shown: boolean): string | 
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
   if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
   if (zoom < STRESS_ZOOMS.quiet) {
-    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
+    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
   }
   return null;
 }
@@ -321,6 +321,22 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
   );
 
 /**
+ * The mountain-bike trails' row on its own, for the Mass Ride map, whose legend is the capacity one
+ * (lib/massLegend.ts): their layer shows in every ride type (454), so its words are there too, while
+ * it is on. Null while it is off, or once the trails are routable.
+ */
+export function MtbTrailLegend(): ReactElement | null {
+  useStressStyle();
+  const on = useMtbTrails();
+  if (!MTB_LEGEND || !on) return null;
+  return h(
+    "ul",
+    { className: "legend", "aria-label": "Mountain-bike trail legend" },
+    row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+  );
+}
+
+/**
  * The panel's stress legend: the tiers, the unpaved mark, what the zoom leaves out,
  * and the bike facilities the map has drawn (`facilities`). Drawn from the tiers in
  * use and legendWidths, so it cannot differ from the map from zoom 12; below it the
@@ -340,6 +356,7 @@ export function StressLegend({
 }): ReactElement {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
+  const showMtbTrails = useMtbTrails();
   const tiers = currentTiers();
   const widths = legendWidths(tiers);
   return h(
@@ -353,8 +370,9 @@ export function StressLegend({
       ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
-      // 452a: the mountain-bike trails' not-for-routes line, in words in the list, not behind the zoom fold.
-      MTB_LEGEND && row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+      // 452a: the mountain-bike trails' not-for-routes line, in words in the list, not behind the zoom fold;
+      // only while their layer is on (454), so the legend names what the map draws.
+      MTB_LEGEND && showMtbTrails && row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
     ),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
