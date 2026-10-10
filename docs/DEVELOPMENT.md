@@ -4332,6 +4332,56 @@ so are links (`loop=1`). A Mass Ride's link keeps `loop=1`, but its request leav
 A loop implied by an end on the start, with the toggle off, keeps "Start"
 and "End". Mass Ride has no loop, and its hints do not mention the toggle.
 
+**Stops in any order (OWNER-DECISIONS 449).** "Best order" (`App.tsx`, in the point tools after
+Reverse; `lib/stopOrder.ts`; a one-press button, the owner's choice of 2026-10-10 over 449's switch)
+puts the stops in the order with the least riding time. It is never shown on a Mass Ride, and the API
+refuses one (400). Otherwise it shows only with two or more stops to order (`stopsThatMove`): the points between the start and the end, or in a
+loop the rider chose every point after the start (a ride that already ends on its start keeps that
+end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
+standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
+it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
+beside it. A press sends the ride as a route request would (points, preset and dials; not the
+weight, which the order does not use) to `POST /api/stop-order`
+(`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
+found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
+said, and another press says "Still finding the best order." The answer is used only if the points,
+ride type and dials are still those it was asked for, and only if it fits them (`applyAnswer`,
+`fitsOrder`: every point once, the start first, the end last unless it is a stop). A new order is one
+`commit`, so Undo puts the old one back, and the route is asked for as after any edit; an order
+already best commits nothing. What came of it is the Points notice (a status, so it is seen and said
+once; cleared when the points change again): each stop that moved, by place name or coordinates, with
+its old number, how many stayed, and what it saves (`bestOrderSaid`), for example "Stops put in the
+best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1). The
+other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter. Undo puts the old
+order back." An order already best, an answer by straight line, a refusal and a ride changed meanwhile
+each say so there.
+
+On the server, `core.stoporder.order` asks the ride's own router (the graph and costing `/route`
+would use, `presets.variant_for_ride` and `presets.costing`; a test plans the same bodies through
+both and compares) for the riding times between every pair of points (Valhalla's
+`sources_to_targets`, added to `loki.actions` by `scripts/build_valhalla_configs.py`). A weekend or
+off-road router is handled as `/route` handles it: at most 15 s, and one that does not answer or has
+no tiles leaves the standard graph to answer and is remembered as down.
+`routemaker.stoporder.best_order` chooses the order: exact (Held-Karp) up to 13 stops, about a quarter of a second; past
+that, local moves (or-opt and 2-opt) from the rider's order, the nearest-neighbour order and eight
+seeded shuffles, stopping new starts after 3 s, which is not proven best (`exact` false). Costs are
+read in the direction ridden (one-way streets, climbs); a pair the router cannot join is never chosen.
+The rider's order is kept unless the new one saves at least 1% (`MIN_SAVING_FRACTION`), so a
+reshuffle for nothing does not renumber the stops. The times are the router's own routes between the
+points, not the calm search's or the hills slider's choice, which run only when the route itself is
+planned, and the matrix is asked without a `date_time`. Past 93 mi (150 km) of straight line (the
+route API's long-ride line) the router is not asked, and a ride past 124 mi (200 km), a loop's way
+back included, is refused as `/route` refuses it. A router out of time also leaves the straight-line order. A router that does not serve the matrix (one started
+before this change, or one that is down) is not an error: the order is chosen by straight-line
+distance and the answer's `by` says so, as the page then does. Whether the ride is a loop and ends on
+its start is read from the rider's points, as the page reads it; the router is asked about the
+points it would route (a Zoo point at the racks). The answer: `order` (indices into the points sent;
+a loop's return to the start is not in it), `changed`, `by` (`riding_time`, `straight_line`, or null
+with fewer than two stops, when the router is not asked), `exact`, and `before_s`/`after_s`,
+`before_m`/`after_m` for the rider's order and the new one. Tests: tests/test_stop_order.py (the
+solver against brute force over every order, and the endpoint through a fake router) and
+frontend/src/lib/stopOrder.test.ts.
+
 ### The tables
 
 **The motivating trips and the target distance** (before items 267-271) (Trailmaxxing 100; LTS 1 / 2 / 3 / 4 / Avoid miles; red and orange junctions; plan time; router calls). The new code through the harness; "live" is the deployed API (47c2f52), which skips the calm search past 19 mi.
