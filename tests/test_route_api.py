@@ -27,7 +27,7 @@ from django.test import override_settings
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, routing
+from core import presets, refine, routing
 from routemaker import flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -611,8 +611,10 @@ class TestTheRoutersOwnAlternatives:
     """OWNER-DECISIONS 435: the calm search ranks the router's own alternatives."""
 
     def test_the_answer_says_what_the_search_did_with_them(self, client, segments, router) -> None:
-        router(standard_router())
+        fake = router(standard_router())
         body = post(client, {**good_body("default"), "stress": 90}).json()
+        asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
+        assert [p["alternates"] for p in asks] == [refine.ROUTER_ALTERNATES]
         # The fake gives the first route again, which is no alternative.
         assert body["calm_search"]["alternates"] == {
             "given": 0,
@@ -636,6 +638,33 @@ class TestTheRoutersOwnAlternatives:
         asks = [p for url, p in fake.calls if url.endswith("/route") and "alternates" in p]
         assert len(asks) == 1
         assert body["calm_search"]["alternates"]["limited"] is None
+
+
+class TestPlanAlternates:
+    """Which of the plan's own routes the calm search ranks (`routing.plan_alternates`)."""
+
+    TRIPS = [{"legs": [{"shape": "a"}]}, {"legs": [{"shape": "b"}]}]
+
+    def test_the_plans_own_where_it_asked(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, False, False) is self.TRIPS
+
+    def test_none_again_where_its_ask_timed_out(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, True, False) == []
+
+    def test_the_search_asks_where_the_plan_did_not(self) -> None:
+        assert routing.plan_alternates({}, self.TRIPS, False, False) is None
+
+    def test_the_search_asks_where_the_target_fitting_asked_again(self) -> None:
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, False, True) is None
+        assert routing.plan_alternates({"alternates": 3}, self.TRIPS, True, True) is None
+
+    def test_the_answer_schema_carries_them(self) -> None:
+        from core import api
+
+        fields = api.AlternatesOut.model_fields
+        assert set(fields) == {"given", "ranked", "taken", "limited"}
+        assert fields["limited"].annotation == str | None
+        assert api.CalmSearchOut.model_fields["alternates"].annotation == api.AlternatesOut | None
 
 
 @db

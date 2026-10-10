@@ -905,15 +905,39 @@ class TestRouterAlternates:
             return call(variant, endpoint, payload, deadline)
 
         def spy_read(trip, ctx, deadline):
-            read.append(deadline.per_call_s)
+            read.append(deadline)
             return stub(trip, ctx, deadline)
 
         monkeypatch.setattr(routing, "_call", spy_call)
         monkeypatch.setattr(refine, "analyse", spy_read)
         ctx = self.ctx()
+        started = routing.clock()
         refine.refine(trip_of("o", 4.0), ctx)
         assert asked == [routing.ALTERNATES_TIMEOUT_S] < [ctx.deadline.per_call_s]
-        assert read[-1] == ctx.deadline.per_call_s
+        assert read[-1].per_call_s == ctx.deadline.per_call_s
+        # The reading ends where the ask does, a round's reserve before the search's end.
+        assert read[-1].at == pytest.approx(
+            started + refine.REFINE_BUDGET_S - refine.ALTERNATES_ROUND_RESERVE_S, abs=0.5
+        )
+
+    def test_a_short_request_limit_holds_for_the_ask(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [trip_of("o", 4.0)]
+        )
+        asked = []
+        call = world.call
+
+        def spy_call(variant, endpoint, payload, deadline):
+            if "alternates" in payload:
+                asked.append(deadline.per_call_s)
+            return call(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", spy_call)
+        ctx = self.ctx()
+        ctx.deadline = routing.Deadline(ctx.deadline.at, 5)
+        refine.refine(trip_of("o", 4.0), ctx)
+        assert asked == [5]
 
     def test_off_unless_the_plan_asks(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY)
@@ -1120,10 +1144,51 @@ class TestRouterAlternates:
     def test_not_asked_when_only_a_round_is_left(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY)
         world = AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")], [])
+        assert refine.ALTERNATES_MIN_S == 1.0
         ctx = self.ctx()
-        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + refine.ALTERNATES_MIN_S / 2
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + 0.5
         _kept, info = refine.refine(trip_of("o", 4.0), ctx)
         assert self.asks(world) == [] and "alternates" not in info
+
+    def test_the_plans_own_are_ranked_however_little_time_is_left(self, monkeypatch) -> None:
+        """No ask is needed for them, so the ask's least time does not apply."""
+        orig = analysis("o", self.BUSY)
+        alt = analysis("a", self.BUSY, shift=200)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig, "a": alt}, [routing.RouterRefused(400, 442, "")] * 2, []
+        )
+        ctx = self.ctx()
+        ctx.search_budget_s = refine.ALTERNATES_ROUND_RESERVE_S + 0.5
+        ctx.router_trips = [trip_of("o", 4.0), trip_of("a", 4.0)]
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == [] and info["alternates"]["given"] == 1
+
+    def test_every_alternative_given_is_read_and_an_empty_one_skipped(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        a = analysis("a", self.BUSY, shift=200)
+        b = analysis("b", self.BUSY, shift=300)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "a": a, "b": b},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("a", 4.0), {}, {"legs": []}, trip_of("b", 4.0)],
+        )
+        _kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert info["alternates"]["given"] == 2 and info["alternates"]["ranked"] == 2
+
+    def test_exposure_at_the_allowance_exactly_is_ranked(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        edge = dataclasses.replace(
+            analysis("e", self.BUSY, shift=200), exposure_m=refine._allowance(orig.exposure_m)
+        )
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "e": edge},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("e", 4.0)],
+        )
+        _kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert info["alternates"]["ranked"] == 1
 
     def test_no_reading_is_started_past_the_reserve(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY)
