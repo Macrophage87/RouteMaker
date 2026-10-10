@@ -10,7 +10,7 @@
  *   deepest). `corridorTiles` walks the line in order, so the start's tiles come first.
  * - Pacing (plan section 10, "server load"): one prefetch request at a time, and for the stress tiles
  *   through the protocol's own page queue (stressProtocol.ts: at most two of the page's requests in
- *   flight, the API's per-client draw cap) with STRESS_GAP_MS between them: at most 240 a minute, well
+ *   flight, the API's per-client draw cap) with STRESS_GAP_MS between them (after a random START_JITTER_MS): about 130 a minute, well
  *   under the 600 a minute tile limit (core/ratelimit.py TILES), and a refused draw (429 or 503) is
  *   backed off as the map's own are. At most MAX_JOBS tiles a route, and MAX_BYTES kept in all.
  * - The base map is one file read by HTTP range (Caddyfile, `/basemap/*`), which Cache Storage cannot
@@ -20,7 +20,8 @@
  *   empties the store rather than mixing two files' bytes.
  *
  * Privacy (plan section 7): only tiles and map bytes are kept, never a position; everything is
- * cleared at End ride, and anything older than KEEP_MS is cleared at the next page load.
+ * cleared at End ride, at the start of the next ride and at the next page load (a ride never outlives
+ * the page, so nothing kept by an earlier one is of use; plan section 6 allowed up to 24 h).
  */
 import type { RangeResponse, Source } from "pmtiles";
 import { lonLatToTile, type LonLat } from "./geo.ts";
@@ -35,14 +36,17 @@ export const BASE_PREFETCH_ZOOMS = [15, 14, 13, 12] as const;
 export const MAX_JOBS = 1500;
 /** At most this many bytes kept in all (plan section 6: "capped (e.g. 40 MB)"). */
 export const MAX_BYTES = 40 * 1024 * 1024;
-/** Between two stress tile requests: at most 240 a minute from the prefetch. */
-export const STRESS_GAP_MS = 250;
+/**
+ * Between two stress tile requests: at most about 130 a minute from the prefetch, so a few riders
+ * behind one carrier's address (a phone network's NAT) stay under the 600 a minute per address.
+ */
+export const STRESS_GAP_MS = 450;
+/** A random wait of up to this before the first request, so riders starting together spread out. */
+export const START_JITTER_MS = 2000;
 /** Between two base map tiles: a file on the edge's disk, no draw, so less. */
 export const BASE_GAP_MS = 50;
 /** Failures in a row that stop one kind of tile (no signal, or the base map not served). */
 export const STOP_AFTER_FAILURES = 4;
-/** Kept this long at most (plan section 6: "cleared at End ride or after 24 h"). */
-export const KEEP_MS = 24 * 60 * 60_000;
 
 const EARTH_M = 40_075_016.686;
 
@@ -132,15 +136,24 @@ export interface PrefetchDeps {
   /** Whether the kept bytes have reached MAX_BYTES: the prefetch stops. */
   full?: () => boolean;
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
+  random?: () => number;
   signal: AbortSignal;
   /** Keys of the tiles kept, added to as each comes. */
   done: Set<string>;
+}
+
+export interface KindCount {
+  kept: number;
+  total: number;
 }
 
 export interface PrefetchResult {
   kept: number;
   failed: number;
   total: number;
+  /** Per kind, so the note says which part was saved. */
+  stress: KindCount;
+  base: KindCount;
   /** The route had more tiles than MAX_JOBS, or the store filled. */
   capped: boolean;
   /** Ended at End ride (or a newer route), not finished. */
@@ -166,7 +179,16 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 export async function prefetchCorridor(line: readonly LonLat[], deps: PrefetchDeps): Promise<PrefetchResult> {
   const wait = deps.wait ?? sleep;
   const { jobs, capped } = corridorJobs(line, deps.done);
-  const result: PrefetchResult = { kept: 0, failed: 0, total: jobs.length, capped, stopped: false };
+  const result: PrefetchResult = {
+    kept: 0,
+    failed: 0,
+    total: jobs.length,
+    stress: { kept: 0, total: jobs.filter((j) => j.kind === "stress").length },
+    base: { kept: 0, total: jobs.filter((j) => j.kind === "base").length },
+    capped,
+    stopped: false,
+  };
+  await wait((deps.random ?? Math.random)() * START_JITTER_MS, deps.signal);
   if (deps.extras) {
     try {
       await deps.extras(deps.signal);
@@ -198,6 +220,7 @@ export async function prefetchCorridor(line: readonly LonLat[], deps: PrefetchDe
     if (ok) {
       failures[job.kind] = 0;
       result.kept += 1;
+      result[job.kind].kept += 1;
       deps.done.add(jobKey(job));
     } else {
       failures[job.kind] += 1;
@@ -213,9 +236,14 @@ export function corridorNote(result: PrefetchResult | "saving" | null): string {
   if (result === null) return "";
   if (result === "saving") return "Saving the map along the route for dead spots…";
   if (result.stopped) return "";
+  // A kind with nothing to fetch (a re-plan's route already covered) counts as saved.
+  const stress = result.stress.total === 0 || result.stress.kept > 0;
+  const base = result.base.total === 0 || result.base.kept > 0;
   if (result.kept === 0 && result.total > 0) return "The map along the route could not be saved; it needs a signal to show.";
-  if (result.capped) return "The map along the first part of the route is saved for dead spots.";
-  return "The map along the route is saved for dead spots.";
+  const part = result.capped ? "the first part of the route" : "the route";
+  if (!base) return `Only the stress lines along ${part} are saved for dead spots, not the base map.`;
+  if (!stress) return `Only the base map along ${part} is saved for dead spots, not the stress lines.`;
+  return `The map along ${part} is saved for dead spots.`;
 }
 
 // ---- The base map's byte ranges -----------------------------------------------------------------
@@ -244,28 +272,37 @@ export function memoryRangeStore(): RangeStore & { ranges: Map<string, KeptRange
   };
 }
 
-/** The bytes kept in all (the stress tiles and the base map's ranges), against MAX_BYTES. */
+/**
+ * The bytes kept in all (the stress tiles and the base map's ranges), against MAX_BYTES. Full once a
+ * take was refused (a tile would not fit), not only at exactly MAX_BYTES, so the prefetch stops then.
+ */
 export class ByteBudget {
   bytes = 0;
   readonly max: number;
+  private refused = false;
   constructor(max = MAX_BYTES) {
     this.max = max;
   }
   /** Whether `n` more bytes fit; if so they are counted. */
   take(n: number): boolean {
-    if (this.bytes + n > this.max) return false;
+    if (this.bytes + n > this.max) {
+      this.refused = true;
+      return false;
+    }
     this.bytes += n;
     return true;
   }
   get full(): boolean {
-    return this.bytes >= this.max;
+    return this.refused || this.bytes >= this.max;
   }
-  /** `n` bytes no longer kept. */
+  /** `n` bytes no longer kept (cleared, or a write that failed). */
   give(n: number): void {
     this.bytes = Math.max(0, this.bytes - n);
+    this.refused = false;
   }
   reset(): void {
     this.bytes = 0;
+    this.refused = false;
   }
 }
 
@@ -282,6 +319,8 @@ function isAbort(error: unknown): boolean {
  */
 export class CorridorSource implements Source {
   keeping = false;
+  /** Ranges that were to be kept and were not (no ETag, over the budget, a refused write). */
+  keepFailures = 0;
   private etag: string | undefined;
   private keptBytes = 0;
   private readonly inner: Source;
@@ -343,6 +382,14 @@ export class CorridorSource implements Source {
   }
 
   private async keep(key: string, answer: RangeResponse): Promise<void> {
+    // Without an ETag a refreshed archive could not be told from the kept one, so nothing is kept
+    // (the edge's file_server sends a strong ETag; FetchSource drops a weak one).
+    if (answer.etag === undefined) {
+      this.keepFailures += 1;
+      return;
+    }
+    const size = answer.data.byteLength;
+    let taken = false;
     try {
       // A refreshed archive (a new ETag) under the same name: the old file's bytes go first.
       if (this.etag !== undefined && answer.etag !== this.etag) {
@@ -351,11 +398,17 @@ export class CorridorSource implements Source {
         this.keptBytes = 0;
       }
       this.etag = answer.etag;
-      if (!this.budget.take(answer.data.byteLength)) return;
-      this.keptBytes += answer.data.byteLength;
+      if (!this.budget.take(size)) {
+        this.keepFailures += 1;
+        return;
+      }
+      taken = true;
       await this.store.put({ key, etag: answer.etag, data: answer.data });
+      this.keptBytes += size;
     } catch {
-      // Keeping is best effort: a full or refused store leaves the ride online-only.
+      // Keeping is best effort: a full or refused store (a quota abort) leaves the ride online-only.
+      if (taken) this.budget.give(size);
+      this.keepFailures += 1;
     }
   }
 }

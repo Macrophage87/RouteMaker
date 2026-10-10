@@ -6,6 +6,7 @@ import {
   MAX_ATTEMPTS,
   MAX_IN_FLIGHT,
   MAX_WAIT_S,
+  NETWORK_TIMEOUT_MS,
   Queue,
   STRESS_PROTOCOL,
   backoffMs,
@@ -335,45 +336,92 @@ test("an outage longer than one recheck is asked about again, and again, until i
   assert.equal(h.timers.length, 0);
 });
 
-/** Ride mode's kept tiles (lib/corridorStore.ts), in a Map. */
-function keptTiles(start: Record<string, number[]> = {}) {
-  const tiles = new Map(Object.entries(start).map(([url, bytes]) => [url, new Uint8Array(bytes).buffer]));
+/**
+ * Ride mode's kept tiles (lib/corridorStore.ts), in Maps: `tiles` of the URL's own edit generation,
+ * `stale` of an older one (given only with anyRev); `riding` says whether a ride is keeping them.
+ */
+function keptTiles(start: Record<string, number[]> = {}, stale: Record<string, number[]> = {}, riding = true) {
+  const buffer = (bytes: number[]) => new Uint8Array(bytes).buffer;
+  const tiles = new Map(Object.entries(start).map(([url, bytes]) => [url, buffer(bytes)]));
+  const older = new Map(Object.entries(stale).map(([url, bytes]) => [url, buffer(bytes)]));
   const kept: string[] = [];
+  const read: string[] = [];
   return {
     tiles,
     kept,
+    read,
     offline: {
-      kept: async (url: string) => tiles.get(url) ?? null,
-      keep: (url: string, data: ArrayBuffer) => {
+      riding: () => riding,
+      kept: async (url: string, anyRev = false) => {
+        read.push(anyRev ? `${url} any` : url);
+        return tiles.get(url) ?? (anyRev ? older.get(url) ?? null : null);
+      },
+      keep: async (url: string, data: ArrayBuffer) => {
         kept.push(url);
         tiles.set(url, data);
+        return true;
       },
     },
   };
 }
 
-test("loadTile: a tile from the network is offered to the ride's kept tiles", async () => {
+function counted(answer: () => Promise<Response>) {
+  const calls = { n: 0 };
+  const get = (async () => {
+    calls.n += 1;
+    return answer();
+  }) as unknown as typeof fetch;
+  return { get, calls };
+}
+
+test("loadTile: during a ride a tile from the network is kept; outside one nothing is kept or read", async () => {
   const k = keptTiles();
-  const get = (async () => new Response(new Uint8Array([7]), { status: 200 })) as unknown as typeof fetch;
+  const { get } = counted(async () => new Response(new Uint8Array([7]), { status: 200 }));
   const data = await loadTile(TILE, new AbortController().signal, get, k.offline);
   assert.deepEqual([...new Uint8Array(data)], [7]);
   assert.deepEqual(k.kept, [TILE]);
+  const off = keptTiles({}, {}, false);
+  await loadTile(TILE, new AbortController().signal, get, off.offline);
+  assert.deepEqual(off.kept, []);
+  assert.deepEqual(off.read, []);
 });
 
-test("loadTile: no signal in a dead spot, a kept tile answers; one never kept still fails", async () => {
+test("loadTile: during a ride a kept tile answers first, with no network asked", async () => {
   const k = keptTiles({ [TILE]: [4, 5] });
+  const { get, calls } = counted(async () => new Response(new Uint8Array([9]), { status: 200 }));
+  const data = await loadTile(TILE, new AbortController().signal, get, k.offline);
+  assert.deepEqual([...new Uint8Array(data)], [4, 5]);
+  assert.equal(calls.n, 0);
+});
+
+test("loadTile: no signal, an older kept tile answers; one never kept still fails", async () => {
+  const k = keptTiles({}, { [TILE]: [4, 5] });
   const dead = (async () => {
     throw new TypeError("Failed to fetch");
   }) as unknown as typeof fetch;
   const data = await loadTile(TILE, new AbortController().signal, dead, k.offline);
   assert.deepEqual([...new Uint8Array(data)], [4, 5]);
+  assert.deepEqual(k.read, [TILE, `${TILE} any`], "its own generation first, then any after the failure");
   await assert.rejects(() => loadTile(`${TILE}?other`, new AbortController().signal, dead, k.offline));
   // Without the ride's tiles (no ride), a failure is a failure, as before.
   await assert.rejects(() => loadTile(TILE, new AbortController().signal, dead));
 });
 
+test("loadTile: during a ride a request that hangs is given up after the timeout for a kept tile", async () => {
+  const k = keptTiles({}, { [TILE]: [6] });
+  const hang = ((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    })) as unknown as typeof fetch;
+  const started = Date.now();
+  const data = await loadTile(TILE, new AbortController().signal, hang, k.offline, 30);
+  assert.deepEqual([...new Uint8Array(data)], [6]);
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(NETWORK_TIMEOUT_MS, 4000);
+});
+
 test("loadTile: a tile MapLibre cancelled is not answered from the kept tiles", async () => {
-  const k = keptTiles({ [TILE]: [4] });
+  const k = keptTiles({}, { [TILE]: [4] });
   const abort = new AbortController();
   const get = (async () => {
     abort.abort();

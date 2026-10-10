@@ -22,7 +22,7 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
-const b = await connect();
+const b = await connect(Number(arg("--cdp", "9222")));
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
@@ -2204,13 +2204,38 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
   // screen under the controls and not in a live region.
   await p.waitFor("/saved for dead spots/.test(document.querySelector('.ride-corridor')?.textContent ?? '')", 30000);
-  const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname) }; })()");
-  check("ride: the stress tiles along the route are kept for dead spots (z12-14), and the note is on screen, not in a live region",
-    corridor.note === "The map along the route is saved for dead spots." && !corridor.live && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
+  const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname), rev: keys.some((r) => new URL(r.url).searchParams.has('rev')) }; })()");
+  check("ride: the stress tiles along the route are kept for dead spots (z12-14, keyed without ?rev), and the note says only they were, on screen, not in a live region",
+    corridor.note === "Only the stress lines along the route are saved for dead spots, not the base map." && !corridor.live && !corridor.rev && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
     JSON.stringify({ ...corridor, kept: corridor.kept.length }));
+  // In a dead spot (the network emulated offline) a kept stress tile still answers the map's own
+  // protocol loader, at once. The base map's ranges cannot be shown here: the mock serves no archive.
+  await p.s("Network.enable", {});
+  await p.s("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const dead = await p.eval(`(async () => {
+    const { loadTile } = await import('/src/lib/stressProtocol.ts');
+    const { corridorStress } = await import('/src/lib/corridorStore.ts');
+    const key = (await (await caches.open('routemaker-corridor-v1')).keys())[0]?.url;
+    // The suite's request mock answers below the emulated network, so the page's fetch is failed too.
+    const real = window.fetch;
+    window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    try {
+      const network = await fetch(key).then(() => 'answered', () => 'failed');
+      const started = performance.now();
+      const data = await loadTile(key, new AbortController().signal, undefined, corridorStress).then((d) => d instanceof ArrayBuffer, (e) => String(e));
+      const ms = Math.round(performance.now() - started);
+      const never = await loadTile(key.replace(/\\/(\\d+)\\.pbf/, '/9$1.pbf'), new AbortController().signal, undefined, corridorStress).then(() => 'answered', () => 'failed');
+      return { riding: corridorStress.riding(), online: navigator.onLine, network, data, ms, never };
+    } finally {
+      window.fetch = real;
+    }
+  })()`);
+  await p.s("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  check("ride: with no signal, a kept stress tile answers the map's tile loader at once (Network offline)",
+    dead.riding === true && dead.online === false && dead.network === "failed" && dead.data === true && dead.ms < 1000 && dead.never === "failed", JSON.stringify(dead));
 
   // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465): the place from the route's own
-  // street names (the turn from Q Street onto R Street just passed), the keyword first.
+  // street names (the turn from Q Street onto R Street just passed); the copy has no text keyword.
   await p.eval("document.querySelector('.ride-report > summary').click(); true");
   await sleep(300);
   const report = await p.eval(`(() => {
@@ -2223,8 +2248,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
       privacy: d.textContent.includes('The message goes to DC 311 from your own phone'),
     };
   })()`);
-  check("ride 311: the report names the place from the route's streets, keyword first; a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
-    report.open && report.text === "The report: POTHOLE Location: near Q Street Northwest and R Street Northwest, Washington, DC." && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
+  check("ride 311: the report names the place from the route's streets (no text keyword in the copy); a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
+    report.open && report.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
     JSON.stringify(report));
   const reportForm = await p.eval(`(() => {
     const d = document.querySelector('.ride-report');
@@ -2240,13 +2265,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.s("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36" });
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Streetlight out').querySelector('input').click(); true");
   await sleep(300);
-  const sms = await p.eval("[...document.querySelectorAll('.ride-report-actions a')].map((a) => ({ name: a.textContent, href: a.getAttribute('href') }))");
+  const sms = await p.eval("[...document.querySelectorAll('.ride-report-actions a')].map((a) => ({ name: a.textContent, label: a.getAttribute('aria-label'), href: a.getAttribute('href') }))");
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
   await sleep(300);
   const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
   await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
-  check("ride 311: on a phone a streetlight is a Text to 311 link (sms:32311, Android's ?body=) with the same words; something else goes to DC 311 online",
-    sms.length === 1 && sms[0].name === "Text to DC 311 (32311)" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
+  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else goes to DC 311 online",
+    sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
       JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC.",
     JSON.stringify({ sms, other }));
   await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
@@ -2302,7 +2327,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
   await p.shot(`${SHOTS}/ride_big_320.png`);
 
-  // End ride: the planner again, the focus on Start ride, the lock let go.
+  // End ride: the planner again, the focus on Start ride, the lock let go. A base-map range is put in
+  // the ride's IndexedDB store first (the mock serves no archive), to see End ride empty it.
+  const idb = (act) => `new Promise((resolve, reject) => { const r = indexedDB.open('routemaker-corridor', 1); r.onupgradeneeded = () => r.result.createObjectStore('ranges', { keyPath: 'key' }); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; const tx = db.transaction('ranges', 'readwrite'); const store = tx.objectStore('ranges'); const q = ${act}; tx.oncomplete = () => { db.close(); resolve(q.result); }; tx.onabort = () => reject(tx.error); }; })`;
+  const sentinel = await p.eval(`(async () => { await ${idb("store.put({ key: '0:16384', etag: 'test', data: new ArrayBuffer(4) })")}; return ${idb("store.count()")}; })()`);
   await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'End ride').click(); true");
   await sleep(500);
   const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
@@ -2311,6 +2339,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(500);
   const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
   check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
+  const ranges = await p.eval(idb("store.count()"));
+  check("ride: End ride empties the base map's kept ranges (IndexedDB)", sentinel === 1 && ranges === 0, JSON.stringify({ sentinel, ranges }));
   await p.close();
 }
 
@@ -2478,7 +2508,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 417;
+const EXPECTED = 419;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

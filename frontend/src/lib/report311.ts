@@ -38,6 +38,8 @@ export const REPORT_PRIVACY =
 export const REPORT_OUTSIDE_DC = "Reports to 311 are for Washington, DC only, and this part of the route is outside the District.";
 export const REPORT_NO_PLACE = "Your place on the route is not known yet, so there is no location to report.";
 export const REPORT_OFF_ROUTE = "Off the planned route: the report's place comes from the route's street names, so it waits until you are back on a route.";
+/** The short code said digit by digit (the text link's accessible name), not as one large number. */
+export const SHORT_CODE_SPOKEN = "3 2 3 1 1";
 export const REPORT_OTHER_HINT =
   "DC's text service takes potholes and streetlights by keyword; for anything else, open DC 311 online and paste the report.";
 export const REPORT_NOTE_MAX = 120;
@@ -52,11 +54,19 @@ export function placeWords(place: RoutePlace): string | null {
   return `on ${place.street}`;
 }
 
-/** The message: the keyword first where DC has one, then where, then the rider's note. */
-export function reportText(kind: ReportKind, place: RoutePlace, note = ""): string | null {
+/** DC's text keyword for a kind, or null where it has none. */
+export function keywordOf(kind: ReportKind): string | null {
+  return REPORT_KINDS.find((k) => k.kind === kind)?.keyword ?? null;
+}
+
+/**
+ * The report: where, then the rider's note. `forText`: the text message, with DC's keyword first where
+ * it has one; the copy for DC 311 online has none (its form asks what the problem is itself).
+ */
+export function reportText(kind: ReportKind, place: RoutePlace, note = "", forText = false): string | null {
   const where = placeWords(place);
   if (!where) return null;
-  const keyword = REPORT_KINDS.find((k) => k.kind === kind)?.keyword ?? null;
+  const keyword = forText ? keywordOf(kind) : null;
   const tidy = note.replace(/\s+/g, " ").trim().slice(0, REPORT_NOTE_MAX);
   const what = keyword ? `${keyword} ` : "";
   return `${what}Location: ${where}, Washington, DC.${tidy ? ` ${/[.!?]$/.test(tidy) ? tidy : `${tidy}.`}` : ""}`;

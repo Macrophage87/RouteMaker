@@ -128,17 +128,19 @@ You stay responsible for riding safely; the route can be wrong.
   "Ride settings" during a ride, or in Settings.
 - "Where am I?" says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
-  junction, for example "On Capital Crescent Trail, about 1.2 miles northwest of ...".
+  junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
-- At Start ride the map along the route (about 1,000 feet, 300 m, either side) is saved on the phone,
-  so it still shows in a dead spot with no signal. It is cleared when you press "End ride".
+- At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
+  phone, so it still shows in a dead spot with no signal. A line under the buttons says what was
+  saved. It lasts for this ride only: it is cleared when you press "End ride", when the next
+  ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole, a
   streetlight out or anything else, with the nearest junction on your route as the place. On a
-  phone, a pothole or a streetlight opens a text to DC 311 (32311) that you send yourself;
-  anything else, and everything on a computer, is text to copy into DC 311 online. RouteMaker
-  sends nothing and keeps nothing. Check the place before you send it.
+  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; there
+  is always a link to DC 311 online and a button to copy the report for it. RouteMaker sends
+  nothing and keeps nothing. Check the place before you send it.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
   planning), and never kept.
