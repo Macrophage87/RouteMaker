@@ -57,6 +57,7 @@ import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
 import { AvoidNotice } from "./AvoidNotice.tsx";
 import { avoidItems, avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
+import { shownNear } from "./lib/junctionSuggest.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, corkerFigure, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -1862,6 +1863,7 @@ export function App() {
         massRide={massMap}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
         avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
+        junctionShown={roadInfo ? shownNear(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}

@@ -150,6 +150,11 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
   page.suggestRequests = [];
   page.suggestionsOpen = [SUGGESTION_ITEM];
+  // Junction suggestions (core/junction_suggestions.py; OWNER-DECISIONS 232): `junctionAt` is the junction
+  // the API finds at any spot (null: none there), `junctionsOpen` the admin's waiting list. Their requests
+  // go in `suggestRequests` too, so "asks the suggestion endpoints nothing" covers both.
+  page.junctionAt = null;
+  page.junctionsOpen = [];
   page.editRequests = [];
   page.editFail = null;
   page.tileUrls = [];
@@ -232,6 +237,34 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         } else {
           page.suggestionsOpen = page.suggestionsOpen.filter((x) => x.id !== id);
           body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is now LTS 2.5, fine for most confident adults. The map shows it now." : "Deleted.", generation: 1 });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
+    } else if (url.pathname.startsWith("/api/junction-suggestions")) {
+      const record = { method: request.method, path: url.pathname, search: url.search, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.suggestRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/junction-suggestions\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/junction-suggestions/at" && suggester) {
+        status = page.junctionAt ? 200 : 400;
+        body = JSON.stringify(page.junctionAt ?? { error: "There is no junction within 82 ft (25 m) of that spot.", field: "lat", code: "no_junction" });
+      } else if (url.pathname === "/api/junction-suggestions" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: `Thanks. Your suggestion for ${page.junctionAt?.name ?? "the junction"} was sent to the map's admins. Nothing changes on the map until one of them reviews it.` });
+      } else if (url.pathname === "/api/junction-suggestions/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ suggestions: page.junctionsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          page.junctionsOpen = page.junctionsOpen.map((x) => (x.id === id ? { ...x, status: "sent_to_discord" } : x));
+          body = JSON.stringify({ id, status: "sent_to_discord", post: JUNCTION_POST, characters: JUNCTION_POST.length, options: [] });
+        } else {
+          page.junctionsOpen = page.junctionsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street and Elm Street is now rated hard: long waits or fast traffic. Routes planned from now on use it." : "Deleted." });
         }
       } else {
         status = admin || suggester ? 403 : 401;
@@ -793,6 +826,36 @@ export const DISCORD_POST = [
   "\u{1F1EB} Not sure",
   "",
   "Votes help set how the road is shown on the bike map.",
+].join("\n");
+
+/** The junction the API finds at a spot (core/junction_suggestions.py locate): its node, never the spot. */
+export const JUNCTION_AT = { lon: -77.0312, lat: 38.9087, name: "Oak Street and Elm Street", roads: ["Oak Street", "Elm Street"] };
+/** One junction suggestion waiting for review (core/junction_suggestions.py summary). */
+export const JUNCTION_ITEM = {
+  id: 3, junction: "Oak Street and Elm Street", lat: 38.9087, lon: -77.0312, current_level: 3, current_words: "Takes patience: you wait for a gap",
+  level: 4, words: "Hard: long waits or fast traffic", direction: "more", reason: "Drivers turn right on red without looking.", status: "pending",
+  created_at: "2026-10-10T15:00:00+00:00", sent_at: null,
+};
+/** The junction's plain-English poll (core/suggestion_post.py, kind "junction"). */
+export const JUNCTION_POST = [
+  "**Is crossing Oak Street at Elm Street harder or easier than we show?**",
+  "A rider suggested it's harder than we show.",
+  "",
+  "We currently show it as: Takes patience: you wait for a gap",
+  "The rider suggested: Hard: long waits or fast traffic",
+  "> Drivers turn right on red without looking.",
+  "",
+  "Where: Oak Street at Elm Street",
+  "Map: <http://127.0.0.1/#at=-77.0312,38.9087>",
+  "",
+  "Please weigh in by reacting with one letter:",
+  "\u{1F1E6} Easy: little waiting, and drivers are slow",
+  "\u{1F1E7} Takes patience: you wait for a gap",
+  "\u{1F1E8} Hard: long waits or fast traffic",
+  "\u{1F1E9} Avoid crossing here",
+  "\u{1F1EA} Not sure",
+  "",
+  "Votes help set how the junction is shown on the bike map.",
 ].join("\n");
 
 /** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */

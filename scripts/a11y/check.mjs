@@ -10,7 +10,7 @@
 // installable app's checks: its service worker exists only in a build); --cdp (or A11Y_CDP_PORT)
 // is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
-import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL } from "./cdp.mjs";
+import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL, JUNCTION_AT, JUNCTION_ITEM } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -2679,6 +2679,136 @@ const SUGGEST = "dialog.road-info .suggest-change";
   await p.close();
 }
 
+// ---- 22c. Junction suggestions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232) ----
+const JSUGGEST = "dialog.road-info .suggest-junction";
+const JUNCTION_BUTTON = "Suggest a junction change";
+{
+  // A rider the settings allow, on a spot at a junction: Suggest a junction change in the panel's row.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true });
+  p.junctionAt = JUNCTION_AT;
+  const opened = await panelByKey(p);
+  await p.waitFor(`[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
+  await p.eval(`(() => { const b = [...document.querySelectorAll('dialog.road-info button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); b.id = '__jb'; return true; })()`);
+  const jb = await axNode(p, "#__jb");
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons'); const b = document.getElementById('__jb');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("junction suggestions: a rider the settings allow, at a junction, gets a Suggest a junction change button in the panel's row (before Suggest a change), at least 44px tall and described by the junction's name",
+    opened && row.tag === "BUTTON" && row.height >= 44 && row.names.at(-1) === "Suggest a change" && row.names.at(-2) === JUNCTION_BUTTON &&
+      jb?.name === JUNCTION_BUTTON && jb?.description === "for the junction of Oak Street and Elm Street." &&
+      p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/at"), JSON.stringify({ row, jb }));
+
+  await p.eval("document.getElementById('__jb').click(); true");
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} fieldset')`, 8000);
+  await sleep(100);
+  const form = await p.eval(`(() => { const e = document.querySelector('${JSUGGEST}'); const h = e?.querySelector('h3'); const f = [...e.querySelectorAll('fieldset')];
+    f.forEach((x, i) => { x.id = '__jf' + i; });
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, place: e?.querySelector('.stress-editor-extent')?.textContent ?? '',
+      rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons'), radios: f.map((x) => [...x.querySelectorAll('input[type=radio]')].map((r) => r.parentElement.textContent)) }; })()`);
+  const groups = [await axNode(p, "#__jf0"), await axNode(p, "#__jf1")];
+  check("junction suggestions: the form opens in the same dialog, its heading focused, an empty status region, the junction named, and two radio groups named by their legends with the levels in plain words, Avoid included",
+    form.heading === "Suggest a danger level for this junction" && form.focus && form.status === "" && form.rowGone && /Oak Street and Elm Street/.test(form.place) &&
+      groups[0]?.role === "radiogroup" && groups[0]?.name === "How dangerous is it? (optional)" && groups[1]?.name === "Compared with what the map shows (optional)" &&
+      JSON.stringify(form.radios[0]) === JSON.stringify(["Not sure: only compare with the map", "Easy: little waiting, and drivers are slow", "Takes patience: you wait for a gap", "Hard: long waits or fast traffic", "Avoid crossing here"]) &&
+      JSON.stringify(form.radios[1]) === JSON.stringify(["No comparison", "More dangerous than shown", "Less dangerous than shown"]) && !form.radios.flat().some((t) => /LTS/.test(t)),
+    JSON.stringify({ form, groups: groups.map((g) => ({ role: g?.role, name: g?.name })) }));
+
+  // Each group is one Tab stop, on its checked choice; the arrow keys move within it.
+  const at = () => p.eval("(() => { const e = document.activeElement; return e?.type === 'radio' ? e.parentElement.textContent : e?.tagName ?? ''; })()");
+  await p.tab();
+  const first = await at();
+  await p.key("ArrowDown", "ArrowDown", 40);
+  const moved = await at();
+  await p.tab();
+  const second = await at();
+  await p.tab();
+  const third = await at();
+  check("junction suggestions: each radio group is one Tab stop on its checked choice, the arrow keys move within it, and the reason comes next",
+    first === "Not sure: only compare with the map" && moved === "Easy: little waiting, and drivers are slow" && second === "No comparison" && third === "TEXTAREA", JSON.stringify({ first, moved, second, third }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.suggest-junction'), focus: document.activeElement?.textContent ?? '' })");
+  check("junction suggestions: Escape closes the form, not the panel, and the focus goes back to Suggest a junction change", back.open && !back.form && back.focus === JUNCTION_BUTTON, JSON.stringify(back));
+
+  await p.eval("document.getElementById('__jb')?.click() ?? [...document.querySelectorAll('dialog.road-info button')].find((e) => e.textContent === 'Suggest a junction change').click(); true");
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} fieldset')`, 8000);
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const f = document.querySelector('${JSUGGEST} fieldset'); const a = document.activeElement;
+    return { alert: document.querySelector('${JSUGGEST} [role=alert]')?.textContent ?? '', focus: a?.type === 'radio' && f.contains(a) && a.checked, invalid: f?.getAttribute('aria-invalid') }; })()`);
+  check("junction suggestions: sending with no level and no comparison says so in an alert, moves the focus to the level group's checked choice, marks the group invalid, and sends nothing",
+    /Choose a level/.test(empty.alert) && empty.focus && empty.invalid === "true" && !p.suggestRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} label')].find((l) => l.textContent === 'Hard: long waits or fast traffic').querySelector('input').click(); true`);
+  await p.eval(`document.querySelector('${JSUGGEST} textarea').focus(); true`);
+  await p.type("Drivers turn right on red without looking.");
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${JSUGGEST} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.suggestRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${JSUGGEST} [role=status]')?.textContent ?? ''`);
+  check("junction suggestions: Send posts the junction's node (never the spot), level 4, no comparison, what the route shows there and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/junction-suggestions" && sent.body.lat === JUNCTION_AT.lat && sent.body.lon === JUNCTION_AT.lon && sent.body.level === 4 && sent.body.direction === null &&
+      ["none", "orange", "red", "avoid"].includes(sent.body.shown) && sent.body.reason === "Drivers turn right on red without looking." &&
+      sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
+  await p.close();
+}
+{
+  // From a junction marker's card: Suggest a junction change opens the panel with the form open.
+  const p = await open({ suggester: true });
+  p.junctionAt = JUNCTION_AT;
+  await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return true; })()");
+  await p.enter();
+  await p.waitFor(`[...document.querySelectorAll('.junction-popup button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
+  const cardButton = await p.eval(`(() => { const b = [...document.querySelectorAll('.junction-popup button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); return { tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  await p.eval(`[...document.querySelectorAll('.junction-popup button')].find((b) => b.textContent === '${JUNCTION_BUTTON}').click(); true`);
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} h3')`, 10000);
+  await sleep(200);
+  const fromCard = await p.eval(`({ card: !!document.querySelector('.junction-popup'), panel: !!document.querySelector('dialog.road-info[open]'), focus: document.activeElement === document.querySelector('${JSUGGEST} h3') })`);
+  check("junction suggestions: a junction card has a Suggest a junction change button (44px) for a rider the settings allow; it closes the card and opens the panel with the junction's form open, its heading focused",
+    cardButton.tag === "BUTTON" && cardButton.height >= 44 && !fromCard.card && fromCard.panel && fromCard.focus, JSON.stringify({ cardButton, fromCard }));
+  await p.close();
+}
+{
+  // The instance admin's one review list: a junction's suggestion beside a road's, with the same three actions.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.junctionsOpen = [JUNCTION_ITEM];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction h4')", 8000);
+  await p.eval(`(() => { const item = document.querySelector('.suggestion-item-junction'); [...item.querySelectorAll('button')].forEach((b, i) => { b.id = '__jg' + i; }); return true; })()`);
+  const names = [];
+  for (const i of [0, 1, 2]) names.push(await axNode(p, `#__jg${i}`));
+  const item = await p.eval(`(() => { const e = document.querySelector('.suggestion-item-junction'); return { heading: e.querySelector('h4')?.textContent ?? '', detail: e.querySelector('.suggestion-detail')?.textContent ?? '',
+    order: [...document.querySelectorAll('.suggestion-item h4')].map((h) => h.textContent) }; })()`);
+  check("junction suggestions: the admin's list holds the junction's suggestion after the older road one, named by its roads and both levels in words, the rider's comparison in words, and each action described by that heading",
+    item.heading === "Junction of Oak Street and Elm Street: from Takes patience to Hard" && item.detail === "The rider said: more dangerous than shown." &&
+      item.order.length === 2 && item.order[1] === item.heading && JSON.stringify(names.map((n) => n?.name)) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) &&
+      names.every((n) => n?.description === item.heading), JSON.stringify({ item, names: names.map((n) => [n?.name, n?.description]) }));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("document.getElementById('__jg1').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction .suggestion-post textarea')", 8000);
+  const post = await p.eval(`({ value: document.querySelector('.suggestion-item-junction .suggestion-post textarea')?.value ?? '', said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '',
+    status: document.querySelector('.suggestion-item-junction .suggestion-status')?.textContent ?? '' })`);
+  const sentReq = p.suggestRequests.find((r) => r.path === "/api/junction-suggestions/3/discord");
+  check("junction suggestions: Send to Discord asks the junction's own endpoint and shows its plain-English poll (no LTS, the two roads in words), says so naming the junction, and marks it sent in words",
+    sentReq?.headers["X-CSRFToken"] === "test-csrf-token" && /^\*\*Is crossing Oak Street at Elm Street/.test(post.value) && !/LTS/.test(post.value) && /Where: Oak Street at Elm Street/.test(post.value) &&
+      /^The post for the junction of Oak Street and Elm Street is ready/.test(post.said) && /Sent to Discord/.test(post.status), JSON.stringify(post).slice(0, 600));
+
+  await p.eval("document.getElementById('__jg0').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const approved = await p.eval(`({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', junctions: document.querySelectorAll('.suggestion-item-junction').length,
+    focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '' })`);
+  check("junction suggestions: Approve now says the junction's new level in words, the suggestion leaves the list and the focus moves to the road suggestion's heading before it",
+    /^Approved\. Oak Street and Elm Street is now rated hard/.test(approved.said) && approved.junctions === 0 && approved.focus === "H4" && /^Oak Street: from LTS 3/.test(approved.focusText) &&
+      p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/3/approve"), JSON.stringify(approved));
+  await p.close();
+}
+
 // ---- 23. Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 301) ----
 {
   const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
@@ -3258,7 +3388,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 512;
+const EXPECTED = 522;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

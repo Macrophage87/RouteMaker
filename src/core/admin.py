@@ -44,6 +44,8 @@ from .models import (
     ConfiguredGuild,
     DriftReport,
     InstanceAdminListing,
+    JunctionOverride,
+    JunctionSuggestion,
     Jurisdiction,
     LastInstanceAdmin,
     Override,
@@ -753,6 +755,82 @@ class StressSuggestionAdmin(AuditedAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
+
+
+@admin.register(JunctionSuggestion, site=site)
+class JunctionSuggestionAdmin(StressSuggestionAdmin):
+    """Riders' junction suggestions (OWNER-DECISIONS 232) and what became of each. Read-only,
+    as the roads': the three actions are in the map's review panel (core.junction_suggestions).
+    The place is the junction's node, never the rider's spot."""
+
+    list_display = ("created_at", "node", "roads", "current_level", "target_level", "status")
+    readonly_fields = (
+        "created_at",
+        "suggester_user_id",
+        "lon",
+        "lat",
+        "node",
+        "roads",
+        "current_level",
+        "level",
+        "direction",
+        "target_level",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+        "override",
+        "avoid",
+    )
+
+
+@admin.register(JunctionOverride, site=site)
+class JunctionOverrideAdmin(InstanceAdminOnly):
+    """Junction overrides (OWNER-DECISIONS 232): approved rider ratings the intersection model
+    applies at the next plan. Made only by approving a junction suggestion in the map's review
+    panel; here an instance admin can only look and withdraw one (an audited action)."""
+
+    list_display = ("name", "level", "active", "created_at", "withdrawn_at")
+    list_filter = ("active", "level")
+    search_fields = ("name",)
+    ordering = ("-created_at",)
+    exclude = ("created_by",)
+    readonly_fields = (
+        "name",
+        "location",
+        "level",
+        "evidence",
+        "active",
+        "created_at",
+        "created_by_user_id",
+        "withdrawn_at",
+    )
+    actions = ("withdraw_selected",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    @admin.action(description="Withdraw the selected junction overrides (routing changes at once)")
+    def withdraw_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        count = 0
+        for row in queryset.filter(active=True):
+            row.active = False
+            row.withdrawn_at = timezone.now()
+            row.save(update_fields=["active", "withdrawn_at"])
+            audit(request, "withdraw", "junctionoverride", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(request, f"Withdrew {count} junction override(s).")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self._is_instance_admin(request):
+            actions.pop("withdraw_selected", None)
+        return actions
 
 
 def _discord_id_help(what: str, steps: str) -> str:

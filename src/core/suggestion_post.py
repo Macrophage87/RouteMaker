@@ -158,6 +158,15 @@ def where_words(road: str | None, between: tuple[str, str] | None) -> str:
     return f"{name}, shown on the map link below"
 
 
+def junction_where(road: str | None, crossing: str | None) -> str:
+    """A junction in words: its two roads where known. Never coordinates."""
+    if road and crossing and road != crossing:
+        return f"{road} at {crossing}"
+    if road:
+        return f"A junction on {road}, shown on the map link below"
+    return "A junction shown on the map link below"
+
+
 def build(
     *,
     kind: str,
@@ -195,7 +204,11 @@ def build(
         options = road_options()
     else:
         other = crossing or "the cross street"
-        question = f"Is crossing {name} at {other} harder or easier than we show?"
+        question = (
+            f"Is crossing {name} at {other} harder or easier than we show?"
+            if road
+            else "Is this junction harder or easier to get through than we show?"
+        )
         lean = (
             "A rider suggested it's easier than we show."
             if calmer
@@ -203,6 +216,11 @@ def build(
         )
         now, then = junction_words(current), junction_words(suggested)
         options = junction_options()
+
+    if kind == "road":
+        place, thing = where_words(road, between), "road"
+    else:
+        place, thing = junction_where(road, crossing), "junction"
 
     def compose(quote: str) -> str:
         lines = [
@@ -216,13 +234,13 @@ def build(
             lines.append(f"> {quote}")
         lines += [
             "",
-            f"Where: {inert(where_words(road, between))}",
+            f"Where: {inert(place)}",
             f"Map: <{map_url}>",
             "",
             "Please weigh in by reacting with one letter:",
             *(f"{o.emoji} {o.label}" for o in options),
             "",
-            "Votes help set how the road is shown on the bike map.",
+            f"Votes help set how the {thing} is shown on the bike map.",
         ]
         return "\n".join(lines)
 

@@ -60,6 +60,8 @@ import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts"
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
 import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+import { SuggestJunction } from "./SuggestJunction.tsx";
+import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, type Shown } from "./lib/junctionSuggest.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 
@@ -72,6 +74,11 @@ interface Props {
   station: Station | null;
   /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
   avoid?: AvoidItem | null;
+  /**
+   * What the rider's route shows at the junction nearest the spot (lib/junctionSuggest.ts shownNear): its
+   * marker, "none", or null with no route. The junction suggestion form says it and sends it.
+   */
+  junctionShown?: Shown | null;
   /**
    * On a Mass Ride, the federal area the spot is in (lib/federalStops.ts federalAreaAt; item 239), or
    * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
@@ -114,7 +121,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, avoid = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -141,6 +148,12 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
   const [suggesting, setSuggesting] = useState(false);
   const suggestButton = useRef<HTMLButtonElement>(null);
   const returnToSuggest = useRef(false);
+  // The junction at the spot, for a rider who may suggest (OWNER-DECISIONS 232; SuggestJunction.tsx): its
+  // node from the API, asked only for such a rider, and whether its form is open in place of the row.
+  const [junction, setJunction] = useState<JunctionAt | null>(null);
+  const [suggestingJunction, setSuggestingJunction] = useState(false);
+  const junctionButton = useRef<HTMLButtonElement>(null);
+  const returnToJunction = useRef(false);
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
   const changeButton = useRef<HTMLButtonElement>(null);
@@ -168,9 +181,21 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     setSaid("");
     setEditing(false);
     setSuggesting(false);
+    setJunction(null);
+    setSuggestingJunction(false);
     setReload(0);
-    void fetchMe(window.location.origin).then(setMe);
     const controller = new AbortController();
+    void fetchMe(window.location.origin).then((who) => {
+      setMe(who);
+      // Only a rider who may suggest asks where the junction is (nobody else asks the endpoint anything).
+      if (!who.can_suggest || controller.signal.aborted) return;
+      void findJunction(window.location.origin, request.point, controller.signal).then((found) => {
+        if (controller.signal.aborted) return;
+        setJunction(found);
+        // From a junction card's Suggest a change: its form opens at once.
+        if (found && request.junction) setSuggestingJunction(true);
+      });
+    });
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
         stateFor.current = request;
@@ -206,6 +231,14 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
       changeButton.current?.focus();
     }
   }, [editing]);
+
+  // Back from the junction's form: its button takes the focus.
+  useEffect(() => {
+    if (!suggestingJunction && returnToJunction.current) {
+      returnToJunction.current = false;
+      junctionButton.current?.focus();
+    }
+  }, [suggestingJunction]);
 
   // Back from the suggestion form: its button takes the focus.
   useEffect(() => {
@@ -256,12 +289,18 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     setSuggesting(false);
   };
 
+  const closeJunction = () => {
+    returnToJunction.current = true;
+    setSuggestingJunction(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
       // Escape cancels the editor, not the whole panel.
       if (editing) closeEditor();
       else if (suggesting) closeSuggest();
+      else if (suggestingJunction) closeJunction();
       else close();
       return;
     }
@@ -305,6 +344,9 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
   const suggestWay =
     ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
   const suggestingNow = suggesting && suggestWay !== null;
+  // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
+  const suggestJunction = me.can_suggest ? junction : null;
+  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow;
 
   return (
     <dialog
@@ -508,7 +550,12 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
             />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && !suggestingNow && (
+        {request && suggestingJunctionNow && suggestJunction !== null && (
+          <div className="road-info-actions">
+            <SuggestJunction origin={window.location.origin} junction={suggestJunction} shown={junctionShown} onClose={closeJunction} />
+          </div>
+        )}
+        {request && !(editing && editableWay !== null) && !suggestingNow && !suggestingJunctionNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -542,6 +589,19 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
                   </button>
                 </li>
               )}
+              {suggestJunction !== null && (
+                <li>
+                  <button
+                    type="button"
+                    className="road-info-button"
+                    ref={junctionButton}
+                    aria-describedby={id("junction-note")}
+                    onClick={() => setSuggestingJunction(true)}
+                  >
+                    {JUNCTION_SUGGEST_TEXT}
+                  </button>
+                </li>
+              )}
               {suggestWay !== null && (
                 <li>
                   <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
@@ -558,6 +618,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
                   {" "}
                   <span aria-hidden="true">{OSM_EDIT_TEXT}: </span>
                   <span id={id("osm-note")}>{OSM_EDIT_NOTE}</span>
+                </>
+              )}
+              {suggestJunction !== null && (
+                <>
+                  {" "}
+                  <span aria-hidden="true">{JUNCTION_SUGGEST_TEXT}: </span>
+                  <span id={id("junction-note")}>{junctionNote(suggestJunction.name)}</span>
                 </>
               )}
             </p>

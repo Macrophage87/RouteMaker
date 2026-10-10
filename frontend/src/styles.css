@@ -1505,6 +1505,44 @@ dialog.road-info::backdrop {
   font-weight: 600;
 }
 
+/* A junction's suggestion (OWNER-DECISIONS 232): two native radio groups, 44px rows, each a fieldset. */
+.suggest-junction-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  min-width: 0;
+}
+
+.suggest-junction-group > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.suggest-junction-group[aria-invalid="true"] {
+  border: 2px solid var(--text);
+}
+
+.suggest-junction-choice {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.suggest-junction-choice input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.junction-card-suggest {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
 .stress-editor-radio {
   display: grid;
   grid-template-columns: 24px 1fr;

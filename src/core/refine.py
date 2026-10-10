@@ -325,6 +325,9 @@ class Context:
     # The router's first route's `Analysis.avoid_junction_m` (set by `refine`), which the
     # Traffic-wins guard counts with its exposure (`_busier`).
     first_avoid_m: float = 0.0
+    # The approved rider ratings of junctions (`core.junction_suggestions.approved_ratings`,
+    # OWNER-DECISIONS 232), which set a rated junction's cost and marker.
+    junction_ratings: tuple = ()
 
 
 @dataclass
@@ -678,6 +681,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             locator(ctx.variant, deadline),
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
+            ratings=ctx.junction_ratings,
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error

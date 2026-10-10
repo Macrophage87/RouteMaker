@@ -71,11 +71,14 @@ from routemaker.intersections import (
     Event,
     Junction,
     Movement,
+    Rating,
     Road,
     RouteEvents,
     assess_route,
     major_crossings,
     majors_of_events,
+    rating_at,
+    with_ratings,
 )
 from routemaker.trace_junctions import (
     APPROACH_M,
@@ -193,6 +196,13 @@ def wanted(raw: RawJunction) -> bool:
     the route changes road (a crossing way, a turn), and a road of a class that
     can be busy is among them."""
     return raw.possibly_busy and (raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane)
+
+
+def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
+    """A junction (another road meets the route, or it changes road) riders rated."""
+    if not ratings or not (raw.has_cross_roads or raw.in_way != raw.out_way):
+        return False
+    return rating_at(raw.lon, raw.lat, ratings) is not None
 
 
 # --- The node, from /locate -----------------------------------------------------
@@ -921,13 +931,18 @@ def events_of(
     locate: Callable[[dict], list[dict]],
     group: bool = False,
     cut_short: tuple[type[BaseException], ...] = (),
+    ratings: Sequence[Rating] = (),
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
     each road is, and `routemaker.intersections` what it costs. `group` is the
     Mass Ride reading (colour by the crossed road's tier). `cut_short`: see
-    `nodes_at`."""
-    raws = [raw for raw in raws if wanted(raw)]
+    `nodes_at`. `ratings`: the approved rider ratings of junctions
+    (`core.junction_suggestions.approved_ratings`, OWNER-DECISIONS 232), which
+    set a junction's cost and colour; a rated junction is read even where no road
+    there can be busy ("the road is fine, but the intersection can be especially
+    dangerous")."""
+    raws = [raw for raw in raws if wanted(raw) or _rated(raw, ratings)]
     nodes = nodes_at(raws, locate, cut_short)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
     for position, raw in enumerate(raws):
@@ -939,7 +954,7 @@ def events_of(
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
-    built = build_junctions(raws, nodes, roads)
+    built = with_ratings(build_junctions(raws, nodes, roads), ratings)
     events = assess_route(built, group)
     if not group:
         return events

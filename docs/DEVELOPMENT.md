@@ -6490,6 +6490,73 @@ and from the I key on the junction, none away from it, and that the legend has n
 `run.sh` starts Chromium), so it can run beside another browser:
 `A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
 
+## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
+
+"In some times the road is fine, but the intersection can be especially dangerous." The road
+suggestions' twin for a node (operations: docs/OPERATIONS.md, "Junction suggestions").
+
+### Storage
+
+Migration `0017_junction_suggestions` (after `0016_stress_suggestions`, one leaf) adds two tables:
+
+- `core.models.JunctionSuggestion` (`junction_suggestion`): the junction's node (`lon`, `lat`, and
+  `node`, the pair to 6 decimals as text, which the partial unique constraint "one waiting per rider
+  per junction" is on), the roads there busiest first (`roads`, JSON), the level the map showed
+  (`current_level`), the rider's level (`level`, nullable) and comparison (`direction`, "", "more"
+  or "less"), the resolved `target_level` (2 to 5, a check constraint), the reason, the status (the
+  roads' four), and what an approval made (`override` or `avoid`).
+- `core.models.JunctionOverride` (`junction_override`): an approved level (2 to 4, a check
+  constraint) at a point, `active` (withdrawn rows stay, for the record), the rider's reason as
+  `evidence`. Made only by approving a suggestion; Avoid (5) becomes an `AvoidJunction` instead.
+
+### Finding the junction
+
+`core.junction_suggestions.locate` takes the nearest vertex, within `SNAP_MAX_M` (82 ft (25 m)), of a
+`map_class = 'road'` row that another way also has a vertex at (within `road_names.TOUCH_M`): OSM
+ways meet at a shared node, and a bridge over a road shares none. The names are the router's, then
+the table's (`road_names.Names`, as the road suggestions' cross streets). Two pieces of one name and
+nothing else are a bend, refused. Nothing about the spot asked is kept.
+
+### In the intersection model
+
+`routemaker.intersections.Rating` (id, lon, lat, level) is the pure model's view of an active
+override. `with_ratings` gives each `Junction` within `RATING_MATCH_M` (15 m, the Avoid junctions'
+match) its `rating`; `assess` then returns `rated(...)`: the level's cost (`RATING_COST_FT`: the
+all-way stop's 75 ft, the LTS 3 stopped-side crossing's 1,200 ft, the LTS 4's 3,000 ft) and colour
+(`RATING_SEVERITY`: none, orange, red), never capped, on the standard and the Mass Ride reading
+alike, with the riders' words after the model's reason ("Riders rate this junction hard"). A
+junction the model has nothing to say about (two quiet streets) becomes an event of kind "rated".
+`merge_nearby` lets a rated event stand for the whole junction (its other nodes within
+`MERGE_WITHIN_M` add nothing), so "easy" lowers a junction as surely as "hard" raises it.
+
+`core.junctions.events_of(..., ratings=)` keeps a raw junction that `wanted` would drop (no road
+there can be busy) where one is rated, so it is read at all. The plan reads the active overrides once
+at request time (`core.routing.plan`, `junction_suggestions.approved_ratings`, beside the Avoid
+list) into `refine.Context.junction_ratings`, which `refine.events_of_raws` passes on: every
+candidate, the answer's markers and the route description use them. No graph change, no rebuild.
+
+### The front end
+
+`frontend/src/lib/junctionSuggest.ts` (levels, what the route shows near a spot, the form's check,
+the API calls, the one review list's entries); `SuggestJunction.tsx` (the form, two native radio
+groups as fieldsets with `role="radiogroup"` named by their legends, each one Tab stop through the
+road panel's Tab trap); `RoadInfoDialog.tsx` (asks `GET /api/junction-suggestions/at` only for a
+rider who may suggest, and shows the button before Suggest a change; `InfoRequest.junction` opens
+the form at once); `MapView.tsx` (the junction card's button, added once `fetchMe` says the rider may
+suggest); `SuggestionReview.tsx` (roads' and junctions' suggestions in one list, oldest first, by
+`ReviewEntry`, each kind at its own endpoints).
+
+### Tests
+
+`tests/test_junction_ratings.py` (the model: raising a quiet junction, lowering a red one, the
+group reading, the 15 m match, the merge, the plan handing its ratings on);
+`tests/test_junction_suggestions.py` (locate, the node kept, bends, the shown level, unclear choices
+refused, the limits shared with roads, the database constraint, the three actions, Avoid and its
+withdrawal, the poll's wording and its 4-decimal link, nothing about the rider);
+`tests/test_suggestion_post.py`; `frontend/src/lib/junctionSuggest.test.ts`; the a11y browser
+check's section 22c (the button and its description, the form's groups and Tab stops, Escape, the
+empty send, the node sent, the card's button, the admin's list, Discord and Approve now).
+
 ## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
 
 **The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
