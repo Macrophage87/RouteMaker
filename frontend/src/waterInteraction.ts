@@ -15,7 +15,7 @@
  */
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { WATER_CAUTION, WATER_LAYER, waterDetails, waterKindLabel, type WaterPoint } from "./lib/waterRestrooms.ts";
+import { WATER_LAYER, waterCard, type WaterPoint } from "./lib/waterRestrooms.ts";
 
 export interface WaterInteractionOptions {
   visible(): boolean;
@@ -26,21 +26,22 @@ export interface WaterInteractionOptions {
 /** Pixels around a tap that still count as on the icon. */
 const TAP_SLOP = 6;
 
-/** The card's contents, as DOM (a test builds it too). */
+/** The card's contents, as DOM; what it says is waterCard's (tested there). */
 export function waterCardElement(p: WaterPoint): HTMLElement {
+  const card = waterCard(p);
   const root = document.createElement("div");
   root.className = "water-popup";
   const title = document.createElement("strong");
   title.className = "water-kind";
-  title.textContent = waterKindLabel(p);
+  title.textContent = card.kind;
   root.append(title);
-  if (p.name) {
+  if (card.name) {
     const name = document.createElement("p");
     name.className = "water-name";
-    name.textContent = p.name;
+    name.textContent = card.name;
     root.append(name);
   }
-  for (const line of waterDetails(p)) {
+  for (const line of card.details) {
     const detail = document.createElement("p");
     detail.className = "water-detail";
     detail.textContent = line;
@@ -48,7 +49,7 @@ export function waterCardElement(p: WaterPoint): HTMLElement {
   }
   const caution = document.createElement("p");
   caution.className = "water-caution";
-  caution.textContent = WATER_CAUTION;
+  caution.textContent = card.caution;
   root.append(caution);
   return root;
 }

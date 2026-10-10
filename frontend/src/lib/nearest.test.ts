@@ -56,7 +56,7 @@ test("restrooms are every type, each titled with its type", () => {
   assert.deepEqual(ids(places), ["n3", "n4", "n5"]);
   assert.deepEqual(
     places.map((p) => p.title),
-    ["Flush restroom, with drinking water", "Portable or pit toilet", "Restroom, type not mapped"],
+    ["Flush restroom, with drinking water", "Portable, pit or composting toilet", "Restroom, type not mapped"],
   );
 });
 

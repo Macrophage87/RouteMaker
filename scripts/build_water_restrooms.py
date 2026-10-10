@@ -23,11 +23,12 @@ What counts, from the OSM wiki's own tag definitions
 - drinking water ("p"): amenity=drinking_water and amenity=water_point, unless
   drinking_water=no; and drinking_water=yes on a tap, well, spring, fountain,
   shelter or restroom.
-- untreated water ("n", filter or treat it first): a tap, well, spring or water
-  point that is not marked drinking_water=yes, so drinking_water=no and no tag
-  at all alike, as the project treats unclear as closed. An
-  amenity=drinking_water marked drinking_water=no is untreated too. Decorative
-  fountains are left out unless marked drinkable.
+- untreated water ("n", filter or treat it first): a tap, well or spring that
+  is not marked drinking_water=yes, so drinking_water=no and no tag at all
+  alike, as the project treats unclear as closed. An amenity=drinking_water or
+  amenity=water_point marked drinking_water=no is untreated too (both tags
+  mean drinkable water on their own, so only an explicit "no" makes them
+  untreated). Decorative fountains are left out unless marked drinkable.
 - restrooms: amenity=toilets, by toilets:disposal: flush ("f"); a portable,
   pit, composting or other basic toilet ("b": chemical, pitlatrine, bucket,
   dry_toilet, incineration, composting, or portable=yes); or not mapped ("u").

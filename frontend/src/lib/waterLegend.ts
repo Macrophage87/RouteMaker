@@ -10,12 +10,12 @@
 import { createElement as h, type ReactElement } from "react";
 import { formatDistance } from "./format.ts";
 import {
-  ALONG_ROUTE_M,
+  ALONG_ROUTE_TEXT,
   WATER_CAUTION,
   waterAlongCount,
   waterAlongText,
   waterIcon,
-  waterKindLabel,
+  waterTitle,
   type WaterAlong,
   type WaterIcon,
   type WaterPrefs,
@@ -30,11 +30,13 @@ export const WATER_BASIC_SWITCH = "Portable, pit and composting toilets";
 export const WATER_UNTREATED_SWITCH = "Untreated water sources (filter or treat first)";
 export const WATER_HELP =
   "Public drinking fountains, water taps, springs and restrooms that OpenStreetMap lists, drawn from street zoom " +
-  "in. Places for customers only, or private, are left out. Your choices here are kept on this device.";
+  "in. Places for customers only, or private, are left out. With a route planned, the ones within " +
+  `${ALONG_ROUTE_TEXT} of it are listed in riding order under the route, each with an Add as stop button. ` +
+  "Your choices here are kept on this device.";
 export const WATER_UNTREATED_HELP =
-  "Untreated water is a spring, well or tap not marked as drinkable: carry a filter or treat it before you drink.";
+  "Untreated water is a spring, well or tap not marked as drinkable, or a water point marked not drinkable: carry a filter or treat it before you drink.";
 export const WATER_ALONG_HEADING = "Water and restrooms along your route";
-export const WATER_ALONG_NONE = `None within ${formatDistance(ALONG_ROUTE_M)} of your route.`;
+export const WATER_ALONG_NONE = `None within ${ALONG_ROUTE_TEXT} of your route.`;
 export const WATER_ALONG_NO_ROUTE = "Plan a route to list the water and restrooms along it.";
 
 /** The legend's rows, in its order: what each icon is, then its shape in words (a cue that is not colour). */
@@ -94,12 +96,14 @@ interface AlongProps {
 
 /** The points along the route, in words, each with an Add as stop button. */
 export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: AlongProps): ReactElement {
-  if (items === null) return h("p", { className: "hint water-along" }, WATER_ALONG_NO_ROUTE);
-  if (items.length === 0) return h("p", { className: "hint water-along" }, WATER_ALONG_NONE);
+  // The heading always, so a rider moving by headings finds the list's place even when it is empty.
+  const heading = h(level, { id: headingId }, WATER_ALONG_HEADING);
+  if (items === null) return h("div", { className: "water-along" }, heading, h("p", { className: "hint" }, WATER_ALONG_NO_ROUTE));
+  if (items.length === 0) return h("div", { className: "water-along" }, heading, h("p", { className: "hint" }, WATER_ALONG_NONE));
   return h(
     "div",
     { className: "water-along" },
-    h(level, { id: headingId }, WATER_ALONG_HEADING),
+    heading,
     h("p", { className: "hint" }, waterAlongCount(items)),
     h(
       "ul",
@@ -116,7 +120,7 @@ export function WaterAlongList({ items, onAddStop, headingId, level = "h4" }: Al
               {
                 type: "button",
                 className: "secondary water-add",
-                "aria-label": `Add as stop: ${waterKindLabel(item.point)} at ${formatDistance(item.alongM)}`,
+                "aria-label": `Add as stop: ${waterTitle(item.point)} at ${formatDistance(item.alongM)}`,
                 onClick: () => onAddStop(item),
               },
               "Add as stop",

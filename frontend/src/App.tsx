@@ -139,7 +139,7 @@ import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
-import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import {
@@ -1219,7 +1219,12 @@ export function App() {
         : null,
     [waterOn, waterData, waterPrefs, shown],
   );
-  const addWaterStop = (item: WaterAlong) => placeSpot("via", [item.point.lon, item.point.lat]);
+  // Named in the plan as the list says it, as a place picked from search is.
+  const addWaterStop = (item: WaterAlong) => {
+    const point: LonLat = [item.point.lon, item.point.lat];
+    namer.remember(point, waterTitle(item.point));
+    placeSpot("via", point);
+  };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
   const lineEdit = useMemo<LineEdit | null>(() => {
@@ -1815,7 +1820,7 @@ export function App() {
               headingRef={layersHeadingRef}
             >
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
-                  (Mass Ride's alone), then water and restrooms, rail stations; trails and terrain (454); then the full legend. */}
+                  (Mass Ride's alone), water and restrooms, rail stations; trails and terrain (454); then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (

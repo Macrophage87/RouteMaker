@@ -65,6 +65,19 @@ def _kind(tags: dict[str, str]) -> tuple[str | None, str | None] | None:
         ({"natural": "spring", "access": "private"}, None),
         ({"amenity": "toilets", "disused": "yes"}, None),
         ({"disused:amenity": "toilets"}, None),
+        ({"amenity": "toilets", "abandoned": "yes"}, None),
+        # Every basic disposal value, and access values that are public.
+        ({"amenity": "toilets", "toilets:disposal": "bucket"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "dry_toilet"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "incineration"}, (None, "b")),
+        ({"amenity": "toilets", "toilets:disposal": "flush ; chemical"}, (None, "f")),
+        ({"amenity": "toilets", "access": "yes"}, (None, "u")),
+        ({"amenity": "toilets", "access": "designated"}, (None, "u")),
+        # More water sources.
+        ({"amenity": "shelter", "drinking_water": "yes"}, ("p", None)),
+        ({"amenity": "shelter"}, None),
+        ({"man_made": "water_well"}, ("n", None)),
+        ({"man_made": "water_tap", "drinking_water": "no"}, ("n", None)),
     ],
 )
 def test_what_counts(tags, kind):
@@ -105,6 +118,11 @@ def test_details_kept_and_cleaned():
     # A bottle filler is said of drinking water only.
     assert mod.classify("n1", {"man_made": "water_tap", "bottle": "yes"}, *IN).bottle is False
     assert mod.classify("n1", {"amenity": "toilets", "seasonal": "no"}, *IN).seasonal is None
+    # Values outside the few the front end knows are dropped, not passed on.
+    odd = mod.classify("n1", {"amenity": "toilets", "fee": "donation", "wheelchair": "bad"}, *IN)
+    assert (odd.fee, odd.wheelchair) == (None, None)
+    kept = mod.classify("n1", {"amenity": "toilets", "fee": "yes", "wheelchair": "limited"}, *IN)
+    assert (kept.fee, kept.wheelchair) == ("yes", "limited")
 
 
 def test_document_is_short_and_sorted():

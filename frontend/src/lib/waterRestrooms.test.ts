@@ -5,8 +5,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   ALONG_ROUTE_M,
+  ALONG_ROUTE_TEXT,
   WATER_ICONS,
   WATER_LAYER,
   WATER_PREFS_DEFAULT,
@@ -21,11 +23,13 @@ import {
   waterAlongCount,
   waterAlongRoute,
   waterAlongText,
+  waterCard,
   waterDetails,
   waterFilter,
   waterGeoJson,
   waterIcon,
   waterIconId,
+  waterIconImage,
   waterIconOf,
   waterKindLabel,
   waterLayer,
@@ -175,8 +179,13 @@ test("which icon a point gets", () => {
   assert.equal(waterIconOf(p(undefined, "f")), "t-f");
   assert.equal(waterIconOf(p("p", "b")), "t-b-w");
   assert.equal(waterIconOf(p("n", "u")), "t-u", "untreated water at a restroom is said in words, not drawn");
-  // Every row of the legend is an icon the map draws.
+  // Every row of the legend is an icon the map draws, and every icon the map draws has a row but the two
+  // restrooms with a drop, which the "A restroom with drinking water" row covers.
   for (const row of WATER_LEGEND) assert.ok(WATER_ICONS.includes(row.icon));
+  assert.deepEqual(
+    WATER_ICONS.filter((icon) => !WATER_LEGEND.some((row) => row.icon === icon)),
+    ["t-b-w", "t-u-w"],
+  );
 });
 
 test("the layer: one symbol layer, its icon by name, from street-network zoom, filtered by the switches", () => {
@@ -198,8 +207,10 @@ function stubMap(layers: string[] = []) {
   const added: Array<{ layer: Record<string, any>; before?: string }> = [];
   const visibility = new Map<string, string>();
   const filters = new Map<string, unknown>();
+  const icons = new Map<string, unknown>();
   return {
     calls,
+    icons,
     added,
     visibility,
     filters,
@@ -220,8 +231,9 @@ function stubMap(layers: string[] = []) {
         images.add(id);
         calls.push(`image ${id} @${options.pixelRatio}`);
       },
-      setLayoutProperty: (id: string, name: string, value: string) => {
-        if (name === "visibility") visibility.set(id, value);
+      setLayoutProperty: (id: string, name: string, value: unknown) => {
+        if (name === "visibility") visibility.set(id, value as string);
+        if (name === "icon-image") icons.set(id, value);
       },
       setFilter: (id: string, filter: unknown) => void filters.set(id, filter),
     },
@@ -243,7 +255,8 @@ test("adds the icons, source and layer once, under the route, hidden or shown; t
   setWaterPrefs(s.map, some);
   assert.equal(s.visibility.get(WATER_LAYER), "visible");
   assert.deepEqual(s.filters.get(WATER_LAYER), waterFilter(some));
-  // With no route on the map yet, it goes on top; the route is added over it later.
+  assert.deepEqual(s.icons.get(WATER_LAYER), waterIconImage(some));
+  // Without the route's layer it goes on top (MapView adds the route's layers at load, so it is there).
   const t = stubMap();
   addWaterRestrooms(t.map, [POINT], ALL, 1, "route-casing");
   assert.equal(t.added[0].before, undefined);
@@ -296,7 +309,7 @@ test("in words: US units first, metric in brackets, every detail said", () => {
     waterAlongText({ point: { id: "n2", lon: 0, lat: 0, water: "n" }, alongM: 50, offM: 3 }),
     "At 160 ft (50 m): Untreated water, filter or treat it first, on the route.",
   );
-  assert.equal(waterKindLabel({ id: "n", lon: 0, lat: 0, toilet: "b" }), "Portable or pit toilet");
+  assert.equal(waterKindLabel({ id: "n", lon: 0, lat: 0, toilet: "b" }), "Portable, pit or composting toilet");
   assert.equal(waterKindLabel({ id: "n", lon: 0, lat: 0, toilet: "u", water: "n" }), "Restroom, type not mapped, with untreated water");
   assert.deepEqual(waterDetails({ ...POINT, bottle: true, fee: "yes", wheelchair: "no", seasonal: "yes", hours: "24/7" }), [
     "Bottle filler.",
@@ -349,8 +362,94 @@ test("the list: a heading it is labelled by, one item per point, an Add as stop 
   assert.match(html, /<h3 id="h">Water and restrooms along your route<\/h3>/);
   assert.match(html, /<ul aria-labelledby="h">/);
   assert.ok(html.includes("At 4.0 mi (6.4 km): Drinking water, Mile 4, on the route."));
-  assert.ok(html.includes('aria-label="Add as stop: Drinking water at 4.0 mi (6.4 km)"'));
+  assert.ok(html.includes('aria-label="Add as stop: Drinking water, Mile 4 at 4.0 mi (6.4 km)"'));
   assert.ok(html.includes(">Add as stop</button>"));
-  assert.ok(renderToStaticMarkup(createElement(WaterAlongList, { items: [], headingId: "h" })).includes(WATER_ALONG_NONE));
+  // Empty, or with no route yet: still the heading, then why there is nothing.
+  const none = renderToStaticMarkup(createElement(WaterAlongList, { items: [], headingId: "h" }));
+  assert.match(none, /<h4 id="h">Water and restrooms along your route<\/h4><p class="hint">None within 1,000 ft \(305 m\) of your route\.<\/p>/);
+  assert.equal(WATER_ALONG_NONE, `None within ${ALONG_ROUTE_TEXT} of your route.`);
+  const noRoute = renderToStaticMarkup(createElement(WaterAlongList, { items: null, headingId: "h" }));
+  assert.ok(noRoute.includes('<h4 id="h">') && noRoute.includes(WATER_ALONG_NO_ROUTE));
   assert.ok(!renderToStaticMarkup(createElement(WaterAlongList, { items, headingId: "h" })).includes("<button"));
+});
+
+// --- As MapLibre itself reads the layer ------------------------------------
+
+const KINDS: WaterPoint[] = [];
+for (const water of [undefined, "p", "n"] as const) {
+  for (const toilet of [undefined, "f", "b", "u"] as const) {
+    if (water || toilet) KINDS.push({ id: `n-${water}-${toilet}`, lon: -77, lat: 38.9, water, toilet });
+  }
+}
+const SWITCHES: WaterPrefs[] = [
+  { on: true, basic: true, untreated: true },
+  { on: true, basic: false, untreated: true },
+  { on: true, basic: true, untreated: false },
+  { on: true, basic: false, untreated: false },
+];
+
+test("the filter draws exactly the points waterVisible lists, for every kind and every switch", () => {
+  for (const prefs of SWITCHES) {
+    const { filter } = spec.featureFilter(waterFilter(prefs) as never, "layers[0].filter");
+    for (const [k, feature] of waterGeoJson(KINDS).features.entries()) {
+      const drawn = filter({ zoom: 14 } as never, { type: 1, properties: feature.properties, geometry: [] } as never);
+      assert.equal(drawn, waterVisible(KINDS[k], prefs), `${KINDS[k].id} with ${JSON.stringify(prefs)}`);
+    }
+  }
+});
+
+test("a drawn point never shows an icon its switch hid: a basic toilet with water is its drop when basic is off", () => {
+  for (const prefs of SWITCHES) {
+    const parsed = spec.expression.createExpression(waterIconImage(prefs) as never, "layers[0].layout.icon-image" as never);
+    assert.equal(parsed.result, "success");
+    const expr = (parsed as { value: { evaluate(g: unknown, f: unknown): unknown } }).value;
+    for (const [k, feature] of waterGeoJson(KINDS).features.entries()) {
+      if (!waterVisible(KINDS[k], prefs)) continue;
+      const image = String(expr.evaluate({ zoom: 14 }, { type: 1, properties: feature.properties, geometry: [] }));
+      const icon = image.replace("water-restrooms-", "") as WaterIcon;
+      assert.ok(WATER_ICONS.includes(icon), image);
+      if (!prefs.basic) assert.ok(!icon.startsWith("t-b"), `${KINDS[k].id}: ${icon}`);
+      if (!prefs.untreated) assert.notEqual(icon, "w-n");
+    }
+  }
+  const basicWithWater = waterGeoJson([{ id: "n1", lon: 0, lat: 0, water: "p", toilet: "b" }]).features[0];
+  const off = (spec.expression.createExpression(waterIconImage({ ...ALL, basic: false }) as never, "layers[0].layout.icon-image" as never) as { value: { evaluate(g: unknown, f: unknown): unknown } }).value;
+  assert.equal(off.evaluate({ zoom: 14 }, { type: 1, properties: basicWithWater.properties, geometry: [] }), "water-restrooms-w-p");
+});
+
+test("the layer validates as MapLibre style, with every switch", () => {
+  for (const prefs of SWITCHES) {
+    const style = {
+      version: 8,
+      sources: { [WATER_SOURCE_ID]: { type: "geojson", data: { type: "FeatureCollection", features: [] } } },
+      layers: [waterLayer(prefs)],
+    };
+    assert.deepEqual(spec.validateStyleMin(style as never), []);
+  }
+});
+
+test("along a bent route: placed on a later segment, counted from the start; a repeated vertex changes nothing", () => {
+  // East 0.05 deg, then north 0.02 deg, with the corner given twice.
+  const bent: LonLat[] = [
+    [-77.1, 38.9],
+    [-77.05, 38.9],
+    [-77.05, 38.9],
+    [-77.05, 38.92],
+  ];
+  const p: WaterPoint = { id: "n1", lon: -77.05 + 50 / M_PER_DEG_LON, lat: 38.91, water: "p" };
+  const [item] = waterAlongRoute(bent, [p]);
+  // The bend's own frame is the route's mid-latitude, 38.91; at these sizes that is within a metre or two.
+  const kx = 111_320 * Math.cos((38.91 * Math.PI) / 180);
+  assert.ok(Math.abs(item.alongM - (0.05 * kx + 0.01 * M_PER_DEG_LAT)) < 1, String(item.alongM));
+  assert.ok(Math.abs(item.offM - 50) < 1, String(item.offM));
+});
+
+test("the card says the kind, the name, the details and the caution", () => {
+  assert.deepEqual(waterCard({ id: "n1", lon: 0, lat: 0, water: "p", name: "Mile 4", bottle: true, fee: "no" }), {
+    kind: "Drinking water",
+    name: "Mile 4",
+    details: ["Bottle filler.", "Free."],
+    caution: "From OpenStreetMap: check it is working before you count on it.",
+  });
+  assert.equal(waterCard({ id: "n2", lon: 0, lat: 0, toilet: "b" }).name, null);
 });
