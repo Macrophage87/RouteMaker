@@ -2468,10 +2468,11 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.key("i", "KeyI", 73);
   const asked = await infoAsked(p, before);
   await p.waitFor("/Capitol/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  // The dialog open is what counts here, whatever road heading it shows.
   const panel = await p.eval(`(() => { const d = document.querySelector('dialog.road-info');
-    return { federal: d.querySelector('.road-info-federal')?.textContent ?? null, said: d.querySelector('.road-info-said')?.textContent ?? '' }; })()`);
+    return { open: d?.open ?? false, heading: d?.querySelector('h2')?.textContent ?? '', federal: d.querySelector('.road-info-federal')?.textContent ?? null, said: d.querySelector('.road-info-said')?.textContent ?? '' }; })()`);
   check("federal: I at the map's center over the Capitol grounds names the area, its manager and the permit note, in view and in the dialog's status",
-    moved && asked.opened && panel.federal === "Federal land: Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Information, not legal advice: federal ownership is not police jurisdiction." &&
+    moved && asked.asked && panel.open && panel.federal === "Federal land: Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Information, not legal advice: federal ownership is not police jurisdiction." &&
       /Inside U\.S\. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here\.$/.test(panel.said),
     JSON.stringify({ moved, asked, panel }));
   await p.shot(`${SHOTS}/federal_road_info.png`);
@@ -2486,8 +2487,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await armInfoClose(p);
   await p.key("i", "KeyI", 73);
   const again = await infoAsked(p, before);
-  await sleep(300);
-  check("federal: off federal land the road panel has no federal line", again.opened && (await p.eval("!document.querySelector('dialog.road-info .road-info-federal')")), JSON.stringify(again));
+  await p.waitFor("/Connecticut/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  const offPanel = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), federal: !!document.querySelector('dialog.road-info .road-info-federal'), said: document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '' })");
+  check("federal: off federal land the road panel has no federal line", again.asked && offPanel.open && !offPanel.federal && !/federal land/.test(offPanel.said), JSON.stringify({ again, offPanel }));
   await p.escape();
   await infoClosed(p);
   await p.close();
