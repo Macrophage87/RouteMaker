@@ -13,11 +13,16 @@
  *
  * All of it is cleared at End ride (`clearCorridor`), and at the next page load once older than
  * KEEP_MS (`sweepCorridor`). Nothing here holds a position.
+ *
+ * The routes kept for offline (phase P3, lib/offlineRouteStore.ts) are a separate store this module
+ * only reads, after its own, when the network fails; End ride never clears them. In the installed app,
+ * End ride first hands what the ride kept to the last ride's kept route (`clearCorridor(handOn)`).
  */
 import { FetchSource, PMTiles } from "pmtiles";
 import { BASEMAP } from "../stressStyle.js";
 import { ByteBudget, CorridorSource, KEEP_MS, glyphUrls, prefetchCorridor, type KeptRange, type PrefetchResult, type RangeStore, type TileJob } from "./corridor.ts";
 import type { LonLat } from "./geo.ts";
+import { keptRanges, keptTile } from "./offlineRouteStore.ts";
 import { fetchTile, httpUrl } from "./stressProtocol.ts";
 
 export const CORRIDOR_BUCKET = "routemaker-corridor-v1";
@@ -27,7 +32,7 @@ const STAMP_KEY = "routemaker.corridor";
 
 const budget = new ByteBudget();
 
-function indexedDbStore(): RangeStore {
+function indexedDbStore(): RangeStore & { all(): Promise<KeptRange[]> } {
   let opened: Promise<IDBDatabase> | null = null;
   const db = () =>
     (opened ??= new Promise<IDBDatabase>((resolve, reject) => {
@@ -51,13 +56,17 @@ function indexedDbStore(): RangeStore {
     get: (key) => run<KeptRange | undefined>("readonly", (s) => s.get(key) as IDBRequest<KeptRange | undefined>),
     put: async (range) => void (await run("readwrite", (s) => s.put(range))),
     clear: async () => void (await run("readwrite", (s) => s.clear())),
+    all: () => run<KeptRange[]>("readonly", (s) => s.getAll() as IDBRequest<KeptRange[]>),
   };
 }
 
-const source = new CorridorSource(new FetchSource(BASEMAP.path), typeof indexedDB === "undefined" ? emptyStore() : indexedDbStore(), budget);
+const rangeStore = typeof indexedDB === "undefined" ? emptyStore() : indexedDbStore();
+// The routes kept for offline (lib/offlineRouteStore.ts, phase P3) answer after the ride's own store
+// when the network fails, so the installed app shows the map along a kept route with no signal.
+const source = new CorridorSource(new FetchSource(BASEMAP.path), rangeStore, budget, keptRanges);
 
-function emptyStore(): RangeStore {
-  return { get: async () => undefined, put: async () => undefined, clear: async () => undefined };
+function emptyStore(): RangeStore & { all(): Promise<KeptRange[]> } {
+  return { get: async () => undefined, put: async () => undefined, clear: async () => undefined, all: async () => [] };
 }
 
 /** The base map's archive for the pmtiles protocol (MapView adds it), keyed as the style's URL names it. */
@@ -69,14 +78,9 @@ let keepingStress = false;
 
 /** The stress protocol's offline side (stressProtocol.ts `registerStressProtocol`). */
 export const corridorStress = {
+  /** A tile kept for this ride, else one kept with a route for offline (lib/offlineRouteStore.ts). */
   async kept(url: string): Promise<ArrayBuffer | null> {
-    try {
-      if (typeof caches === "undefined") return null;
-      const hit = await (await caches.open(CORRIDOR_BUCKET)).match(url);
-      return hit ? await hit.arrayBuffer() : null;
-    } catch {
-      return null;
-    }
+    return (await keptForRide(url)) ?? (await keptTile(url));
   },
   keep(url: string, data: ArrayBuffer): void {
     if (!keepingStress || typeof caches === "undefined" || !budget.take(data.byteLength)) return;
@@ -86,6 +90,16 @@ export const corridorStress = {
       .catch(() => undefined);
   },
 };
+
+async function keptForRide(url: string): Promise<ArrayBuffer | null> {
+  try {
+    if (typeof caches === "undefined") return null;
+    const hit = await (await caches.open(CORRIDOR_BUCKET)).match(url);
+    return hit ? await hit.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
+}
 
 // ---- The style ------------------------------------------------------------------------------------
 
@@ -98,11 +112,21 @@ export function setCorridorStyle(glyphs: string, sprite: string, stacks: string[
   stressTemplate = stressTiles;
 }
 
-async function fetchExtras(signal: AbortSignal): Promise<void> {
-  if (!style) return;
+/** The style's glyph and sprite URLs a ride's labels and icons need ([] before the style has loaded). */
+export function styleExtraUrls(): string[] {
+  if (!style) return [];
   const scale = typeof devicePixelRatio === "number" && devicePixelRatio > 1 ? "@2x" : "";
-  const urls = [...glyphUrls(style.glyphs, style.stacks), `${style.sprite}${scale}.json`, `${style.sprite}${scale}.png`];
-  for (const url of urls) {
+  return [...glyphUrls(style.glyphs, style.stacks), `${style.sprite}${scale}.json`, `${style.sprite}${scale}.png`];
+}
+
+/** A stress tile's URL as the map asks for it, or null before the style has loaded. */
+export function stressTileUrl(z: number, x: number, y: number): string | null {
+  if (!stressTemplate) return null;
+  return httpUrl(stressTemplate()).replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
+}
+
+async function fetchExtras(signal: AbortSignal): Promise<void> {
+  for (const url of styleExtraUrls()) {
     if (signal.aborted) return;
     // Into the HTTP cache (a day's max-age); the body is read so the entry is complete.
     await fetch(url, { signal }).then((r) => r.arrayBuffer()).catch(() => undefined);
@@ -114,9 +138,9 @@ async function fetchJob(job: TileJob, signal: AbortSignal): Promise<boolean> {
     await basemapArchive.getZxy(job.z, job.x, job.y, signal);
     return true;
   }
-  if (!stressTemplate) return false;
-  const url = httpUrl(stressTemplate()).replace("{z}", String(job.z)).replace("{x}", String(job.x)).replace("{y}", String(job.y));
-  if (await corridorStress.kept(url)) return true;
+  const url = stressTileUrl(job.z, job.x, job.y);
+  if (url === null) return false;
+  if (await keptForRide(url)) return true;
   // Through the page's queue (two in flight at most, the API's per-client cap) and its backoff.
   const data = await fetchTile(url, { signal });
   corridorStress.keep(url, data);
@@ -150,10 +174,43 @@ export function keepCorridor(line: readonly LonLat[]): Promise<PrefetchResult> {
   return prefetchCorridor(line, { fetch: fetchJob, extras: done.size ? undefined : fetchExtras, full: () => budget.full, signal: controller.signal, done });
 }
 
-/** End ride: stop fetching and keeping, and clear what was kept. */
-export async function clearCorridor(): Promise<void> {
+/** What the ride kept, for the installed app's last-ride route (lib/offlineKeep.ts `adoptCorridor`). */
+export interface CorridorSnapshot {
+  ranges: KeptRange[];
+  tiles: { url: string; data: ArrayBuffer }[];
+}
+
+async function snapshot(): Promise<CorridorSnapshot> {
+  const ranges = await rangeStore.all().catch(() => [] as KeptRange[]);
+  const tiles: CorridorSnapshot["tiles"] = [];
+  try {
+    if (typeof caches !== "undefined" && (await caches.has(CORRIDOR_BUCKET))) {
+      const cache = await caches.open(CORRIDOR_BUCKET);
+      for (const request of await cache.keys()) {
+        const hit = await cache.match(request);
+        if (hit) tiles.push({ url: request.url, data: await hit.arrayBuffer() });
+      }
+    }
+  } catch {
+    // What could be read is handed on.
+  }
+  return { ranges, tiles };
+}
+
+/**
+ * End ride: stop fetching and keeping, and clear what was kept. `handOn`, when given (the installed
+ * app's last ride, OWNER-DECISIONS 465a), is shown what the ride kept first, and copies it.
+ */
+export async function clearCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
   running?.abort();
   running = null;
+  if (handOn) {
+    try {
+      await handOn(await snapshot());
+    } catch {
+      // The last ride keeps its route without the map; the ride's own copy is cleared all the same.
+    }
+  }
   keepingStress = false;
   done = new Set();
   budget.reset();

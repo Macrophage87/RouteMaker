@@ -92,6 +92,7 @@ import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { adoptCorridor } from "./lib/offlineKeep.ts";
 import { inDc } from "./lib/dcBoundary.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import {
@@ -313,6 +314,7 @@ export function RideMode({
   onEnd,
   water,
   geoEnv,
+  keepLastRide = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -334,6 +336,11 @@ export function RideMode({
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   geoEnv?: RideGeoEnv;
+  /**
+   * The installed app (OWNER-DECISIONS 465a; lib/offlineKeep.ts): at End ride the map the ride kept is
+   * handed to the last ride's kept route before it is cleared. Read once, at Start ride.
+   */
+  keepLastRide?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const model = useMemo(() => rideModel(route), [route]);
@@ -619,7 +626,8 @@ export function RideMode({
       current = false;
     };
   }, [route]);
-  useEffect(() => () => void clearCorridor(), []);
+  const handsOn = useRef(keepLastRide);
+  useEffect(() => () => void clearCorridor(handsOn.current ? adoptCorridor : undefined), []);
   const corridorText = corridorNote(corridor);
 
   const resume = () => {

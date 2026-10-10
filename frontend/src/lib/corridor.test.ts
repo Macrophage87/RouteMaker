@@ -242,6 +242,31 @@ test("CorridorSource: an aborted read is not answered from the store", async () 
   await assert.rejects(() => source.getBytes(0, 16384), { name: "AbortError" });
 });
 
+test("CorridorSource: the kept routes' ranges (the fallback) answer only when the network fails, with the archive's ETag, and are never written", async () => {
+  const { source: inner, state } = fakeArchive("v1");
+  const store = memoryRangeStore();
+  const saved = memoryRangeStore();
+  await saved.put({ key: "0:16384", etag: "v1", data: new Uint8Array([7]).buffer });
+  await saved.put({ key: "500:40", etag: "v1", data: new Uint8Array([8]).buffer });
+  await saved.put({ key: "600:40", etag: "v0", data: new Uint8Array([9]).buffer });
+  const reads: string[] = [];
+  const fallback = { get: async (key: string) => (reads.push(key), saved.get(key)) };
+  const source = new CorridorSource(inner, store, new ByteBudget(), fallback);
+  // Online, outside a ride: the network, and the fallback is not read.
+  assert.deepEqual([...new Uint8Array((await source.getBytes(500, 40, undefined, "v1")).data)], [500 % 256, 40]);
+  assert.deepEqual(reads, []);
+  // Offline, outside a ride: the header and a tile from the kept routes; a range of another file is refused.
+  state.online = false;
+  assert.deepEqual([...new Uint8Array((await source.getBytes(0, 16384)).data)], [7]);
+  assert.deepEqual([...new Uint8Array((await source.getBytes(500, 40, undefined, "v1")).data)], [8]);
+  await assert.rejects(() => source.getBytes(600, 40, undefined, "v1"));
+  await assert.rejects(() => source.getBytes(700, 40, undefined, "v1"));
+  // End ride's clear leaves the kept routes alone.
+  await source.clear();
+  assert.equal(saved.ranges.size, 3);
+  assert.equal(store.ranges.size, 0);
+});
+
 test("fontStacks and glyphUrls: the style's Latin fonts, plain or inside expressions", () => {
   const layers = [
     { layout: { "text-font": ["Noto Sans Regular"] } },

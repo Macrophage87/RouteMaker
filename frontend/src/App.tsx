@@ -160,6 +160,11 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
+import { AppStatusBar, InstallOffer, KeptRoutes, useAppStatus } from "./InstallableApp.tsx";
+import { isStandalone } from "./lib/installOffer.ts";
+import { keepLastRide, keepRoute, keptAnswerFor } from "./lib/offlineKeep.ts";
+import { KEEPING_SAID, KEEP_LABEL, keepSaid, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -427,9 +432,21 @@ export function App() {
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
   const scheduler = useRef<RouteScheduler<Plan> | null>(null);
+  // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
+  // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
+  const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
+  const keptNotice = useRef<string | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
-      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials }),
+      send: async (plan) => {
+        const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
+        keptShown.current = null;
+        if (result.ok || result.error.kind !== "network") return result;
+        const kept = await keptAnswerFor<RouteResponse>(encodePlan(plan.points, plan.preset, plan.dials)).catch(() => undefined);
+        if (!kept) return result;
+        keptShown.current = kept;
+        return { ok: true, route: kept.answer };
+      },
       onState: (state: SchedulerState) => {
         if (state.kind === "in-flight" || state.kind === "pending") setStatus({ kind: "loading" });
         else if (state.kind === "waiting") setStatus({ kind: "waiting", seconds: state.seconds });
@@ -440,6 +457,11 @@ export function App() {
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
           setStatus({ kind: "ok" });
+          const kept = keptShown.current;
+          const was = keptNotice.current;
+          keptNotice.current = kept ? offlineRouteNotice(kept) : null;
+          if (kept) setNotice(keptNotice.current);
+          else if (was) setNotice((n) => (n === was ? null : n));
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
           setStatus({ kind: "confirm", error: result.error });
@@ -578,6 +600,13 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
+  // same region; shown at the top of the planner (InstallableApp.tsx).
+  const appStatus = useAppStatus(riding, announce);
+  // Bumped when a route is kept, so Settings' list reads the store again.
+  const [keptVersion, setKeptVersion] = useState(0);
+  const [keeping, setKeeping] = useState(false);
+  const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
   // switch pressed, which is always on the page.
@@ -1181,11 +1210,42 @@ export function App() {
     if (!shown) return;
     startRideGesture(prefs);
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
+    // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
+    // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
+    if (isStandalone()) {
+      void keepLastRide({ plan: encodePlan(routedPoints, preset, dials), title: keptTitle(), distanceM: shown.distance_m, answer: shown })
+        .then(() => setKeptVersion((v) => v + 1))
+        .catch(() => undefined);
+    }
     setRideAsk(false);
     setFollow(true);
     setBigText(false);
     setRideView(null);
     setRiding(true);
+  };
+  // Keep for offline (P3): the plan, its answer and the map along it; the press asks the browser to
+  // keep the site's storage (navigator.storage.persist), and what it did is said politely.
+  const keptTitle = () => {
+    const first = routedPoints[0];
+    const last = routedPoints[routedPoints.length - 1];
+    return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
+  };
+  const keepForOffline = async () => {
+    if (!shown || keeping) return;
+    setKeeping(true);
+    setKeepSpoken((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
+    void askPersist();
+    const title = keptTitle();
+    const { outcome } = await keepRoute({ plan: encodePlan(routedPoints, preset, dials), title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }).catch(() => ({ outcome: "failed" as const }));
+    setKeeping(false);
+    setKeptVersion((v) => v + 1);
+    setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+  };
+  // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
+  const openKept = (kept: KeptRoute) => {
+    showPlanner(true);
+    if (window.location.hash !== kept.plan) window.location.hash = kept.plan;
+    announce(`Opening ${kept.title}.`);
   };
   const startRide = () => {
     const opener = document.activeElement;
@@ -1508,6 +1568,7 @@ export function App() {
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
           {ACCESS_LABEL}
         </button>
+        <InstallOffer idBase="tips-install" compact onSay={announce} />
       </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
@@ -1805,6 +1866,7 @@ export function App() {
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
+          keepLastRide={isStandalone()}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
@@ -1847,6 +1909,7 @@ export function App() {
             enabled={isBetaBuild(import.meta.env.VITE_BETA)}
             reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
           />
+          <AppStatusBar status={appStatus} />
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
               {order.map((id) => sections[id])}
@@ -2001,6 +2064,9 @@ export function App() {
                 <h3 id="settings-ride-heading">Ride mode</h3>
                 <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
               </section>
+              {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
+              <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} />
+              <InstallOffer idBase="settings-install" onSay={announce} />
               <section aria-labelledby="settings-signin-heading">
                 <h3 id="settings-signin-heading">Signing in</h3>
                 <p className="hint">
@@ -2027,6 +2093,13 @@ export function App() {
               <span role="status" className="visually-hidden">
                 {linkSpoken}
               </span>
+              <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+                {KEEP_LABEL}
+              </button>
+              <p id="keep-offline-said" className="hint keep-said" role="status">
+                {keepSpoken.text}
+                {keepSpoken.count % 2 === 1 ? " " : ""}
+              </p>
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}

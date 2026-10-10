@@ -287,11 +287,17 @@ export class CorridorSource implements Source {
   private readonly inner: Source;
   private readonly store: RangeStore;
   private readonly budget: ByteBudget;
+  private readonly fallback: Pick<RangeStore, "get"> | undefined;
 
-  constructor(inner: Source, store: RangeStore, budget: ByteBudget) {
+  /**
+   * `fallback` is the routes the rider kept for offline (lib/offlineRouteStore.ts, phase P3): read only
+   * when the network fails, after the ride's own store, and never written or cleared from here.
+   */
+  constructor(inner: Source, store: RangeStore, budget: ByteBudget, fallback?: Pick<RangeStore, "get">) {
     this.inner = inner;
     this.store = store;
     this.budget = budget;
+    this.fallback = fallback;
   }
 
   getKey(): string {
@@ -313,11 +319,24 @@ export class CorridorSource implements Source {
       if (this.keeping) await this.keep(key, answer);
       return answer;
     } catch (error) {
-      if (isAbort(error) || !stored) throw error;
-      const kept = await this.read(key);
+      if (isAbort(error)) throw error;
       // The header's own (no ETag asked): any kept copy is the file the kept tiles came from.
-      if (kept && (etag === undefined || kept.etag === etag)) return { data: kept.data, etag: kept.etag };
+      const fits = (kept: KeptRange | undefined): kept is KeptRange => !!kept && (etag === undefined || kept.etag === etag);
+      const kept = stored ? await this.read(key) : undefined;
+      if (fits(kept)) return { data: kept.data, etag: kept.etag };
+      const saved = await this.readFallback(key);
+      if (fits(saved)) return { data: saved.data, etag: saved.etag };
       throw error;
+    }
+  }
+
+  /** The kept routes' copy of a range, when the network failed. */
+  private async readFallback(key: string): Promise<KeptRange | undefined> {
+    if (!this.fallback) return undefined;
+    try {
+      return await this.fallback.get(key);
+    } catch {
+      return undefined;
     }
   }
 

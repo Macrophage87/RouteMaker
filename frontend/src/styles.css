@@ -3327,3 +3327,85 @@ details.zoom-notes {
 .station-refresh {
   min-height: 44px;
 }
+
+/* --- The installable app (WEB-NAV-plan.md section 8; InstallableApp.tsx): the status bar at the top of
+   the planner (offline, a new version ready), the routes kept for offline in Settings, Keep for offline
+   under a route, and the install offer. Words carry every state (no colour alone); every button is 44 px
+   high (the panel's rule above); the bar is a notice, never over the map. --- */
+.app-status {
+  margin: 8px 14px 4px;
+  display: grid;
+  gap: 6px;
+}
+.app-offline,
+.app-update {
+  margin: 0;
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  font-size: 0.9rem;
+}
+.app-update {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-update p {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+.app-update button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.route-actions .keep-offline {
+  flex: 1 1 100%;
+}
+/* Always drawn, empty at first: a live region added already holding its text is often not spoken. */
+.route-actions .keep-said {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.kept-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.kept-route {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+.kept-title {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.kept-detail {
+  margin: 2px 0 6px;
+}
+.kept-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kept-actions button {
+  flex: 1 1 6rem;
+  min-height: 44px;
+}
+.install-offer .install-app {
+  min-height: 44px;
+}
+@media (forced-colors: active) {
+  .app-offline,
+  .app-update,
+  .kept-route {
+    border-color: CanvasText;
+  }
+}
