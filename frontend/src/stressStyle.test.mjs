@@ -241,7 +241,13 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
-  assert.deepEqual(mtb, ["mtb-trail"], "the mountain-bike trails' not-for-routes line (OWNER-DECISIONS 452a)");
+  assert.deepEqual(
+    mtb,
+    ["mtb-trail", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
+    "the unrated mountain-bike trails' not-for-routes dots (OWNER-DECISIONS 452a), then each level's casing, then its line (456)",
+  );
+  // The whole mountain-bike layer under every routable line.
+  assert.deepEqual(ids.slice(0, mtb.length), mtb);
   assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
   // The not-for-routes line under everything, so every routable line draws over it.
   assert.equal(ids[0], "mtb-trail");

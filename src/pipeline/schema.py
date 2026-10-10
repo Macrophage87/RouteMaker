@@ -437,6 +437,10 @@ SEEK_INDEX_PREDICATE = (
 MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
 MTB_ONLY_COLUMN = "mtb_only"
+# The mountain-bike difficulty level, 1 to 4, of a mountain-bike-only way
+# (`routemaker.singletrack.mtb_level`; OWNER-DECISIONS 456, 456a-c). Carried in a stress
+# tile as `mtb_level` where the live table has the column (`core.stress_tiles`).
+MTB_LEVEL_COLUMN = "mtb_level"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -538,6 +542,12 @@ CREATE TABLE {schema}.segment (
     -- flags "walk your bike here" (`walk_bike`).
     mtb_only        boolean     NOT NULL DEFAULT false,
     walk_bike       boolean     NOT NULL DEFAULT false,
+    -- The difficulty level of a mountain-bike-only way (OWNER-DECISIONS 456, 456a-c;
+    -- `routemaker.singletrack.mtb_level`): the higher of `mtb:scale` and
+    -- `mtb:scale:imba`, S1-S3 to 1-3 and S4-S6 (IMBA 4) to 4. Null on every other way,
+    -- on one rated 0 (a gravel trail, 456b) or unrated, and on every row of a table
+    -- built before the column existed. The tiles carry it as `mtb_level`.
+    mtb_level       smallint    CHECK (mtb_level BETWEEN 1 AND 4),
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

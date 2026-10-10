@@ -108,3 +108,39 @@ def test_the_offroad_graph_keeps_only_the_mtb_class_open():
 
 def test_park_rules_hook_is_empty_until_a_compendium_is_read():
     assert dict(tc.PARK_RULES) == {}
+
+
+def test_rated_singletrack_is_drawn_on_the_mtb_layer_only_where_its_rating_alone_closes_it():
+    """OWNER-DECISIONS 456 (docs/MTB-TOPO-PLAN.md, slice 2): the mountain-bike layer draws rated
+    singletrack in its level's colour, but never a trail the tag rules would close without the
+    rating ("err closed", 330; 456d: trails closed for access stay closed)."""
+    dirt = {"highway": "path", "surface": "dirt"}
+    in_park = (-77.5, 39.5)
+    ways = [
+        way(20, {**dirt, "bicycle": "yes", "mtb:scale": "2"}),
+        way(21, {**dirt, "bicycle": "designated", "mtb:scale:imba": "3"}),
+        way(22, {"highway": "bridleway", "bicycle": "permissive", "mtb:scale": "1"}),
+        # No bicycle tag on a natural surface: closed as natural_surface without the rating.
+        way(23, {**dirt, "mtb:scale": "2"}),
+        way(24, {**dirt, "bicycle": "no", "mtb:scale": "2"}),
+        way(25, {**dirt, "access": "private", "mtb:scale": "1"}),
+        way(26, {**dirt, "bicycle": "dismount", "mtb:scale": "1"}),
+        way(27, {"highway": "footway", "surface": "dirt", "mtb:scale": "3"}),
+        # A plain path inside a park: the park-path rule.
+        way(28, {"highway": "path", "mtb:scale": "1"}, in_park),
+    ]
+    park = (
+        (-77.6, 39.4, -77.4, 39.6),
+        [[(-77.6, 39.4), (-77.4, 39.4), (-77.4, 39.6), (-77.6, 39.6)]],
+        [],
+    )
+    result = run(ways, parks=[park])
+    assert {w for w, r in result.reasons.items() if r == "singletrack"} == set(range(20, 29))
+    assert result.drawn_singletrack == {20, 21, 22}
+    # Every drawn one is mountain-bike only, so only the mountain-bike layer draws it.
+    assert result.drawn_singletrack <= result.mtb_only()
+
+
+def test_a_paved_rated_trail_is_neither_singletrack_nor_drawn_as_one():
+    result = run([way(30, {"highway": "path", "surface": "asphalt", "mtb:scale": "2"})])
+    assert result.reasons == {} and result.drawn_singletrack == set()

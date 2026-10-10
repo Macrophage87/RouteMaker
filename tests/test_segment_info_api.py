@@ -388,6 +388,86 @@ class TestAnswer:
             "Bikes: Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
         )
 
+    @pytest.mark.parametrize(
+        ("level", "words", "scale"),
+        [
+            (1, "level 1 (green)", "S1 or IMBA 1"),
+            (2, "level 2 (blue)", "S2 or IMBA 2"),
+            (3, "level 3 (black)", "S3 or IMBA 3"),
+            (4, "level 4 (red)", "S4 to S6 or IMBA 4"),
+        ],
+    )
+    def test_a_rated_trail_names_its_level_in_words(
+        self, client, segment_schemas, router, level, words, scale
+    ) -> None:
+        """OWNER-DECISIONS 456: the panel names the level the layer draws it in, in words
+        (never colour alone). Rated singletrack is closed on every graph, so the Bikes line
+        does not say Gravel and Mountain Goat may use it."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            124,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            is_trail_class=True,
+            is_unpaved=True,
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=level,
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(124, "Lake Loop", use="path")]}
+        body = get(client).json()
+        assert summary(body)[-1] == f"Bikes: Mountain-bike trail, {words}, not used for routes"
+        difficulty = section(body, "riding")["Mountain-bike difficulty"]
+        assert difficulty["value"] == (
+            f"{words[0].upper()}{words[1:]}: rated {scale}"
+            " (the higher of mtb:scale and mtb:scale:imba)"
+        )
+        assert difficulty["source"] == segment_info.OSM
+        access = section(body, "access")["Bike access"]
+        assert access["value"] == (
+            "Closed: mountain-bike singletrack, not used for routes by any ride type"
+        )
+
+    def test_a_rated_mountain_bike_class_trail_keeps_the_off_road_words(
+        self, client, segment_schemas, router
+    ) -> None:
+        live, _ = segment_schemas
+        insert(
+            live,
+            125,
+            [SPOT, east(SPOT, 50)],
+            is_trail_class=True,
+            bike_access_reason="mtb",
+            mtb_only=True,
+            mtb_level=2,
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(125, use="path")]}
+        assert summary(get(client).json())[-1] == (
+            "Bikes: Mountain-bike trail, level 2 (blue), not used for routes"
+            " (Gravel and Mountain Goat may use it)"
+        )
+
+    def test_an_unrated_trail_has_no_difficulty_row(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(live, 126, [SPOT, east(SPOT, 50)], is_trail_class=True, mtb_only=True)
+        router.answers = {"bicycle": [], "pedestrian": [edge(126, use="path")]}
+        body = get(client).json()
+        assert "Mountain-bike difficulty" not in section(body, "riding")
+        assert "level" not in summary(body)[-1]
+
+    def test_the_level_words_match_the_front_end(self) -> None:
+        """frontend/src/stressStyle.js MTB_LEVELS holds the same colours by name."""
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[1] / "frontend" / "src" / "stressStyle.js"
+        ).read_text()
+        for level, colour in segment_info.MTB_LEVEL_COLOURS.items():
+            assert f'level: {level}, name: "{colour}"' in source, (level, colour)
+        assert segment_info.mtb_level_words(None) is None
+        assert segment_info.mtb_level_words(5) is None
+
     def test_a_normal_way_a_little_further_wins_over_a_nearer_mountain_bike_trail(
         self, client, segment_schemas, router
     ) -> None:

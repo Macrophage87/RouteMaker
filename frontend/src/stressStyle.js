@@ -901,45 +901,103 @@ export function mtbTrailPaint(strong = accessibilityOn()) {
   };
 }
 
-/** The not-for-routes layer's id. */
+/** The not-for-routes layer's id: since 456 the unrated mountain-bike trails' grey dots. */
 export const MTB_TRAIL_LAYER_ID = "mtb-trail";
 
-/** The not-for-routes layer (452a): the mountain-bike trails, drawn under every routable layer. */
+/**
+ * THE MOUNTAIN-BIKE LEVELS (OWNER-DECISIONS 456, 456a-c; docs/MTB-TOPO-PLAN.md, slice 2). The tiles
+ * carry a rated mountain-bike trail's difficulty as `mtb_level`, 1 to 4 (core/stress_tiles.py, from
+ * `segment.mtb_level`: the higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3, S4-S6 to 4; a
+ * rating of 0 is a gravel trail and no level, 456b). The mountain-bike layer draws each level in its
+ * colour (the owner's starting values: green, blue, black, red), with a pattern of its own (`dash`, in
+ * line widths: longer and plainer for the easier levels, more broken for the harder) over a white
+ * casing, so the colour is never the only cue; the legend and the road panel name the level in words
+ * (`name`, core/segment_info.py MTB_LEVEL_COLOURS, held equal by a test). Every pattern is dashed, so
+ * no level reads as a routable line (452a), and none is the unrated trails' dots, the unpaved mark, the
+ * surface-unknown dashes, a rail's or a tier's (mtbLevels.test.ts). Each colour is 3:1 or more from
+ * every surface of the light base map and from the white casing (mtbLevels.test.ts, as MTB_TRAIL's).
+ * An unrated mountain-bike trail keeps the grey dots (`mtb-trail`, MTB_TRAIL; the plan's default).
+ */
+export const MTB_LEVELS = [
+  { level: 1, name: "green", color: "#2e7d32", dash: [6, 2], pattern: "long dashes", scale: "S1 or IMBA 1" },
+  { level: 2, name: "blue", color: "#1565c0", dash: [3, 2], pattern: "short dashes", scale: "S2 or IMBA 2" },
+  { level: 3, name: "black", color: "#1c1917", dash: [4, 1.5, 1, 1.5], pattern: "dash-dot", scale: "S3 or IMBA 3" },
+  { level: 4, name: "red", color: "#c62828", dash: [4, 1.5, 1, 1.5, 1, 1.5], pattern: "dash-dot-dot", scale: "S4 to S6 or IMBA 4" },
+];
+
+/**
+ * The levels' line and casing widths, plain and with the accessibility switch on (`strong`), in pixels:
+ * wider than the grey dots so the colour reads, still thinner than LTS 1's routable line (2.5 px) at
+ * plain strength. The casing is the line's width plus `casingPx` a side, solid, so the pattern's gaps
+ * show the casing and the line stands off whatever it crosses.
+ */
+export const MTB_LEVEL = { width: 2, strongWidth: 3, casing: "#ffffff", casingPx: 1, strongCasingPx: 1.5 };
+
+/** A level's layer ids: its line and its casing. */
+export const mtbLevelLayerId = (level) => `mtb-level-${level}`;
+export const mtbLevelCasingLayerId = (level) => `mtb-level-casing-${level}`;
+
+/** Every layer of the mountain-bike trail map layer (454): the unrated dots and each level's casing and line. */
+export const MTB_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)), ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level))];
+
+/** Whether a layer id is one of the mountain-bike trail layer's (MTB_LAYER_IDS). */
+export function isMtbLayerId(id) {
+  return MTB_LAYER_IDS.includes(id);
+}
+
+/** A level's line and casing paint, plain or with the accessibility switch on. */
+export function mtbLevelPaint(level, strong = accessibilityOn()) {
+  const shape = MTB_LEVELS.find((l) => l.level === level);
+  const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
+  const casingWidth = width + 2 * (strong ? MTB_LEVEL.strongCasingPx : MTB_LEVEL.casingPx);
+  return {
+    line: { "line-color": shape.color, "line-width": width, "line-dasharray": shape.dash },
+    casing: { "line-color": MTB_LEVEL.casing, "line-width": casingWidth },
+  };
+}
+
+/**
+ * The mountain-bike trail layer (452a, 454, 456): the unrated trails' grey dots, then every level's casing,
+ * then every level's line, all under every routable layer.
+ */
 export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  const filters = stressFilters(when);
+  const base = { type: "line", source: sourceId, "source-layer": STRESS_TILE_LAYER, minzoom: MTB_MIN_ZOOM };
   return [
-    {
-      id: MTB_TRAIL_LAYER_ID,
-      type: "line",
-      source: sourceId,
-      "source-layer": STRESS_TILE_LAYER,
-      minzoom: MTB_MIN_ZOOM,
-      filter: stressFilters(when)["mtb-trail"],
-      paint: mtbTrailPaint(strong),
-    },
+    { id: MTB_TRAIL_LAYER_ID, ...base, filter: filters[MTB_TRAIL_LAYER_ID], paint: mtbTrailPaint(strong) },
+    ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelCasingLayerId(level), ...base, filter: filters[mtbLevelCasingLayerId(level)], paint: mtbLevelPaint(level, strong).casing })),
+    ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelLayerId(level), ...base, filter: filters[mtbLevelLayerId(level)], paint: mtbLevelPaint(level, strong).line })),
   ];
 }
 
 /**
  * Each overlay layer's filter in the ride time `when`, by layer id. Each routable layer
- * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
+ * excludes the mountain-bike trails, which the not-for-routes layers (MTB_LAYER_IDS) draw,
  * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
- * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
- * that carry a capacity (massStyle.js, massHides), but `mtb-trail`, which is a layer of its own (454).
+ * those draw nothing. In the Mass Ride map (`mass`) each also excludes the features
+ * that carry a capacity (massStyle.js, massHides), but the mountain-bike layers, a map layer of their own (454).
  */
 export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
   const filters = stressFiltersOf(when, showHighLanes, routableMtb);
   if (!mass) return filters;
-  // The mountain-bike trails' line keeps its own filter: their layer shows in every ride type (454), and nearly
+  // The mountain-bike trails' layers keep their own filters: their layer shows in every ride type (454), and nearly
   // every trail row carries a capacity (`rpm`, a path's default width), so `massHides` would draw none of them.
-  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, id === MTB_TRAIL_LAYER_ID ? filter : ["all", filter, massHides]]));
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, isMtbLayerId(id) ? filter : ["all", filter, massHides]]));
 }
 
 function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
   const hidden = routableMtb ? [] : [mtbHides];
-  // The not-for-routes line: the mountain-bike trails, or nothing once they are routable.
-  filters["mtb-trail"] = ["all", drawnAt(when), isMtbTrail, ...(routableMtb ? [["boolean", false]] : [])];
+  // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable. The grey dots
+  // draw the unrated ones (no `mtb_level`), and each level's casing and line the trails of that level (456).
+  const off = routableMtb ? [["boolean", false]] : [];
+  filters[MTB_TRAIL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["!", ["has", "mtb_level"]], ...off];
+  for (const { level } of MTB_LEVELS) {
+    const filter = ["all", drawnAt(when), isMtbTrail, ["==", ["get", "mtb_level"], level], ...off];
+    filters[mtbLevelCasingLayerId(level)] = filter;
+    filters[mtbLevelLayerId(level)] = filter;
+  }
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.

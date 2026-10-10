@@ -13,6 +13,8 @@ import {
   MTB_MIN_ZOOM,
   MTB_TRAILS_STORAGE_KEY,
   MTB_TRAIL_LAYER_ID,
+  MTB_LAYER_IDS,
+  MTB_LEVELS,
   mtbTrailLayers,
   mtbTrailsOn,
   rememberMtbTrails,
@@ -25,7 +27,7 @@ import {
 } from "../stressStyle.js";
 import { massLayerIds } from "../massStyle.js";
 import { addStressOverlay, overlayLayerShown, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
-import { MTB_LEGEND, MtbTrailLegend } from "./stressLegend.ts";
+import { MTB_LEGEND, MtbTrailLegend, mtbLevelLegend } from "./stressLegend.ts";
 import { STRESS_SOURCE_ID } from "./mapStyle.ts";
 import { MTB_TRAILS_HINT, MTB_TRAILS_LABEL, MTB_TRAILS_NO_MAP_HINT, MtbTrailsSwitch } from "./mtbTrailsSwitch.ts";
 
@@ -169,19 +171,23 @@ test("the overlay is added with the trails' layer as the switch says, whatever t
   }
 });
 
-test("the not-for-routes line is the layer the switch names", () => {
+test("the not-for-routes line and each level's casing and line are the layers the switch names", () => {
   assert.equal(MTB_TRAIL_LAYER_ID, "mtb-trail");
   assert.deepEqual(
     mtbTrailLayers().map((l: { id: string }) => l.id),
-    [MTB_TRAIL_LAYER_ID],
+    MTB_LAYER_IDS,
   );
+  assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
+  assert.equal(MTB_LAYER_IDS.length, 9, "the dots, then four casings and four lines (456)");
 });
 
 test("the trails show by their own switch alone: with the stress map on or off, in every ride type, Mass Ride too", () => {
   for (const visible of [true, false]) {
     for (const mass of [true, false]) {
-      assert.equal(overlayLayerShown(MTB_TRAIL_LAYER_ID, visible, mass, true), true, `on, stress ${visible}, mass ${mass}`);
-      assert.equal(overlayLayerShown(MTB_TRAIL_LAYER_ID, visible, mass, false), false, `off, stress ${visible}, mass ${mass}`);
+      for (const id of MTB_LAYER_IDS) {
+        assert.equal(overlayLayerShown(id, visible, mass, true), true, `${id} on, stress ${visible}, mass ${mass}`);
+        assert.equal(overlayLayerShown(id, visible, mass, false), false, `${id} off, stress ${visible}, mass ${mass}`);
+      }
     }
   }
   // It reads the switch when not told.
@@ -197,7 +203,7 @@ test("the trails show by their own switch alone: with the stress map on or off, 
 test("the switch moves no other layer: each stress and Mass Ride layer shows as it did", () => {
   const ids = stressOverlayLayers(STRESS_SOURCE_ID)
     .map((l: { id: string }) => l.id)
-    .filter((id: string) => id !== MTB_TRAIL_LAYER_ID);
+    .filter((id: string) => !MTB_LAYER_IDS.includes(id));
   const mass = new Set<string>(massLayerIds());
   assert.ok(ids.length > 10);
   for (const id of ids) {
@@ -217,7 +223,7 @@ test("setting the overlay's visibility sets the trails' by the switch, and the r
       for (const visible of [true, false]) {
         const { map, visibility } = fakeMap();
         setStressVisibility(map, visible);
-        assert.equal(visibility.get(MTB_TRAIL_LAYER_ID), mtb ? "visible" : "none", `mtb ${mtb}, stress ${visible}`);
+        for (const id of MTB_LAYER_IDS) assert.equal(visibility.get(id), mtb ? "visible" : "none", `${id}: mtb ${mtb}, stress ${visible}`);
         assert.equal(visibility.get("stress-1"), visible ? "visible" : "none");
       }
     }
@@ -247,8 +253,9 @@ test("the switch is a named button with role switch, its state, and a short plai
   assert.match(off, /<span id="mtb-trails-label" class="switch-label">Mountain-bike trails<\/span>/);
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, new RegExp(`<p class="hint" id="mtb-trails-hint">${MTB_TRAILS_HINT}</p>`));
-  assert.ok(MTB_TRAILS_HINT.includes(`from zoom ${MTB_MIN_ZOOM}`));
-  assert.match(MTB_TRAILS_HINT, /Not used for routes; Gravel and Mountain Goat may use them\.$/);
+  assert.match(MTB_TRAILS_HINT, new RegExp(`from zoom ${MTB_MIN_ZOOM}`, "i"));
+  assert.match(MTB_TRAILS_HINT, /levels 1 to 4 by colour and pattern, unrated as grey dots/);
+  assert.match(MTB_TRAILS_HINT, /Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/);
   for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length < 150, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
@@ -275,8 +282,11 @@ test("the Mass Ride legend names the trails' line while the layer is on, and not
   try {
     const html = renderToStaticMarkup(createElement(MtbTrailLegend));
     assert.match(html, /^<ul class="legend" aria-label="Mountain-bike trail legend"><li class="mtb-trail"><svg [^>]*aria-hidden="true"/);
-    const text = html.replace(/<svg[\s\S]*?<\/svg>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    assert.equal(text, `${MTB_LEGEND!.short} ${MTB_LEGEND!.label}`);
+    const text = html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const levels = MTB_LEVELS.map((shape: (typeof MTB_LEVELS)[number]) => `${mtbLevelLegend(shape).short} ${mtbLevelLegend(shape).label}`);
+    assert.equal(text, [`${MTB_LEGEND!.short} ${MTB_LEGEND!.label}`, ...levels].join(" "));
+    // The level rows too, each with its number in words (456).
+    for (const level of [1, 2, 3, 4]) assert.match(html, new RegExp(`<li class="mtb-level mtb-level-${level}"><svg [^>]*aria-hidden="true"`));
   } finally {
     setMtbTrails(false, { remember: false });
   }

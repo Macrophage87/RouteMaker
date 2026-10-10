@@ -35,6 +35,8 @@ from .schema import (
     CALM_PATH_GAP_M,
     CALM_ROAD_MAX_TIER,
     CALM_RUN_COLUMN,
+    METRES_PER_MILE,
+    MTB_LEVEL_COLUMN,
     PAVED_ROUTE_MIN,
     ROADSIDE_COLUMN,
     ROADSIDE_FRACTION,
@@ -551,6 +553,30 @@ def derive_roadside(schema: str) -> int:
         cursor.execute(f"SELECT count(*) FROM {schema}.segment WHERE {ROADSIDE_COLUMN}")
         (beside,) = cursor.fetchone()
     return beside
+
+
+def mtb_level_counts(schema: str) -> dict[int, tuple[int, float, float]]:
+    """{level: (ways, miles, miles drawn)} of the staging schema's mountain-bike levels
+    (`mtb_level`, OWNER-DECISIONS 456): the counts slice 3 of docs/MTB-TOPO-PLAN.md
+    (Gravel's "roughest I'll ride" setting) is to be shown with. "Drawn" is the part the
+    map can draw (`map_class` road); the rest is hidden or barred for access."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT {MTB_LEVEL_COLUMN}, count(DISTINCT osm_way_id),
+                       coalesce(sum(ST_Length(geometry::geography)), 0),
+                       coalesce(sum(ST_Length(geometry::geography))
+                                FILTER (WHERE map_class = 'road'), 0)
+                FROM {schema}.segment WHERE {MTB_LEVEL_COLUMN} IS NOT NULL
+                GROUP BY {MTB_LEVEL_COLUMN} ORDER BY {MTB_LEVEL_COLUMN}"""
+        )
+        rows = cursor.fetchall()
+    return {
+        int(level): (int(ways), float(m) / METRES_PER_MILE, float(drawn) / METRES_PER_MILE)
+        for level, ways, m, drawn in rows
+    }
 
 
 class LongTrailSummary(NamedTuple):

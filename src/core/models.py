@@ -67,6 +67,9 @@ class Segment(models.Model):
     # table is unmanaged, so these arrive with a rebuild (pipeline.schema).
     mtb_only = models.BooleanField(default=False)
     walk_bike = models.BooleanField(default=False)
+    # The difficulty level of a mountain-bike-only way, 1 to 4, or null (OWNER-DECISIONS
+    # 456, 456a-c; `routemaker.singletrack.mtb_level`). Arrives with a rebuild, as above.
+    mtb_level = models.SmallIntegerField(null=True)
 
     class Meta:
         managed = False  # DDL comes from the pipeline; see Operations in the plan.

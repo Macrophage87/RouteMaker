@@ -19,12 +19,15 @@ import {
   LEGEND_SWATCH_PX,
   MTB_TRAILS_ROUTABLE,
   MTB_TRAIL,
+  MTB_LEVEL,
+  MTB_LEVELS,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   accessibilityOn,
   currentTiers,
   mtbTrailPaint,
+  mtbLevelPaint,
   legendWidths,
   unpavedWidth,
 } from "../stressStyle.js";
@@ -69,7 +72,21 @@ export const RIDE_RUN_MI = { path: 0.25, road: 2 };
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line." };
+  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line for an unrated trail; rated ones show by level below." };
+
+type MtbLevel = (typeof MTB_LEVELS)[number];
+
+/**
+ * OWNER-DECISIONS 456: a rated mountain-bike trail's row, one a level, naming the level in words (its number
+ * and colour), what it is on the two scales, and its pattern, so the colour is never the only cue. The row's
+ * name is the road panel's wording (core/segment_info.py, mtb_level_words): "Level 2 (blue)".
+ */
+export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string } {
+  return {
+    short: `Level ${shape.level} (${shape.name})`,
+    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} on a white edge. Not used for routes.`,
+  };
+}
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
@@ -299,6 +316,22 @@ export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
   );
 }
 
+/**
+ * A mountain-bike level's swatch (456): its white casing and its coloured pattern at the map's widths, on a
+ * strip of the base map's earth colour, as the map draws them.
+ */
+export function MtbLevelSwatch({ shape, strong }: { shape: MtbLevel; strong: boolean }): ReactElement {
+  const paint = mtbLevelPaint(shape.level, strong);
+  const width = paint.line["line-width"];
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: `mtb-level-swatch mtb-level-swatch-${shape.level}` },
+    h("rect", { x: X1, y: 1, width: LEGEND_SWATCH_PX, height: 10, rx: 2, fill: MTB_TRAIL.legendGround }),
+    line(6, MTB_LEVEL.casing, paint.casing["line-width"]),
+    line(6, shape.color, width, dashPx(shape.dash, width)),
+  );
+}
+
 type Facility = (typeof FACILITIES)[number];
 
 /** A facility's swatch: its rails, with the casing of LTS 1's line over them. */
@@ -322,6 +355,22 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
   );
 
 /**
+ * The mountain-bike trail layer's rows (452a, 456): the unrated trails' grey dots, then each level, in words.
+ * Empty once the trails are routable.
+ */
+function mtbRows(): ReactElement[] {
+  if (!MTB_LEGEND) return [];
+  const strong = accessibilityOn();
+  return [
+    row("mtb", h(MtbTrailSwatch, { strong }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+    ...MTB_LEVELS.map((shape) => {
+      const words = mtbLevelLegend(shape);
+      return row(`mtb-${shape.level}`, h(MtbLevelSwatch, { shape, strong }), words.short, words.label, `mtb-level mtb-level-${shape.level}`);
+    }),
+  ];
+}
+
+/**
  * The mountain-bike trails' row on its own, for the Mass Ride map, whose legend is the capacity one
  * (lib/massLegend.ts): their layer shows in every ride type (454), so its words are there too, while
  * it is on. Null while it is off, or once the trails are routable.
@@ -333,7 +382,7 @@ export function MtbTrailLegend(): ReactElement | null {
   return h(
     "ul",
     { className: "legend", "aria-label": "Mountain-bike trail legend" },
-    row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+    ...mtbRows(),
   );
 }
 
@@ -373,7 +422,8 @@ export function StressLegend({
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
       // 452a: the mountain-bike trails' not-for-routes line, in words in the list, not behind the zoom fold;
       // only while their layer is on (454), so the legend names what the map draws.
-      MTB_LEGEND && showMtbTrails && row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+      // Each level's row (456) follows, while the layer is on.
+      ...(showMtbTrails ? mtbRows() : []),
     ),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),

@@ -534,8 +534,8 @@ def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace
             assert stored[way.osm_id] == facility(way.tags).value, way.osm_id
 
 
-def run_dials_extract(tmp_path):
-    source = install_source_extract(tmp_path, build_dials_extract)
+def run_dials_extract(tmp_path, **kwargs):
+    source = install_source_extract(tmp_path, build_dials_extract, **kwargs)
     ids = (
         WEEKEND_CLOSED_ID,
         SEPARATE_ROAD_ID,
@@ -636,8 +636,48 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     # The map agrees: no singletrack drawn as a trail nobody is routed down,
     # and the towpath either side of lock 21 is.
     drawn = stored_map_class(context)
+    # It has no bicycle tag on a dirt surface, which the tag rules close without the rating
+    # (natural_surface), so the mountain-bike layer does not draw it either (456).
+    assert SINGLETRACK_ID not in context.drawn_singletracks
     assert drawn[SINGLETRACK_ID] == "hidden"
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
+    # Its level is written all the same (`mtb:scale` 2, level 2), and the towpath, rated
+    # IMBA 0, a gravel trail (456b), has none.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id, mtb_level FROM {context.staging_schema}.segment "
+            "WHERE osm_way_id = ANY(%s)",
+            [[SINGLETRACK_ID, TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID]],
+        )
+        levels = dict(cursor.fetchall())
+    assert levels == {SINGLETRACK_ID: 2, TOWPATH_ABOVE_ID: None, TOWPATH_BELOW_ID: None}
+
+
+def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_with_its_level(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 456 (docs/MTB-TOPO-PLAN.md, slice 2), through the rebuild: singletrack
+    with a bicycle tag, which nothing but its rating closes, is drawn (map class road) as a
+    mountain-bike-only way with its level and no path rail, so only the mountain-bike layer
+    draws it; every graph still closes it."""
+    from pipeline.extract import read_ways
+
+    tags = {"highway": "path", "bicycle": "yes", "surface": "dirt", "mtb:scale": "5"}
+    context, stored = run_dials_extract(tmp_path, singletrack_tags=tags)
+    assert context.singletracks == context.drawn_singletracks == {SINGLETRACK_ID}
+    for variant in Variant:
+        found = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SINGLETRACK_ID in found:
+            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route "
+            f"FROM {context.staging_schema}.segment WHERE osm_way_id = %s",
+            [SINGLETRACK_ID],
+        )
+        rows = cursor.fetchall()
+    # S5 is level 4 (S4-S6).
+    assert rows == [("road", True, 4, "none", 0)]
 
 
 def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild(

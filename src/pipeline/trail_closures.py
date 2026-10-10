@@ -68,6 +68,9 @@ class TrailClosures:
     walk_bike: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
+    # rated singletrack that nothing but the rating closes: the map draws it on the
+    # mountain-bike trail layer, in its level's colour (OWNER-DECISIONS 456; `drawn_singletrack`)
+    drawn_singletrack: set[int] = field(default_factory=set)
 
     def reason(self, osm_id: int) -> str | None:
         return self.reasons.get(osm_id)
@@ -77,6 +80,21 @@ class TrailClosures:
 
     def counts(self) -> Counter:
         return Counter(self.reasons.values())
+
+
+def drawn_singletrack(tags: dict[str, str], routes: trailaccess.WayRoutes, in_park: bool) -> bool:
+    """Whether a rated singletrack way is drawn on the mountain-bike trail layer
+    (OWNER-DECISIONS 454, 456; docs/MTB-TOPO-PLAN.md, slice 2): only where the rating is
+    all that closes it. The tag rules it would meet without the rating (`trailaccess.
+    verdict`: private, a park path, a footpath for walkers, err closed and the rest) and a
+    walk-your-bike way keep it off the map, as they keep any other trail off it, so the
+    layer never draws a trail a bicycle may not be allowed on ("err closed", 330). The
+    mountain-bike class (`mtb`) is no such rule: it is the layer's own. A way upstream's
+    own access reading already closes (`bicycle=no`, a footway with no bicycle tag) is not
+    drawn either: `verdict` answers None for it only because there is nothing left to close."""
+    if trailaccess.is_dismount(tags) or not trailaccess.upstream_open(tags):
+        return False
+    return trailaccess.verdict(tags, routes, in_park) in (None, trailaccess.MTB)
 
 
 def park_paths(ways: Iterable[Way], park_areas: list[Area]) -> set[int]:
@@ -133,6 +151,10 @@ def closures(
             reason = zoo.NO_BICYCLE
         elif singletrack.is_singletrack(tags):
             reason = singletrack.NO_BICYCLE
+            if drawn_singletrack(
+                tags, routes.get(osm_id, trailaccess.NO_ROUTES), osm_id in in_park
+            ):
+                result.drawn_singletrack.add(osm_id)
         elif cbd.barred_sidewalk(tags, way.coordinates):
             reason = cbd.NO_BICYCLE
         else:

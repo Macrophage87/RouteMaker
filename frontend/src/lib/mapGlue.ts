@@ -18,6 +18,11 @@ import {
   mtbTrailPaint,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
+  MTB_LEVELS,
+  isMtbLayerId,
+  mtbLevelCasingLayerId,
+  mtbLevelLayerId,
+  mtbLevelPaint,
   unpavedLayers,
   UNPAVED_DASH,
   accessibilityOn,
@@ -53,8 +58,9 @@ export interface OverlayMap {
  * every ride type, Mass Ride too ("Three map layers for everyone (every mode, signed out too)").
  */
 export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn(), mtb: boolean = mtbTrailsOn()): boolean {
-  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode.
-  if (id === MTB_TRAIL_LAYER_ID) return mtb;
+  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode,
+  // for the unrated trails' dots and each level's casing and line alike (456).
+  if (isMtbLayerId(id)) return mtb;
   return visible && (MASS_IDS.has(id) ? mass : !mass);
 }
 
@@ -179,6 +185,12 @@ export function setStressPalette(
     const paint = mtbTrailPaint();
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
+  }
+  // Each level's line and casing (456): wider with the accessibility switch; the colours stay.
+  for (const { level } of MTB_LEVELS) {
+    const paint = mtbLevelPaint(level);
+    if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
+    if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
   }
 }
 
