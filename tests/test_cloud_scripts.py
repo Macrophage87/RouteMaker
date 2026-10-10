@@ -37,9 +37,16 @@ map() { case "$1" in s3://*) echo "$FAKE_S3/${1#s3://}" ;; *) echo "$1" ;; esac;
 case "$2" in
   rm) if [ "$4" = --recursive ]; then rm -rf "$(map "$3")"; else rm -f "$(map "$3")"; fi ;;
   sync)
-    src=$(map "$3"); dst=$(map "$4")
+    src=$(map "$3"); dst=$(map "$4"); shift 4
+    exclude=""
+    [ "$1" = --exclude ] && exclude=$2
     [ -d "$src" ] || exit 0
-    mkdir -p "$dst"; cp "$src"/* "$dst/" ;;
+    mkdir -p "$dst"
+    for f in "$src"/*; do
+      # shellcheck disable=SC2254
+      case "$(basename "$f")" in $exclude) continue ;; esac
+      cp "$f" "$dst/"
+    done ;;
   cp)
     src=$(map "$3"); dst=$(map "$4"); shift 4
     recursive=0 exclude=""
@@ -645,6 +652,30 @@ def test_the_swap_refuses_when_nothing_was_installed(fake, result) -> None:
 
     assert done.returncode == 2 and "without --swap first" in done.stderr
     assert "import_cloud_build" not in fake.calls()
+
+
+def test_the_swap_refuses_an_install_that_did_not_finish(fake, result) -> None:
+    (fake.dir / "restore_rc").write_text("1")
+    assert importing(fake, result).returncode == 2
+    (fake.dir / "calls.log").unlink()
+
+    done = importing(fake, result, "--swap")
+
+    assert done.returncode == 2 and "did not finish" in done.stderr
+    assert "import_cloud_build" not in fake.calls()
+
+
+def test_a_second_run_does_not_download_removed_graph_tars_again(fake, result) -> None:
+    assert importing(fake, result, "--remove-tars").returncode == 0
+    stage = fake.root / "home" / "cloud-runs" / "cloud-20261011" / "out"
+    assert not list(stage.glob("tiles-*.tar"))
+    (fake.dir / "staging_absent").write_text("f\n")
+
+    done = importing(fake, result)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "--exclude tiles-*.tar" in fake.calls()
+    assert not list(stage.glob("tiles-*.tar"))
 
 
 def test_the_swap_restarts_the_off_road_router_where_it_runs(fake, result) -> None:

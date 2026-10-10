@@ -4719,7 +4719,8 @@ the defaults, so build those here.
    unpacks the graphs under `<DATA_ROOT>/tiles` beside the ones being served, restores the
    box's table as `staging`, and runs `import_cloud_build` dry: the build each graph would
    move to, both tables' segment counts, and any access override approved after the
-   backup, which this build does not have. Nothing served has changed. Run it again after
+   backup, which this build does not have. An override revoked or deleted after the
+   backup is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 

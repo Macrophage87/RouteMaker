@@ -109,6 +109,8 @@ import_cmd() {
 if [ "$swap" = 1 ]; then
 	[ -f "$stage/MANIFEST.txt" ] || die "nothing installed from $run yet: run this without --swap first"
 	read_manifest
+	[ "$(cat "$stage/installed" 2>/dev/null)" = "$build" ] ||
+		die "the install of $build did not finish: run this without --swap first"
 	note "swapping in build $build"
 	import_cmd --confirm ${extra[@]+"${extra[@]}"}
 	note "restarting the routers so they serve the new graphs"
@@ -126,10 +128,19 @@ fi
 # --- 1. download -------------------------------------------------------------------------
 note "downloading $url/out/ to $stage"
 rm -f "$stage/SHA256SUMS"
-# sync, so a second run downloads only what changed.
-aws_ s3 sync "$url/out/" "$stage/" --only-show-errors
+# sync, so a second run downloads only what changed; once a build is installed its graph
+# tars are not needed again (and --remove-tars may have deleted them).
+skip=()
+if [ -s "$stage/installed" ] && [ "$(cat "$stage/installed")" = "$(manifest build 2>/dev/null)" ]; then
+	skip=(--exclude 'tiles-*.tar')
+fi
+aws_ s3 sync "$url/out/" "$stage/" ${skip[@]+"${skip[@]}"} --only-show-errors
 [ -s "$stage/SHA256SUMS" ] || die "$url/out/ has no SHA256SUMS: the box did not finish its upload"
-(cd "$stage" && sha256sum --quiet -c SHA256SUMS) || die "a file in $stage does not match SHA256SUMS; download it again"
+if [ ${#skip[@]} -gt 0 ]; then
+	(cd "$stage" && sha256sum --quiet --ignore-missing -c SHA256SUMS)
+else
+	(cd "$stage" && sha256sum --quiet -c SHA256SUMS)
+fi || die "a file in $stage does not match SHA256SUMS; download it again"
 read_manifest
 note "build $build, made from commit $commit with the database as of $read_at"
 
@@ -158,6 +169,10 @@ if [ "$installed" = 0 ]; then
 				die "$variant's $link link already names $build; it was swapped in before"
 		done
 		need=$((need + $(stat -c %s "$stage/tiles-$variant.tar")))
+		# A directory left by an unpack that stopped is removed before unpacking again.
+		if [ -d "$data_root/tiles/$variant/$build" ]; then
+			need=$((need - $($SUDO du -sb "$data_root/tiles/$variant/$build" | cut -f1)))
+		fi
 	done
 	free=$(df -B1 --output=avail "$data_root/tiles" | tail -n1 | tr -d ' ')
 	[ "$free" -gt $((need + need / 10)) ] ||

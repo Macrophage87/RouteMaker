@@ -77,7 +77,8 @@ case "$data_root" in /?*) ;; *) die "DATA_ROOT in $env_file is not an absolute p
 # The box builds with the defaults for these; a deployment that changed them would get a
 # different map back. Only whether each is set is read, never its value.
 for key in COVERAGE_POLYGON ROUTEMAKER_LIVE_SCHEMA ROUTEMAKER_STAGING_SCHEMA; do
-	[ -z "$(sed -n "s/^$key=//p" "$env_file" | tail -n1)" ] ||
+	set_to=$(sed -n "s/^$key=//p" "$env_file" | tail -n1 | tr -d "\"'")
+	[ -z "$set_to" ] ||
 		die "$key is set in $env_file; the cloud box builds with its default, so its map would differ. Build here instead"
 done
 [ -d "$data_root" ] || die "DATA_ROOT $data_root does not exist"
