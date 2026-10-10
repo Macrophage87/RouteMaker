@@ -164,7 +164,14 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
  * bottleneck, and the typical capacity, each on the flat and with the hills (OWNER-DECISIONS 424),
  * said once where the two agree. A definition list like the totals above it.
  */
-export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">> }): ReactElement | null {
+export function CapacityStats({
+  route,
+  corkers = null,
+}: {
+  route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">>;
+  /** The ride's corkers (lib/profileChart.ts `corkerFigure`), listed after the capacity. */
+  corkers?: { label: string; text: string } | null;
+}): ReactElement | null {
   const summary = capacitySummary(route.stress_spans);
   if (!summary || summary.minRpm === null) return null;
   const pair = capacityPair(summary, route.profile?.flow);
@@ -179,6 +186,7 @@ export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_sp
       { className: "stats capacity-stats" },
       ...narrowestLines(pair).map((line) => term(line, `capacity-narrowest ${line.key}`)),
       ...typicalLines(pair).map((line) => term(line, `capacity-typical ${line.key}`)),
+      corkers ? h("div", { key: "corkers", className: "capacity-corkers" }, h("dt", null, corkers.label), h("dd", null, corkers.text)) : null,
     ),
     summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
   );

@@ -258,7 +258,7 @@ export function Tables({
                   <th scope="col">Street</th>
                   <th scope="col">Marker</th>
                   <th scope="col">Corkers</th>
-                  {load && <th scope="col">Corker load around it</th>}
+                  {load && <th scope="col">Corkers held at once when the head reaches it</th>}
                 </tr>
               </thead>
               <tbody>

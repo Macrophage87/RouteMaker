@@ -177,6 +177,16 @@ class TestFlowFigures:
         assert flow.level_riders_per_min(flow.LANE_WIDTH_M) == pytest.approx(98.9, abs=0.05)
         assert flow.level_riders_per_min(6.7) == pytest.approx(197.8, abs=0.05)
 
+    def test_the_groups_length_is_plans_worked_example(self):
+        """PLAN, "The main control" (item 128): on a 22 ft road at 7 mph, 500 riders make
+        about 1,560 ft (474 m) of group and 2,000 riders about 1.18 mi (1.9 km)."""
+        road_m = 22 * 0.3048
+        assert flow.CRUISE_PACE_MS == pytest.approx(3.129, abs=0.001)
+        assert flow.group_length_m(500, road_m) == pytest.approx(474, abs=2)
+        assert flow.group_length_m(500, road_m) * 3.28084 == pytest.approx(1560, abs=10)
+        assert flow.group_length_m(2000, road_m) / 1609.344 == pytest.approx(1.18, abs=0.005)
+        assert flow.GROUP_DEFAULT_WIDTH_M == pytest.approx(6.7)
+
     def test_the_climb_factor_at_three_six_and_eight_percent(self):
         assert flow.speed_ratio(0.03, 1e3) == pytest.approx(1 / 1.24)
         assert flow.speed_ratio(0.06, 1e3) == pytest.approx(0.625)
@@ -606,8 +616,29 @@ class TestRouteProfile:
                 "crossed_tier": 3,
                 "kind": "flagged",
                 "corkers_needed": True,
+                "oneway": None,
             }
         ]
+
+    def test_a_mass_ride_sends_what_the_group_length_is_read_from(self):
+        """PLAN items 128, 139: the level figure at each sample, the cruising pace and the
+        fallback road's figure, so the front end reads the group's length at each point."""
+        heights = [10.0] * 12
+        total = (len(heights) - 1) * STEP
+        body = self.mass(heights, [(total / 2, 6.7, None), (total, None, None)], [])
+        level = body["level_riders_per_min"]
+        assert len(level) == len(body["m"]) == len(body["riders_per_min"])
+        assert level[0] == round(flow.level_riders_per_min(6.7))
+        assert level[-1] is None
+        assert body["flow"]["cruise_pace_ms"] == round(flow.CRUISE_PACE_MS, 4)
+        assert body["flow"]["default_level_riders_per_min"] == round(
+            flow.level_riders_per_min(2 * flow.LANE_WIDTH_M), 2
+        )
+
+    def test_off_a_mass_ride_there_is_no_level_figure(self):
+        heights = [10.0] * 6
+        body = routing.route_profile([self.leg(heights)], [])
+        assert body["level_riders_per_min"] is None
 
     def test_the_typical_figure_is_the_median(self):
         # The samples on the grid: 99, 99, 99 | 198, 198 | 297, 297 (by width): median 198.
@@ -1235,6 +1266,17 @@ class TestMajorJunctions:
             junction(500.0, [road("B Street", tier=4)]),
         )
         assert [x.m for x in majors] == [100.0, 500.0, 900.0]
+
+    def test_a_major_carries_whether_its_road_is_one_way(self):
+        """PLAN item 139: a one-way cross street has one approach to hold (1 corker)."""
+        one_way = self.run(
+            junction(100.0, [road("I Street", lanes=3, tier=3, oneway=True)], Control.CROSS_STOP)
+        )
+        two_way = self.run(
+            junction(100.0, [road("K Street", lanes=2, tier=3, oneway=False)], Control.CROSS_STOP)
+        )
+        unknown = self.run(junction(100.0, [road("L Street", lanes=2, tier=3)], Control.CROSS_STOP))
+        assert [x.oneway for x in one_way + two_way + unknown] == [True, False, None]
 
     def test_corkers_follow_the_crossed_tier(self):
         def major(tier):

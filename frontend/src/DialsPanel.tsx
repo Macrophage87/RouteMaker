@@ -16,8 +16,8 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
-import { WHENS, type Dials, type When } from "./lib/dials.ts";
-import { panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_DEFAULT, WHENS, fitRideSize, rideSizeOf, type Dials, type When } from "./lib/dials.ts";
+import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
 import { WeightSetting } from "./lib/weightDialog.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
@@ -63,7 +63,7 @@ function Slider(props: {
         type="range"
         min={view.min}
         max={view.max}
-        step={5}
+        step={view.step ?? 5}
         value={props.value}
         aria-labelledby={nameId}
         aria-valuetext={view.words}
@@ -187,6 +187,15 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
+/** The dials with a ride size, the default taken off the object (so the link stays as it was). */
+function withRideSize(dials: Dials, riders: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitRideSize(riders);
+  if (fitted === undefined || fitted === RIDE_SIZE_DEFAULT) delete next.rideSize;
+  else next.rideSize = fitted;
+  return next;
+}
+
 export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
@@ -197,7 +206,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
   useEffect(() => () => keys.current.cancel(), []);
   const commitDraft = () => {
     const { draft: now, dials: was, onCommit: commit } = latest.current;
-    if (now.stress !== was.stress || now.hills !== was.hills) commit(now);
+    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize) commit(now);
   };
   const release = (settle: boolean) => {
     if (settle) keys.current.later(commitDraft);
@@ -246,6 +255,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
+      {/* Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139): the corker load's group length. */}
+      {view.rideSize && (
+        <Slider
+          label={RIDE_SIZE_LABEL}
+          view={view.rideSize}
+          value={rideSizeOf(draft)}
+          onDraft={(riders) => setDraft(withRideSize(draft, riders))}
+          onRelease={release}
+        />
+      )}
       <fieldset className="when">
         <legend>When</legend>
         <label className="toggle">

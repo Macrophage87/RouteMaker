@@ -1,28 +1,38 @@
 /**
  * A Mass Ride's three charts (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation") and the
- * corker load's math (lib/profileChart.ts "The corker load"; OWNER-DECISIONS 139, 142, 147, 400): the
- * rolling count of junctions needing corkers over the half mile around each point, per mile.
+ * corker load's math (lib/profileChart.ts "The corker load"; OWNER-DECISIONS 139, 142, 147, 400; the owner,
+ * 2026-10-10: "Corkers were intended to also have a rollback based on the length of the ride"): a window
+ * the group's length at the anticipated ride size, slid along the route, and the corkers its junctions
+ * hold at once; the ride's headline; and the ride size control.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
-import { formatAxisPerMile } from "./format.ts";
+import { RIDE_SIZE_DEFAULT, RIDE_SIZE_MAX, RIDE_SIZE_MIN, fitDials, fitRideSize, rideSizeOf } from "./dials.ts";
+import { RIDE_SIZE_LABEL, panelView, rideSizeView } from "./dialsPanel.ts";
+import { formatGroupLength } from "./format.ts";
+import { decodePlan, encodePlan } from "./planHash.ts";
 import {
-  CORKER_WINDOW_M,
   MASS_CHARTS,
+  ROTATION_FACTOR,
   corkerArea,
   corkerAt,
   corkerCell,
+  corkerFigure,
+  corkerHeadline,
   corkerLine,
   corkerLoad,
-  corkerRate,
   corkerReading,
   corkerSentences,
   corkerTop,
-  corkerWindowWords,
-  corkersPerMile,
+  corkersFor,
+  corkersMayBeLow,
   crossingRows,
   elevationReading,
+  exitOf,
+  groupLengthAt,
+  groupLengthM,
+  groupRoad,
   massReadings,
   massSummaries,
   readingAt,
@@ -30,15 +40,20 @@ import {
 } from "./profileChart.ts";
 
 const MILE = 1609.344;
-const HALF = CORKER_WINDOW_M / 2;
+/** The cruising pace the API sends (flow.CRUISE_PACE_MS, 7 mph). */
+const PACE = 7 * 0.44704;
+/** The level figure the API sends for a 22 ft (6.7 m) road (flow.level_riders_per_min). */
+const LEVEL_22FT = 197.98;
+/** The group's length at 500 riders on that road. */
+const G = (500 / (LEVEL_22FT / 60)) * PACE;
 
-function junction(m: number, corkers = true, street: string | null = `${Math.round(m)} St`): ProfileCrossing {
-  return { m, street, severity: null, control: "signal", lanes: 2, crossed_tier: corkers ? 3 : 2, kind: "crossing", corkers_needed: corkers };
+function junction(m: number, corkers = true, street: string | null = `${Math.round(m)} St`, oneway: boolean | null = null): ProfileCrossing {
+  return { m, street, severity: null, control: "signal", lanes: 2, crossed_tier: corkers ? 3 : 2, kind: "crossing", corkers_needed: corkers, oneway };
 }
 
 function profileWith(crossings: ProfileCrossing[] | null, extra: Partial<RouteProfile> = {}, length = 3 * MILE): RouteProfile {
   const n = Math.round(length / 30) + 1;
-  const m = Array.from({ length: n }, (_, i) => i * 30);
+  const m = Array.from({ length: n }, (_, i) => Math.min(i * 30, length));
   return {
     interval_m: 30,
     m,
@@ -46,7 +61,8 @@ function profileWith(crossings: ProfileCrossing[] | null, extra: Partial<RoutePr
     grade_pct: m.map(() => 0),
     climbs: [],
     riders_per_min: m.map(() => 190),
-    flow: { narrowest_riders_per_min: 190, narrowest_m: 0, typical_riders_per_min: 190 },
+    level_riders_per_min: m.map(() => LEVEL_22FT),
+    flow: { narrowest_riders_per_min: 190, narrowest_m: 0, typical_riders_per_min: 190, cruise_pace_ms: PACE, default_level_riders_per_min: LEVEL_22FT },
     avoid: [],
     unchecked: [],
     crossings,
@@ -77,152 +93,215 @@ test("the three charts, in the owner's order, each with a heading and a slider n
   );
 });
 
-test("the window is half a mile (0.8 km), and a count over it is given per mile", () => {
-  assert.equal(CORKER_WINDOW_M, MILE / 2);
-  assert.equal(corkerWindowWords(), "half mile (0.8 km)");
-  assert.equal(corkersPerMile(1), 2);
-  assert.equal(corkersPerMile(3), 6);
-  assert.equal(corkerRate(6), "6 per mile (3.7 per km)");
-  assert.equal(corkerRate(2), "2 per mile (1.2 per km)");
-  assert.deepEqual(formatAxisPerMile(6), ["6/mi", "(3.7/km)"]);
+test("the group's length is PLAN's worked example: 500 riders on a 22 ft road at 7 mph is about 1,560 ft (474 m), 2,000 about 1.18 mi", () => {
+  const short = groupLengthM(500, LEVEL_22FT, PACE);
+  assert.ok(Math.abs(short - 474) < 1, String(short));
+  assert.equal(formatGroupLength(short), "1,560 ft (475 m)");
+  const long = groupLengthM(2000, LEVEL_22FT, PACE);
+  assert.equal(formatGroupLength(long), "1.18 mi (1.9 km)");
+  assert.ok(Math.abs(long / MILE - 1.18) < 0.005);
+  // No width, no length (never a division by zero).
+  assert.equal(groupLengthM(500, 0, PACE), 0);
 });
 
-test("one junction mid-route: 1 in the half mile around it, 0 elsewhere, the step a quarter mile either side", () => {
+test("the width is read at each point: the group is shorter where the road is wider, and in between across the change", () => {
+  const profile = profileWith([], { level_riders_per_min: Array.from({ length: Math.round((3 * MILE) / 30) + 1 }, (_, i) => (i * 30 < 2000 ? LEVEL_22FT : 2 * LEVEL_22FT)) });
+  const road = groupRoad(profile, 500);
+  assert.ok(road);
+  assert.ok(Math.abs(groupLengthAt(road, 1500) - G) < 1);
+  assert.ok(Math.abs(groupLengthAt(road, 3500) - G / 2) < 1);
+  const across = groupLengthAt(road, 2100);
+  assert.ok(across > G / 2 + 1 && across < G - 1, String(across));
+  // Near the start the group still forms behind it, at the first stretch's width.
+  assert.ok(Math.abs(groupLengthAt(road, 50) - G) < 1);
+});
+
+test("an unknown width takes the route's median, or with none the API's default (two 11 ft lanes); with no pace there is no load", () => {
+  const levels = profileWith([]).m.map((_, i) => (i % 3 === 0 ? null : LEVEL_22FT));
+  const road = groupRoad(profileWith([], { level_riders_per_min: levels }), 500);
+  assert.ok(road && Math.abs(groupLengthAt(road, 2000) - G) < 1);
+  const none = groupRoad(profileWith([], { level_riders_per_min: null }), 500);
+  assert.ok(none && Math.abs(none.typicalLengthM - G) < 1);
+  const older = profileWith([junction(1000)], { flow: { narrowest_riders_per_min: 190, narrowest_m: 0, typical_riders_per_min: 190 } });
+  assert.equal(groupRoad(older, 500), null);
+  assert.equal(corkerLoad(older, 3 * MILE, 500), null);
+  assert.match(corkerSentences(older, null).join(" "), /group's length is not known/);
+});
+
+test("the sliding window: a junction is held from when the head reaches it until the tail passes, a group's length later", () => {
   const total = 3 * MILE;
-  const load = corkerLoad(profileWith([junction(MILE)]), total);
+  const load = corkerLoad(profileWith([junction(MILE)]), total, 500);
   assert.ok(load);
+  assert.ok(Math.abs(load.junctions[0].exit - (MILE + G)) < 1);
   assert.deepEqual(
-    load.steps.map((s) => [Math.round(s.from_m), Math.round(s.to_m), s.count, s.perMile]),
+    load.steps.map((s) => [Math.round(s.from_m), Math.round(s.to_m), s.corkers, s.junctions]),
     [
-      [0, Math.round(MILE - HALF), 0, 0],
-      [Math.round(MILE - HALF), Math.round(MILE + HALF), 1, 2],
-      [Math.round(MILE + HALF), Math.round(total), 0, 0],
+      [0, Math.round(MILE), 0, 0],
+      [Math.round(MILE), Math.round(MILE + G), 2, 1],
+      [Math.round(MILE + G), Math.round(total), 0, 0],
     ],
   );
-  assert.deepEqual(load.junctions, [MILE]);
-  assert.equal(load.peak?.count, 1);
-  // The window is half-open: in from a quarter mile before, out exactly a quarter mile after.
-  assert.equal(corkerAt(load, MILE - HALF).count, 1);
-  assert.equal(corkerAt(load, MILE - HALF - 1).count, 0);
-  assert.equal(corkerAt(load, MILE + HALF - 1).count, 1);
-  assert.equal(corkerAt(load, MILE + HALF).count, 0);
+  assert.equal(corkerAt(load, MILE - 1).corkers, 0);
+  assert.equal(corkerAt(load, MILE).corkers, 2);
+  assert.equal(corkerAt(load, MILE + G - 1).corkers, 2);
+  assert.equal(corkerAt(load, MILE + G + 1).corkers, 0);
+  // A bigger ride holds it longer.
+  const big = corkerLoad(profileWith([junction(MILE)]), total, 1000);
+  assert.ok(big && Math.abs(big.junctions[0].exit - (MILE + 2 * G)) < 1);
 });
 
-test("the window counts every junction it holds: close ones add up, and the peak is the first highest step", () => {
-  // 400 m apart (about a quarter mile): the half mile around 1,400 m holds the junctions at 1,000, 1,400 and 1,800.
-  const load = corkerLoad(profileWith([junction(1000), junction(1400), junction(1800), junction(4000)]), 3 * MILE);
+test("junctions closer than the group add up, and the peak is the first highest step", () => {
+  // 400 m apart, under the group's 474 m: with the head at 1,450 m both are held.
+  const load = corkerLoad(profileWith([junction(1000), junction(1400), junction(4000)]), 3 * MILE, 500);
   assert.ok(load);
-  assert.equal(corkerAt(load, 1400).count, 3);
-  assert.equal(corkerAt(load, 1400).perMile, 6);
-  assert.equal(corkerAt(load, 1200).count, 2);
-  assert.equal(corkerAt(load, 4000).count, 1);
-  assert.equal(load.peak?.count, 3);
-  assert.ok(load.peak && load.peak.from_m <= 1400 && load.peak.to_m > 1400);
-  // Neighbouring steps never repeat a count, and the steps run end to end from 0 to the route's end.
-  for (let i = 1; i < load.steps.length; i += 1) {
-    assert.notEqual(load.steps[i].count, load.steps[i - 1].count);
-    assert.equal(load.steps[i].from_m, load.steps[i - 1].to_m);
-  }
+  assert.deepEqual([corkerAt(load, 1200).corkers, corkerAt(load, 1450).corkers, corkerAt(load, 1600).corkers, corkerAt(load, 4000).corkers], [2, 4, 2, 2]);
+  assert.equal(corkerAt(load, 1450).junctions, 2);
+  assert.equal(load.peak?.corkers, 4);
+  assert.equal(load.peak?.from_m, 1400);
+  for (let i = 1; i < load.steps.length; i += 1) assert.equal(load.steps[i].from_m, load.steps[i - 1].to_m);
   assert.equal(load.steps[0].from_m, 0);
   assert.equal(load.steps.at(-1)?.to_m, 3 * MILE);
+  assert.equal(corkerTop(load), 4);
+});
+
+test("the ends: a junction at the start is held from 0, one near the end is still held at the end, one past it is placed at the end", () => {
+  const total = 2 * MILE;
+  const load = corkerLoad(profileWith([junction(0), junction(total - 100)], {}, total), total, 500);
+  assert.ok(load);
+  assert.equal(corkerAt(load, 0).corkers, 2);
+  assert.equal(corkerAt(load, -10).corkers, 2);
+  assert.equal(corkerAt(load, MILE).corkers, 0);
+  assert.equal(corkerAt(load, total).corkers, 2);
+  assert.equal(corkerAt(load, total + 10).corkers, 2);
+  const past = corkerLoad(profileWith([junction(total + 50)], {}, total), total, 500);
+  assert.equal(past?.junctions[0].m, total);
+  assert.equal(past && corkerAt(past, total).corkers, 2);
+});
+
+test("a group longer than the route: every junction stays held, so at the end all of them are", () => {
+  const total = 600;
+  const profile = profileWith([junction(100), junction(300), junction(500, true, "One Way", true)], {}, total);
+  const load = corkerLoad(profile, total, 2000);
+  assert.ok(load);
+  for (const j of load.junctions) assert.ok(j.exit > total);
+  assert.deepEqual(
+    load.steps.map((s) => [s.from_m, s.to_m, s.corkers, s.junctions]),
+    [
+      [0, 100, 0, 0],
+      [100, 300, 2, 1],
+      [300, 500, 4, 2],
+      [500, 600, 5, 3],
+    ],
+  );
+  assert.equal(load.peak?.corkers, 5);
+  assert.equal(load.headline, 10);
   assert.equal(corkerTop(load), 6);
 });
 
-test("the edges: the window is cut at the ends and still divided by the whole half mile, so a junction at the start reads 2 a mile, not more", () => {
-  const total = 2 * MILE;
-  const load = corkerLoad(profileWith([junction(0), junction(total)], {}, total), total);
+test("corkers per junction: 2 on a two-way road, 1 on a one-way, 2 where it is not known", () => {
+  assert.equal(corkersFor({ oneway: false }), 2);
+  assert.equal(corkersFor({ oneway: true }), 1);
+  assert.equal(corkersFor({ oneway: null }), 2);
+  assert.equal(corkersFor({}), 2);
+  const load = corkerLoad(profileWith([junction(1000, true, "A", true), junction(1200)]), 3 * MILE, 500);
   assert.ok(load);
-  assert.equal(corkerAt(load, 0).count, 1);
-  assert.equal(corkerAt(load, 0).perMile, 2);
-  assert.equal(corkerAt(load, total).count, 1);
-  assert.equal(corkerAt(load, total).perMile, 2);
-  assert.equal(corkerAt(load, MILE).count, 0);
-  // Past either end a position reads the nearest step.
-  assert.equal(corkerAt(load, -10).count, 1);
-  assert.equal(corkerAt(load, total + 10).count, 1);
-  // A junction placed past the route's end is drawn at the end.
-  const past = corkerLoad(profileWith([junction(total + 50)], {}, total), total);
-  assert.deepEqual(past?.junctions, [total]);
+  assert.deepEqual([corkerAt(load, 1100).corkers, corkerAt(load, 1300).corkers, corkerAt(load, 1300).junctions], [1, 3, 2]);
 });
 
-test("a route shorter than the window: one step, the count of everything on it", () => {
-  const total = 300;
-  const load = corkerLoad(profileWith([junction(100), junction(200)], {}, total), total);
+test("junctions needing no corkers are not held", () => {
+  const load = corkerLoad(profileWith([junction(1000, false), junction(1100)]), 3 * MILE, 500);
   assert.ok(load);
-  assert.deepEqual(load.steps.map((s) => [s.from_m, s.to_m, s.count]), [[0, 300, 2]]);
-  assert.equal(load.peak?.perMile, 4);
+  assert.equal(corkerAt(load, 1050).corkers, 0);
+  assert.equal(corkerAt(load, 1150).corkers, 2);
+  assert.deepEqual(load.junctions.map((j) => j.m), [1100]);
 });
 
-test("junctions needing no corkers are not counted", () => {
-  const load = corkerLoad(profileWith([junction(1000, false), junction(1100)]), 3 * MILE);
-  assert.ok(load);
-  assert.equal(corkerAt(load, 1050).count, 1);
-  assert.deepEqual(load.junctions, [1100]);
+test("the headline: the most held at once times the rotation factor (2), rounded up", () => {
+  assert.equal(ROTATION_FACTOR, 2);
+  const four = corkerLoad(profileWith([junction(1000), junction(1400)]), 3 * MILE, 500);
+  assert.equal(four?.headline, 8);
+  assert.equal(four && corkerHeadline(four), "about 8");
+  const three = corkerLoad(profileWith([junction(1000, true, "A", true), junction(1200)]), 3 * MILE, 500);
+  assert.equal(three?.headline, 6);
+  const one = corkerLoad(profileWith([junction(1000, true, "A", true)]), 3 * MILE, 500);
+  assert.equal(one?.headline, 2);
+  const none = corkerLoad(profileWith([]), 3 * MILE, 500);
+  assert.equal(none?.headline, 0);
+  assert.equal(none?.peak, null);
 });
 
-test("no major intersections: a load of 0 along the whole route, one step, no peak, and the words say so", () => {
+test("where the list may be incomplete or part was not checked, the count may be low: 'at least about', never a firm figure", () => {
+  const partial = profileWith([junction(1000)], { crossings_complete: false });
+  const load = corkerLoad(partial, 3 * MILE, 500);
+  assert.ok(load && corkersMayBeLow(load));
+  assert.equal(corkerHeadline(load), "at least about 4");
+  const words = corkerSentences(partial, load).join(" ");
+  assert.match(words, /At least about 4 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead; the count may be low, as only the higher or very high stress junctions were found\./);
+  assert.equal(corkerFigure(route(), partial, 500)?.text, "At least about 4 for 500 riders (may be low: only the higher or very high stress junctions were found)");
+  const gap = profileWith([junction(1000)], { unchecked: [{ from_m: 3000, to_m: 3500 }] });
+  const gapLoad = corkerLoad(gap, 3 * MILE, 500);
+  assert.ok(gapLoad && corkersMayBeLow(gapLoad));
+  assert.equal(corkerFigure(route(), gap, 500)?.text, "At least about 4 for 500 riders (may be low: part of the route was not checked for intersections)");
+  const firm = profileWith([junction(1000)]);
+  assert.equal(corkerFigure(route(), firm, 500)?.text, "About 4 for 500 riders");
+  assert.equal(corkerFigure(route(), firm, 500)?.label, "Corkers");
+  assert.equal(corkerFigure({ ...route(), preset: "commute" } as RouteResponse, firm, 500), null);
+});
+
+test("no major intersections: no corkers held anywhere, no peak, and the words say so", () => {
   const profile = profileWith([]);
-  const load = corkerLoad(profile, 3 * MILE);
+  const load = corkerLoad(profile, 3 * MILE, 500);
   assert.ok(load);
-  assert.deepEqual(load.steps.map((s) => [s.from_m, s.to_m, s.count]), [[0, 3 * MILE, 0]]);
-  assert.equal(load.peak, null);
+  assert.deepEqual(load.steps.map((s) => [s.from_m, s.to_m, s.corkers]), [[0, 3 * MILE, 0]]);
   assert.equal(corkerTop(load), 4);
   const words = corkerSentences(profile, load).join(" ");
-  assert.match(words, /^No major intersections\. No junction needs corkers, so the corker load is 0 along the whole route\./);
-  assert.match(corkerReading(profile, load, 500), /^Mile 0\.3: no junctions needing corkers in the half mile around\.$/);
-  // Junctions that all need none: the same 0 load.
-  const none = profileWith([junction(500, false)]);
-  assert.equal(corkerLoad(none, 3 * MILE)?.peak, null);
+  assert.match(words, /^No major intersections\. At 500 riders the group is about 1,560 ft \(475 m\) long at cruise, on this route's typical width\. No junction needs corkers, so no corkers are needed\./);
+  assert.equal(corkerReading(profile, load, 500).split(" (")[0], "Mile 0.3: no corkers held");
+  assert.equal(corkerFigure(route(), profile, 500)?.text, "None needed for 500 riders");
 });
 
 test("intersections not checked: no load at all (never a 0), and every word says it is not known", () => {
   const profile = profileWith(null);
-  assert.equal(corkerLoad(profile, 3 * MILE), null);
-  assert.equal(corkerLoad(profileWith(undefined as unknown as null), 3 * MILE), null);
-  assert.deepEqual(corkerSentences(profile, null), ["Major intersections were not checked for this route, so the corker load is not known."]);
-  assert.equal(corkerReading(profile, null, 1000), "Mile 0.6: intersections not checked, so the corker load is not known.");
+  assert.equal(corkerLoad(profile, 3 * MILE, 500), null);
+  assert.equal(corkerLoad(profileWith(undefined as unknown as null), 3 * MILE, 500), null);
+  assert.deepEqual(corkerSentences(profile, null), ["Major intersections were not checked for this route, so the corkers needed are not known."]);
+  assert.equal(corkerReading(profile, null, 1000), "Mile 0.6: intersections not checked, so the corkers needed are not known.");
+  assert.equal(corkerFigure(route(), profile, 500), null);
   const summaries = massSummaries(route(), profile, null);
   assert.match(summaries.corkers, /not checked/);
-  assert.doesNotMatch(summaries.corkers, /0 along/);
 });
 
-test("a partial list (only the flagged junctions found) is marked, and its words keep the caveat", () => {
-  const profile = profileWith([junction(1000)], { crossings_complete: false });
-  const load = corkerLoad(profile, 3 * MILE);
-  assert.equal(load?.partial, true);
-  assert.match(corkerSentences(profile, load).join(" "), /may be incomplete/);
-  const empty = profileWith([junction(1000, false)], { crossings_complete: false });
-  assert.match(corkerSentences(empty, corkerLoad(empty, 3 * MILE)).join(" "), /None of the junctions found needs corkers\./);
-});
-
-test("a stretch not checked for intersections is carried with the load and said where the window touches it", () => {
-  const profile = profileWith([junction(1000)], { unchecked: [{ from_m: 3000, to_m: 3500 }] });
-  const load = corkerLoad(profile, 3 * MILE);
-  assert.ok(load);
-  assert.deepEqual(load.unchecked, [{ from_m: 3000, to_m: 3500 }]);
-  assert.match(corkerReading(profile, load, 3200), /Part of that half mile was not checked for intersections\./);
-  assert.doesNotMatch(corkerReading(profile, load, 1000), /not checked/);
-});
-
-test("the corker reading: the count, the rate (per km in brackets) and the next intersection with corkers", () => {
+test("the corker reading: the corkers and junctions held at once, the ride size and the group's length, and the next intersection", () => {
   const profile = profileWith([junction(1000, true, "14th Street"), junction(1400, true, "15th Street")]);
-  const load = corkerLoad(profile, 3 * MILE);
-  assert.equal(
-    corkerReading(profile, load, 1200),
-    "Mile 0.7: 2 junctions needing corkers in the half mile around, 4 per mile (2.5 per km). Next: 15th Street at mile 0.9, corkers needed.",
-  );
-  assert.match(corkerReading(profile, load, 600), /^Mile 0\.4: 1 junction needing corkers in the half mile around, 2 per mile \(1\.2 per km\)\. Next: 14th Street/);
-  assert.match(corkerSentences(profile, load).join(" "), /The corker load is highest from mile 0\.\d to 0\.\d: 2 junctions needing corkers in the half mile around, 4 per mile \(2\.5 per km\)\./);
+  const load = corkerLoad(profile, 3 * MILE, 500);
+  assert.equal(corkerReading(profile, load, 1200), "Mile 0.7: 2 corkers holding 1 junction at once (500 riders, group about 1,560 ft (475 m) long). Next: 15th Street at mile 0.9, corkers needed.");
+  assert.match(corkerReading(profile, load, 1440), /^Mile 0\.9: 4 corkers holding 2 junctions at once \(500 riders, group about 1,560 ft \(475 m\) long\)\./);
+  const words = corkerSentences(profile, load).join(" ");
+  assert.match(words, /The most held at once is 4 corkers holding 2 junctions, with the head around mile 0\.9\./);
+  assert.match(words, /About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead\./);
+  assert.match(words, /Each junction needing corkers takes 2, or 1 where the road is one-way/);
+  // A bigger ride: a longer group, and the reading says so.
+  const big = corkerLoad(profile, 3 * MILE, 2000);
+  assert.match(corkerReading(profile, big, 1200), /\(2,000 riders, group about 1\.18 mi \(1\.9 km\) long\)/);
+});
+
+test("a stretch not checked within the group's stretch is said in the reading", () => {
+  const profile = profileWith([junction(1000)], { unchecked: [{ from_m: 3000, to_m: 3200 }] });
+  const load = corkerLoad(profile, 3 * MILE, 500);
+  assert.ok(load);
+  assert.deepEqual(load.unchecked, [{ from_m: 3000, to_m: 3200 }]);
+  assert.match(corkerReading(profile, load, 3300), /Part of the group's stretch was not checked for intersections\./);
+  assert.doesNotMatch(corkerReading(profile, load, 1000), /not checked/);
 });
 
 test("where the highest load comes back further on, the summary names the first and counts the rest", () => {
   const profile = profileWith([junction(1000), junction(3000)]);
-  const words = corkerSentences(profile, corkerLoad(profile, 3 * MILE)).join(" ");
-  assert.match(words, /The corker load is highest from mile 0\.4 to 0\.9, and at 1 more place: 1 junction needing corkers in the half mile around, 2 per mile \(1\.2 per km\)\./);
+  const words = corkerSentences(profile, corkerLoad(profile, 3 * MILE, 500)).join(" ");
+  assert.match(words, /The most held at once is 2 corkers holding 1 junction, with the head from mile 0\.6 to 0\.9, and at 1 more place\./);
 });
 
 test("the shapes: one step line from the start to the end, closed to the baseline for the area", () => {
-  const load = corkerLoad(profileWith([junction(1000)]), 3 * MILE);
+  const load = corkerLoad(profileWith([junction(1000)]), 3 * MILE, 500);
   assert.ok(load);
   const x = (m: number) => m / 100;
   const y = (v: number) => 100 - v * 10;
@@ -231,38 +310,69 @@ test("the shapes: one step line from the start to the end, closed to the baselin
   assert.equal((line.match(/[ML]/g) ?? []).length, load.steps.length * 2);
   const area = corkerArea(load, x, y, 100);
   assert.ok(area.startsWith("M0 100 L0 100") && area.endsWith("Z"));
+  assert.equal(exitOf(load.road, 1000), load.junctions[0].exit);
 });
 
-test("the intersections table gets the corker load at each junction when it is given one", () => {
+test("the intersections table gets the corkers held at once as the head reaches each junction", () => {
   const profile = profileWith([junction(1000), junction(1400), junction(2500, false)]);
-  const load = corkerLoad(profile, 3 * MILE);
+  const load = corkerLoad(profile, 3 * MILE, 500);
   const rows = crossingRows(profile, load);
-  assert.deepEqual(rows.map((r) => r.load), ["4 per mile (2.5 per km)", "4 per mile (2.5 per km)", "None"]);
+  assert.deepEqual(rows.map((r) => r.load), ["2 at 1 junction", "4 at 2 junctions", "None"]);
   assert.equal(crossingRows(profile)[0].load, undefined);
-  assert.equal(corkerCell({ from_m: 0, to_m: 1, count: 0, perMile: 0 }), "None");
+  assert.equal(corkerCell({ from_m: 0, to_m: 1, corkers: 0, junctions: 0 }), "None");
 });
 
 test("each chart's summary and reading is its own part; together they are the old summary", () => {
   const r = route();
   const profile = profileWith([junction(1000)], { climbs: [{ from_m: 1000, to_m: 1400, gain_m: 24, avg_grade_pct: 6, max_grade_pct: 7, tier: 2 }] });
-  const load = corkerLoad(profile, 3 * MILE);
+  const load = corkerLoad(profile, 3 * MILE, 500);
   const s = massSummaries(r, profile, load);
   assert.match(s.elevation, /^Over 3\.0 mi \(4\.8 km\), elevation runs from/);
-  assert.match(s.elevation, /1 sustained climb, listed in the table\.$/);
   assert.doesNotMatch(s.elevation, /riders|corker/);
   assert.match(s.riders, /riders per minute/);
-  assert.doesNotMatch(s.riders, /elevation|corker/);
   assert.match(s.corkers, /^1 major intersection, 1 needing corkers\. /);
-  // The old one-chart summary is unchanged: elevation, riders, intersections.
   assert.equal(summaryText(r, profile, "mass"), [s.elevation, s.riders, "1 major intersection, 1 needing corkers."].join(" "));
-  const read = massReadings(r, profile, load, 1000);
-  assert.equal(read.riders, readingAt(r, profile, 1000, "mass").text);
-  assert.match(read.corkers, /^Mile 0\.6: 1 junction needing corkers/);
-  assert.equal(read.elevation, elevationReading(profile, 1000));
-  assert.match(read.elevation, /^Mile 0\.6: elevation \d+ ft \(\d+ m\), level\.$/);
+  const read = massReadings(r, profile, load, 1020);
+  assert.equal(read.riders, readingAt(r, profile, 1020, "mass").text);
+  assert.match(read.corkers, /^Mile 0\.6: 2 corkers holding 1 junction at once/);
+  assert.equal(read.elevation, elevationReading(profile, 1020));
 });
 
 test("a Mass Ride with no riders figures still has a riders summary", () => {
   const profile = profileWith([], { flow: null, riders_per_min: null });
-  assert.equal(massSummaries(route(), profile, corkerLoad(profile, 3 * MILE)).riders, "Riders per minute are not known for this route.");
+  assert.equal(massSummaries(route(), profile, corkerLoad(profile, 3 * MILE, 500)).riders, "Riders per minute are not known for this route.");
+});
+
+test("the ride size: 100 to 2,000 riders in steps of 50, 500 by default, kept only on a Mass Ride and only when moved", () => {
+  assert.deepEqual([RIDE_SIZE_MIN, RIDE_SIZE_DEFAULT, RIDE_SIZE_MAX], [100, 500, 2000]);
+  assert.equal(fitRideSize(20), 100);
+  assert.equal(fitRideSize(5000), 2000);
+  assert.equal(fitRideSize(1234), 1250);
+  assert.equal(fitRideSize(undefined), undefined);
+  assert.equal(rideSizeOf({}), 500);
+  assert.equal(rideSizeOf({ rideSize: 800 }), 800);
+  assert.equal(fitDials("mass-ride", { rideSize: 800 }).rideSize, 800);
+  assert.equal(fitDials("mass-ride", { rideSize: 500 }).rideSize, undefined);
+  assert.equal(fitDials("default", { rideSize: 800 }).rideSize, undefined);
+});
+
+test("the ride size travels in the plan link as riders=N, and an older link reads the default", () => {
+  const dials = fitDials("mass-ride", { rideSize: 1200 });
+  const hash = encodePlan([[-77.03, 38.9]], "mass-ride", dials);
+  assert.match(hash, /riders=1200/);
+  assert.equal(decodePlan(hash).dials?.rideSize, 1200);
+  const plain = encodePlan([[-77.03, 38.9]], "mass-ride", fitDials("mass-ride", {}));
+  assert.doesNotMatch(plain, /riders=/);
+  assert.equal(rideSizeOf(decodePlan(plain).dials ?? {}), 500);
+});
+
+test("the ride size slider: its name carries the unit, its value text says riders, and only a Mass Ride shows it", () => {
+  assert.equal(RIDE_SIZE_LABEL, "Anticipated ride size (riders)");
+  const view = rideSizeView(500);
+  assert.equal(view.words, "500 riders");
+  assert.deepEqual([view.min, view.max, view.step], [100, 2000, 50]);
+  assert.deepEqual(view.ends, ["100", "", "2,000"]);
+  assert.equal(rideSizeView(2000).words, "2,000 riders");
+  assert.ok(panelView("mass-ride", fitDials("mass-ride", {})).rideSize);
+  assert.equal(panelView("default", fitDials("default", {})).rideSize, null);
 });

@@ -56,6 +56,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
     // "Make it a loop" (OWNER-DECISIONS 266); absent is off.
     if (dials.loop) params.set("loop", "1");
+    // Mass Ride's "Anticipated ride size" (PLAN items 128, 139), riders; absent is the default (500).
+    if (dials.rideSize) params.set("riders", String(dials.rideSize));
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
 }
@@ -94,6 +96,7 @@ export function decodePlan(hash: string): Plan {
     assist: params.get("assist") === "1",
     avoidGravel: params.get("avoidgravel") === "1",
     trailsOff: params.get("trailsoff") === "1",
+    rideSize: numberOrUndefined(params.get("riders")),
   });
   return { points, preset, dials };
 }

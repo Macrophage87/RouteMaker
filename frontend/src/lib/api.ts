@@ -77,6 +77,8 @@ export interface ProfileCrossing {
   kind?: "flagged" | "crossing" | "joining";
   /** The crossed road is LTS 3 or worse (OWNER-DECISIONS 142). */
   corkers_needed: boolean;
+  /** The crossed or joined road is one-way there (1 corker), two-way (false: 2), or not known (null, absent: 2). */
+  oneway?: boolean | null;
 }
 
 /** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */
@@ -104,10 +106,16 @@ export interface RouteProfile {
   climbs: ProfileClimb[];
   /** Mass Ride only: riders a minute, grade-adjusted; null where the width is not known or the stretch is marked Avoid. */
   riders_per_min?: (number | null)[] | null;
+  /** Mass Ride only: the level riders a minute at each sample, from the width alone (the group's length is read from it, PLAN 128, 139); absent from an older API. */
+  level_riders_per_min?: (number | null)[] | null;
   flow?: {
     narrowest_riders_per_min: number | null;
     narrowest_m: number | null;
     typical_riders_per_min: number | null;
+    /** The group's cruising pace, m/s (routemaker.flow.CRUISE_PACE_MS, 7 mph); absent from an older API. */
+    cruise_pace_ms?: number | null;
+    /** The level figure of the road a group's length is read on where no width is known on the route (two 11 ft lanes). */
+    default_level_riders_per_min?: number | null;
   } | null;
   /** Mass Ride only: the major junctions; null where they were not checked (never "none"), [] where there are none. */
   crossings?: ProfileCrossing[] | null;

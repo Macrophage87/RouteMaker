@@ -76,6 +76,8 @@ interface ChartProps {
   profile: RouteProfile;
   /** The map point under the scrub, or null when there is none (the chart lost it). */
   onScrub?: (point: LonLat | null) => void;
+  /** A Mass Ride's anticipated ride size, riders (the corker load's group length). */
+  rideSize?: number;
 }
 
 /** The route chart: a Mass Ride's three charts, or every other ride type's elevation and stress. */

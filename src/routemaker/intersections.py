@@ -961,6 +961,9 @@ class Major:
     # them as a crossing does).
     crossed_tier: int | None
     kind: str = MAJOR_FLAGGED
+    # Whether that road is one-way there, where known: one approach to hold, so one
+    # corker rather than two (PLAN item 139).
+    oneway: bool | None = None
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1004,6 +1007,7 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             None,
             e.crossed_tier,
             MAJOR_FLAGGED,
+            e.road_oneway,
         )
         for e in events
         if e.flagged
@@ -1066,6 +1070,7 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     _lanes_total(road),
                     road.tier,
                     kind,
+                    road.oneway,
                 ),
             )
             break

@@ -7,9 +7,11 @@
  * - Riders per minute: the grade-adjusted riders a minute, filled in the spectral band colours (each
  *   also with a pattern), dotted guides at 60, 120 and 200, the narrowest point marked with a caret
  *   and its figure (147), and the stretches marked Avoid (325: no carrying capacity).
- * - Corker load: the junctions needing corkers in the half mile (0.8 km) around each point, per mile
- *   (lib/profileChart.ts `corkerLoad`, the default until a ride size is known), a tick at each such
- *   junction, the junction markers and their names (333, 396), and the stretches not checked.
+ * - Corker load: the corkers held at once with the group's head at each point, for the anticipated
+ *   ride size (the owner, 2026-10-10: "Corkers were intended to also have a rollback based on the
+ *   length of the ride"; lib/profileChart.ts `corkerLoad`): a window the group's length slid along
+ *   the route, a tick at each junction needing corkers, the junction markers and their names (333,
+ *   396), and the stretches not checked.
  * - Elevation: the elevation line and area, with the 5% to 8% and 8%-or-more grades in amber, dotted
  *   and hatched.
  *
@@ -22,7 +24,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { RouteProfile, RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
-import { formatAxisPerMile } from "./lib/format.ts";
 import {
   AVOID_FILL,
   AVOID_FRAME,
@@ -43,7 +44,6 @@ import {
   corkerLine,
   corkerLoad,
   corkerTop,
-  corkerWindowWords,
   elevationArea,
   elevationLine,
   elevationRange,
@@ -62,6 +62,9 @@ import {
   type MassChartKey,
   type Plot,
 } from "./lib/profileChart.ts";
+import { RIDE_SIZE_DEFAULT } from "./lib/dials.ts";
+import { formatSpeed } from "./lib/format.ts";
+import { rideSizeWords } from "./lib/dialsPanel.ts";
 import { AvoidPattern, CrossingMarker, FlowPatterns, GradePatterns, JunctionKey, LEFT, RIGHT, Tables, WIDTH, feet, metres } from "./chartParts.tsx";
 
 /** Each chart's vertical layout, in viewBox units: its plot's top and bottom, and the distance axis's line of text. */
@@ -75,11 +78,14 @@ export function MassRideCharts({
   route,
   profile,
   onScrub,
+  rideSize = RIDE_SIZE_DEFAULT,
 }: {
   route: RouteResponse;
   profile: RouteProfile;
   /** The map point under the scrub, or null when there is none (the chart lost it). */
   onScrub?: (point: LonLat | null) => void;
+  /** The anticipated ride size, riders (the Mass Ride dials): the corker load's group length. */
+  rideSize?: number;
 }) {
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const total = axisLength(route, profile);
@@ -89,7 +95,7 @@ export function MassRideCharts({
   const [focused, setFocused] = useState<MassChartKey | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const active = hover ?? (focused ? at : null);
-  const load = useMemo(() => corkerLoad(profile, total), [profile, total]);
+  const load = useMemo(() => corkerLoad(profile, total, rideSize), [profile, total, rideSize]);
   const reading = useMemo(() => readingAt(route, profile, active ?? at ?? 0, "mass"), [route, profile, active, at]);
   const shown = useMemo(() => massReadings(route, profile, load, active ?? at ?? 0), [route, profile, load, active, at]);
   // What a screen reader hears: the keyboard's position only (a11y S3).
@@ -196,7 +202,7 @@ export function MassRideCharts({
         {keys}
       </p>
       <p className="hint pc-source">
-        Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Corker load: the major intersections that cross or join an LTS 3 or worse road, counted over the {corkerWindowWords()} around each point; how many corkers each needs is not estimated yet. Elevation: USGS 3DEP.
+        Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Corker load: the major intersections that cross or join an LTS 3 or worse road, 2 corkers each (1 on a one-way road), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
       </p>
       <details className="pc-table-fold">
         <summary>Climbs, bottlenecks and intersections as tables</summary>
@@ -388,10 +394,15 @@ function corkerChart({
   const noTick = crossings.some((c) => !c.corkers_needed);
   const body = (
     <>
-      {/* The side: the top figure per mile, per km under it, and 0. */}
+      {/* The side: the top figure, corkers held at once, and 0. */}
       <text className="pc-axis-text" x={2} y={L.top + 4}>
-        <tspan x={2}>{formatAxisPerMile(top)[0]}</tspan>
-        <tspan x={2} dy={CHART_TYPE}>{formatAxisPerMile(top)[1]}</tspan>
+        <tspan x={2}>{top}</tspan>
+        <tspan x={2} dy={CHART_TYPE}>
+          corkers
+        </tspan>
+        <tspan x={2} dy={CHART_TYPE}>
+          at once
+        </tspan>
       </text>
       <text className="pc-axis-text" x={2} y={L.bottom}>
         0
@@ -405,7 +416,7 @@ function corkerChart({
         </>
       ) : (
         <text className="pc-unchecked-text pc-corker-none" x={(LEFT + RIGHT) / 2} y={(L.top + L.bottom) / 2 + 4} textAnchor="middle">
-          Intersections not checked
+          {profile.crossings ? "Group length not known" : "Intersections not checked"}
         </text>
       )}
       {unchecked.map((r, i) => {
@@ -433,7 +444,7 @@ function corkerChart({
           )}
         </g>
       ))}
-      {active !== null && <Marker x={markerX} top={L.top} bottom={L.bottom} ring={load ? y(corkerAt(load, at).perMile) : null} />}
+      {active !== null && <Marker x={markerX} top={L.top} bottom={L.bottom} ring={load ? y(corkerAt(load, at).corkers) : null} />}
     </>
   );
   const defs = (
@@ -442,7 +453,7 @@ function corkerChart({
     </pattern>
   );
   const legend = !load ? (
-    <li>Intersections were not checked, so there is no corker load to draw</li>
+    <li>{profile.crossings ? "The group's length is not known for this answer" : "Intersections were not checked"}, so there is no corker load to draw</li>
   ) : (
     <>
       <li>
@@ -450,7 +461,7 @@ function corkerChart({
           <path d="M0 10V6H5V2H10V6H14V10Z" className="pc-corker-area" />
           <path d="M0 6H5V2H10V6H14" className="pc-corker-line" fill="none" />
         </svg>
-        Junctions needing corkers per mile (per km), over the {corkerWindowWords()} around each point
+        Corkers held at once with the group's head at each point ({rideSizeWords(load.riders)})
       </li>
       <li>
         <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">

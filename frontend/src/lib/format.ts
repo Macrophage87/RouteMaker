@@ -127,22 +127,17 @@ export function formatPerMile(ratio: number): string {
   return formatRoughDistance(ratio * METRES_PER_MILE);
 }
 
-/** A count for every mile of route, per km in brackets, to a tenth: "6 per mile (3.7 per km)" (a Mass Ride's corker load). */
-export function formatCountPerMile(perMile: number): string {
-  const tenth = (v: number) => String(Math.round(v * 10) / 10);
-  return `${tenth(perMile)} per mile (${tenth(perMile / (METRES_PER_MILE / 1000))} per km)`;
-}
-
-/** The same on a chart's side, in two lines: ["6/mi", "(3.7/km)"]. */
-export function formatAxisPerMile(perMile: number): [string, string] {
-  const tenth = (v: number) => String(Math.round(v * 10) / 10);
-  return [`${tenth(perMile)}/mi`, `(${tenth(perMile / (METRES_PER_MILE / 1000))}/km)`];
-}
-
-/** A window along the route as it is said: "half mile (0.8 km)" for half a mile, else as `formatDistance`. */
-export function formatWindow(metres: number): string {
-  if (Math.abs(metres - METRES_PER_MILE / 2) < 1e-6) return `half mile (${(metres / 1000).toFixed(1)} km)`;
-  return formatDistance(metres);
+/**
+ * A group's length, a rough figure: under a mile in feet to the nearest 10 and metres to the
+ * nearest 5, "1,560 ft (475 m)"; from a mile, miles to two places, "1.18 mi (1.9 km)".
+ */
+export function formatGroupLength(metres: number): string {
+  if (!usable(metres)) return DASH;
+  if (metres < METRES_PER_MILE) {
+    const feet = Math.round((metres * FEET_PER_METRE) / 10) * 10;
+    return `${feet.toLocaleString("en-US")} ft (${Math.round(metres / 5) * 5} m)`;
+  }
+  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${(metres / 1000).toFixed(1)} km)`;
 }
 
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
