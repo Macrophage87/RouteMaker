@@ -32,6 +32,15 @@ import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
+  BEST_ORDER_LABEL,
+  bestOrderSaid,
+  bestOrderUnavailableHint,
+  fitsOrder,
+  reorderedPoints,
+  requestStopOrder,
+  stopsThatMove,
+} from "./lib/stopOrder.ts";
+import {
   addedSaid,
   editingTips,
   emptyPlanHint,
@@ -778,6 +787,52 @@ export function App() {
     commit(reversedPoints(current, loopVias));
     announce(reversedSaid(loopVias));
   };
+  // Best order (OWNER-DECISIONS 449): the stops in the order that rides least, as one
+  // edit Undo takes back. The answer is used only if the ride is still the one asked
+  // about; a press while one is being found does nothing more.
+  const [ordering, setOrdering] = useState(false);
+  const orderingRef = useRef(false);
+  // Shown only with two or more stops to order: on a ride of a start, an end and at
+  // most one stop it could change nothing, and a standing reason would crowd every
+  // short ride's tools (More tips says when it appears).
+  const orderShown = stopsThatMove(points, loopVias) >= 2;
+  const bestOrder = async () => {
+    const current = pointsRef.current;
+    const ride = rideRef.current;
+    const loop = loopStops(ride.preset, ride.dials.loop);
+    const unavailable = bestOrderUnavailableHint(current, loop);
+    if (unavailable) {
+      announce(unavailable);
+      return;
+    }
+    if (orderingRef.current || current.length < 2) return;
+    setOrdering(true);
+    announce("Finding the best order for the stops.");
+    // No weight: the order does not use it, so it is not sent.
+    orderingRef.current = true;
+    const result = await requestStopOrder(current, ride.preset, ride.dials);
+    orderingRef.current = false;
+    setOrdering(false);
+    const now = rideRef.current;
+    if (
+      pointsRef.current !== current ||
+      now.preset !== ride.preset ||
+      loopStops(now.preset, now.dials.loop) !== loop
+    ) {
+      announce("The ride changed while the best order was being found. Press Best order again.");
+      return;
+    }
+    if (!result.ok) {
+      announce(result.message);
+      return;
+    }
+    if (!fitsOrder(result.answer.order, current, loop)) {
+      announce("Best order not found. The planner's answer did not fit these points; try again.");
+      return;
+    }
+    if (result.answer.changed) commit(reorderedPoints(current, result.answer.order));
+    announce(bestOrderSaid(current, result.answer, namer, loop));
+  };
   const clearAll = () => {
     setConfirmedKm(null);
     setEditPoints(false);
@@ -1102,6 +1157,18 @@ export function App() {
         >
           Reverse
         </button>
+        {/* Best order (OWNER-DECISIONS 449), with two or more stops to order; aria-disabled
+            and busy while the order is found, so the focus stays on it. */}
+        {orderShown && (
+          <button
+            type="button"
+            onClick={() => void bestOrder()}
+            aria-disabled={ordering ? true : undefined}
+            aria-busy={ordering ? true : undefined}
+          >
+            {ordering ? "Finding best order…" : BEST_ORDER_LABEL}
+          </button>
+        )}
         {!narrow && (
           <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
             Undo

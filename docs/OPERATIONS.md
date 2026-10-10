@@ -2743,6 +2743,20 @@ What the strip changes besides access, so it is not mistaken for a fault:
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
 
+## Best order needs the routers restarted once (OWNER-DECISIONS 449)
+
+"Best order" (`POST /api/stop-order`, `core.stoporder`) asks each router for a riding-time matrix,
+Valhalla's `sources_to_targets`, which the routers serve only once their config lists it in
+`loki.actions` (`valhalla/valhalla-*.json`, from `scripts/build_valhalla_configs.py`). The configs
+are read when a router starts, so after deploying the release that adds it, restart the routers once,
+as after a rebuild (below). Until then nothing fails: each press orders the stops by straight-line
+distance, the answer's `by` is `straight_line`, the page says the router's riding times were not
+available, and the api logs "the <variant> router gave no riding-time matrix" at WARNING. A matrix
+is one router call per press, bounded by `MATRIX_TIMEOUT_S` (20 s) inside a 25 s budget, and takes a
+routing slot like a route; `max_matrix_location_pairs` (2,500) is far above the 26 by 26 a loop of
+25 points asks for, and a pair past `max_matrix_distance` (124 mi, 200 km) makes the router refuse the
+matrix, which falls back the same way.
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
