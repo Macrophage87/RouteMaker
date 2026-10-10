@@ -9,7 +9,7 @@
  * grade-band and riders-band shapes, and which junction labels are thinned out. Units are US
  * first with metric in brackets, as everywhere else (format.ts).
  */
-import type { ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
+import type { ProfileCalm, ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
@@ -27,7 +27,7 @@ import { spanClass } from "./routeColours.ts";
 
 // ---- The two charts ------------------------------------------------------------------------------
 
-/** "stress": every ride type but Mass Ride (a stress strip under the elevation); "mass": the riders-per-minute area in its place. */
+/** "stress": every ride type but Mass Ride (the rolling stress chart under the elevation, 460.12; the stress strip where the API sends no score); "mass": the riders-per-minute area in its place. */
 export type ChartKind = "stress" | "mass";
 
 export function chartKind(route: Pick<RouteResponse, "preset">): ChartKind {
@@ -362,9 +362,27 @@ export interface FlowShape {
 export function flowShapes(profile: RouteProfile, x: (m: number) => number, y: (riders: number) => number, baseline: number): FlowShape[] {
   const riders = profile.riders_per_min;
   if (!riders) return [];
-  const edges = FLOW_GUIDES.map((g) => g.at);
-  const out: FlowShape[] = [];
-  let run: { band: FlowBand; pts: [number, number][] } | null = null;
+  return bandedShapes(profile.m, riders, FLOW_GUIDES.map((g) => g.at), flowBand, (b) => b.index, x, y, baseline).map(({ band, d }) => ({ band, d }));
+}
+
+/**
+ * The filled area under a line of values, each unbroken run of one band one polygon down to the
+ * baseline. A segment that crosses an edge is cut there, so the colour changes where the line crosses
+ * it and not at the next sample; a missing value (or distance going backwards) breaks the area.
+ * Shared by the riders area (`flowShapes`) and the rolling stress area (`calmShapes`).
+ */
+export function bandedShapes<B>(
+  ms: readonly number[],
+  values: readonly (number | null)[],
+  edges: readonly number[],
+  bandOf: (value: number) => B,
+  key: (band: B) => number,
+  x: (m: number) => number,
+  y: (value: number) => number,
+  baseline: number,
+): { band: B; d: string }[] {
+  const out: { band: B; d: string }[] = [];
+  let run: { band: B; pts: [number, number][] } | null = null;
   const close = () => {
     if (run && run.pts.length >= 2) {
       const first = run.pts[0];
@@ -374,25 +392,24 @@ export function flowShapes(profile: RouteProfile, x: (m: number) => number, y: (
     }
     run = null;
   };
-  const push = (band: FlowBand, from: [number, number], to: [number, number]) => {
-    if (run && run.band.index !== band.index) close();
+  const push = (band: B, from: [number, number], to: [number, number]) => {
+    if (run && key(run.band) !== key(band)) close();
     if (!run) run = { band, pts: [from] };
     run.pts.push(to);
   };
-  for (let i = 1; i < profile.m.length; i += 1) {
-    const r0 = riders[i - 1];
-    const r1 = riders[i];
-    if (r0 == null || r1 == null || profile.m[i] < profile.m[i - 1]) {
+  for (let i = 1; i < ms.length; i += 1) {
+    const v0 = values[i - 1];
+    const v1 = values[i];
+    if (v0 == null || v1 == null || ms[i] < ms[i - 1]) {
       close();
       continue;
     }
-    // Cut the segment at every threshold between its two ends, in order from the first end.
-    const cuts = edges.filter((e) => (r0 < e && r1 > e) || (r0 > e && r1 < e)).sort((a, b) => (r0 <= r1 ? a - b : b - a));
-    let prev: [number, number] = [profile.m[i - 1], r0];
-    const stops: [number, number][] = [...cuts.map((e): [number, number] => [profile.m[i - 1] + ((e - r0) / (r1 - r0)) * (profile.m[i] - profile.m[i - 1]), e]), [profile.m[i], r1]];
+    // Cut the segment at every edge between its two ends, in order from the first end.
+    const cuts = edges.filter((e) => (v0 < e && v1 > e) || (v0 > e && v1 < e)).sort((a, b) => (v0 <= v1 ? a - b : b - a));
+    let prev: [number, number] = [ms[i - 1], v0];
+    const stops: [number, number][] = [...cuts.map((e): [number, number] => [ms[i - 1] + ((e - v0) / (v1 - v0)) * (ms[i] - ms[i - 1]), e]), [ms[i], v1]];
     for (const stop of stops) {
-      const mid = (prev[1] + stop[1]) / 2;
-      push(flowBand(mid), [x(prev[0]), y(prev[1])], [x(stop[0]), y(stop[1])]);
+      push(bandOf((prev[1] + stop[1]) / 2), [x(prev[0]), y(prev[1])], [x(stop[0]), y(stop[1])]);
       prev = stop;
     }
   }
@@ -578,6 +595,8 @@ export interface Reading {
   gradePct: number | null;
   tier: number | null;
   riders: number | null;
+  /** The rolling stress score at the sample, calm miles per mile; null where there is none. */
+  calm: number | null;
   /** What the rider hears and sees, the whole sentence. */
   text: string;
 }
@@ -665,9 +684,11 @@ export function readingAt(route: RouteResponse, profile: RouteProfile, metres: n
     if (elevationM !== null) parts.push(`elevation ${elevationWords(elevationM)}`);
     if (grade) parts.push(grade);
     parts.push(sectionWords(span) ?? "stress not rated");
-    text = `${mileWord(m)}: ${parts.join(", ")}.`;
+    const calm = usableCalm(profile);
+    const rolling = calm ? calmWords(calm, calm.ratio[index], m) : null;
+    text = `${mileWord(m)}: ${parts.join(", ")}.${rolling ? ` Mile around: ${rolling}.` : ""}${calm ? nextJunctionClause(calm, m) : ""}`;
   }
-  return { index, m, elevationM, gradePct, tier, riders, text };
+  return { index, m, elevationM, gradePct, tier, riders, text, calm: usableCalm(profile)?.ratio[index] ?? null };
 }
 
 // ---- The text alternative ------------------------------------------------------------------------
@@ -822,6 +843,8 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
     if (places.length > 0) {
       sentences.push(`LTS 3 or worse starts at mile${places.length === 1 ? "" : "s"} ${listWords(places)}${more > 0 ? `, and ${more} more ${more === 1 ? "place" : "places"}` : ""}.`);
     }
+    const calm = usableCalm(profile);
+    if (calm) sentences.push(...calmSentences(profile, calm));
   }
   return sentences.join(" ");
 }
@@ -1051,4 +1074,273 @@ export function placeCrossings(crossings: readonly ProfileCrossing[], x: (m: num
     p.row = row === 1 ? 1 : 0;
   }
   return placed;
+}
+
+// ---- The rolling stress chart (OWNER-DECISIONS 460.12, 461, 461d, 461e) ---------------------------
+
+/**
+ * 460.12: "A chart of rolling traffic stress makes more sense than a strip. That way, spikes show up."
+ * The line is calm miles per actual mile (461d) over the mile around each point (461e), from the API's
+ * `profile.calm` (routemaker.calm): 1 is all quiet-street riding, a path counts below it, and each
+ * junction's own cost is counted in every window that holds it. The vertical scale is logarithmic, from
+ * `CALM_FLOOR`, so a mile at 1.4 and a spike at 14 both read; the bands' guides are drawn at the API's
+ * half-step midpoints (`calm.bands`), where the words change.
+ */
+export const CALM_FLOOR = 0.5;
+
+/** The three bands the area is filled in, below, between and above the two guides: the map's tier colour and the stress bar's pattern for each. */
+export interface CalmBand {
+  index: 0 | 1 | 2;
+  /** The tier whose colour and pattern it borrows. */
+  tier: 2 | 3 | 4;
+  /** What a window in the band reads as. */
+  word: string;
+  /** The key's words. */
+  label: string;
+}
+
+export const CALM_BANDS: readonly CalmBand[] = [
+  { index: 0, tier: 2, word: "LTS 1 to 2 level", label: "Low stress (LTS 1 to 2 level)" },
+  { index: 1, tier: 3, word: "LTS 3 level", label: "LTS 3 level" },
+  { index: 2, tier: 4, word: "LTS 4 level", label: "LTS 4 level or higher" },
+];
+
+export function usableCalm(profile: RouteProfile): ProfileCalm | null {
+  const c = profile.calm;
+  if (!c || !Array.isArray(c.ratio) || c.ratio.length !== profile.m.length) return null;
+  if (!c.ratio.some((r) => r !== null && Number.isFinite(r))) return null;
+  return c;
+}
+
+/** The band a value reads in: LTS 4 level from the upper edge, LTS 3 level above the lower one (strictly, so a quiet street at 1 never reads as LTS 3 where the edge is 1). */
+export function calmBand(ratio: number, bands: readonly number[]): CalmBand {
+  if (bands.length >= 2 && ratio >= bands[1]) return CALM_BANDS[2];
+  if (bands.length >= 1 && ratio > bands[0]) return CALM_BANDS[1];
+  return CALM_BANDS[0];
+}
+
+/** "1.4", "0.6", "12": two figures, so a small change near 1 shows and a big figure is not over-precise. */
+export function calmFigure(ratio: number): string {
+  return ratio >= 10 ? String(Math.round(ratio)) : ratio.toFixed(1);
+}
+
+/** The top of the scale: the next of 2, 5, 10, 20, 50, ... above the highest value and the upper guide. */
+export function calmTop(calm: ProfileCalm): number {
+  const values = calm.ratio.filter((r): r is number => r !== null && Number.isFinite(r));
+  const steps = calm.steps.map((s) => s.ratio).filter((r): r is number => r !== null && Number.isFinite(r));
+  const high = Math.max(...values, ...steps, (calm.bands[1] ?? 1) * 1.15, 1.5);
+  for (let decade = 1; ; decade *= 10) {
+    for (const k of [2, 5, 10]) if (k * decade >= high) return k * decade;
+  }
+}
+
+/**
+ * The side's figures: the top, 1 and the floor first, then 2, 5, 10 ... between, each kept only where it
+ * is at least `gap` viewBox units from every figure already kept, so the 11-unit labels never overlap.
+ * Returned low to high.
+ */
+export function calmTicks(top: number, y: (ratio: number) => number = (r) => -Math.log(r) * 100, gap = 12): number[] {
+  const wanted = [top, 1, CALM_FLOOR];
+  for (let decade = 1; decade < top; decade *= 10) {
+    for (const k of [2, 5, 10]) if (k * decade < top) wanted.push(k * decade);
+  }
+  const kept: number[] = [];
+  for (const t of wanted) if (!kept.includes(t) && kept.every((k) => Math.abs(y(k) - y(t)) >= gap)) kept.push(t);
+  return kept.sort((a, b) => a - b);
+}
+
+/** A logarithmic scale from `CALM_FLOOR` to `top`; values below the floor sit on it. */
+export function calmScale(top: number, bottomY: number, topY: number): (ratio: number) => number {
+  const lo = Math.log(CALM_FLOOR);
+  const span = Math.log(top) - lo;
+  return (ratio) => bottomY + ((Math.log(Math.max(ratio, CALM_FLOOR)) - lo) / span) * (topY - bottomY);
+}
+
+export interface CalmShape {
+  band: CalmBand;
+  d: string;
+}
+
+/**
+ * The area under the rolling line, each run of one band one polygon down to the baseline, cut where
+ * the line crosses a guide (as `flowShapes` cuts at the riders' thresholds), so the colour changes at
+ * the guide and not at the next sample. Broken where the value is missing (an unrated mile).
+ */
+export function calmShapes(profile: RouteProfile, calm: ProfileCalm, x: (m: number) => number, y: (ratio: number) => number, baseline: number): CalmShape[] {
+  return bandedShapes(profile.m, calm.ratio, calm.bands.slice(0, 2), (r) => calmBand(r, calm.bands), (b) => b.index, x, y, baseline);
+}
+
+/** The rolling line itself, broken where the value is missing. */
+export function calmLine(profile: RouteProfile, calm: ProfileCalm, x: (m: number) => number, y: (ratio: number) => number): string {
+  let d = "";
+  let pen = false;
+  profile.m.forEach((m, i) => {
+    const r = calm.ratio[i];
+    if (r === null || r === undefined || !Number.isFinite(r)) {
+      pen = false;
+      return;
+    }
+    d += `${pen ? "L" : "M"}${f(x(m))} ${f(y(r))} `;
+    pen = true;
+  });
+  return d.trim();
+}
+
+/** The faint step line: each stretch at its own multiplier, so a short busy stretch is still seen at its true level behind the mile-long average. */
+export function calmStepLine(calm: ProfileCalm, x: (m: number) => number, y: (ratio: number) => number, length: number): string {
+  let d = "";
+  let pen = false;
+  let lastX: number | null = null;
+  for (const s of calm.steps) {
+    if (s.ratio === null || s.to_m <= s.from_m || s.from_m >= length) {
+      pen = false;
+      continue;
+    }
+    const x0 = x(Math.max(0, s.from_m));
+    const x1 = x(Math.min(length, s.to_m));
+    const yy = y(s.ratio);
+    d += pen && lastX !== null && Math.abs(lastX - x0) < 0.01 ? `L${f(x0)} ${f(yy)} L${f(x1)} ${f(yy)} ` : `M${f(x0)} ${f(yy)} L${f(x1)} ${f(yy)} `;
+    pen = true;
+    lastX = x1;
+  }
+  return d.trim();
+}
+
+/** The stretches rated Avoid, which the chart marks in the Avoid magenta (397) whatever the line says. */
+export function calmAvoid(calm: ProfileCalm, length: number): ProfileRange[] {
+  const out: ProfileRange[] = [];
+  for (const s of calm.steps) {
+    if (s.tier !== 5 || s.to_m <= s.from_m || s.from_m >= length) continue;
+    const last = out[out.length - 1];
+    if (last && last.to_m >= s.from_m) last.to_m = Math.max(last.to_m, Math.min(length, s.to_m));
+    else out.push({ from_m: Math.max(0, s.from_m), to_m: Math.min(length, s.to_m) });
+  }
+  return out;
+}
+
+/** Whether the window around a position holds any Avoid. */
+export function avoidNear(calm: ProfileCalm, metres: number): boolean {
+  const half = calm.window_m / 2;
+  return calm.steps.some((s) => s.tier === 5 && s.from_m <= metres + half && s.to_m >= metres - half);
+}
+
+/** "1.4 calm miles per mile, LTS 1 to 2 level", with ", Avoid nearby" where the mile around holds some; null where not rated. */
+export function calmWords(calm: ProfileCalm, ratio: number | null | undefined, metres: number): string | null {
+  if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return null;
+  const words = [`${calmFigure(ratio)} calm miles per mile`, calmBand(ratio, calm.bands).word];
+  if (avoidNear(calm, metres)) words.push("Avoid nearby");
+  return words.join(", ");
+}
+
+const SEVERITY_WORDS: Readonly<Record<"orange" | "red", string>> = { orange: "higher stress", red: "very high stress" };
+
+/**
+ * The next flagged junction ahead, said as the key names it, so the chart's triangles and diamonds have
+ * words (a11y review SF1): " Next junction to watch: very high stress, mile 1.4."; "" where none is ahead.
+ */
+export function nextJunctionClause(calm: ProfileCalm, metres: number): string {
+  const next = calm.points.find((p) => p.kind === "junction" && p.severity !== null && p.m >= metres);
+  return next && next.severity ? ` Next junction to watch: ${SEVERITY_WORDS[next.severity]}, mile ${miles(next.m)}.` : "";
+}
+
+/** The highest window: its value and where (the first, where several tie). */
+export function calmPeak(profile: RouteProfile, calm: ProfileCalm): { ratio: number; m: number } | null {
+  let best: { ratio: number; m: number } | null = null;
+  calm.ratio.forEach((r, i) => {
+    if (r !== null && Number.isFinite(r) && (best === null || r > best.ratio)) best = { ratio: r, m: profile.m[i] };
+  });
+  return best;
+}
+
+/** The flagged junctions inside the window around a position, worst first: what the peak sentence names. */
+export function junctionsNear(calm: ProfileCalm, metres: number): { orange: number; red: number } {
+  const half = calm.window_m / 2;
+  const near = calm.points.filter((p) => p.kind === "junction" && Math.abs(p.m - metres) <= half);
+  return { orange: near.filter((p) => p.severity === "orange").length, red: near.filter((p) => p.severity === "red").length };
+}
+
+/** The window's length in words: "1 mi (1.6 km)". */
+export function windowWords(calm: ProfileCalm): string {
+  return formatDistance(calm.window_m);
+}
+
+/**
+ * The chart summary's rolling-stress sentences: the route's total in calm miles (461d: "The route summary
+ * can also give the route total in calm miles"; calm km in brackets), the average, the most stressful
+ * mile and what is in it, whether junctions were counted, and that the figure is an estimate.
+ */
+export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[] {
+  const out: string[] = [];
+  const rated = calm.rated_m;
+  if (rated > 0) {
+    const average = calm.total_calm_m / rated;
+    out.push(
+      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; 1 is all quiet streets.`,
+    );
+  }
+  const peak = calmPeak(profile, calm);
+  if (peak) {
+    const { orange, red } = junctionsNear(calm, peak.m);
+    const junctions: string[] = [];
+    if (red > 0) junctions.push(`${red} very high stress ${red === 1 ? "junction" : "junctions"}`);
+    if (orange > 0) junctions.push(`${orange} higher stress ${orange === 1 ? "junction" : "junctions"}`);
+    const avoid = avoidNear(calm, peak.m) ? ", Avoid nearby" : "";
+    out.push(
+      `The most stressful mile is around mile ${miles(peak.m)}: ${calmFigure(peak.ratio)} calm miles per mile, ${calmBand(peak.ratio, calm.bands).word}${avoid}${junctions.length ? `, with ${listWords(junctions)}` : ""}.`,
+    );
+  }
+  if (!calm.junctions_counted) out.push("Junctions could not be read for this route, so they are not counted.");
+  return out;
+}
+
+/** The source line under the chart: what the figure is made from, and that it is an estimate while it is one. */
+export function calmSource(calm: ProfileCalm): string {
+  return `Rolling stress: ${calm.estimate ? "an estimate of " : ""}what the routing charges for each stretch and junction, as quiet-street miles, over the mile around each point${
+    calm.estimate ? "; each stretch is priced by its stress level, not yet by its own speed and lanes" : ""
+  } (stress ratings: RouteMaker, from OpenStreetMap).`;
+}
+
+/** Calm miles, km in brackets: "7.4 calm mi (11.9 calm km)". */
+export function calmDistance(metres: number): string {
+  const mi = metres / METRES_PER_MILE;
+  const km = metres / 1000;
+  return `${mi.toFixed(1)} calm mi (${km.toFixed(1)} calm km)`;
+}
+
+export interface CalmRow {
+  at: string;
+  value: string;
+  reads: string;
+  /** The flagged junctions since the row before (from the start, on the first): "1 very high stress", "None". */
+  junctions: string;
+}
+
+/** The interval the rolling-stress table reads at: half a mile up to 10 mi, a mile up to 40 mi, then 2 mi (at most about 40 rows on a ride the planner makes). */
+export function calmRowStep(totalM: number): number {
+  const mi = totalM / METRES_PER_MILE;
+  return (mi <= 10 ? 0.5 : mi <= 40 ? 1 : mi <= 80 ? 2 : 5) * METRES_PER_MILE;
+}
+
+/** The rolling-stress table: the value at the start, every `calmRowStep`, and the end (the picture's text alternative). */
+export function calmRows(profile: RouteProfile, calm: ProfileCalm, totalM: number): CalmRow[] {
+  const step = calmRowStep(totalM);
+  const at: number[] = [];
+  for (let m = 0; m < totalM - step / 4; m += step) at.push(m);
+  at.push(totalM);
+  return at.map((m, k) => {
+    const from = k === 0 ? -1 : at[k - 1];
+    const since = calm.points.filter((p) => p.kind === "junction" && p.severity !== null && p.m > from && p.m <= m);
+    const red = since.filter((p) => p.severity === "red").length;
+    const orange = since.filter((p) => p.severity === "orange").length;
+    const junctions = [red ? `${red} very high stress` : "", orange ? `${orange} higher stress` : ""].filter(Boolean).join(", ") || "None";
+    const i = nearestIndex(profile.m, m);
+    const r = calm.ratio[i];
+    const known = r !== null && r !== undefined && Number.isFinite(r);
+    return {
+      at: mileWord(m),
+      value: known ? calmFigure(r) : "Not rated",
+      reads: known ? capitalise(calmBand(r, calm.bands).word) + (avoidNear(calm, m) ? ", Avoid nearby" : "") : "Not rated",
+      junctions,
+    };
+  });
 }

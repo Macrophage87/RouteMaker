@@ -16,7 +16,7 @@ import pytest
 
 from core import junctions as core_junctions
 from core import routing
-from routemaker import climbs, flow, profile
+from routemaker import calm, climbs, flow, profile
 from routemaker import intersections as m
 from routemaker.intersections import Control, Junction, Movement, Road
 
@@ -459,6 +459,48 @@ class TestRouteProfile:
         assert body["riders_per_min"] is None and body["flow"] is None
         assert body["crossings"] is None
         assert body["avoid"] is None and body["unchecked"] is None
+
+    def test_off_a_mass_ride_the_profile_carries_the_rolling_score(self):
+        """460.12, 461d: one calm ratio a sample, from the sections and the junctions."""
+        heights = [10.0] * 200
+        spans = [
+            {"from_m": 0, "to_m": 300, "tier": 3, "facility": "none"},
+            {"from_m": 300, "to_m": 5970, "tier": 2, "facility": "none"},
+        ]
+        pricing = calm.Pricing(use_roads=0.1)
+        body = routing.route_profile([self.leg(heights)], spans, calm_pricing=pricing, events=[])
+        ratio = body["calm"]["ratio"]
+        assert len(ratio) == len(body["m"])
+        # Raised over the mile around the LTS 3 stretch only.
+        assert ratio[0] > 1.0 and ratio[-1] == 1.0
+        assert body["calm"]["junctions_counted"] is True
+        assert routing.route_profile([self.leg(heights)], spans)["calm"] is None
+
+    def test_a_long_route_keeps_the_peak_window_when_thinned(self, monkeypatch):
+        """Correctness review nit: the most stressful mile survives thinning."""
+        monkeypatch.setattr(profile, "MAX_SAMPLES", 50)
+        n = 400
+        spans = [
+            {"from_m": 0, "to_m": 7000, "tier": 2, "facility": "none"},
+            {"from_m": 7000, "to_m": 7030, "tier": 4, "facility": "none"},
+            {"from_m": 7030, "to_m": (n - 1) * STEP, "tier": 2, "facility": "none"},
+        ]
+        monkeypatch.setattr(profile, "thin", lambda h, *_a, **_k: [0, len(h) - 1])
+        body = routing.route_profile(
+            [self.leg([10.0] * n)], spans, calm_pricing=calm.Pricing(use_roads=0.1)
+        )
+        assert len(body["m"]) == 3
+        assert abs(body["m"][1] - 7015) <= routing.calm.WINDOW_M / 2
+
+    def test_a_failed_score_costs_only_the_score(self, monkeypatch):
+        def boom(*_a, **_k):
+            raise ValueError("boom")
+
+        monkeypatch.setattr(calm, "score", boom)
+        body = routing.route_profile(
+            [self.leg([10.0] * 10)], [], calm_pricing=calm.Pricing(use_roads=0.1)
+        )
+        assert body is not None and body["calm"] is None and len(body["m"]) == 10
 
     def test_a_route_with_no_elevation_has_no_profile(self):
         assert routing.route_profile([self.leg([])], []) is None
