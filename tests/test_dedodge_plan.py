@@ -244,7 +244,7 @@ class TestThePlan:
         assert body["stress_m"]["3"] == pytest.approx(unit.reach, abs=2.0)
         assert search["lts3_m_after"] == pytest.approx(unit.reach, abs=2.0)
         # Trailmaxxing weighs LTS 3 at 1, and LTS 2 at a quarter (FOLLOWUP-LTS2-WEIGHT).
-        lts2 = presets.EXPOSURE_NOT_IN_CONTROL.lts2 * body["stress_m"].get("2", 0.0)
+        lts2 = presets.EXPOSURE_NOT_IN_CONTROL.lts2 * body["stress_m"]["2"]
         assert search["exposure_after_m"] == pytest.approx(unit.reach + lts2, abs=2.0)
 
     def test_a_dodge_that_avoids_more_than_the_tie_step_stays_on_every_ride(self, world) -> None:

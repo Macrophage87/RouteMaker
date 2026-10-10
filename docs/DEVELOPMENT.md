@@ -4193,6 +4193,10 @@ is not in control of the ride is stress-averse.
   slider does not move, the calm search does not turn on, and the router's requests are
   unchanged: only the choice among the routes it returns (the crossing round's) changes.
   Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
+  kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
+  with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3
+  adds nothing.
   If the owner prefers the weight to wait until the rider moves the slider above 80, the
   term is one commit to drop.
 - At the top (100, maxcalm) the weight is in the second figure of the ranking:
