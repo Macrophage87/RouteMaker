@@ -99,3 +99,14 @@ test("choosing another ride type keeps Make it a loop, through a Mass Ride and b
     null,
   );
 });
+
+test("a radio group is one Tab stop in the dialog's trap: its checked radio, else its first", async () => {
+  const { tabStops } = await import("./rideTypeDialog.ts");
+  const piece = { type: "radio", name: "extent", checked: true, id: "piece" };
+  const whole = { type: "radio", name: "extent", checked: false, id: "whole" };
+  const level = { type: "range", id: "level" };
+  const save = { id: "save" };
+  assert.deepEqual(tabStops([piece, whole, level, save]).map((i) => i.id), ["piece", "level", "save"]);
+  assert.deepEqual(tabStops([{ ...piece, checked: false }, { ...whole, checked: true }, level]).map((i) => i.id), ["whole", "level"]);
+  assert.deepEqual(tabStops([{ ...piece, checked: false }, whole, level]).map((i) => i.id), ["piece", "level"]);
+});

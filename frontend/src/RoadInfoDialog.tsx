@@ -48,7 +48,7 @@ import { stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
 import { StressPageLink } from "./lib/stressLegend.ts";
-import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
+import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
@@ -227,7 +227,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
-    const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    // One stop a radio group (the named stretch's What to change), as the browser's Tab order has it.
+    const items = tabStops(Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)) as (HTMLElement & TabCandidate)[]);
     const active = document.activeElement as HTMLElement | null;
     const index = items.indexOf(active as HTMLElement);
     if (index < 0 && active && active !== dialogRef.current && dialogRef.current.contains(active) && items.length > 0) {

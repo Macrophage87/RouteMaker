@@ -2058,10 +2058,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const visited = [];
   for (let i = 0; i < 9; i++) {
     await p.tab();
-    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
+    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.type === 'radio' ? 'radio:' + e.value : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
   }
-  check("stress editor: Tab goes through the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
-    JSON.stringify(visited.slice(0, 7)) === JSON.stringify(["range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
+  check("stress editor: Tab goes through What to change (one stop for its radio group, on This road piece), the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
+    JSON.stringify(visited.slice(0, 8)) === JSON.stringify(["radio:piece", "range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
 
   // The private reason is required: a message, the focus on the field, nothing sent.
   await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
