@@ -173,7 +173,7 @@ test("the summary gives the total in calm miles and km, the most stressful mile 
   assert.doesNotMatch(calmSource({ ...calm, estimate: false }), /estimate/);
   // Each road at its own routing cost (stress-number.md section 4): the line says how it is priced.
   assert.match(calmSource({ ...calm, estimate: false }), /each road, by its own speed, lanes and bike lane, and for each junction/);
-  assert.match(text, /1 is a typical quiet street\./);
+  assert.match(text, /about 1 is all quiet streets\./);
   assert.match(summaryText(route, profile), /Rolling stress: /);
 });
 

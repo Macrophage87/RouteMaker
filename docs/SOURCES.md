@@ -208,6 +208,32 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Apache 2.0 (the software); the places are OpenStreetMap's, ODbL.
 - Records: docs/DEPLOYMENT.md, "Photon".
 
+## Capital Bikeshare
+
+- Credit: `Capital Bikeshare`
+- Dataset: station information, station status, free-floating e-bike status, pricing plans and
+  system alerts, from the operator's official GBFS 1.1 feed (discovery feed
+  <https://gbfs.capitalbikeshare.com/gbfs/gbfs.json>, which lists the feeds on `gbfs.lyft.com`);
+  the Bikeshare ride type's docks and bike counts and its lists of the nearest stations
+  (`core.gbfs`, `core.bikeshare`). Read live while a rider plans, about once a minute for the whole
+  deployment, kept as one shared latest copy and never as history; there is no raw-file record and
+  no sha256, because nothing is downloaded to keep. The sampled test fixtures
+  (`tests/data/gbfs`) are a test sample, not a dataset.
+- Publisher: Capital Bikeshare, operated by Lyft. Named in text only, as a factual description of
+  where the data comes from: no logo, no wording of affiliation or endorsement
+  (OWNER-DECISIONS 304, 466).
+- Licence: the Capital Bikeshare Data License Agreement
+  (<https://capitalbikeshare.com/data-license-agreement>, read 2026-10-04; the owner read it again 2026-10-09,
+  OWNER-DECISIONS 300, 466). Non-exclusive, royalty-free, perpetual, any lawful purpose. It forbids
+  hosting, distributing or selling the data as a stand-alone dataset, using the operator's marks
+  without written permission, stating or implying affiliation or endorsement, data mining or other
+  extraction, correlating the data with personal information, and access other than through the
+  provided interface. No attribution is required: the credit is the owner's choice (item 301). The
+  operator may terminate at will. Not legal advice.
+- Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305);
+  its undocumented map endpoints and its points values (OWNER-DECISIONS 451).
+- Records: docs/OPERATIONS.md, "Bikeshare feeds"; docs/DEVELOPMENT.md, "Bikeshare".
+
 ## Atkinson Hyperlegible (the panel's font; not a map credit)
 
 This is a bundled asset, like maplibre-gl and Noto Sans, not a data source: it has no

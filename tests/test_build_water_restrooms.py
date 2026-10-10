@@ -78,6 +78,17 @@ def _kind(tags: dict[str, str]) -> tuple[str | None, str | None] | None:
         ({"amenity": "shelter"}, None),
         ({"man_made": "water_well"}, ("n", None)),
         ({"man_made": "water_tap", "drinking_water": "no"}, ("n", None)),
+        # Historic springs are landmarks, not sources, unless marked drinkable.
+        ({"natural": "spring", "historic": "yes"}, None),
+        ({"natural": "spring", "historic": "spring"}, None),
+        ({"natural": "spring", "historic": "memorial", "drinking_water": "no"}, None),
+        ({"natural": "spring", "ruins": "yes"}, None),
+        ({"natural": "spring", "historic": "no"}, ("n", None)),
+        ({"natural": "spring", "historic": "yes", "drinking_water": "yes"}, ("p", None)),
+        ({"amenity": "drinking_water", "natural": "spring", "historic": "yes"}, ("p", None)),
+        ({"amenity": "water_point", "natural": "spring", "historic": "yes"}, ("p", None)),
+        # A historic fountain that still runs is drinking water.
+        ({"amenity": "drinking_water", "historic": "yes"}, ("p", None)),
     ],
 )
 def test_what_counts(tags, kind):
@@ -159,6 +170,12 @@ OSM = """<?xml version="1.0" encoding="UTF-8"?>
  <node id="8" version="1" lat="38.96" lon="-77.04">
   <tag k="natural" v="spring"/>
  </node>
+ <node id="9" version="1" lat="38.93" lon="-77.01">
+  <tag k="amenity" v="toilets"/><tag k="opening_hours" v="dawn-dusk"/><tag k="fee" v="no"/>
+ </node>
+ <node id="11" version="1" lat="38.97" lon="-77.05">
+  <tag k="natural" v="spring"/><tag k="historic" v="yes"/><tag k="name" v="Old Spring"/>
+ </node>
  <way id="10" version="1">
   <nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="3"/>
   <tag k="amenity" v="toilets"/><tag k="building" v="yes"/><tag k="name" v="Comfort station"/>
@@ -166,6 +183,103 @@ OSM = """<?xml version="1.0" encoding="UTF-8"?>
  </way>
 </osm>
 """
+
+
+SQUARE = ((-77.02, 38.92), (-77.0, 38.92), (-77.0, 38.94), (-77.02, 38.94))
+
+
+def _building(tags: dict[str, str]):
+    return mod.Element("w10", tags, -77.01, 38.93, SQUARE)
+
+
+def test_a_node_inside_a_restroom_building_merges_into_it():
+    building = _building({"amenity": "toilets", "building": "yes", "name": "Comfort station"})
+    node = mod.Element(
+        "n5",
+        {
+            "amenity": "toilets",
+            "toilets:disposal": "flush",
+            "opening_hours": "06:00-22:00",
+            "wheelchair": "yes",
+            "fee": "no",
+        },
+        -77.005,
+        38.935,
+    )
+    (merged,) = mod.merge_restrooms([node], [building])
+    assert (merged.osm, merged.lon, merged.lat) == ("w10", -77.01, 38.93)
+    a = mod.classify(merged.osm, merged.tags, merged.lon, merged.lat)
+    assert (a.toilet, a.name, a.hours, a.wheelchair, a.fee) == (
+        "f",
+        "Comfort station",
+        "06:00-22:00",
+        "yes",
+        "no",
+    )
+
+
+def test_the_richer_element_wins_a_conflict():
+    rich = _building({"building": "toilets", "name": "Boathouse", "fee": "yes", "wheelchair": "no"})
+    poor = mod.Element("n5", {"amenity": "toilets", "fee": "no"}, -77.01, 38.93)
+    (merged,) = mod.merge_restrooms([poor], [rich])
+    assert merged.tags["fee"] == "yes" and merged.tags["amenity"] == "toilets"
+    # On a tie the node, mapped as the restroom itself, wins.
+    tie = _building({"amenity": "toilets", "fee": "yes"})
+    (merged,) = mod.merge_restrooms([poor], [tie])
+    assert merged.tags["fee"] == "no"
+
+
+def test_several_nodes_in_one_building_are_one_place():
+    building = _building({"building": "toilets"})
+    nodes = [
+        mod.Element("n5", {"amenity": "toilets", "male": "yes"}, -77.015, 38.93),
+        mod.Element("n6", {"amenity": "toilets", "female": "yes"}, -77.005, 38.93),
+    ]
+    (merged,) = mod.merge_restrooms(nodes, [building])
+    assert merged.osm == "w10" and merged.tags["male"] == merged.tags["female"] == "yes"
+
+
+def test_a_node_outside_the_building_stays_its_own_place():
+    building = _building({"amenity": "toilets", "building": "yes"})
+    node = mod.Element("n5", {"amenity": "toilets"}, -77.03, 38.93)
+    assert [e.osm for e in mod.merge_restrooms([node], [building])] == ["w10", "n5"]
+    # A bare building=toilets with nothing inside says nothing of public use.
+    bare = _building({"building": "toilets"})
+    assert [e.osm for e in mod.merge_restrooms([node], [bare])] == ["n5"]
+
+
+def test_a_building_that_is_not_public_is_left_out_with_what_is_inside():
+    building = _building({"amenity": "toilets", "access": "customers"})
+    node = mod.Element("n5", {"amenity": "toilets", "access": "yes"}, -77.01, 38.93)
+    assert mod.merge_restrooms([node], [building]) == []
+
+
+def test_a_private_node_inside_a_public_building_is_left_out_alone():
+    building = _building({"amenity": "toilets", "name": "Comfort station"})
+    staff = mod.Element("n5", {"amenity": "toilets", "access": "private"}, -77.01, 38.93)
+    merged = mod.merge_restrooms([staff], [building])
+    assert [e.osm for e in merged] == ["w10"]
+    assert merged[0].tags.get("access") is None
+    # A bare building=toilets whose only node is private shows nothing.
+    bare = _building({"building": "toilets"})
+    assert mod.merge_restrooms([staff], [bare]) == []
+
+
+def test_a_node_in_the_box_but_outside_a_concave_building_is_not_merged():
+    # An L: the square with its north-east quarter cut away.
+    ell = (
+        (-77.02, 38.92),
+        (-77.0, 38.92),
+        (-77.0, 38.93),
+        (-77.01, 38.93),
+        (-77.01, 38.94),
+        (-77.02, 38.94),
+    )
+    building = mod.Element("w10", {"amenity": "toilets"}, -77.013, 38.928, ell)
+    notch = mod.Element("n5", {"amenity": "toilets"}, -77.005, 38.935)
+    assert [e.osm for e in mod.merge_restrooms([notch], [building])] == ["w10", "n5"]
+    inner = mod.Element("n6", {"amenity": "toilets"}, -77.015, 38.925)
+    assert [e.osm for e in mod.merge_restrooms([inner], [building])] == ["w10"]
 
 
 def test_reads_an_extract_and_writes_the_file(tmp_path):
@@ -180,7 +294,16 @@ def test_reads_an_extract_and_writes_the_file(tmp_path):
         {"id": "n1", "x": -77.0, "y": 38.9, "w": "p"},
         {"id": "n8", "x": -77.04, "y": 38.96, "w": "n"},
         # The building's mean corner, its first node counted once.
-        {"id": "w10", "x": -77.01, "y": 38.93, "t": "f", "n": "Comfort station"},
+        # Node 9 inside it is merged: one restroom, with the node's details.
+        {
+            "id": "w10",
+            "x": -77.01,
+            "y": 38.93,
+            "t": "f",
+            "n": "Comfort station",
+            "fee": "no",
+            "h": "dawn-dusk",
+        },
     ]
     assert text.count("\n") == 5  # one point per line
 

@@ -13,6 +13,10 @@ import type { PresetId } from "./presets.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak";
 export type Carrying = "cargo" | "people";
+/** Bikeshare's bike (OWNER-DECISIONS 243): the operator's classic, or its e-bike. */
+export type Bike = "classic" | "ebike";
+/** Bikeshare e-bike's ending (OWNER-DECISIONS 244): at a dock, or at the destination outside one. */
+export type Ending = "dock" | "outside_dock";
 
 export interface Dials {
   stress: number;
@@ -54,6 +58,21 @@ export interface Dials {
   systemWeightKg?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
+  /** Bikeshare only: the bike. Absent is classic. */
+  bike?: Bike;
+  /**
+   * Bikeshare e-bike only (OWNER-DECISIONS 244): end outside a dock, at the destination, where
+   * the operator's zone data allows it. Absent is a dock.
+   */
+  ending?: Ending;
+  /**
+   * Bikeshare only (OWNER-DECISIONS 466a): the station the rider chose to take a bike from, and
+   * the one to return it to, from the nearest-stations lists. Session only: they are added to a
+   * request (lib/stations.ts withStations) and are in no link, because a station's bikes change
+   * by the minute.
+   */
+  pickupStation?: string;
+  dropoffStation?: string;
   /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
@@ -142,6 +161,8 @@ export const STARTS: Record<PresetId, Start> = {
   fast: { stress: 10, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   ebike: { stress: 70, hills: -50, seek: true },
+  // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.
+  bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
 };
 
 export const WHENS: readonly { id: When; label: string }[] = [
@@ -185,7 +206,27 @@ export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">):
 }
 
 export function offersAssist(preset: PresetId): boolean {
-  return STARTS[preset].assist === true;
+  // Bikeshare's assist is its bike choice, not Cargo Bike's toggle.
+  return STARTS[preset].assist === true && preset !== "bikeshare";
+}
+
+/**
+ * Where each bike's hills slider starts on Bikeshare: a classic is hill-averse (as Cargo
+ * Bike's), an e-bike barely minds a hill. `core.presets.BIKESHARE_BIKES`, which
+ * tests/test_presets.py holds this to.
+ */
+export const BIKESHARE_HILLS: Record<Bike, number> = { classic: -60, ebike: -20 };
+
+export function offersBike(preset: PresetId): boolean {
+  return preset === "bikeshare";
+}
+
+export function isBike(value: unknown): value is Bike {
+  return value === "classic" || value === "ebike";
+}
+
+export function isEnding(value: unknown): value is Ending {
+  return value === "dock" || value === "outside_dock";
 }
 
 /**
@@ -241,17 +282,21 @@ export function startDials(
   carrying: Carrying | null = null,
   when: When | null = null,
   assist = false,
+  bike: Bike | null = null,
 ): Dials {
   const start = STARTS[preset];
   const load = start.carrying ? (carrying ?? "cargo") : null;
+  const chosen: Bike | null = offersBike(preset) ? (bike ?? "classic") : null;
   return {
     stress: load && start.carrying ? start.carrying[load] : start.stress,
     // Electric assist does not soften the hills start: a heavy cargo bike's
-    // motor rarely cancels a climb (the owner, 2026-09-27).
-    hills: start.hills,
+    // motor rarely cancels a climb (the owner, 2026-09-27). Bikeshare's e-bike does:
+    // hills barely count on it.
+    hills: chosen ? BIKESHARE_HILLS[chosen] : start.hills,
     when,
     carrying: load,
     assist: offersAssist(preset) && assist,
+    ...(chosen ? { bike: chosen } : {}),
   };
 }
 
@@ -261,7 +306,13 @@ function clamp(value: number, min: number, max: number): number {
 
 /** A position the API will take for this ride type, whatever a link said. */
 export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
-  const start = startDials(preset, dials.carrying ?? null, dials.when ?? null, dials.assist === true);
+  const start = startDials(
+    preset,
+    dials.carrying ?? null,
+    dials.when ?? null,
+    dials.assist === true,
+    isBike(dials.bike) ? dials.bike : null,
+  );
   const stress = typeof dials.stress === "number" && Number.isFinite(dials.stress) ? dials.stress : start.stress;
   const hills = typeof dials.hills === "number" && Number.isFinite(dials.hills) ? dials.hills : start.hills;
   return {
@@ -270,6 +321,9 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     when: start.when,
     carrying: start.carrying,
     assist: start.assist,
+    ...(start.bike ? { bike: start.bike } : {}),
+    // Only an e-bike can end outside a dock.
+    ...(start.bike === "ebike" && dials.ending === "outside_dock" ? { ending: "outside_dock" as const } : {}),
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
@@ -294,6 +348,12 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // The API takes whole kilograms (core.api, StrictInt).
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (dials.loop) fields.loop = true;
+  if (dials.bike) fields.bike = dials.bike;
+  if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
+  if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
+  if (dials.bike && dials.dropoffStation && dials.ending !== "outside_dock") {
+    fields.dropoff_station = dials.dropoffStation;
+  }
   return fields;
 }
 

@@ -15,7 +15,8 @@ export type PresetId =
   | "gravel"
   | "fast"
   | "cargo"
-  | "ebike";
+  | "ebike"
+  | "bikeshare";
 
 export interface PresetOption {
   id: PresetId;
@@ -72,6 +73,12 @@ export const PRESETS: readonly PresetOption[] = [
     id: "ebike",
     label: "E-bike",
     description: "Leaves out ways mapped as closed to e-bikes, minds hills less, times at assisted pace.",
+  },
+  {
+    id: "bikeshare",
+    label: "Bikeshare",
+    description:
+      "Walk to a dock with a bike, ride dock to dock, then walk to your destination. Choose a classic bike (hill-averse, slower) or an e-bike. Calm streets and paths first; docks are chosen from live availability where it can be read.",
   },
 ];
 

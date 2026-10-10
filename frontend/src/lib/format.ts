@@ -65,6 +65,22 @@ export function formatDistance(metres: number): string {
 }
 
 /**
+ * A station's distance from where the rider is (the nearest-stations lists, OWNER-DECISIONS 466a):
+ * miles to a tenth with the metres in brackets to the nearest ten while under a kilometre,
+ * "0.2 mi (320 m)", then kilometres, "1.8 mi (2.9 km)"; below a tenth of a mile feet first,
+ * "490 ft (150 m)".
+ */
+export function formatStationDistance(metres: number): string {
+  if (!usable(metres)) return "distance unknown";
+  if (metres < FEET_BELOW_M) {
+    const feet = metres >= 30 ? Math.round((metres * FEET_PER_METRE) / 10) * 10 : Math.round(metres * FEET_PER_METRE);
+    return `${feet} ft (${roundShort(metres)} m)`;
+  }
+  const metric = metres < 995 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1)} km`;
+  return `${milesFigure(metres)} mi (${metric})`;
+}
+
+/**
  * A radius said aloud as a friendly figure ("Use my location", OWNER-DECISIONS
  * 395): below a tenth of a mile, the nearest 10 ft (at least 10), so 15 m is
  * "50 ft (15 m)" and not a falsely precise "49 ft"; miles from there on.

@@ -10,7 +10,8 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
-import { dialFields, type Carrying, type Dials, type When } from "./dials.ts";
+import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
+import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
  * One coloured section of the route, in whole metres along its traced length
@@ -349,7 +350,82 @@ export interface Dodges {
   items: Dodge[];
 }
 
+/** A dock, a free-floating e-bike or the destination, as a bikeshare plan uses it (core.api.BikeshareStopOut). */
+export interface BikeshareStop {
+  kind: "dock" | "free_bike" | "outside_dock";
+  name: string;
+  lon: number;
+  lat: number;
+  station_id?: string | null;
+  availability: "known" | "unknown";
+  /** Bikes of the chosen type at the dock; null: unknown, or not a dock. */
+  bikes_available: number | null;
+  classic_available?: number | null;
+  ebikes_available?: number | null;
+  /** Free slots; null: unknown, or not a dock. */
+  docks_available: number | null;
+}
+
+/** A walk leg (core.api.BikeshareWalkOut). */
+export interface BikeshareWalk {
+  geometry: { type: "LineString"; coordinates: LonLat[] };
+  distance_m: number;
+  duration_s: number;
+  to: string;
+}
+
+/** The operator's own price information (core.api.BikeshareFeeOut): information, not a quote. */
+export interface BikeshareFee {
+  name: string;
+  price: string;
+  currency: string;
+  description: string;
+}
+
+/** One way to end an e-bike ride (core.api.BikeshareEndingOut, OWNER-DECISIONS 244). */
+export interface BikeshareEnding {
+  kind: Ending;
+  offered: boolean;
+  chosen: boolean;
+  reason: "no_zone_data" | "zones_unreadable" | "no_parking_zone" | "classic_bikes_end_at_docks" | null;
+  reason_text: string | null;
+  fee: BikeshareFee | null;
+  fee_text: string | null;
+  walk_m: number | null;
+  text: string;
+}
+
+/**
+ * The walks, docks, availability, fee and notes of a bikeshare plan (core.api.BikesharePlanOut,
+ * FOLLOWUP-BIKESHARE). The route body around it is the ride leg between the docks.
+ */
+export interface BikesharePlan {
+  bike: Bike;
+  ending: Ending;
+  start: BikeshareStop;
+  end: BikeshareStop;
+  walk_start: BikeshareWalk | null;
+  walk_end: BikeshareWalk | null;
+  ride_m: number;
+  ride_s: number;
+  walk_m: number;
+  walk_s: number;
+  total_s: number;
+  availability: "live" | "stale" | "unknown";
+  endings: BikeshareEnding[];
+  pricing: BikeshareFee[];
+  pricing_note: string | null;
+  steps: { kind: "walk" | "ride"; text: string }[];
+  /** The plan in plain words, US units first, for reading aloud. */
+  summary: string;
+  notes: string[];
+  /** The plain source citation (OWNER-DECISIONS 301). */
+  credit: string;
+}
+
 export interface RouteResponse {
+  /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
+  bikeshare?: BikesharePlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
@@ -472,6 +548,7 @@ export type ErrorKind =
   | "rate-limited"
   | "router-down"
   | "timed-out"
+  | "bikeshare-unavailable"
   | "server"
   | "network";
 
@@ -494,6 +571,9 @@ export interface RouteError {
 
 /** The API's code on a long ride's 503 when its time budget ran out. */
 export const LONG_RIDE_TIMED_OUT = "long_ride_timed_out";
+/** The API's codes on a bikeshare plan's 503 (the operator's station list unavailable) and 422 (no dock to use). */
+export const BIKESHARE_UNAVAILABLE = "bikeshare_unavailable";
+export const NO_BIKESHARE = "no_bikeshare";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
@@ -595,6 +675,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }
+  if (status === 422 && code === NO_BIKESHARE) {
+    return {
+      ...base,
+      kind: "no-route",
+      title: "No bikeshare plan",
+      message: said ? asSentence(said) : "No dock can be used for this plan. Try the other bike type.",
+    };
+  }
   if (status === 404 || status === 422) {
     return {
       ...base,
@@ -617,6 +705,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       kind: "router-down",
       title: "Router unavailable",
       message: "The routing engine is not answering right now. Try again shortly.",
+    };
+  }
+  if (status === 503 && code === BIKESHARE_UNAVAILABLE) {
+    return {
+      ...base,
+      kind: "bikeshare-unavailable",
+      title: "Bikeshare data unavailable",
+      message: `Station data is not available right now, so no dock can be chosen. ${wait(retryAfterS, "Try again shortly.")}`,
     };
   }
   if (status === 503 && code === LONG_RIDE_TIMED_OUT) {
@@ -680,9 +776,10 @@ export async function requestRoute(
         preset,
         // A Mass Ride keeps Make it a loop for the next ride type but has no
         // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
-        // routing.loop_wanted ignores it there too.
+        // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
+        // its API refuses one, so a loop kept from another ride type is not sent.
         ...(options.dials
-          ? dialFields(preset === "mass-ride" ? { ...options.dials, loop: false } : options.dials)
+          ? dialFields(preset === "mass-ride" || preset === "bikeshare" ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),
@@ -716,4 +813,53 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */
+export type StationsResult = { ok: true; answer: NearbyStationsAnswer } | { ok: false; message: string };
+
+function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
+  if (typeof body !== "object" || body === null) return false;
+  const r = body as Record<string, unknown>;
+  return (
+    (r.action === "pickup" || r.action === "dropoff") &&
+    (r.availability === "live" || r.availability === "stale" || r.availability === "unknown") &&
+    Array.isArray(r.stations)
+  );
+}
+
+/**
+ * The three nearest stations to a point to take a bike from (at least 3/4 full) or return one to
+ * (at most 1/4 full). A POST, so the point is in the body and not in an address. Nothing about the
+ * rider goes with it but the point, and the answer is kept nowhere.
+ */
+export async function requestStations(
+  point: LonLat,
+  action: StationAction,
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {},
+): Promise<StationsResult> {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  let response: Response;
+  try {
+    response = await fetchImpl("/api/bikeshare/stations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ point, action }),
+      signal: options.signal,
+    });
+  } catch {
+    return { ok: false, message: "The station list did not load. Check your connection and try again." };
+  }
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (response.ok && looksLikeStations(body)) return { ok: true, answer: body };
+  if (response.status === 429) return { ok: false, message: "Too many requests just now. Try again in a minute." };
+  if (response.status === 503) {
+    return { ok: false, message: "Station availability is not available right now. Try again shortly." };
+  }
+  return { ok: false, message: "The station list is not available right now." };
 }

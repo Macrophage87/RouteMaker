@@ -60,8 +60,12 @@ import { RouteDescription } from "./RouteDescription.tsx";
 import { RIDE_SAFETY, RideMode, RideSettingsFields, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { RIDE_MAX_M, RIDE_TOO_LONG } from "./lib/navigate.ts";
+import { BikeshareSummary } from "./BikeshareSummary.tsx";
+import { NearbyStations } from "./NearbyStations.tsx";
+import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
+import { bikeshareOf, routeCredits } from "./lib/bikeshare.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
-import { rideSizeOf, type Dials } from "./lib/dials.ts";
+import { rideSizeOf, type Dials, type Ending } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
@@ -215,11 +219,18 @@ export function App() {
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
   const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
+  // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
+  // forgotten when its point moves; added to the request only, never to the link.
+  const [stationPins, setStationPins] = useState<Pins>({});
+  const stationChoice = useMemo(() => activePins(preset, points, stationPins), [preset, points, stationPins]);
   // Mass Ride's ride size (PLAN items 128, 139) only redraws the corker load: it is never sent, so moving it
   // must not plan again. The dials the request is made from leave it out, keyed on what is left.
   const { rideSize, ...routeDials } = dials;
   const routeKey = JSON.stringify(routeDials);
-  const planDials = useMemo(() => withWeight(routeDials, weight), [routeKey, weight]);
+  const planDials = useMemo(
+    () => withStations(withWeight(routeDials, weight), stationChoice),
+    [routeKey, weight, stationChoice],
+  );
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -1094,6 +1105,15 @@ export function App() {
     if (said) announce(said);
     setPreset(id);
     setDials(next);
+    // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
+    setStationPins({});
+  };
+  const chooseStation = (action: StationAction, station: NearbyStation | null, point: LonLat) => {
+    setStationPins((pins) => ({
+      ...pins,
+      [action]: station ? { id: station.station_id, name: station.name, at: point } : undefined,
+    }));
+    announce(chosenSaid(action, station));
   };
   const confirmLong = () => {
     const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
@@ -1240,6 +1260,8 @@ export function App() {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
+    // A bikeshare ride runs dock to dock, not between the points: its line is not theirs to drag.
+    if (bikeshareOf(shown)) return null;
     const path = shown.geometry.coordinates;
     // A loop's legs close on the start (OWNER-DECISIONS 374), so the API's
     // leg ends fit them.
@@ -1393,6 +1415,13 @@ export function App() {
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
+      {preset === "bikeshare" && (
+        <p className="hint">
+          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station below. Remove any stops
+          to plan one.
+        </p>
+      )}
+      {preset === "bikeshare" && <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />}
       {routeShownForPoints && points.length >= 2 && (
         <button
           type="button"
@@ -1537,7 +1566,7 @@ export function App() {
           <p>
             <strong>{status.error.title}.</strong> {status.error.message}
           </p>
-          {["router-down", "timed-out", "server", "network", "rate-limited"].includes(status.error.kind) && (
+          {["router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"].includes(status.error.kind) && (
             <button type="button" onClick={retry}>
               Try again
             </button>
@@ -1559,6 +1588,7 @@ export function App() {
           pickerCount={candidateRows(answer)?.length ?? 0}
           ride={{ onStart: startRide, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
+          onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
         />
       )}
       {shown && waterOn && waterStatus === "ready" && (
@@ -2054,6 +2084,7 @@ function RouteSummary({
   pickerCount,
   ride,
   rideSize,
+  onEnding,
 }: {
   route: RouteResponse;
   points: LonLat[];
@@ -2068,6 +2099,7 @@ function RouteSummary({
   pickerCount: number;
   /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
   rideSize: number;
+  onEnding: (ending: Ending) => void;
 }) {
   useStressStyle();
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
@@ -2087,8 +2119,10 @@ function RouteSummary({
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   const junctions = route.intersections == null ? null : junctionItems(route).length;
-  // Start ride is offered with the directions too (plan Q1).
-  const rideable = route.distance_m <= RIDE_MAX_M;
+  const bikeshare = bikeshareOf(route);
+  // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
+  // is only the ride between the docks, so the walk to the first dock would read as off route.
+  const rideable = !bikeshare && route.distance_m <= RIDE_MAX_M;
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
@@ -2096,6 +2130,7 @@ function RouteSummary({
   ) : null;
   return (
     <div className="summary">
+      {bikeshare && <BikeshareSummary plan={bikeshare} onEnding={onEnding} />}
       {moved && (
         <p className="notice moved-points" role="note">
           {moved}
@@ -2141,6 +2176,7 @@ function RouteSummary({
           <dd>{formatClimb(route.descent_m)}</dd>
         </div>
       </dl>
+      {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && (
@@ -2173,7 +2209,7 @@ function RouteSummary({
           </button>
           <p className="hint">Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.</p>
         </div>
-      ) : (
+      ) : bikeshare ? null : (
         <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
       )}
       <FacilityBreakdown route={route} part="notices" />
@@ -2233,7 +2269,7 @@ function RouteSummary({
           ? "To reshape the route, press and hold the line, then drag it."
           : "To reshape the route, drag the line."}
       </p>
-      <p className="route-credit">Route data: {route.attribution.join("; ")}.</p>
+      <p className="route-credit">Route data: {routeCredits(route).join("; ")}.</p>
     </div>
   );
 }

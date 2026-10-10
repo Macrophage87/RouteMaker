@@ -1601,7 +1601,7 @@ about today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is about today's 4 to 80.
 | primary, 2 lanes each way, 35 mph | 0 / 1.05 | 1.14 / 4.62 (4.1x) | 2.63 / 10.42 (4.0x) | 4.70 / 21.06 (4.5x) | 6.23 / 29.80 (4.8x) | 7.38 / 36.74 (5.0x) |
 | primary, 2 lanes each way, 40 mph, painted lane | 0 / 0.82 | 1.26 / 3.97 (3.1x) | 3.00 / 9.10 (3.0x) | 5.51 / 18.42 (3.3x) | 7.39 / 26.08 (3.5x) | 8.82 / 32.14 (3.6x) |
 | trunk, 3 lanes each way, 45 mph | 0 / 0.91 | 1.55 / 4.63 (3.0x) | 3.85 / 10.88 (2.8x) | 7.58 / 22.74 (3.0x) | 10.54 / 32.62 (3.1x) | 12.84 / 40.52 (3.2x) |
-| primary, 2 lanes each way, 55 mph | 0 / 0.82 | 1.46 / 4.19 (2.9x) | 3.59 / 9.78 (2.7x) | 6.76 / 20.15 (3.0x) | 9.20 / 28.70 (3.1x) | 11.07 / 35.51 (3.2x) |
+| primary, 2 lanes each way, 55 mph (89 km/h) | 0 / 0.81 | 1.47 / 4.18 (2.8x) | 3.61 / 9.77 (2.7x) | 6.81 / 20.12 (3.0x) | 9.27 / 28.68 (3.1x) | 11.16 / 35.48 (3.2x) |
 
 Over every combination of class, 1-4 lanes, no, shared or painted lane and a
 prior truck route, the smallest ratio at slider positions 5 to 100 is at
@@ -5654,19 +5654,27 @@ target, the graph and `refine.quiet_cost_per_m`):
   `BicycleCost::EdgeCost`: `1 + accommodation x roadway stress`, the lane, truck, class and
   speed terms, `use_sidepath` from LTS 3 off trail-class ways, the network factor), with
   the speed the graph gave the edge (`road_speed_kph`: 140 on a graded edge, which reports
-  15 lanes; a tagged `maxspeed`; else the class default or, density over 8, the builder's
-  urban speed, mjolnir/speed_assigner.h). Grade, surface, turns, gates and the alley charge
-  are left out (not traffic, or counted on their own). `M = factor / 2.2`
-  (`refine.QUIET_COST_FACTOR`), plus the calm-rate term above 80; at the top of the slider
-  LTS 3 and up keep the worth rule's figure (the ranking's own price), and stairs and
-  ferries their tier's. It reproduces the "Graded stress" table above to 0.01
-  (`tests/test_calm.py` `TestOwnCost`). A quiet urban residential street reads about 0.80
-  at Default, a path 0.54. The sums run over every piece; each section's step is its mean.
+  15 lanes, taken as tagged, so 130 rough and 175 on a turn channel; a tagged `maxspeed`;
+  else the class default or, density over 8, the builder's urban speed,
+  mjolnir/speed_assigner.h). A graded edge carries the sidepath term whatever the live
+  tier says. Grade, surface, turns, gates and the alley charge are left out (not traffic,
+  or counted on their own). `M = factor / calm.quiet_factor`, the same factor for a
+  residential street with no lane at its default speed (urban or rural, as the road is) at
+  the ride's `use_roads`, so each figure is relative to the local quiet street: the
+  reference road (an untagged residential street) reads exactly 1 (461d), a residential
+  street tagged 25 mph about 1.13, and a path about 0.67 at Default; plus the calm-rate term above 80. At the top of the slider LTS 3 and up keep
+  the worth rule's figure (the ranking's own price), and stairs and ferries their tier's.
+  It reproduces the "Graded stress" table above, every cell, to 0.01 (`tests/test_calm.py`
+  `TestOwnCost`). Each piece is priced at its stress section's tier and rating
+  (`calm.with_section_tiers`), so a folded sliver is neither a rated island nor an
+  unshown Avoid entry. The sums run over every piece; each section's step is its mean.
   A Valhalla upgrade that touches `bicyclecost.cc` or the speed assigner must be checked
   against `edge_factor`.
 - **The tier's figure** (`calm.multiplier`) stands in for a piece with no edge attributes (a
-  router or test double not asked for them; `estimate: true`), and the band edges are read
-  from it. Each stress section (`stress_spans`) then counts its length times its
+  router or test double not asked for them; `estimate: true`). So does a stress edit since
+  the last rebuild: where the live tier and the graph disagree about grading
+  (`calm.disagrees`), the road keeps the graph's cost and the answer says `estimate: true`.
+  Each stress section (`stress_spans`) then counts its length times its
   multiplier `M`, a quiet street's metre being 1. At LTS 3 and up, `M = 1 + added / 2.2 + rate x w(L)`: `added` is
   the middle of the five modelled road types' range for the slider's `use_roads` (the
   "Graded stress" table above; linear between its columns), 2.2 is
@@ -5683,7 +5691,10 @@ target, the graph and `refine.quiet_cost_per_m`):
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
   0.679 at 40, 1 from 70). At the top of the slider the worth rule's exchange stands in
   (`refine.stress_weight_m`): a red junction 5 x 2 x its cost, an orange one 5 x 1, an
-  unflagged one nothing (2.5 in place of 5 with a target). This is not 469b(5)'s
+  unflagged one nothing (10 in place of 5 with a target). A junction's cost is in feet of
+  quiet riding and Avoid's entry in quiet metres, so both count one for one beside each
+  road's own cost (461d: "1,200 ft = about 0.23 calm mi"), and the worth figure is
+  unscaled at the top of the slider, like the LTS 3 and up stretches. This is not 469b(5)'s
   `calm_mi`, which is the junction's own cost for the junction list on
   `wip/isect-costs-c`; at 70 and above the two agree. Each is counted once in every
   window that holds it, so a crossing raises the mile around it. A junction or Avoid
@@ -5701,31 +5712,35 @@ target, the graph and `refine.quiet_cost_per_m`):
 it failed; a failure costs only the score): `ratio` (one per `profile.m`), `steps` (each
 section's own multiplier and tier), `points` (junctions and Avoid entries, with a flagged
 junction's marker), `total_calm_m`, `rated_m`, `junctions_counted` (false where the
-junctions were not read), `bands` (the 2.5 and 3.5 half-step midpoints at this position,
-461a: 2.67 and 9.34 at Default), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
+junctions were not read), `bands` (461a; read from representative roads at their own cost, `calm.BAND_*`: halfway
+between a 25 mph collector at LTS 2 and at LTS 3, and between a 40 mph two-lane-each-way
+primary at LTS 3 and a graded street at LTS 4; 2.01 and 11.26 at Default; a guide, so at 10 on
+the slider a 35 mph two-lane-each-way LTS 2 primary reads "LTS 3 level", and at the top
+of the slider they mix a road's own cost with the worth rule's tier prices), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
 and the Avoid entries); the others count in `ratio` and the total. On a long route the
 highest window's sample is kept when the profile is thinned (`calm.peak_index`), so the
 most stressful mile survives.
 
 **Where it differs from the design** (stress-number.md section 4): the step line is each
-section's mean, not every edge; the band edges are the tier's figures, a guide; half steps
-are not read yet; Mass Ride has no calm-mile score (it has its three charts instead, the
-owner's answer of 2026-10-10, below). The owner's question of 2026-10-10 (was the
-per-tier estimate acceptable?) is settled by building the exact cost; the estimate is now
-only the fallback.
+section's mean, not every edge; the band edges come from representative roads, so each
+tier's typical road lands in its own band; half steps are not read yet; Mass Ride has no
+calm-mile score (it has its three charts instead, from the owner's words of 2026-10-10,
+below). The owner's question of 2026-10-10 (was the per-tier estimate acceptable?) is
+answered by building the exact cost, normalised so the local quiet street is 1 (the scale
+the owner sees is unchanged); the estimate is now only the fallback.
 
 **The chart** (`ElevationChart.tsx`; the decisions in `lib/profileChart.ts`, "The rolling
 stress chart"): a log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
 value, so 1.4 and a spike at 14 both read; the area filled in the map's LTS 2, 3 and 4
 colours with the stress bar's patterns, cut where the line crosses a guide; dotted guides
-at the two band edges, labelled "LTS 3 from 2.7" and "LTS 4 from 9.3" in the text colour
+at the two band edges, labelled "LTS 3 from 2.0" and "LTS 4 from 11.3" in the text colour
 beside a swatch with the band's colour and pattern (only the LTS 4 guide where both edges
 are one, at 0 on the slider, where LTS 3 costs nothing extra); the side's figures 0.5, 1,
 2, 5, 10 ... to the top; a quiet line at 1; a dashed step line of each section's own
 figure, so a short busy stretch is seen at its true level (the step line and the guides are
 the text colour over a casing in the panel colour, so one is 3:1 from any band); Avoid stretches as the magenta "A" blocks;
 and the flagged junctions' triangle and diamond above the track. The key says it is a log scale and
-that 1 is a typical quiet street (and calls it an estimate only with `estimate: true`). The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
+that about 1 is all quiet streets (and calls it an estimate only with `estimate: true`). The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
 level" (", Avoid nearby" where the window holds some) and "Next junction to watch: very
 high stress, mile 1.4", so the markers have words. The summary gives the route's total in
 calm miles with calm km in brackets, the average (calm km per km), the most stressful mile
@@ -5736,16 +5751,18 @@ junctions since the row before. An older answer with no `calm`, or one whose sco
 (`calm: null`), keeps the strip.
 
 Mass Ride has no rolling stress line (its routing charges no junction cost and almost
-nothing for traffic: use_roads 1, no grading). The owner settled what it shows instead on
-2026-10-10: "Have 3 charts for mass ride: Riders per minute, Corker load, Elevation. They
-should all be there." That matches 147 ("visualize rider flow, elevation, and anticipated
-corker requirements over the route"). So the Mass Ride score is not one number: the riders
-per minute stay the headline figure (116, 118, 328-329), and a Mass Ride draws three
-charts on one distance axis, riders per minute, the corker load and the elevation (built
-on `claude/v0-4-0-mass-charts`; "A Mass Ride's three charts" in the route chart above). The
-calm-mile line is not drawn for a Mass Ride. The corker load rolls with the length of the
-ride (the owner, 2026-10-10): the corkers held at once by a group of the anticipated ride
-size, with "about N corkers" for the ride. Half steps arrive with the half-step editor
+nothing for traffic: use_roads 1, no grading). The owner wrote on 2026-10-10: "Have 3
+charts for mass ride: Riders per minute, Corker load, Elevation. They should all be
+there." That matches 147 ("visualize rider flow, elevation, and anticipated corker
+requirements over the route"). So a Mass Ride has no calm-mile score: the riders per
+minute stay the headline figure (116, 118, 328-329), and a Mass Ride draws three charts on
+one distance axis, riders per minute, the corker load and the elevation (built on
+`claude/v0-4-0-mass-charts`; "A Mass Ride's three charts" in the route chart above). The
+corker load rolls with the length of the ride (the owner, 2026-10-10: "Corkers were
+intended to also have a rollback based on the length of the ride"): the corkers held at
+once by a group of the anticipated ride size, with "about N corkers" for the ride; its
+defaults (rotation factor 2, 2 corkers a junction where one-way is not known, 500 riders)
+are open for the owner. Half steps arrive with the half-step editor
 (the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
 change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
 the model's own `cost_ft`.
@@ -5961,3 +5978,88 @@ Detour here re-plans through `replan(here, via)`: `replanPoints` gives here, the
 and the end, and `detourPoints` puts the place second, so the new route cues it as a stop. It goes
 through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
 way is said and left alone.
+
+## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
+
+`POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and
+optionally `ending` (`dock`, or `outside_dock` for an e-bike) plans a walk, a ride dock to dock and
+a walk. Two points only. The answer is the ride leg's route body, with the walks, docks,
+availability, fee information and notes under `bikeshare` (`core.api.BikesharePlanOut`).
+
+- `core/gbfs.py`: the operator's official GBFS feeds. One live copy for the whole deployment, not one
+  per api worker: a worker looks at its own memory (`CACHE_TTL_S` 60 s), then at the shared copy
+  (`DatabaseStore`: the single row of `core.models.BikeshareFeedCache`, replaced in place at each
+  refresh, with a PostgreSQL advisory lock so only one worker reads the feeds while the others wait up
+  to `SHARED_WAIT_S` for its row), and only then reads the feeds. A `STALE_GRACE_S` of 120 s serves the
+  last copy when a refresh fails, and `FAILURE_PAUSE_S` 15 s (noted in the row, so every worker
+  honours it) before trying again; only `https` on `ALLOWED_HOSTS`, redirects included; no history is
+  kept (no earlier reading, no row per station or reading), nothing is republished or exported, and a
+  request carries no user data (no cookie, no address, no body). A feed that fails is "unknown", never
+  "empty": no `station_status` means availability is unknown and the plan says so. `StationStatus`
+  keeps `num_bikes_disabled`, `num_docks_disabled`, `is_renting`, `is_returning` and `last_reported`;
+  a station whose `last_reported` is more than `STATION_STALE_S` (30 min) before the reading
+  (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
+  `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
+  and never touch the network.
+- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
+  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
+  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
+  Valhalla pedestrian costing on the standard graph at 3 mph.
+- The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
+  exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
+  hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
+- The out-of-dock ending (244) needs the operator's `geofencing_zones` (GBFS 2.1) and a destination in
+  no zone that bars ending a ride. The operator publishes none today, so only docks are offered, and
+  the answer says why (`endings[].reason`). The fee is read from `system_pricing_plans`, matched by
+  what the plan says (`gbfs.OUT_OF_DOCK`); with none named the answer says the fee is not in the
+  operator's data. Fees are shown as information, never as a quote, and none is built in.
+- Tiles: the standard graph is built with `include_pedestrian: true`; a pedestrian route over it was
+  checked on 2026-10-04 (Union Station to the Capitol area, 1.04 km). The graph's stress remap can
+  make a cycleway cost like a path closed to pedestrians for bicycles only; walking uses Valhalla's
+  own pedestrian costing and is not routed by stress.
+- Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py`,
+  `tests/test_bikeshare_shared.py` (the shared copy), `tests/test_bikeshare_nearby.py` (the nearest
+  stations, stale stations, a chosen station) (fixtures in `tests/data/gbfs`, a sample and not a
+  dataset), `frontend/src/lib/bikeshare.test.ts`, `frontend/src/lib/stations.test.ts`, sections 23 and 24 of
+  `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.
+
+Source citation and licence notes (OWNER-DECISIONS 301, 304, 305): the map attribution and the route
+credits say "Capital Bikeshare" and nothing more (`core.gbfs.CREDIT`, `BIKESHARE_CREDIT` in
+`frontend/src/lib/bikeshare.ts`; a test holds them equal). What it cites is the operator's official GBFS
+feed, operated by Lyft, used under the operator's Data License Agreement (item 300: official endpoints
+only, short in-memory caching, no republishing, no logos, no implied affiliation, nothing tied to users).
+Out-of-dock endings stay off for good: the operator's no-parking zones exist only inside its app, with no
+public map or feed, so using them would breach the licence. The plan says so in plain words and links
+https://capitalbikeshare.com/how-it-works/ebike for the current parking rules. No fee is built in.
+
+### The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a)
+
+When a rider is choosing where to undock, the Bikeshare panel lists the 3 stations nearest the start
+that are **at least 3/4 full** (bikes / (bikes + free docks) >= 0.75, installed, renting, reporting in
+the last 30 minutes); when choosing where to dock, the 3 nearest to the end that are **at most 1/4 full**
+(<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
+reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
+question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
+programme; nothing is ranked beyond distance, and the rider chooses.
+
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
+  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
+  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
+  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+  no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
+  no station list; with no availability feed `availability` is `unknown` and the list is empty.
+- A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
+  id; Bikeshare only; not a drop-off with the `outside_dock` ending). The plan starts or ends there in
+  place of the nearest docks; if the station can no longer serve (no bike of the type, not renting,
+  full, silent for 30 minutes) the answer is 422 `no_bikeshare` saying why, never a silent swap.
+- Front end: `NearbyStations.tsx` under the points while the ride type is Bikeshare, a pick-up list
+  once a start is placed and a drop-off list once an end is. Each station is a real `<button>` named
+  exactly as it is read, "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)" (`lib/stations.ts` `stationLabel`, US
+  units first, metric in brackets), with `aria-pressed` for the chosen one (also marked in text, not by
+  colour alone) and a polite status line (loading, how many, none, an error). Pressing the chosen
+  station again hands the choice back. A chosen station is session state in `App` (`stationPins`),
+  forgotten when its point moves or the ride type changes, added to the request by
+  `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
+- Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
+  section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).

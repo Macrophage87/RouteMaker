@@ -1103,11 +1103,11 @@ export function placeCrossings(crossings: readonly ProfileCrossing[], x: (m: num
 /**
  * 460.12: "A chart of rolling traffic stress makes more sense than a strip. That way, spikes show up."
  * The line is calm miles per actual mile (461d) over the mile around each point (461e), from the API's
- * `profile.calm` (routemaker.calm): each road at its own routing cost over a quiet metre's, so 1 is a
- * typical quiet street and a path counts below it, and each junction's own cost is counted in every
+ * `profile.calm` (routemaker.calm): each road at its own routing cost over a quiet street's, so 1 is a
+ * quiet street and a path counts below it, and each junction's own cost is counted in every
  * window that holds it. The vertical scale is logarithmic, from
  * `CALM_FLOOR`, so a mile at 1.4 and a spike at 14 both read; the bands' guides are drawn at the API's
- * half-step midpoints (`calm.bands`), where the words change.
+ * band edges (`calm.bands`, read from representative roads), where the words change.
  */
 export const CALM_FLOOR = 0.5;
 
@@ -1299,7 +1299,7 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
   if (rated > 0) {
     const average = calm.total_calm_m / rated;
     out.push(
-      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; 1 is a typical quiet street.`,
+      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; about 1 is all quiet streets.`,
     );
   }
   const peak = calmPeak(profile, calm);
