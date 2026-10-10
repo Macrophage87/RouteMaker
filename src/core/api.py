@@ -49,7 +49,7 @@ from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_v
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, presets, ratelimit, routing, segment_info, stoporder
+from . import geocode, nearest, presets, ratelimit, routing, segment_info, stoporder
 
 logger = logging.getLogger(__name__)
 
@@ -909,6 +909,63 @@ class ProfileRangeOut(Schema):
     to_m: int
 
 
+class ProfileCalmStepOut(Schema):
+    """One stretch of the route at its own multiplier: the faint step line behind the
+    rolling score."""
+
+    from_m: int
+    to_m: int
+    ratio: float | None = Field(
+        description="Calm miles a mile of it counts for; null where it is not rated."
+    )
+    tier: int | None
+
+
+class ProfileCalmPointOut(Schema):
+    """Calm metres counted at one place: a flagged junction, or an entry into Avoid. Every
+    other junction counts in `ratio` and the total but is not listed."""
+
+    m: int
+    calm_m: int = Field(description="The calm (quiet-street) metres it counts for.")
+    kind: Literal["junction", "avoid_entry"]
+    severity: Literal["orange", "red"] | None = Field(
+        default=None, description="A flagged junction's marker; null for the others."
+    )
+
+
+class ProfileCalmOut(Schema):
+    """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
+    calm miles per actual mile over the window centred on each sample (cut at the route's
+    ends), each junction's cost at the ride's intersection weight counted once in every
+    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
+    all quiet-street riding; a path or a protected lane counts below it. Every ride type
+    but Mass Ride."""
+
+    window_m: int = Field(description="The window's length, metres (461e: about a mile).")
+    ratio: list[float | None] = Field(
+        description="At each of `profile.m`; null where the window holds nothing rated."
+    )
+    steps: list[ProfileCalmStepOut]
+    points: list[ProfileCalmPointOut]
+    total_calm_m: int = Field(description="The route's calm metres, junctions included.")
+    rated_m: int = Field(description="The rated metres they are over.")
+    junctions_counted: bool = Field(
+        description="False where the junctions could not be read, so none are counted."
+    )
+    bands: list[float] = Field(
+        description=(
+            "Where the words change: the 2.5 and 3.5 half-step midpoints at this ride's"
+            " slider position (LTS 1-2 below the first, LTS 3 to the second, LTS 4 above)."
+        )
+    )
+    estimate: bool = Field(
+        description=(
+            "True while each tier's cost is the middle of its modelled range, not the"
+            " road's own speed and lanes."
+        )
+    )
+
+
 class ProfileOut(Schema):
     """The route's elevation along its distance, for the route chart (OWNER-DECISIONS
     322, 323; Mass Ride 328, 332, 333, 396). Parallel arrays, one entry a router sample, in
@@ -961,6 +1018,13 @@ class ProfileOut(Schema):
         description=(
             "Mass Ride only: the stretches on a leg that could not be traced, where neither"
             " the width nor the junctions are known."
+        ),
+    )
+    calm: ProfileCalmOut | None = Field(
+        default=None,
+        description=(
+            "The rolling stress score, calm miles per mile (every ride type but Mass Ride);"
+            " null on a Mass Ride or where it could not be built."
         ),
     )
 
@@ -1440,6 +1504,96 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         return Status(200, stoporder.order(body.points, body.preset, dials, started=started))
     except routing.DeadlineExceeded:
         refusal = _error(503, "Finding the best order took too long; try again shortly.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+
+
+class NearestIn(RouteIn):
+    """The route request's body, with `points` the rider's position and then the places."""
+
+    points: list[LonLat] = Field(
+        min_length=2,
+        max_length=1 + nearest.MAX_PLACES,
+        description=(
+            "[lon, lat] pairs: where the rider is first, then one to"
+            f" {nearest.MAX_PLACES} places, each inside the coverage area."
+        ),
+    )
+
+    @field_validator("points")
+    @classmethod
+    def inside_coverage(cls, points: list[list[float]]) -> list[list[float]]:
+        # Coverage only: the places are not a ride from one to the next, so the
+        # route's span limit does not apply; one far off is measured in a straight line.
+        west, south, east, north = settings.COVERAGE_BBOX
+        for index, (lon, lat) in enumerate(points):
+            if not (west <= lon <= east and south <= lat <= north):
+                raise ValueError(f"point {index} is outside the area this map covers")
+        return points
+
+
+class NearestPlaceOut(Schema):
+    distance_m: int | None = Field(
+        description=(
+            "How far the place is, metres: by bike along the router's route, or in a straight"
+            " line when `by` says so; null where the router found no way there."
+        )
+    )
+    time_s: int | None = Field(
+        description="Riding time there, seconds; null by straight line or with no way there."
+    )
+
+
+class NearestOut(Schema):
+    by: Literal["riding", "straight_line"] = Field(
+        description=(
+            "How the distances were measured: by bike on the ride's own graph and settings,"
+            " or in straight lines when the router gave none (or a place is over 93 mi"
+            " (150 km) away)."
+        )
+    )
+    places: list[NearestPlaceOut] = Field(
+        description="One entry per place, in the order sent (`points` after the first)."
+    )
+
+
+@api.post(
+    "/nearest",
+    response={
+        200: NearestOut,
+        400: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="How far a few places are to ride from the rider (nearest water, restroom, Metro)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    json_body_only,
+    errors_as_json,
+)
+def nearest_places(request, body: NearestIn, response: HttpResponse):
+    """The nearest water, restroom or Metro station (owner, 2026-10-10): the page sends
+    where the rider is and the few nearest places in straight lines, with the ride's
+    preset and dials; the answer is how far each is by bike on the ride's own graph, so
+    the page offers the three nearest. Nothing is planned. `loop`, `confirm_long`,
+    `target_distance_m` and `system_weight_kg` are accepted and play no part."""
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+    )
+    started = getattr(request, "routing_started", None)
+    try:
+        return Status(200, nearest.distances(body.points, body.preset, dials, started=started))
+    except routing.DeadlineExceeded:
+        refusal = _error(503, "Finding the nearest places took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
 

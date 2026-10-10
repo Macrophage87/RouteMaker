@@ -601,7 +601,12 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // Storage is the one term left out: session() is the sign-in round trip's, on purpose (signIn.ts).
   assert.doesNotMatch(app, new RegExp(LEAKS.source.replace("Storage|", "")));
   assert.doesNotMatch(app, /watchPosition/);
-  assert.equal((app.match(/locate\(/g) ?? []).length, 1, "one look-up path");
+  // Two look-up paths, both through the one gate: Use my location, and the nearest-place search from
+  // the rider's location (lib/nearest.ts), whose position goes only in its own request, as a route's points do.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 2, "two look-up paths");
+  const nearest = body(app, "const findNearest", "const rideToNearest");
+  assert.match(nearest, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*gate\.finish\(press\);/);
+  assert.doesNotMatch(nearest, LEAKS);
   for (const file of ["../PlaceSearch.tsx", "../MapView.tsx"]) assert.doesNotMatch(code(read(file)), LEAKS, file);
 });
 
@@ -618,7 +623,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
     /const linkNote = linkLocationNote\(points, fromHere\);/,
     /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
-    /accuracy=\{hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null\}/,
+    /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
   ];
   assert.ok(lines.length >= allowed.length);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
@@ -626,6 +631,9 @@ test("privacy: the location state reaches only the note, the hint and the circle
   const noteUse =
     /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|rememberPlanForSignIn\(session\(\), window\.location\.hash, linkNote !== ""\)/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
+  // The circle round the located point goes to the map's accuracy prop and nowhere else.
+  const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;
+  for (const line of app.split("\n").filter((l) => /\bhereCircle\b/.test(l))) assert.match(line, circleUse, line.trim());
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");
