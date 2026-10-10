@@ -377,8 +377,8 @@ test("a mountain-bike level's swatch is the map's casing and coloured pattern on
       const paint = mtbLevelPaint(shape.level, strong);
       assert.ok(html.includes(`fill="${MTB_TRAIL.legendGround}"`), html);
       const [casing, line] = [...html.matchAll(/<line ([^>]*?)\/?>/g)].map((m) => m[1]);
-      assert.ok(casing.includes(`stroke="${MTB_LEVEL.casing}"`) && casing.includes(`stroke-width="${paint.casing["line-width"]}"`), casing);
-      assert.ok(!casing.includes("stroke-dasharray"), "a solid casing");
+      assert.ok(casing.includes(`stroke="${MTB_LEVEL.tick}"`) && casing.includes(`stroke-width="${paint.casing["line-width"]}"`), casing);
+      assert.ok(casing.includes(`stroke-dasharray="${dashPx(MTB_LEVEL.tickDash, paint.casing["line-width"])}"`), "the cross-ticks, as the map draws them");
       assert.ok(line.includes(`stroke="${shape.color}"`), line);
       assert.ok(line.includes(`stroke-width="${paint.line["line-width"]}"`), line);
       assert.ok(line.includes(`stroke-dasharray="${dashPx(shape.dash, paint.line["line-width"])}"`), line);

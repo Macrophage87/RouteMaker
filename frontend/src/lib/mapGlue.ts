@@ -188,7 +188,7 @@ export function setStressPalette(
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
-  // Each level's line and casing (456): wider with the accessibility switch; the colours stay.
+  // Each level's line and cross-ticks (456): wider with the accessibility switch; the colours and the ticks' dash (in widths) stay.
   for (const { level } of MTB_LEVELS) {
     const paint = mtbLevelPaint(level);
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);

@@ -84,7 +84,7 @@ type MtbLevel = (typeof MTB_LEVELS)[number];
 export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string } {
   return {
     short: `Level ${shape.level} (${shape.name})`,
-    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} on a white edge. Not used for routes.`,
+    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} crossed by dark ticks. Not used for routes.`,
   };
 }
 
@@ -317,7 +317,7 @@ export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
 }
 
 /**
- * A mountain-bike level's swatch (456): its white casing and its coloured pattern at the map's widths, on a
+ * A mountain-bike level's swatch (456): its dark cross-ticks and its coloured pattern at the map's widths, on a
  * strip of the base map's earth colour, as the map draws them.
  */
 export function MtbLevelSwatch({ shape, strong }: { shape: MtbLevel; strong: boolean }): ReactElement {
@@ -327,7 +327,7 @@ export function MtbLevelSwatch({ shape, strong }: { shape: MtbLevel; strong: boo
     "svg",
     { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: `mtb-level-swatch mtb-level-swatch-${shape.level}` },
     h("rect", { x: X1, y: 1, width: LEGEND_SWATCH_PX, height: 10, rx: 2, fill: MTB_TRAIL.legendGround }),
-    line(6, MTB_LEVEL.casing, paint.casing["line-width"]),
+    line(6, MTB_LEVEL.tick, paint.casing["line-width"], dashPx(MTB_LEVEL.tickDash, paint.casing["line-width"])),
     line(6, shape.color, width, dashPx(shape.dash, width)),
   );
 }
