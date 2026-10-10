@@ -803,7 +803,12 @@ The rule reads one new column, `segment.calm_run_m`, written by the rebuild
 - null on every other way, and on a mountain-bike trail (a way in a route=mtb
   relation, one tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`
   unless paved, or one the no-bike-paths rules call mountain-bike only), so
-  those wait for z14 as well.
+  those wait for z14 as well. A way on a national or international bicycle
+  route (ncn, icn: the no-bike-paths rules' own exemption) is never a
+  mountain-bike trail to the map, whatever an mtb relation or tag says
+  (`trail_routes.is_mountain_bike`): the owner, 2026-10-09, found the C&O
+  towpath (USBR 50) missing at z13 and below east of Seneca Creek, OSM way
+  68565884, an open unpaved path that drew at z14. A data rebuild applies it.
 
 The writer marks the candidates (a `calm_run_m` of 0, `trail_routes.is_calm_candidate`)
 and the derive sets them; a road's name is written to `trail_name` for the

@@ -203,7 +203,9 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 #   keeps a paved way only (378); 3 a bicycle route at a regional, national or
 #   international network. A mountain-bike trail (a way in a route=mtb relation
 #   or tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`, unless
-#   paved) has route 0 and no `trail_name`: it never qualifies (378).
+#   paved, and unless on a national or international bicycle route, the C&O
+#   towpath's USBR 50: `pipeline.trail_routes.is_mountain_bike`) has route 0 and
+#   no `trail_name`: it never qualifies (378).
 # - `trail_run_m`: the length in metres of the way's named run, the ways of that
 #   name (case-insensitive) that chain end to end across the region, within
 #   TRAIL_RUN_GAP_M of one another so a road crossing does not break a trail in
