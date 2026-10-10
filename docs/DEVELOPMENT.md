@@ -6431,10 +6431,17 @@ sprite in the Cache Storage bucket `routemaker-offline-v1` (`lib/offlineRouteSto
 ride is one more, replaced by the next. A route is kept under `keptPlanKey`: the plan the route on
 screen answers (set with the answer, so a keep during a re-plan in flight files it under its own plan),
 without Mass Ride's ride size, which the planner never gets; the scheduler's offline lookup, the last
-ride and Settings' Open use the same key. The record names each tile and range as the walk keeps it
-(`progressSaver`, every 2 s and at the end), keeping a plan again starts from what its record named
-(`keptRecord`), and `sweepKept` deletes what no record names (after a Remove, and 20 s after load,
-never while a keep runs in the page). Start ride stops a keep still fetching.
+ride and Settings' Open use the same key (Open keeps the ride size set now). The record names each
+tile and range before it is written (`progressSaver` writes the record every 2 s and at the end), and
+keeping a plan again starts from what its record named (`keptRecord`). Tiles are shared between routes,
+so the Web Locks lock `routemaker-kept` orders every tab: a keep and a hand-on hold it shared for their
+whole run, the final record write included; Remove's freeing, the last ride's replacement and
+`sweepKept` (what no record names, after a Remove and 20 s after load) take it exclusive and work out
+what to free only once they hold it. Remove deletes the record at once and frees later; Remove of the
+route being kept stops that keep and waits for it first. Without Web Locks the freeing waits for this
+page's keeps and the sweep is skipped (`keptLocks`; `offlineKeep.test.ts` runs each order with an
+in-memory store and a fake lock manager). Start ride stops a keep still fetching, and the last ride's
+freeing waits for its final write.
 In the installed app (465a) the last ride's route is kept automatically: at End ride, RideMode's
 `clearCorridor(adoptCorridor)` hands the ride's own corridor over, so nothing is fetched twice. End ride
 stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for it

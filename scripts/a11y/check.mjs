@@ -2735,7 +2735,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes .hint')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
-  const freed = await p.eval("(async () => (await caches.keys()).includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).length : 0)()");
+  // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
+  const emptied = "(async () => (await caches.keys()).includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).length : 0)()";
+  await p.waitFor(`${emptied}.then((n) => n === 0)`, 10000);
+  const freed = await p.eval(emptied);
   check("kept routes: what only that route used is deleted from the device", freed === 0, String(freed));
   await p.close();
 }
