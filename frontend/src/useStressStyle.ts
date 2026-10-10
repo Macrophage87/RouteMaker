@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { highStressLanesOn, styleKey, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
+import { highStressLanesOn, mtbTrailsOn, styleKey, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
 
 /**
  * Re-render the component when the stress colours or their strength change:
@@ -21,4 +21,13 @@ export function useStressStyle(): string {
  */
 export function useHighStressLanes(): boolean {
   return useSyncExternalStore(subscribeHighStressLanes, highStressLanesOn, highStressLanesOn);
+}
+
+/**
+ * Re-render the component when the "Mountain-bike trails" map layer is turned
+ * on or off (OWNER-DECISIONS 454); returns whether it is on. The Map layers
+ * sheet and the legend call this.
+ */
+export function useMtbTrails(): boolean {
+  return useSyncExternalStore(subscribeMtbTrails, mtbTrailsOn, mtbTrailsOn);
 }

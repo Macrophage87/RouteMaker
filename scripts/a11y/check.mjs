@@ -645,6 +645,45 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 12a. "Mountain-bike trails" (OWNER-DECISIONS 454): an optional map layer, off until turned on ----
+{
+  const p = await open();
+  await openSheet(p);
+  const id = "#mtb-trails-switch";
+  const before = await axNode(p, id);
+  check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
+  check("mtb layer: described in plain words: what it draws, from which zoom, and that it is not used for routes",
+    /^Trails for mountain bikes, drawn as a thin grey dotted line from zoom 14\. Not used for routes; Gravel and Mountain Goat may use them\.$/.test(before?.description ?? ""), before?.description ?? "");
+  const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
+  const at = (name) => headings.indexOf(name);
+  check("mtb layer: under its own heading, Trails and terrain, after Rail stations and before Legend",
+    at("Trails and terrain") > at("Rail stations") && at("Rail stations") > at("Traffic stress") && at("Legend") > at("Trails and terrain"), JSON.stringify(headings));
+  await p.eval(`document.querySelector('${id}').focus(); true`);
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space turns it on, it is remembered in this browser, and the focus stays on it",
+    (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on" && (await p.eval(`document.activeElement?.id === 'mtb-trails-switch'`)));
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space again turns it off", (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "false" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "off");
+  await p.close();
+}
+{
+  // Every ride type (454): a Mass Ride has the switch too, and with it on its legend names the line.
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await openSheet(p);
+  await sleep(1500);
+  const ax = await axNode(p, "#mtb-trails-switch");
+  check("mtb layer: a Mass Ride has the same switch", ax?.role === "switch" && ax?.name === "Mountain-bike trails", JSON.stringify(ax));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
+  const row = await p.eval("(() => { const e = document.querySelector('#sheet-layers .mass-legend') && document.querySelector('#sheet-layers [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
+  check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailNot used for routes"), JSON.stringify(row));
+  // Leave the browser as the later sections expect it: the layer off.
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
+  await p.close();
+}
+
 // ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318) ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
@@ -1131,24 +1170,26 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const fold = await p.eval(`(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and stress'); const d = h?.nextElementSibling; return { heading: !!h, details: d?.tagName, open: d?.open, summary: d?.querySelector('summary')?.textContent }; })()`);
   check("chart: an \"Elevation and stress\" fold with its own heading, open beside the map", fold.heading && fold.details === "DETAILS" && fold.open === true && fold.summary === "Elevation and stress", JSON.stringify(fold));
   const first = await axNode(p, ".pc-plot");
-  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
+  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
   check("chart: its description is the key hint only (the summary is the text just before it)", /^Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? "") && !/Over 2\.9 mi/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
   const shares = await p.eval("document.querySelector('.pc-summary').textContent");
   check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
   check("chart: no colour-only cue: the grade bands are named in words, and each has a pattern over the amber", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.includes('Grade 5% to 8%') && l.includes('Grade 8% or more') && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg pattern[id$="-dots"]') && !!document.querySelector('.pc-svg path.pc-band-1[fill$="-dots)"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
-  check("chart: the strip and its key say a traffic-free path as the map does", await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|') === 'Traffic-free path|LTS 2'"), await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|')"));
+  // The rolling stress chart (OWNER-DECISIONS 460.12) in place of the strip: its key names the three levels, the log scale, the estimate and the junction shapes.
+  const calmKey = await p.eval("[...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent)");
+  check("chart: the rolling stress key names its levels, the log scale, the estimate and the junction shapes", ["Low stress (LTS 1 to 2 level)", "LTS 3 level", "LTS 4 level or higher", "Avoid (A where narrow)", "Higher stress junction (triangle)", "Very high stress junction (diamond)"].every((t) => calmKey.includes(t)) && calmKey.some((t) => /log scale/.test(t) && /an estimate/.test(t)), JSON.stringify(calmKey));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const three = await axNode(p, ".pc-plot");
-  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(three?.valuetext ?? ""), three?.valuetext);
+  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
   check("chart: and put a marker on the map, hidden from a screen reader (the sentence is the announcement)", await p.eval("(() => { const m = document.querySelector('.scrub-marker'); return !!m && m.getAttribute('aria-hidden') === 'true' && m.tabIndex < 0; })()"));
   for (let i = 0; i < 9; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const climb = await axNode(p, ".pc-plot");
-  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test(climb?.valuetext ?? ""), climb?.valuetext);
+  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
   await p.shot(`${SHOTS}/chart_stress_focused.png`);
   await p.key("End", "End", 35);
   await sleep(100);
@@ -1160,7 +1201,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   await p.key("c", "KeyC", 67);
   await sleep(100);
-  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("Home", "Home", 36);
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
@@ -1176,8 +1217,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(250);
   check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   // The mouse: hovering moves the same marker. Under load the map draws it late, so wait for
-  // it (up to 2 s) rather than a fixed pause; the check below is unchanged.
-  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
+  // it (up to 2 s) rather than a fixed pause; the check below is unchanged. The chart is scrolled
+  // back into view and its box read again: the taller chart lets Tab scroll it off the panel.
+  const box2 = await p.eval("(() => { document.querySelector('.pc-svg').scrollIntoView({ block: 'center' }); const r = document.querySelector('.pc-svg').getBoundingClientRect(); return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.3 }; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box2.x, y: box2.y });
   await p.waitFor("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout')?.textContent ?? '')", 2000);
   check("chart: hovering the picture moves a marker on the map too, and shows the same sentence", await p.eval("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout').textContent)"), await p.eval("document.querySelector('.pc-readout').textContent"));
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
@@ -1189,12 +1232,14 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(150);
   const table = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); const was = d.open; d.querySelector('summary').click(); const t = d.querySelector('table'); return { was, summary: d.querySelector('summary').textContent, caption: t?.querySelector('caption')?.textContent, heads: [...t.querySelectorAll('thead th')].map((x) => x.textContent), row: [...t.querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), rowHead: t.querySelector('tbody tr:first-child > *').tagName }; })()`);
   await sleep(150);
-  check("chart: the climbs table is behind a closed \"Climbs as a table\"", table.was === false && table.summary === "Climbs as a table", JSON.stringify(table));
+  check("chart: the climbs table is behind a closed \"Climbs and rolling stress as tables\"", table.was === false && table.summary === "Climbs and rolling stress as tables", JSON.stringify(table));
   check("chart: it has a caption and column headers: start, length, gain, average, maximum, stress", table.caption === "Climbs, in the order ridden" && JSON.stringify(table.heads) === JSON.stringify(["Start", "Length", "Gain", "Average grade", "Maximum grade", "Stress"]), JSON.stringify(table));
   check("chart: the climb's row, in feet first", JSON.stringify(table.row) === JSON.stringify(["Mile 1.1", "0.2 mi (0.3 km)", "68 ft (21 m)", "7%", "9%", "LTS 2"]) && table.rowHead === "TH", JSON.stringify(table.row));
   const ax = await axNode(p, ".pc-table");
   check("chart: the table is a table to a screen reader, named by its caption", ax?.role === "table" && ax.name === "Climbs, in the order ridden", JSON.stringify(ax));
-  check("chart: the stress strip is drawn, a section for each stress section, with a frame", await p.eval("document.querySelectorAll('.pc-svg g > rect[fill]').length >= 2 && !!document.querySelector('.pc-strip-frame')"));
+  const rolling = await p.eval(`(() => { const t = [...document.querySelectorAll('.pc-table')][1]; return { caption: t?.querySelector('caption')?.textContent, heads: [...(t?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent), rows: t?.querySelectorAll('tbody tr').length ?? 0, first: [...(t?.querySelectorAll('tbody tr:first-child > *') ?? [])].map((x) => x.textContent) }; })()`);
+  check("chart: the rolling stress table has a caption, headers and a row every half mile from the start to the end", rolling.caption === "Rolling stress, calm miles per mile over the mile around each point" && JSON.stringify(rolling.heads) === JSON.stringify(["At", "Calm miles per mile", "Reads as", "Junctions to watch since the row before"]) && rolling.rows === 7 && JSON.stringify(rolling.first) === JSON.stringify(["Mile 0.0", "0.6", "LTS 1 to 2 level", "None"]), JSON.stringify(rolling));
+  check("chart: the rolling stress line is drawn over its banded area, with its guides labelled and no strip", await p.eval("!!document.querySelector('.pc-calm-line') && document.querySelectorAll('.pc-calm-guide').length >= 2 && !document.querySelector('.pc-strip-frame') && [...document.querySelectorAll('.pc-guide-text')].map((t) => t.textContent).join('|') === 'LTS 3 from 2.7|LTS 4 from 9.3'"), await p.eval("[...document.querySelectorAll('.pc-guide-text')].map((t) => t.textContent).join('|')"));
   check("chart: nothing is wider than the panel at 1280 px", await p.eval("(() => { const c = document.querySelector('.elevation-chart'); return c.scrollWidth <= c.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth; })()"));
   check("chart: no id is used twice (the patterns' ids are unique)", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   await p.close();
@@ -1382,6 +1427,11 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
   // OWNER-DECISIONS 452a: the mountain-bike trails draw in a not-for-routes look, and the stress legend has a row
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
+  // 454: only while their layer is on, which is off until the rider turns it on.
+  check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail')`));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
   const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
     const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
@@ -1389,6 +1439,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
   check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
     !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
   await p.close();
 }
 {
@@ -1813,7 +1864,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 319;
+const EXPECTED = 327;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -206,13 +206,16 @@ test("in the Mass Ride mode every stress and facility layer excludes the feature
     setMassRide(true);
     const filters = stressFilters("weekday_offpeak");
     for (const [id, filter] of Object.entries(filters)) {
+      if (id === "mtb-trail") continue; // its own layer (454): mtbTrailsLayer.test.ts
       const layer = { id, filter } as Layer;
       assert.equal(draws(layer, { rpm: 100, tier: 3, facility: "lane" }), false, `${id} drew a feature with a capacity`);
     }
     // LTS colours, the rails and the tier-5 style: all gone where the tiles carry rpm, none of them touched where they do not.
     const plain = stressFilters("weekday_offpeak", undefined, false);
     for (const [id, filter] of Object.entries(plain)) {
-      assert.deepEqual((filters as Record<string, unknown>)[id], ["all", filter, massHides], id);
+      // The mountain-bike trails' line is a layer of its own in every ride type (454): its filter is unchanged.
+      const expected = id === "mtb-trail" ? filter : ["all", filter, massHides];
+      assert.deepEqual((filters as Record<string, unknown>)[id], expected, id);
     }
   } finally {
     setMassRide(false);

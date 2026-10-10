@@ -366,6 +366,30 @@ const profileFor = (distance, mass = false) => {
           crossing(4000, "9th Street Northwest", "red", "none", 4, true),
         ]
       : null,
+    // Off a Mass Ride, the rolling stress score (OWNER-DECISIONS 460.12, 461d): quiet, a rise over the
+    // mile around the junctions at 2,000 and 3,000 m, an Avoid stretch, so the chart draws all three bands.
+    calm: mass
+      ? null
+      : {
+          window_m: 1609,
+          ratio: m.map((d) => (d < 1200 ? 0.6 : d < 2400 ? 1.8 : d < 3600 ? 11.5 : 3.1)),
+          steps: [
+            { from_m: 0, to_m: 900, ratio: 0.54, tier: 1 },
+            { from_m: 900, to_m: 3200, ratio: 0.95, tier: 2 },
+            { from_m: 3200, to_m: 3300, ratio: 14.34, tier: 5 },
+            { from_m: 3300, to_m: distance, ratio: 0.95, tier: 2 },
+          ],
+          points: [
+            { m: 2000, calm_m: 91, kind: "junction", severity: "orange" },
+            { m: 3000, calm_m: 274, kind: "junction", severity: "red" },
+            { m: 3200, calm_m: 4091, kind: "avoid_entry", severity: null },
+          ],
+          total_calm_m: 9200,
+          rated_m: distance,
+          junctions_counted: true,
+          bands: [2.67, 9.34],
+          estimate: true,
+        },
   };
 };
 const BASE = {
