@@ -29,7 +29,7 @@ test("the traffic-tolerant warning shows at the bottom of the slider, following 
 });
 
 test("Mass Ride's traffic slider is locked, and says why; no other ride type's is", () => {
-  // Trailmaxxing starts at the top (OWNER-DECISIONS 194), so its note is the
+  // Trailmaxxing (OWNER-DECISIONS 194) and Riding with kids (240 (B)) start at the top, so their note is the
   // calm detour's; every other ride type starts with none.
   const mass = panelView("mass-ride", startDials("mass-ride")).traffic;
   assert.equal(mass.disabled, true);
@@ -40,7 +40,7 @@ test("Mass Ride's traffic slider is locked, and says why; no other ride type's i
     const traffic = panelView(preset.id, startDials(preset.id)).traffic;
     assert.equal(traffic.disabled, false, preset.id);
     assert.equal(traffic.note, calmNote(startDials(preset.id).stress, preset.id), preset.id);
-    assert.equal(traffic.note === undefined, preset.id !== "trailmaxxing", preset.id);
+    assert.equal(traffic.note === undefined, preset.id !== "trailmaxxing" && preset.id !== "kids", preset.id);
     assert.equal(traffic.max, STRESS_MAX, preset.id);
   }
 });
@@ -113,7 +113,7 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.match(how, /heavy-traffic roads \(LTS 4\) and very high stress junctions/);
   assert.match(how, /busy roads \(LTS 3\) and higher stress junctions/);
   assert.match(how, /Hills slider\. Then it takes the shorter way\./);
-  assert.match(how, /A quiet street counts the same as a trail\./);
+  assert.match(how, /A quiet street counts the same as a trail, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets \(LTS 2\) count a little extra\./);
   assert.match(how, /no further than 1\.25 times your target distance, or 1\.6 times the usual route/);
   assert.equal(panelView("default", dials, { ...dials, stress: 99 }).traffic.how, undefined, "only the top has it");
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.how, undefined);
@@ -129,7 +129,7 @@ test("no note says the planner favors trails (OWNER-DECISIONS 257 supersedes 202
   const dials = startDials("trailmaxxing");
   const note = panelView("trailmaxxing", dials).traffic.note ?? "";
   assert.match(note, /^Calmest: finds the least stressful route towards your target distance/);
-  assert.match(panelView("trailmaxxing", dials).traffic.how ?? "", /A quiet street counts the same as a trail\./);
+  assert.match(panelView("trailmaxxing", dials).traffic.how ?? "", /A quiet street counts the same as a trail, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets \(LTS 2\) count a little extra\./);
   assert.doesNotMatch(CALM_HOW, /favou?rs? trails/);
   assert.equal(panelView("trailmaxxing", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   for (const preset of PRESETS) {

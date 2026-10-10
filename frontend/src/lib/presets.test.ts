@@ -16,8 +16,22 @@ test("the picker offers every ride type in PLAN's table", () => {
       "cargo",
       "ebike",
       "bikeshare",
+      "kids",
     ],
   );
+});
+
+test("Riding with kids is a ride type of its own, said in plain words (OWNER-DECISIONS 240 (B))", () => {
+  const kids = PRESETS.find((p) => p.id === "kids");
+  assert.ok(kids);
+  assert.equal(kids.label, "Riding with kids");
+  // What the owner asked for, and nothing it does not do: calm first, gentler hills, a child's pace.
+  assert.match(kids.description, /^Children on their own bikes:/);
+  assert.match(kids.description, /quietest streets strongly preferred/);
+  assert.match(kids.description, /busy streets avoided hard/);
+  assert.match(kids.description, /Gentler hills/);
+  assert.match(kids.description, /a child's pace/);
+  assert.equal(parsePreset("kids"), "kids");
 });
 
 test("each preset explains itself in a sentence", () => {

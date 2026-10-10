@@ -8,7 +8,7 @@
 //
 // --port is Vite's; --cdp (or A11Y_CDP_PORT) is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
-import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -2696,12 +2696,168 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 
+// ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
+{
+  const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
+  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids')";
+  await p.eval("document.querySelector('.ride-type-current button').focus(); true");
+  await p.enter();
+  await sleep(300);
+  const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
+    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
+      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
+  check("kids: the ride-type dialog is modal and offers Riding with kids among every ride type, with its sentence",
+    offered.open && offered.modal && offered.cards === 11 && offered.kids && /^Children on their own bikes: /.test(offered.hint ?? ""), JSON.stringify(offered));
+  check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
+  await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
+  const card = await axNode(p, "button[data-kids]");
+  check("kids: the card's accessible name starts with its label", card?.role === "button" && /^Riding with kids\b/.test(card?.name ?? ""), JSON.stringify(card));
+  const before = p.routeRequests;
+  await p.eval(`${kidsCard}.focus(); true`);
+  await p.enter();
+  await sleep(2500);
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent }))()");
+  check("kids: choosing it with Enter closes the dialog and gives the focus back to Change", !chosen.open && chosen.focus, JSON.stringify(chosen));
+  check("kids: the ride type line says Riding with kids, with its sentence", chosen.ride === "Riding with kids" && /^Children on their own bikes: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
+  const sent = JSON.parse(p.routeBodies.at(-1) || "{}");
+  const hash = await p.eval("location.hash");
+  check("kids: it plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
+    p.routeRequests - before === 1 && sent.preset === "kids" && sent.stress === 100 && sent.hills === -80 && /preset=kids/.test(hash) && /stress=100/.test(hash) && /hills=-80/.test(hash),
+    `${p.routeRequests - before} plans, ${JSON.stringify({ preset: sent.preset, stress: sent.stress, hills: sent.hills })}, ${hash}`);
+  const traffic = await axNode(p, ".dials input[type=range]");
+  const sliders = await p.eval("[...document.querySelectorAll('.dials input[type=range]')].slice(0, 2).map((e) => ({ value: Number(e.value), words: e.getAttribute('aria-valuetext') }))");
+  check("kids: the sliders moved to its start and say so in words",
+    sliders[0]?.value === 100 && sliders[1]?.value === -80 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Avoids hills",
+    JSON.stringify({ sliders, traffic }));
+  const line = await axNode(p, ".ride-line-button");
+  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Riding with kids, calmest, avoids hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
+  check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
+  await p.eval("document.querySelector('.ride-type-current button').focus(); true");
+  await p.enter();
+  await sleep(300);
+  const again = await p.eval(`(() => { const k = ${kidsCard}; return { focus: document.activeElement === k, pressed: k?.getAttribute('aria-pressed') }; })()`);
+  await p.escape();
+  await sleep(300);
+  const closed = await p.eval("!document.querySelector('dialog.ride-types').open");
+  check("kids: reopened, the focus starts on its card, which is pressed, and Escape closes the dialog", again.focus && again.pressed === "true" && closed, JSON.stringify({ again, closed }));
+  await p.close();
+}
+{
+  // A shared link opens on it, and at 320 px the dialog's card reflows (WCAG 1.4.10).
+  const p = await open({ route: S_KIDS, hash: hashFor("kids", 100, -80), width: 320, height: 800, mobile: true });
+  const ride = await p.eval("document.querySelector('.ride-type-current strong')?.textContent");
+  await p.eval("document.querySelector('.ride-type-current button').click(); true");
+  await sleep(300);
+  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids');
+    return { client: k?.clientWidth, scroll: k?.scrollWidth, page: document.documentElement.scrollWidth, width: innerWidth }; })()`);
+  check("kids at 320 px: a shared link opens on Riding with kids, and its card fits with nothing spilling sideways",
+    ride === "Riding with kids" && fit.scroll <= fit.client + 1 && fit.page <= fit.width, JSON.stringify({ ride, fit }));
+  await p.shot(`${SHOTS}/kids_320.png`);
+  await p.close();
+}
+
+// ---- The Mass Ride's stops on federal land and its parkway stretches (item 239) ----
+{
+  const p = await open({ route: S_MASS_FEDERAL, hash: hashFor("mass-ride", 0) });
+  // The points list is behind "Edit points" once a route is shown (312).
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('ol.points .point-federal')", 10000);
+  const rows = await p.eval(`[...document.querySelectorAll('ol.points li')].map((li) => ({ role: li.querySelector('.point-name')?.textContent,
+    warning: li.querySelector('.point-federal')?.textContent ?? null, beforeRemove: !!li.querySelector('.point-federal + button'),
+    badge: li.querySelector('.point-federal') ? getComputedStyle(li.querySelector('.point-federal'), '::before').content : null }))`);
+  const end = rows.find((r) => r.role === "End");
+  const start = rows.find((r) => r.role === "Start");
+  check("federal stops: the End row (the Capitol grounds) says the warning with the area and its manager, before Remove, with a ! badge; the Start row says nothing",
+    end?.warning === "Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here." &&
+      end.beforeRemove && end.badge === '"!"' && start && start.warning === null, JSON.stringify(rows));
+  const pins = await p.eval(`(() => { const one = (sel) => { const m = document.querySelector(sel); return m && { federal: m.classList.contains('pin-federal'), label: m.getAttribute('aria-label'),
+    title: m.title, badge: getComputedStyle(m, '::before').content }; }; return { end: one('.pin.pin-end'), start: one('.pin.pin-start') }; })()`);
+  check("federal stops: the End marker wears the badge and says the warning in its name and title; the Start marker does not",
+    pins.end?.federal && pins.end.badge === '"!"' &&
+      pins.end.label === "End. Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Drag to move." &&
+      /federal land: check permit requirements for gathering here/.test(pins.end.title) && pins.start && !pins.start.federal && pins.start.label === "Start. Drag to move.",
+    JSON.stringify(pins));
+  await openDirections(p);
+  const desc = await p.eval(`(() => { const box = document.querySelector('details.route-description .federal-route'); if (!box) return null;
+    const ul = box.querySelector('ul'); const head = document.getElementById(ul?.getAttribute('aria-labelledby') ?? '');
+    const list = document.querySelector('details.route-description ol.description-list');
+    return { heading: head?.textContent ?? null, items: [...ul.querySelectorAll('li')].map((li) => li.textContent),
+      beforeSteps: !!list && !!(box.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING) }; })()`);
+  check("federal stops: Directions names the End's area and the parkway stretch, under a heading that says it is not legal advice, before the steps",
+    desc && /^Federal land on this route\. Information, not legal advice: federal ownership is not police jurisdiction\.$/.test(desc.heading) && desc.beforeSteps &&
+      desc.items.length === 2 && desc.items[0] === "End is inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here." &&
+      desc.items[1] === "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park Service parkway – federal road: check permit requirements for riding it as a group.",
+    JSON.stringify(desc));
+  const ax = await axNode(p, "details.route-description .federal-route ul");
+  check("federal stops: the list is a list named by its heading", ax?.role === "list" && /^Federal land on this route/.test(ax?.name ?? ""), JSON.stringify(ax));
+  await p.shot(`${SHOTS}/federal_stops_panel.png`);
+  // The road panel at the map's center (I): the keyboard's and screen reader's way to ask what a shaded area is.
+  const moved = await jumpMap(p, -77.009, 38.8899, 16);
+  await sleep(400);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  let before = p.infoRequests.length;
+  await armInfoClose(p);
+  await p.key("i", "KeyI", 73);
+  const asked = await infoAsked(p, before);
+  await p.waitFor("/Capitol/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  // The dialog open is what counts here, whatever road heading it shows.
+  const panel = await p.eval(`(() => { const d = document.querySelector('dialog.road-info');
+    return { open: d?.open ?? false, heading: d?.querySelector('h2')?.textContent ?? '', federal: d.querySelector('.road-info-federal')?.textContent ?? null, said: d.querySelector('.road-info-said')?.textContent ?? '' }; })()`);
+  check("federal: I at the map's center over the Capitol grounds names the area, its manager and the permit note, in view and in the dialog's status",
+    moved && asked.asked && panel.open && panel.federal === "Federal land: Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Information, not legal advice: federal ownership is not police jurisdiction." &&
+      /Inside U\.S\. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here\.$/.test(panel.said),
+    JSON.stringify({ moved, asked, panel }));
+  await p.shot(`${SHOTS}/federal_road_info.png`);
+  await p.escape();
+  await infoClosed(p);
+  // Off federal land the panel says nothing of it.
+  await jumpMap(p, -77.04, 38.91, 16);
+  await sleep(400);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  before = p.infoRequests.length;
+  await armInfoClose(p);
+  await p.key("i", "KeyI", 73);
+  const again = await infoAsked(p, before);
+  await p.waitFor("/Connecticut/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  const offPanel = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), federal: !!document.querySelector('dialog.road-info .road-info-federal'), said: document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '' })");
+  check("federal: off federal land the road panel has no federal line", again.asked && offPanel.open && !offPanel.federal && !/federal land/.test(offPanel.said), JSON.stringify({ again, offPanel }));
+  await p.escape();
+  await infoClosed(p);
+  await p.close();
+}
+{
+  // Another ride type through the same points: no warnings anywhere.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await openDirections(p);
+  await sleep(300);
+  const none = await p.eval("({ rows: document.querySelectorAll('.point-federal').length, pins: document.querySelectorAll('.pin-federal').length, desc: document.querySelectorAll('.federal-route').length })");
+  check("federal stops: another ride type has no warning on a row, a marker or the directions (324)", none.rows === 0 && none.pins === 0 && none.desc === 0, JSON.stringify(none));
+  await p.close();
+}
+{
+  // At 320 px with text spacing the row's warning wraps under the point and nothing spills.
+  const p = await open({ route: S_MASS_FEDERAL, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('ol.points .point-federal')", 10000);
+  await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
+    document.querySelector('ol.points .point-federal').scrollIntoView({ block: 'center' }); return true; })()`);
+  await sleep(300);
+  const fit = await p.eval(`(() => { const e = document.querySelector('ol.points .point-federal'); const li = e.closest('li'); const r = li.getBoundingClientRect();
+    return { over: e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > r.right + 1, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("federal stops at 320 px with text spacing: the row's warning wraps, nothing spills", !fit.over && !fit.page, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/federal_stops_320.png`);
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 447;
+const EXPECTED = 466;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

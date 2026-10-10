@@ -83,6 +83,11 @@ TIER_WORDS = {
 }
 UNRATED_WORDS = "stress not rated"
 UNNAMED_PATH = "unnamed path"
+# The street a stretch gets when its pieces have no name (a road) or were not traced. The
+# client reads these as unnamed (frontend/src/lib/federalStops.ts, held equal by
+# tests/test_describe.py TestFrontEndAgrees).
+UNNAMED_ROAD = "unnamed road"
+UNTRACED_STREET = "this part of the route"
 PATH_WORDS = "traffic-free path"
 FACILITY_WORDS = {"protected": "protected bike lane", "lane": "painted bike lane"}
 # The tiers on which a painted lane is not called a bike lane while the client's
@@ -530,10 +535,10 @@ def _movement_between(before: _Run, after: _Run) -> str | None:
 
 def _street_words(run: _Run) -> str:
     if run.untraced:
-        return "this part of the route"
+        return UNTRACED_STREET
     if run.label:
         return run.label
-    return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else "unnamed road"
+    return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else UNNAMED_ROAD
 
 
 def _stretch_sentence(

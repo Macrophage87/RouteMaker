@@ -279,31 +279,129 @@ export function inFederalArea(point: readonly [number, number], geometry: Federa
   );
 }
 
+/** An area a point is in, or next to (within FEDERAL_EDGE_M of its edge). */
+export interface FederalArea {
+  name: string;
+  kind: FederalKind;
+  agency: string | null;
+  /** Outside the area but within FEDERAL_EDGE_M of its outer edge (item 238: err on the side of flagging). */
+  near?: true;
+}
+
+/** How close to an area's outer edge a point outside it is still "next to" it: 66 ft (20 m). */
+export const FEDERAL_EDGE_M = 20;
+const METRES_PER_DEGREE = 111_195;
+
+type Box = [number, number, number, number];
+const boxes = new WeakMap<FederalFeature, Box>();
+
+/** A feature's bounding box, worked out once: most areas are far from any one point. */
+function boxOf(feature: FederalFeature): Box {
+  const cached = boxes.get(feature);
+  if (cached) return cached;
+  const box: Box = [Infinity, Infinity, -Infinity, -Infinity];
+  const walk = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === "number" && typeof value[1] === "number") {
+      box[0] = Math.min(box[0], value[0]);
+      box[1] = Math.min(box[1], value[1]);
+      box[2] = Math.max(box[2], value[0]);
+      box[3] = Math.max(box[3], value[1]);
+      return;
+    }
+    for (const item of value) walk(item);
+  };
+  walk(feature.geometry.coordinates);
+  boxes.set(feature, box);
+  return box;
+}
+
+/** Whether `point` is in the box grown by `dx`, `dy` degrees. */
+const inBox = ([x, y]: readonly [number, number], [w, s, e, n]: Box, dx = 0, dy = 0) =>
+  x >= w - dx && x <= e + dx && y >= s - dy && y <= n + dy;
+
+/** Whether `point` is inside `feature`. */
+export function inFeature(point: readonly [number, number], feature: FederalFeature): boolean {
+  return inBox(point, boxOf(feature)) && inFederalArea(point, feature.geometry);
+}
+
+/** Metres from `point` to the nearest outer ring of `geometry` (local flat-earth, fine at 66 ft (20 m)). */
+export function metresToOuterEdge(point: readonly [number, number], geometry: FederalFeature["geometry"]): number {
+  const polygons = (geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates) as Ring[][];
+  if (!Array.isArray(polygons)) return Infinity;
+  const kx = METRES_PER_DEGREE * Math.cos((point[1] * Math.PI) / 180);
+  const ky = METRES_PER_DEGREE;
+  let best = Infinity;
+  for (const rings of polygons) {
+    const ring = Array.isArray(rings) ? rings[0] : null;
+    if (!ring) continue;
+    for (let i = 1; i < ring.length; i++) {
+      const ax = (ring[i - 1][0] - point[0]) * kx;
+      const ay = (ring[i - 1][1] - point[1]) * ky;
+      const bx = (ring[i][0] - point[0]) * kx;
+      const by = (ring[i][1] - point[1]) * ky;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len = dx * dx + dy * dy;
+      const t = len > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+  }
+  return best;
+}
+
+const areaOf = (feature: FederalFeature, near: boolean): FederalArea => ({
+  name: feature.properties.name,
+  kind: feature.properties.kind,
+  agency: feature.properties.agency ?? null,
+  ...(near ? { near: true as const } : {}),
+});
+
+/**
+ * The most specific federal area `point` is in (FEDERAL_KINDS order); failing that, the most
+ * specific one whose outer edge is within FEDERAL_EDGE_M (item 238: "err on the side of
+ * flagging", for a point on a simplified boundary); null when neither, or with no data.
+ */
+export function federalAreaAt(point: readonly [number, number], data: FederalData | null): FederalArea | null {
+  if (!data) return null;
+  const dy = FEDERAL_EDGE_M / METRES_PER_DEGREE;
+  const dx = dy / Math.max(0.1, Math.cos((point[1] * Math.PI) / 180));
+  let best: FederalFeature | null = null;
+  let nearBest: FederalFeature | null = null;
+  for (const feature of data.features) {
+    if (!inBox(point, boxOf(feature), dx, dy)) continue;
+    if (inFederalArea(point, feature.geometry)) {
+      if (!best || FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(best.properties.kind)) best = feature;
+    } else if (!best && metresToOuterEdge(point, feature.geometry) <= FEDERAL_EDGE_M) {
+      if (!nearBest || FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(nearBest.properties.kind)) nearBest = feature;
+    }
+  }
+  if (best) return areaOf(best, false);
+  return nearBest ? areaOf(nearBest, true) : null;
+}
+
 export interface FederalPoint {
   /** The point's place in the plan (0 is the start). */
   index: number;
   name: string;
   /** Who keeps it: the data's agency, else the kind's label. */
   manager: string;
+  /** Next to the area rather than in it (federalAreaAt). */
+  near?: true;
 }
 
 /**
- * The plan's points that are on federal land, each with the most specific area it
- * is in (FEDERAL_KINDS order): the list under the switch (the a11y review's SF6), so
- * a screen-reader organiser hears whether a stop is on National Park Service land
+ * The plan's points that are on (or next to) federal land, each with its area as
+ * federalAreaAt finds it: the list under the switch (the a11y review's SF6), so a
+ * screen-reader organiser hears whether a stop is on National Park Service land
  * without a pointer. Information, as the shading is.
  */
 export function federalPoints(points: ReadonlyArray<readonly [number, number]>, data: FederalData | null): FederalPoint[] {
-  if (!data) return [];
   const out: FederalPoint[] = [];
   points.forEach((point, index) => {
-    let best: FederalFeature | null = null;
-    for (const feature of data.features) {
-      if (!inFederalArea(point, feature.geometry)) continue;
-      if (!best || FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(best.properties.kind)) best = feature;
-    }
-    if (best) {
-      out.push({ index, name: best.properties.name, manager: best.properties.agency ?? FEDERAL_STYLE[best.properties.kind].label });
+    const area = federalAreaAt(point, data);
+    if (area) {
+      out.push({ index, name: area.name, manager: area.agency ?? FEDERAL_STYLE[area.kind].label, ...(area.near ? { near: true as const } : {}) });
     }
   });
   return out;
