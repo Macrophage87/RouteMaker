@@ -293,11 +293,35 @@ class TestDiminishingReturns:
         assert refine.better(ok, base, ctx)
         assert not refine.better(far, base, ctx)
 
+    def test_below_the_top_a_leg_is_charged_at_the_whole_trips_length(self) -> None:
+        """A leg of a plan with stops (`rest_m`) is charged where the whole trip
+        stands against the target below the top as well (mutation r2)."""
+        ctx = context(rate=5.0, target_m=20_000.0, ceiling_m=25_000.0)
+        base = with_(reading(lts3=400.0, length=5_000.0), cost_s=9_000.0, exposure_m=400.0)
+        longer = with_(reading(length=8_000.0), cost_s=1_000.0, exposure_m=0.0)
+        assert refine.better(longer, base, ctx)  # 8 km, under the target: 300 m needed
+        assert not refine.better(longer, base, ctx, rest_m=15_000.0)  # 23 km: 1,200 m needed
+
+    def test_below_the_top_a_shorter_route_needs_only_the_score(self) -> None:
+        """No longer, a lower score is enough below the top: a route as long but more
+        effort (Hills set to avoid) is never charged for its effort (mutation r2)."""
+        ctx = dataclasses.replace(context(rate=5.0), hills_weight=1.0)
+        base = with_(reading(length=10_000.0), cost_s=9_000.0)
+        for length in (10_000.0, 9_000.0):
+            hilly = with_(reading(lts3=100.0, effort=14_000.0, length=length), cost_s=1_000.0)
+            assert refine.better(hilly, base, ctx), length
+
+    def test_the_ratio_stays_in_its_range(self) -> None:
+        assert refine.worth_ratio(context(rate=-1.0)) == 1.0
+        assert refine.worth_ratio(top_context()) == refine.WORTH_DEFAULT
+        top = dataclasses.replace(top_context(), rate=20.0)
+        assert refine.worth_ratio(top) == refine.WORTH_DEFAULT
+
 
 class TestTheTargetDistance:
-    """OWNER-DECISIONS 271: a target, not a maximum. Up to it, distance is free; past
-    it, the extra must buy stress at the stricter WORTH_OVER_TARGET; never past the
-    ceiling (1.25 times it)."""
+    """OWNER-DECISIONS 271: a target, not a maximum. Up to it, distance costs 1 in 10
+    (WORTH_UP_TO_TARGET; 435, "One rule"); past it, the extra must buy stress at the
+    stricter WORTH_OVER_TARGET; never past the ceiling (1.25 times it)."""
 
     def ctx(self, target=20_000.0) -> refine.Context:
         return top_context(target_m=target, ceiling_m=presets.target_ceiling_m(target))

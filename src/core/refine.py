@@ -260,9 +260,9 @@ class Context:
     # `better`, not by the score, and none longer than `ceiling_m` metres is taken
     # (None: no limit, as below the top). `target_m` is the rider's target distance
     # (OWNER-DECISIONS 271; None: none set), up to which distance costs WORTH_UP_TO_TARGET
-    # (435; free until then) and
-    # past which it must buy stress at WORTH_OVER_TARGET; with none, every extra metre
-    # must buy it at WORTH_DEFAULT (268). `worth_rule` off: no such price (a long
+    # (435, "One rule") and past which it must buy stress at WORTH_OVER_TARGET; with
+    # none, every extra metre must buy it at the slider's `worth_ratio` (268, 435:
+    # WORTH_DEFAULT at the top). `worth_rule` off: no such price (a long
     # plan's legs, whose options are priced for the whole trip, `choose_options`).
     maxcalm: bool = False
     ceiling_m: float | None = None
@@ -502,9 +502,10 @@ def distance_charge_m(
 ) -> float:
     """The stress (metres of LTS 3, `stress_weight_m`) a route must save to be
     `to_m` long rather than `from_m` (actual metres of the whole trip; 268, 271):
-    - with a target, nothing up to it and the actual metres past it over
-      WORTH_OVER_TARGET (the target is in actual miles, 262);
-    - with none, the metres added over WORTH_DEFAULT, as the Hills slider weighs
+    - with a target, the actual metres up to it over WORTH_UP_TO_TARGET (435, "One
+      rule") and those past it over WORTH_OVER_TARGET (the target is in actual
+      miles, 262);
+    - with none, the metres added over the slider's `worth_ratio`, as the Hills slider weighs
       them (`blended_m`, the difference in `level3`; `to_m - from_m` where it is
       not given), so a longer route that is less effort is not charged for it."""
     if ctx.target_m is None:
@@ -555,7 +556,8 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
     """Whether `read` is to replace `best`: below the top of the slider, by the
-    score (IMPROVEMENT_EPS_S); at the top, by `MAXCALM_STEPS` down `Analysis.key`
+    score (IMPROVEMENT_EPS_S), a longer route also worth its extra miles (`worth_it`,
+    435 "One rule"); at the top, by `MAXCALM_STEPS` down `Analysis.key`
     (`calmer`), with diminishing returns on the distance (`worth_it`): a longer
     route must be calmer and worth its extra miles, and a shorter one replaces a
     calmer longer one whose extra miles were not worth it. `rest_m`: see `worth_it`."""

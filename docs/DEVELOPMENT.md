@@ -4267,11 +4267,13 @@ were not worth it:
   LTS 4 saving, against 287(1), which keeps LTS 4 first in the stress order. `choose_options` and the loop's way
   back use the same rule through `worth_it`.
 - **The charge** (`refine.distance_charge_m`), the stress the extra distance must save:
-  - no target: the metres added over `WORTH_DEFAULT` = **5** (1 mi of LTS 3 per 5 mi), measured as
-    the Hills slider weighs distance (`level3`), so a longer route that is less effort with Hills set
-    to avoid is not charged for it;
-  - with a target (271): nothing up to it, and the actual metres past it over `WORTH_OVER_TARGET` =
-    **2.5** (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
+  - no target: the metres added over the slider's `worth_ratio` (435, "One rule"): `WORTH_DEFAULT` =
+    **5** at the top (1 mi of LTS 3 per 5 mi), and below it about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+    measured as the Hills slider weighs distance (`level3`), so a longer route that is less effort
+    with Hills set to avoid is not charged for it;
+  - with a target (271): the actual metres up to it over `WORTH_UP_TO_TARGET` = **10** (1 mi of LTS 3
+    per 10 mi; 435, where 271 made them free), and those past it over `WORTH_OVER_TARGET` = **2.5**
+    (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
   - a leg of a plan with stops is charged at the whole trip's length (`rest_m`), and a spliced trip
     is checked again as a whole (`seek.whole_trip: "not_worth"`).
 - **A long plan**: each leg's search keeps every option with no price on distance of its own
