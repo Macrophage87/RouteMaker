@@ -554,7 +554,8 @@ details.how summary {
 /* The Mass Ride map's riders-per-minute legend and the route's list of them
    (lib/massLegend.ts; OWNER-DECISIONS 325-327). A swatch is the band's own line:
    its width, dash and halo, as the map draws it. */
-.mass-legend li {
+.mass-legend li,
+.hazard-legend li {
   grid-template-columns: 60px 1fr;
 }
 
@@ -1606,6 +1607,54 @@ dialog.road-info::backdrop {
 .federal-route-heading {
   margin: 6px 0 0;
   font-weight: 600;
+}
+
+/* A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3): the road panel's line, the
+   directions' list, the report form's levels and the legend's taller swatch. Words carry the level;
+   the left border is a non-colour cue too (solid for Warning, dotted for Caution). */
+.road-info-hazard {
+  margin: 6px 0;
+  padding-left: 8px;
+  border-left: 4px dotted var(--text);
+}
+
+.road-info-hazard-warning {
+  border-left-style: solid;
+}
+
+.hazard-route ol {
+  margin: 4px 0 8px;
+  padding-left: 1.4em;
+}
+
+.hazard-route-heading {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+
+.hazard-levels {
+  border: 0;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.hazard-levels legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.hazard-level {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.hazard-level input {
+  margin-top: 3px;
+  min-width: 20px;
+  min-height: 20px;
 }
 
 .road-info-links {

@@ -32,7 +32,25 @@ import {
   massRideOn,
   setMassRide,
 } from "../stressStyle.js";
-import { massLayerIds, massLayers } from "../massStyle.js";
+import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
+
+/** The hazards' source before any are given (or on a page that is not a Mass Ride's). */
+export const EMPTY_HAZARDS = { type: "FeatureCollection", features: [] } as const;
+
+/** The parts of a MapLibre map the hazards' data uses. */
+export interface HazardMap {
+  getSource(id: string): unknown;
+}
+
+/**
+ * Give the map the approved hazards (lib/massHazards.ts fetchHazards), or none: a Mass Ride's only
+ * (325: "for this mode only"), so any other ride type sets an empty collection. Before the overlay
+ * has its source there is nothing to set; it is added empty and set when the data next changes.
+ */
+export function setHazardData(map: HazardMap | null, data: object | null): void {
+  const source = map?.getSource(HAZARD_SOURCE_ID) as { setData?: (d: object) => void } | undefined;
+  source?.setData?.(data ?? EMPTY_HAZARDS);
+}
 import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
@@ -42,7 +60,7 @@ import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, section
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
   getSource(id: string): unknown;
-  addSource(id: string, source: ReturnType<typeof stressSource>): void;
+  addSource(id: string, source: ReturnType<typeof stressSource> | { type: "geojson"; data: object }): void;
   getStyle(): { layers: ReadonlyArray<{ id: string; type: string }> };
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;
@@ -94,6 +112,8 @@ export function addStressOverlay(map: OverlayMap, origin: string, visible: boole
   map.addSource(STRESS_SOURCE_ID, stressSource(origin));
   // The Mass Ride map's own tiles (core/mass_tiles.py), read only by its layers.
   if (!map.getSource(MASS_SOURCE_ID)) map.addSource(MASS_SOURCE_ID, massSource(origin));
+  // The approved Mass Ride hazards (massStyle.js hazardLayers): empty until MapView is given them.
+  if (!map.getSource(HAZARD_SOURCE_ID)) map.addSource(HAZARD_SOURCE_ID, { type: "geojson", data: EMPTY_HAZARDS });
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
     // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.

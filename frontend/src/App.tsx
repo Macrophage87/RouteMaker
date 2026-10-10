@@ -170,6 +170,8 @@ import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offline
 import { KEEPING_SAID, KEEP_LABEL, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
+import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
+import { HAZARD_REVIEW } from "./lib/reviewSources.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -319,6 +321,21 @@ export function App() {
   // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
   const [capacityTiles, setCapacityTiles] = useState(false);
   const massMap = isMassRide(preset) && capacityTiles;
+  // The approved rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3; lib/massHazards.ts): asked for when
+  // the Mass Ride map shows, and again after an admin approves one; never shown on another ride type (325).
+  const [hazards, setHazards] = useState<HazardCollection | null>(null);
+  const [hazardsAsked, setHazardsAsked] = useState(0);
+  useEffect(() => {
+    if (!massMap) return;
+    let live = true;
+    void fetchHazards(window.location.origin).then((found) => {
+      if (live) setHazards(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [massMap, hazardsAsked]);
+  const massHazards = massMap ? hazards : null;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
@@ -1836,6 +1853,7 @@ export function App() {
         rail={rail}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
+        massHazards={massHazards}
         water={waterData}
         waterPrefs={waterPrefs}
         federalVisible={federalShown(preset, federalOn)}
@@ -1860,6 +1878,7 @@ export function App() {
       <RoadInfoDialog
         request={roadInfo}
         massRide={massMap}
+        hazards={massHazards}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
         avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
@@ -2140,6 +2159,8 @@ export function App() {
                   if (map) refreshStressTiles(map, window.location.origin, generation);
                 }}
               />
+              {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
+              <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />
             </SheetFrame>
           </div>
 

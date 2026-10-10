@@ -370,7 +370,8 @@ test("the road panel names the federal area at the spot, on a Mass Ride (the key
   assert.match(app, /federal=\{roadInfo && federalShown\(preset, true\) \? federalAreaAt\(roadInfo\.point, federalData\) : null\}/);
   const dialog = source("../RoadInfoDialog.tsx");
   assert.match(dialog, /const federalSaid = federal \? stopWarningShort\(federal\) : "";/);
-  assert.match(dialog, /setSaid\(\[infoSaid\(next\), federalSaidRef\.current\]\.filter\(Boolean\)\.join\(" "\)\);/);
+  // The road, a Mass Ride's rider-marked hazard on it (FOLLOWUP-MASSRIDE-MAP part 3), then the federal area.
+  assert.match(dialog, /setSaid\(\[infoSaid\(next\), hazard, federalSaidRef\.current\]\.filter\(Boolean\)\.join\(" "\)\);/);
   assert.match(dialog, /<span className="road-info-label">Federal land:<\/span> \{federalSaid\}\{" "\}\s*<span className="road-info-federal-note">\{FEDERAL_ADVICE\}<\/span>/);
 });
 

@@ -46,6 +46,7 @@ from .models import (
     InstanceAdminListing,
     Jurisdiction,
     LastInstanceAdmin,
+    MassHazard,
     Override,
     PendingInstanceAdminRemoval,
     RoleMapping,
@@ -744,6 +745,63 @@ class StressSuggestionAdmin(AuditedAdmin):
 
     def has_module_permission(self, request) -> bool:
         return self.has_view_permission(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(MassHazard, site=site)
+class MassHazardAdmin(AuditedAdmin):
+    """Riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3; 325-327) and what became
+    of each. Read-only: the review's three actions are in the map's review panel
+    (core.mass_hazards). The one action here takes an approved hazard off the Mass Ride map."""
+
+    list_display = ("created_at", "osm_way_id", "road_name", "level", "status")
+    list_filter = ("status", "level")
+    ordering = ("-created_at",)
+    exclude = ("reporter", "decided_by")
+    readonly_fields = (
+        "created_at",
+        "reporter_user_id",
+        "osm_way_id",
+        "road_name",
+        "level",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+    )
+    actions = ("remove_selected",)
+
+    def _admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    @admin.action(description="Take the selected approved hazards off the Mass Ride map")
+    def remove_selected(self, request, queryset) -> None:
+        from . import mass_hazards
+
+        if not self._admin(request):
+            raise PermissionDenied
+        count = 0
+        for pk in queryset.filter(status=MassHazard.Status.APPROVED).values_list("pk", flat=True):
+            mass_hazards.remove(request.user, pk)
+            count += 1
+        self.message_user(request, f"Took {count} hazard(s) off the Mass Ride map.")
+
+    def get_actions(self, request):
+        return super().get_actions(request) if self._admin(request) else {}
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._admin(request)
 
     def has_add_permission(self, request) -> bool:
         return False

@@ -44,10 +44,13 @@
  * (lib/mapGlue.ts, setMassMode). A stretch marked Avoid shows only "Avoid", in its own
  * style with no capacity colour (325, 327: near-black on coral, with the label).
  *
- * HAZARDS (part 3, not built): rider-marked Caution and Warning side rails come from the
- * peer-review backend, which does not exist yet (387). `hazardLayers` is where they join:
- * an empty list, drawn over the capacity lines and under the Avoid label. Nothing is
- * drawn, and nothing here asks a backend for hazards.
+ * HAZARDS (part 3): rider-marked Caution and Warning stretches, reviewed by an instance admin
+ * (core/mass_hazards.py), drawn as side rails beside the road, as the trail and protected-lane
+ * rails are elsewhere (325): near-black, Caution dotted and Warning dash-dot (327), each on a
+ * white casing so the rail is 3:1 from whatever is beside it (a capacity line, its dark halo, the
+ * base map). They come from their own small GeoJSON source (HAZARD_SOURCE_ID, filled from
+ * GET /api/mass-hazards by MapView, Mass Ride only), never the tiles, drawn over the capacity
+ * lines and under the Avoid label; a piece marked Avoid is not in that source (325: only Avoid).
  */
 
 /** The Mass Ride tiles' source (lib/mapStyle.ts, massSource; core/mass_tiles.py). */
@@ -116,7 +119,50 @@ export const MASS_LAYER_IDS = {
 
 /** Every layer id, in draw order. */
 export function massLayerIds() {
-  return [...MASS_LAYER_IDS.casing, ...MASS_LAYER_IDS.line, MASS_LAYER_IDS.avoidCasing, MASS_LAYER_IDS.avoid, MASS_LAYER_IDS.avoidLabel];
+  return [...MASS_LAYER_IDS.casing, ...MASS_LAYER_IDS.line, MASS_LAYER_IDS.avoidCasing, MASS_LAYER_IDS.avoid, ...hazardLayerIds(), MASS_LAYER_IDS.avoidLabel];
+}
+
+/** The approved hazards' source: a GeoJSON layer of its own (GET /api/mass-hazards), not the tiles. */
+export const HAZARD_SOURCE_ID = "mass-hazards";
+
+/**
+ * The two hazard levels (OWNER-DECISIONS 326: "Severity only", chosen by the reporter) and their
+ * rails (327: near-black, Caution dotted, Warning dash-dot). `rail` is the rail's width in pixels
+ * at z16, `dash` in rail widths (MapLibre's unit), `casing` the white under it, `pattern` the
+ * words the legend and panel use for the look. Warning's rail is the wider of the two as well, so
+ * the pair differ in width and dash, not only in dash.
+ */
+export const MASS_HAZARDS = [
+  { level: "caution", name: "Caution", pattern: "dotted", color: "#111111", casing: "#ffffff", rail: 2.5, dash: [1, 1.4] },
+  { level: "warning", name: "Warning", pattern: "dash-dot", color: "#111111", casing: "#ffffff", rail: 3.5, dash: [3, 1.2, 1, 1.2] },
+];
+
+/** The white casing's extra width round a rail (a pixel a side). */
+export const HAZARD_CASING_EXTRA_PX = 2;
+
+/**
+ * How far each rail's centre sits from the road's centre line at z16, in pixels: outside the widest
+ * capacity line and its halo (8.5 + 2 px, so 5.25 px a side), with the rail's casing beside it.
+ */
+export const HAZARD_OFFSET_PX = 9.5;
+
+/** The first zoom the rails are drawn at: where the Good band starts (421), so they never float alone. */
+export const HAZARD_MINZOOM = 12;
+
+/** Each rail's layer ids: its two casings (left and right of the line) and its two rails. */
+export function hazardLayerIdsFor(level) {
+  return {
+    casingLeft: `mass-hazard-${level}-casing-left`,
+    casingRight: `mass-hazard-${level}-casing-right`,
+    left: `mass-hazard-${level}-left`,
+    right: `mass-hazard-${level}-right`,
+  };
+}
+
+/** Every hazard layer id, in draw order: every casing under every rail. */
+export function hazardLayerIds() {
+  const ids = MASS_HAZARDS.map((h) => hazardLayerIdsFor(h.level));
+  return [...ids.flatMap((i) => [i.casingLeft, i.casingRight]), ...ids.flatMap((i) => [i.left, i.right])];
 }
 
 /**
@@ -150,6 +196,10 @@ export function massFilters() {
   filters[MASS_LAYER_IDS.avoidCasing] = avoid;
   filters[MASS_LAYER_IDS.avoid] = avoid;
   filters[MASS_LAYER_IDS.avoidLabel] = avoid;
+  // The hazards' rails (part 3), from their own source: each level's layers draw its own features.
+  for (const hazard of MASS_HAZARDS) {
+    for (const id of Object.values(hazardLayerIdsFor(hazard.level))) filters[id] = ["==", ["get", "level"], hazard.level];
+  }
   return filters;
 }
 
@@ -168,18 +218,42 @@ function byZoom(width) {
   return ["interpolate", ["linear"], ["zoom"], 12, width * 0.45, 14, width * 0.8, 16, width];
 }
 
-/**
- * The hazards' seam (part 3, OWNER-DECISIONS 325 and 387). Rider-marked Caution and
- * Warning stretches will be drawn as near-black side rails beside the road (Caution
- * dotted, Warning dash-dot; 327), from a source that does not exist yet. This returns the
- * layers for them: none, today. Part 3 fills it in, in this position in the order.
- */
-export function hazardLayers() {
-  return [];
+/** A rail's width (or offset) by zoom: as the capacity lines scale, but never under 1.5 px. */
+function railByZoom(width) {
+  return ["interpolate", ["linear"], ["zoom"], 12, Math.max(1.5, width * 0.45), 14, Math.max(1.5, width * 0.8), 16, width];
 }
 
-/** Whether rider-marked hazards are built: not until the rider-report backend exists (part 3). */
-export const HAZARDS_BUILT = false;
+/**
+ * The hazards' side rails (part 3, OWNER-DECISIONS 325-327): for each level a white casing and a
+ * near-black patterned rail on each side of the road (`line-offset`, as far out as the widest
+ * capacity line's halo), from the approved hazards' own source. Every casing is drawn under every
+ * rail, so where a Caution and a Warning meet neither rail is cut by the other's casing.
+ */
+export function hazardLayers(sourceId = HAZARD_SOURCE_ID) {
+  const base = { type: "line", source: sourceId, minzoom: HAZARD_MINZOOM, layout: { "line-cap": "butt", "line-join": "round" } };
+  const offset = railByZoom(HAZARD_OFFSET_PX);
+  const negative = ["interpolate", ["linear"], ["zoom"], 12, -offset[4], 14, -offset[6], 16, -offset[8]];
+  const casings = [];
+  const rails = [];
+  for (const hazard of MASS_HAZARDS) {
+    const ids = hazardLayerIdsFor(hazard.level);
+    const filter = massFilters()[ids.left];
+    const casingPaint = { "line-color": hazard.casing, "line-width": railByZoom(hazard.rail + HAZARD_CASING_EXTRA_PX) };
+    const railPaint = { "line-color": hazard.color, "line-width": railByZoom(hazard.rail), "line-dasharray": hazard.dash };
+    casings.push(
+      { ...base, id: ids.casingLeft, filter, paint: { ...casingPaint, "line-offset": negative } },
+      { ...base, id: ids.casingRight, filter, paint: { ...casingPaint, "line-offset": offset } },
+    );
+    rails.push(
+      { ...base, id: ids.left, filter, paint: { ...railPaint, "line-offset": negative } },
+      { ...base, id: ids.right, filter, paint: { ...railPaint, "line-offset": offset } },
+    );
+  }
+  return [...casings, ...rails];
+}
+
+/** Whether rider-marked hazards are built (part 3): the review backend is core/mass_hazards.py. */
+export const HAZARDS_BUILT = true;
 
 /**
  * The Mass Ride layers, in draw order: every casing under every line, then the Avoid

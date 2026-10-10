@@ -1,6 +1,8 @@
 /**
  * The instance admin's review of rider suggestions (OWNER-DECISIONS 460.5; lib/suggestions.ts), in the
- * Settings sheet. Nothing shows for anyone else.
+ * Settings sheet. Nothing shows for anyone else. The same review lists the riders' Mass Ride hazard
+ * reports (FOLLOWUP-MASSRIDE-MAP part 3; lib/massHazards.ts), as a second section of its own: `source`
+ * says which (lib/reviewSources.ts), and the actions, the focus and the words are the same for both.
  *
  * Each suggestion has the owner's three actions (2026-10-10): Approve now (applied at once, as the
  * editor's change), Delete, and Send to Discord, which shows the ready-to-paste plain-English poll in a
@@ -16,31 +18,24 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { csrfFromCookie, fetchMe } from "./lib/stressEditor.ts";
-import {
-  COPIED,
-  COPY_FAILED,
-  COPY_POST,
-  REVIEW_HEADING,
-  actionSaid,
-  fetchSuggestions,
-  mapLink,
-  reviewSuggestion,
-  suggestionLine,
-  type DiscordPost,
-  type ReviewAction,
-  type SuggestionItem,
-} from "./lib/suggestions.ts";
+import { COPIED, COPY_FAILED, COPY_POST, mapLink, type DiscordPost, type ReviewAction } from "./lib/suggestions.ts";
+import { STRESS_REVIEW, type ReviewItem, type ReviewSource } from "./lib/reviewSources.ts";
 
-interface Props {
+interface Props<T extends ReviewItem> {
   /** A change was approved: the map asks for its stress tiles again. */
   onStressChanged?: (generation: number) => void;
+  /** Any approval (a hazard's: the Mass Ride map asks for its hazards again). */
+  onApproved?: () => void;
+  /** What is reviewed: the stress suggestions (the default) or the Mass Ride hazard reports. */
+  source?: ReviewSource<T>;
 }
 
-export function SuggestionReview({ onStressChanged }: Props) {
+export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onApproved, source }: Props<T>) {
+  const from = (source ?? STRESS_REVIEW) as unknown as ReviewSource<T>;
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const [admin, setAdmin] = useState(false);
-  const [items, setItems] = useState<SuggestionItem[] | null>(null);
+  const [items, setItems] = useState<T[] | null>(null);
   const [problem, setProblem] = useState("");
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
@@ -50,7 +45,7 @@ export function SuggestionReview({ onStressChanged }: Props) {
   const [focusNext, setFocusNext] = useState<string | null>(null);
   // The list as last drawn: an action's answer arrives after a wait, when `items` captured at its
   // start may be out of date (a refresh, another action).
-  const itemsNow = useRef<SuggestionItem[] | null>(null);
+  const itemsNow = useRef<T[] | null>(null);
   itemsNow.current = items;
   const origin = window.location.origin;
 
@@ -65,7 +60,7 @@ export function SuggestionReview({ onStressChanged }: Props) {
   }, [focusNext, items, confirming]);
 
   const load = async () => {
-    const next = await fetchSuggestions(origin);
+    const next = await from.fetch(origin);
     if (typeof next === "string") setProblem(next);
     else {
       setProblem("");
@@ -75,12 +70,12 @@ export function SuggestionReview({ onStressChanged }: Props) {
 
   if (!admin) return null;
 
-  const act = async (item: SuggestionItem, action: ReviewAction) => {
+  const act = async (item: T, action: ReviewAction) => {
     if (busy !== null) return;
     setBusy(item.id);
     const csrf = csrfFromCookie(document.cookie);
     if (action === "discord") {
-      const r = await reviewSuggestion<DiscordPost>(origin, item.id, "discord", csrf);
+      const r = await from.review<DiscordPost>(origin, item.id, "discord", csrf);
       setBusy(null);
       if (!r.ok) {
         setSaid(r.message);
@@ -88,17 +83,20 @@ export function SuggestionReview({ onStressChanged }: Props) {
       }
       setPosts((old) => ({ ...old, [item.id]: r.body }));
       setItems((old) => old?.map((s) => (s.id === item.id ? { ...s, status: "sent_to_discord" } : s)) ?? old);
-      setSaid(actionSaid("discord", item, ""));
+      setSaid(`The post for ${item.road} is ready to copy below. The ${from.noun} is marked as sent to Discord.`);
       return;
     }
-    const r = await reviewSuggestion(origin, item.id, action, csrf);
+    const r = await from.review<{ message: string; status: string; generation?: number | null }>(origin, item.id, action, csrf);
     setBusy(null);
     if (!r.ok) {
       setSaid(r.message);
       return;
     }
-    setSaid(actionSaid(action, item, r.body.message));
-    if (action === "approve" && typeof r.body.generation === "number") onStressChanged?.(r.body.generation);
+    setSaid(r.body.message);
+    if (action === "approve") {
+      if (from.stress && typeof r.body.generation === "number") onStressChanged?.(r.body.generation);
+      onApproved?.();
+    }
     setConfirming(null);
     const list = itemsNow.current ?? [];
     const at = list.findIndex((s) => s.id === item.id);
@@ -108,7 +106,7 @@ export function SuggestionReview({ onStressChanged }: Props) {
     setFocusNext(next ? id(`s${next.id}`) : id("none"));
   };
 
-  const copy = async (item: SuggestionItem) => {
+  const copy = async (item: T) => {
     const post = posts[item.id];
     if (!post) return;
     const done = await copyText(post.post, navigator.clipboard, selectionCopy);
@@ -118,33 +116,30 @@ export function SuggestionReview({ onStressChanged }: Props) {
   };
 
   return (
-    <section aria-labelledby={id("heading")} className="suggestion-review">
-      <h3 id={id("heading")}>{REVIEW_HEADING}</h3>
-      <p className="hint">
-        Riders' suggested levels wait here. Approve now changes the road at once; Send to Discord gives you a poll to
-        paste into any bike group and keeps the suggestion here to approve or delete later.
-      </p>
+    <section aria-labelledby={id("heading")} className={`suggestion-review ${from.key}-review`}>
+      <h3 id={id("heading")}>{from.heading}</h3>
+      <p className="hint">{from.intro}</p>
       <p role="status" className="suggestion-review-said">
         {said}
       </p>
       <button type="button" className="secondary" onClick={() => void load()}>
-        {items === null ? "Show suggestions" : "Refresh suggestions"}
+        {items === null ? from.show : from.refresh}
       </button>
       {problem && <p role="alert">{problem}</p>}
       {items !== null && items.length === 0 && (
         <p id={id("none")} tabIndex={-1}>
-          No suggestions are waiting.
+          {from.none}
         </p>
       )}
       {items !== null && items.length > 0 && (
-        <ul className="suggestion-list" aria-label="Suggestions waiting">
+        <ul className="suggestion-list" aria-label={from.listLabel}>
           {items.map((item) => {
             const head = id(`s${item.id}`);
             const post = posts[item.id];
             return (
               <li key={item.id} className="suggestion-item">
                 <h4 id={head} tabIndex={-1}>
-                  {suggestionLine(item)}
+                  {from.line(item)}
                 </h4>
                 <p className="suggestion-status">
                   {item.status === "sent_to_discord" ? "Sent to Discord; waiting for your decision." : "Waiting for review."}
@@ -152,11 +147,13 @@ export function SuggestionReview({ onStressChanged }: Props) {
                 <p className="suggestion-reason">
                   <span className="road-info-label">Rider's reason:</span> {item.reason}
                 </p>
-                <p>
-                  <a href={mapLink(origin, item)} aria-describedby={head}>
-                    Show on map
-                  </a>
-                </p>
+                {item.lat !== null && item.lon !== null && (
+                  <p>
+                    <a href={mapLink(origin, { lat: item.lat, lon: item.lon })} aria-describedby={head}>
+                      Show on map
+                    </a>
+                  </p>
+                )}
                 <div className="stress-editor-buttons">
                   <button type="button" aria-describedby={head} aria-disabled={busy !== null ? true : undefined} onClick={() => void act(item, "approve")}>
                     Approve now
@@ -181,7 +178,7 @@ export function SuggestionReview({ onStressChanged }: Props) {
                 </div>
                 {confirming === item.id && (
                   <div className="suggestion-confirm" role="group" aria-labelledby={id(`q${item.id}`)}>
-                    <p id={id(`q${item.id}`)}>Delete this suggestion? It cannot be brought back.</p>
+                    <p id={id(`q${item.id}`)}>{from.deleteQuestion}</p>
                     <div className="stress-editor-buttons">
                       <button
                         type="button"

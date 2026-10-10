@@ -10,7 +10,7 @@
 // installable app's checks: its service worker exists only in a build); --cdp (or A11Y_CDP_PORT)
 // is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
-import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL } from "./cdp.mjs";
+import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL, HAZARD_LAYER } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -35,10 +35,10 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, port = PORT, before = null } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
@@ -2679,6 +2679,139 @@ const SUGGEST = "dialog.road-info .suggest-change";
   await p.close();
 }
 
+// ---- 22c. Rider-marked Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3; OWNER-DECISIONS 325-327) ----
+const HAZARD_FORM = "dialog.road-info .hazard-report";
+/** Waits, in this process, until the page has asked for the approved hazards (only the Mass Ride map does). */
+async function hazardsAsked(p, ms = 15000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (p.hazardRequests.some((r) => r.method === "GET" && r.path === "/api/mass-hazards")) return true;
+    await sleep(150);
+  }
+  return false;
+}
+{
+  // A rider the settings allow, on a Mass Ride whose route passes an approved Warning on the panel's road (way 101).
+  const route = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
+  route.mass_hazards = [
+    { from_m: 300, to_m: 600, level: "warning", level_name: "Warning", words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.", road: "Oak Street" },
+  ];
+  const p = await open({ route, hash: hashFor("mass-ride", 0), stressTiles: "capacity", suggester: true, hazards: HAZARD_LAYER });
+  const asked = await hazardsAsked(p);
+  check("hazards: the Mass Ride map asks for the approved hazards, a small layer of its own", asked, JSON.stringify(p.hazardRequests.map((r) => `${r.method} ${r.path}`)));
+
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 8000);
+  const said = await p.eval("document.querySelector('.status-line')?.textContent ?? ''");
+  check("hazards: the route's announcement names the rider-marked hazard it passes, politely with the route",
+    /This route passes 1 rider-marked hazard: Warning on Oak Street\. The directions list it\./.test(said), said);
+
+  await openDirections(p);
+  const listed = await p.eval(`(() => { const box = document.querySelector('.route-description .hazard-route'); const list = box?.querySelector('ol');
+    return { heading: box?.querySelector('.hazard-route-heading')?.textContent ?? '', rows: [...(list?.querySelectorAll('li') ?? [])].map((li) => li.textContent),
+      labelled: !!list && list.getAttribute('aria-labelledby') === box.querySelector('.hazard-route-heading').id }; })()`);
+  check("hazards: the directions list them in riding order, each with its level, where in miles first (km in brackets) and the riders' reason",
+    listed.heading === "1 rider-marked hazard on this route, in riding order:" && listed.labelled &&
+      listed.rows[0] === "Warning on Oak Street, 0.2 to 0.4 mi (0.3 to 0.6 km): riders have had serious problems here. Riders' reason: Drivers turn across the whole group at the light.",
+    JSON.stringify(listed));
+
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  await p.waitFor("!!document.querySelector('.hazard-legend')", 15000);
+  const legend = await p.eval(`(() => { const u = document.querySelector('#sheet-layers .hazard-legend'); if (!u) return null;
+    return { rows: [...u.querySelectorAll('li')].map((li) => li.textContent), hidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
+      note: document.querySelector('#sheet-layers .hazard-legend-note')?.textContent ?? '' }; })()`);
+  const axList = await axNode(p, "#sheet-layers .hazard-legend");
+  check("hazards: the Mass Ride legend names both rails in words, their look too, as a named list with hidden swatches",
+    legend?.rows.length === 2 && legend.rows[0] === "Caution: riders have had problems here; take care. Drawn as dotted black rails on both sides of the road." &&
+      legend.rows[1] === "Warning: riders have had serious problems here. Drawn as dash-dot black rails on both sides of the road." && legend.hidden &&
+      /Mass Ride map only/.test(legend.note) && axList?.role === "list" && axList?.name === "Rider-marked hazards",
+    JSON.stringify({ legend, axList }));
+  await openSheet(p);
+
+  const opened = await panelByKey(p);
+  await p.waitFor("!!document.querySelector('dialog.road-info .road-info-hazard')", 8000);
+  await p.waitFor("/Rider-marked hazard/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 4000);
+  const panel = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const b = [...d.querySelectorAll('ul.road-info-buttons li > *')].find((e) => e.textContent === 'Mark a hazard');
+    return { line: d.querySelector('.road-info-hazard')?.textContent ?? '', said: d.querySelector('.road-info-said')?.textContent ?? '', button: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("hazards: the road panel names the road's hazard and its reason in words, and its status sentence says it with the road",
+    opened && panel.line === "Rider-marked hazard: Warning: riders have had serious problems here. Riders' reason: Drivers turn across the whole group at the light." &&
+      /Rider-marked hazard: Warning\./.test(panel.said), JSON.stringify(panel));
+  check("hazards: a rider the settings allow gets a Mark a hazard button in the panel's row, at least 44px tall", panel.button === "BUTTON" && panel.height >= 44, JSON.stringify(panel));
+
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Mark a hazard').click(); true");
+  await p.waitFor(`!!document.querySelector('${HAZARD_FORM} input[type=radio]')`, 8000);
+  await sleep(100);
+  const form = await p.eval(`(() => { const e = document.querySelector('${HAZARD_FORM}'); const h = e?.querySelector('h3');
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, legend: e?.querySelector('fieldset legend')?.textContent,
+      now: e?.querySelector('.stress-editor-now')?.textContent, rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons') }; })()`);
+  const radio = await axNode(p, `${HAZARD_FORM} input[type=radio]`);
+  check("hazards: the form opens in the same dialog, its heading focused, an empty status region, and two radios named by their words in a fieldset that asks how serious",
+    form.heading === "Mark a hazard for Mass Rides" && form.focus && form.status === "" && form.legend === "How serious is it?" && form.rowGone &&
+      form.now === "Now: Warning: riders have had serious problems here." && radio?.role === "radio" && radio?.name === "Caution: riders have had problems here; take care",
+    JSON.stringify({ form, radio }));
+
+  await p.eval(`[...document.querySelectorAll('${HAZARD_FORM} button')].find((b) => b.textContent === 'Send hazard report').click(); true`);
+  await p.waitFor(`!!document.querySelector('${HAZARD_FORM} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`({ alert: document.querySelector('${HAZARD_FORM} [role=alert]')?.textContent ?? '', focus: document.activeElement === document.querySelector('${HAZARD_FORM} input[type=radio]') })`);
+  check("hazards: sending with no level says so in an alert, moves the focus to the levels and sends nothing",
+    empty.alert === "Choose Caution or Warning." && empty.focus && !p.hazardRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelectorAll('${HAZARD_FORM} input[type=radio]')[1].click(); document.querySelector('${HAZARD_FORM} textarea').focus(); true`);
+  await p.type("A car turned across the group here twice.");
+  await p.eval(`[...document.querySelectorAll('${HAZARD_FORM} button')].find((b) => b.textContent === 'Send hazard report').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${HAZARD_FORM} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.hazardRequests.find((r) => r.method === "POST");
+  const thanks = await p.eval(`document.querySelector('${HAZARD_FORM} [role=status]')?.textContent ?? ''`);
+  check("hazards: Send posts the way, the nearest point on the road (never the spot clicked), the level and the reason with the CSRF header, and the status says nothing changes until an admin reviews it",
+    sent?.path === "/api/mass-hazards" && sent.body.osm_way_id === 101 && sent.body.level === "warning" && sent.body.lat === 38.91 && sent.body.lon === -77.04 &&
+      sent.body.reason === "A car turned across the group here twice." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the Mass Ride map/.test(thanks),
+    JSON.stringify({ sent, thanks }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.hazard-report'), focus: document.activeElement?.textContent ?? '' })");
+  check("hazards: Escape closes the form, not the panel, and the focus goes back to Mark a hazard", back.open && !back.form && back.focus === "Mark a hazard", JSON.stringify(back));
+  await p.close();
+}
+{
+  // Any other ride type: no hazards asked for, none named, nothing to mark (325: "for this mode only").
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true, hazards: HAZARD_LAYER });
+  const opened = await panelByKey(p);
+  await sleep(400);
+  const none = await p.eval("({ line: !!document.querySelector('dialog.road-info .road-info-hazard'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Mark a hazard'), said: document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '' })");
+  check("hazards: on any other ride type the page asks for no hazards, and the panel names none and offers no Mark a hazard",
+    opened && !none.line && !none.button && !/hazard/i.test(none.said) && p.hazardRequests.length === 0, JSON.stringify({ none, asked: p.hazardRequests.length }));
+  await p.close();
+}
+{
+  // The instance admin's review: hazard reports in their own section of the same review, the same three actions.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.hazard-review button')].some((b) => b.textContent === 'Show hazard reports')", 8000);
+  await p.eval("[...document.querySelectorAll('.hazard-review button')].find((b) => b.textContent === 'Show hazard reports').click(); true");
+  await p.waitFor("!!document.querySelector('.hazard-review .suggestion-item h4')", 8000);
+  const item = await p.eval(`(() => { const s = document.querySelector('.hazard-review'); const li = s.querySelector('.suggestion-item'); const h = li.querySelector('h4');
+    return { section: s.querySelector('h3')?.textContent, heading: h?.textContent, buttons: [...li.querySelectorAll('.stress-editor-buttons button')].map((b) => b.textContent),
+      described: [...li.querySelectorAll('.stress-editor-buttons button')].every((b) => b.getAttribute('aria-describedby') === h.id), status: li.querySelector('.suggestion-status')?.textContent,
+      reason: li.querySelector('.suggestion-reason')?.textContent, list: s.querySelector('ul')?.getAttribute('aria-label') }; })()`);
+  check("hazards: the review lists the reports in their own section, each headed with its road and level in words, with Approve now, Send to Discord and Delete named for it",
+    item.section === "Mass Ride hazard reports" && item.heading === "Oak Street: mark as Warning (riders have had serious problems here)" &&
+      JSON.stringify(item.buttons) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) && item.described && item.status === "Waiting for review." &&
+      item.reason === "Rider's reason: Drivers turn across the whole group at the light." && item.list === "Hazard reports waiting", JSON.stringify(item));
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("[...document.querySelectorAll('.hazard-review .suggestion-item button')].find((b) => b.textContent === 'Approve now').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.hazard-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(200);
+  const approved = await p.eval(`({ said: document.querySelector('.hazard-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.hazard-review .suggestion-item').length,
+    focus: document.activeElement?.textContent ?? '' })`);
+  check("hazards: Approve now says so in the review's polite status region, the report leaves the list, and the focus goes to the empty line, not the top",
+    approved.said === "Approved. Oak Street is marked Warning on the Mass Ride map now." && approved.left === 0 && approved.focus === "No hazard reports are waiting." &&
+      p.hazardRequests.some((r) => r.method === "POST" && r.path === "/api/mass-hazards/51/approve"), JSON.stringify(approved));
+  await p.close();
+}
+
 // ---- 23. Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 301) ----
 {
   const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
@@ -3258,7 +3391,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 512;
+const EXPECTED = 525;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
