@@ -1395,7 +1395,8 @@ export function calmRows(profile: RouteProfile, calm: ProfileCalm, totalM: numbe
  *   a group's length later. Near the start the group is still behind the start, and past the end
  *   the junctions stay held to the end, so a group longer than the route holds them all at its end.
  * - Corkers per junction needing them (`corkers_needed`, 142, 400): 2 for a two-way road and 1 for
- *   a one-way (`oneway`), 2 where it is not known (an older answer, or no mapping).
+ *   a one-way (`oneway`), 2 where it is not known (an older answer, or no mapping), and 2 for a
+ *   divided road (`divided`: two one-way carriageways counted as one junction).
  * - The ride's headline: the most held at once times the rotation factor (2, corkers leapfrog to
  *   the junctions ahead), rounded up. Where the list may be incomplete (only the flagged junctions
  *   found) or part of the route was not checked, it is "at least", never a firm figure.
@@ -1405,8 +1406,9 @@ export const CORKERS_TWO_WAY = 2;
 export const CORKERS_ONE_WAY = 1;
 
 /** The corkers a junction needing them takes: one an approach (PLAN 139). */
-export function corkersFor(crossing: Pick<ProfileCrossing, "oneway">): number {
-  return crossing.oneway === true ? CORKERS_ONE_WAY : CORKERS_TWO_WAY;
+export function corkersFor(crossing: Pick<ProfileCrossing, "oneway" | "divided">): number {
+  // A divided road's carriageways are each one-way, but the road has two approaches to hold.
+  return crossing.oneway === true && crossing.divided !== true ? CORKERS_ONE_WAY : CORKERS_TWO_WAY;
 }
 
 /** A group's length, metres: riders over the flow a second, times the cruising pace (PLAN 128). */
@@ -1677,7 +1679,10 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
     return [...crossingSentences(profile), "The group's length is not known for this answer, so the corker load is not drawn."];
   }
   const sentences = crossingSentences(profile);
-  sentences.push(`At ${load.riders.toLocaleString("en-US")} riders the group is about ${formatGroupLength(load.road.typicalLengthM)} long at cruise, on this route's typical width.`);
+  const routeM = load.steps[load.steps.length - 1].to_m;
+  // A group longer than the route (re-check NIT): its tail passes no junction before the head reaches the end.
+  const longer = routeM > 0 && load.road.typicalLengthM >= routeM ? `, longer than the route itself (${formatDistance(routeM)}), so every junction it reaches stays held to the end` : "";
+  sentences.push(`At ${load.riders.toLocaleString("en-US")} riders the group is about ${formatGroupLength(load.road.typicalLengthM)} long at cruise, on this route's typical width${longer}.`);
   const peak = load.peak;
   if (!peak) {
     // Never "none along the whole route" where some of it was not looked at (the review's summary finding).
@@ -1692,7 +1697,7 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
     const from = miles(peak.from_m);
     const to = miles(peak.to_m);
     const where = from === to ? `with the head around mile ${from}` : `with the head from mile ${from} to ${to}`;
-    const more = load.steps.filter((s) => s !== peak && s.corkers === peak.corkers).length;
+    const more = load.steps.filter((s) => s !== peak && s.to_m > s.from_m && s.corkers === peak.corkers).length;
     const also = more === 0 ? "" : `, and at ${more} more ${more === 1 ? "place" : "places"}`;
     sentences.push(`The most held at once is ${heldWords(peak)}, ${where}${also}.`);
     const low = corkersMayBeLow(load) ? `; the count may be low, as ${lowReason(load)}` : "";

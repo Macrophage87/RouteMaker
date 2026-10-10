@@ -617,6 +617,7 @@ class TestRouteProfile:
                 "kind": "flagged",
                 "corkers_needed": True,
                 "oneway": None,
+                "divided": False,
             }
         ]
 
@@ -1277,6 +1278,43 @@ class TestMajorJunctions:
         )
         unknown = self.run(junction(100.0, [road("L Street", lanes=2, tier=3)], Control.CROSS_STOP))
         assert [x.oneway for x in one_way + two_way + unknown] == [True, False, None]
+
+    @staticmethod
+    def carriageways(tier):
+        """A divided road's two carriageways: one-way roads of ways of their own, one name."""
+        name = frozenset({"new york avenue northwest"})
+        north = Road(tier, lanes=3, oneway=True, names=name, ways=frozenset({1}))
+        south = Road(tier, lanes=3, oneway=True, names=name, ways=frozenset({2}))
+        return north, south
+
+    def test_a_divided_road_merged_with_its_refuge_is_divided_not_one_way(self):
+        """Re-check BLOCKING 1: the refuge merge (`_one_road`) keeps oneway True for the
+        junction costs, but the major says divided, so the chart counts 2 corkers."""
+        north, south = self.carriageways(4)
+        majors = self.run(junction(100.0, [north]), junction(111.0, [south]))
+        assert len(majors) == 1
+        assert majors[0].kind == m.MAJOR_FLAGGED
+        assert majors[0].oneway is True and majors[0].divided is True
+
+    def test_a_divided_road_found_by_name_on_the_junction_path_is_divided(self):
+        """The busy-road path (no flagged event for it): the far carriageway, within
+        MERGE_WITHIN_M by name, is hidden by the near one's major, which becomes divided."""
+        north, south = self.carriageways(3)
+        junctions = [
+            junction(100.0, [north], Control.CROSS_STOP),
+            junction(111.0, [south], Control.CROSS_STOP),
+        ]
+        majors = m.major_crossings(junctions, [])
+        assert len(majors) == 1
+        assert majors[0].kind == m.MAJOR_CROSSING
+        assert majors[0].oneway is True and majors[0].divided is True
+
+    def test_a_single_one_way_street_or_a_two_way_pair_is_not_divided(self):
+        one = self.run(junction(100.0, [road("I Street", tier=3, oneway=True)], Control.CROSS_STOP))
+        assert [x.divided for x in one] == [False]
+        two_way = Road(4, lanes=2, oneway=False, names=frozenset({"k street"}))
+        pair = self.run(junction(100.0, [two_way]), junction(111.0, [two_way]))
+        assert [x.divided for x in pair] == [False]
 
     def test_corkers_follow_the_crossed_tier(self):
         def major(tier):

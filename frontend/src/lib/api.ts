@@ -80,6 +80,8 @@ export interface ProfileCrossing {
   corkers_needed: boolean;
   /** The crossed or joined road is one-way there (1 corker), two-way (false: 2), or not known (null, absent: 2). */
   oneway?: boolean | null;
+  /** A divided road (two one-way carriageways counted as one): two approaches, so 2 corkers. */
+  divided?: boolean | null;
 }
 
 /** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */

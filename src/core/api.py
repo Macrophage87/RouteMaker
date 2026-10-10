@@ -1016,6 +1016,13 @@ class ProfileCrossingOut(Schema):
             " PLAN item 139), two-way (false: 2), or not known (null)."
         ),
     )
+    divided: bool | None = Field(
+        default=None,
+        description=(
+            "A divided road: its two one-way carriageways counted as one junction, so two"
+            " approaches to hold (2 corkers) whatever `oneway` says."
+        ),
+    )
 
 
 class ProfileRangeOut(Schema):

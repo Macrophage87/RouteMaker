@@ -5553,7 +5553,7 @@ point** (`lib/profileChart.ts`, "The corker load"):
   tail passes it, so the load steps up at each tick and down a group's length later
   (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs:
   **2 for a two-way road, 1 for a one-way** (crossings now carry `oneway`, from the road's
-  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). Near the end
+  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) takes 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. Near the end
   the junctions stay held to the end, so a group longer than the route holds every one at
   its end.
 - **The ride's headline**: "about N corkers" = the most held at once × the rotation factor

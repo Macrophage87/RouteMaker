@@ -1510,6 +1510,7 @@ def _crossing_out(major) -> dict:
         "kind": getattr(major, "kind", intersections.MAJOR_FLAGGED),
         "corkers_needed": major.corkers_needed,
         "oneway": getattr(major, "oneway", None),
+        "divided": getattr(major, "divided", False),
     }
 
 

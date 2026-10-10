@@ -199,6 +199,12 @@ test("a group longer than the route: every junction stays held, so at the end al
 });
 
 test("corkers per junction: 2 on a two-way road, 1 on a one-way, 2 where it is not known", () => {
+  // A divided road: each carriageway is one-way, but the road has two approaches (re-check BLOCKING 1).
+  assert.equal(corkersFor({ oneway: true, divided: true }), 2);
+  assert.equal(corkersFor({ oneway: true, divided: false }), 1);
+  assert.equal(corkersFor({ oneway: null, divided: true }), 2);
+  const divided = corkerLoad(profileWith([{ ...junction(1000, true, "New York Avenue", true), divided: true }]), 3 * MILE, 500);
+  assert.equal(divided && corkerAt(divided, 1100).corkers, 2);
   assert.equal(corkersFor({ oneway: false }), 2);
   assert.equal(corkersFor({ oneway: true }), 1);
   assert.equal(corkersFor({ oneway: null }), 2);
@@ -410,4 +416,23 @@ test("a partial list: the reading says the count may be low at every point, as w
   assert.match(corkerReading(profile, load, 300), /^Mile 0\.2: no corkers held at the junctions found \(500 riders, group about 1,560 ft \(475 m\) long; only flagged junctions were found\)\./);
   const firm = profileWith([junction(1000)]);
   assert.doesNotMatch(corkerReading(firm, corkerLoad(firm, 3 * MILE, 500), 1200), /flagged|at least/);
+});
+
+test("a group longer than the route says so in the summary; a shorter one does not", () => {
+  const short = profileWith([junction(100), junction(300)], {}, 600);
+  const words = corkerSentences(short, corkerLoad(short, 600, 2000)).join(" ");
+  assert.match(words, /At 2,000 riders the group is about 1\.18 mi \(1\.9 km\) long at cruise, on this route's typical width, longer than the route itself \(0\.4 mi \(0\.6 km\)\), so every junction it reaches stays held to the end\./);
+  const long = profileWith([junction(1000)]);
+  assert.doesNotMatch(corkerSentences(long, corkerLoad(long, 3 * MILE, 500)).join(" "), /longer than the route/);
+});
+
+test("the count of more places at the peak leaves out a zero-width step at the end", () => {
+  // Junctions at 1,000 m and at the route's very end: the end's figure is a point, not a place.
+  const total = 2 * MILE;
+  const profile = profileWith([junction(1000), junction(total)], {}, total);
+  const load = corkerLoad(profile, total, 500);
+  assert.ok(load);
+  const last = load.steps.at(-1);
+  assert.ok(last && last.to_m === last.from_m && last.corkers === 2, JSON.stringify(load.steps));
+  assert.doesNotMatch(corkerSentences(profile, load).join(" "), /more place/);
 });
