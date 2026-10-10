@@ -395,8 +395,8 @@ Mass Ride has no rolling score: `plan` passes no pricing for it
 settled what a Mass Ride shows on 2026-10-10: "Have 3 charts for mass ride: Riders per
 minute, Corker load, Elevation. They should all be there." So there is no calm-mile score
 (and no line at weight 1) for a Mass Ride: it draws riders per minute, a rolling corker
-load (the junctions needing corkers in the half mile [0.8 km] around each point, per mile)
-and the elevation, as three charts on one distance axis (docs/DEVELOPMENT.md, "A Mass
+load (the corkers held at once by a group of the anticipated ride size, a window the
+group's length slid along the route) and the elevation, as three charts on one distance axis (docs/DEVELOPMENT.md, "A Mass
 Ride's three charts").
 
 ### Worked example (Default, made-up route, 2 mi [3.2 km])
