@@ -24,10 +24,26 @@ test("the page is a whole document in English, with a title and a viewport", () 
   assert.match(page, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
 });
 
+// The one link off the site: the full sources page on GitHub (the owner, r4). Following a link
+// is a navigation, which the content security policy does not govern; nothing is loaded from it.
+const LITERATURE_URL = "https://github.com/Macrophage87/RouteMaker/blob/main/docs/stress/literature.md";
+
 test("it runs no script and loads nothing from another host (the app's content security policy)", () => {
   assert.doesNotMatch(page, /<script/i);
-  assert.doesNotMatch(page, /\b(src|href)="(https?:)?\/\//i);
+  assert.doesNotMatch(page, /\bsrc="(https?:)?\/\//i);
   assert.doesNotMatch(page, /@import|url\(/i);
+  const external = [...page.matchAll(/\bhref="((?:https?:)?\/\/[^"]*)"/gi)].map((m) => m[1]);
+  assert.deepEqual(external, [LITERATURE_URL], "exactly one external href, the sources page on GitHub");
+});
+
+test("the GitHub link opens in the same tab and says where it goes, not the bare address", () => {
+  const links = [...page.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => m[1].includes(LITERATURE_URL));
+  assert.equal(links.length, 1);
+  const [, attrs, inner] = links[0];
+  assert.equal(attrs.trim(), `href="${LITERATURE_URL}"`, "an <a> with only its href: no target, no title");
+  const name = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  assert.equal(name, "Traffic stress: our sources and where we differ (on GitHub)");
+  assert.doesNotMatch(name, /https?:|github\.com|\.md\b/i, "the name is words, not a URL or a file path");
 });
 
 test("one h1, and no heading skips a level", () => {
@@ -95,9 +111,39 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
 });
 
 test("it says where it differs from the literature, and links the full list", () => {
-  assert.match(page, /<h2 id="why-differ">Sources and why we differ<\/h2>/);
-  assert.match(text, /docs\/stress\/literature\.md/);
+  assert.match(page, /<h2 id="why-differ">Why our ratings differ from the studies<\/h2>/);
+  assert.match(page, /<li><a href="#why-differ">Why our ratings differ from the studies<\/a><\/li>/);
+  // The accessibility re-check's SF1: one heading starting "Sources", not two.
+  const h2s = [...page.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
+  assert.equal(h2s.filter((h) => /^Sources/.test(h)).length, 1, h2s.join(" | "));
+  assert.doesNotMatch(page, /<code>docs\/stress\/literature\.md<\/code>/);
   assert.match(text, /We add an Avoid level/);
+  assert.match(text, /the proposed rush-hour change/);
+});
+
+test("the sources list: one list under Sources, one item for each source, plain text titles", () => {
+  const section = page.match(/<h2 id="sources">Sources<\/h2>\s*<ul>([\s\S]*?)<\/ul>/)?.[1] ?? "";
+  assert.ok(section, "a list straight under the Sources heading");
+  assert.equal((page.match(/<h2 id="sources">/g) ?? []).length, 1);
+  assert.doesNotMatch(section, /<a\b/, "titles are plain text: the page's one external link is the GitHub one");
+  const items = [...section.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/\s+/g, " "));
+  for (const source of [
+    /^The method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 \(2012\)\.$/,
+    /^Its later versions: Peter Furth, Level of Traffic Stress criteria, version 2\.0 \(2017\) and version 2\.2 \(2022\)\.$/,
+    /Oregon Department of Transportation, Analysis Procedures Manual, version 2, chapter 14\./,
+    /Montgomery County Planning Department, Bicycle Master Plan, Appendix D/,
+    /^Route choice in Portland: Broach, Dill and Gliebe, "Where do cyclists ride\?/,
+    /^Route choice in Eugene: Zimmermann, Mai and Frejinger, /,
+    /^Turns in Copenhagen: Skov-Petersen, Barkow, Lundhede and Jacobsen, /,
+    /^Stress at rush hour: Caviedes and Figliozzi, /,
+  ]) {
+    assert.equal(items.filter((i) => source.test(i)).length, 1, String(source));
+  }
+});
+
+test("the Census credit names the dataset (docs/SOURCES.md: TIGER/Line 2024, 2020 Urban Areas)", () => {
+  assert.match(text, /Urban areas, for default speeds: U\.S\. Census Bureau, TIGER\/Line Shapefiles \(2024\), 2020 Urban Areas\./);
+  assert.doesNotMatch(page, /<abbr/);
 });
 
 test("US units first, metric in brackets", () => {
@@ -131,7 +177,10 @@ test("the sources are credited in text", () => {
   }
 });
 
-test("what is not built is marked planned", () => {
+test("what is not built is marked planned, and what is only proposed says so", () => {
   assert.match(text, /Half steps and the stress chart \(planned\)/);
   assert.match(text, /Planned, not built yet\./);
+  assert.match(page, /<h3>Crossing costs<\/h3>/);
+  assert.match(text, /A further idea is proposed but not yet confirmed: crossings would cost a little more at rush hour/);
+  assert.doesNotMatch(text, /Its details are still to be confirmed|single setting/);
 });

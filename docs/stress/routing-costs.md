@@ -1,6 +1,9 @@
 # What a tier costs a route today
 
-[Index](README.md) Sources: [literature.md](literature.md). Junctions: [intersections.md](intersections.md).. Stress reaches a route in three layers:
+[Index](README.md). Sources: [literature.md](literature.md). Junctions:
+[intersections.md](intersections.md).
+
+Stress reaches a route in three layers:
 
 1. **The Valhalla graph** (Valhalla 3.5.1, MIT license). Tags are written per way at
    graph build, and a weight, `use_roads`, is sent per request.

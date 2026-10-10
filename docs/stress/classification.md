@@ -1,6 +1,9 @@
 # How a way gets its tier
 
-[Index](README.md) Sources: [literature.md](literature.md). Junctions: [intersections.md](intersections.md).. Paths are relative to the repository root and line numbers are
+[Index](README.md). Sources: [literature.md](literature.md). Junctions:
+[intersections.md](intersections.md).
+
+Paths are relative to the repository root and line numbers are
 for `main` when this set was written. A tier is set once per data rebuild, in the
 `CLASSIFY_STRESS` stage (`src/pipeline/run.py:1658-1859`), then changed by approved
 override rows in `APPLY_OVERRIDES` (`run.py:1978-2086`). Stage order is at

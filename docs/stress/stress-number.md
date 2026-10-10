@@ -1,11 +1,15 @@
 # The stress number
 
-[Index](README.md) Sources: [literature.md](literature.md). Junctions: [intersections.md](intersections.md).. Owner decisions 461 ("Just turn that into a number for stress"),
+[Index](README.md). Sources: [literature.md](literature.md). Junctions:
+[intersections.md](intersections.md).
+
+Owner decisions 461 ("Just turn that into a number for stress"),
 461a ("Then just have the half steps be midpoints"), 461b ("there should be a rolling
 stress score that includes intersection stress"), 461c ("There's a cost to traveling
 on a road and a cost to the intersection that's a sort of hidden number. Use that."),
 461d (the metric is calm miles per actual mile, intersections included) and 461e (a
 window of about a mile).
+
 **No routing behavior changes.** Everything here is read from today's weights
 ([routing-costs.md](routing-costs.md)). What is not built yet is marked **planned**.
 
@@ -216,7 +220,7 @@ length `w` centered on the point at distance `x`:
   as an estimate. Whether to allow it at all is an **owner question**.
 - A junction's calm miles are its crossing cost (`intersections.cost_of`, see [intersections.md](intersections.md), after factors,
   merges and the cap), which is a distance-equivalent penalty, times the preset's
-  intersection weight (1,200 ft is about 0.23 calm mi). In the formulas below the cost
+  intersection weight (1,200 ft is about 0.23 calm mi [0.37 km]). In the formulas below the cost
   is written `cost_m`, in meters. `weight_P` is the intersection weight at the preset's
   position. At the top of the slider, the worth rule's exchange applies instead: a red
   junction counts 5 x 2 x its cost, an orange one 5 x 1, an unflagged one 0
@@ -254,7 +258,7 @@ is, and what is in it.
 
 An LTS 2 street (M = 1) for the whole route, with one crossing at 1.0 mi: straight
 across an LTS 4 road from a stop, 35 mph (x1.0), 2 lanes each way (x1.1), no count,
-3,000 x 1.1 = 3,300 ft, about 0.625 calm mi at weight 1.0 (today's figures).
+3,000 x 1.1 = 3,300 ft, about 0.625 calm mi [1.0 km] at weight 1.0 (today's figures).
 Window 1 mi [1.6 km].
 
 | Window centered at | Window | R |

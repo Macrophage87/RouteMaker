@@ -94,7 +94,7 @@
       <li><a href="#junctions">Junction warnings</a></li>
       <li><a href="#mass-ride">Mass Ride</a></li>
       <li><a href="#planned">Half steps and the stress chart (planned)</a></li>
-      <li><a href="#why-differ">Sources and why we differ</a></li>
+      <li><a href="#why-differ">Why our ratings differ from the studies</a></li>
       <li><a href="#report">Reporting a wrong rating</a></li>
       <li><a href="#sources">Sources</a></li>
     </ul>
@@ -291,30 +291,35 @@
     <p>Each road's level is its stress number, 1 to 5. A half step is 1.5, 2.5 and so
     on. The route description will get a chart of stress along the route, like the
     elevation chart, so short busy stretches and bad crossings stand out.</p>
-    <p>The chart will show calm miles per actual mile, including intersections.
-    1 means all calm riding, and higher numbers mean more stress. Each point is the
-    average over about 1 mile [1.6 km] around it (shorter at the ends of the route),
-    and every crossing's cost counts in each stretch of a mile that contains it. So an
-    LTS 2 street that crosses many busy roads can read higher than a straight LTS 3
-    one. The route summary will also give the total in calm miles. The size of the
-    window is a single setting.</p>
-    <p>The costs of crossings are also being revised: a worse price for the hardest
-    crossings, a price for changing lanes to turn left, and a bit more in rush hour and
-    a bit less at off hours and weekends. These are planned, and the numbers are not
-    final. Its details are still to be confirmed.</p>
+    <p>The chart will show calm miles per actual mile, counting crossings too (a calm
+    mile is explained under <a href="#routes">How ride types and the slider use the
+    ratings</a>). 1 means all calm riding, and higher numbers mean more stress. Each
+    point is the average over about 1 mile [1.6 km] around it, or less near the start
+    and end. A crossing counts at every point within that mile of it. So an LTS 2
+    street that crosses many busy roads can read higher than a straight LTS 3 one. The
+    route summary will also give the total in calm miles.</p>
+    <h3>Crossing costs</h3>
+    <p>The costs of crossings will also be revised. The hardest crossings will cost
+    more, and changing lanes to turn left will have a cost of its own. A further idea
+    is proposed but not yet confirmed: crossings would cost a little more at rush hour,
+    and a little less at off hours and on weekends. These are planned, and the numbers
+    are not final.</p>
   </section>
 
   <section>
-    <h2 id="why-differ">Sources and why we differ</h2>
+    <h2 id="why-differ">Why our ratings differ from the studies</h2>
     <p>The levels come from the Level of Traffic Stress method (Mekuria, Furth and
-    Nixon, 2012, and Furth's later versions), local plans from Montgomery County, and
-    studies of where cyclists in Portland, Eugene and Copenhagen choose to ride. We
-    differ on purpose in a few places. We add an Avoid level. We treat a road as closed
-    to bicycles when it is unclear whether they are allowed. We steer most people toward
-    trails and calm streets more than the studies suggest. The planned crossing and
-    rush-hour costs are our own choices, drawn from small studies. The
-    full list, with links to each source and the reason for each difference, is the
-    page <code>docs/stress/literature.md</code> in the RouteMaker repository.</p>
+    Nixon, 2012, and Furth's later versions), Montgomery County's own ratings, and
+    studies of where cyclists in Portland, Eugene and Copenhagen choose to ride. The
+    sources are listed under <a href="#sources">Sources</a>. We differ on purpose in a
+    few places. We add an Avoid level. We treat a road as closed to bicycles when it is
+    unclear whether they are allowed. We steer most people toward trails and calm
+    streets more than the studies suggest. The planned crossing costs are our own
+    choices, and so is the proposed rush-hour change; the studies behind them are
+    small. The full list, with a link to each source and the reason for each
+    difference, is on the page
+    <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/stress/literature.md">Traffic
+    stress: our sources and where we differ (on GitHub)</a>.</p>
   </section>
 
   <section>
@@ -340,13 +345,30 @@
       <li>Roads marked to avoid in Montgomery County: Bicycle Level of Traffic
       Stress, Montgomery County Planning Department.</li>
       <li>Bike facilities in Baltimore: City of Baltimore, Open Baltimore.</li>
-      <li>Urban areas, for default speeds: U.S. Census Bureau.</li>
-      <li>Method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network
-      Connectivity", Mineta Transportation Institute Report 11-19 (2012); Furth, LTS
-      criteria v2.0 (2017) and v2.2 (2022).</li>
-      <li>Junction costs: derived from Broach, Dill and Gliebe's Portland bicycle
-      route-choice study, from Eugene's figures, and from the Oregon and
-      Mineta crossing tables.</li>
+      <li>Urban areas, for default speeds: U.S. Census Bureau, TIGER/Line Shapefiles
+      (2024), 2020 Urban Areas.</li>
+      <li>The method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network
+      Connectivity", Mineta Transportation Institute Report 11-19 (2012).</li>
+      <li>Its later versions: Peter Furth, Level of Traffic Stress criteria, version
+      2.0 (2017) and version 2.2 (2022).</li>
+      <li>Crossings and left turns: Oregon Department of Transportation, Analysis
+      Procedures Manual, version 2, chapter 14.</li>
+      <li>Montgomery County's ratings: Montgomery County Planning Department,
+      Bicycle Master Plan, Appendix D (Level of Traffic Stress).</li>
+      <li>Route choice in Portland: Broach, Dill and Gliebe, "Where do cyclists ride?
+      A route choice model developed with revealed preference GPS data",
+      Transportation Research Part A (2012).</li>
+      <li>Route choice in Eugene: Zimmermann, Mai and Frejinger, "Bike route choice
+      modeling using GPS data without choice sets of paths", Transportation Research
+      Part C (2017).</li>
+      <li>Turns in Copenhagen: Skov-Petersen, Barkow, Lundhede and Jacobsen, "How do
+      cyclists make their way? A GPS-based revealed preference study in Copenhagen",
+      International Journal of Geographical Information Science (2018).</li>
+      <li>Stress at rush hour: Caviedes and Figliozzi, "Modeling the impact of traffic
+      conditions and bicycle facilities on cyclists' on-road stress levels",
+      Transportation Research Part F (2018).</li>
+      <li>Junction costs: our own, derived from the Portland, Eugene and Copenhagen
+      studies and from the Oregon and Mineta crossing tables.</li>
       <li>Riders a minute on the Mass Ride map: RouteMaker Mass Ride model, from
       OpenStreetMap and DC Roadway Block (DC Open Data, CC BY 4.0, adapted), and DC
       Bike Party counts.</li>

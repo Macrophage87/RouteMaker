@@ -1872,6 +1872,12 @@ async function saidInDialog(p, text) {
       lang: document.documentElement.lang }; })()`);
   check("stress page: one h1, headings in order, its landmarks, and every swatch hidden beside its level in words",
     shape.h1 === 1 && shape.first === 1 && shape.ordered && shape.landmarks && shape.swatches && shape.lang === "en", JSON.stringify(shape));
+  // The accessibility re-check of r4: a link off the site opens in the same tab and is named
+  // in words, so a screen reader neither lands in a new tab unwarned nor spells out a URL.
+  const away = await p.eval(`[...document.querySelectorAll('a[href^="http"]')].map((a) => ({
+    href: a.href, target: a.getAttribute('target'), name: a.textContent.replace(/\\s+/g, ' ').trim() }))`);
+  check("stress page: its one link off the site opens in the same tab and is named in words, not by a bare URL",
+    away.length === 1 && away.every((a) => a.target === null && a.name.length > 0 && !/https?:|www\.|github\.com|\.md\b/i.test(a.name)), JSON.stringify(away));
   await p.tab();
   await sleep(100);
   const skip = await p.eval(`(() => { const a = document.activeElement; const r = a?.getBoundingClientRect();
@@ -1887,7 +1893,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 326;
+const EXPECTED = 327;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
