@@ -1214,3 +1214,55 @@ class TestRoadside:
             0.6,
             20.0,
         )
+
+
+# --- the mountain-bike counts the rebuild logs (OWNER-DECISIONS 456; the owner, 2026-10-10) ---
+
+
+def mtb_piece(schema, way, ordinal, *, mtb_only, name=None, level=None, map_class="road"):
+    """A 1000 m path piece of way `way`, with the mountain-bike columns."""
+    west = -77.0 + ordinal * 1000 * DEG_PER_METRE
+    east = west + 1000 * DEG_PER_METRE
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, facility, map_class, mtb_only, mtb_name, mtb_level) "
+            "VALUES (%s, %s, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'Y', "
+            "true, 'none', %s, %s, %s, %s)",
+            [way, ordinal, west, LAT, east, LAT, map_class, mtb_only, name, level],
+        )
+
+
+@db
+class TestMountainBikeCounts:
+    def test_named_ways_are_counted_once_each_among_the_mountain_bike_ways(
+        self, segment_schemas
+    ) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 1, 0, mtb_only=True, name="Rocky Loop")
+        mtb_piece(staging, 1, 1, mtb_only=True, name="Rocky Loop")  # one way, two pieces
+        mtb_piece(staging, 2, 2, mtb_only=True)  # unnamed
+        mtb_piece(staging, 3, 3, mtb_only=True, name="Loop 3", level=2)
+        # A named way that is not a mountain-bike way is not counted at all.
+        mtb_piece(staging, 4, 4, mtb_only=False, name="Alpha Trail")
+        assert trail_routes.mtb_name_counts(staging) == (2, 3)
+
+    def test_no_mountain_bike_ways_is_none_of_none(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 4, 0, mtb_only=False)
+        assert trail_routes.mtb_name_counts(staging) == (0, 0)
+
+    def test_the_level_counts_split_the_miles_drawn_from_the_hidden(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 1, 0, mtb_only=True, level=3)
+        mtb_piece(staging, 2, 1, mtb_only=True, level=3, map_class="hidden")
+        got = trail_routes.mtb_level_counts(staging)
+        assert set(got) == {3}
+        ways, miles, drawn = got[3]
+        assert ways == 2
+        assert miles == pytest.approx(2000 / 1609.344, rel=0.01)
+        assert drawn == pytest.approx(1000 / 1609.344, rel=0.01)
+
+    def test_a_schema_name_is_validated(self) -> None:
+        with pytest.raises(ValueError):
+            trail_routes.mtb_name_counts("live; DROP SCHEMA public")

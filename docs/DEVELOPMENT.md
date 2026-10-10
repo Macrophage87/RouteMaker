@@ -613,7 +613,8 @@ alone. Shape comes first and colour second:
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
-  `routemaker.trailaccess.MTB` and rated singletrack, which is hidden anyway).
+  `routemaker.trailaccess.MTB` and rated singletrack, which was hidden until
+  456 and is now drawn where only its rating closes it: next bullet).
   `stressFilters` puts `mtbHides` (`["!=", ["get", "mtb"], true]`) into every
   routable layer's filter, right after the ride time's drawn-at clause, and
   the one layer `mtb-trail` (`mtbTrailLayers`, the bottom of
@@ -647,6 +648,33 @@ alone. Shape comes first and colour second:
   says the dotted line is drawn "when the Mountain-bike trails map layer is
   on". docs/MTB-TOPO-PLAN.md has the
   rest of the mountain-bike and topo work.
+- **Mountain-bike levels (456, 456a-c; MTB-TOPO-PLAN slice 2).** The tiles
+  carry `mtb_level` (1-4, left out when null; `segment.mtb_level` from
+  `routemaker.singletrack.mtb_level`, the higher of `mtb:scale` and
+  `mtb:scale:imba`, 0 being no level, 456b). `MTB_LEVELS` in `stressStyle.js`
+  holds each level's colour, name, dash (in line widths) and pattern words;
+  `mtbTrailLayers` adds, after the grey dots (now filtered to the trails with
+  no `mtb_level`), `mtb-level-casing-1..4` (the shared dark cross-ticks,
+  `MTB_LEVEL.tick` in `MTB_LEVEL.tickDash`; 452a) and then
+  `mtb-level-1..4` (`mtbLevelPaint`), all from zoom 14 and all in
+  `MTB_LAYER_IDS`, which `overlayLayerShown` (`isMtbLayerId`) shows by the
+  layer's switch alone and the Mass Ride filter leaves without `massHides`.
+  `setStressPalette` re-applies the widths with the accessibility switch.
+  The legend adds a row a level after the dots' row (`mtbLevelLegend`,
+  `MtbLevelSwatch`, aria-hidden swatch; "Level 2 (blue)" then the rating,
+  colour and pattern in words), in the Mass Ride legend too. The road panel
+  (`core.segment_info`, `mtb_summary`, `MTB_LEVEL_COLOURS`, held equal to the
+  front end's names by a test) says "Mountain-bike trail, level 2 (blue), not
+  used for routes" and adds a "Mountain-bike difficulty" row under Riding.
+  The rebuild draws rated singletrack (`map_class` road, with `mtb`) where
+  nothing but its rating closes it (`pipeline.trail_closures.drawn_singletrack`),
+  and hides the rest as before. mtbLevels.test.ts holds each colour at 3:1
+  from the base map (`testSupport/baseSurfaces.ts`, shared with
+  mtbTrail.test.ts), each pattern distinct from the others and from every
+  other line pattern on the map, every level unlike every stress tier on
+  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
+  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
+  only (`pipeline.trail_closures.mtb_level`).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
