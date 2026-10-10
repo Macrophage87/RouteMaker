@@ -227,7 +227,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const seek = hillsMax(preset) > 0;
   // The ride type's start for what the bike carries, at the ride time and
   // with the assist the rider chose: going back resets the sliders only.
-  const plain = startDials(preset, dials.carrying, dials.when, dials.assist);
+  const plain = startDials(preset, dials.carrying, dials.when, dials.assist, dials.bike ?? null);
   // A Mass Ride hides Make it a loop and keeps it for the next ride type
   // (OWNER-DECISIONS 374): there it is no moved setting, and Reset keeps it.
   const hiddenLoop = preset === "mass-ride" && dials.loop === true;

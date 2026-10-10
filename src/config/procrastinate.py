@@ -112,6 +112,7 @@ BACKUP_EXCLUDED_TABLES = (
     "app_session",
     "rate_limit_window",
     "stress_tile_cache",
+    "bikeshare_feed_cache",
 )
 
 # How many dumps stay on the data volume. They are local-only for now - the

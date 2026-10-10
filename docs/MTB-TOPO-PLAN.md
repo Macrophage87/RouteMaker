@@ -70,8 +70,7 @@ slices (2-6) wait for bikeshare.
    level and a casing. Default picked: unrated mountain-bike-class trails keep today's grey
    dots. Legend rows
    per level, and the road panel names the level ("Mountain-bike trail, level 2 (blue)").
-   Needs: a core migration (after the two 0011 migrations on wip/stress-editor-p1 and
-   wip/bikeshare-2 merge, to avoid a numbering clash), a tile ETag letter, and a rebuild on the
+   Needs: a core migration (0013 or later: the stress editor took 0011 and bikeshare 0012), a tile ETag letter, and a rebuild on the
    owner's host.
 3. **Gravel's "roughest I'll ride" setting** (FOLLOWUP-GRAVEL-MTB). Needs slice 2's level per
    way in the graph: a per-level `rm:no_bicycle` variant, or Valhalla's own `mtb:scale` reading

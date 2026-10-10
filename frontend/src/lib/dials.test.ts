@@ -233,6 +233,6 @@ test("every ride type starts where it planned before the rescale, Trailmaxxing a
   // Cargo-carrying-people stays at 80".
   assert.deepEqual(
     Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
-    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70 },
+    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80 },
   );
 });

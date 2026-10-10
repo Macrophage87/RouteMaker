@@ -1286,3 +1286,31 @@ class LiveEditGeneration(models.Model):
 
     def __str__(self) -> str:
         return f"table {self.table_oid}: generation {self.generation}"
+
+
+class BikeshareFeedCache(models.Model):
+    """The bikeshare operator's latest GBFS feeds, one copy for all API workers
+    (core.gbfs.DatabaseStore).
+
+    There is exactly one row ( = "current"), replaced in place at every refresh,
+    about once a minute: the feeds as the operator published them, and when they were
+    read. Nothing here is history: an earlier reading is overwritten, no row is added per
+    reading or per station, and nothing is personal. It exists so that the deployment makes
+    one request to the operator's feeds a minute rather than one a worker (the operator's
+    data licence, OWNER-DECISIONS 300, allows a product to use the feeds, not to hold a
+    stand-alone dataset). It is excluded from the nightly dump and from the beta's data
+    shipment, and refills itself.
+    """
+
+    CURRENT = "current"
+
+    key = models.CharField(max_length=16, unique=True)
+    payload = models.JSONField(null=True)
+    fetched_at = models.DateTimeField(null=True)
+    failed_at = models.DateTimeField(null=True)
+
+    class Meta:
+        db_table = "bikeshare_feed_cache"
+
+    def __str__(self) -> str:
+        return f"bikeshare feeds as of {self.fetched_at}"

@@ -15,6 +15,7 @@ test("the picker offers every ride type in PLAN's table", () => {
       "fast",
       "cargo",
       "ebike",
+      "bikeshare",
     ],
   );
 });

@@ -12,6 +12,7 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
+import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
 
 interface Props {
@@ -77,6 +78,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             {custom ? `Custom (based on ${presetLabel(preset)})` : presetLabel(preset)}
             {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
             {dials.assist ? ", electric assist" : ""}
+            {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
           </strong>
           <span className="hint">{current?.description}</span>
         </p>

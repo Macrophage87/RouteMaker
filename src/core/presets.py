@@ -430,9 +430,62 @@ BRAKE_GRADES = MappingProxyType(
         "trailmaxxing": 0.06,
         "gravel": 0.06,
         "ebike": 0.06,
+        # A share bike is heavy (a classic about 45 lb) and its rider is often new to
+        # it: a brake-riding descent starts early, on both bikes.
+        "bikeshare": 0.04,
         # Riders who choose these want the descent.
         "mountain-goat": None,
         "fast": None,
+    }
+)
+
+
+# Bikeshare (OWNER-DECISIONS 243-245, 299): the ride between two docks, on the
+# operator's own bikes. The planner (`core.bikeshare`) adds the walks and the
+# docks; this is the ride leg, and its defaults are the implementation's choice,
+# stated here so they can be argued with.
+#
+# - Calm by default: stress 80 (STRESS_TODAYS_TOP), where a tier 3 or 4 way costs
+#   several times its length and a path or protected lane wins unless avoiding it
+#   takes much longer, with the stress-averse exposure weights (item 250). Share
+#   bikes are for casual riders and visitors on streets they do not know (the owner,
+#   item 243's "searches to find the nearest dock", and the default-stress-averse
+#   decision: trails over faster LTS 3 and 4 roads for most people). It is not the
+#   top (100): that is the long calm search, and a dock-to-dock hop is short.
+# - Classic (a few gears, about 45 lb): hills well toward avoid (-60, as Cargo Bike's),
+#   13 km/h (8 mph), the pace of a heavy three-speed ridden without hurry.
+# - E-bike: hills barely count (-20: the motor takes the climb but a long steep
+#   grade still costs the battery and the rider's nerve), 20 km/h (12 mph) on the
+#   e-bike graph (ways mapped closed to e-bikes left out), below the 15 mph of
+#   the E-bike ride type: the operator's assist stops at 18 mph and a casual
+#   rider cruises under it.
+# - Weight (the effort model, used only at the top of the stress slider): rider
+#   and a share bike are heavier than the model's default 90 kg; 100 kg for a
+#   classic (about 20 kg), 108 kg for an e-bike (about 28 kg).
+BIKESHARE = "bikeshare"
+BIKE_CLASSIC = "classic"
+BIKE_EBIKE = "ebike"
+BIKESHARE_STRESS = STRESS_TODAYS_TOP
+BIKESHARE_CLASSIC_SPEED_KMH = 13.0
+BIKESHARE_EBIKE_SPEED_KMH = 20.0
+
+
+@dataclass(frozen=True)
+class BikeProfile:
+    hills: int
+    speed_kmh: float
+    assist: bool
+    system_weight_kg: int
+
+
+BIKESHARE_BIKES = MappingProxyType(
+    {
+        BIKE_CLASSIC: BikeProfile(
+            hills=-60, speed_kmh=BIKESHARE_CLASSIC_SPEED_KMH, assist=False, system_weight_kg=100
+        ),
+        BIKE_EBIKE: BikeProfile(
+            hills=-20, speed_kmh=BIKESHARE_EBIKE_SPEED_KMH, assist=True, system_weight_kg=108
+        ),
     }
 )
 
@@ -630,6 +683,22 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_cost=VALHALLA_GATE_COST_S,
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
                 cycling_speed=EBIKE_PLANNING_SPEED_KMH,
+            ),
+            _preset(
+                BIKESHARE,
+                Variant.STANDARD,
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                # The e-bike takes the e-bike graph and its own pace with `assist`.
+                assist_speed_kmh=BIKESHARE_EBIKE_SPEED_KMH,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
         )
     }
