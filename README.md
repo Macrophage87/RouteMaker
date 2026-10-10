@@ -34,25 +34,27 @@ That is the whole of it, the first time and every time after; the site is at
 <http://localhost>. The first run writes a local `.env` with fresh secrets (an
 existing one is never touched), prepares the data directory (`~/rmdata`, or
 `--data-root DIR`), fetches the base map, builds the front end and the images,
-and starts the stack. Later runs skip whatever is already done. It refuses to
-touch a stack that was started from another checkout or worktree: run it from
-that one. `--help` lists
+and starts the stack. Later runs skip whatever is already done. `--help` lists
 the options; `--dry-run` shows what a run would do.
 
+It refuses to touch a stack that was started from another checkout or worktree
+(run it from that one), and a `.env` for any stack but the local `routemaker`
+one, such as the beta's. When the code under `frontend/` has changed, a run
+republishes the front end straight away, so the running site serves it at
+once. The map works signed out; signing in needs a Discord application, as the
+note at the end of the generated `.env` explains.
+
 Routing needs data that the first rebuild makes (hours, and three reference
-files you supply): until then the map loads but routes do not. The script says
-so and prints the next step, `docs/PLAYBOOK.md` section 7. Once a build is
-promoted, the same command starts the routers too, through
-`scripts/boot/start-stack.sh`, which also checks that place search answers, so
-import a Photon index first (`docs/DEPLOYMENT.md`, "Photon"). After pulling new
-code, run `scripts/local-up.sh -- --force-recreate-all` to put the new images
-into service (it stops a rebuild that is running).
+files you supply). Until then the map loads but routes do not, and the script
+prints the next step:
+[PLAYBOOK section 7, "The first rebuild"](docs/PLAYBOOK.md#7-the-first-rebuild--a4).
+Once a build is promoted, the same command starts the routers too.
 
 It needs the internet on a first run: Docker Hub, ghcr.io, pypi.org,
-deb.debian.org, registry.npmjs.org and build.protomaps.com, plus
+deb.debian.org, registry.npmjs.org, build.protomaps.com and github.com, plus
 download.geofabrik.de for the rebuild. Claude's cloud sessions block several of
 these, so this runs on a real computer, not in one of them. On Windows, run it
-inside WSL2 (`handoff-local.md` section 3).
+inside WSL2 ([handoff-local.md section 3](handoff-local.md#3-setting-up-on-windows)).
 
 ## Development
 

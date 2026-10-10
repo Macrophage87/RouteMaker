@@ -178,8 +178,9 @@ Decide and note down:
 - **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
-Never run anything under `scripts/boot/`, and do not follow `docs/DEPLOYMENT.md`'s boot section,
-on this server: they are for the home machine (Docker Desktop on WSL). `start-stack.sh` runs the base
+Never run anything under `scripts/boot/`, nor `scripts/local-up.sh`, and do not follow
+`docs/DEPLOYMENT.md`'s boot section, on this server: they are for the home machine (Docker Desktop
+on WSL); `local-up.sh` also refuses a `.env` whose project is not `routemaker`. `start-stack.sh` runs the base
 compose file without the overlay and exports `RESTART_POLICY=no`, which here would start caddy and
 the rebuild uncapped and stop the stack coming back after a reboot. Docker restarts the beta itself.
 

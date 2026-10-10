@@ -27,7 +27,12 @@ FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s|RESTART_POLICY=%s\n' "$*" "${RESTART_POLICY-<unset>}" >>"$FAKE_DIR/calls.log"
 case "$1" in
   info) [ -e "$FAKE_DIR/docker_down" ] && exit 1; exit 0 ;;
-  ps) cat "$FAKE_DIR/ps_owners" 2>/dev/null; exit 0 ;;
+  ps)
+    case "$*" in
+      *service=rebuild*) cat "$FAKE_DIR/rebuild_running" 2>/dev/null ;;
+      *) cat "$FAKE_DIR/ps_owners" 2>/dev/null ;;
+    esac
+    exit 0 ;;
   compose)
     [ "$2" = version ] && { cat "$FAKE_DIR/compose_version" 2>/dev/null || echo 2.29.1; exit 0; }
     exit 0 ;;
@@ -51,7 +56,23 @@ exit 0
 """
 
 FAKE_CURL = r"""#!/usr/bin/env bash
+# health_seq: one answer per line, used up in order; then health; then 200.
+if [ -s "$FAKE_DIR/health_seq" ]; then
+  head -n1 "$FAKE_DIR/health_seq" | tr -d '\n'
+  sed -i 1d "$FAKE_DIR/health_seq"
+  exit 0
+fi
 cat "$FAKE_DIR/health" 2>/dev/null || printf 200
+"""
+
+# A stand-in for git, for the front-end stamp: the tree id comes from git_tree
+# (or git fails when there is none), and frontend/ is dirty while git_dirty exists.
+FAKE_GIT = r"""#!/usr/bin/env bash
+case "$*" in
+  *rev-parse*) cat "$FAKE_DIR/git_tree" 2>/dev/null || exit 128 ;;
+  *status*) [ -e "$FAKE_DIR/git_dirty" ] && echo " M frontend/src/main.ts" ;;
+esac
+exit 0
 """
 
 FAKE_START_STACK = r"""#!/usr/bin/env bash
@@ -78,10 +99,19 @@ class LocalUpTests(unittest.TestCase):
         self.docker = _exe(self.fake / "docker", FAKE_DOCKER)
         self.curl = _exe(self.fake / "curl", FAKE_CURL)
         self.start_stack = _exe(self.fake / "start-stack", FAKE_START_STACK)
+        self.fake_git_dir = self.tmp / "fakebin"
+        self.fake_git_dir.mkdir()
+        _exe(self.fake_git_dir / "git", FAKE_GIT)
+        self.use_fake_git = False
+        self.extra_env: dict[str, str] = {}
+        self.root_uid = "4294967294"  # nobody's: the fake prepare's directories are ours
 
     def run_script(self, *args: str) -> subprocess.CompletedProcess[str]:
+        path = os.environ["PATH"]
+        if self.use_fake_git:
+            path = f"{self.fake_git_dir}{os.pathsep}{path}"
         env = {
-            "PATH": os.environ["PATH"],
+            "PATH": path,
             "HOME": str(self.tmp / "home"),
             "FAKE_DIR": str(self.fake),
             "REPO": str(REPO),
@@ -92,6 +122,8 @@ class LocalUpTests(unittest.TestCase):
             "LOCAL_UP_START_STACK": str(self.start_stack),
             "LOCAL_UP_HEALTHY_S": "0",
             "LOCAL_UP_POLL_S": "0",
+            "LOCAL_UP_ROOT_UID": self.root_uid,
+            **self.extra_env,
         }
         return subprocess.run(
             [BASH, str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=60
@@ -286,6 +318,40 @@ class LocalUpTests(unittest.TestCase):
         self.run_script()
         self.assertTrue(any("npm ci" in c for c in self.calls()))
 
+    def test_a_missing_index_html_is_published_again(self) -> None:
+        self.first_run()
+        (self.data_root / "frontend" / "index.html").unlink()
+        (self.fake / "calls.log").unlink()
+        self.run_script()
+        self.assertTrue(any("npm ci" in c for c in self.calls()))
+
+    def test_a_dirty_front_end_is_rebuilt_on_every_run(self) -> None:
+        self.use_fake_git = True
+        (self.fake / "git_tree").write_text("abc123\n")
+        (self.fake / "git_dirty").touch()
+        self.first_run()
+        self.assertEqual(
+            (self.data_root / "frontend" / ".local-up-source").read_text().strip(),
+            "abc123+dirty",
+        )
+        (self.fake / "calls.log").unlink()
+        self.run_script()
+        self.assertTrue(any("npm ci" in c for c in self.calls()))
+        # Clean again at the same tree: the next run publishes once more (the
+        # stamp still says dirty), and the one after that skips.
+        (self.fake / "git_dirty").unlink()
+        self.run_script()
+        (self.fake / "calls.log").unlink()
+        self.run_script()
+        self.assertFalse(any("npm ci" in c for c in self.calls()))
+
+    def test_without_git_the_front_end_is_always_rebuilt(self) -> None:
+        self.use_fake_git = True  # and no git_tree: rev-parse fails
+        self.first_run()
+        (self.fake / "calls.log").unlink()
+        self.run_script()
+        self.assertTrue(any("npm ci" in c for c in self.calls()))
+
     def test_no_build_skips_the_image_build(self) -> None:
         result = self.run_script("--data-root", str(self.data_root), "--no-build")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -295,7 +361,48 @@ class LocalUpTests(unittest.TestCase):
         (self.fake / "health").write_text("502")
         result = self.run_script("--data-root", str(self.data_root))
         self.assertEqual(result.returncode, 2)
-        self.assertIn("/healthz", result.stdout)
+        self.assertIn("/healthz", result.stderr)
+        self.assertIn("--project-name routemaker", result.stderr)
+
+    def test_healthz_answering_late_is_waited_for(self) -> None:
+        (self.fake / "health_seq").write_text("502\n000\n502\n")
+        self.extra_env = {"LOCAL_UP_HEALTHY_S": "60", "LOCAL_UP_POLL_S": "0"}
+        result = self.run_script("--data-root", str(self.data_root))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("waiting up to", result.stdout)
+        self.assertEqual((self.fake / "health_seq").read_text(), "")
+
+    def test_a_missing_data_root_directory_prepares_it_again(self) -> None:
+        self.first_run()
+        (self.data_root / "rebuild").rmdir()  # the last entry in DIRECTORIES
+        (self.fake / "calls.log").unlink()
+        self.run_script()
+        self.assertTrue(any("prepare_data_root.sh" in c for c in self.calls()))
+
+    def test_a_root_owned_data_root_is_prepared_again(self) -> None:
+        """Docker made the bind sources as root before the prepare ever ran."""
+        self.first_run()
+        (self.fake / "calls.log").unlink()
+        self.root_uid = str(os.getuid())  # so the directories read as root's
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(any("prepare_data_root.sh" in c for c in self.calls()))
+
+    def test_a_running_rebuild_is_not_recreated(self) -> None:
+        self.first_run()
+        (self.fake / "calls.log").unlink()
+        (self.fake / "rebuild_running").write_text("0123456789ab\n")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        ups = [c for c in self.calls() if c.startswith("compose ") and " up " in c]
+        self.assertEqual(len(ups), 1, ups)
+        self.assertIn(" --no-recreate ", ups[0])
+
+    def test_without_a_running_rebuild_up_may_recreate(self) -> None:
+        self.first_run()
+        ups = [c for c in self.calls() if c.startswith("compose ") and " up " in c]
+        self.assertEqual(len(ups), 1, ups)
+        self.assertNotIn("--no-recreate", ups[0])
 
     # --- With routing data --------------------------------------------------------
 
@@ -318,6 +425,17 @@ class LocalUpTests(unittest.TestCase):
         self.assertTrue(any("collectstatic" in c for c in calls))
         self.assertNotIn("acceptance.py", result.stdout)
 
+    def test_a_dry_run_with_routing_data_passes_dry_run_to_start_stack(self) -> None:
+        self.with_tiles()
+        result = self.run_script("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = self.calls()
+        starts = [c for c in calls if c.startswith("start-stack")]
+        self.assertEqual(len(starts), 1, calls)
+        self.assertTrue(starts[0].split("|")[0].endswith(" --dry-run"), starts[0])
+        for call in calls:
+            self.assertRegex(call, r"^(info|compose version|ps -a |ps -q |start-stack )", call)
+
     def test_a_failed_start_stack_is_passed_on(self) -> None:
         self.with_tiles()
         (self.fake / "start_stack_rc").write_text("2")
@@ -333,9 +451,34 @@ class LocalUpTests(unittest.TestCase):
         self.assertFalse(self.env_file.exists())
         self.assertFalse(self.data_root.exists())
         for call in self.calls():
-            self.assertRegex(call, r"^(info|compose version|ps -a )", call)
+            self.assertRegex(call, r"^(info|compose version|ps -a |ps -q )", call)
         for step in ("prepare_data_root.sh", "fetch_basemap.sh", "npm\\ ci", " build", " up -d"):
             self.assertRegex(result.stdout, rf"DRYRUN: .*{re.escape(step)}", step)
+
+    def test_a_dry_run_with_an_env_reads_its_data_root(self) -> None:
+        other = self.tmp / "other"
+        self.env_file.write_text(f"DATA_ROOT={other}\nCOMPOSE_PROJECT_NAME=routemaker\n")
+        result = self.run_script("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, rf"DRYRUN: .*{re.escape(str(other))}/basemap")
+        self.assertNotIn(str(self.tmp / "home" / "rmdata"), result.stdout)
+        self.assertFalse(other.exists())
+
+    # --- Another project ----------------------------------------------------------
+
+    def test_an_env_for_another_project_is_refused(self) -> None:
+        """The beta's .env, say: this must never start it without its overlay."""
+        self.env_file.write_text(
+            f"DATA_ROOT={self.data_root}\nCOMPOSE_PROJECT_NAME=routemaker-beta\n"
+        )
+        result = self.run_script()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("routemaker-beta", result.stderr)
+        calls = self.calls()
+        self.assertTrue(
+            any("label=com.docker.compose.project=routemaker-beta" in c for c in calls), calls
+        )
+        self.assertFalse(any(c.startswith(("run ", "compose --")) for c in calls), calls)
 
     def test_help(self) -> None:
         result = self.run_script("--help")

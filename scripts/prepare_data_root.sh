@@ -106,7 +106,9 @@ esac
 # `current` directories the serving containers bind individually.
 # tests/test_deploy_docs.py reads the mappings out of compose.yaml and fails if
 # this list stops covering them, so a mount added to the stack cannot be
-# forgotten here.
+# forgotten here. scripts/local-up.sh reads this block too (one directory per
+# line, between the DIRECTORIES=" line and a closing " line) to tell whether
+# this needs running: keep that shape.
 DIRECTORIES="
 caddy
 static

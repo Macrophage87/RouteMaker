@@ -38,17 +38,22 @@
 # and deb.debian.org (the image builds), registry.npmjs.org (the front end) and
 # build.protomaps.com plus github.com (the base map). Routing data is not fetched
 # here: it is the first rebuild (docs/PLAYBOOK.md, 7), which also needs
-# download.geofabrik.de and takes hours. All of these are blocked in Claude's
+# download.geofabrik.de and takes hours. Several of these are blocked in Claude's
 # cloud sessions, so this runs on a real computer.
+#
+# The local stack only: it refuses a .env whose COMPOSE_PROJECT_NAME is not
+# routemaker, such as the beta's (docs/BETA-RUNBOOK.md: the beta needs its
+# overlay and Docker's restart policy, which this would drop).
 #
 # Environment (optional): LOCAL_UP_ENV_FILE [<repo>/.env], LOCAL_UP_DOCKER
 # [docker], LOCAL_UP_CURL [curl], LOCAL_UP_BASE_URL [http://localhost],
 # LOCAL_UP_HEALTHY_S [300], LOCAL_UP_POLL_S [5], LOCAL_UP_START_STACK
-# [scripts/boot/start-stack.sh]. tests/test_local_up.py points them at temporary
-# files and stubs.
+# [scripts/boot/start-stack.sh], LOCAL_UP_ROOT_UID [0].
+# tests/test_local_up.py points them at temporary files and stubs.
 #
-# Exit: 0 up; 1 a step failed; 2 started but /healthz never answered 200;
-#       64 bad arguments. With routing data, start-stack.sh's own exit code.
+# Exit: 0 up; 1 a check failed; 2 started but /healthz never answered 200;
+#       64 bad arguments. A command that fails ends the run with its own exit
+#       code, and with routing data start-stack.sh's exit code is passed on.
 
 set -Eeuo pipefail
 
@@ -61,6 +66,8 @@ BASE_URL=${LOCAL_UP_BASE_URL:-http://localhost}
 HEALTHY_S=${LOCAL_UP_HEALTHY_S:-300}
 POLL_S=${LOCAL_UP_POLL_S:-5}
 START_STACK=${LOCAL_UP_START_STACK:-$SCRIPT_DIR/boot/start-stack.sh}
+# Whose directories mean Docker made them, not scripts/prepare_data_root.sh.
+ROOT_UID=${LOCAL_UP_ROOT_UID:-0}
 
 # The images every helper container runs, pinned to the digests the guides use.
 BUSYBOX=docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
@@ -95,7 +102,12 @@ while [ $# -gt 0 ]; do
 done
 
 say() { printf 'local-up: %s\n' "$*"; }
-die() { printf 'local-up: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'local-up: %s\n' "$*" >&2; }
+die() { warn "$@"; exit 1; }
+# Progress as plain lines, not bars redrawn in place, which a screen reader reads
+# as noise: BuildKit's builds, and compose's own output where it knows the
+# variable. The `docker run` helpers below pass --quiet for their image pulls.
+export BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain
 # A step that changes something: printed and skipped under --dry-run.
 run() {
   if [ "$DRY_RUN" = 1 ]; then
@@ -154,11 +166,11 @@ if [ -n "$project" ]; then
     --format '{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null | sort -u | sed '/^$/d' || true)
   if [ -n "$owners" ]; then
     if [ ! -e "$ENV_FILE" ]; then
-      die "a stack named '$project' already exists (started from: $(echo $owners)), and there is no $ENV_FILE. Run this from that checkout, or point LOCAL_UP_ENV_FILE at its .env; writing a new .env here would take that stack over with new secrets and a new data root."
+      die "a stack named '$project' already exists (started from: $(echo "$owners" | paste -sd' ')), and there is no $ENV_FILE. Run scripts/local-up.sh from that checkout: writing a new .env here would take that stack over with new secrets and a new data root."
     fi
-    for owner in $owners; do
+    while IFS= read -r owner; do
       [ "$owner" = "$REPO_DIR" ] || die "the stack '$project' was started from $owner, not $REPO_DIR. Run scripts/local-up.sh from there: from here it would rebuild that stack's images and republish its front end from this checkout."
-    done
+    done <<<"$owners"
   fi
 fi
 
@@ -191,7 +203,7 @@ else
       "$REPO_DIR/.env.example" >"$tmp"
     cat >>"$tmp" <<'EOF'
 
-# --- Written by scripts/local-up.sh ----------------------------------------------
+# Written by scripts/local-up.sh
 # This computer only: plain HTTP on localhost, never a host reachable from
 # outside (the local block above says why). Sign-in also needs DISCORD_CLIENT_ID
 # and DISCORD_CLIENT_SECRET from a Discord application with
@@ -215,6 +227,7 @@ else
   PROJECT=$(env_get COMPOSE_PROJECT_NAME)
   [ -n "$DATA_ROOT" ] || die "$ENV_FILE has no DATA_ROOT"
   [ -n "$PROJECT" ] || die "$ENV_FILE has no COMPOSE_PROJECT_NAME. Add COMPOSE_PROJECT_NAME=routemaker to it: without one, compose names the project after this directory and a checkout under another name is a second stack on the same data."
+  [ "$PROJECT" = routemaker ] || die "$ENV_FILE names the stack '$PROJECT', not routemaker. This script starts only the local stack: it runs compose.yaml without any overlay and turns Docker's restart policy off, which would break a server stack such as the beta (docs/BETA-RUNBOOK.md). Nothing changed."
   case "$(env_get CADDY_SITE_ADDRESS)" in
     :80 | "") ;;
     *) say "note: CADDY_SITE_ADDRESS is '$(env_get CADDY_SITE_ADDRESS)', not :80; this .env is not the local posture, so http://localhost may not answer" ;;
@@ -229,15 +242,25 @@ export RESTART_POLICY=no
 if [ "$DRY_RUN" = 0 ]; then
   mkdir -p "$DATA_ROOT" 2>/dev/null || die "cannot create $DATA_ROOT; create it yourself (with room: about 50 GB once there is routing data) and run this again"
 fi
-# Only when a directory it makes is missing: its chowns are recursive, and on a
-# stack with data that is a walk over every tile and elevation file for nothing.
+# Only when a directory it makes is missing, or one it hands to the images' user
+# (10001) is root's, as it is when `docker compose up` ran before it and Docker
+# created the bind sources: its chowns are recursive, and on a stack with data
+# that is a walk over every tile and elevation file for nothing. (Root's, not
+# "not 10001's": under Docker Desktop's file sharing the chown is a no-op and the
+# directories stay yours, which would rerun it every time.) The list is read
+# from its DIRECTORIES block.
 missing=""
 for d in $(sed -n '/^DIRECTORIES="/,/^"/p' "$REPO_DIR/scripts/prepare_data_root.sh" | sed '1d;$d'); do
   [ -d "$DATA_ROOT/$d" ] || { missing=$d; break; }
 done
+if [ -z "$missing" ]; then
+  for d in static basemap frontend tiles; do
+    [ "$(stat -c %u "$DATA_ROOT/$d" 2>/dev/null)" != "$ROOT_UID" ] || { missing=$d; break; }
+  done
+fi
 if [ -n "$missing" ]; then
   say "data root: preparing $DATA_ROOT"
-  run "$DOCKER" run --rm -v "$DATA_ROOT:$DATA_ROOT" -v "$REPO_DIR/scripts/prepare_data_root.sh:/prepare_data_root.sh:ro" \
+  run "$DOCKER" run --rm --quiet -v "$DATA_ROOT:$DATA_ROOT" -v "$REPO_DIR/scripts/prepare_data_root.sh:/prepare_data_root.sh:ro" \
     -e "DATA_ROOT=$DATA_ROOT" "$BUSYBOX" sh /prepare_data_root.sh
 else
   say "data root: ready"
@@ -248,7 +271,7 @@ if [ -f "$DATA_ROOT/basemap/region.pmtiles" ]; then
   say "base map: present"
 else
   say "base map: fetching (about 300 MB)"
-  run "$DOCKER" run --rm -u 10001:10001 -e "DATA_ROOT=$DATA_ROOT" \
+  run "$DOCKER" run --rm --quiet -u 10001:10001 -e "DATA_ROOT=$DATA_ROOT" \
     -v "$DATA_ROOT/basemap:$DATA_ROOT/basemap" \
     -v "$REPO_DIR/scripts/fetch_basemap.sh:/fetch_basemap.sh:ro" \
     --entrypoint sh "$CURL_IMAGE" /fetch_basemap.sh
@@ -256,21 +279,25 @@ fi
 
 # --- 5. The front end ------------------------------------------------------------
 # The stamp is git's tree id of frontend/ plus a mark when the working tree
-# differs from it, so a rerun after an edit rebuilds and one after nothing does not.
+# differs from it, so a rerun after an edit rebuilds and one after nothing does
+# not. Without git to ask, it always rebuilds.
 frontend_tree=$(git -C "$REPO_DIR" rev-parse HEAD:frontend 2>/dev/null || echo unknown)
 if [ -n "$(git -C "$REPO_DIR" status --porcelain -- frontend 2>/dev/null)" ]; then
   frontend_tree="$frontend_tree+dirty"
 fi
 published=$(cat "$DATA_ROOT/frontend/.local-up-source" 2>/dev/null || true)
-if [ -f "$DATA_ROOT/frontend/index.html" ] && [ "$published" = "$frontend_tree" ] && [ "${frontend_tree%+dirty}" = "$frontend_tree" ]; then
+if [ -f "$DATA_ROOT/frontend/index.html" ] && [ "$published" = "$frontend_tree" ] &&
+  [ "${frontend_tree%+dirty}" = "$frontend_tree" ] && [ "$frontend_tree" != unknown ]; then
   say "front end: current"
 else
   say "front end: building and publishing"
-  run "$DOCKER" run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$REPO_DIR/frontend:/app" -w /app \
+  run "$DOCKER" run --rm --quiet -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$REPO_DIR/frontend:/app" -w /app \
     "$NODE" sh -c 'npm ci && npm run build'
-  # The publish from docs/DEPLOYMENT.md: hashed assets first, index.html last by a
-  # rename, so a page loaded mid-publish never names files that are not there.
-  run "$DOCKER" run --rm -u 10001:10001 \
+  # The publish from docs/DEPLOYMENT.md, "The public front end" (keep the two in
+  # step; this adds the stamp, and leaves `npm test` to CI): hashed assets first,
+  # index.html last by a rename, so a page loaded mid-publish never names files
+  # that are not there.
+  run "$DOCKER" run --rm --quiet -u 10001:10001 \
     -v "$REPO_DIR/frontend/dist:/dist:ro" -v "$DATA_ROOT/frontend:/out" "$BUSYBOX" \
     sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html && echo "$1" >/out/.local-up-source' \
     sh "$frontend_tree"
@@ -292,22 +319,35 @@ if [ -f "$DATA_ROOT/tiles/standard/current/tiles.tar" ]; then
   rc=0
   BOOT_ENV_FILE="$ENV_FILE" BOOT_DOCKER="$DOCKER" BOOT_CURL="$CURL" BOOT_BASE_URL="$BASE_URL" \
     BOOT_DATA_ROOT="$DATA_ROOT" "$START_STACK" ${boot_args[@]+"${boot_args[@]}"} || rc=$?
-  [ "$rc" = 0 ] || { say "start-stack.sh exited $rc; it printed why above, and its log is under ${BOOT_LOG_DIR:-~/rmdata/boot}"; exit "$rc"; }
+  [ "$rc" = 0 ] || { warn "start-stack.sh exited $rc; it printed why above, and its log is under ${BOOT_LOG_DIR:-$HOME/rmdata/boot}"; exit "$rc"; }
   HAVE_DATA=1
 else
   [ "${#STACK_ARGS[@]}" = 0 ] || say "note: no routing data yet, so the arguments after -- (for start-stack.sh) are not used"
   say "no routing data yet: starting ${FIRST_RUN_SERVICES[*]} (the routers wait for the first rebuild)"
-  run dc up -d --no-build "${FIRST_RUN_SERVICES[@]}"
+  up_args=(-d --no-build)
+  # The first rebuild runs for hours with no tiles.tar to show for it until it
+  # promotes, and recreating its container kills it (compose.yaml, rebuild).
+  # While that container runs, start what is missing and leave the rest alone, as
+  # start-stack.sh does.
+  if [ -n "$("$DOCKER" ps -q --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter label=com.docker.compose.service=rebuild --filter status=running 2>/dev/null || true)" ]; then
+    say "note: the rebuild container is running, so running containers are left as they are (newly built images go into service once it has finished and this is run again)"
+    up_args+=(--no-recreate)
+  fi
+  run dc up "${up_args[@]}" "${FIRST_RUN_SERVICES[@]}"
   if [ "$DRY_RUN" = 0 ]; then
+    say "waiting up to ${HEALTHY_S}s for $BASE_URL/healthz"
     waited=0
     until [ "$(health)" = 200 ]; do
       if [ "$waited" -ge "$HEALTHY_S" ]; then
-        say "the stack started but $BASE_URL/healthz has not answered 200 in ${HEALTHY_S}s"
-        say "look at: docker compose ps -a, then docker compose logs migrate api caddy"
+        warn "the stack started but $BASE_URL/healthz has not answered 200 in ${HEALTHY_S}s."
+        warn "Look at: docker compose --project-name $PROJECT --env-file $ENV_FILE ps -a"
+        warn "and then: docker compose --project-name $PROJECT --env-file $ENV_FILE logs migrate api caddy"
         exit 2
       fi
       sleep "$POLL_S"
       waited=$((waited + POLL_S))
+      [ "$waited" = 0 ] || [ $((waited % 30)) -ne 0 ] || say "still waiting for $BASE_URL/healthz (${waited}s)"
     done
   fi
   HAVE_DATA=0
@@ -323,12 +363,10 @@ fi
 say "up: $BASE_URL"
 if [ "$HAVE_DATA" = 0 ]; then
   cat <<EOF
-local-up: the map, the admin and /healthz work now. Routes and the stress overlay
-local-up: need routing data, which comes from the first rebuild:
-local-up:   python3 scripts/acceptance.py --only A4
-local-up: docs/PLAYBOOK.md section 7 walks through it (it pauses once for the three
-local-up: reference files, then builds for hours). Once it has promoted a build,
-local-up: run scripts/local-up.sh again and it starts the routers too. Place search
-local-up: needs a Photon index as well: docs/DEPLOYMENT.md, "Photon".
+local-up: The map, the admin and /healthz work now.
+local-up: Routes and the stress overlay need routing data, which comes from the first rebuild: python3 scripts/acceptance.py --only A4
+local-up: docs/PLAYBOOK.md section 7 walks through it; it pauses once for the three reference files, then builds for hours.
+local-up: Once it has promoted a build, run scripts/local-up.sh again and it starts the routers too.
+local-up: Place search needs a Photon index as well: docs/DEPLOYMENT.md, "Photon".
 EOF
 fi
