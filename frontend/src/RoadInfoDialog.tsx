@@ -19,6 +19,12 @@
  * empty until the answer comes, as the weight dialog's total is), so a rider who stays on
  * the heading hears it come in: the page's own region is outside the modal, which makes it
  * inert and drops it from the accessibility tree (the a11y review's S1).
+ *
+ * On an Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID; the owner, 2026-10-10
+ * 15:08 UTC: "Yes, also when clicking on the intersection. ... Basically something to say: this
+ * is a really bad idea, please reconsider.") the panel leads with a warning, above its heading,
+ * and it opens the dialog's description (`aria-describedby`), so it is said as the panel opens.
+ * Not also an alert: the two together were said twice (the review of 351e65b).
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -52,6 +58,7 @@ import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
+import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 
 interface Props {
@@ -61,6 +68,8 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
+  avoid?: AvoidItem | null;
   /**
    * On a Mass Ride, the federal area the spot is in (lib/federalStops.ts federalAreaAt; item 239), or
    * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
@@ -97,7 +106,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, avoid = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -262,7 +271,7 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
       ref={dialogRef}
       className="road-info"
       aria-labelledby={id("title")}
-      aria-describedby={id("where")}
+      aria-describedby={avoid ? `${id("avoid")} ${id("where")}` : id("where")}
       aria-busy={state.kind === "loading" ? true : undefined}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => {
@@ -276,6 +285,17 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
       }}
     >
       <div className="road-info-body">
+        {request && avoid && (
+          <div className="road-info-avoid" id={id("avoid")}>
+            <p className="road-info-avoid-heading">
+              <span className="avoid-symbol" aria-hidden="true">
+                {AVOID_SYMBOL}
+              </span>{" "}
+              <strong>{AVOID_CARD_HEADING}.</strong>
+            </p>
+            <p className="road-info-avoid-text">{avoidCardText(avoid)}</p>
+          </div>
+        )}
         <header>
           <h2 id={id("title")} ref={headingRef} tabIndex={-1}>
             {infoHeading(state)}

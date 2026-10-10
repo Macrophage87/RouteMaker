@@ -84,6 +84,12 @@ CONTRACT_KEYS = {
     "dodges",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
+    # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated
+    # junctions passed, the notice, what the plan did and the way round.
+    "avoid_junctions",
+    "avoid_notice",
+    "avoid_search",
+    "avoid_alternate",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
