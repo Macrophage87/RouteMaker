@@ -14,15 +14,21 @@ import {
   metroPlaces,
   nearbyText,
   nearestInStraightLine,
+  LOCATION_BUSY,
+  WATER_NOT_LOADED,
   rankNearest,
   requestNearest,
+  searchNearest,
+  type SearchDeps,
   waterPlaces,
   type NearestAnswer,
   type NearestPlace,
 } from "./nearest.ts";
 import { NEAREST_SUMMARY, NearestFinder, type FinderProps } from "./nearestFinder.ts";
 import type { Station } from "./railStations.ts";
-import { WATER_CAUTION, WATER_PREFS_DEFAULT, type WaterPoint } from "./waterRestrooms.ts";
+import { WATER_CAUTION, type WaterPoint } from "./waterRestrooms.ts";
+import { LOCATE_MESSAGES, LOCATION_OUTSIDE } from "./geolocation.ts";
+import { insideCoverage } from "./geo.ts";
 
 const HERE: LonLat = [-77.05, 38.9];
 
@@ -36,23 +42,24 @@ const WATER: WaterPoint[] = [
 
 const ids = (places: readonly NearestPlace[]) => places.map((p) => p.id);
 
-test("water is drinking water, and untreated water only while its switch is on", () => {
-  assert.deepEqual(ids(waterPlaces(WATER, "water", WATER_PREFS_DEFAULT)), ["n1", "n2", "n3"]);
-  assert.deepEqual(ids(waterPlaces(WATER, "water", { ...WATER_PREFS_DEFAULT, untreated: false })), ["n1", "n3"]);
+test("water is drinking water only: untreated water is not what a rider asking for water wants", () => {
+  assert.deepEqual(ids(waterPlaces(WATER, "water")), ["n1", "n3"]);
 });
 
-test("restrooms are every type, portable and pit toilets only while their switch is on", () => {
-  assert.deepEqual(ids(waterPlaces(WATER, "restroom", WATER_PREFS_DEFAULT)), ["n3", "n4", "n5"]);
-  assert.deepEqual(ids(waterPlaces(WATER, "restroom", { ...WATER_PREFS_DEFAULT, basic: false })), ["n3", "n5"]);
+test("restrooms are every type, each titled with its type", () => {
+  const places = waterPlaces(WATER, "restroom");
+  assert.deepEqual(ids(places), ["n3", "n4", "n5"]);
+  assert.deepEqual(
+    places.map((p) => p.title),
+    ["Flush restroom, with drinking water", "Portable or pit toilet", "Restroom, type not mapped"],
+  );
 });
 
 test("a water place says what it is, with its name and details, at its own point", () => {
-  const [first] = waterPlaces(WATER, "water", WATER_PREFS_DEFAULT);
+  const [first] = waterPlaces(WATER, "water");
   assert.equal(first.title, "Drinking water, Mile 4");
   assert.deepEqual(first.details, ["Bottle filler.", "Free."]);
   assert.deepEqual(first.point, [-77.04, 38.9]);
-  const [untreated] = waterPlaces([WATER[1]], "water", WATER_PREFS_DEFAULT);
-  assert.match(untreated.title, /filter or treat it first/);
 });
 
 const station = (over: Partial<Station>): Station => ({
@@ -139,8 +146,14 @@ test("the status line says how many, of what, from where, and how they were meas
     by: "riding",
     places: CANDIDATES.map((_, i) => ({ distance_m: 1000 * (i + 1), time_s: 100 })),
   });
-  assert.equal(foundSaid("water", "location", byBike), "The 3 nearest water by bike from your location, nearest first.");
-  assert.equal(foundSaid("metro", "centre", byBike.slice(0, 1)), "The nearest Metro station by bike from the map's center.");
+  assert.equal(
+    foundSaid("water", "location", byBike),
+    "The 3 nearest water by bike from your location, nearest first. Nearest: Place a, 0.6 mi (1.0 km) by bike, about 2 min.",
+  );
+  assert.equal(
+    foundSaid("metro", "centre", byBike.slice(0, 1)),
+    "The nearest Metro station by bike from the map's center. Nearest: Place a, 0.6 mi (1.0 km) by bike, about 2 min.",
+  );
   const straight = byBike.map((r) => ({ ...r, byBike: false, timeS: null }));
   assert.ok(foundSaid("restroom", "start", straight).endsWith(STRAIGHT_LINE_NOTE));
   assert.equal(foundSaid("restroom", "start", []), "No restrooms could be reached by bike from the start of the plan.");
@@ -220,4 +233,89 @@ test("the list: each place in words with Ride here, and Add as stop for water in
   const metro = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "metro", items }, canAddStop: true })));
   assert.ok(!metro.includes(">Add as stop<"), "a Metro station is where a ride ends");
   assert.ok(!metro.includes(WATER_CAUTION));
+});
+
+// --- One search, start to end (App's findNearest hands it the page's parts) ---
+
+const DUPONT = station({ elevators: [[-77.0433, 38.9098]] });
+const FAR_STATION = station({ id: "metro-9", name: "Shady Grove", point: [-77.1462, 39.1199] });
+
+function deps(over: Partial<SearchDeps> = {}): SearchDeps & { asked: Array<{ from: LonLat; places: readonly NearestPlace[] }> } {
+  const asked: Array<{ from: LonLat; places: readonly NearestPlace[] }> = [];
+  return {
+    asked,
+    kind: "water",
+    from: "location",
+    locate: async () => ({ ok: true, fix: { point: HERE, accuracyM: 20 } }),
+    start: () => null,
+    centre: () => [-77.0365, 38.8977],
+    inside: insideCoverage,
+    water: async () => WATER,
+    stations: [FAR_STATION, DUPONT],
+    request: async (from, places) => {
+      asked.push({ from, places });
+      return { ok: true, answer: { by: "riding", places: places.map((_, i) => ({ distance_m: 1000 * (places.length - i), time_s: 60 })) } };
+    },
+    ...over,
+  };
+}
+
+test("a search from the rider's location: the fix is kept, the places are sent from it, the nearest by bike come back", async () => {
+  const d = deps();
+  const outcome = await searchNearest(d);
+  assert.deepEqual(outcome.fix, { point: HERE, accuracyM: 20 });
+  assert.deepEqual(d.asked[0].from, HERE);
+  assert.deepEqual(ids(d.asked[0].places), ["n1", "n3"], "drinking water, nearest in a straight line first");
+  assert.deepEqual(outcome.found?.items.map((i) => i.place.id), ["n3", "n1"], "then by bike");
+  assert.deepEqual(outcome.found?.origin, HERE);
+  assert.equal(outcome.found?.from, "location");
+  assert.match(outcome.said, /^The 2 nearest water by bike from your location/);
+});
+
+test("from the map's center or the plan's start, no look-up is made", async () => {
+  let looked = 0;
+  const locate = async () => {
+    looked += 1;
+    return { ok: true as const, fix: { point: HERE, accuracyM: 5 } };
+  };
+  const centre = deps({ from: "centre", locate });
+  await searchNearest(centre);
+  assert.deepEqual(centre.asked[0].from, [-77.0365, 38.8977]);
+  const start = deps({ from: "start", locate, start: () => [-77.04, 38.91] });
+  const outcome = await searchNearest(start);
+  assert.deepEqual(start.asked[0].from, [-77.04, 38.91]);
+  assert.equal(outcome.fix, undefined);
+  assert.equal(looked, 0);
+  assert.equal((await searchNearest(deps({ from: "start" }))).said, "There is nowhere to search from yet.");
+});
+
+test("Metro: Metrorail's stations at their bike entrance", async () => {
+  const d = deps({ kind: "metro" });
+  const outcome = await searchNearest(d);
+  assert.deepEqual(d.asked[0].places.map((p) => p.point), [[-77.0433, 38.9098], FAR_STATION.point]);
+  assert.equal(outcome.found?.kind, "metro");
+});
+
+test("a look-up that is busy, refused or outside the map ends the search with its reason, asking nothing", async () => {
+  const busy = deps({ locate: async () => "busy" });
+  assert.equal((await searchNearest(busy)).said, LOCATION_BUSY);
+  const denied = deps({ locate: async () => ({ ok: false, reason: "denied" }) });
+  assert.equal((await searchNearest(denied)).said, LOCATE_MESSAGES.denied);
+  const away = deps({ locate: async () => ({ ok: true, fix: { point: [-80, 38.9], accuracyM: 5 } }) });
+  const outcome = await searchNearest(away);
+  assert.equal(outcome.said, LOCATION_OUTSIDE);
+  assert.ok(outcome.fix, "the fix is still the rider's, for the circle");
+  assert.equal((await searchNearest(deps({ from: "centre", centre: () => [-80, 38.9] }))).said, "That spot is outside the area this map covers.");
+  for (const d of [busy, denied, away]) assert.equal(d.asked.length, 0);
+});
+
+test("no water file, no places, or a refusal is said, and nothing is listed", async () => {
+  const noFile = await searchNearest(deps({ water: async () => null }));
+  assert.equal(noFile.said, WATER_NOT_LOADED);
+  assert.equal(noFile.found, undefined);
+  const none = await searchNearest(deps({ water: async () => [] }));
+  assert.equal(none.said, "No water on the map to search.");
+  const refused = await searchNearest(deps({ request: async () => ({ ok: false, message: "Too many requests." }) }));
+  assert.equal(refused.said, "The search failed. Too many requests.");
+  assert.equal(refused.found, undefined);
 });

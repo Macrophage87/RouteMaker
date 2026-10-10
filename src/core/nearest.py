@@ -101,6 +101,12 @@ def distances(points: list, preset_name: str, dials: routing.Dials, started: flo
     if max(straight) <= LONG_SPAN_M:
         variant, costing = stoporder.ride_graph(preset_name, dials)
         row = _row(variant, origin, places, costing, deadline)
+    if row is not None and all(cell is None for cell in row):
+        # No place reachable at all: the rider is most likely on a piece of the graph
+        # the router cannot leave (a snap to an island). Straight lines still offer
+        # something to ride towards, and the page says how they were measured.
+        logger.warning("the router reached none of the nearest places")
+        row = None
     if row is None:
         return {
             "by": BY_STRAIGHT_LINE,

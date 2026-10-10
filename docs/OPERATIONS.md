@@ -2771,7 +2771,8 @@ The nearest water, restroom or Metro search (`POST /api/nearest`, `core.nearest`
 `sources_to_targets`, one row of at most 10 places, and needs the same one restart; until then it
 answers by straight line (`by` is `straight_line`, the page says so) and the api logs "the <variant>
 router gave no distances to the nearest places" at WARNING, with no points. It has the same slot,
-rate limit and time limits as Best order, and a place over 93 mi (150 km) away is measured in a
+time limits and per-client 60 requests a minute as Best order and `/route` (one budget: a search and
+the route a Ride here then plans count twice), and a place over 93 mi (150 km) away is measured in a
 straight line without asking the router.
 
 ## After a rebuild: restart the routers

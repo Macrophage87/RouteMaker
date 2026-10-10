@@ -5509,8 +5509,8 @@ metro stop. Let people choose the three closest." A fold in the planner under th
 (`lib/nearestFinder.ts`, written with createElement so `lib/nearest.test.ts` renders it): "Search
 from" (My location where the browser can share it, the default; the map's center; the plan's start
 once there is one), then Nearest water, Nearest restroom and Nearest Metro. The places are the map's
-own (`lib/nearest.ts`): the water layer's points, following its switches (untreated water and
-portable toilets only while they are on; the file is loaded for the search even with the layer off),
+own (`lib/nearest.ts`): the water layer's points (drinking water only; restrooms of every type, titled
+with their type; the file is loaded for the search even with the layer off),
 and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), MARC left out. The 8
 nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
 dials (not the weight, loop or target), which answers each one's riding distance and time from
@@ -5520,8 +5520,14 @@ with Best order), or straight lines when the router gives none. The 3 nearest by
 with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
 a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more
 points, Add as stop (`placeSpot("via")`). One status line, always rendered, says what is happening
-and what was found; the buttons are `aria-disabled` while a search runs. The location look-up goes
-through Use my location's gate, so there is one look-up at a time; the fix stays in memory as that
+and what was found, the nearest by name and distance; it is cleared and set again a moment later so a
+repeat is said again, and with the planner out of sight it is said through the app's region. The
+buttons are `aria-disabled` while a search runs. The search itself is `searchNearest` (plain, tested
+with stand-ins); App hands it the look-up, the map's center, the water file and the request. A list
+is put away when the ride type or a slider changes, when "Search from" changes, or when the plan's
+start moves under a search from the start. The location look-up goes
+through Use my location's gate, so there is one look-up at a time (a press during the other's says
+so); the fix stays in memory as that
 button's does, and the position leaves the device only in the search's own request, as a route's
 points do (`geolocation.test.ts` pins both look-up paths). Not built yet: offering water and
 restrooms as detours while navigating, which waits for browser navigation (WEB-NAV).

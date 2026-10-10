@@ -11,9 +11,10 @@ import json
 import logging
 
 import pytest
-from test_route_api import FakeRouter
+from test_ratelimit import in_one_window
+from test_route_api import FakeRouter, db, hold_slots
 
-from core import nearest, presets, routing
+from core import nearest, presets, ratelimit, routing
 from routemaker.geo import Point, haversine
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
@@ -203,3 +204,119 @@ class TestNearest:
         response = post(client, {"points": [HERE, *PLACES], "preset": "default"})
         assert response.status_code == 503
         assert response["Retry-After"]
+
+
+@pytest.mark.django_db
+class TestNearestDetails:
+    def test_distances_and_times_are_rounded_to_whole_metres_and_seconds(self, client, router):
+        router(FakeRouter({"sources_to_targets": row_answer([(299.6, 1.2346), (0.4, 0.0004)])}))
+        body = post(client, {"points": [HERE, *PLACES[:2]], "preset": "default"}).json()
+        assert body["places"] == [
+            {"distance_m": 1235, "time_s": 300},
+            {"distance_m": 0, "time_s": 0},
+        ]
+
+    def test_a_cell_with_a_time_but_no_distance_is_no_way_there(self, client, router) -> None:
+        answer = row_answer([(300, 2.5), (120, 1.0)])
+        del answer["sources_to_targets"][0][1]["distance"]
+        router(FakeRouter({"sources_to_targets": answer}))
+        body = post(client, {"points": [HERE, *PLACES[:2]], "preset": "default"}).json()
+        assert body["by"] == "riding"
+        assert body["places"][1] == {"distance_m": None, "time_s": None}
+
+    def test_when_no_place_can_be_reached_the_answer_is_in_straight_lines(self, client, router):
+        router(FakeRouter({"sources_to_targets": row_answer([None, None, None])}))
+        body = post(client, {"points": [HERE, *PLACES], "preset": "default"}).json()
+        assert body["by"] == "straight_line"
+        assert all(p["distance_m"] > 0 for p in body["places"])
+
+    def test_one_place_over_93_mi_away_puts_every_place_in_straight_lines(self, client, router):
+        fake = router(FakeRouter({}))
+        start = [-77.95, 38.25]
+        near = [-77.94, 38.25]
+        far = [-76.03, 39.71]
+        body = post(client, {"points": [start, near, far], "preset": "default"}).json()
+        assert body["by"] == "straight_line"
+        assert fake.calls == []
+
+    def test_a_point_in_the_zoo_is_measured_from_its_bike_racks(self, client, router, monkeypatch):
+        racks = [-77.0500, 38.9300]
+        monkeypatch.setattr(
+            routing.zoo, "redirect", lambda lon, lat: racks if lon == HERE[0] else None
+        )
+        fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
+        assert post(client, {"points": [HERE, *PLACES], "preset": "default"}).status_code == 200
+        assert fake.calls[0][1]["sources"] == [{"lon": racks[0], "lat": racks[1]}]
+
+    def test_cargo_with_people_is_asked_at_its_own_start(self, client, router) -> None:
+        fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
+        body = {"points": [HERE, *PLACES], "preset": "cargo", "carrying": "people"}
+        assert post(client, body).status_code == 200
+        stress = presets.stress_start("cargo", "people")
+        assert stress != presets.stress_start("cargo", None)
+        preset = presets.PRESETS["cargo"]
+        assert fake.calls[0][1]["costing_options"] == presets.costing("cargo", stress, preset.hills)
+
+    def test_the_time_budget_runs_from_when_the_request_arrived(self, client, router, monkeypatch):
+        seen = []
+        real = nearest.distances
+
+        def spy(points, preset, dials, started=None):
+            seen.append(started)
+            return real(points, preset, dials, started=started)
+
+        monkeypatch.setattr(nearest, "distances", spy)
+        router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
+        assert post(client, {"points": [HERE, *PLACES], "preset": "default"}).status_code == 200
+        assert seen and seen[0] is not None
+
+
+@pytest.mark.django_db
+class TestNearestLimits:
+    def test_it_counts_toward_the_routing_minute(self, client, router) -> None:
+        router(
+            FakeRouter(
+                {
+                    "sources_to_targets": [row_answer([(1, 1)] * 3)]
+                    * (2 * ratelimit.ROUTING.requests + 5)
+                }
+            )
+        )
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{30 + 100 * n}"}
+            body = json.dumps({"points": [HERE, *PLACES], "preset": "default"})
+            send = lambda: client.post(PATH, data=body, content_type="application/json", **headers)  # noqa: E731
+            statuses = [send().status_code for _ in range(ratelimit.ROUTING.requests)]
+            return statuses, send()
+
+        statuses, refused = in_one_window(ratelimit.ROUTING.window_s, attempt)
+        assert statuses == [200] * ratelimit.ROUTING.requests
+        assert refused.status_code == 429
+
+
+def client_slots(address: str):
+    """Every routing slot of one client, as test_route_api.TestInFlight takes them."""
+    limit = ratelimit.ROUTING_IN_FLIGHT
+    key = ratelimit._client_lock_id(ratelimit.client_key(address))
+    return [
+        (ratelimit._LOCK_CLASS_CLIENT + limit.scope_id * 64 + slot, key)
+        for slot in range(limit.per_client)
+    ]
+
+
+@db
+class TestNearestSlots:
+    def test_a_client_with_its_routing_slots_taken_is_429(self, client, router) -> None:
+        router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
+        other = hold_slots(client_slots("198.51.100.40"))
+        try:
+            refused = client.post(
+                PATH,
+                data=json.dumps({"points": [HERE, *PLACES], "preset": "default"}),
+                content_type="application/json",
+                HTTP_X_FORWARDED_FOR="198.51.100.40",
+            )
+        finally:
+            other.close()
+        assert refused.status_code == 429

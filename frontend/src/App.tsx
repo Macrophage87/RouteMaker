@@ -91,8 +91,6 @@ import {
   locateSupport,
   maxPointsNotice,
   locateGate,
-  LOCATE_MESSAGES,
-  LOCATION_OUTSIDE,
   movedFromHere,
   placeFix,
   type Fix,
@@ -142,20 +140,15 @@ import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import {
   findingSaid,
-  foundSaid,
-  metroPlaces,
-  nearestInStraightLine,
-  noneKnownSaid,
-  rankNearest,
   requestNearest,
-  WATER_NOT_LOADED,
-  waterPlaces,
+  searchNearest,
+  STILL_SEARCHING,
+  type Found,
   type Nearby,
   type NearestFrom,
   type NearestKind,
-  type NearestPlace,
 } from "./lib/nearest.ts";
-import { NearestFinder, type NearestList } from "./lib/nearestFinder.ts";
+import { NearestFinder } from "./lib/nearestFinder.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -269,6 +262,7 @@ export function App() {
   const waterLoad = useRef<Promise<WaterPoint[] | null> | null>(null);
   const ensureWater = useCallback(() => {
     if (!waterLoad.current) {
+      setWaterStatus("loading");
       waterLoad.current = loadWaterRestrooms(waterRestroomsUrl).then((data) => {
         if (!data) waterLoad.current = null;
         setWaterData(data);
@@ -796,75 +790,61 @@ export function App() {
   const [nearestBusy, setNearestBusy] = useState(false);
   const nearestBusyRef = useRef(false);
   const [nearestStatus, setNearestStatus] = useState("");
-  const [nearestList, setNearestList] = useState<(NearestList & { origin: LonLat; from: NearestFrom }) | null>(null);
-  const waterPrefsRef = useRef(waterPrefs);
-  waterPrefsRef.current = waterPrefs;
+  const [nearestList, setNearestList] = useState<Found | null>(null);
+  // The status line is cleared and set again a moment later, so the same words twice are said twice
+  // (as the Points notice is); with the planner out of sight it is said through the app's region.
+  const nearestTimer = useRef<number | undefined>(undefined);
+  const sayNearest = (text: string) => {
+    window.clearTimeout(nearestTimer.current);
+    setNearestStatus("");
+    nearestTimer.current = window.setTimeout(() => setNearestStatus(text), 150);
+    if (!plannerShownNow.current) announce(text);
+  };
+  // A list is for the ride and the spot it was found for: a new ride type or slider (other distances),
+  // a new "Search from", or a start that moved under a "start" search put it away.
+  useEffect(() => {
+    setNearestList(null);
+  }, [preset, dials, nearestFrom]);
+  useEffect(() => {
+    if (nearestList?.from === "start" && String(points[0]) !== String(nearestList.origin)) setNearestList(null);
+  }, [points, nearestList]);
   const findNearest = async (kind: NearestKind) => {
     if (nearestBusyRef.current) {
-      setNearestStatus("Still searching.");
+      sayNearest(STILL_SEARCHING);
       return;
     }
     nearestBusyRef.current = true;
     setNearestBusy(true);
     setNearestList(null);
-    setNearestStatus(findingSaid(kind));
-    const from = nearestFrom;
+    sayNearest(findingSaid(kind));
+    const ride = rideRef.current;
     try {
-      let origin: LonLat | null = null;
-      if (from === "location") {
-        // Use my location's gate: one look-up at a time, whichever asked.
-        const press = gate.begin();
-        if (press === null) {
-          setNearestStatus(FINDING_LOCATION);
-          return;
-        }
-        const result = await locate(geoEnv);
-        gate.finish(press);
-        if (!result.ok) {
-          setNearestStatus(LOCATE_MESSAGES[result.reason]);
-          return;
-        }
-        origin = result.fix.point;
-        setHere(result.fix);
-      } else if (from === "start") {
-        origin = pointsRef.current[0] ?? null;
-      } else {
-        const centre = mapRef.current?.getCenter();
-        origin = centre ? [centre.lng, centre.lat] : null;
-      }
-      if (origin === null) {
-        setNearestStatus("There is nowhere to search from yet.");
-        return;
-      }
-      if (!insideCoverage(origin)) {
-        setNearestStatus(from === "location" ? LOCATION_OUTSIDE : "That spot is outside the area this map covers.");
-        return;
-      }
-      let places: NearestPlace[];
-      if (kind === "metro") {
-        places = metroPlaces(RAIL_STATIONS);
-      } else {
-        const data = await ensureWater();
-        if (!data) {
-          setNearestStatus(WATER_NOT_LOADED);
-          return;
-        }
-        places = waterPlaces(data, kind, waterPrefsRef.current);
-      }
-      if (places.length === 0) {
-        setNearestStatus(noneKnownSaid(kind));
-        return;
-      }
-      const candidates = nearestInStraightLine(origin, places);
-      const ride = rideRef.current;
-      const result = await requestNearest(origin, candidates, ride.preset, ride.dials);
-      if (!result.ok) {
-        setNearestStatus(`Nothing found. ${result.message}`);
-        return;
-      }
-      const items = rankNearest(candidates, result.answer);
-      setNearestList({ kind, items, origin, from });
-      setNearestStatus(foundSaid(kind, from, items));
+      const outcome = await searchNearest({
+        kind,
+        from: nearestFrom,
+        locate: async () => {
+          // Use my location's gate: one look-up at a time, whichever asked.
+          const press = gate.begin();
+          if (press === null) return "busy";
+          setLocating(true);
+          const result = await locate(geoEnv);
+          gate.finish(press);
+          setLocating(false);
+          return result;
+        },
+        start: () => pointsRef.current[0] ?? null,
+        centre: () => {
+          const centre = mapRef.current?.getCenter();
+          return centre ? [centre.lng, centre.lat] : null;
+        },
+        inside: insideCoverage,
+        water: ensureWater,
+        stations: RAIL_STATIONS,
+        request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
+      });
+      if (outcome.fix) setHere(outcome.fix);
+      if (outcome.found) setNearestList(outcome.found);
+      sayNearest(outcome.said);
     } finally {
       nearestBusyRef.current = false;
       setNearestBusy(false);

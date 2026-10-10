@@ -3,9 +3,9 @@
  * "Have the option to route to the nearest public water source, restroom, or
  * metro stop. Let people choose the three closest."
  *
- * The places are the ones the map already has: public water and restrooms from
- * the water layer's file (lib/waterRestrooms.ts, OpenStreetMap), with the
- * layer's own switches for portable toilets and untreated water; and the Metro
+ * The places are the ones the map already has: drinking water and restrooms of
+ * every type from the water layer's file (lib/waterRestrooms.ts, OpenStreetMap;
+ * untreated water is left out: a rider asking for water wants to drink it); and the Metro
  * stations (lib/railData.ts), each at its bike entrance, the elevator where one
  * is listed, as a station's own End here uses. Metrorail only: MARC's stations
  * are left out.
@@ -25,9 +25,10 @@ import { describeError } from "./api.ts";
 import { dialFields, type Dials } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
 import type { PresetId } from "./presets.ts";
 import { bikeEntrance, entranceNote, linesLabel, type Station } from "./railStations.ts";
-import { waterDetails, waterTitle, type WaterPoint, type WaterPrefs } from "./waterRestrooms.ts";
+import { waterDetails, waterTitle, type WaterPoint } from "./waterRestrooms.ts";
 
 export type NearestKind = "water" | "restroom" | "metro";
 
@@ -60,16 +61,14 @@ export interface NearestPlace {
 }
 
 /**
- * The water layer's points of one kind, as places. Water is drinking water, and
- * untreated water only while the layer's "Untreated water sources" switch is on;
- * restrooms are every type, portable and pit toilets only while that switch is on.
- * The finder lists what the map shows.
+ * The water layer's points of one kind, as places. Water is drinking water only:
+ * untreated water (to filter or treat first) is on the map for riders who carry a
+ * filter, but "the nearest water" should be water to drink. Restrooms are every type,
+ * each titled with its type (flush, portable or pit, not mapped), so the rider
+ * chooses; the layer's switches, hidden while the layer is off, play no part.
  */
-export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "restroom", prefs: WaterPrefs): NearestPlace[] {
-  const keep =
-    kind === "water"
-      ? (p: WaterPoint) => p.water === "p" || (p.water === "n" && prefs.untreated)
-      : (p: WaterPoint) => p.toilet !== undefined && (p.toilet !== "b" || prefs.basic);
+export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "restroom"): NearestPlace[] {
+  const keep = kind === "water" ? (p: WaterPoint) => p.water === "p" : (p: WaterPoint) => p.toilet !== undefined;
   return points.filter(keep).map((p) => ({
     id: p.id,
     kind,
@@ -218,7 +217,7 @@ const FROM_WORDS: Record<NearestFrom, string> = {
   start: "the start of the plan",
 };
 
-/** The status line once the list is in: how many, of what, from where, and how measured. */
+/** The status line once the list is in: how many, of what, from where, how measured, and the nearest. */
 export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly Nearby[]): string {
   const noun = nounOf(kind);
   if (items.length === 0) return `No ${noun} could be reached by bike from ${FROM_WORDS[from]}.`;
@@ -227,9 +226,79 @@ export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly 
     items.length === 1
       ? `The nearest ${nounOf(kind, 1)} ${how} from ${FROM_WORDS[from]}.`
       : `The ${items.length} nearest ${noun} ${how} from ${FROM_WORDS[from]}, nearest first.`;
-  return items[0].byBike ? lead : `${lead} ${STRAIGHT_LINE_NOTE}`;
+  const first = ` Nearest: ${items[0].place.title}, ${howFar(items[0])}.`;
+  return items[0].byBike ? `${lead}${first}` : `${lead}${first} ${STRAIGHT_LINE_NOTE}`;
 }
 
 export const findingSaid = (kind: NearestKind): string => `Finding the nearest ${nounOf(kind)}.`;
-export const noneKnownSaid = (kind: NearestKind): string => `No ${nounOf(kind)} are on the map to search.`;
+export const noneKnownSaid = (kind: NearestKind): string => `No ${nounOf(kind)} on the map to search.`;
 export const WATER_NOT_LOADED = "Water and restrooms are unavailable for now; try again shortly.";
+export const LOCATION_BUSY = "Your location is already being found; try again in a moment.";
+export const STILL_SEARCHING = "Still searching.";
+
+/** What a search needs from the page; each is a function so a test runs the search with stand-ins. */
+export interface SearchDeps {
+  kind: NearestKind;
+  from: NearestFrom;
+  /** One location look-up; "busy" while another (Use my location's) is under way. */
+  locate: () => Promise<LocateResult | "busy">;
+  /** The plan's start, or null with no points. */
+  start: () => LonLat | null;
+  /** The map's center, or null before the map is there. */
+  centre: () => LonLat | null;
+  inside: (point: LonLat) => boolean;
+  /** The water layer's points, loaded if they are not yet; null if they cannot be. */
+  water: () => Promise<WaterPoint[] | null>;
+  stations: readonly Station[];
+  request: (from: LonLat, places: readonly NearestPlace[]) => Promise<NearestResult>;
+}
+
+export interface Found {
+  kind: NearestKind;
+  items: Nearby[];
+  /** Where it was searched from: Ride here plans from here. */
+  origin: LonLat;
+  from: NearestFrom;
+}
+
+/** What came of a search: the status line, the list if there is one, and the location fix if one was taken. */
+export interface SearchOutcome {
+  said: string;
+  found?: Found;
+  fix?: Fix;
+}
+
+/** One search, start to end: where from, which places, the nearest in straight lines, then by bike. */
+export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
+  const { kind, from } = deps;
+  let origin: LonLat | null;
+  let fix: Fix | undefined;
+  if (from === "location") {
+    const result = await deps.locate();
+    if (result === "busy") return { said: LOCATION_BUSY };
+    if (!result.ok) return { said: LOCATE_MESSAGES[result.reason] };
+    fix = result.fix;
+    origin = fix.point;
+  } else {
+    origin = from === "start" ? deps.start() : deps.centre();
+  }
+  const withFix = (outcome: SearchOutcome): SearchOutcome => (fix ? { ...outcome, fix } : outcome);
+  if (origin === null) return { said: "There is nowhere to search from yet." };
+  if (!deps.inside(origin)) {
+    return withFix({ said: from === "location" ? LOCATION_OUTSIDE : "That spot is outside the area this map covers." });
+  }
+  let places: NearestPlace[];
+  if (kind === "metro") {
+    places = metroPlaces(deps.stations);
+  } else {
+    const data = await deps.water();
+    if (!data) return withFix({ said: WATER_NOT_LOADED });
+    places = waterPlaces(data, kind);
+  }
+  if (places.length === 0) return withFix({ said: noneKnownSaid(kind) });
+  const candidates = nearestInStraightLine(origin, places);
+  const result = await deps.request(origin, candidates);
+  if (!result.ok) return withFix({ said: `The search failed. ${result.message}` });
+  const items = rankNearest(candidates, result.answer);
+  return withFix({ said: foundSaid(kind, from, items), found: { kind, items, origin, from } });
+}
