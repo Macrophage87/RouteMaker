@@ -43,17 +43,24 @@ behaviour is version 1's.
   EBS volume moved to the replacement instance, or the local disk). An S3 store implements the
   same six methods later; no AWS SDK is a dependency.
 - **Publish and restore.** `publish_checkpoint` deletes the old manifest, uploads every output,
-  then the manifest, last (version 1's "written last", as an order). `restore_checkpoint`
-  reads the manifest first, keeps a local file that already hashes right, downloads the rest
-  beside their destinations, hashes each and renames it into place only if it matches; a
-  damaged or missing file means no checkpoint, and nothing unverified is left behind.
+  then the manifest, last (version 1's "written last", as an order). The caller passes the
+  portable fingerprint (`fingerprint=`), which replaces the local manifest's: version 1's graph
+  fingerprint has an mtime-derived `elevation` entry that dropping `mtime_ns` keys cannot
+  clean. `restore_checkpoint` reads the manifest first and requires it to list exactly the
+  files asked for; it keeps a local file that hashes right when read again in full, downloads
+  the rest beside their destinations, hashes each and renames it into place only if it
+  matches; a damaged or missing file, or a failed fetch, means no checkpoint, and nothing
+  unverified is left behind. Only files the manifest lists are fetched, so files left by an
+  older publish under the same prefix are never used; `discard_run` (or the store's lifecycle
+  rule) sweeps them.
 - **Portable validation.** `portable_problem` refuses a checkpoint of another format, another
   run, a build id that is not one or is `current`/`previous` here, a build other than the run's,
-  one older than a limit or dated in the future, or one whose fingerprint differs **by
+  one older than a limit or dated more than five minutes in the future, or one whose fingerprint differs **by
   content** from what is measured on this machine. `content_only` drops `mtime_ns` (a restore
-  rewrites every mtime, so version 1 would reuse nothing), and
-  `portable_graph_fingerprint` measures the elevation tiles by sha256 instead of version 1's
-  names, sizes and mtimes. As in version 1, a classification's `validation` entry only re-runs
+  rewrites every mtime, so version 1 would reuse nothing) from a classification fingerprint,
+  whose only non-content facts are those; for a graph, `portable_graph_fingerprint` replaces
+  version 1's `elevation` entry (names, sizes and mtimes) with one by sha256, and that is the
+  fingerprint to publish and to measure. As in version 1, a classification's `validation` entry only re-runs
   the staging checks.
 
 ## What the code still needs
@@ -62,9 +69,13 @@ In order; each its own branch and review. Slices 1 and 2 wait on questions 1 to 
 
 1. **Wire the store into the rebuild.** A setting naming the store (unset means version 1
    exactly), a run key given to the rebuild, and in `pipeline.run`: publish the source,
-   merged and variant extracts and the classification manifest after VALIDATE_SEGMENTS, and each graph after its
-   manifest; at the start of an attempt with a run key, restore and check with
-   `portable_problem` before version 1's own checks. The settings it adds go into
+   merged and variant extracts and the classification manifest after VALIDATE_SEGMENTS, and
+   each graph after its manifest; at the start of an attempt with a run key, restore and check
+   with `portable_problem` before version 1's own checks. With a run key, the run-key check
+   replaces version 1's job-id check in `checkpoint.classification_problem` and
+   `checkpoint.graph_problem` (a new job on a new instance has a new job id); every other
+   version 1 check still runs: the outputs hashed again, the variant extracts, and the staging
+   schema's token and row counts. The settings it adds go into
    `checkpoint.CHECKPOINT_SETTINGS` as `ignored` (where a checkpoint lives does not change the
    map). The timeout-retry count moves into the store under the run key, so the cap of two
    holds across instances.

@@ -71,6 +71,14 @@ GRAPHS = "graphs"
 # portable comparison leaves them out (the sha256 beside them covers the content).
 NON_CONTENT_KEYS = frozenset({"mtime_ns"})
 
+# How far in the future a checkpoint's publication time may be before it is
+# refused: two machines' clocks disagree by a little, never by minutes.
+CLOCK_SKEW_S = 300
+
+# Endings a store keeps for its own half-written objects, which `list_keys` never
+# lists; an output name may not end in one.
+TEMPORARY_SUFFIXES = (".part", ".tmp")
+
 
 class StoreError(RuntimeError):
     """The store refused or failed an operation (a bad key, an I/O error)."""
@@ -180,10 +188,12 @@ class LocalDirectoryStore(CheckpointStore):
         temporary = destination.with_name(destination.name + ".part")
         try:
             shutil.copyfile(source, temporary)
+            checkpoint.fsync_path(temporary)
             os.replace(temporary, destination)
         except OSError as error:
             temporary.unlink(missing_ok=True)
             raise StoreError(f"could not fetch {key}: {error}") from error
+        self._sync_dir(destination.parent)
         return True
 
     def put_json(self, key: str, payload: Mapping) -> None:
@@ -217,7 +227,7 @@ class LocalDirectoryStore(CheckpointStore):
         for current, directories, names in os.walk(base):
             directories.sort()
             for name in names:
-                if name.endswith((".part", ".tmp")):
+                if name.endswith(TEMPORARY_SUFFIXES):
                     continue
                 keys.append((Path(current) / name).relative_to(self.root).as_posix())
         return sorted(keys)
@@ -259,7 +269,13 @@ def list_runs(store: CheckpointStore) -> list[str]:
 def discard_run(store: CheckpointStore, run_key: str) -> int:
     """Delete everything a run holds, every manifest first: from the first delete
     on, nothing of the run looks like a whole checkpoint. Returns the number of
-    objects deleted."""
+    objects deleted.
+
+    A republish under the same prefix that names fewer outputs leaves the older
+    files in the store; they are never restored (`restore_checkpoint` fetches only
+    what the manifest lists) and are swept here, or by the store's own lifecycle
+    rule. Half-written objects (`.part`, `.tmp`) are not listed and so not deleted
+    here either; the lifecycle rule sweeps those too."""
     keys = store.list_keys(run_prefix(run_key))
     manifests = [key for key in keys if key.endswith("/" + MANIFEST)]
     for key in manifests:
@@ -325,6 +341,7 @@ def publish_checkpoint(
     manifest: Mapping,
     outputs: Mapping[str, Path],
     *,
+    fingerprint: Mapping,
     run_key: str,
     hasher: checkpoint.Hasher,
     now: float | None = None,
@@ -333,14 +350,25 @@ def publish_checkpoint(
     every output, then the manifest, last.
 
     `manifest` is the version 1 manifest (classification or graph) as written on
-    the local disk; the stored copy adds the run key, the store format, the time it
-    was published and each output's size and sha256 under `files`, and keeps its
-    fingerprint only by content. An output that is missing is an error (StoreError),
-    and nothing is committed: a checkpoint missing a file is not one.
+    the local disk. Its fingerprint is **replaced** by `fingerprint`, the portable
+    one the caller measured: for a graph, `portable_graph_fingerprint` (version 1's
+    `elevation` entry hashes the tiles' mtimes, which `content_only` cannot take
+    out); for a classification, version 1's own (its only non-content facts are
+    the extracts' `mtime_ns`). The stored fingerprint is also passed through
+    `content_only`. The stored copy adds the run key, the store format, the time it
+    was published and each output's size and sha256 under `files`.
+
+    An output that is missing, or whose name is not a store key segment or ends in
+    `.part` or `.tmp` (endings a store keeps for half-written objects), is an error
+    (StoreError) raised before anything in the store is touched.
 
     Returns the manifest as stored.
     """
     validate_run_key(run_key)
+    for name in outputs:
+        if "/" in str(name) or name.endswith(TEMPORARY_SUFFIXES):
+            raise StoreError(f"not publishing {prefix}: {name!r} is not an output name")
+        validate_key(name)
     missing = sorted(name for name, path in outputs.items() if not Path(path).is_file())
     if missing:
         raise StoreError(f"not publishing {prefix}: {', '.join(missing)} not written")
@@ -348,11 +376,10 @@ def publish_checkpoint(
     store.delete(manifest_key)
     files = {}
     for name, path in sorted(outputs.items()):
-        validate_key(name)
         files[name] = {"size": Path(path).stat().st_size, "sha256": hasher.sha256(path)}
         store.put_file(f"{prefix}/{FILES}/{name}", Path(path))
     stored = dict(manifest)
-    stored["fingerprint"] = content_only(manifest.get("fingerprint") or {})
+    stored["fingerprint"] = content_only(dict(fingerprint))
     stored.update(
         {
             "store_format": STORE_FORMAT,
@@ -389,10 +416,12 @@ def restore_checkpoint(
     The manifest is read first, and only files it lists are fetched. A local file
     that already has the recorded size and sha256 is kept (a resumed instance that
     still has its disk downloads nothing); any other is downloaded beside its
-    destination, hashed, and renamed into place only if it matches. Any mismatch,
-    a file the manifest lists that `destinations` has no place for, or one the store
-    does not have, means no checkpoint: `problem` says which, and nothing that did
-    not verify is left at a destination.
+    destination, hashed, and renamed into place only if it matches. Local files are
+    hashed again in full, whatever the hasher remembers (as version 1's outputs
+    check). The manifest must list exactly the files in `destinations`. Any
+    mismatch, a file listed on one side only, one the store does not have, or an
+    error fetching or placing one, means no checkpoint: `problem` says which, and
+    nothing that did not verify is left at a destination.
     """
     manifest = store.get_json(f"{prefix}/{MANIFEST}")
     if manifest is None:
@@ -405,6 +434,9 @@ def restore_checkpoint(
     files = manifest.get("files")
     if not isinstance(files, Mapping) or not files:
         return Restored(problem="its manifest lists no files")
+    unlisted = sorted(set(destinations) - set(files))
+    if unlisted:
+        return Restored(problem=f"its manifest does not list {', '.join(unlisted)}")
     result = Restored()
     for name, facts in sorted(files.items()):
         if not isinstance(facts, Mapping) or name not in destinations:
@@ -417,9 +449,11 @@ def restore_checkpoint(
         try:
             if not store.get_file(f"{prefix}/{FILES}/{name}", incoming):
                 return Restored(problem=f"the store does not have its {name}")
-            if not _matches(incoming, facts, hasher, memo=False):
+            if not _matches(incoming, facts, hasher):
                 return Restored(problem=f"its {name} does not hash to what the manifest records")
             os.replace(incoming, destination)
+        except (StoreError, OSError) as error:
+            return Restored(problem=f"its {name} could not be restored: {error}")
         finally:
             incoming.unlink(missing_ok=True)
         result.downloaded.append(name)
@@ -427,15 +461,15 @@ def restore_checkpoint(
     return result
 
 
-def _matches(path: Path, facts: Mapping, hasher: checkpoint.Hasher, *, memo: bool = True) -> bool:
+def _matches(path: Path, facts: Mapping, hasher: checkpoint.Hasher) -> bool:
+    """The file has the recorded size and, read again in full, the recorded sha256."""
     try:
         size = path.stat().st_size
     except OSError:
         return False
     if size != facts.get("size"):
         return False
-    digest = hasher.sha256(path) if memo else hasher.unmemoised(path)
-    return digest == facts.get("sha256")
+    return hasher.unmemoised(path) == facts.get("sha256")
 
 
 # --- Is a checkpoint from elsewhere still this run's? --------------------------------
@@ -463,8 +497,9 @@ def portable_problem(
        `previous` names here, and is `build_id` when the caller has one (a graph
        is reused only for the build its classification names); for a graph, its
        variant is `variant`;
-    3. it was published no more than `max_age_s` seconds ago, and not in the
-       future (a week-old checkpoint describes a week-old map);
+    3. it was published no more than `max_age_s` seconds ago, and not more than
+       `CLOCK_SKEW_S` (five minutes) in the future (a week-old checkpoint describes
+       a week-old map; a future one means a clock is wrong);
     4. its fingerprint, by content alone, equals `measured_fingerprint` measured
        now on this machine (also compared by content alone); for a classification,
        only its `inputs` (a changed `validation` entry means the staging checks run
@@ -494,7 +529,7 @@ def portable_problem(
     now = time.time() if now is None else now
     if not isinstance(published, (int, float)) or isinstance(published, bool):
         return "it records no publication time"
-    if published > now + 300:
+    if published > now + CLOCK_SKEW_S:
         return "it was published in the future (a clock is wrong)"
     if now - published > max_age_s:
         hours = (now - published) / 3600

@@ -73,8 +73,11 @@ def published(store, tmp_path, fingerprint=FINGERPRINT, now=NOW) -> dict:
     return publish_checkpoint(
         store,
         prefix,
-        graph_manifest(fingerprint),
+        # The local manifest's own (version 1) fingerprint is replaced by the
+        # portable one the caller passes.
+        graph_manifest({**fingerprint, "elevation": "v1 names, sizes and mtimes"}),
         graph_files(tmp_path / "first-machine"),
+        fingerprint=fingerprint,
         run_key=RUN,
         hasher=checkpoint.Hasher(),
         now=now,
@@ -204,6 +207,7 @@ def test_publish_refuses_a_checkpoint_missing_a_file(store, tmp_path):
             prefix,
             graph_manifest(FINGERPRINT),
             files,
+            fingerprint=FINGERPRINT,
             run_key=RUN,
             hasher=checkpoint.Hasher(),
         )
@@ -297,6 +301,82 @@ def test_a_damaged_stored_file_is_not_a_checkpoint(store, tmp_path):
     assert not list(fresh.glob("*.restore"))
 
 
+def test_a_damaged_local_file_is_downloaded_again(store, tmp_path):
+    """Same size, same mtime, one flipped byte: the hash decides, read again in full
+    even though the hasher has seen the file."""
+    published(store, tmp_path)
+    local = tmp_path / "first-machine"
+    tar = local / "tiles.tar"
+    hasher = checkpoint.Hasher()
+    hasher.sha256(tar)  # remembered before the damage
+    stat = tar.stat()
+    data = bytearray(tar.read_bytes())
+    data[10] ^= 0xFF
+    tar.write_bytes(bytes(data))
+    os.utime(tar, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    restored = restore_checkpoint(
+        store,
+        checkpoint_store.graph_prefix(RUN, Variant.STANDARD),
+        destinations(local),
+        hasher=hasher,
+    )
+    assert restored.problem is None
+    assert restored.downloaded == ["tiles.tar"]
+    assert tar.read_bytes() == b"tiles" * 1000
+
+
+def test_a_manifest_listing_fewer_files_than_wanted_is_not_a_checkpoint(store, tmp_path):
+    published(store, tmp_path)
+    places = destinations(tmp_path / "x")
+    places["tz_world.sqlite"] = tmp_path / "x" / "tz_world.sqlite"
+    restored = restore_checkpoint(
+        store,
+        checkpoint_store.graph_prefix(RUN, Variant.STANDARD),
+        places,
+        hasher=checkpoint.Hasher(),
+    )
+    assert restored.manifest is None
+    assert restored.problem == "its manifest does not list tz_world.sqlite"
+
+
+def test_a_failed_fetch_is_a_problem_not_an_exception(tmp_path):
+    class Broken(LocalDirectoryStore):
+        def get_file(self, key, destination):
+            raise StoreError("connection reset")
+
+    store = Broken(tmp_path / "durable")
+    published(store, tmp_path)
+    fresh = tmp_path / "second-machine"
+    restored = restore_checkpoint(
+        store,
+        checkpoint_store.graph_prefix(RUN, Variant.STANDARD),
+        destinations(fresh),
+        hasher=checkpoint.Hasher(),
+    )
+    assert restored.manifest is None
+    assert "could not be restored: connection reset" in restored.problem
+    assert not fresh.exists() or not list(fresh.iterdir())
+
+
+@pytest.mark.parametrize("name", ["tiles.tar.part", "build.log.tmp", "a/b", "..x", ""])
+def test_publish_refuses_an_output_name_a_store_would_hide(store, tmp_path, name):
+    files = {name: write(tmp_path / "m" / "f", b"x")}
+    prefix = checkpoint_store.graph_prefix(RUN, Variant.STANDARD)
+    store.put_json(f"{prefix}/manifest.json", {"format": 1})
+    with pytest.raises(StoreError):
+        publish_checkpoint(
+            store,
+            prefix,
+            graph_manifest(FINGERPRINT),
+            files,
+            fingerprint=FINGERPRINT,
+            run_key=RUN,
+            hasher=checkpoint.Hasher(),
+        )
+    # Refused before anything in the store was touched.
+    assert store.get_json(f"{prefix}/manifest.json") == {"format": 1}
+
+
 def test_a_file_missing_from_the_store_is_not_a_checkpoint(store, tmp_path):
     published(store, tmp_path)
     prefix = checkpoint_store.graph_prefix(RUN, Variant.STANDARD)
@@ -362,8 +442,64 @@ def problem(manifest, tiles_dir, **overrides):
     return portable_problem(manifest, **arguments)
 
 
-def test_a_checkpoint_from_elsewhere_is_used_when_everything_matches(store, tmp_path):
-    assert problem(published(store, tmp_path), tmp_path / "tiles") is None
+def graph_inputs(root: Path) -> list[Path]:
+    """One machine's inputs for the standard graph under `root`, the same bytes on
+    every machine. Returns the elevation tiles."""
+    write(root / "rebuild" / "standard.osm.pbf", b"variant extract")
+    write(root / "extracts" / "merged.osm.pbf", b"merged extract")
+    write(root / "lua" / "graph.lua", b"-- the transform")
+    return [
+        write(root / "elevation" / "N38W077.hgt", b"height one"),
+        write(root / "elevation" / "N39W077.hgt", b"height two"),
+    ]
+
+
+def measure_graph(root: Path, tiles: list[Path], *, concurrency: int) -> tuple[dict, dict]:
+    """What a machine measures for the standard graph: version 1's fingerprint, and
+    the portable one."""
+    hasher = checkpoint.Hasher()
+    build_dir = root / "tiles" / "standard" / BUILD
+    v1 = checkpoint.graph_fingerprint(
+        variant_pbf=root / "rebuild" / "standard.osm.pbf",
+        merged_pbf=root / "extracts" / "merged.osm.pbf",
+        config={"mjolnir": {"concurrency": concurrency, "tile_dir": str(build_dir / "tiles")}},
+        build_dir=build_dir,
+        lua_dirs=[root / "lua"],
+        elevation_tiles=tiles,
+        hasher=hasher,
+        which=lambda name: None,
+    )
+    return v1, checkpoint_store.portable_graph_fingerprint(v1, tiles, hasher)
+
+
+def test_a_graph_checkpoint_resumes_on_a_fresh_machine(store, tmp_path):
+    """A real graph fingerprint published on one machine, and measured again on another
+    whose files have the same bytes and new mtimes, matches."""
+    first_tiles = graph_inputs(tmp_path / "one")
+    first_v1, first = measure_graph(tmp_path / "one", first_tiles, concurrency=2)
+    manifest = publish_checkpoint(
+        store,
+        checkpoint_store.graph_prefix(RUN, Variant.STANDARD),
+        graph_manifest(first_v1),
+        graph_files(tmp_path / "one" / "out"),
+        fingerprint=first,
+        run_key=RUN,
+        hasher=checkpoint.Hasher(),
+        now=NOW,
+    )
+    assert manifest["fingerprint"] == first
+    tiles = graph_inputs(tmp_path / "two")
+    for tile in tiles:
+        os.utime(tile, (NOW, NOW))
+    second_v1, second = measure_graph(tmp_path / "two", tiles, concurrency=4)
+    # Version 1's elevation entry follows the mtimes, so on its own it would refuse.
+    assert second_v1["elevation"] != first_v1["elevation"]
+    assert problem(manifest, tmp_path / "tiles", measured_fingerprint=second) is None
+    tiles[0].write_bytes(b"height ONE")
+    _, changed = measure_graph(tmp_path / "two", tiles, concurrency=4)
+    assert problem(manifest, tmp_path / "tiles", measured_fingerprint=changed) == (
+        "these inputs changed since it was written: elevation"
+    )
 
 
 def test_another_run_is_never_picked_up_by_accident(store, tmp_path):
