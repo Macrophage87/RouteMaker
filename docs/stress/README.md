@@ -25,8 +25,9 @@ ranking reads the live tier again at route time, through its calm search, guards
 junction model. Whether a bicycle may use a way at all is a separate question,
 answered by the access rules. A closed way has no stress price because it is not
 routable. The **stress number** (461) is the tier as a number. Each preset maps that
-number to a cost multiplier, read from the weights above. The planned rolling stress
-score adds junction costs to it.
+number to a cost multiplier, read from the weights above. The rolling stress chart
+(built, PR #34) adds junction costs to it and draws calm miles per mile along the
+route, under the elevation.
 
 ## The pages
 
@@ -35,7 +36,7 @@ score adds junction costs to it.
 | [classification.md](classification.md) | How a way gets its tier: inputs, rule order, AADT smoothing, curated files, closures (access) against stress |
 | [overrides.md](overrides.md) | Stress and access override rows, `at_least` floors, `retire` lists, the loader, the owner's sign-off rule, re-matching by fingerprint |
 | [routing-costs.md](routing-costs.md) | Valhalla's graph tags and request knobs, the slider, each preset's values, RouteMaker's ranking (calm search, LTS 4 hold, strict order, worth rule), the junction model |
-| [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints, and the planned rolling stress score |
+| [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (planned), and the rolling stress chart as built |
 | [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (planned), the Mass Ride map |
 | [intersections.md](intersections.md) | The junction cost model as built (which roads count, crossing, left, merge and slip costs, caps, orange and red), and the planned revision (467, 468, 468a) |
 | [literature.md](literature.md) | The research consulted, what RouteMaker took from each source, and where and why it differs |
@@ -71,7 +72,7 @@ Owner decisions are cited by number (OWNER-DECISIONS, kept outside the repositor
 | **Junction cost** | The junction model's cost of a crossing or turn, in feet of quiet riding (`src/routemaker/intersections.py`). From 600 ft it is orange (higher stress) and from 2,000 ft red (very high stress). |
 | **Calm run** | A continuous run of named LTS 1-2 road, broken at every junction with a road at LTS 3 or above. Runs of 2 mi [3.2 km] or more are drawn at z12-13 (`src/pipeline/calm_roads.py`). |
 | **Ride layer** | What the stress map draws at z12-13: long paths, calm runs and roads closed to cars at set times, and no road at LTS 3 or above (`src/core/stress_tiles.py:35-42`). |
-| **Rolling stress score** | **Planned** (460.12, 461b, 461c). Each segment's own routing cost per distance along a route, over a window, with junction costs added, on the same scale as the cost multiplier (1 is a quiet street). |
+| **Rolling stress score** | Built (460.12, 461b-461e; `src/routemaker/calm.py`). Calm miles per actual mile over the mile around each point of a route, junction costs and Avoid entries included, on the same scale as the cost multiplier (1 is a quiet street). Drawn under the elevation on every ride type but Mass Ride. Each stretch is priced by its tier for now, so it is labeled an estimate; pricing each segment by its own routing cost is **planned**. See [stress-number.md](stress-number.md), section 4. |
 
 ## Data sources credited
 

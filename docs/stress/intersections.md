@@ -9,8 +9,9 @@ Section 9 is **planned** (owner decisions 467, 468 and 468a) and is not built. P
 Every cost is given first in **calm miles** (a mile of quiet-street riding, 5,280 ft),
 with kilometers in brackets (decision 467). The code's own unit is feet of equivalent
 quiet-street riding (`Event.cost_ft`), so the feet follow the kilometers in the brackets.
-A junction's calm miles, as the planned rolling chart will use them, are its cost times
-the preset's intersection weight (section 8; [stress-number.md](stress-number.md)).
+A junction's calm miles, as the rolling stress chart uses them, are its cost times
+the intersection weight at the ride's slider position (section 8; `junction_m`,
+`src/routemaker/calm.py:153-160`; [stress-number.md](stress-number.md), section 4).
 
 ## 1. Why it is not in the graph
 
@@ -139,8 +140,12 @@ rising in a straight line to 1.0 at 70 (Default) and staying at 1.0 above that
 (`intersection_weight`, `src/core/refine.py:209-214`; `INTERSECTION_WEIGHT_AT_ZERO`,
 `src/core/refine.py:143`; `STRESS_DEFAULT_AT = 70`, `src/core/presets.py:226`). Mass
 Ride's routing charges no junction cost, because the calm search that adds it does not
-run for Mass Ride ([routing-costs.md](routing-costs.md)). The planned rolling stress
-score ([stress-number.md](stress-number.md) section 4) uses the same weight.
+run for Mass Ride ([routing-costs.md](routing-costs.md)). The rolling stress chart
+([stress-number.md](stress-number.md) section 4) uses the same weight, for every junction
+the model charges for, flagged or not (`src/routemaker/calm.py:153-160`, `:219-230`;
+the weight is passed in at `src/core/routing.py:2466`). At the top of the slider it
+counts the worth rule's exchange instead (red 5 x 2 x the cost, orange 5 x 1, unflagged
+0). Mass Ride has no rolling stress chart.
 
 ## 9. Planned: decisions 467, 468 and 468a
 
@@ -182,11 +187,12 @@ repository), and the owner's answers so far. None of it is the model described a
   confirmed; the owner is to confirm them with the sample.** The proposal is x1.25 on
   weekdays from 6:30 to 9:30 AM and from 3:30 to 6:30 PM, x1.0 at other weekday daytime
   hours, and x0.85 on weekday evenings and nights, weekends and federal holidays. Stops
-  where quiet streets meet are not affected. The panel and the chart will say "rush hour"
-  in words.
+  where quiet streets meet are not affected. The panel and the rolling stress chart
+  would say "rush hour" in words.
 
 The options report's modeling (not re-checked for this page) expected little change in
 which route wins. By calm miles, the winner changed for 1 of 39 origin and destination
 pairs, because road stretches outweigh junctions at Default: a junction was a median 8%
 of a route's calm miles today and 11% under option C. The visible changes would be in
-the chart and the markers.
+the rolling stress chart, which is built and reads each junction's own `cost_ft`, so it
+follows the new costs when they merge, and in the junction markers.

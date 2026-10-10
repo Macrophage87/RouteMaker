@@ -178,9 +178,24 @@ test("the sources are credited in text", () => {
 });
 
 test("what is not built is marked planned, and what is only proposed says so", () => {
-  assert.match(text, /Half steps and the stress chart \(planned\)/);
+  assert.match(page, /<h2 id="planned">Half steps and crossing costs \(planned\)<\/h2>/);
   assert.match(text, /Planned, not built yet\./);
+  assert.match(page, /<h3>Half steps<\/h3>/);
   assert.match(page, /<h3>Crossing costs<\/h3>/);
   assert.match(text, /A further idea is proposed but not yet confirmed: crossings would cost a little more at rush hour/);
   assert.doesNotMatch(text, /Its details are still to be confirmed|single setting/);
+});
+
+// The rolling stress chart is built (PR #34; OWNER-DECISIONS 460.12, 461d, 461e): the page says so,
+// outside the planned section, and no longer calls it planned.
+test("the stress chart is described as built, not planned", () => {
+  assert.match(page, /<li><a href="#stress-chart">The stress chart<\/a><\/li>/);
+  assert.match(page, /<h2 id="stress-chart">The stress chart<\/h2>/);
+  const chart = page.match(/<h2 id="stress-chart">[\s\S]*?<\/section>/)?.[0] ?? "";
+  assert.doesNotMatch(chart, /[Pp]lanned|will show/, "the built chart is in the present tense");
+  assert.match(chart, /calm miles per mile/);
+  assert.match(chart, /1 mile \[1\.6 km\]|mile \[1\.6 km\]/, "US units first, metric in brackets");
+  assert.match(chart, /except Mass Ride/);
+  assert.match(chart, /an estimate/);
+  assert.doesNotMatch(text, /stress chart \(planned\)|A stress number and a rolling stress chart/);
 });

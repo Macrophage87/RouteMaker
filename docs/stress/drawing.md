@@ -112,5 +112,10 @@ zoom in its own style, with no capacity color and the label "AVOID" (`MASS_AVOID
 
 The route panel shows a stress breakdown bar of meters per tier, each segment labeled
 with its percentage (`frontend/src/lib/stressBar.ts`). Avoid is the route's magenta
-there (OWNER-DECISIONS 397). The rolling stress chart that replaces the strip (460.12)
-is **planned** ([stress-number.md](stress-number.md), section 4).
+there (OWNER-DECISIONS 397). The bar is unchanged. Under the elevation in the route
+chart, the rolling stress chart (460.12, built in PR #34) replaces the stress strip on
+every ride type but Mass Ride. Its area takes the map's LTS 2, 3 and 4 colors and the
+stress bar's patterns, Avoid stretches are the magenta "A" blocks, and flagged
+junctions are an orange triangle or a red diamond (`frontend/src/ElevationChart.tsx:292-362`).
+An answer with no score keeps the strip (`:364-370`). See
+[stress-number.md](stress-number.md), section 4.

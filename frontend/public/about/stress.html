@@ -92,8 +92,9 @@
       <li><a href="#corrections">Corrections</a></li>
       <li><a href="#routes">How ride types and the slider use the ratings</a></li>
       <li><a href="#junctions">Junction warnings</a></li>
+      <li><a href="#stress-chart">The stress chart</a></li>
       <li><a href="#mass-ride">Mass Ride</a></li>
-      <li><a href="#planned">Half steps and the stress chart (planned)</a></li>
+      <li><a href="#planned">Half steps and crossing costs (planned)</a></li>
       <li><a href="#why-differ">Why our ratings differ from the studies</a></li>
       <li><a href="#report">Reporting a wrong rating</a></li>
       <li><a href="#sources">Sources</a></li>
@@ -267,37 +268,64 @@
   </section>
 
   <section>
+    <h2 id="stress-chart">The stress chart</h2>
+    <p>Under a route's elevation chart, a second chart shows how stressful the route
+    is along its length, so short busy stretches and bad crossings stand out. It is on
+    every ride type except Mass Ride.</p>
+    <p>The chart shows calm miles per mile (a calm mile is explained under
+    <a href="#routes">How ride types and the slider use the ratings</a>). 1 means all
+    quiet streets. Traffic-free paths and bike lanes on calm roads count for less,
+    and busier roads for more. Each point is worked out over the mile [1.6 km] around it, or less
+    near the start and end. Crossings count too: a crossing's cost is added to every
+    point within half a mile [0.8 km] of it. So a quiet street that crosses many busy
+    roads can read higher than a straight, busier one.</p>
+    <ul>
+      <li>The scale is squeezed toward the top, so a stretch at 1.4 and a spike at 14
+      both show. 1 to 2 takes as much height as 5 to 10.</li>
+      <li>The area under the line is colored like the map: low stress, LTS 3 level and
+      LTS 4 level, with the same patterns as the stress bar. Dotted lines mark where
+      the color changes, for example "LTS 3 from 2.7" and "LTS 4 from 9.3" on the
+      Default ride type. These change with the ride type and the slider.</li>
+      <li>A dashed line shows each stretch's own figure, so a short busy stretch still
+      shows at its true level.</li>
+      <li>Avoid stretches are magenta blocks marked "A". Above the chart, an orange
+      triangle marks a higher stress junction and a red diamond a very high stress
+      junction. Other crossings count in the line but have no marker.</li>
+    </ul>
+    <p>Without the picture: the chart is one control you can move along with the
+    arrow keys. At each point it says the elevation, the road, and how the mile
+    around reads, for example "1.4 calm miles per mile, LTS 1 to 2 level", and the
+    next junction to watch. The summary above the chart gives the route's total in
+    calm miles (with calm kilometers), the average, and the most stressful mile and
+    what is in it. "Climbs and rolling stress as tables" lists the figure every half
+    mile on shorter routes, and less often on longer ones.</p>
+    <p>For now the figure is an estimate: each stretch is priced by its stress level,
+    not yet by its own speed and lanes. The chart's key says so.</p>
+  </section>
+
+  <section>
     <h2 id="mass-ride">Mass Ride</h2>
     <p>Mass Ride plans for a large group that takes the whole lane, so traffic
     stress hardly matters to it. Its slider is fixed at the most direct end. LTS 3
     and LTS 4 cost nothing extra, and only Avoid roads are charged. Its map shows
     how many riders a road can carry each minute instead of stress levels, in the
     District only. Avoid roads show the word "AVOID". Its junction markers are
-    orange for a crossing of an LTS 3 road and red for LTS 4 or Avoid.</p>
+    orange for a crossing of an LTS 3 road and red for LTS 4 or Avoid. Under its
+    elevation chart it shows riders per minute instead of the stress chart.</p>
   </section>
 
   <section>
-    <h2 id="planned">Half steps and the stress chart (planned)</h2>
+    <h2 id="planned">Half steps and crossing costs (planned)</h2>
     <p class="note"><span class="planned">Planned, not built yet.</span> These are
     decided in outline and are not in the app today.</p>
     <h3>Half steps</h3>
-    <p>Some roads sit between two levels. Half steps will add 1.5 "Probably
-    comfortable for older children", 2.5 "Fine for most confident adults", 3.5
-    "Stressful even for experienced cyclists" and 4.5 "A very high-stress road". A
-    half step will cost halfway between its two levels. 4.5 is never treated as
-    Avoid. On the map, a half step will look like the level below it. Zoomed in, it
-    will add a dash in the color of the level above.</p>
-    <h3>A stress number and a rolling stress chart</h3>
-    <p>Each road's level is its stress number, 1 to 5. A half step is 1.5, 2.5 and so
-    on. The route description will get a chart of stress along the route, like the
-    elevation chart, so short busy stretches and bad crossings stand out.</p>
-    <p>The chart will show calm miles per actual mile, counting crossings too (a calm
-    mile is explained under <a href="#routes">How ride types and the slider use the
-    ratings</a>). 1 means all calm riding, and higher numbers mean more stress. Each
-    point is the average over about 1 mile [1.6 km] around it, or less near the start
-    and end. A crossing counts at every point within that mile of it. So an LTS 2
-    street that crosses many busy roads can read higher than a straight LTS 3 one. The
-    route summary will also give the total in calm miles.</p>
+    <p>Each road's level is a number, 1 to 5 (5 is Avoid). Some roads sit between two
+    levels. Half steps will add 1.5 "Probably comfortable for older children", 2.5
+    "Fine for most confident adults", 3.5 "Stressful even for experienced cyclists"
+    and 4.5 "A very high-stress road". A half step will cost halfway between its two
+    levels, in routing and in the stress chart. 4.5 is never treated as Avoid. On the
+    map, a half step will look like the level below it. Zoomed in, it will add a dash
+    in the color of the level above.</p>
     <h3>Crossing costs</h3>
     <p>The costs of crossings will also be revised. The hardest crossings will cost
     more, and changing lanes to turn left will have a cost of its own. A further idea
