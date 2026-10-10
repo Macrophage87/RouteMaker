@@ -338,8 +338,8 @@ def target_ceiling_m(target_m: float) -> float:
 # keeps 1, 2 and 3 and no such hold.
 #
 # LTS 2 (FOLLOWUP-LTS2-WEIGHT, OWNER-DECISIONS 240 (A), owner 2026-10-03: "A and B sound
-# good"): "a small LTS 2 weight in the calm-search score, about a quarter of LTS 3, on
-# Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no
+# good"): "a small LTS 2 weight in the calm-search score, about a quarter of LTS 3, on"
+# "Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no
 # rebuild." Item 241's rationale applies: "even adults wouldn't enjoy more stressful roads
 # if they aren't in control of the ride." So on Trailmaxxing and on Cargo with passengers
 # a metre of LTS 2 counts LTS2_WEIGHT (a quarter) of a metre of LTS 3: in the score below

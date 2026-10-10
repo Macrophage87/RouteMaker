@@ -4170,8 +4170,9 @@ quarter of the router's 1.09 mi.
 ### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
 
 The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
-calm-search score, about a quarter of LTS 3, on Cargo-carrying-people and at the top of the
-slider (Trailmaxxing). Planner only; no rebuild." Item 241's rationale applies: a rider who
+calm-search score, about a quarter of LTS 3, on"
+"Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no rebuild."
+Item 241's rationale applies: a rider who
 is not in control of the ride is stress-averse.
 
 - `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
