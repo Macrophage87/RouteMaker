@@ -963,6 +963,20 @@ class ProfileFlowOut(Schema):
     narrowest_riders_per_min: int | None
     narrowest_m: int | None = Field(description="Metres along the route to the narrowest sample.")
     typical_riders_per_min: int | None = Field(description="The median over the route.")
+    cruise_pace_ms: float | None = Field(
+        default=None,
+        description=(
+            "The group's cruising pace, m/s (`routemaker.flow.CRUISE_PACE_MS`, 7 mph): with"
+            " `level_riders_per_min`, the group's length at a ride size (PLAN items 128, 139)."
+        ),
+    )
+    default_level_riders_per_min: float | None = Field(
+        default=None,
+        description=(
+            "The level figure of the road a group's length is read on where no width is"
+            " known anywhere on the route (`flow.GROUP_DEFAULT_WIDTH_M`, two 11 ft lanes)."
+        ),
+    )
 
 
 class ProfileCrossingOut(Schema):
@@ -994,6 +1008,20 @@ class ProfileCrossingOut(Schema):
             "Corkers hold it (OWNER-DECISIONS 142, 400): the crossed or joined road is LTS 3"
             " or worse; a left or right turn onto such a road needs them as a crossing does."
         )
+    )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "The crossed or joined road is one-way there (one approach to hold: 1 corker,"
+            " PLAN item 139), two-way (false: 2), or not known (null)."
+        ),
+    )
+    divided: bool | None = Field(
+        default=None,
+        description=(
+            "A divided road: its two one-way carriageways counted as one junction, so two"
+            " approaches to hold (2 corkers) whatever `oneway` says."
+        ),
     )
 
 
@@ -1092,6 +1120,14 @@ class ProfileOut(Schema):
             "Mass Ride only: the grade-adjusted riders a minute at each sample"
             " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown or"
             " the stretch is marked Avoid (325: no carrying capacity)."
+        ),
+    )
+    level_riders_per_min: list[int | None] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the level riders a minute at each sample, from the width alone"
+            " (`flow.level_riders_per_min`), so the front end can read the group's length at"
+            " each point; null where the width is unknown or the stretch is marked Avoid."
         ),
     )
     flow: ProfileFlowOut | None = None

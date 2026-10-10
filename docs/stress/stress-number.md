@@ -436,9 +436,15 @@ marker, so averaging never hides a very high-stress crossing.
 ### Mass Ride
 
 Mass Ride has no rolling score: `plan` passes no pricing for it, and its routing charges
-no junction cost. The owner chose (2026-10-10) three Mass Ride charts instead: riders per
-minute, corker load and elevation. They are built separately (docs/DEVELOPMENT.md, "The
-rolling stress chart").
+no junction cost. The owner wrote on 2026-10-10: "Have 3 charts for mass ride: Riders per
+minute, Corker load, Elevation. They should all be there." So there is no calm-mile score
+(and no line at weight 1) for a Mass Ride: it draws riders per minute, a corker load (the
+corkers held at once by a group of the anticipated ride size, a window the group's length
+slid along the route; the owner, 2026-10-10: "Corkers were intended to also have a
+rollback based on the length of the ride") and the elevation, as three charts on one
+distance axis (docs/DEVELOPMENT.md, "A Mass Ride's three charts"). The corker defaults
+(rotation factor 2, 2 corkers a junction where one-way is not known, 500 riders) are open
+for the owner.
 
 ### Worked example (Default, made-up route, 2 mi [3.2 km])
 

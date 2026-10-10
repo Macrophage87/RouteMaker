@@ -293,6 +293,10 @@ class Event:
     # with a name in common (`merge_nearby`).
     road_ways: frozenset[int] = frozenset()
     road_oneway: bool | None = None
+    # A divided road's carriageways crossed as one (`_one_road`): each is one-way, but
+    # the road has two approaches to hold, so a Mass Ride's corkers count it as two-way
+    # (PLAN item 139). `road_oneway` keeps its meaning for the junction costs.
+    road_divided: bool = False
     # A Mass Ride's signalized crossings that run within GROUP_WITHIN_M of one
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
@@ -653,7 +657,9 @@ def _one_road(events: list[Event]) -> list[Event]:
         # The credit only lowers the cost, so this never raises the colour; a
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
-    refuge = replace(worst, cost_ft=cost, severity=severity, flagged=severity is not None)
+    refuge = replace(
+        worst, cost_ft=cost, severity=severity, flagged=severity is not None, road_divided=True
+    )
     return [refuge, *rest]
 
 
@@ -961,6 +967,12 @@ class Major:
     # them as a crossing does).
     crossed_tier: int | None
     kind: str = MAJOR_FLAGGED
+    # Whether that road is one-way there, where known: one approach to hold, so one
+    # corker rather than two (PLAN item 139).
+    oneway: bool | None = None
+    # A divided road (its two one-way carriageways counted as one major): two
+    # approaches to hold, so two corkers whatever `oneway` says (re-check, BLOCKING 1).
+    divided: bool = False
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1004,6 +1016,8 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             None,
             e.crossed_tier,
             MAJOR_FLAGGED,
+            e.road_oneway,
+            e.road_divided,
         )
         for e in events
         if e.flagged
@@ -1026,7 +1040,9 @@ def busy_roads_at(junction: Junction) -> list[tuple[Road, str]]:
     return sorted(found, key=lambda pair: -(pair[0].tier or 0))
 
 
-def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road) -> bool:
+def _counted_by(
+    majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road
+) -> int | None:
     """Whether a junction's busy road is one already counted: the same node, or the
     same street within MERGE_WITHIN_M (its other carriageway, a slip lane), or an
     unnamed road there. An unnamed major (a path crossing, say) does not hide a named
@@ -1035,10 +1051,27 @@ def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, r
     re-review C)."""
     lo = bisect.bisect_left(at, junction.m - MERGE_WITHIN_M)
     hi = bisect.bisect_right(at, junction.m + MERGE_WITHIN_M)
-    for major in majors[lo:hi]:
+    for index in range(lo, hi):
+        major = majors[index]
         if major.m == junction.m or major.names & road.names or not road.names:
-            return True
-    return False
+            return index
+    return None
+
+
+def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road) -> bool:
+    """Whether a junction's busy road is one already counted (`_counted_by`)."""
+    return _counted_by(majors, at, junction, road) is not None
+
+
+def _other_carriageway(major: Major, junction: Junction, road: Road) -> bool:
+    """Whether a busy road hidden by a counted major is that road's other carriageway:
+    the same street, one-way both, at another node within MERGE_WITHIN_M."""
+    return (
+        major.m != junction.m
+        and bool(major.names & road.names)
+        and major.oneway is True
+        and road.oneway is True
+    )
 
 
 def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> list[Major]:
@@ -1049,7 +1082,12 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
     at = [major.m for major in majors]
     for junction in sorted(share_controls(list(junctions)), key=lambda j: j.m):
         for road, kind in busy_roads_at(junction):
-            if _counted(majors, at, junction, road):
+            hidden = _counted_by(majors, at, junction, road)
+            if hidden is not None:
+                # A divided road's far carriageway: the major it is counted with has two
+                # approaches to hold (corkers), though each carriageway is one-way.
+                if _other_carriageway(majors[hidden], junction, road):
+                    majors[hidden] = replace(majors[hidden], divided=True)
                 break
             place = bisect.bisect_right(at, junction.m)
             at.insert(place, junction.m)
@@ -1066,6 +1104,7 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     _lanes_total(road),
                     road.tier,
                     kind,
+                    road.oneway,
                 ),
             )
             break
