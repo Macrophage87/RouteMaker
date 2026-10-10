@@ -1478,6 +1478,97 @@ to 60 a minute per address (`core.ratelimit.COVERAGE`). The map greys out
 everything outside it. Should the region become a drawn polygon, the validator
 and this endpoint change together (`core.api.coverage_ring`).
 
+## Change LTS: an instance admin's stress edits (OWNER-DECISIONS 441g, 441h, 460)
+
+An instance admin can change a road's traffic stress in the road panel (right-click, long
+press, or I on the map; the **Change LTS** button, shown only to an instance admin). The
+change applies at once; nothing waits for a rebuild except what is listed below.
+`core/stress_edits.py` does it in one database transaction:
+
+1. checks the editor's `expected` stamp against the road (409 "Someone changed this road" if
+   another admin, or a promotion, changed it since the editor opened);
+2. writes an approved `override` row (`source=panel`, the application user id in
+   `created_by_user_id` and `approved_by_user_id`, never a Discord id; the private reason in
+   `reason`) and **supersedes** the row it replaces: `superseded_by` and `superseded_at` are
+   set and `approved` is left alone, because `load_access_overrides` re-approves an unapproved
+   row that matches a file, so unapproving would let reloading an old file undo the edit;
+3. updates the way's rows in `live.segment` in place, by the rebuild's own rules (a floor the
+   classifier already meets changes nothing);
+4. writes a `stress_edit` row (every touched column before and after: the audit log keeps no
+   copy of a row) and one `audit_log` entry (`stress_edit` or `stress_edit_undo`);
+5. bumps the live table's edit generation (`live_edit_generation`, keyed by the table's oid)
+   and deletes only the cached tiles covering the road at z10-16 (plus a tile's margin), for the
+   stress and the Mass Ride tiles, re-keying the rest to the new tag so the cache stays warm.
+
+The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v8"`), so a
+browser's revalidation is never answered 304 for a changed tile. Other riders' browsers keep a
+tile for five minutes (`stress_tiles.MAX_AGE_S`, OWNER-DECISIONS 460.6); the editor's own map
+asks for every tile again under `?rev=<generation>` (the server ignores the parameter).
+
+**What is at once:** the stress tiles, the road panel, the route description and RouteMaker's
+own ranking (all read the live table at route time). **What waits for the next rebuild:**
+Valhalla's edge costs (the Lua transform runs at graph build), the z12-13 ride layer
+(`calm_run_m`) and the zoomed-out trail runs, and the Mass Ride capacity layers. The panel says
+so after a save.
+
+**Undo.** `POST /api/stress-edits/{id}/undo` puts the edit's `before` state back and reinstates
+the superseded row, for any instance admin, for 30 minutes (`stress_edits.UNDO_WINDOW`), and only
+while no later edit has touched the road and the table still holds the edit's `after` state. After
+that, make a new change. The full history is the **Stress edits** page of the admin (read only).
+
+**A rebuild or rollback that overlaps an edit.** The rebuild reads the approved, non-superseded
+override rows near its start and records the time (`RebuildContext.overrides_read_at`). Right
+after the swap, `promotion.perform_swap` calls `stress_edits.after_promotion`, which records that
+time for the new table and replays, in order, every edit made after it (from each edit's `after`
+state; idempotent), then bumps the generation. `promotion.rollback` calls `after_rollback`, which
+replays every edit made after the older table read its overrides (every edit where it recorded
+none). Both log and never raise: a failure leaves the promotion standing, and the approved
+override rows are read by the next rebuild anyway. To do it by hand, or to look first:
+
+```sh
+docker compose exec -T api python manage.py reapply_stress_edits                 # dry: the edits it would replay
+docker compose exec -T api python manage.py reapply_stress_edits --confirm       # since the table read its overrides
+docker compose exec -T api python manage.py reapply_stress_edits --since all --confirm
+```
+
+After a rollback, run `predraw_stress_tiles` as for any promotion.
+
+**Loading override files afterwards.** A row of a file that matches a superseded row is reported
+as `superseded` and left alone; a stress row that disagrees with a live panel row is refused,
+naming the edit. So an old file can be loaded again without undoing anyone's change, and a
+changed decision about a road someone has edited in the panel has to be made in the panel (or
+the admin).
+
+**The migration** (`core/migrations/0011_stress_edits.py`) adds columns to `override` and the
+`stress_edit` and `live_edit_generation` tables, and a partial unique index allowing one
+approved, non-superseded stress row per way. It first stops, naming the ways, if any way already
+has two approved stress rows (the loader refuses that, but a row typed into the admin can make
+it): leave one approved in the admin, then migrate. Run `migrate` before the new api image
+serves tiles: the tile query reads `live_edit_generation`. Because `migrate` runs at every `up`
+and the api waits for it, check first, before pulling the new images; this must print no rows:
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+  "SELECT osm_way_id, count(*) FROM override WHERE kind = 'stress' AND approved GROUP BY 1 HAVING count(*) > 1"
+```
+
+**Security.** All four endpoints (`GET /api/me`, `GET /api/stress-edits/way/{id}`,
+`POST /api/stress-edits`, `POST /api/stress-edits/{id}/undo`) answer `Cache-Control: no-store`,
+refuse a request a foreign page sent (`Sec-Fetch-Site`), and count per client address first
+(120 a minute). The writes also need a JSON body (8 KB at most), a session of an active instance
+admin (401 signed out, 403 otherwise, audited), Django's CSRF check (`X-CSRFToken` from the
+`csrftoken` cookie, which `/api/me` and the editor's starting state set; the Origin against
+`CSRF_TRUSTED_ORIGINS` on HTTPS) and a count per account (60 writes an hour). A refused write
+(403, 409, CSRF) is an `audit_log` entry; a 401 is not (nobody to attribute it to). The private
+reason is never in `live.segment`, the tiles, a route answer or a public panel; the public
+surfaces still say "Owner override" and name nobody. `GET /api/me` answers three yes/no flags
+and nothing else.
+
+**Not in this phase:** half steps, suggestions from other riders, and a named stretch longer
+than one road piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 2 to 5). "Only raise it" is
+refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
+level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding

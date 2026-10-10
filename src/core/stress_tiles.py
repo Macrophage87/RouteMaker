@@ -165,9 +165,11 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # trail's surface, not its deck's (BRIDGE_UNPAVED).
 FORMAT_VERSION = 8
 
-# An hour: a rebuild is weekly and a stale hour after one is harmless, and a
-# revalidation after that is a 304 that draws nothing.
-MAX_AGE_S = 3600
+# Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
+# the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
+# keep a tile for no longer than this before they revalidate it, which is a 304 that draws
+# nothing when nothing changed. (It was an hour, which was fine for a weekly rebuild.)
+MAX_AGE_S = 300
 
 # How long a tile draw on request may run. The swap takes its lock with a 3 s
 # lock_timeout (pipeline.swap.DEFAULT_LOCK_TIMEOUT_MS) and waits behind any
@@ -534,18 +536,28 @@ def render(
     return oid, bytes(tile or b"")
 
 
-def live_table() -> tuple[int | None, frozenset[str]]:
-    """The live table's oid, or None before any build, and which of the
-    optional columns it has."""
+def live_state() -> tuple[int | None, frozenset[str], int]:
+    """The live table's oid (None before any build), which of the optional columns it
+    has, and its edit generation: how many road-panel edits it has had since it was
+    promoted (`core.stress_edits`; 0 for a table nobody has edited)."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT t.oid, ARRAY(SELECT attname::text FROM pg_attribute WHERE attrelid = t.oid "
-            "AND attname = ANY(%s) AND NOT attisdropped) "
+            "AND attname = ANY(%s) AND NOT attisdropped), "
+            "COALESCE((SELECT g.generation FROM live_edit_generation g "
+            "WHERE g.table_oid = t.oid), 0) "
             "FROM (SELECT to_regclass(%s)::oid AS oid) AS t",
             [[*OPTIONAL_PROPERTIES.values(), *LONG_TRAIL_COLUMNS, CALM_RUN_COLUMN], _table()],
         )
-        oid, columns = cursor.fetchone()
-    return oid, frozenset(columns or ())
+        oid, columns, generation = cursor.fetchone()
+    return oid, frozenset(columns or ()), int(generation)
+
+
+def live_table() -> tuple[int | None, frozenset[str]]:
+    """The live table's oid, or None before any build, and which of the
+    optional columns it has."""
+    oid, columns, _ = live_state()
+    return oid, columns
 
 
 ETAG_LETTERS = {
@@ -565,7 +577,7 @@ ETAG_LETTERS = {
 }
 
 
-def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
+def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int = 0) -> str:
     # Weak: the same table always draws the same features, but not always the
     # same bytes - ST_AsMVT's feature and value order follows the scan's row
     # order, and two draws of one z14 tile measured 124,520 and 124,532 bytes.
@@ -577,7 +589,12 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # ten-digit oid, `+` and twelve letters, `-v8"`, 37 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
-    return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'
+    # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
+    # updates rows in place, which changes the tiles and not the oid, so without it a
+    # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
+    # digits makes the longest tag 45 characters, inside the cache's 64.
+    edited = f"-e{generation}" if generation else ""
+    return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 
 
 def _matches(request, etag: str) -> bool:
@@ -607,14 +624,14 @@ def stress_tile(request, z: int, x: int, y: int) -> HttpResponse:
         return response
     if not MIN_ZOOM <= z <= MAX_ZOOM or outside_coverage(z, x, y):
         return _tile_response(b"")
-    oid, optional = live_table()
+    oid, optional, generation = live_state()
     if oid is None:
         # No build has been promoted: nothing to draw, and the front end hides
         # the overlay on a 404 rather than showing a legend for nothing.
         response = JsonResponse({"error": "no stress data has been built yet"}, status=404)
         response["Cache-Control"] = "no-store"
         return response
-    etag = etag_for(oid, optional)
+    etag = etag_for(oid, optional, generation)
     if _matches(request, etag):
         return _tile_response(b"", status=304, etag=etag)
     cached = tile_cache.get(etag, z, x, y)
@@ -643,5 +660,7 @@ def stress_tile(request, z: int, x: int, y: int) -> HttpResponse:
         # The Mass Ride tiles share the cache (core.mass_tiles): an eviction keeps theirs.
         from . import mass_tiles
 
-        tile_cache.put(etag, z, x, y, body, also_keep=(mass_tiles.etag_for(oid, optional),))
-    return _tile_response(body, etag=etag_for(drawn_oid, optional))
+        tile_cache.put(
+            etag, z, x, y, body, also_keep=(mass_tiles.etag_for(oid, optional, generation),)
+        )
+    return _tile_response(body, etag=etag_for(drawn_oid, optional, generation))

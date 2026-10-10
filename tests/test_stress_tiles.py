@@ -1028,9 +1028,12 @@ class TestProbes:
     def test_a_tile_and_the_coverage_stay_fresh_long_enough(self, client, live) -> None:
         import re
 
-        for path in (url(*tile_of(*CENTRE, 14)), "/api/coverage"):
+        # The tiles are kept five minutes, the owner's answer of 2026-10-09 (OWNER-DECISIONS 460.6,
+        # "5 min sounds good"): an admin's change in the road panel reaches other riders that soon.
+        # Not shorter: a minute's freshness would send every pan back to the server.
+        for path, least in ((url(*tile_of(*CENTRE, 14)), 300), ("/api/coverage", 600)):
             control = client.get(path)["Cache-Control"]
-            assert int(re.search(r"max-age=(\d+)", control)[1]) >= 600, path
+            assert int(re.search(r"max-age=(\d+)", control)[1]) >= least, path
 
     def test_the_trails_only_tiles_are_a_new_format(self) -> None:
         """The live table keeps its oid across the deploy that made the

@@ -213,9 +213,19 @@ export function infoError(status: number): string {
 }
 
 /** Ask the API about a spot. */
-export async function fetchSegmentInfo(origin: string, point: LonLat, signal?: AbortSignal): Promise<InfoState> {
+export async function fetchSegmentInfo(
+  origin: string,
+  point: LonLat,
+  signal?: AbortSignal,
+  fresh = false,
+): Promise<InfoState> {
   try {
-    const response = await fetch(segmentInfoUrl(origin, point), { signal, headers: { Accept: "application/json" } });
+    // `fresh` after an edit: the answer is cached for five minutes, and the rider has just changed it.
+    const response = await fetch(segmentInfoUrl(origin, point), {
+      signal,
+      headers: { Accept: "application/json" },
+      ...(fresh ? { cache: "reload" as const } : {}),
+    });
     if (!response.ok) return { kind: "error", message: infoError(response.status) };
     const info = (await response.json()) as SegmentInfo;
     if (!info || typeof info.found !== "boolean" || !Array.isArray(info.sections)) {

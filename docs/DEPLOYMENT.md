@@ -923,7 +923,10 @@ missing deploy step, not a broken stack.
   predraw_stress_tiles` to draw the live table's z10-14 tiles - every one the map
   asks for - into it; the
   weekly rebuild does it after every promotion from then on
-  (docs/OPERATIONS.md, "The stress tiles").
+  (docs/OPERATIONS.md, "The stress tiles"). The stress editor's migration
+  `core.0011` stops if any way has two approved stress overrides; run the
+  pre-flight query in docs/OPERATIONS.md ("The migration", under the road
+  panel's stress editor) before the deploy that brings it.
 - **`/api/coverage`** (GET) is the area routes may be planned in, as GeoJSON;
   the map greys out everything outside it. No sign-in, an hour's cache.
 - **`/auth/login`** is the sign-in entry, and the only one. It starts the

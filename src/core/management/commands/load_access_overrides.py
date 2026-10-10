@@ -43,6 +43,13 @@ already approved with the same tier and different adjustment fields is
 updated in place (`update`, audited as a change); a different tier is a
 conflict. `load_overrides` is the same command under the name that says so.
 
+An instance admin's change in the road panel (`core.stress_edits`) replaces the way's
+approved stress row by *superseding* it - marking it, not unapproving it, because this
+command re-approves an unapproved row that matches a file. So a row of a file that matches
+a superseded row is reported as superseded and left alone (reloading an old file never
+undoes an edit), and a stress row that disagrees with a live panel row is refused, naming
+the edit.
+
 A row may carry a `fingerprint` of its way (`pipeline.rematch`), checked here and kept in
 the file: the database row does not hold it, and the rebuild reads it from the image's
 copy of the file, to re-match the row if OSM splits or merges the way.
@@ -237,20 +244,40 @@ def plan(rows: list[dict], retiring: frozenset = frozenset()) -> list[tuple[str,
     consulted. `create` - no matching row; `approve` - a matching unapproved row exists;
     `present` - a matching approved row exists, nothing to do; `update` - a
     stress row approved with the same tier and other adjustment fields, which
-    the file's replace (the tier is the decision; the fields explain it).
+    the file's replace (the tier is the decision; the fields explain it);
+    `superseded` - a matching row that a later road-panel edit replaced
+    (`core.stress_edits`): reported and left alone, so reloading an old file can never
+    undo an edit. A stress row that disagrees with a live road-panel row is refused,
+    naming the edit, as two disagreeing approved rows are.
     """
     from core.models import Override
 
     steps = []
     for row in rows:
-        same_way = [
+        every = [
             o
             for o in Override.objects.filter(
                 kind=row["kind"], osm_way_id=row["osm_way_id"]
             ).order_by("id")
             if o.pk not in retiring
         ]
+        # A superseded row is inert and is never consulted as a live one.
+        same_way = [o for o in every if o.superseded_by_id is None]
+        replaced = [o for o in every if o.superseded_by_id is not None]
         match = next((o for o in same_way if o.value == row["value"]), None)
+        if row["kind"] == "stress" and match is None:
+            gone = next((o for o in replaced if o.value == row["value"]), None)
+            if gone is not None:
+                steps.append(("superseded", row, gone))
+                continue
+            panel = next((o for o in same_way if o.approved and o.source == "panel"), None)
+            if panel is not None:
+                raise CommandError(
+                    f"way {row['osm_way_id']} was changed in the road panel (override "
+                    f"{panel.pk}, {panel.approved_at:%Y-%m-%d}, writing {panel.value}), which "
+                    f"disagrees with {row['value']}; make the change in the road panel, or "
+                    "resolve it in the admin first"
+                )
         if row["kind"] == "stress":
             approved = [o for o in same_way if o.approved]
             other_tier = [o for o in approved if o.value.get("tier") != row["value"]["tier"]]
@@ -332,6 +359,15 @@ class Command(BaseCommand):
 
         for action, row, existing in [*retire_steps, *steps]:
             target = f" (override {existing.pk})" if existing else ""
+            if action == "superseded":
+                successor = existing.superseded_by
+                when = existing.superseded_at or (successor.approved_at if successor else None)
+                target = (
+                    f" (override {existing.pk}, superseded by panel edit "
+                    f"{getattr(successor, 'pk', '?')}"
+                    + (f" on {when:%Y-%m-%d}" if when else "")
+                    + "; left alone)"
+                )
             self.stdout.write(f"{action}: way {row['osm_way_id']} {row['value']}{target}")
         if not options["confirm"]:
             self.stdout.write("dry run: nothing written; pass --confirm to write")
@@ -356,7 +392,7 @@ class Command(BaseCommand):
                     ),
                 )
             for action, row, existing in steps:
-                if action == "present":
+                if action in ("present", "superseded"):
                     continue
                 now = timezone.now()
                 if action == "update":
@@ -420,7 +456,7 @@ class Command(BaseCommand):
                     AuditLogEntry.Outcome.ALLOWED,
                     detail=f"approved; way {row['osm_way_id']}; {source}{replaced}",
                 )
-        written = sum(1 for action, _, _ in steps if action != "present")
+        written = sum(1 for action, _, _ in steps if action not in ("present", "superseded"))
         gone = sum(1 for action, _, _ in retire_steps if action == "retire")
         if retire_steps:
             self.stdout.write(f"retired {gone} rows")

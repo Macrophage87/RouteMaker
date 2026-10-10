@@ -203,7 +203,8 @@ test("each tier's swatch draws its casing, then its line with its dash, at the m
         assert.equal(Number(line["stroke-width"]), widths.tiers[i].line);
         // The legend's dash is the tier's, scaled by its width; a solid line has none (OWNER-DECISIONS 279).
         assert.equal(line["stroke-dasharray"], tier.dash ? tier.dash.map((d: number) => d * widths.tiers[i].line).join(" ") : undefined, `${tier.short} dash`);
-        assert.ok(rows[i].text.startsWith(`${tier.short} ${tier.label}`), rows[i].text);
+        // Avoid is just "Avoid" (OWNER-DECISIONS 441j): its name is not said twice.
+        assert.ok(rows[i].text.startsWith(tier.label === tier.short ? tier.short : `${tier.short} ${tier.label}`), rows[i].text);
       });
     });
   }

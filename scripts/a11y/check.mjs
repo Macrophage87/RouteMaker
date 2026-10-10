@@ -29,10 +29,10 @@ const b = await connect();
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
@@ -1905,6 +1905,163 @@ async function saidInDialog(p, text) {
   check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
+// ---- 22. The stress editor in the road panel (OWNER-DECISIONS 441g, 441h, 441m, 460): an instance admin's "Change LTS" ----
+/** The road panel by the keyboard (I on the focused map: no pointer), waited on until it shows the test road. */
+async function panelByKey(p) {
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  const before = p.infoRequests.length;
+  await p.key("i", "KeyI", 73);
+  return (await infoAsked(p, before)).opened;
+}
+const EDITOR = "dialog.road-info .stress-editor";
+const editorReady = (p) => p.waitFor(`!!document.querySelector('${EDITOR} input[type=range]')`, 8000);
+const levelSlider = `${EDITOR} input[type=range]`;
+{
+  // A visitor who is not an instance admin is offered nothing.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const opened = await panelByKey(p);
+  await sleep(300);
+  const none = await p.eval("({ button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS'), editor: !!document.querySelector('.stress-editor') })");
+  check("stress editor: a visitor who is not an instance admin is offered no Change LTS, and the page never asks the editor's endpoints anything",
+    opened && !none.button && !none.editor && p.editRequests.length === 0, JSON.stringify({ opened, none, asked: p.editRequests.length }));
+  await p.close();
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info ul.road-info-buttons li')].length === 3", 8000);
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
+    const last = ul?.querySelector('li:last-child > *');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), lastTag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("stress editor: an instance admin's bottom row is Street View, Edit in OSM, then a Change LTS button, at least 44px tall (the panel opened by the keyboard)",
+    opened && JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM", "Change LTS"]) && row.lastTag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+
+  // Open the editor: in the same dialog, in place of the row, the focus on its heading.
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  const loaded = await editorReady(p);
+  const ed = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const e = d.querySelector('.stress-editor'); const h = e?.querySelector('h3');
+    const status = e?.querySelector('[role=status]');
+    return { dialogs: document.querySelectorAll('dialog.road-info[open]').length, heading: h?.textContent, focus: document.activeElement === h, labelled: e?.getAttribute('aria-labelledby') === h?.id,
+      rowGone: !d.querySelector('ul.road-info-buttons'), status: status ? status.textContent : null, shown: !!status && getComputedStyle(status).display !== 'none', inside: !!e && d.contains(e) }; })()`);
+  check("stress editor: Change LTS opens the editor in the same dialog, in place of the action row, its heading focused, with an empty polite status region already in the page",
+    loaded && ed.dialogs === 1 && ed.heading === "Change traffic stress" && ed.focus && ed.labelled && ed.rowGone && ed.inside && ed.status === "" && ed.shown, JSON.stringify(ed));
+  await p.shot(`${SHOTS}/stress-editor_open.png`);
+
+  // The level: a native slider, named, read as its words, moved with the arrow keys, Home and End.
+  const slider = await p.eval(`(() => { const r = document.querySelector('${levelSlider}'); return { type: r?.type, min: r?.min, max: r?.max, step: r?.step,
+    out: document.querySelector('${EDITOR} output')?.textContent }; })()`);
+  const sliderAx = await axNode(p, levelSlider);
+  check("stress editor: the level is a native range control 1 to 5 in whole steps, named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
+    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "1" && sliderAx?.name === "Traffic stress level" &&
+      sliderAx?.valuetext === "3, For experienced cyclists" && slider.out === "3, For experienced cyclists", JSON.stringify({ slider, sliderAx }));
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("End", "End", 35);
+  const atEnd = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("Home", "Home", 36);
+  const atHome = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("End", "End", 35);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const atFour = (await axNode(p, levelSlider))?.valuetext;
+  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; then one back, 4)",
+    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atFour }));
+
+  // Tab visits every control in order and stays in the dialog.
+  await p.eval(`document.querySelector('${EDITOR} h3').focus(); true`);
+  const visited = [];
+  for (let i = 0; i < 9; i++) {
+    await p.tab();
+    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
+  }
+  check("stress editor: Tab goes through the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
+    JSON.stringify(visited.slice(0, 7)) === JSON.stringify(["range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
+
+  // The private reason is required: a message, the focus on the field, nothing sent.
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`!!document.querySelector('${EDITOR} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const t = document.querySelector('${EDITOR} textarea'); const a = document.querySelector('${EDITOR} [role=alert]');
+    return { alert: a?.textContent ?? '', focus: document.activeElement === t, invalid: t?.getAttribute('aria-invalid'), required: t?.getAttribute('aria-required') }; })()`);
+  check("stress editor: Save with no private reason says so in an alert, moves the focus to that field marked invalid, and sends nothing",
+    /private reason/i.test(empty.alert) && empty.focus && empty.invalid === "true" && empty.required === "true" && !p.editRequests.some((r) => r.method === "POST"), JSON.stringify({ empty, posts: p.editRequests.filter((r) => r.method === "POST").length }));
+
+  // Save a change to 4 with a reason.
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("The light never lets a bike through");
+  const tilesBefore = p.tileUrls.length;
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed to /.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const post = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  check("stress editor: Save sends one JSON POST with the level, the way, the private reason, the category and the state it opened with, and the CSRF token from the page's cookie as a header",
+    post && post.path === "/api/stress-edits" && post.body.step === 4 && JSON.stringify(post.body.osm_way_ids) === "[101]" && post.body.reason === "The light never lets a bike through" &&
+      post.body.expected === "tok-0" && post.body.at_least === false && typeof post.body.category === "string" && post.headers["X-CSRFToken"] === "test-csrf-token" && /json/.test(post.headers["Content-Type"] ?? ""),
+    JSON.stringify(post));
+  check("stress editor: the result is said in the editor's polite status region, and it says the map shows it now, that routes use it after the next weekly update, and that it can be undone for 30 minutes",
+    said === "Changed to LTS 4, high stress: busy, fast traffic. The map shows it now; routes fully use it after the next weekly data update. You can undo it for 30 minutes.", said);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 4')", 8000);
+  const refreshed = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); return { line: d.querySelector('.road-info-line-stress')?.textContent ?? '', editor: !!d.querySelector('.stress-editor'),
+    focus: document.activeElement === d.querySelector('.stress-editor h3'), open: d.open }; })()`);
+  check("stress editor: the panel's own stress line is refreshed in place (the answer asked for again) with the editor still open and the focus on its heading",
+    /LTS 4/.test(refreshed.line) && refreshed.editor && refreshed.focus && refreshed.open && p.infoRequests.length === 2, JSON.stringify({ refreshed, asked: p.infoRequests.length }));
+  await sleep(1200);
+  const again = p.tileUrls.slice(tilesBefore).filter((u) => /\?rev=1$/.test(u));
+  check("stress editor: after a save the map asks for its stress tiles again under the new edit generation (?rev=1), so the editor's own map shows the change at once", again.length > 0, JSON.stringify({ asked: p.tileUrls.length - tilesBefore, sample: p.tileUrls.slice(-3) }));
+
+  // Undo, next to the message.
+  const undoButton = await p.eval(`!![...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change')`);
+  await p.eval(`[...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change')?.click(); true`);
+  await p.waitFor(`/^Undone/.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const undoPost = p.editRequests.filter((r) => r.method === "POST").at(-1);
+  const undoSaid = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 3')", 8000);
+  const undone = await p.eval(`({ line: document.querySelector('dialog.road-info .road-info-line-stress')?.textContent ?? '', again: !![...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change') })`);
+  check("stress editor: Undo sits beside the message, posts to the change's own undo address, says the road is back at LTS 3, and the panel shows it; the button goes",
+    undoButton && /^\/api\/stress-edits\/\d+\/undo$/.test(undoPost?.path ?? "") && undoPost.headers["X-CSRFToken"] === "test-csrf-token" &&
+      undoSaid === "Undone. This road is back to LTS 3, for experienced cyclists." && /LTS 3/.test(undone.line) && !undone.again, JSON.stringify({ undoButton, undoPost: undoPost?.path, undoSaid, undone }));
+
+  // A refused write: the server's own sentence, in an alert, the editor still open with what was typed.
+  p.editFail = { status: 409, body: { error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" } };
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/Someone changed this road/.test(document.querySelector('${EDITOR} [role=alert]')?.textContent ?? '')`, 8000);
+  const refused = await p.eval(`({ alert: document.querySelector('${EDITOR} [role=alert]')?.textContent ?? '', still: !!document.querySelector('${EDITOR} textarea'),
+    kept: document.querySelector('${EDITOR} textarea')?.value ?? '' })`);
+  check("stress editor: a refused change shows the server's sentence in an alert and keeps the editor and what was typed",
+    /^Someone changed this road since you opened it\./.test(refused.alert) && refused.still && refused.kept === "The light never lets a bike through", JSON.stringify(refused));
+
+  // Escape closes the editor, not the panel; the focus goes back to Change LTS. So does Cancel.
+  await p.escape();
+  await sleep(300);
+  const esc = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'),
+    focus: document.activeElement?.textContent ?? '', tag: document.activeElement?.tagName ?? '' })`);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.eval(`[...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Cancel').click(); true`);
+  await sleep(300);
+  const cancel = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'), focus: document.activeElement?.textContent ?? '' })`);
+  check("stress editor: Escape and Cancel close the editor and not the panel, and the focus goes back to the Change LTS button",
+    esc.open && !esc.editor && esc.focus === "Change LTS" && esc.tag === "BUTTON" && cancel.open && !cancel.editor && cancel.focus === "Change LTS", JSON.stringify({ esc, cancel }));
+  await p.close();
+}
+{
+  // A phone: the editor stacks in one column, controls at least 44px tall, nothing scrolls sideways.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 375, height: 812, mobile: true, ride: false, junctions: false, admin: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  const fit = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const e = d.querySelector('.stress-editor');
+    const controls = [...e.querySelectorAll('input[type=range], input[type=text], select, textarea, button')];
+    return { opened: d.open, sideways: d.scrollWidth - d.clientWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      small: controls.filter((c) => c.getBoundingClientRect().height < 44).map((c) => c.tagName + ':' + (c.textContent || c.type).slice(0, 12)),
+      wide: controls.filter((c) => c.getBoundingClientRect().right > innerWidth).length, count: controls.length }; })()`);
+  check("stress editor: on a phone (375px) nothing scrolls sideways and every control in the editor is at least 44px tall",
+    opened && fit.opened && fit.sideways <= 0 && fit.page <= 0 && fit.small.length === 0 && fit.wide === 0 && fit.count >= 6, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/stress-editor_phone.png`);
+  await p.close();
+}
+
 // The page on how traffic-stress ratings work (OWNER-DECISIONS 461): a static page in public/, read
 // by screen reader users among the rest, and linked from the legend in the same tab.
 {
@@ -2107,7 +2264,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 358;
+const EXPECTED = 373;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

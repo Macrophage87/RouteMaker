@@ -133,9 +133,17 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false } = {}) {
   page.routeRequests = 0;
   page.infoRequests = [];
+  // The road panel's stress editor (OWNER-DECISIONS 441g, 441h; core/stress_edits.py): `admin` makes this
+  // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
+  // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
+  // the next write instead ({ status, body }).
+  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0 };
+  page.editRequests = [];
+  page.editFail = null;
+  page.tileUrls = [];
   // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
   page.tileRequests = { stress: 0, mass: 0 };
   await page.s("Fetch.enable", {
@@ -157,6 +165,7 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       if (stressTiles === "capacity") body = capacityTile();
     } else if (url.pathname.startsWith("/tiles/stress/")) {
       page.tileRequests.stress += 1;
+      page.tileUrls.push(request.url);
       status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
       // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
@@ -175,8 +184,44 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       // The map's road panel (OWNER-DECISIONS 441a; core/segment_info.py): one fixed road.
       page.infoRequests.push(url.search);
       status = 200;
-      body = JSON.stringify(S_SEGMENT_INFO);
+      body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
       type = "application/json";
+    } else if (url.pathname === "/api/me") {
+      status = 200;
+      body = JSON.stringify({ signed_in: admin, can_change_lts: admin, can_suggest: false });
+      type = "application/json";
+    } else if (admin && url.pathname.startsWith("/api/stress-edits")) {
+      const road = page.editRoad;
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.editRequests.push(record);
+      type = "application/json";
+      const undo = /^\/api\/stress-edits\/(\d+)\/undo$/.exec(url.pathname);
+      if (request.method === "GET") {
+        status = 200;
+        body = JSON.stringify(editorState(road));
+      } else if (page.editFail) {
+        status = page.editFail.status;
+        body = JSON.stringify(page.editFail.body);
+        page.editFail = null;
+      } else if (undo && Number(undo[1]) === road.edit) {
+        road.tier = road.was;
+        road.edit = null;
+        road.generation += 1;
+        status = 200;
+        body = JSON.stringify({ edit_id: road.edits + 1, ways: [{ osm_way_id: 101, step: road.tier, changed: true }], generation: road.generation, undo_until: new Date().toISOString() });
+        road.edits += 1;
+      } else if (!undo && record.body && record.body.expected === `tok-${road.generation}`) {
+        road.was = road.tier;
+        road.tier = record.body.step;
+        road.edits += 1;
+        road.edit = road.edits;
+        road.generation += 1;
+        status = 200;
+        body = JSON.stringify({ edit_id: road.edit, ways: [{ osm_way_id: 101, step: road.tier, changed: road.tier !== road.was }], generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
+      } else {
+        status = 409;
+        body = JSON.stringify({ error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" });
+      }
     } else if (url.pathname.startsWith("/api/")) {
       body = JSON.stringify({ detail: "not found" });
       type = "application/json";
@@ -608,6 +653,44 @@ export const RIDE_COORDS = coords;
 
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
+
+/** The step words (core/segment_info.py TIER_WORDS; OWNER-DECISIONS 441l). */
+export const STEP_WORDS = { 1: "Comfortable for everyone", 2: "Fine for adults", 3: "For experienced cyclists", 4: "High stress: busy, fast traffic", 5: "Avoid" };
+
+/** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */
+export function editorState(road) {
+  return {
+    osm_way_id: 101,
+    classifier_step: 3,
+    can_raise_only: true,
+    current: {
+      step: road.tier, words: STEP_WORDS[road.tier], source: road.edit ? "panel" : "classifier", at_least: false,
+      category: null, public_note: null, display: null, private_reason: null,
+      when: road.edit ? new Date().toISOString() : null, by: road.edit ? "you" : null,
+    },
+    expected: `tok-${road.generation}`,
+    steps: [1, 2, 3, 4, 5].map((value) => ({ value, words: STEP_WORDS[value] })),
+    categories: [
+      { id: "speed", label: "speed" }, { id: "road_conditions", label: "road conditions" }, { id: "driver_behaviour", label: "driver behaviour" },
+      { id: "intersection", label: "an intersection" }, { id: "sightlines", label: "sightlines" },
+      { id: "better_among_alternatives", label: "better than the alternatives nearby" }, { id: "other", label: "other" },
+    ],
+    reason_max: 500,
+    note_max: 200,
+    recent_edit: road.edit ? { id: road.edit, action: "set", at: new Date().toISOString(), can_undo: true } : null,
+    pieces: 1,
+  };
+}
+
+/** The road panel's answer at a level: the fixed road with its stress rows changed. */
+export function segmentInfoAt(tier) {
+  if (tier === 3) return S_SEGMENT_INFO;
+  const info = JSON.parse(JSON.stringify(S_SEGMENT_INFO));
+  info.tier = tier;
+  info.summary.find((r) => r.id === "stress").value = tier === 5 ? "Avoid" : `LTS ${tier} \u00b7 ${STEP_WORDS[tier]}`;
+  info.sections.find((x) => x.id === "stress").rows[0] = { label: "Level", value: tier === 5 ? "Avoid" : `LTS ${tier}: ${STEP_WORDS[tier]}`, source: "Owner override" };
+  return info;
+}
 
 /** The road panel's answer (GET /api/segment-info), as core/segment_info.py writes it. */
 export const S_SEGMENT_INFO = {

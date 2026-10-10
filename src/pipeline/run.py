@@ -750,6 +750,9 @@ class RebuildContext:
     elevation_tiles: list[Path] = field(default_factory=list)
     build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
     swap_outcome: promotion.SwapOutcome | None = None
+    # When the override stage read the approved rows. A road-panel edit (core.stress_edits)
+    # made after this is not in the table this rebuild builds, so the promotion re-applies it.
+    overrides_read_at: datetime | None = None
     drift_report: object | None = None
 
     def __post_init__(self) -> None:
@@ -1709,6 +1712,8 @@ def build_handlers(
         ]
         context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
         context.override_summary = manifest.get("override_summary")
+        read_at = manifest.get("overrides_read_at")
+        context.overrides_read_at = datetime.fromisoformat(read_at) if read_at else None
         context.resumed = True
         context.revalidate_staging = validation_changed
         context.resume_note = (
@@ -2266,6 +2271,7 @@ def build_handlers(
         and no stage ever read: a row could be written, reviewed and approved,
         and the graph was built exactly as if it were not there.
         """
+        context.overrides_read_at = datetime.now(UTC)
         rows = load_overrides()
         unhandled = sorted({row.kind for row in rows} - overrides.HANDLED_KINDS)
         if unhandled:
@@ -3166,6 +3172,12 @@ def build_handlers(
                 ],
                 "singletracks": sorted(context.singletracks),
                 "override_summary": summary,
+                # When OVERRIDES read the override table, not when this was written: the
+                # swap re-applies the road panel's edits made after it, and a resumed
+                # attempt skips OVERRIDES, so without it the resume would replay none.
+                "overrides_read_at": (
+                    context.overrides_read_at.isoformat() if context.overrides_read_at else None
+                ),
                 # Every hash this attempt has read so far (both extracts, the code,
                 # the reference data, the variant extracts), out of its budget.
                 "hash_seconds": round(context.hasher.seconds, 1),
@@ -3230,7 +3242,10 @@ def build_handlers(
         checkpoint.discard_classification(context.work_dir)
         try:
             context.swap_outcome = promotion.perform_swap(
-                context.tiles_dir, context.build_id, context.upstreams
+                context.tiles_dir,
+                context.build_id,
+                context.upstreams,
+                overrides_read_at=context.overrides_read_at,
             )
         except promotion.SwapUndoIncomplete:
             raise
