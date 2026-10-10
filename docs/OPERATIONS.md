@@ -1569,6 +1569,63 @@ than one road piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 2 to 5). "Onl
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
+## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
+
+An Avoid rating is for a junction that is "just way too problematic", and only from the
+owner's or the community's input (307): the junction model never assigns one. The list ships
+empty. A rating takes effect at the next plan, with no rebuild and no restart: the planner reads
+the approved rows at request time (`core.avoid_junctions.approved`).
+
+**Adding one** (instance admin only):
+
+1. In the admin, open **Core > Avoid junctions** and choose **Add**.
+2. Fill in:
+   - **Name**: the junction as riders know it, e.g. "Main St and 1st Ave". Riders see it.
+   - **Location**: click the junction's centre on the map, where the roads' centre lines meet.
+     The planner counts a route as passing it within 49 ft (15 m) of that point
+     (`MATCH_RADIUS_M`), so a point off to one side of a wide junction can miss a route that
+     turns through it, and one placed on the next junction's corner can catch the wrong one.
+   - **Reason**: a few plain words, e.g. "no gap in fast traffic". Riders see it, in the
+     notice, the list, the description and the marker's spoken name.
+   - **Evidence**: what the rating rests on (rider reports, a visit, crash records). Not shown
+     to riders.
+   - **Source**: "Owner or instance admin", or "Community suggestion, reviewed" with the
+     suggestion's id or link in **Suggestion ref**.
+3. **Save**. The row is inert until approved.
+4. Back on the list, tick it, choose **Approve the selected Avoid junctions** and **Go**.
+   Approval is audited (`approve` on `avoidjunction` in the audit log) and is never a checkbox
+   on the form.
+
+**Withdrawing one**: tick it and run **Withdraw the selected Avoid junctions**. The row stays
+(with its count) and stops routing at the next plan. Deleting it is audited too.
+
+**What changes for riders.** A plan whose route passes an approved Avoid junction is charged 30
+minutes (1,800 cost seconds) for each pass, the same as entering an Avoid road (308): the calm
+search scores it and excludes the junction in its first rounds, and every plan then asks the
+router once more for the way round (`exclude_locations` at the junction, a 49 ft (15 m) radius).
+Where the way round is cheaper than the route plus 30 minutes, it becomes the route; on Mass
+Ride and Group Ride it always does where it exists (307). Otherwise the route keeps the junction,
+the panel leads with "This route goes through an Avoid-rated junction: <name>, <reason>.
+Riding through it is a really bad idea. Please reconsider your route." (announced first), and the way round is offered beside it, however much longer (335). The
+marker is the skull and crossbones on a dark disc, larger than the other junction markers; its
+spoken name is "Avoid-rated junction", the reason and the same plea (309). Clicking it, or opening
+the road panel on it, shows "Avoid this intersection. <name> is rated as dangerous for bikes:
+<reason>. Riding through it is a really bad idea. Please reconsider your route." at the top of the panel. The owner, 2026-10-10 15:08 UTC: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider." It has no row in the map's legend: the owner, 2026-10-10 15:03 UTC, "For avoid markers in
+intersection. No need to put it in legend. You'll only see this if you really try to force things."
+
+**Keeping both rare (335).** The list page leads with the counts: how many junctions are
+approved, how many await approval, and how many times plans passed through an approved one in
+all; each row shows its own **Plans through** and when it was last planned through. A plan is
+counted when its answer (after the way round was tried) still passes the junction. Only the count
+and the date are kept, never the route, the request or the rider.
+
+**Load.** With the list empty (as shipped) a plan makes one small query and no extra router
+call. A plan through an Avoid junction makes one extra `/route` call (and, where the way round
+is offered, its trace), inside the plan's budget; with under 4 s left it is not asked, and the
+answer says so (`avoid_search.alternate` "time").
+
+**Migration.** The table is `avoid_junction`, created by `core/migrations/0015_avoid_junction.py`.
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
