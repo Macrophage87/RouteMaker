@@ -31,6 +31,8 @@ import {
   offersAssist,
   offersTargetDistance,
   startDials,
+  trailsAreOff,
+  trailsOffLocked,
   stressMax,
   stressWords,
   warnsTrafficTolerant,
@@ -66,6 +68,8 @@ export interface PanelView {
    * and Change button, never the number (OWNER-DECISIONS 313; lib/weightDialog.ts).
    */
   weight: boolean;
+  /** The "Keep to roads, not trails" switch (OWNER-DECISIONS 463, 463b), on every ride type. */
+  trailsOff: TrailsOffView;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
 }
@@ -84,6 +88,39 @@ export interface TargetView {
   /** The detail, under a "How this works" disclosure: not read on every focus. */
   how?: string;
 }
+
+/** The "Keep to roads, not trails" switch: on and unchangeable on Mass Ride, the rider's on any other ride type. */
+export interface TrailsOffView {
+  label: string;
+  checked: boolean;
+  /** Always on (Mass Ride): the switch stays in the Tab order, but a press changes nothing. */
+  locked: boolean;
+  /** Its description, read on focus: short, in plain words. */
+  hint: string;
+  /** What exactly is left out, under "How this works": read when opened. */
+  how: string;
+  /** Read after "How this works", not shown, to tell its disclosure from the other dials' ones. */
+  howAbout: string;
+}
+
+/** OWNER-DECISIONS 463b: checked is roads only. The link and API keep `trailsoff` / `trails_off`. */
+export const TRAILS_OFF_LABEL = "Keep to roads, not trails";
+/**
+ * What "trails" means, as the no-trail graph builds it (`pipeline.variants.inject`,
+ * `TRAIL_CLASS_HIGHWAY`): every way tagged cycleway, footway, path, pedestrian,
+ * bridleway or steps is left out, whatever its bicycle tag, plus the roadways of
+ * bridges that are ridden by their side path (Chain Bridge, the George Mason span,
+ * the Wilson Bridge). What stays is every street and road bikes may use.
+ */
+export const TRAILS_OFF_HINT = "No bike paths, trails or stairs. Can use the Key and Memorial Bridge roadways.";
+export const TRAILS_OFF_LOCKED_HINT = "A mass ride always keeps to roads. " + TRAILS_OFF_HINT;
+export const TRAILS_OFF_HOW_ABOUT = "keep to roads";
+export const TRAILS_OFF_HOW =
+  "Leaves out every separate bike path, trail, sidewalk or footway, boardwalk, pedestrian street, bridle path and set of " +
+  "stairs, however it is signed for bikes. Bridges whose bike route is a side path, such as Chain Bridge, are left out. " +
+  "Unpaved farm and forest roads stay. Bike lanes painted on a road stay, with no extra credit for them. " +
+  "Never rides against a one-way street's traffic. " +
+  "Where roads alone cannot join your points, there is no route.";
 
 export const TARGET_LABEL = "Target distance (miles)";
 
@@ -197,6 +234,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const start = {
     ...plain,
     ...(dials.avoidGravel ? { avoidGravel: true } : {}),
+    ...(dials.trailsOff ? { trailsOff: true } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
@@ -233,6 +271,14 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     },
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     weight: offersTargetDistance(preset, dials.stress),
+    trailsOff: {
+      label: TRAILS_OFF_LABEL,
+      checked: trailsAreOff(preset, dials),
+      locked: trailsOffLocked(preset),
+      hint: trailsOffLocked(preset) ? TRAILS_OFF_LOCKED_HINT : TRAILS_OFF_HINT,
+      how: TRAILS_OFF_HOW,
+      howAbout: TRAILS_OFF_HOW_ABOUT,
+    },
     reset: moved ? start : null,
   };
 }

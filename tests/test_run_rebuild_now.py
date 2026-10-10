@@ -326,3 +326,63 @@ def test_the_refusal_names_the_oldest_job_in_flight() -> None:
     assert f"job {running} is doing" in message, (
         f"the refusal names the rebuild that is running, not the one queued behind it: {message}"
     )
+
+
+# --- `--fresh` (review r2, spec nit 6a) ---------------------------------------------------------
+
+
+@pytest.fixture
+def checkpoint_dir(settings, tmp_path):
+    from pipeline import checkpoint
+
+    settings.REBUILD_WORK_DIR = tmp_path / "rebuild"
+    directory = checkpoint.checkpoint_dir(settings.REBUILD_WORK_DIR)
+    directory.mkdir(parents=True)
+    (directory / checkpoint.CLASSIFICATION_NAME).write_text('{"format": 1}')
+    return directory
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fresh_deletes_the_checkpoint_directory_and_queues(checkpoint_dir) -> None:
+    from io import StringIO
+
+    out = StringIO()
+    call_command("run_rebuild_now", "--fresh", stdout=out)
+    assert not checkpoint_dir.exists()
+    assert f"deleted the rebuild's checkpoint directory {checkpoint_dir}" in out.getvalue()
+    assert queued_rebuilds().count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fresh_says_where_it_looked_when_there_is_nothing(settings, tmp_path) -> None:
+    from io import StringIO
+
+    settings.REBUILD_WORK_DIR = tmp_path / "elsewhere"
+    out = StringIO()
+    call_command("run_rebuild_now", "--fresh", stdout=out)
+    assert "in this container" in out.getvalue() and str(tmp_path / "elsewhere") in out.getvalue()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_fresh_call_deletes_nothing(checkpoint_dir) -> None:
+    """The deletion runs after the in-flight refusal: a job that is running could be
+    writing the checkpoint as it went."""
+    call_command("run_rebuild_now")
+    with pytest.raises(CommandError, match="already in flight"):
+        call_command("run_rebuild_now", "--fresh")
+    assert checkpoint_dir.is_dir(), "a refused run leaves the checkpoint in place"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fresh_that_cannot_delete_is_an_error_and_queues_nothing(
+    checkpoint_dir, monkeypatch
+) -> None:
+    from pipeline import checkpoint
+
+    def refuse(work_dir):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(checkpoint, "reset_checkpoints", refuse)
+    with pytest.raises(CommandError, match="could not delete the checkpoint directory"):
+        call_command("run_rebuild_now", "--fresh")
+    assert queued_rebuilds().count() == 0

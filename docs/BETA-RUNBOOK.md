@@ -178,8 +178,9 @@ Decide and note down:
 - **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
-Never run anything under `scripts/boot/`, and do not follow `docs/DEPLOYMENT.md`'s boot section,
-on this server: they are for the home machine (Docker Desktop on WSL). `start-stack.sh` runs the base
+Never run anything under `scripts/boot/`, nor `scripts/local-up.sh`, and do not follow
+`docs/DEPLOYMENT.md`'s boot section, on this server: they are for the home machine (Docker Desktop
+on WSL); `local-up.sh` also refuses a `.env` whose project is not `routemaker`. `start-stack.sh` runs the base
 compose file without the overlay and exports `RESTART_POLICY=no`, which here would start caddy and
 the rebuild uncapped and stop the stack coming back after a reboot. Docker restarts the beta itself.
 
@@ -303,7 +304,7 @@ The postgis image is pinned by digest in `compose.beta.yaml` (the build home run
 a pull by digest fetches exactly that image and does **not** move the shared `postgis/postgis:16-3.4` tag that
 another stack on the host may use. Check first which images other stacks run:
 `docker ps --format '{{.Image}}' | grep -E 'postgis|photon|valhalla'`. The photon and valhalla tags are fixed
-release versions (`2.4.0`, `3.6.3`); if another stack uses the same tag, the pull fetches the same release.
+release versions (`2.4.0`, `3.9.1`); if another stack uses the same tag, the pull fetches the same release.
 
 The build needs network access (pip) and a few minutes. Images land in Docker's storage,
 Docker's root from step 1, which may be the root disk and not `/data` (the four images are about 3.7 GB).
@@ -976,7 +977,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |

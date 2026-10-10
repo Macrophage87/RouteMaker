@@ -236,7 +236,7 @@ def runs_of(junctions: Iterable[Junction]) -> dict[int, int]:
         total[r] = total.get(r, 0.0) + length
     runs: dict[int, int] = {}
     for p, row in enumerate(piece_row):
-        # At least 1 m: 0 is what the rebuild writes for "not derived yet", and VALIDATE
+        # At least 1 m: 0 is what the rebuild writes for "not derived yet", and VALIDATE_SEGMENTS
         # refuses a build with a named candidate still at 0. A sub-metre piece that is a
         # run of its own (a 0.45 m two-point stub of a named trail, 2026-10-08) rounded
         # to 0 and failed a build whose derive had run to the end. Every floor that reads

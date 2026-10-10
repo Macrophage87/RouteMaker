@@ -29,6 +29,7 @@ from django.core.exceptions import PermissionDenied
 from django.template.response import TemplateResponse
 
 from .admin import site
+from .management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
 from .models import ScheduledRun
 from .runs import (
     DISK_UNMEASURED,
@@ -92,6 +93,8 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             # mid-job never writes `failed`, so the failed-jobs list below is
             # empty for exactly the outage that has stopped the queue.
             "wedged_jobs": wedged_jobs(),
+            # The same number `wedged_jobs` and `unwedge_job` use for "no heartbeat".
+            "stalled_worker_timeout_s": STALLED_WORKER_TIMEOUT_S,
             # The volume, before the disk gate turns it into a refused
             # rebuild. `check_operations` prints the same thing from the same
             # function, so the page and the monitor cannot disagree about how

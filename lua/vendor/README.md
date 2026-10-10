@@ -16,4 +16,4 @@ upgrade is a re-vendor and not a merge.
 
 Valhalla is MIT licensed, Copyright (c) 2018 Valhalla contributors, Copyright
 (c) 2015-2017 Mapillary AB, Mapzen. See
-https://github.com/valhalla/valhalla/blob/3.6.3/COPYING.
+https://github.com/valhalla/valhalla/blob/3.9.1/COPYING.

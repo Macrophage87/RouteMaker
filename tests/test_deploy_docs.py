@@ -1824,3 +1824,29 @@ def test_the_caddyfile_is_the_only_single_file_bind_the_procedure_covers() -> No
         f"single-file binds in compose.yaml: {sorted(single_file_binds())}; each needs "
         "docs/OPERATIONS.md, 'Applying a Caddyfile change', to cover it"
     )
+
+
+def test_the_front_end_publish_copies_every_public_file_before_index_html() -> None:
+    """The mutation review's T4: a file under frontend/public is copied to the build's
+    top and served by the edge (Caddyfile @frontend); the publish step in
+    docs/DEPLOYMENT.md has to copy it too, into a directory it makes first, and before
+    index.html is renamed into place. A future public file then cannot be forgotten."""
+    published = re.search(r"busybox@sha256:\S+ \\\n\s+sh -c '([^']+)'", DEPLOYMENT)
+    assert published, "the busybox publish command"
+    command = published.group(1)
+    last = command.index("mv /out/.index.html.new /out/index.html")
+    public = REPO / "frontend" / "public"
+    files = sorted(p.relative_to(public).as_posix() for p in public.rglob("*") if p.is_file())
+    assert "about/stress.html" in files and "favicon.svg" in files, files
+    for name in files:
+        copied = command.find(f"cp /dist/{name} ")
+        assert 0 <= copied < last, f"{name} is not copied before index.html"
+        parent = name.rpartition("/")[0]
+        if parent:
+            made = command.find(f"mkdir -p /out/{parent} ")
+            assert 0 <= made < copied, f"/out/{parent} is not made before {name} is copied"
+    # The page is replaced by a rename, as index.html is (the operations review's O2).
+    assert (
+        "cp /dist/about/stress.html /out/about/.stress.html.new && "
+        "mv /out/about/.stress.html.new /out/about/stress.html"
+    ) in command

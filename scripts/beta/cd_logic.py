@@ -151,14 +151,15 @@ MIGRATION_NEEDS_DATA = re.compile(r"(?i)\blive\b|LIVE_SCHEMA")
 # Valhalla config keys a router reads at start and that need no new graph: a change to only
 # these is handled with the four-router restart (docs/BETA-RUNBOOK.md, release step 8).
 # Everything else under mjolnir (and all of additional_data) shapes the graph build, and an
-# unknown section errs closed: a stop.
+# unknown section errs closed: a stop. `logging` is the one top-level section every Valhalla
+# program has read its logger from since 3.7.0 (valhalla/valhalla#5976); the per-module
+# sections it replaced are read by nothing.
 VALHALLA_RUNTIME_SECTIONS = frozenset(
-    {"httpd", "loki", "meili", "odin", "service_limits", "statsd", "thor"}
+    {"httpd", "logging", "loki", "meili", "odin", "service_limits", "statsd", "thor"}
 )
 VALHALLA_RUNTIME_MJOLNIR = frozenset(
     {
         "global_synchronized_cache",
-        "logging",
         "lru_mem_cache_hard_control",
         "max_cache_size",
         "max_concurrent_reader_users",

@@ -100,7 +100,7 @@ def test_the_vendored_upstream_is_pinned_and_present() -> None:
     """
     vendored = REPO / "lua" / "vendor" / "graph_upstream.lua"
     assert vendored.is_file()
-    assert (REPO / "lua" / "vendor" / "VERSION").read_text().strip() == "3.6.3"
+    assert (REPO / "lua" / "vendor" / "VERSION").read_text().strip() == "3.9.1"
     source = vendored.read_text()
     # The contract the wrapper depends on: globals, and no module return. If a
     # future re-vendor changes this, the wrapper's global capture breaks and this
@@ -1036,7 +1036,7 @@ UPSTREAM_OPEN_CASES = [
     {"smoothness": "impassable", "bicycle": "yes"},
     {"impassable": "yes"},
     # `sac_scale=hiking` alone is left out: upstream keeps a footway closed
-    # there in 3.5.1 and 3.6.3 alike while the model calls it open, a
+    # there in 3.5.1 to 3.9.1 alike while the model calls it open, a
     # difference that predates the upgrade and only ever closes a closed way.
     {"sac_scale": "hiking", "vehicle": "no"},
     {"sac_scale": "mountain_hiking", "vehicle": "yes"},

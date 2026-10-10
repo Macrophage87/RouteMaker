@@ -1,4 +1,4 @@
-"""The rebuild's bicycle-closure gate (VALIDATE), without Valhalla.
+"""The rebuild's bicycle-closure gate (VALIDATE_TILES), without Valhalla.
 
 Valhalla's C++ parser reopened 753 singletrack ways after the transform had
 closed them, and nothing between the build and the swap looked
@@ -249,6 +249,28 @@ def test_only_the_probed_way_answers_for_itself() -> None:
     readback = tiles.read_closures(run, Path("c.json"), PROBES)
     assert readback.open_to_bicycles == ()
     assert readback.found == 1
+
+
+def test_an_edge_a_filter_set_aside_still_answers_for_its_way() -> None:
+    """From 3.7.0 a locate lists edges a heading, side or layer filter set aside
+    under `filtered_edges` (valhalla/valhalla#5987). An open edge there is still
+    the way reopened, and a closed one there is still the way found."""
+    run = Locate(
+        [
+            {"edges": [], "filtered_edges": [_edge(1, True)]},
+            {"filtered_edges": [_edge(2, False)]},
+            {"edges": None, "filtered_edges": None},
+        ]
+    )
+    readback = tiles.read_closures(run, Path("c.json"), PROBES)
+    assert readback.open_to_bicycles == (1,)
+    assert readback.found == 2
+
+
+def test_the_locate_sends_no_filter_that_would_set_edges_aside() -> None:
+    request = tiles.closure_locate_request(PROBES)
+    for location in request["locations"]:
+        assert not {"heading", "preferred_side", "preferred_layer"} & set(location)
 
 
 def test_the_answer_is_read_off_stdout_past_anything_ahead_of_it() -> None:

@@ -205,6 +205,15 @@ class RouteIn(Schema):
         default=False,
         description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
     )
+    trails_off: StrictBool = Field(
+        default=False,
+        description=(
+            'The "Keep to roads, not trails" switch: plan on roadways only, with no bike'
+            " paths, trails, footways or stairs, and the Key Bridge and Arlington Memorial"
+            " Bridge roadways allowed. Any ride type, e-bike rides included. Mass Ride"
+            " always rides this way, whatever is sent."
+        ),
+    )
     system_weight_kg: StrictInt | None = Field(
         default=None,
         description=(
@@ -394,6 +403,7 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    trails_off: bool = False
     target_distance_m: int | None = Field(
         default=None,
         description="The rider's target distance the route was planned towards, if set.",
@@ -1336,6 +1346,7 @@ def route(request, body: RouteIn, response: HttpResponse):
             body.points,
             _stress_of(body),
             long_ride=False,
+            trails_off=body.trails_off,
         ):
             # A long calm plan (OWNER-DECISIONS 256) has the long ride's time
             # limit, so it takes the long ride's in-flight slot as well: one at a
@@ -1389,6 +1400,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             carrying=body.carrying,
             assist=body.assist,
             avoid_gravel=body.avoid_gravel,
+            trails_off=body.trails_off,
             target_distance_m=body.target_distance_m,
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
@@ -1407,8 +1419,14 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
-                " Mass Ride routes only on roadways, and removing trails can leave"
+                " A Mass Ride routes only on roadways, and removing trails can leave"
                 " no roadway-legal connection between two points."
+            )
+        elif no_route.no_path and body.trails_off:
+            # The same for a ride with "Keep to roads, not trails" on, in its words.
+            message += (
+                ' With "Keep to roads, not trails" on, this ride uses only roadways, and'
+                " there may be no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
     except routing.RouterUnavailable:
@@ -1441,11 +1459,13 @@ class StopOrderOut(Schema):
         )
     )
     changed: bool = Field(description="Whether `order` differs from the order sent.")
-    by: Literal["riding_time", "straight_line"] | None = Field(
+    by: Literal["route_cost", "riding_time", "straight_line"] | None = Field(
         description=(
-            "What chose the order: the router's riding times on the ride's own graph and"
-            " settings, straight-line distance when the router gave none, or null when there"
-            " was nothing to choose (fewer than two stops)."
+            "What chose the order: the router's cost on the ride's own graph and settings,"
+            " riding time with stress and hills priced in, as any route is chosen (up to 10"
+            " stops); its riding times alone (more stops, or when it gave no leg costs);"
+            " straight-line distance when the router gave neither; or null when there was"
+            " nothing to choose (fewer than two stops)."
         )
     )
     exact: bool = Field(
@@ -1466,7 +1486,7 @@ class StopOrderOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The order of a ride's stops that rides least (OWNER-DECISIONS 449)",
+    summary="The order of a ride's stops that rides best (OWNER-DECISIONS 449)",
     by_alias=True,
 )
 @decorate_view(
