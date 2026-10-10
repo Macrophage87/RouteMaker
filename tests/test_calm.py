@@ -83,6 +83,30 @@ class TestMultiplier:
         within = calm.Pricing(use_roads=0.0, maxcalm=True, target=True)
         assert [calm.multiplier(t, None, within) for t in (3, 4, 5)] == [11.0, 21.0, 31.0]
 
+    def test_lts_2_counts_its_quarter_on_the_rides_that_weigh_it(self) -> None:
+        """FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): priced as the score prices it."""
+        lts2 = presets.EXPOSURE_NOT_IN_CONTROL.lts2
+        rate = presets.calm_rate_for(90)
+        at90 = calm.Pricing(use_roads=presets.use_roads_for(90), rate=rate, lts2=lts2)
+        assert calm.multiplier(2, "none", at90) == pytest.approx(1.0 + rate * 0.25)
+        assert calm.multiplier(1, "none", at90) == 1.0
+        top = calm.Pricing(use_roads=0.0, maxcalm=True, lts2=lts2)
+        assert calm.multiplier(2, "none", top) == pytest.approx(1.0 + 5.0 * 0.25)
+        within = calm.Pricing(use_roads=0.0, maxcalm=True, target=True, lts2=lts2)
+        assert calm.multiplier(2, "none", within) == pytest.approx(1.0 + 10.0 * 0.25)
+        # On a protected lane, its facility factor and the quarter.
+        protected = calm.multiplier(2, "protected", calm.Pricing(use_roads=0.0, maxcalm=True))
+        assert calm.multiplier(2, "protected", top) == pytest.approx(protected + 1.25)
+        # Below 80 there is no calm rate, so nothing is added.
+        at70 = calm.Pricing(use_roads=presets.use_roads_for(70), lts2=lts2)
+        assert calm.multiplier(2, "none", at70) == 1.0
+        # A road's own cost takes the same quarter on top, and LTS 1 none.
+        plain = calm.Pricing(use_roads=0.0, maxcalm=True)
+        for tier, extra in ((2, 1.25), (1, 0.0)):
+            own = calm.road_multiplier(tier, "none", calm.BAND_COLLECTOR, plain)[0]
+            weighed = calm.road_multiplier(tier, "none", calm.BAND_COLLECTOR, top)[0]
+            assert weighed == pytest.approx(own + extra), tier
+
     def test_the_worth_figures_are_refines_own(self) -> None:
         assert calm.WORTH_DEFAULT == refine.WORTH_DEFAULT
         assert calm.WORTH_UP_TO_TARGET == refine.WORTH_UP_TO_TARGET

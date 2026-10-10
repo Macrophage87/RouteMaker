@@ -331,6 +331,11 @@ class Analysis:
     lts3_m: float = 0.0
     # Of `lts4_m`, the metres of Avoid (the diminishing-returns weights tell them apart).
     avoid_m: float = 0.0
+    # Metres of LTS 2, and what one counts in metres of LTS 3 on this plan's ride
+    # (`presets.Exposure.lts2`, FOLLOWUP-LTS2-WEIGHT: a quarter on Trailmaxxing and
+    # Cargo with passengers, nothing elsewhere).
+    lts2_m: float = 0.0
+    lts2_weight: float = 0.0
     # The route's effort-equivalent distance, metres (`routemaker.effort`,
     # OWNER-DECISIONS 262, 263): its length weighted by the grade it rides, which
     # the Hills slider blends with the actual distance.
@@ -364,8 +369,9 @@ class Analysis:
     def second_m(self) -> float:
         """The second figure of the ranking (OWNER-DECISIONS 260: "Make LTS3 and
         orange crossing the same"): metres of LTS 3 plus the cost of the orange
-        junctions."""
-        return self.lts3_m + self.orange_m
+        junctions, plus, on a ride that weighs LTS 2 (OWNER-DECISIONS 240 (A),
+        FOLLOWUP-LTS2-WEIGHT), its metres of LTS 2 at that weight."""
+        return self.lts3_m + self.orange_m + self.lts2_weight * self.lts2_m
 
     def key(self, ctx: Context) -> tuple[float, float, float]:
         """What the top of the slider ranks by, least first (OWNER-DECISIONS
@@ -455,7 +461,9 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     """A route's stress as one figure for the diminishing-returns rule (268), in
     metres of LTS 3: its LTS 3, LTS 4 and Avoid metres at WORTH_WEIGHTS, plus its red
     junctions' cost at the LTS 4 weight and its orange junctions' cost at the LTS 3
-    weight."""
+    weight, and on a ride that weighs LTS 2 (FOLLOWUP-LTS2-WEIGHT) its LTS 2 metres at
+    that share of the LTS 3 weight: a quarter, so a mile of LTS 2 saved buys a quarter
+    of what a mile of LTS 3 does."""
     w = WORTH_WEIGHTS
     lts4_only = read.lts4_m - read.avoid_m
     return (
@@ -464,6 +472,7 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
         + w.avoid * read.avoid_m
         + w.lts4 * read.red_m
         + w.lts3 * read.orange_m
+        + w.lts3 * read.lts2_weight * read.lts2_m
     )
 
 
@@ -474,8 +483,9 @@ def _top_weight_m(read: Analysis) -> float:
 
 
 def _second_weight_m(read: Analysis) -> float:
-    """The second figure's part of `stress_weight_m`: LTS 3 and orange junctions."""
-    return WORTH_WEIGHTS.lts3 * (read.lts3_m + read.orange_m)
+    """The second figure's part of `stress_weight_m`: LTS 3 and orange junctions, and
+    LTS 2 at the ride's weight where it has one (`Analysis.second_m`)."""
+    return WORTH_WEIGHTS.lts3 * read.second_m
 
 
 def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float:
@@ -668,6 +678,8 @@ def analyse(
         lts4_m=stress["4"] + stress["5"],
         lts3_m=stress["3"],
         avoid_m=stress["5"],
+        lts2_m=stress["2"],
+        lts2_weight=ctx.exposure.lts2,
         effort_m=effort.effort_equivalent_m(
             routing.grade_profile(trip),
             float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
@@ -2047,6 +2059,8 @@ def combine(reads: list[Analysis]) -> Analysis:
         lts4_m=sum(r.lts4_m for r in reads),
         lts3_m=sum(r.lts3_m for r in reads),
         avoid_m=sum(r.avoid_m for r in reads),
+        lts2_m=sum(r.lts2_m for r in reads),
+        lts2_weight=max((r.lts2_weight for r in reads), default=0.0),
         effort_m=sum(r.effort_m for r in reads),
     )
 

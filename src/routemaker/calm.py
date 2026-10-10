@@ -44,6 +44,10 @@ costs, at the rider's preset and slider position:
   is the ranking's own: `1 + 5 x w(L)` with no target, `1 + 10 x w(L)` with one (the price
   up to the target, 435 "One rule", since the answer is fitted to it), at the standard
   1 / 2 / 3 weights (`refine.WORTH_*`). LTS 1-2 are still priced by the road's own cost.
+- **LTS 2 on Trailmaxxing and Cargo with passengers** (FOLLOWUP-LTS2-WEIGHT, OWNER-DECISIONS
+  240 (A)): a metre of LTS 2 also counts its share of LTS 3's weight (a quarter), at the
+  calm rate above 80 or at the worth rule's exchange at the top, on top of its own cost
+  (`lts2_extra`). On every other ride LTS 2 is priced by its own cost alone.
 
 A junction counts what the ranking charges for it (461c, 461d: "today's distance-equivalent
 penalty ... times its factors and the preset's intersection weight"): the junction model's
@@ -107,6 +111,9 @@ class Pricing:
     # preset's exposure weights by tier (3, 4, 5).
     rate: float = 0.0
     weights: tuple[float, float, float] = (1.0, 2.0, 3.0)
+    # What a metre of LTS 2 counts in metres of LTS 3 on this ride (presets.Exposure.lts2,
+    # FOLLOWUP-LTS2-WEIGHT: a quarter on Trailmaxxing and Cargo with passengers).
+    lts2: float = 0.0
     # The top of the slider (presets.maxcalm_for), and whether the rider set a target.
     maxcalm: bool = False
     target: bool = False
@@ -143,12 +150,25 @@ def facility_factor(facility: str | None, use_roads: float) -> float:
     return 1.0
 
 
+def lts2_extra(pricing: Pricing) -> float:
+    """What a metre of LTS 2 adds on a ride that weighs it (FOLLOWUP-LTS2-WEIGHT), as the
+    score prices it: its share of LTS 3's weight at the calm rate above 80, or at the worth
+    rule's exchange at the top; nothing on any other ride."""
+    if pricing.lts2 <= 0:
+        return 0.0
+    if pricing.maxcalm:
+        worth = WORTH_UP_TO_TARGET if pricing.target else WORTH_DEFAULT
+        return worth * WORTH_WEIGHTS[3] * pricing.lts2
+    return pricing.rate * pricing.weights[0] * pricing.lts2
+
+
 def multiplier(tier: int | None, facility: str | None, pricing: Pricing) -> float | None:
     """Calm metres a metre of this stretch counts for; None where it is not rated."""
     if tier is None:
         return None
     if tier <= 2:
-        return 1.0 if pricing.no_trail else facility_factor(facility, pricing.use_roads)
+        base = 1.0 if pricing.no_trail else facility_factor(facility, pricing.use_roads)
+        return base + (lts2_extra(pricing) if tier == 2 else 0.0)
     level = min(tier, 5)
     if pricing.maxcalm:
         worth = WORTH_UP_TO_TARGET if pricing.target else WORTH_DEFAULT
@@ -444,6 +464,8 @@ def road_multiplier(
     own = edge_factor(road, level, pricing.use_roads) / quiet_factor(pricing.use_roads, urban)
     if level >= 3:
         own += pricing.rate * pricing.weights[level - 3]
+    elif level == 2:
+        own += lts2_extra(pricing)
     return own, agreed
 
 

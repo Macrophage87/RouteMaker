@@ -108,6 +108,8 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   // The LTS 4 hold is one combined figure against the router's first route (the spec re-check's R2).
   assert.match(text, /more LTS 4, Avoid and very high stress crossings, counted together, than the router's own first route/);
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
+  // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words.
+  assert.match(text, /on Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also counts as a quarter of a mile of LTS 3/);
 });
 
 test("it says where it differs from the literature, and links the full list", () => {

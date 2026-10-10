@@ -2575,7 +2575,7 @@ class TestStressAverseWeights:
             ("bikeshare", None),
         ):
             exposure = presets.exposure_for(name, carrying)
-            assert exposure.weights == {"3": 1.0, "4": 8.0, "5": 16.0}, name
+            assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}
             assert exposure.hold_lts4, name
 
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
@@ -2584,16 +2584,20 @@ class TestStressAverseWeights:
             if name in ("trailmaxxing", "bikeshare"):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
-            assert exposure.weights == {"3": 1.0, "4": 2.0, "5": 3.0}, name
+            assert exposure.weights == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}, name
             assert not exposure.hold_lts4, name
         # Cargo Bike's default choice is carrying cargo.
         assert presets.exposure_for("cargo") == presets.EXPOSURE_STANDARD
-        assert refine.EXPOSURE_WEIGHTS == {"3": 1.0, "4": 2.0, "5": 3.0}
+        assert refine.EXPOSURE_WEIGHTS == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}
 
     def test_it_is_a_preset_field_not_a_global(self) -> None:
-        assert presets.PRESETS["trailmaxxing"].exposure is AVERSE
+        assert presets.PRESETS["trailmaxxing"].exposure is presets.EXPOSURE_NOT_IN_CONTROL
+        assert presets.PRESETS["bikeshare"].exposure is AVERSE
         assert presets.PRESETS["cargo"].exposure is presets.EXPOSURE_STANDARD
-        assert presets.PRESETS["cargo"].carrying_exposure[presets.CARRYING_PEOPLE] is AVERSE
+        assert (
+            presets.PRESETS["cargo"].carrying_exposure[presets.CARRYING_PEOPLE]
+            is presets.EXPOSURE_NOT_IN_CONTROL
+        )
         assert presets.PRESETS["default"].carrying_exposure is None
 
     def test_the_reading_weighs_by_the_plans_exposure(self, monkeypatch) -> None:
@@ -2619,6 +2623,123 @@ class TestStressAverseWeights:
         busy, _traced = refine.route_spans(a, weights=AVERSE.weights)
         assert [w for _a, _b, w in busy] == [1.0, 8.0, 16.0]
         assert [w for _a, _b, w in refine.route_spans(a)[0]] == [1.0, 2.0, 3.0]
+
+
+# --- FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A), 241) ------------------------------
+#
+# "A small LTS 2 weight in the calm-search score, about a quarter of LTS 3, on
+# Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no
+# rebuild."
+
+NOT_IN_CONTROL = presets.EXPOSURE_NOT_IN_CONTROL
+
+
+def lts2_reading(name: str, tiers: str, weight: float) -> refine.Analysis:
+    """`analysis` with its LTS 2 metres and the ride's LTS 2 weight, as `analyse` reads them."""
+    a = analysis(name, tiers)
+    a.lts2_m = 100.0 * tiers.count("2")
+    a.lts2_weight = weight
+    return a
+
+
+class TestLts2Weight:
+    def test_a_quarter_of_lts3_on_trailmaxxing_and_cargo_with_passengers(self) -> None:
+        for name, carrying in (("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)):
+            exposure = presets.exposure_for(name, carrying)
+            assert exposure.lts2 == pytest.approx(exposure.lts3 / 4), name
+            assert exposure.weights["2"] == 0.25, name
+            # Item 250 stands on them: LTS 4 at 8, Avoid at 16, the hold.
+            assert (exposure.lts4, exposure.avoid, exposure.hold_lts4) == (8.0, 16.0, True)
+
+    def test_nothing_on_any_other_ride(self) -> None:
+        weighed_rides = {("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)}
+        for name in presets.PRESETS:
+            for carrying in presets.PRESETS[name].carrying or (None,):
+                if (name, carrying) not in weighed_rides:
+                    assert presets.exposure_for(name, carrying).lts2 == 0.0, (name, carrying)
+        assert presets.EXPOSURE_STANDARD.lts2 == 0.0
+        assert presets.EXPOSURE_STRESS_AVERSE.lts2 == 0.0
+
+    def test_the_reading_counts_lts2_in_the_score_by_the_rides_weight(self, monkeypatch) -> None:
+        classes = [("2", "none"), ("2", "none"), ("3", "none"), ("1", "none")]
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
+        standard = context()
+        plain = refine.analyse(trip, standard, standard.deadline)
+        assert plain.exposure_m == 100.0
+        assert plain.second_m == 100.0
+        ctx = context()
+        ctx.exposure = NOT_IN_CONTROL
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.lts2_m == 200.0
+        assert read.exposure_m == 100.0 + 0.25 * 200.0
+        # At the top of the slider: the second figure of the ranking.
+        assert read.second_m == 150.0
+        # Not the top figure: LTS 4 still comes first whatever the LTS 2.
+        assert read.top_m == 0.0
+
+    def test_below_the_top_the_score_prices_lts2_at_the_calm_rate(self) -> None:
+        ctx = context(rate=4.0)
+        calm = weighed(lts2_reading("c", "1" * 10, 0.25), NOT_IN_CONTROL)
+        busy = weighed(lts2_reading("b", "2" * 10, 0.25), NOT_IN_CONTROL)
+        assert busy.score(ctx) - calm.score(ctx) == pytest.approx(QUIET_COST * 4.0 * 0.25 * 1000.0)
+
+    def test_at_the_top_a_route_with_less_lts2_ranks_calmer_on_these_rides_alone(self) -> None:
+        ctx = context(maxcalm=True)
+        # The same length and LTS 3; 400 m more LTS 2 is 100 m at the quarter weight,
+        # past the second level's 50 m step.
+        quiet = lts2_reading("q", "3" + "1" * 9, 0.25)
+        lts2 = lts2_reading("l", "3" + "2" * 4 + "1" * 5, 0.25)
+        assert refine.calmer(quiet, lts2, ctx)
+        assert not refine.calmer(lts2, quiet, ctx)
+        assert refine.better(quiet, lts2, ctx)
+        # Elsewhere LTS 2 counts nothing: neither ranks first.
+        quiet.lts2_weight = lts2.lts2_weight = 0.0
+        assert not refine.calmer(quiet, lts2, ctx)
+        assert not refine.calmer(lts2, quiet, ctx)
+
+    def test_lts3_still_outranks_lts2(self) -> None:
+        """A metre of LTS 3 is four of LTS 2: 200 m of LTS 3 is not worth 400 m of LTS 2."""
+        ctx = context(maxcalm=True)
+        lts3 = lts2_reading("t", "33" + "1" * 8, 0.25)
+        lts2 = lts2_reading("l", "2222" + "1" * 6, 0.25)
+        assert refine.calmer(lts2, lts3, ctx)
+
+    def test_the_worth_rule_counts_lts2_at_a_quarter(self) -> None:
+        ctx = context(maxcalm=True)
+        read = lts2_reading("r", "3" + "2" * 8 + "1", 0.25)
+        assert refine.stress_weight_m(read, ctx) == pytest.approx(100.0 + 0.25 * 800.0)
+        shorter = lts2_reading("s", "2" * 8 + "1" * 2, 0.25)
+        longer = lts2_reading("l", "1" * 10 + "1" * 4, 0.25)
+        # 800 m of LTS 2 saved is 200 m of LTS 3: it buys 5 x 200 = 1,000 m, not 400 m more.
+        assert refine.stress_saved_m(shorter, longer, ctx) == pytest.approx(200.0)
+        assert refine.worth_it(shorter, longer, ctx)
+        longest = lts2_reading("x", "1" * 22, 0.25)
+        assert not refine.worth_it(shorter, longest, ctx)
+        read.lts2_weight = 0.0
+        assert refine.stress_weight_m(read, ctx) == pytest.approx(100.0)
+
+    def test_lts2_is_never_a_search_target(self) -> None:
+        a = lts2_reading("a", "1" * 10 + "2" * 40 + "1" * 10, 0.25)
+        ctx = context(rate=4.0)
+        ctx.exposure = NOT_IN_CONTROL
+        assert refine.calm_targets(a, ctx) == []
+
+    def test_a_long_plans_legs_keep_it_when_combined(self) -> None:
+        one = lts2_reading("a", "22" + "1" * 8, 0.25)
+        two = lts2_reading("b", "2" + "1" * 9, 0.25)
+        whole = refine.combine([one, two])
+        assert whole.lts2_m == 300.0
+        assert whole.second_m == pytest.approx(75.0)
 
 
 class TestLts4Metres:

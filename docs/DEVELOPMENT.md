@@ -4139,6 +4139,40 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
+
+The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
+calm-search score, about a quarter of LTS 3, on Cargo-carrying-people and at the top of the
+slider (Trailmaxxing). Planner only; no rebuild." Item 241's rationale applies: a rider who
+is not in control of the ride is stress-averse.
+
+- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+  `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
+  0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
+  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
+  LTS 2 weight, since 240 (A) does not name it.
+- Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
+  weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
+  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the trail seek's
+  busy spans weigh it the same way. Cargo with passengers starts at 80, where the calm rate
+  is 0, so there the weight only applies once the rider moves the slider above 80.
+- At the top (100, maxcalm) the weight is in the second figure of the ranking:
+  `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
+  with the same LTS 4 and red junctions, 200 m (656 ft) more LTS 2 is worth one 50 m tie
+  step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
+  1 mi (1.6 km) of LTS 2 saved can buy 1.25 mi (2 km) of extra riding with no target, a
+  quarter of what a mile of LTS 3 buys. LTS 4 still ranks first whatever the LTS 2.
+- LTS 2 is never a search target: `calm_targets` still excludes only LTS 3 and worse, so no
+  new router calls are made. The routing graph does not grade LTS 2 (240 (C) stays with
+  FOLLOWUP-DECIMAL-STRESS in the backlog), so nothing is rebuilt.
+- The rolling stress chart (`routemaker.calm.Pricing.lts2`, `calm.lts2_extra`) prices LTS 2
+  the same way: `+ rate x 0.25` above 80 and `+ 5 x 0.25` (10 x with a target) at the top,
+  on top of the road's own cost.
+- Not measured on the live routers in this change (no router here). The 12 trips and the
+  owner's route are the place to measure it, as item 250 was.
+- Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
+  `scripts/mutants_trailseek.py`.
+
 ## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in

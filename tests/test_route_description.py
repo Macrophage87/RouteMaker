@@ -432,7 +432,8 @@ class TestOverviewInTheAnswer:
 class TestTheSearchIsHandedTheRidesExposure:
     """OWNER-DECISIONS 250: the plan hands the calm search its ride's exposure
     weights and LTS 4 hold (`presets.exposure_for`): Trailmaxxing's and Cargo
-    with passengers', 1, 8 and 16 with the hold; every other ride's 1, 2, 3."""
+    with passengers', 1, 8 and 16 with the hold and LTS 2 at a quarter (240 (A),
+    FOLLOWUP-LTS2-WEIGHT); every other ride's 1, 2, 3."""
 
     @pytest.mark.parametrize(
         ("dials", "averse"),
@@ -456,7 +457,7 @@ class TestTheSearchIsHandedTheRidesExposure:
 
         monkeypatch.setattr(refine, "refine", spy)
         assert post(client, {**good_body(), **dials}).status_code == 200
-        expected = presets.EXPOSURE_STRESS_AVERSE if averse else presets.EXPOSURE_STANDARD
+        expected = presets.EXPOSURE_NOT_IN_CONTROL if averse else presets.EXPOSURE_STANDARD
         assert seen == [expected]
 
 
