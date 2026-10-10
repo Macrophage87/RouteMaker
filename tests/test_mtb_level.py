@@ -99,9 +99,10 @@ def test_no_level_for_zero_unrated_or_off_the_scale(tags) -> None:
     [
         ({"name": "Rosaryville Trail"}, "Rosaryville Trail"),
         ({"name": "Rosaryville Trail", "ref": "RT", "mtb:name": "Rosie"}, "Rosaryville Trail"),
-        # Falls back to `ref`, then `mtb:name`.
-        ({"ref": "Loop 3", "mtb:name": "Hard Way"}, "Loop 3"),
+        # Falls back to `mtb:name`, then `ref` last: a bare ref ("12") could be read as a level.
+        ({"ref": "12", "mtb:name": "Hard Way"}, "Hard Way"),
         ({"mtb:name": "Hard Way"}, "Hard Way"),
+        ({"ref": "Loop 3"}, "Loop 3"),
         # Blank values do not count, and the name is trimmed.
         ({"name": "  ", "ref": "", "mtb:name": " Hard Way "}, "Hard Way"),
         ({"name": " Fairland Loop "}, "Fairland Loop"),

@@ -4477,6 +4477,20 @@ def test_the_rebuild_writes_the_long_trail_columns(
     # LTS 1, so it has its name; test_the_rebuild_writes_the_ride_layer_and_the_track_surface.
     assert rows[NAMED_STREET_ID][0] == "Gamma Street"
 
+    # The mountain-bike name (2026-10-10) is written on the mountain-bike-only ways alone
+    # (run.py's `mtb_only` gate): a named long trail or street never carries one, so the
+    # mountain-bike layer never labels a routable way.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT osm_way_id, bool_or(mtb_only), max(mtb_name) "
+            f"FROM {settings.SEGMENT_SCHEMA_STAGING}.segment GROUP BY osm_way_id"
+        )
+        mtb = {way: (only, name) for way, only, name in cursor}
+    for way in (ALPHA_WEST_ID, ALPHA_EAST_ID, ALPHA_BRIDGE_ID, NAMED_STREET_ID, NATIONAL_MTB_ID):
+        assert mtb[way] == (False, None), way
+    assert mtb[MOUNTAIN_BIKE_ID] == (True, "Rocky Loop")
+    assert all(name is None for only, name in mtb.values() if not only)
+
 
 def test_a_rebuild_that_loses_the_long_trails_is_refused(
     tmp_path, segment_schemas, states, settings

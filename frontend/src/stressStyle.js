@@ -926,7 +926,7 @@ export const MTB_LEVELS = [
   { level: 1, name: "green", color: "#28702c", dash: [6, 2], pattern: "long dashes", scale: "S1 or IMBA 1" },
   { level: 2, name: "blue", color: "#1565c0", dash: [3, 2], pattern: "short dashes", scale: "S2 or IMBA 2" },
   { level: 3, name: "black", color: "#1c1917", dash: [4, 1.5, 1, 1.5], pattern: "dash-dot", scale: "S3 or IMBA 3" },
-  { level: 4, name: "red", color: "#c62828", dash: [4, 1.5, 1, 1.5, 1, 1.5], pattern: "dash-dot-dot", scale: "S4 to S6 or IMBA 4" },
+  { level: 4, name: "red", color: "#c62828", dash: [4, 1.5, 1, 1.5, 1, 1.5], pattern: "dash-dot-dot", scale: "S4 or above, or IMBA 4 or above" },
 ];
 
 /**
@@ -953,17 +953,18 @@ export const MTB_LINE_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => 
 /**
  * THE MOUNTAIN-BIKE TRAIL NAMES. The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names
  * are added in if they are available." The tiles carry an `mtb` trail's name as `name` (core/stress_tiles.py, from
- * `segment.mtb_name`: the OSM `name`, else `ref`, else `mtb:name`; left out where none is mapped). The label layer
+ * `segment.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`; left out where none is mapped). The label layer
  * draws it along the line, from MTB_LABEL_MIN_ZOOM, over every routable line, on this map layer only (it follows
  * the layer's switch with the lines). MapLibre's collision drops a label that would overlap another, and
- * `text-padding` and `symbol-spacing` thin them further. The text is the line's own colour - its level's, or the
+ * `text-padding` and `symbol-spacing` thin them further; `text-max-angle` is 45 (not the 30 the Mass Ride labels
+ * use), so a name still fits along curvy singletrack at z15-16. The text is the line's own colour - its level's, or the
  * unrated dots' grey - on a white halo: each is 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black
  * 17.49:1, red 5.62:1, grey 6.05:1; mtbLevels.test.ts), where the base map's path-label grey is not (3.5:1). The
  * name is text a screen reader cannot reach on the canvas; the road panel says it in words (core/segment_info.py).
  */
 export const MTB_LABEL_LAYER_ID = "mtb-trail-label";
 export const MTB_LABEL_MIN_ZOOM = 15;
-export const MTB_LABEL = { font: "Noto Sans Medium", size: 12, halo: "#ffffff", haloWidth: 1.5, padding: 8, spacing: 300, maxAngle: 30 };
+export const MTB_LABEL = { font: "Noto Sans Medium", size: 12, halo: "#ffffff", haloWidth: 1.5, padding: 8, spacing: 300, maxAngle: 45 };
 
 /** Every layer of the mountain-bike trail map layer (454): its lines, then its names. */
 export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_LABEL_LAYER_ID];

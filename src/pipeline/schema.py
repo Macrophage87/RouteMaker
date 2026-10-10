@@ -554,7 +554,7 @@ CREATE TABLE {schema}.segment (
     -- `mtb_level`.
     mtb_level       smallint    CHECK (mtb_level BETWEEN 1 AND 4),
     -- The name of a mountain-bike-only way (`routemaker.singletrack.mtb_name`: `name`,
-    -- else `ref`, else `mtb:name`; the owner, 2026-10-10), which the mountain-bike layer
+    -- else `mtb:name`, else `ref`; the owner, 2026-10-10), which the mountain-bike layer
     -- labels it with and the road panel says. Null on every other way and where none is
     -- mapped. Not `trail_name`, which chains the long trails' runs (378).
     mtb_name        text,

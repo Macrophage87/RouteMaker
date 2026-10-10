@@ -59,7 +59,7 @@ test("four levels, the owner's colours and names, in order", () => {
   );
   assert.deepEqual(
     MTB_LEVELS.map((l: Shape) => l.scale),
-    ["S1 or IMBA 1", "S2 or IMBA 2", "S3 or IMBA 3", "S4 to S6 or IMBA 4"],
+    ["S1 or IMBA 1", "S2 or IMBA 2", "S3 or IMBA 3", "S4 or above, or IMBA 4 or above"],
   );
 });
 
@@ -228,6 +228,8 @@ test("the names are drawn along the line on the mountain-bike layer only, from z
   // Collision on (MapLibre's default), with room around each label and between repeats.
   assert.ok(!("text-allow-overlap" in label.layout) && !("text-ignore-placement" in label.layout));
   assert.ok((label.layout["text-padding"] as number) >= 4 && (label.layout["symbol-spacing"] as number) >= 250);
+  // Curvy singletrack bends more than a road: MapLibre's default 45, not the 30 the Mass Ride labels use.
+  assert.equal(label.layout["text-max-angle"], 45);
   assert.equal(label.paint["text-halo-color"], "#ffffff");
   assert.ok((label.paint["text-halo-width"] as number) >= 1);
   assert.ok(isMtbLayerId(MTB_LABEL_LAYER_ID), "it follows the layer's switch");

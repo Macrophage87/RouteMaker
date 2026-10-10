@@ -394,7 +394,7 @@ class TestAnswer:
             (1, "level 1 (green)", "S1 or IMBA 1"),
             (2, "level 2 (blue)", "S2 or IMBA 2"),
             (3, "level 3 (black)", "S3 or IMBA 3"),
-            (4, "level 4 (red)", "S4 to S6 or IMBA 4"),
+            (4, "level 4 (red)", "S4 or above, or IMBA 4 or above"),
         ],
     )
     def test_a_rated_trail_names_its_level_in_words(
@@ -419,9 +419,7 @@ class TestAnswer:
         body = get(client).json()
         assert summary(body)[-1] == f"Bikes: Mountain-bike trail, {words}, not used for routes"
         difficulty = section(body, "riding")["Mountain-bike difficulty"]
-        assert difficulty["value"] == (
-            f"{words[0].upper()}{words[1:]}: a level {level} rating ({scale})"
-        )
+        assert difficulty["value"] == (f"{words[0].upper()}{words[1:]}: {scale}")
         assert "mtb:" not in difficulty["value"], "no raw OSM key names"
         assert difficulty["source"] == segment_info.OSM
         access = section(body, "access")["Bike access"]

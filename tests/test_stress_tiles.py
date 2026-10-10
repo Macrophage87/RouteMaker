@@ -1920,7 +1920,7 @@ class TestMtbName:
     """A mountain-bike trail carries its name as `name` (the owner, 2026-10-10: "Also, for
     mountain bikes, try to make sure trail names are added in if they are available."),
     left out where none is mapped, only from a table with the column, which the ETag names
-    (`n`). The name's fallbacks (`ref`, `mtb:name`) are the rebuild's (tests/test_mtb_level.py)."""
+    (`n`). The name's fallbacks (`mtb:name`, `ref`) are the rebuild's (tests/test_mtb_level.py)."""
 
     @pytest.fixture
     def named(self, segment_schemas):

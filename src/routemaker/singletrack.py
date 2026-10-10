@@ -68,7 +68,7 @@ def is_singletrack(tags: dict[str, str]) -> bool:
 # The difficulty levels the map draws a mountain-bike trail in (OWNER-DECISIONS 456,
 # 456a-c; docs/MTB-TOPO-PLAN.md, slice 2): one scale, set by the higher of the two
 # ratings. Level 1 is S1 or IMBA 1 (green), 2 is S2 or IMBA 2 (blue), 3 is S3 or IMBA 3
-# (black) and 4 is S4 to S6 or IMBA 4 (red).
+# (black) and 4 is S4 or above or IMBA 4 or above (red).
 MTB_LEVELS = (1, 2, 3, 4)
 # The highest grade each scale has; a larger number (7 on `mtb:scale`, 5 on IMBA) is read as
 # the top, so a closed trail rated off the scale is still drawn as the hardest level, never
@@ -117,14 +117,14 @@ def mtb_level(tags: dict[str, str]) -> int | None:
 
 # The tags a mountain-bike trail's name is read from, first found wins (the owner,
 # 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added in if they
-# are available."): the way's own name, then its reference, then the name mountain bikers
-# give it where that differs.
-NAME_KEYS = ("name", "ref", "mtb:name")
+# are available."): the way's own name, then the name mountain bikers give it, then its
+# reference last, since a bare `ref` ("12") on the map could be read as a level.
+NAME_KEYS = ("name", "mtb:name", "ref")
 
 
 def mtb_name(tags: dict[str, str]) -> str | None:
-    """The name the map labels a mountain-bike trail with: `name`, else `ref`, else
-    `mtb:name`, trimmed; None when none of them has one. The rebuild writes it on the
+    """The name the map labels a mountain-bike trail with: `name`, else `mtb:name`, else
+    `ref`, trimmed; None when none of them has one. The rebuild writes it on the
     mountain-bike-only ways (`segment.mtb_name`)."""
     for key in NAME_KEYS:
         value = (tags.get(key) or "").strip()

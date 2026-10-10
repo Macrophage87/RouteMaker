@@ -323,7 +323,7 @@ OPTIONAL_PROPERTIES = {
     # is drawn (`map_class` road) only where nothing but its rating closes it.
     "mtb_level": MTB_LEVEL_COLUMN,
     # The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added
-    # in if they are available." An `mtb` trail's name (`name`, else `ref`, else `mtb:name`;
+    # in if they are available." An `mtb` trail's name (`name`, else `mtb:name`, else `ref`;
     # `routemaker.singletrack.mtb_name`), which the mountain-bike layer labels it with; left
     # out where none is mapped and on every other way (the column is written on the
     # mountain-bike-only ways alone).

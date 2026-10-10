@@ -620,8 +620,7 @@ def riding_rows(row: dict) -> list[dict]:
         rows.append(
             _row(
                 "Mountain-bike difficulty",
-                f"{words[0].upper()}{words[1:]}: a level {level} rating"
-                f" ({MTB_LEVEL_SCALES[level]})",
+                f"{words[0].upper()}{words[1:]}: {MTB_LEVEL_SCALES[level]}",
                 OSM,
             )
         )
@@ -762,7 +761,7 @@ MTB_LEVEL_SCALES = {
     1: "S1 or IMBA 1",
     2: "S2 or IMBA 2",
     3: "S3 or IMBA 3",
-    4: "S4 to S6 or IMBA 4",
+    4: "S4 or above, or IMBA 4 or above",
 }
 
 

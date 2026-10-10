@@ -4187,7 +4187,7 @@ graph (`rm:no_bicycle=singletrack`).
 **Tiles and ETag.** The stress tiles carry `mtb_level` (1-4, left out when null) where the live
 table has the column (`core.stress_tiles.OPTIONAL_PROPERTIES`). Its ETag letter is `d` (for
 difficulty; `m` and `l` were taken): with every optional column the tag reads
-`+kcfrmwdoesbtl-v8"`, thirteen letters, 38 characters, inside the cache's 64 (46 with the longest
+`+kcfrmwdoesbtl-v8"`, fourteen letters, 39 characters, inside the cache's 64 (46 with the longest
 edit generation). `FORMAT_VERSION` stays 8: the property arrives only with a new table (a new oid)
 and the letter names it, so no cached tile is taken for a table it was not drawn from. The
 pre-draw after the swap draws the new tiles as after any rebuild.
@@ -4211,7 +4211,7 @@ reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with
 | 1 | S1 or IMBA 1 | green #28702c | long dashes [6, 2] | 3.57:1 (scrub) |
 | 2 | S2 or IMBA 2 | blue #1565c0 | short dashes [3, 2] | 3.36:1 (scrub) |
 | 3 | S3 or IMBA 3 | black #1c1917 | dash-dot [4, 1.5, 1, 1.5] | 10.24:1 (scrub) |
-| 4 | S4 to S6 or IMBA 4 | red #c62828 | dash-dot-dot [4, 1.5, 1, 1.5, 1, 1.5] | 3.29:1 (scrub) |
+| 4 | S4 or above, or IMBA 4 or above | red #c62828 | dash-dot-dot [4, 1.5, 1, 1.5, 1, 1.5] | 3.29:1 (scrub) |
 
 Each colour is at least 3.25:1 from every surface of the light base map (mtbLevels.test.ts; the
 line's gaps show the map, with no casing behind them). The green was the starting #2e7d32, 3.0009:1 on
@@ -4222,12 +4222,12 @@ Not used for routes."), in the Mass Ride legend too, and the road panel names th
 line reads "Mountain-bike trail, level 2 (blue), not used for routes" (a levelled trail never adds
 "(Gravel and Mountain Goat may use it)", which only the unrated mountain-bike class, open on the
 off-road graph, says), and the Riding section has a "Mountain-bike difficulty" row ("Level 2 (blue):
-a level 2 rating (S2 or IMBA 2)"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
+S2 or IMBA 2"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
 migration 0014, state-only, after 0013) on the mountain-bike-only ways from
-`routemaker.singletrack.mtb_name`: the OSM `name`, else `ref`, else `mtb:name`, trimmed. It is a
+`routemaker.singletrack.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`, trimmed (a bare `ref` such as "12" comes last, as it could be misread as a level). It is a
 column of its own, not `trail_name`, which chains the long trails' named runs and which a
 mountain-bike way must never join (378). The stress tiles carry it as `name` (left out when null)
 where the live table has the column, with ETag letter `n`: with every optional column the tag now
@@ -4237,7 +4237,8 @@ level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.
 The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
 layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
 on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
-collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels. The text is in the line's own
+collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels, and `text-max-angle` is 45
+so a name still fits along curvy singletrack at z15-16. The text is in the line's own
 colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,
 the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
 not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
