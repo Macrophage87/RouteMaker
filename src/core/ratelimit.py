@@ -162,6 +162,9 @@ STRESS_EDIT_WRITES = Limit(scope="stress-edit", requests=60, window_s=3600)
 # A rider's suggestions (core.suggestions): 10 an hour per account, plenty for someone
 # reporting the roads of one ride, and a cap on anyone filling the review list.
 SUGGEST_WRITES = Limit(scope="stress-suggest", requests=10, window_s=3600)
+# An instance admin's review of the suggestions (approve, delete, send to Discord): their own
+# count, larger than the editor's 60, so reviewing a backlog never blocks editing.
+SUGGEST_REVIEW_WRITES = Limit(scope="stress-suggest-review", requests=200, window_s=3600)
 
 
 def _normalise(candidate: str) -> str | None:

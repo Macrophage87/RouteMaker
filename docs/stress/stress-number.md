@@ -144,18 +144,23 @@ painted lane, at `use_roads` 0.05 to 0.9:
 | Step | Marks | Added cost against the midpoint |
 |---|---|---|
 | 1.5 | none (LTS 1 and 2 cost the same in the graph) | exact |
-| 2.5 | `lanes:forward` / `lanes:backward` 10, no `use_sidepath` | 0.4-0.5 of the midpoint at stress 40 and up (`use_roads` 0.6 and below): about a quarter of the way from LTS 2 to LTS 3, and never above LTS 3 at any slider position |
-| 3.5 | `use_sidepath` (LTS 3's penalty), `maxspeed:practical` 90, lanes 11 each way | 0.89-1.14 of the midpoint between LTS 3 and LTS 4 at every slider position |
+| 2.5 | `lanes:forward` / `lanes:backward` 10, no `use_sidepath` | 0.1-0.55 of the midpoint at `use_roads` 0.6 and below (stress 40 and up): short of the midpoint, and below LTS 3 at every position but `use_roads` 1.0 (below) |
+| 3.5 | `use_sidepath` (LTS 3's penalty), `maxspeed:practical` the road's own speed but at least 90 km/h (56 mph), lanes 11 each way | 0.8-1.2 of the midpoint between LTS 3 and LTS 4 at every slider position |
 | 4.5 | LTS 4's own marks (140, 15 lanes); no alley mark | priced as LTS 4 |
 
 2.5 cannot reach the midpoint without a costing fork: `use_sidepath` is all of LTS 3's
 extra, and a lane or speed lift large enough for the midpoint at the low-stress end
 prices 2.5 above LTS 3 at the fast end (up to 4 times the midpoint at `use_roads`
 0.9). The default taken (2026-10-10) keeps every level's order at every slider
-position; RouteMaker's own ranking then adds the exact midpoint. 3.5's speed mark is
-written as is, so a 3.5 road posted above 55 mph (rare: such roads are LTS 4) would be
-priced as if at 56 mph. The marks are a cost only: they never open a way
-(`M.may_penalise`; `tests/lua/test_remap.lua`, `tests/test_lua_remap.py`).
+position but one; RouteMaker's own ranking then adds the exact midpoint. The one
+exception is `use_roads` 1.0 (stress 0, the direct end, and Mass Ride): there Valhalla
+prices LTS 2 and LTS 3 the same (the sidepath penalty is `3 x (1 - use_roads)`, nothing),
+so 2.5's lane mark puts it above both, by 15% at most. 3.5's speed mark is the road's
+own speed where that is faster than 90 km/h (56 mph), so the mark only ever raises the
+price. The marks are a cost only: they never open a way (`M.may_penalise`;
+`tests/lua/test_remap.lua`, `tests/test_lua_remap.py`). The figures, the order of the
+nine steps at every slider position and the exception are pinned against the Python
+model of the costing (`routemaker.calm.edge_factor`) in `tests/test_half_step_model.py`.
 
 All three are HALF-STEP-EDITOR-plan section 7.2, phase 3. RouteMaker's own ranking
 uses the midpoints exactly (phase 2, built: `core.refine` `half_metres`,
@@ -320,8 +325,11 @@ length `w` centered on the point at distance `x`:
     `1 + 5 x w_std(L)` with no target (LTS 3 6, LTS 4 11, Avoid 16), and
     `1 + 10 x w_std(L)` with a target set (11, 21 and 31), the price of the miles up to
     the target (section 2).
-  - Half steps are not read: the score reads whole tiers. Half steps take the midpoint
-    (461a) once they exist (**planned**, section 3).
+  - Half steps: an edge the graph carries a half step's marks on (3.5's 11 lanes, 2.5's
+    10; the rebuild after the step was set) counts its own cost as above, with the
+    midpoint of its two levels' calm-rate terms (461a); a half step the graph does not
+    carry yet counts the midpoint of its two levels' figures (`calm.road_multiplier`'s
+    `half`). The edge's speed reads 3.5's practical speed, at least 90 km/h. **Built.**
 - **Why not Valhalla's own per-node cost.** The trace's `node.elapsed_cost` gives the
   cost to each node, but in one figure with the grade term, the surface factor and the
   turn, gate and alley costs, which the trace does not give apart (it gives the turn's
@@ -517,9 +525,8 @@ quiet street is 1, answered it). The differences:
 - **The words** are "LTS 1 to 2 level", "LTS 3 level" and "LTS 4 level", not the road
   panel's words, and Avoid is ", Avoid nearby" rather than a band of its own. This has
   not been put to the owner yet (an open point).
-- **Mass Ride** has its own three charts instead, and **half steps** are not read (both
-  above).
+- **Mass Ride** has its own three charts instead (above). Half steps are read at their
+  midpoints (above).
 
-Still **planned**: half steps (section 3),
-the junction revision (467, 468, 468a with 469c-e's time bands; none of it is built), and
+Still **planned**: the junction revision (467, 468, 468a with 469c-e's time bands; none of it is built), and
 4.5's entry charge (section 3, an owner question).

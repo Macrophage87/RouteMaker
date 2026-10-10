@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from core import suggestion_post as sp
 
-URL = "https://example.test/#at=-77.03650,38.89770"
+URL = "https://example.test/#at=-77.0365,38.8977"
 
 
 def road_post(**kw):
@@ -14,8 +17,6 @@ def road_post(**kw):
         "kind": "road",
         "road": "Rhode Island Avenue NE",
         "between": ("4th Street NE", "Montana Avenue NE"),
-        "lat": 38.9213,
-        "lon": -76.9931,
         "current": 3,
         "suggested": 2,
         "reason": "There is a protected lane here now.",
@@ -76,8 +77,7 @@ class TestRoadPost:
         assert "> There is a protected lane here now." in post.text
         assert f"Map: <{URL}>" in post.text
         assert (
-            "Where: Rhode Island Avenue NE between 4th Street NE and Montana Avenue NE "
-            "(near 38.92130, -76.99310)"
+            "Where: Rhode Island Avenue NE between 4th Street NE and Montana Avenue NE\n"
         ) in post.text
         for option in post.options:
             assert f"{option.emoji} {option.label}" in post.text
@@ -86,10 +86,17 @@ class TestRoadPost:
     def test_more_stressful_is_said_too(self) -> None:
         assert "more stressful than we rate it" in road_post(current=2, suggested=4).text
 
-    def test_without_cross_streets_it_says_near_the_spot(self) -> None:
+    def test_without_cross_streets_it_points_at_the_map_link(self) -> None:
         text = road_post(between=None, road=None).text
         assert text.splitlines()[0] == "**How comfortable is biking on an unnamed road?**"
-        assert "Where: An unnamed road near 38.92130, -76.99310" in text
+        assert "Where: An unnamed road, shown on the map link below" in text
+
+    def test_it_prints_no_coordinates(self) -> None:
+        # The place is the road in words; the only figures are the map link's (made by the
+        # caller from the road's middle, to four decimals).
+        for post in (road_post(), road_post(between=None)):
+            outside_link = post.text.replace(URL, "")
+            assert not re.search(r"-?\d+\.\d{3,}", outside_link), outside_link
 
     def test_it_mentions_nobody_pings_no_role_and_names_no_server(self) -> None:
         text = road_post(reason="@everyone look <@1234> and <@&99> in <#55> @here").text
@@ -101,6 +108,30 @@ class TestRoadPost:
         text = road_post(reason="see https://example.org/a_b and **shout**").text
         assert "<https://example.org/a_b>" in text
         assert "\\*\\*shout\\*\\*" in text
+
+    def test_a_masked_link_and_brackets_are_inert(self) -> None:
+        assert sp.inert("[free bikes](evil)") == "\\[free bikes\\]\\(evil\\)"
+
+    @pytest.mark.parametrize("start", ["# ", "## ", "-# ", "> ", ">>> "])
+    def test_a_heading_subtext_or_quote_at_the_start_is_inert(self, start) -> None:
+        assert sp.inert(start + "look here").startswith("\\" + start[0])
+        text = road_post(reason=start + "look here").text
+        assert ("> \\" + start[0]) in text
+
+    def test_a_backslash_cannot_undo_an_escape(self) -> None:
+        assert sp.inert("\\*bold*") == "\\\\\\*bold\\*"
+
+    def test_the_zero_width_space_is_written_as_an_escape(self) -> None:
+        source = (Path(sp.__file__)).read_text(encoding="utf-8")
+        assert "\u200b" not in source
+        assert sp.inert("@everyone") == "@\u200beveryone"
+
+    def test_a_long_reason_is_cut_as_written_never_through_an_escape(self) -> None:
+        text = road_post(reason="*" * 3000).text
+        quote = next(line for line in text.splitlines() if line.startswith("> "))
+        body = quote[2:].rstrip("…")
+        # Every star is escaped: no lone backslash and no bare star left at the cut.
+        assert body.count("\\*") * 2 == len(body)
 
     def test_nothing_about_the_rider_is_in_it(self) -> None:
         text = road_post().text
@@ -128,8 +159,6 @@ class TestJunctionPost:
             kind="junction",
             road="New York Avenue NE",
             crossing="Florida Avenue NE",
-            lat=38.9150,
-            lon=-77.0010,
             current=4,
             suggested=3,
             reason="The new signal gives a long walk phase.",

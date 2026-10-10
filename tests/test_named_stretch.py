@@ -27,7 +27,7 @@ from test_stress_edits import (
     spec,
 )
 
-from core import segment_info, stress_edits
+from core import road_names, segment_info, stress_edits
 from core.models import Override, StressEdit
 from pipeline import overrides as pipeline_overrides
 
@@ -147,6 +147,14 @@ class TestTheStretch:
         # Four distinct ends (three pieces in a row), one costing each: bicycle names them all.
         assert router.calls == 4
 
+    def test_past_its_deadline_the_router_is_not_asked_and_the_tables_names_stand(
+        self, road, router
+    ) -> None:
+        names = road_names.Names(budget_s=0)
+        assert stress_edits.named_stretch(road, A, names) is None
+        assert names.silent and router.calls == 0
+        assert road_names.NAMES_BUDGET_S == 3.0
+
 
 @db
 class TestChangingTheStretch:
@@ -196,11 +204,52 @@ class TestChangingTheStretch:
         }
         assert StressEdit.objects.count() == 2
 
+    def test_undo_is_refused_when_a_pieces_row_was_replaced_since(self, road) -> None:
+        admin = make_user()
+        ways = [A, B, C]
+        done = stress_edits.apply(admin, ways, spec(4), stretch_token(road, ways))
+        rows = {p["way"]: p["override"] for p in done.edit.override_rows}
+        # A file reload (say) replaced B's row; the table still holds the edit's values.
+        Override.objects.filter(pk=rows[B]).update(superseded_by_id=rows[A])
+        with pytest.raises(stress_edits.Stale) as later:
+            stress_edits.undo(admin, done.edit.pk)
+        assert later.value.code == "later_edit"
+        assert all(live_row(road, w)["stress_tier"] == 4 for w in ways)
+        assert Override.objects.get(pk=rows[A]).approved
+        assert StressEdit.objects.count() == 1
+
+    def test_undo_touches_only_rows_of_the_way_each_pair_names(self, road) -> None:
+        admin = make_user()
+        ways = [A, B, C]
+        done = stress_edits.apply(admin, ways, spec(4), stretch_token(road, ways))
+        rows = {p["way"]: p["override"] for p in done.edit.override_rows}
+        # A pair naming another way's row is not that way's row: it is left alone.
+        tampered = [
+            {**p, "override": rows[A]} if p["way"] == B else p for p in done.edit.override_rows
+        ]
+        StressEdit.objects.filter(pk=done.edit.pk).update(override_rows=tampered)
+        stress_edits.undo(admin, done.edit.pk)
+        assert Override.objects.get(pk=rows[B]).approved
+        assert not Override.objects.get(pk=rows[A]).approved
+
     def test_a_set_that_is_not_the_stretch_is_refused(self, road) -> None:
         for ways in ([A, B], [A, C, D], [A, D]):
-            with pytest.raises(stress_edits.Invalid):
+            with pytest.raises(stress_edits.Invalid) as refused:
                 stress_edits.apply(make_user(), ways, spec(4), stretch_token(road, ways))
+            assert refused.value.code == "not_a_stretch"
         assert not Override.objects.exists()
+
+    def test_with_the_router_down_the_stretch_is_refused_plainly(self, road, router) -> None:
+        ways = [A, B, C]
+        token = stretch_token(road, ways)
+        router.down = True
+        with pytest.raises(stress_edits.Invalid) as refused:
+            stress_edits.apply(make_user(), ways, spec(4), token)
+        assert refused.value.code == "names_unavailable"
+        assert "change this road piece alone" in refused.value.message
+        assert not Override.objects.exists()
+        # A single piece does not need the names.
+        stress_edits.apply(make_user(), [A], spec(4), stretch_token(road, [A]))
 
     def test_a_change_to_any_piece_makes_the_stretch_stale(self, road) -> None:
         ways = [A, B, C]
@@ -217,10 +266,12 @@ class TestChangingTheStretch:
 
 @db
 class TestTheEndpoints:
-    def test_the_editor_state_offers_the_stretch_with_its_own_token(self, road) -> None:
+    def test_the_stretch_is_asked_for_on_its_own_with_its_own_token(self, road, router) -> None:
         client, csrf = admin_client()
         state = client.get(STATE.format(B), **addr()).json()
-        stretch = state["stretch"]
+        # The editor's state does not look for the stretch (it needs the router).
+        assert "stretch" not in state and router.calls == 0
+        stretch = client.get(STATE.format(B) + "/stretch", **addr()).json()["stretch"]
         assert stretch["name"] == "Oak Street" and stretch["osm_way_ids"] == [A, B, C]
         assert stretch["pieces"] == 3 and not stretch["capped"]
         assert stretch["expected"] != state["expected"]
@@ -242,7 +293,16 @@ class TestTheEndpoints:
 
     def test_a_lone_piece_has_no_stretch(self, road) -> None:
         client, _csrf = admin_client()
-        assert client.get(STATE.format(D), **addr()).json()["stretch"] is None
+        assert client.get(STATE.format(D) + "/stretch", **addr()).json()["stretch"] is None
+
+    def test_the_stretch_is_for_admins_only(self, road) -> None:
+        from django.test import Client
+
+        assert Client().get(STATE.format(B) + "/stretch", **addr()).status_code in (401, 403)
+
+    def test_the_stretch_of_a_road_not_there_is_404(self, road) -> None:
+        client, _csrf = admin_client()
+        assert client.get(STATE.format(999999) + "/stretch", **addr()).status_code == 404
 
     def test_more_than_40_pieces_is_400(self, road) -> None:
         client, csrf = admin_client()

@@ -19,6 +19,9 @@ from . import segment_info
 
 # Two ways meet where their ends are this close (OSM ways share a node).
 TOUCH_M = 2.0
+# The most the router may take over all its answers for one question (a stretch, a poll's
+# cross streets): past it the router is treated as silent and the table's names stand.
+NAMES_BUDGET_S = 3.0
 _COSTINGS = ("bicycle", "auto", "pedestrian")
 
 
@@ -75,15 +78,25 @@ def touching(schema: str, point: tuple[float, float]) -> list[dict]:
 class Names:
     """The router's names of the ways at a spot, asked once a spot and costing."""
 
-    def __init__(self) -> None:
+    def __init__(self, budget_s: float = NAMES_BUDGET_S) -> None:
+        from . import routing
+
         self._seen: dict[tuple, dict[int, str]] = {}
         self.silent = False
+        self._deadline = routing.Deadline(at=routing.clock() + budget_s, per_call_s=budget_s)
+
+    def _out_of_time(self) -> bool:
+        from . import routing
+
+        return self._deadline.at - routing.clock() <= 0
 
     def _at(self, point: tuple[float, float], costing: str) -> dict[int, str]:
         spot = (round(point[0], 6), round(point[1], 6), costing)
         if spot in self._seen:
             return self._seen[spot]
         found: dict[int, str] = {}
+        if not self.silent and self._out_of_time():
+            self.silent = True
         if not self.silent:
             try:
                 edges = segment_info.locate_edges(point[1], point[0], costing)

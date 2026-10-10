@@ -676,13 +676,7 @@ def analyse(
         events=events_of_raws(raws, ctx, deadline) if with_events else None,
         via_m=via_m,
         marks=marks,
-        # Half steps at the midpoints of the strict order's figures (461a; stress-number.md
-        # section 3): 2.5 counts half a metre of LTS 3, 3.5 half of LTS 3 and half of LTS 4,
-        # 4.5 a whole metre of LTS 4 (never Avoid, 441k).
-        lts4_m=stress["4"] + stress["5"] + 0.5 * halves["3"],
-        lts3_m=stress["3"] + 0.5 * halves["2"] - 0.5 * halves["3"],
-        avoid_m=stress["5"],
-        lts45_m=halves["4"],
+        **stress_totals(stress, halves),
         effort_m=effort.effort_equivalent_m(
             routing.grade_profile(trip),
             float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
@@ -693,6 +687,19 @@ def analyse(
     if with_events:
         ctx.analyses[key] = result
     return result
+
+
+def stress_totals(stress: dict, halves: dict) -> dict[str, float]:
+    """The LTS 3, LTS 4 and Avoid metres the worth rule and the LTS 4 hold read, half steps
+    at the midpoints of the strict order's figures (461a; stress-number.md section 3): 2.5
+    counts half a metre of LTS 3, 3.5 half of LTS 3 and half of LTS 4, 4.5 a whole metre of
+    LTS 4 (never Avoid, 441k) and is kept apart (`lts45_m`) for its midpoint weight."""
+    return {
+        "lts4_m": stress["4"] + stress["5"] + 0.5 * halves["3"],
+        "lts3_m": stress["3"] + 0.5 * halves["2"] - 0.5 * halves["3"],
+        "avoid_m": stress["5"],
+        "lts45_m": halves["4"],
+    }
 
 
 def half_metres(pieces, classes) -> dict[str, float]:

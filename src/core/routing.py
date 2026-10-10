@@ -1431,6 +1431,7 @@ def _calm_pieces(leg_runs: list, pieces: list[Piece], classes: list) -> list[cal
                         int(tier) if tier in STRESS_KEYS and tier != "unknown" else None,
                         kind if kind != "unknown" else None,
                         pieces[i].road,
+                        getattr(classes[i], "half", False) is True,
                     )
                 )
         else:

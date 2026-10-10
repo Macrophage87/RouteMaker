@@ -1399,6 +1399,15 @@ class StressSuggestion(models.Model):
         db_table = "stress_suggestion"
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "-created_at"], name="stress_suggestion_open")]
+        # One open suggestion per rider per road, held by the database: the check in
+        # core.suggestions counts rows, which locks nothing against a second send at once.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggester", "osm_way_id"],
+                condition=models.Q(status__in=["pending", "sent_to_discord"]),
+                name="stress_suggestion_one_open_per_road",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"way {self.osm_way_id}: {self.get_status_display()}"

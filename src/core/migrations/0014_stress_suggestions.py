@@ -137,6 +137,13 @@ class Migration(migrations.Migration):
                 "indexes": [
                     models.Index(fields=["status", "-created_at"], name="stress_suggestion_open")
                 ],
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("status__in", ["pending", "sent_to_discord"])),
+                        fields=("suggester", "osm_way_id"),
+                        name="stress_suggestion_one_open_per_road",
+                    )
+                ],
             },
         ),
     ]

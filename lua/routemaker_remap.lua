@@ -1252,6 +1252,20 @@ M.HALF_GRADED_SPEED = "90"
 M.HALF_GRADED_LANES = "11"
 M.HALF_LOW_LANES = "10"
 
+--- A speed tag as whole km/h ("50", "35 mph", "35mph"), or nil when it is not a
+-- number (none, walk, signals, a range).
+-- @param value string|nil
+-- @return number|nil
+function M.speed_kph(value)
+  if type(value) ~= "string" then return nil end
+  local number, unit = value:match("^%s*(%d+%.?%d*)%s*(%a*)%s*$")
+  number = tonumber(number)
+  if number == nil then return nil end
+  if unit == "mph" then return math.floor(number * 1.609344 + 0.5) end
+  if unit == "" or unit == "kmh" or unit == "kph" then return math.floor(number + 0.5) end
+  return nil
+end
+
 --- The marks a half step adds (`rm:stress_half`): 3.5 the LTS 3 penalty plus
 -- an intermediate speed and lane count; 2.5 an intermediate lane count; 1.5 and
 -- 4.5 nothing (4.5 is LTS 4's own marks, already written). Never on a
@@ -1268,7 +1282,11 @@ function M.half_step_marks(tags, derived, out)
   if derived.is_trail_class or derived.facility_neutral then return marks end
   local bicycle = out.bicycle or tags.bicycle
   if derived.stress_tier == M.STRESS_PENALTY_TIER and bicycle == M.STRESS_PENALTY_BICYCLE then
-    marks["maxspeed:practical"] = M.HALF_GRADED_SPEED
+    -- Never below the road's own speed: a 3.5 road posted over 90 km/h (56 mph)
+    -- keeps its own, so the mark only ever raises the price.
+    local own = M.speed_kph(tags["maxspeed:practical"]) or M.speed_kph(tags.maxspeed)
+    local floor = tonumber(M.HALF_GRADED_SPEED)
+    marks["maxspeed:practical"] = tostring(math.max(own or 0, floor))
     marks["lanes:forward"] = M.HALF_GRADED_LANES
     marks["lanes:backward"] = M.HALF_GRADED_LANES
   elseif derived.stress_tier == M.STRESS_PENALTY_TIER - 1 and bicycle ~= "no"

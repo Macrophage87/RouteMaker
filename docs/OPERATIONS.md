@@ -1576,6 +1576,7 @@ column is there):
 ```sh
 docker compose exec -T api python manage.py add_stress_half_column             # dry: says what it would do
 docker compose exec -T api python manage.py add_stress_half_column --confirm
+docker compose exec -T api python manage.py predraw_stress_tiles    # then warm the tile cache again
 ```
 
 The tile ETag gains the letter `h` once the column is there, so browsers fetch the tiles again.
@@ -1588,7 +1589,11 @@ level; the map, the road panel and RouteMaker's own ranking use the half step at
 
 **The whole named stretch (phase 5; 441g, 460.3).** Where the road piece is one of several of
 the same name end to end, the editor asks **What to change**: "This road piece: <name>" (the
-default) or "The whole named stretch of <name>: N pieces, X mi (Y km)". The stretch
+default) or "The whole named stretch of <name>". The stretch is looked for only once the admin
+chooses it (`GET /api/stress-edits/way/{id}/stretch`, admin only, as the editor state), since it
+needs the router's names; a status line then says "The whole named stretch of <name>: N pieces,
+X mi (Y km)", or that the piece is the whole stretch (the choice goes back to the piece), and
+Save waits until it is found. The stretch
 (`core.stress_edits.named_stretch`) is the drawn road pieces of that name connected end to end,
 out from the piece opened, and it ends:
 
@@ -1603,22 +1608,29 @@ out from the piece opened, and it ends:
 - at 40 pieces (one change takes at most 40; the editor says when the stretch goes on).
 
 Names are the router's, as the road panel shows them, else the table's (`core.road_names`: the
-table keeps a name only on calm and long-trail ways). With the router down, a busy road has no
-name and so no stretch: the editor offers the piece alone.
+table keeps a name only on calm and long-trail ways). The router has 3 seconds in all to name a
+stretch's ends (`road_names.NAMES_BUDGET_S`); past that, or with the router down, the table's
+names stand, so a busy road has no name and so no stretch: the editor says the piece is the whole
+stretch. A stretch change whose names cannot be checked is refused plainly (400,
+`names_unavailable`: "try again in a minute, or change this road piece alone"), and a set that is
+no longer one stretch is 400 `not_a_stretch`.
 
 A stretch change is one adjustment: one approved override row a way (each superseding that way's
 live row), all with the same `adjustment_id` (`edit-<first row id>`), one `stress_edit` row
 listing every way and every pair (`override_rows`), one audit entry and one tile refresh over
-them all. Undo (30 minutes) puts every piece back and reinstates every replaced row. The API
-takes the stretch only as the editor offered it: `osm_way_ids` must be exactly a named stretch
-(else 400), with the stretch's own token from the editor state (`stretch.expected`; a change to
-any piece in between is a 409). A single piece's token and request are as before.
+them all. Undo (30 minutes) puts every piece back and reinstates every replaced row; it touches a
+pair's rows only when they are that way's stress rows, and is refused (409, `later_edit`) when any
+piece's row has been replaced since. The API takes the stretch only as the editor offered it:
+`osm_way_ids` must be exactly a named stretch (else 400), with the stretch's own token from the
+stretch endpoint (`stretch.expected`; a change to any piece in between is a 409). A single piece's
+token and request are as before.
 
 ## Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; HALF-STEP-EDITOR phase 4)
 
 A signed-in rider the settings allow sees **Suggest a change** in the road panel (in place of
-Change LTS, which stays an instance admin's): a level from 1 to 5 by halves and a required reason
-(500 characters at most). Nothing changes on the map until an instance admin reviews it. The owner's
+Change LTS, which stays an instance admin's): a level from 1 to 5 by halves (whole steps only
+until the road data holds half steps; a half step is refused, `half_unavailable`, until then) and
+a required reason (500 characters at most). Nothing changes on the map until an instance admin reviews it. The owner's
 words, 2026-10-10 (UTC):
 
 - 13:57: "So there's one of three options: I know that that road probably should be
@@ -1644,11 +1656,23 @@ Each waiting suggestion has the owner's three actions:
    (`stress_edits.apply`: the override row, the live rows, the edit history, the tiles). Its
    private reason is "Rider suggestion N, approved: " and the rider's reason. Undo it from the road
    panel's editor within 30 minutes, as any edit.
-2. **Delete**.
+2. **Delete**, after a confirm step ("Delete this suggestion? It cannot be brought back.", Yes,
+   delete / Keep it).
 3. **Send to Discord**: shows a ready-to-paste poll with a **Copy post** button (it says "Copied")
    and marks the suggestion as sent. It stays in the list to approve or delete after the community
    has weighed in. Nothing is posted by RouteMaker itself: the copy works for any server or group,
    and a direct webhook is not built (optional, the owner's 14:01).
+
+After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
+suggestions are waiting."
+
+**Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
+`on_way`), never the spot clicked, and the server keeps only the nearest point on that way
+(`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the
+road (400, field `lat`). The poll prints no coordinates: the place is the road and its cross
+streets in words, and the map link points at the road piece's middle, rounded to 4 decimals
+(a grid of about 36 ft, 11 m). The form's note says the road's location and the reason may be shared in a
+public poll, never the rider's name or the spot clicked.
 
 The poll (`core/suggestion_post.py`) is at most 2,000 characters (Discord's limit; the reason is
 shortened first), uses bold for the question and a quote for the reason and no other markdown,
@@ -1656,8 +1680,11 @@ mentions nobody, pings no role, names no server or channel, and carries nothing 
 asks in plain words, for example "**How comfortable is biking on Oak Street, between Elm Street and
 Ash Avenue?** A rider suggested it's calmer than we rate it.", then "We currently show it as: OK for
 confident riders" and "The rider suggested: Fine for most people, even nervous riders", the reason,
-the place in words (road, cross streets where the map data has them, and the spot) and a link to
-the spot on RouteMaker's map (`/#at=lon,lat`, which opens the map there at street level). The
+the place in words (road and cross streets where the map data has them) and a link to the road
+piece's middle on RouteMaker's map (`/#at=lon,lat` to 4 decimals, which opens the map there at
+street level). A rider's reason has mentions, links and markdown made inert: emphasis, code,
+spoilers, brackets and parentheses (masked links) are escaped, and a heading, subtext or quote at
+its start is escaped too. The
 options are lettered reactions, each standing for one level, so the votes can be read back
 (`suggestion_post.tier_for_vote`):
 
@@ -1678,16 +1705,18 @@ suggests road pieces only today.
 
 **Security.** `POST /api/stress-suggestions` needs a session of an account the setting allows
 (401 / 403, audited), a JSON body, the CSRF token, a same-site request, the address count (120 a
-minute) and 10 suggestions an hour per account; one waiting suggestion per road per rider and 20
-waiting in all. The review endpoints (`GET /api/stress-suggestions/open`, `POST
-/api/stress-suggestions/{id}/approve|delete|discord`) are the editor's: an active instance admin,
-CSRF, same-site, 60 writes an hour. Every action is an `audit_log` entry. All answer
+minute) and 10 suggestions an hour per account; one waiting suggestion per road per rider (held by
+the database too: a partial unique constraint on suggester and road while waiting) and 20 waiting
+in all. The review endpoints (`GET /api/stress-suggestions/open`, `POST
+/api/stress-suggestions/{id}/approve|delete|discord`) need an active instance admin, CSRF and a
+same-site request, and have their own budget of 200 actions an hour (`stress-suggest-review`), so
+clearing a queue does not spend the editor's 60 edits an hour. Every action is an `audit_log` entry. All answer
 `Cache-Control: no-store`. The suggester's account is on the `stress_suggestion` row for the admin
 only; the table is left out of the beta's data shipment (`scripts/beta/ship-data.sh`).
 
-**The migration** is `core/migrations/0014_stress_suggestions.py` (two new tables, and the
-named stretch's `stress_edit.override_rows`, a JSON list defaulting to empty; nothing else
-changed). It depends on `0012_bikeshare_feed_cache`: `0013` is the MTB difficulty levels on another
+**The migration** is `core/migrations/0014_stress_suggestions.py` (two new tables with the one
+open suggestion per road per rider constraint, and the named stretch's `stress_edit.override_rows`,
+a JSON list defaulting to empty; nothing else changed). It depends on `0012_bikeshare_feed_cache`: `0013` is the MTB difficulty levels on another
 branch. **When both merge, re-point 0014 to depend on 0013 (or renumber it) so the chain stays
 linear.** `migrate` runs at `up`, as always. "Only raise it" is
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own

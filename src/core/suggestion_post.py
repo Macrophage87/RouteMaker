@@ -13,8 +13,10 @@ by a link. It is a simple poll answered with letter reactions.
 number alone. Each option maps to a tier (`PollOption.tier`) so the votes can be read back.
 
 Nothing about the rider who suggested it is in the post: no name, no account, no id. Their
-reason is quoted, with mentions and links made inert. The post is at most `POST_MAX`
-characters (Discord's limit for one message); the reason is shortened first to fit.
+reason is quoted, with mentions, links and markdown made inert. Nor is the spot the rider
+clicked: the place is the road and its cross streets in words, and the map link (made by the
+caller) points at the road piece's middle. The post is at most `POST_MAX` characters (Discord's
+limit for one message); the reason is shortened first to fit.
 """
 
 from __future__ import annotations
@@ -29,7 +31,9 @@ NAME_MAX = 120
 # The longest quoted reason before the whole post is measured.
 REASON_QUOTE_MAX = 600
 
-# One plain label per whole level (OWNER-DECISIONS 441l's words, said for anyone).
+# One plain label per whole level: new plain-English labels written for the poll under the
+# owner's 14:08 request ("Not everyone is familiar with that scale, so give a plain english
+# request"), not 441l's step words (those stay the map's and the panel's).
 ROAD_WORDS = {
     1: "Fine for anyone, kids included",
     2: "Fine for most people, even nervous riders",
@@ -108,15 +112,21 @@ def tier_for_vote(options: tuple[PollOption, ...], letter: str) -> int | None:
 
 _MENTION = re.compile(r"<(@[!&]?|#)\d+>")
 _URL = re.compile(r"(https?://\S+)")
+# A zero-width space: after @ it keeps @everyone, @here and @name from pinging anyone.
+_ZWSP = "\u200b"
+# Markdown that would change the post around a rider's words: emphasis, code, spoilers and
+# masked links ([text](url)); a backslash first, so the escapes added are not escaped again.
+_MARKS = ("\\", "*", "_", "~", "`", "|", "[", "]", "(", ")")
+# Line starts Discord reads as a heading, subtext or quote.
+_LINE_STARTS = ("#", "-#", ">")
 
 
 def inert(text: str) -> str:
     """A rider's words safe to paste: one paragraph, no mention, no role ping, no embed,
     no markdown that would change the post around it."""
     text = " ".join((text or "").split())
-    text = _MENTION.sub("(mention removed)", text)
-    # A zero-width space after @ keeps @everyone, @here and @name from pinging anyone.
-    text = text.replace("@", "@​")
+    text = _MENTION.sub("mention removed", text)
+    text = text.replace("@", "@" + _ZWSP)
     parts = _URL.split(text)
     out = []
     for i, part in enumerate(parts):
@@ -124,10 +134,13 @@ def inert(text: str) -> str:
             # <link> shows a link without the preview card.
             out.append(f"<{part.rstrip('>')}>")
             continue
-        for mark in ("*", "_", "~", "`", "|"):
+        for mark in _MARKS:
             part = part.replace(mark, "\\" + mark)
         out.append(part)
-    return "".join(out)
+    text = "".join(out)
+    if text.startswith(_LINE_STARTS):
+        text = "\\" + text
+    return text
 
 
 def _shorten(text: str, limit: int) -> str:
@@ -136,21 +149,19 @@ def _shorten(text: str, limit: int) -> str:
     return text[: max(0, limit - 1)].rstrip() + "…"
 
 
-def where_words(road: str | None, between: tuple[str, str] | None, lat: float, lon: float) -> str:
-    """The plain-text location: the road, its cross streets where known, and the spot."""
+def where_words(road: str | None, between: tuple[str, str] | None) -> str:
+    """The plain-text location: the road and its cross streets where known. Never coordinates:
+    the map link shows the road."""
     name = road or "An unnamed road"
-    spot = f"{lat:.5f}, {lon:.5f}"
     if between and all(between) and between[0] != between[1]:
-        return f"{name} between {between[0]} and {between[1]} (near {spot})"
-    return f"{name} near {spot}"
+        return f"{name} between {between[0]} and {between[1]}"
+    return f"{name}, shown on the map link below"
 
 
 def build(
     *,
     kind: str,
     road: str | None,
-    lat: float,
-    lon: float,
     current: float,
     suggested: float,
     reason: str,
@@ -205,7 +216,7 @@ def build(
             lines.append(f"> {quote}")
         lines += [
             "",
-            f"Where: {inert(where_words(road, between, lat, lon))}",
+            f"Where: {inert(where_words(road, between))}",
             f"Map: <{map_url}>",
             "",
             "Please weigh in by reacting with one letter:",
@@ -215,11 +226,15 @@ def build(
         ]
         return "\n".join(lines)
 
-    quote = _shorten(inert(reason), REASON_QUOTE_MAX)
-    text = compose(quote)
+    # Shortened as the rider wrote it, then made inert, so a cut never splits an escape.
+    raw = " ".join((reason or "").split())
+    limit = REASON_QUOTE_MAX
+    text = compose(inert(_shorten(raw, limit)) if raw else "")
+    while len(text) > POST_MAX and limit > 20:
+        limit = max(20, limit - (len(text) - POST_MAX) - 1)
+        text = compose(inert(_shorten(raw, limit)))
     if len(text) > POST_MAX:
-        room = max(0, len(quote) - (len(text) - POST_MAX))
-        text = compose(_shorten(quote, room) if room > 20 else "")
+        text = compose("")
     if len(text) > POST_MAX:
         text = _shorten(text, POST_MAX)
     return Post(text=text, options=options)

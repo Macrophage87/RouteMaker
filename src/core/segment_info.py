@@ -896,6 +896,9 @@ def describe(row: dict, router: dict) -> dict:
         # The exact step (441k: "The panel always shows the exact step and its words"): the
         # tier, or the tier and a half. `tier` stays the whole level the map colours by.
         "step": step_value(int(row["stress_tier"]), row.get("stress_half") is True),
+        # Whether the live table can hold a half step yet: the suggestion form offers whole
+        # steps only until it can.
+        "half_steps": "stress_half" in row,
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),

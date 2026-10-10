@@ -19,16 +19,23 @@ only; it is never in the post, the tiles or anything a rider reads.
 
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from . import audit, road_names, segment_info, stress_edits, suggestion_post
 from .models import AuditLogEntry, StressSuggestion, SuggestionSettings
 
 REASON_MAX = 500
-# Suggestions one account may have waiting at once, and a day.
+# Suggestions one account may have waiting at once (the hourly count is
+# ratelimit.SUGGEST_WRITES).
 OPEN_MAX = 20
 CATEGORY = "other"
+# The spot a suggestion records is the nearest point on the road, never the rider's own; a spot
+# farther than this from the road is refused (98 ft).
+SNAP_MAX_M = 30.0
+# The map link in the poll is the road piece's middle, rounded to this many decimals (about
+# 11 m), never the spot the rider clicked.
+LINK_DECIMALS = 4
 
 
 class SuggestionRefused(stress_edits.EditRefused):
@@ -98,6 +105,57 @@ def cross_streets(way_id: int, name: str) -> tuple[str, str] | None:
     return None
 
 
+def snap(way_id: int, lat: float, lon: float) -> tuple[float, float]:
+    """The nearest point on the way to (lat, lon), as (lat, lon); refused beyond SNAP_MAX_M.
+
+    Privacy (the review of step 4): the poll could otherwise publish a spot near the rider's
+    home to a metre. Only the road is kept."""
+    schema = stress_edits.live_schema()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            WITH way AS (SELECT ST_Collect(geometry) AS g FROM {schema}.segment
+                         WHERE osm_way_id = %s),
+                 spot AS (SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS p),
+                 near AS (SELECT ST_ClosestPoint(way.g, spot.p) AS c, spot.p FROM way, spot
+                          WHERE way.g IS NOT NULL)
+            SELECT ST_Y(c), ST_X(c), ST_Distance(c::geography, p::geography) FROM near
+            """,
+            [way_id, float(lon), float(lat)],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise stress_edits.NotFound("That road is not in the data.")
+    if float(row[2]) > SNAP_MAX_M:
+        raise stress_edits.Invalid(
+            "That spot is more than 98 ft (30 m) from this road. "
+            "Open the panel on the road itself.",
+            "lat",
+            "off_the_road",
+        )
+    return round(float(row[0]), 6), round(float(row[1]), 6)
+
+
+def midpoint(way_id: int) -> tuple[float, float] | None:
+    """The middle of the road piece, as (lat, lon): where the poll's map link points."""
+    schema = stress_edits.live_schema()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            WITH way AS (SELECT ST_LineMerge(ST_Collect(geometry ORDER BY ordinal)) AS g
+                         FROM {schema}.segment WHERE osm_way_id = %s)
+            SELECT ST_Y(m), ST_X(m) FROM (
+                SELECT CASE WHEN GeometryType(g) = 'LINESTRING'
+                            THEN ST_LineInterpolatePoint(g, 0.5)
+                            ELSE ST_ClosestPoint(g, ST_Centroid(g)) END AS m
+                FROM way WHERE g IS NOT NULL) t
+            """,
+            [way_id],
+        )
+        row = cursor.fetchone()
+    return (float(row[0]), float(row[1])) if row else None
+
+
 def create(user, way_id: int, lat: float, lon: float, step, reason: str) -> StressSuggestion:
     """Record a rider's suggestion. Raises SuggestionRefused / EditRefused."""
     if not may_suggest(user):
@@ -109,9 +167,30 @@ def create(user, way_id: int, lat: float, lon: float, step, reason: str) -> Stre
     if len(reason) > REASON_MAX:
         raise stress_edits.Invalid(f"The reason is at most {REASON_MAX} characters.", "reason")
     row, name = _road(way_id)
+    if half and stress_edits.HALF_COLUMN not in row:
+        raise stress_edits.Invalid(
+            "Half steps arrive with the next data update. Choose a whole step for now.",
+            "step",
+            "half_unavailable",
+        )
+    lat, lon = snap(way_id, lat, lon)
     now_step = stress_edits.current_step(row)
     if float(now_step) == tier + (0.5 if half else 0.0):
         raise stress_edits.Invalid("That is the road's level already.", "step")
+    try:
+        suggestion = _record(user, way_id, lat, lon, name, row, tier, half, reason)
+    except IntegrityError as error:
+        # The open-suggestion constraint: two sends at once for one road.
+        raise Conflict(
+            "You have a suggestion for this road waiting already. An admin will look at it."
+        ) from error
+    audit.record(
+        user, "stress_suggest", "stress_suggestion", suggestion.pk, AuditLogEntry.Outcome.ALLOWED
+    )
+    return suggestion
+
+
+def _record(user, way_id, lat, lon, name, row, tier, half, reason) -> StressSuggestion:
     with transaction.atomic():
         mine = StressSuggestion.objects.select_for_update().filter(
             suggester=user,
@@ -138,9 +217,6 @@ def create(user, way_id: int, lat: float, lon: float, step, reason: str) -> Stre
             half=half,
             reason=reason,
         )
-    audit.record(
-        user, "stress_suggest", "stress_suggestion", suggestion.pk, AuditLogEntry.Outcome.ALLOWED
-    )
     return suggestion
 
 
@@ -168,7 +244,10 @@ def approve(admin, suggestion_id: int) -> tuple[StressSuggestion, stress_edits.E
     """Apply the suggested level now, as the admin's own edit."""
     with transaction.atomic():
         suggestion = _open(suggestion_id)
-        state = stress_edits.editor_state(admin, suggestion.osm_way_id)
+        way = suggestion.osm_way_id
+        schema = stress_edits.live_schema()
+        columns = stress_edits.edit_columns(schema)
+        expected = stress_edits.token_of(stress_edits.read_rows(schema, columns, [way]), [way])
         private = f"Rider suggestion {suggestion.pk}, approved: {suggestion.reason}"
         spec = stress_edits.Spec(
             tier=suggestion.tier,
@@ -177,7 +256,7 @@ def approve(admin, suggestion_id: int) -> tuple[StressSuggestion, stress_edits.E
             category=CATEGORY,
             reason=private[: stress_edits.REASON_MAX],
         )
-        result = stress_edits.apply(admin, [suggestion.osm_way_id], spec, state["expected"])
+        result = stress_edits.apply(admin, [way], spec, expected)
         suggestion.status = StressSuggestion.Status.APPROVED
         suggestion.decided_at = timezone.now()
         suggestion.decided_by = admin
@@ -205,8 +284,11 @@ def delete(admin, suggestion_id: int) -> StressSuggestion:
 
 
 def map_url(origin: str, suggestion: StressSuggestion) -> str:
-    """The spot on RouteMaker's map (`#at=lon,lat`, read by the front end's planHash)."""
-    return f"{origin.rstrip('/')}/#at={suggestion.lon:.5f},{suggestion.lat:.5f}"
+    """The road on RouteMaker's map (`#at=lon,lat`, read by the front end's planHash): the road
+    piece's middle, rounded to LINK_DECIMALS, never the spot the rider clicked."""
+    middle = midpoint(suggestion.osm_way_id) or (suggestion.lat, suggestion.lon)
+    d = LINK_DECIMALS
+    return f"{origin.rstrip('/')}/#at={middle[1]:.{d}f},{middle[0]:.{d}f}"
 
 
 def post_for(suggestion: StressSuggestion, origin: str) -> suggestion_post.Post:
@@ -214,8 +296,6 @@ def post_for(suggestion: StressSuggestion, origin: str) -> suggestion_post.Post:
         kind="road",
         road=suggestion.road_name or None,
         between=cross_streets(suggestion.osm_way_id, suggestion.road_name),
-        lat=suggestion.lat,
-        lon=suggestion.lon,
         current=suggestion.current_step,
         suggested=suggestion.step,
         reason=suggestion.reason,
@@ -226,10 +306,12 @@ def post_for(suggestion: StressSuggestion, origin: str) -> suggestion_post.Post:
 def send_to_discord(
     admin, suggestion_id: int, origin: str
 ) -> tuple[StressSuggestion, suggestion_post.Post]:
-    """The poll to paste, and the suggestion marked as sent (again, for a second copy)."""
+    """The poll to paste, and the suggestion marked as sent (again, for a second copy).
+
+    The post is built before the row is locked: it asks the router for names."""
+    post = post_for(_open(suggestion_id, lock=False), origin)
     with transaction.atomic():
         suggestion = _open(suggestion_id)
-        post = post_for(suggestion, origin)
         suggestion.status = StressSuggestion.Status.SENT
         suggestion.sent_at = timezone.now()
         suggestion.save(update_fields=["status", "sent_at"])

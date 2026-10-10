@@ -236,6 +236,12 @@ ROUGH_SURFACES = frozenset({"paved_rough", "compacted", "dirt", "gravel", "path"
 # the graph's top speed and lane count, so an edge with 15 lanes is a graded one.
 GRADED_SPEED_KPH = 140
 GRADED_LANES = 15
+# A half step's marks (lua/routemaker_remap.lua `HALF_GRADED_SPEED`, `HALF_GRADED_LANES`,
+# `HALF_LOW_LANES`): 3.5 at a practical speed of at least 90 km/h with 11 lanes each way,
+# 2.5 with 10 lanes each way. An edge with 11 lanes is a 3.5 one.
+HALF_GRADED_SPEED_KPH = 90
+HALF_GRADED_LANES = 11
+HALF_LOW_LANES = 10
 # Valhalla's path uses, priced by their separation from walkers, and the trail-class uses,
 # which never carry the stress mark (lua/routemaker_remap.lua: "never on a trail-class way").
 PATH_USES = frozenset({"cycleway", "footway", "path"})
@@ -310,13 +316,18 @@ def road_speed_kph(road: Road) -> int:
     rough = road.surface in ROUGH_SURFACES
     # The graded speed is written as `maxspeed:practical`, which the builder takes as a
     # tagged speed: a graded turn channel is 175 km/h and a graded rough road 130.
-    tagged = graded(road) or road.speed_limit_kph is not None
+    half_graded = road.lanes == HALF_GRADED_LANES
+    tagged = graded(road) or half_graded or road.speed_limit_kph is not None
     if graded(road):
         speed = GRADED_SPEED_KPH
     elif road.speed_limit_kph is not None:
         speed = round(road.speed_limit_kph)
     else:
         speed = RURAL_SPEED.get(road.road_class, 25)
+    if half_graded:
+        # 3.5's mark: the road's own speed, never below 90 km/h (the transform writes
+        # max(own, 90) as `maxspeed:practical`).
+        speed = max(speed, HALF_GRADED_SPEED_KPH)
     if road.use in ("ramp", "turn_channel"):
         # A link keeps its speed but for these factors (`kTurnChannelFactor`, with
         # `infer_turn_channels` on as valhalla/*.json set it; `kRampFactor`,
@@ -434,25 +445,58 @@ def disagrees(tier: int, road: Road, pricing: Pricing) -> bool:
     return tier >= 4 and not pricing.no_trail and road.use not in TRAIL_USES
 
 
+def _half_marked(level: int, road: Road) -> bool:
+    """Whether the graph carries the half step's own marks (a rebuild since it was set):
+    3.5's 11 lanes, 2.5's 10. 1.5 and 4.5 have none to carry (1.5 costs as LTS 1 and 2 do,
+    4.5 as LTS 4)."""
+    if level == 3:
+        return road.lanes == HALF_GRADED_LANES
+    if level == 2:
+        return road.lanes == HALF_LOW_LANES
+    return True
+
+
+def _rate_term(level: int, half: bool, pricing: Pricing) -> float:
+    """The ranking's own charge a metre (`rate x weight`, LTS 3 and up); a half step takes the
+    midpoint of its two levels' (OWNER-DECISIONS 461a), so 2.5 half of LTS 3's."""
+
+    def at(lv: int) -> float:
+        return pricing.rate * pricing.weights[lv - 3] if lv >= 3 else 0.0
+
+    if half and 1 <= level <= 4:
+        return (at(level) + at(min(level + 1, 5))) / 2
+    return at(level)
+
+
 def road_multiplier(
-    tier: int | None, facility: str | None, road: Road | None, pricing: Pricing
+    tier: int | None,
+    facility: str | None,
+    road: Road | None,
+    pricing: Pricing,
+    half: bool = False,
 ) -> tuple[float | None, bool]:
     """Calm metres a metre of this edge counts for, and whether that is its own cost as the
     graph prices it (False: the tier's figure stands in, as the trace gave no attributes, or
-    the live tier and the graph disagree, `disagrees`). At the top of the slider LTS 3 and
-    up take the worth rule's figure, which is the ranking's own price."""
+    the live tier and the graph disagree, `disagrees`, or a half step the graph does not carry
+    yet). At the top of the slider LTS 3 and up take the worth rule's figure, which is the
+    ranking's own price. A half step (`half`) is the graph's own cost of its marked edge plus
+    the midpoint of the ranking's charge; with no edge, the midpoint of its levels' figures."""
     if tier is None:
         return None, True
     if road is None:
-        return multiplier(tier, facility, pricing), False
+        return multiplier(tier, facility, pricing, half), False
     level = min(tier, 5)
+    half = half and 1 <= level <= 4
     agreed = not disagrees(level, road, pricing)
     if road.use in NOT_TRAFFIC_USES or (pricing.maxcalm and level >= 3):
-        return multiplier(tier, facility, pricing), agreed
+        return multiplier(tier, facility, pricing, half), agreed
+    if half and not _half_marked(level, road):
+        # The graph prices it as its lower level until the next rebuild: the midpoint of
+        # the two levels' figures stands in.
+        return multiplier(tier, facility, pricing, half), False
     urban = road.density > MAX_RURAL_DENSITY
     own = edge_factor(road, level, pricing.use_roads) / quiet_factor(pricing.use_roads, urban)
-    if level >= 3:
-        own += pricing.rate * pricing.weights[level - 3]
+    own += _rate_term(level, half, pricing)
     return own, agreed
 
 
@@ -549,8 +593,12 @@ def steps_of(spans: Sequence[dict], pricing: Pricing) -> list[Step]:
 
 
 # One traced piece as the score reads it, in route order: (metres, tier or None, facility or
-# None, its edge's `Road` or None).
-Costed = tuple[float, int | None, str | None, Road | None]
+# None, its edge's `Road` or None), and optionally a fifth, whether it is a half step.
+Costed = tuple
+
+
+def _half_of(piece: Costed) -> bool:
+    return len(piece) > 4 and piece[4] is True
 
 
 def piece_steps(
@@ -565,10 +613,12 @@ def piece_steps(
     exact = True
     at = 0.0
     shown = with_section_tiers(pieces, sections) if sections is not None else pieces
-    for (metres, own_tier, _f, road), (_m, tier, facility, _r) in zip(pieces, shown, strict=True):
+    for piece, section in zip(pieces, shown, strict=True):
+        metres, own_tier, _f, road = piece[:4]
+        _m, tier, facility, _r = section[:4]
         if metres <= 0:
             continue
-        ratio, own = road_multiplier(tier, facility, road, pricing)
+        ratio, own = road_multiplier(tier, facility, road, pricing, _half_of(section))
         if ratio is not None and road is not None and own_tier is not None:
             own = not disagrees(min(own_tier, 5), road, pricing)
         exact = exact and own
@@ -588,12 +638,15 @@ def with_section_tiers(pieces: Sequence[Costed], sections: Sequence[Step]) -> li
     starts = [s.from_m for s in sections]
     out: list[Costed] = []
     at = 0.0
-    for metres, _tier, facility, road in pieces:
+    for piece in pieces:
+        metres, own_tier, facility, road = piece[:4]
         middle = at + metres / 2
         at += metres
         i = bisect.bisect_right(starts, middle) - 1
         inside = 0 <= i < len(sections) and sections[i].from_m <= middle <= sections[i].to_m
-        out.append((metres, sections[i].tier if inside else None, facility, road))
+        tier = sections[i].tier if inside else None
+        # The piece's own half step stands while its section has its level.
+        out.append((metres, tier, facility, road, _half_of(piece) and tier == own_tier))
     return out
 
 

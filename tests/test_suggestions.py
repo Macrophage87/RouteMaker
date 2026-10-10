@@ -6,9 +6,12 @@ Discord, which answers a ready-to-paste plain-English poll and marks the suggest
 
 from __future__ import annotations
 
+import re
+
 import pytest
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.test import Client
+from test_ratelimit import in_one_window
 from test_stress_edits import (
     LAT,
     LON,
@@ -22,8 +25,8 @@ from test_stress_edits import (
     sign_in,
 )
 
-from core import segment_info, suggestions
-from core.models import AuditLogEntry, Override, StressSuggestion, SuggestionSettings
+from core import ratelimit, segment_info, suggestions
+from core.models import AuditLogEntry, Override, StressSuggestion, SuggestionSettings, User
 
 db = pytest.mark.django_db(transaction=True)
 
@@ -101,6 +104,7 @@ def suggestion_body(**change) -> dict:
 
 
 def suggest(user=None, **change) -> StressSuggestion:
+    """A suggestion from a spot on the road, by the service."""
     user = user or make_user(admin=False)
     return suggestions.create(
         user,
@@ -205,6 +209,102 @@ class TestCreate:
         r = post(client, SUGGEST, suggestion_body(), csrf, HTTP_SEC_FETCH_SITE="cross-site")
         assert r.status_code == 403
 
+    def test_a_reason_of_500_characters_is_taken_and_501_refused(self, live) -> None:
+        open_to("signed_in")
+        assert len(suggest(reason="x" * 500).reason) == 500
+        with pytest.raises(suggestions.stress_edits.Invalid) as long:
+            suggest(reason="x" * 501)
+        assert long.value.field == "reason"
+
+    def test_at_most_open_max_waiting_per_rider(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        for i in range(suggestions.OPEN_MAX):
+            make_segment(live, 9000 + i, 3, lat=LAT + 0.01 * (i + 1), map_class="road")
+            suggestions.create(rider, 9000 + i, LAT + 0.01 * (i + 1), LON + 0.001, 2, WHY)
+        with pytest.raises(suggestions.Conflict) as full:
+            suggest(rider)
+        assert str(suggestions.OPEN_MAX) in full.value.message
+        # Another rider is not held back by this one's list.
+        assert suggest(make_user(admin=False)).status == "pending"
+
+    def test_the_database_holds_one_open_suggestion_per_road_per_rider(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        first = suggest(rider)
+        with pytest.raises(IntegrityError), transaction.atomic():
+            StressSuggestion.objects.create(
+                suggester=rider, osm_way_id=WAY, lat=LAT, lon=LON, current_tier=3, tier=1,
+                reason=WHY,
+            )  # fmt: skip
+        # Once decided, the rider may suggest for the road again.
+        StressSuggestion.objects.filter(pk=first.pk).update(status="deleted")
+        assert suggest(rider, step=1).status == "pending"
+
+    def test_ten_suggestions_an_hour_per_account(self, live) -> None:
+        open_to("signed_in")
+
+        def attempt(n):
+            client, csrf = rider_client()
+            user = User.objects.latest("pk")
+            key = ratelimit.client_key(f"user:{user.pk}")
+            for _ in range(ratelimit.SUGGEST_WRITES.requests):
+                ratelimit.hit(ratelimit.SUGGEST_WRITES, key)
+            return post(client, SUGGEST, suggestion_body(), csrf)
+
+        r = in_one_window(ratelimit.SUGGEST_WRITES.window_s, attempt)
+        assert ratelimit.SUGGEST_WRITES.requests == 10
+        assert r.status_code == 429 and StressSuggestion.objects.count() == 0
+
+    def test_a_half_step_is_refused_until_the_road_data_can_hold_one(self, live) -> None:
+        open_to("signed_in")
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN stress_half")
+        segment_info.forget_columns()
+        with pytest.raises(suggestions.stress_edits.Invalid) as half:
+            suggest(step=2.5)
+        assert half.value.code == "half_unavailable"
+        assert suggest(step=2).tier == 2
+
+
+@db
+class TestPrivacy:
+    def test_the_spot_kept_is_the_nearest_point_on_the_road_never_the_riders(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        # 0.0001 degrees north of the road (about 11 m (36 ft)), as a click beside it.
+        s = suggestions.create(rider, WAY, LAT + 0.0001, LON + 0.001, 2, WHY)
+        assert s.lat == pytest.approx(LAT, abs=1e-6) and s.lon == pytest.approx(
+            LON + 0.001, abs=1e-6
+        )
+
+    def test_a_spot_more_than_30_m_from_the_road_is_refused(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        with pytest.raises(suggestions.stress_edits.Invalid) as far:
+            # 0.0004 degrees north: about 44 m (146 ft).
+            suggestions.create(rider, WAY, LAT + 0.0004, LON + 0.001, 2, WHY)
+        assert far.value.code == "off_the_road" and "98 ft (30 m)" in far.value.message
+        assert StressSuggestion.objects.count() == 0
+        client, csrf = rider_client()
+        r = post(client, SUGGEST, suggestion_body(lat=LAT + 0.0004), csrf)
+        assert r.status_code == 400 and r.json()["field"] == "lat"
+
+    def test_the_post_has_no_coordinates_and_links_the_roads_middle_to_four_decimals(
+        self, live
+    ) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        # A spot near the road's west end: the link still points at the road's middle.
+        s = suggestions.create(rider, WAY, LAT + 0.0001, LON + 0.0002, 2, WHY)
+        text = suggestions.post_for(s, "http://testserver").text
+        link = re.search(r"#at=(-?\d+\.\d+),(-?\d+\.\d+)>", text)
+        assert link, text
+        assert link.group(1) == f"{LON + 0.001:.4f}" and link.group(2) == f"{LAT:.4f}"
+        outside = text.replace(link.group(0), "")
+        assert not re.search(r"-?\d+\.\d{3,}", outside), text
+        assert f"{s.lat:.5f}" not in text and f"{s.lon:.5f}" not in text
+
 
 @db
 class TestReview:
@@ -294,3 +394,23 @@ class TestReview:
         client, csrf = rider_client()
         for action in ("approve", "delete", "discord"):
             assert post(client, ACTION.format(s.pk, action), {}, csrf).status_code == 403
+
+    def test_review_actions_have_their_own_larger_budget(self, live) -> None:
+        open_to("signed_in")
+        assert ratelimit.SUGGEST_REVIEW_WRITES.requests > ratelimit.STRESS_EDIT_WRITES.requests
+        s = suggest()
+
+        def attempt(n):
+            client, csrf = admin_client()
+            user = User.objects.latest("pk")
+            key = ratelimit.client_key(f"user:{user.pk}")
+            # A full road-editing budget does not hold back a review.
+            for _ in range(ratelimit.STRESS_EDIT_WRITES.requests):
+                ratelimit.hit(ratelimit.STRESS_EDIT_WRITES, key)
+            first = post(client, ACTION.format(s.pk, "discord"), {}, csrf)
+            for _ in range(ratelimit.SUGGEST_REVIEW_WRITES.requests):
+                ratelimit.hit(ratelimit.SUGGEST_REVIEW_WRITES, key)
+            return first, post(client, ACTION.format(s.pk, "delete"), {}, csrf)
+
+        first, spent = in_one_window(ratelimit.SUGGEST_REVIEW_WRITES.window_s, attempt)
+        assert first.status_code == 200 and spent.status_code == 429

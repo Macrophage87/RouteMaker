@@ -1112,6 +1112,12 @@ do
   local o = M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true })
   check("3.5 keeps LTS 3's penalty", o.bicycle == M.STRESS_PENALTY_BICYCLE)
   check("3.5 adds the intermediate practical speed", o["maxspeed:practical"] == M.HALF_GRADED_SPEED)
+  local fast = M.remap_way({ highway = "trunk", maxspeed = "65 mph" }, { stress_tier = 3, stress_half = true })
+  check("3.5 never lowers a road's own speed: 65 mph keeps 105 km/h", fast["maxspeed:practical"] == "105")
+  local slow = M.remap_way({ highway = "secondary", maxspeed = "25 mph" }, { stress_tier = 3, stress_half = true })
+  check("3.5 raises a 25 mph road to 90 km/h", slow["maxspeed:practical"] == "90")
+  check("speed_kph reads km/h, mph and nothing else", M.speed_kph("50") == 50 and M.speed_kph("35 mph") == 56
+    and M.speed_kph("walk") == nil and M.speed_kph(nil) == nil)
   check("3.5 adds the intermediate lane count both ways",
     o["lanes:forward"] == M.HALF_GRADED_LANES and o["lanes:backward"] == M.HALF_GRADED_LANES)
   check("3.5's marks sit between the road's and LTS 4's",

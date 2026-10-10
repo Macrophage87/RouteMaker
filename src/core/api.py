@@ -2313,6 +2313,10 @@ class SegmentInfoOut(Schema):
             "The exact step, half steps included (1, 1.5, ... 4.5, 5); `tier` is its whole level."
         ),
     )
+    half_steps: bool | None = Field(
+        default=None,
+        description="Whether the road data can hold a half step yet; null with no road.",
+    )
     open: bool | None = Field(
         default=None, description="Whether a bicycle may use it; null when not known."
     )
@@ -2557,6 +2561,13 @@ class StretchOut(Schema):
     expected: str = Field(description="The stretch's own token, sent back with a stretch edit.")
 
 
+class StretchStateOut(Schema):
+    stretch: StretchOut | None = Field(
+        default=None,
+        description="The named stretch the road piece is in, or null where it is the only piece.",
+    )
+
+
 class EditorStateOut(Schema):
     osm_way_id: int
     classifier_step: int | None = Field(
@@ -2574,10 +2585,6 @@ class EditorStateOut(Schema):
     half_steps: bool = Field(
         default=True,
         description="False until the live table can hold a half step (the next data update).",
-    )
-    stretch: StretchOut | None = Field(
-        default=None,
-        description="The named stretch the road piece is in, or null where it is the only piece.",
     )
 
 
@@ -2611,6 +2618,35 @@ def stress_edit_state(request, osm_way_id: int, response: HttpResponse):
         return _stress_error(refused.status, refused.message, refused.field, refused.code)
     _private(response)
     return Status(200, state)
+
+
+@api.get(
+    "/stress-edits/way/{osm_way_id}/stretch",
+    response={
+        200: StretchStateOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        404: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="The named stretch a road piece is in, for the editor's extent choice (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_edit_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
 
 
 class StressEditIn(Schema):
@@ -2834,6 +2870,13 @@ SUGGESTION_RESPONSES = {
     500: ErrorOut,
 }
 
+# The review's three actions: the editor's guards with a count of their own (a larger one), so a
+# long review does not use up the admin's editing budget.
+REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    *STRESS_WRITE[1:],
+)
+
 SUGGEST_WRITE = (
     ratelimit.user_rate_limited(ratelimit.SUGGEST_WRITES),
     csrf_protected,
@@ -2899,7 +2942,7 @@ def stress_suggestion_list(request, response: HttpResponse):
     response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
     summary="Approve a suggestion now: applied at once as your edit (instance admin)",
 )
-@decorate_view(*STRESS_WRITE)
+@decorate_view(*REVIEW_WRITE)
 def stress_suggestion_approve(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
     from . import segment_info, stress_edits, suggestions
 
@@ -2928,7 +2971,7 @@ def stress_suggestion_approve(request, suggestion_id: int, body: UndoIn, respons
     response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
     summary="Delete a suggestion (instance admin)",
 )
-@decorate_view(*STRESS_WRITE)
+@decorate_view(*REVIEW_WRITE)
 def stress_suggestion_delete(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
     from . import stress_edits, suggestions
 
@@ -2945,7 +2988,7 @@ def stress_suggestion_delete(request, suggestion_id: int, body: UndoIn, response
     response={200: DiscordPostOut, **SUGGESTION_RESPONSES},
     summary="Send a suggestion to Discord: the poll to paste, and the suggestion marked sent",
 )
-@decorate_view(*STRESS_WRITE)
+@decorate_view(*REVIEW_WRITE)
 def stress_suggestion_discord(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
     from . import stress_edits, suggestions
 

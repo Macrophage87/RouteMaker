@@ -397,19 +397,30 @@ def token_of(rows: dict, way_ids: list[int], *, lock: bool = False) -> str:
 # --- A named stretch (phase 5) ------------------------------------------------------------
 
 
-def _is_stretch(schema: str, way_ids: list[int]) -> bool:
-    """Whether the ways are exactly a named stretch (as the editor offered it from one of them),
-    not any set of pieces."""
+def _check_stretch(schema: str, way_ids: list[int]) -> None:
+    """Refuse unless the ways are exactly a named stretch (as the editor offered it from one of
+    them), not any set of pieces."""
     wanted = sorted(way_ids)
     names = road_names.Names()
     for way in wanted:
         stretch = named_stretch(schema, way, names)
         if stretch is not None and stretch["ways"] == wanted:
-            return True
+            return
         if stretch is not None and not stretch["capped"]:
             # Uncapped, every piece of a stretch finds the same one.
-            return False
-    return False
+            break
+    if names.silent:
+        raise Invalid(
+            "The road names could not be checked just now, so the whole stretch cannot be "
+            "changed. Try again in a minute, or change this road piece alone.",
+            "osm_way_ids",
+            "names_unavailable",
+        )
+    raise Invalid(
+        "These road pieces are not one named stretch any more. Reopen the road to see it.",
+        "osm_way_ids",
+        "not_a_stretch",
+    )
 
 
 def named_stretch(schema: str, way_id: int, names: road_names.Names | None = None) -> dict | None:
@@ -559,12 +570,18 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
         "note_max": overrides.PUBLIC_NOTE_MAX,
         "recent_edit": recent_out,
         "pieces": len(rows),
-        "stretch": _stretch_out(schema, columns, way_id),
     }
 
 
-def _stretch_out(schema: str, columns: list[str], way_id: int) -> dict | None:
-    """The named stretch for the editor's extent choice, with its own token."""
+def stretch_state(way_id: int) -> dict | None:
+    """The named stretch for the editor's extent choice, with its own token: asked only when the
+    admin chooses the whole stretch (the router is asked for names). None: the piece is alone."""
+    schema = live_schema()
+    columns = edit_columns(schema)
+    if live_oid(schema) is None or not columns:
+        raise NotFound("There is no road data to change yet.")
+    if not read_rows(schema, columns, [way_id]):
+        raise NotFound("That road is not in the data.")
     stretch = named_stretch(schema, way_id)
     if stretch is None:
         return None
@@ -645,8 +662,8 @@ def apply(
     validate(spec)
     schema = live_schema()
     # Asked of the router before any lock is taken; the token below still catches a change.
-    if len(way_ids) > 1 and live_oid(schema) is not None and not _is_stretch(schema, way_ids):
-        raise Invalid("Change one road piece, or one named stretch, at a time.", "osm_way_ids")
+    if len(way_ids) > 1 and live_oid(schema) is not None:
+        _check_stretch(schema, way_ids)
     try:
         with transaction.atomic():
             _lock_ways(way_ids)
@@ -789,6 +806,17 @@ def _later_touching(edit: StressEdit) -> bool:
     return False
 
 
+def _pair_row(pk, way: int) -> Override | None:
+    """An edit's override row, only if it is that way's stress row (a pair names both)."""
+    if not pk:
+        return None
+    return (
+        Override.objects.select_for_update()
+        .filter(pk=pk, osm_way_id=way, kind=Override.Kind.STRESS)
+        .first()
+    )
+
+
 def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
     """Put an edit's `before` state back. Any instance admin may, within UNDO_WINDOW."""
     now = now or timezone.now()
@@ -846,9 +874,17 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
         reinstated = None
         undone_pairs = []
         for pair in pairs:
-            new = Override.objects.filter(pk=pair["override"]).first() if pair["override"] else None
-            old = Override.objects.filter(pk=pair["replaced"]).first() if pair["replaced"] else None
+            new = _pair_row(pair["override"], pair["way"])
+            old = _pair_row(pair["replaced"], pair["way"])
             back = None
+            if new is not None and new.superseded_by_id is not None:
+                # Something else replaced this edit's row since (a file reload, the admin):
+                # the table check above passed, so leave the rows as they are.
+                raise Stale(
+                    "This road's override has been replaced since. Make a new change instead.",
+                    None,
+                    "later_edit",
+                )
             if new is not None:
                 if old is not None and old.superseded_by_id == new.pk:
                     Override.objects.filter(pk=new.pk).update(superseded_by=old, superseded_at=now)

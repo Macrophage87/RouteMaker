@@ -1634,10 +1634,13 @@ Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
 **Half steps in the graph** (OWNER-DECISIONS 441i-441l, 461a; HALF-STEP-EDITOR phase 3). A
 half step reaches the transform as `rm:stress_half=yes` beside its lower `rm:stress_tier`
 (`pipeline.run`, from the override's `half`), and `half_step_marks` adds: 3.5 LTS 3's
-`use_sidepath` plus `maxspeed:practical` 90 and 11 lanes each way (0.89-1.14 of the midpoint
-between LTS 3 and LTS 4, modelled as for the table above); 2.5 10 lanes each way and no
-`use_sidepath` (0.4-0.5 of the midpoint, never above LTS 3); 1.5 nothing; 4.5 LTS 4's marks and
-never the alley mark. docs/stress/stress-number.md section 3 has the table and why 2.5 stops short.
+`use_sidepath` plus `maxspeed:practical` at the road's own speed but at least 90 and 11 lanes
+each way (0.8-1.2 of the midpoint between LTS 3 and LTS 4, modelled as for the table above); 2.5
+10 lanes each way and no `use_sidepath` (short of the midpoint, below LTS 3 except at
+`use_roads` 1.0); 1.5 nothing; 4.5 LTS 4's marks and never the alley mark. The rolling chart
+reads the same marks (`calm.road_multiplier`'s `half`, `HALF_GRADED_LANES`). docs/stress/
+stress-number.md section 3 has the table, why 2.5 stops short, and the one exception;
+`tests/test_half_step_model.py` pins them.
 
 **Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
 each leg (one fewer than the points) the index in `geometry.coordinates` of its

@@ -187,6 +187,7 @@ class TestAnswer:
             "title": "No road here",
             "tier": None,
             "step": None,
+            "half_steps": None,
             "open": None,
             "osm_way_id": None,
             "distance_m": None,
