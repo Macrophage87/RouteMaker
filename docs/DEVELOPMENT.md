@@ -924,7 +924,7 @@ in the map, the points list, the route description and the road panel. All of it
   route." (`FEDERAL_UNCHECKED`, `federalRouteLines`).
 * **Stops** (239 (b)). `federalAreaAt` (`federalLand.ts`, which `federalPoints` uses
   too) gives a point's most specific area (FEDERAL_KINDS order) with its agency; failing
-  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 20 m (66 ft),
+  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 66 ft (20 m),
   marked `near` and said "next to" (238: "err on the side of flagging", for a stop on a
   simplified boundary). `stopWarning` says "End is inside U.S.
   Capitol grounds, managed by Architect of the Capitol – federal land: check permit
@@ -946,7 +946,7 @@ in the map, the points list, the route description and the road panel. All of it
   polygon: a stretch with `facility` "path" or the street "unnamed path" is skipped
   (Rock Creek's trail is inside the parkway's polygon, and a "Suitland Parkway Trail"
   matches the parkway's name).
-  Stretches on one parkway less than `PARKWAY_JOIN_M` (160 m) apart are one run, said
+  Stretches on one parkway less than `PARKWAY_JOIN_M` (525 ft, 160 m) apart are one run, said
   as "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park
   Service parkway – federal road: check permit requirements for riding it as a group."
   OpenStreetMap's `operator` tag is not in the routing data (the segments carry the
@@ -975,9 +975,10 @@ in the map, the points list, the route description and the road panel. All of it
     dialog's status sentence ends with it, said again if the data comes after the road's
     answer.
 * **Units.** The run's range goes through `format.ts` `formatMileRange` (miles first,
-  kilometres in brackets), as every unit does; under a tenth of a mile, or with both ends
-  the same tenth, it says where it starts and its length in feet, as `describe.py`
-  `range_words` does.
+  kilometres in brackets), as every unit does. For a short run it follows `describe.py`
+  `range_words`' feet rule (under a tenth of a mile, where it starts and its length in
+  feet), and it also uses feet where both ends round to the same tenth, which
+  `range_words` does not check.
 
 Tests: `lib/federalStops.test.ts` (the area and its words, the rows and markers only on
 a Mass Ride with the data, the five parkways by name and nothing else, runs joined and

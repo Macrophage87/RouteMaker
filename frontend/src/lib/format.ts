@@ -58,8 +58,9 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
 export function formatMileRange(fromM: number, toM: number): string {
   const mi = (m: number) => (m / METRES_PER_MILE).toFixed(1);
   const km = (m: number) => (m / 1000).toFixed(1);
-  // Under a tenth of a mile, or both ends the same tenth: where it starts and how long, in feet
-  // ("1.2 mi (1.9 km), for 300 ft (91 m)"), as describe.py range_words says it.
+  // Under a tenth of a mile, describe.py range_words' feet rule: where it starts and how long, in feet
+  // ("1.2 mi (1.9 km), for 300 ft (91 m)"). Also where both ends round to the same tenth, which
+  // range_words does not check, so "0.6 to 0.6 mi" is never said.
   if (toM - fromM < FEET_BELOW_M || mi(fromM) === mi(toM)) {
     const length = toM - fromM;
     const feet = length * FEET_PER_METRE;

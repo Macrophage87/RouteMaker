@@ -288,7 +288,7 @@ export interface FederalArea {
   near?: true;
 }
 
-/** How close to an area's outer edge a point outside it is still "next to" it: 20 m (66 ft). */
+/** How close to an area's outer edge a point outside it is still "next to" it: 66 ft (20 m). */
 export const FEDERAL_EDGE_M = 20;
 const METRES_PER_DEGREE = 111_195;
 
@@ -325,7 +325,7 @@ export function inFeature(point: readonly [number, number], feature: FederalFeat
   return inBox(point, boxOf(feature)) && inFederalArea(point, feature.geometry);
 }
 
-/** Metres from `point` to the nearest outer ring of `geometry` (local flat-earth, fine at 20 m). */
+/** Metres from `point` to the nearest outer ring of `geometry` (local flat-earth, fine at 66 ft (20 m)). */
 export function metresToOuterEdge(point: readonly [number, number], geometry: FederalFeature["geometry"]): number {
   const polygons = (geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates) as Ring[][];
   if (!Array.isArray(polygons)) return Infinity;

@@ -52,7 +52,7 @@ export function areaWords(area: FederalArea): string {
   return area.agency ? `${area.name}, managed by ${area.agency}` : `${area.name} (${FEDERAL_STYLE[area.kind].label})`;
 }
 
-/** A stop's warning without its name, for its own row and marker: "Inside ... – federal land: ..." ("Next to" within 20 m of an edge). */
+/** A stop's warning without its name, for its own row and marker: "Inside ... – federal land: ..." ("Next to" within 66 ft (20 m) of an edge). */
 export function stopWarningShort(area: FederalArea): string {
   return `${area.near ? "Next to" : "Inside"} ${areaWords(area)} – ${FEDERAL_STOP_WARNING}.`;
 }

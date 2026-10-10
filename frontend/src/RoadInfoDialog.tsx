@@ -33,6 +33,7 @@ import {
   streetViewPoint,
   infoHeading,
   infoSaid,
+  refreshedSaid,
   osmEditUrl,
   shownSections,
   shownSummary,
@@ -115,6 +116,9 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
   const federalSaid = federal ? stopWarningShort(federal) : "";
   const federalSaidRef = useRef(federalSaid);
   federalSaidRef.current = federalSaid;
+  // The request `state` holds the answer for: null while it is loading, so a late area is never
+  // said with the previous spot's road.
+  const stateFor = useRef<InfoRequest | null>(null);
   const [editing, setEditing] = useState(false);
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
@@ -138,6 +142,7 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
     }
     shown.current = request;
     headingRef.current?.focus();
+    stateFor.current = null;
     setState({ kind: "loading" });
     setSaid("");
     setEditing(false);
@@ -146,6 +151,7 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
     const controller = new AbortController();
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
+        stateFor.current = request;
         setState(next);
         // The spot's federal area, after the road, in the same status sentence (item 239).
         setSaid([infoSaid(next), federalSaidRef.current].filter(Boolean).join(" "));
@@ -182,8 +188,8 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
   // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
   // is said again with the area, so a screen reader hears it without reading on.
   useEffect(() => {
-    if (!request || state.kind === "loading") return;
-    setSaid([infoSaid(state), federalSaid].filter(Boolean).join(" "));
+    const again = refreshedSaid(request, stateFor.current, state, federalSaid);
+    if (again !== null) setSaid(again);
     // Only a change of the area's words: the answer's own arrival sets `said` above.
   }, [federalSaid]); // eslint-disable-line react-hooks/exhaustive-deps
 

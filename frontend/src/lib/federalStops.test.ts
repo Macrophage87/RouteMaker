@@ -37,6 +37,7 @@ import { formatMileRange } from "./format.ts";
 import { FEDERAL_BADGE, FEDERAL_HELP, federalPointText } from "./federalLegend.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
+import { infoSaid, refreshedSaid, type InfoRequest, type InfoState } from "./roadInfo.ts";
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const square = (x: number, y: number, size: number) => [
@@ -47,7 +48,7 @@ const square = (x: number, y: number, size: number) => [
   [x, y],
 ];
 
-// Small degrees near the equator, so a step of 0.001 degrees is about 111 m.
+// Small degrees near the equator, so a step of 0.001 degrees is about 365 ft (111 m).
 const AREAS: FederalData = {
   type: "FeatureCollection",
   features: [
@@ -194,14 +195,14 @@ test("a path named for a parkway is not a federal road (Suitland Parkway Trail)"
   assert.equal(parkwayRuns([entry(0, 900, "Suitland Parkway Southeast")], route, null).length, 1);
 });
 
-test("err on the side of flagging (238): a point within 20 m (66 ft) of an area's edge is next to it; farther is not", () => {
-  // Fort Somewhere is 0.020 to 0.022 degrees each way; 0.00015 degrees is about 17 m, 0.00025 about 28 m.
+test("err on the side of flagging (238): a point within 66 ft (20 m) of an area's edge is next to it; farther is not", () => {
+  // Fort Somewhere is 0.020 to 0.022 degrees each way; 0.00015 degrees is about 55 ft (17 m), 0.00025 about 92 ft (28 m).
   const right = federalAreaAt([0.02215, 0.021], AREAS);
   assert.deepEqual(right, { name: "Fort Somewhere", kind: "military", agency: null, near: true });
   assert.equal(federalAreaAt([0.021, 0.02215], AREAS)?.near, true, "past the top edge");
   assert.equal(federalAreaAt([0.022, 0.021], AREAS)?.name, "Fort Somewhere", "on the right edge itself");
-  assert.equal(federalAreaAt([0.02225, 0.021], AREAS), null, "just outside the 20 m");
-  assert.equal(federalAreaAt([0.021, 0.02225], AREAS), null, "just above the 20 m");
+  assert.equal(federalAreaAt([0.02225, 0.021], AREAS), null, "just outside the 66 ft (20 m)");
+  assert.equal(federalAreaAt([0.021, 0.02225], AREAS), null, "just above the 66 ft (20 m)");
   // Inside one area beats next to a more specific one.
   assert.equal(federalAreaAt([0.00305, 0.002], AREAS)?.name, "Big Reservation");
   assert.equal(stopWarning("Stop 1", right!), "Stop 1 is next to Fort Somewhere (Military installation) – federal land: check permit requirements for gathering here.");
@@ -245,7 +246,7 @@ test("a point along the line, for the stretch's quarter points", () => {
   assert.equal(pointAlong([], 10), null);
 });
 
-test("a short run, or one whose ends round to the same tenth, is said in feet, as describe.py range_words does", () => {
+test("a short run is said in feet by describe.py range_words' rule, and so is one whose ends round to the same tenth", () => {
   assert.equal(formatMileRange(1931, 2022), "1.2 mi (1.9 km), for 300 ft (91 m)");
   assert.equal(formatMileRange(1000, 1020), "0.6 mi (1.0 km), for 66 ft (20 m)");
   assert.equal(formatMileRange(3380, 5520), "2.1 to 3.4 mi (3.4 to 5.5 km)");
@@ -343,8 +344,25 @@ test("the map's markers say the warning in their name and title and wear the bad
 
 test("the road panel says the area again when the federal data comes after the road's answer", () => {
   const dialog = source("../RoadInfoDialog.tsx");
-  assert.match(dialog, /if \(!request \|\| state\.kind === "loading"\) return;\s+setSaid\(\[infoSaid\(state\), federalSaid\]\.filter\(Boolean\)\.join\(" "\)\);/);
+  assert.match(dialog, /const again = refreshedSaid\(request, stateFor\.current, state, federalSaid\);\s+if \(again !== null\) setSaid\(again\);/);
   assert.match(dialog, /\}, \[federalSaid\]\);/);
+  // `stateFor` is cleared with the loading state and set with the answer, for the request it answers.
+  assert.match(dialog, /stateFor\.current = null;\s+setState\(\{ kind: "loading" \}\);/);
+  assert.match(dialog, /\(next\) => \{\s+stateFor\.current = request;\s+setState\(next\);/);
+});
+
+test("the late area is said with its own spot's road only, never the previous spot's", () => {
+  const ready = { kind: "ready", info: { found: true, title: "Constitution Avenue Northwest", tier: 3, open: true, osm_way_id: 1, distance_m: 2, sections: [], attribution: [] } } as InfoState;
+  const first: InfoRequest = { point: [-77.04, 38.91], origin: "centre" };
+  const second: InfoRequest = { point: [-77.009, 38.8899], origin: "centre" };
+  const area = "Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here.";
+  assert.equal(refreshedSaid(first, first, ready, area), `${infoSaid(ready)} ${area}`);
+  // A new spot asked, its answer not in yet: `state` still holds the first spot's road.
+  assert.equal(refreshedSaid(second, first, ready, area), null);
+  assert.equal(refreshedSaid(second, null, { kind: "loading" }, area), null);
+  assert.equal(refreshedSaid(null, first, ready, area), null, "closed");
+  // The area gone (another ride type): the road alone.
+  assert.equal(refreshedSaid(first, first, ready, ""), infoSaid(ready));
 });
 
 test("the road panel names the federal area at the spot, on a Mass Ride (the keyboard's way, I at the map's center)", () => {
@@ -364,7 +382,7 @@ test("the description component lists the lines under their heading, and copies 
   const app = source("../App.tsx");
   assert.match(app, /federalRouteLines\(shown, routedPoints, federalData\)/);
   // One line alone ("could not be checked") is a paragraph, not a heading over an empty list.
-  assert.match(component, /federal\.length === 1 \? \(\s*\/\/[^\n]*\n\s*<p className="federal-route federal-unchecked" hidden=\{hidden\}>/);
+  assert.match(component, /federal\[0\] === FEDERAL_UNCHECKED \? \(\s*\/\/[^\n]*\n\s*<p className="federal-route federal-unchecked" hidden=\{hidden\}>/);
   assert.match(app, /<GpxPanel[\s\S]*?federal=\{federalRoute\}/);
 });
 

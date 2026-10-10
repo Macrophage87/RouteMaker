@@ -22,6 +22,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
+import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { ROUTE_FOLDS, copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import { Fold } from "./lib/sidebarParts.ts";
@@ -139,8 +140,8 @@ export function RouteDescription({
   // Named in the list's own words, before the steps (item 239): a reader who cannot point at the map's
   // shading hears which stops are on federal land and which stretches are on a parkway.
   const federalBlock = (hidden: boolean) =>
-    federal.length === 1 ? (
-      // One line alone: "Federal land could not be checked for this route."
+    federal[0] === FEDERAL_UNCHECKED ? (
+      // "Federal land could not be checked for this route.": one line, not a heading over a list.
       <p className="federal-route federal-unchecked" hidden={hidden}>
         {federal[0]}
       </p>

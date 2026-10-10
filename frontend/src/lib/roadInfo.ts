@@ -312,6 +312,23 @@ export function infoSaid(state: InfoState): string {
   return `${info.title}${stress ? `: ${stress}` : ""}.${closed}`;
 }
 
+/**
+ * The status sentence said again when the spot's federal area changes after the road's answer
+ * (a Mass Ride whose federal data comes late; item 239), or null when there is nothing to say
+ * again: no request, an answer still loading, or an answer that belongs to an earlier request
+ * (`stateFor`, the request `state` was fetched for), whose road must not be said with the new
+ * spot's area.
+ */
+export function refreshedSaid(
+  request: InfoRequest | null,
+  stateFor: InfoRequest | null,
+  state: InfoState,
+  federalSaid: string,
+): string | null {
+  if (!request || stateFor !== request || state.kind === "loading") return null;
+  return [infoSaid(state), federalSaid].filter(Boolean).join(" ");
+}
+
 /** Whether a key press asks for the road at the centre: I, unmodified, on the map itself. */
 export function isInfoKey(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): boolean {
   return event.key.toLowerCase() === INFO_KEY && !event.ctrlKey && !event.metaKey && !event.altKey;
