@@ -1037,6 +1037,14 @@ class TestRoadsByWay:
         road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
         assert (road.speed_mph, road.default_speed_mph, road.urban) == (None, 55.0, False)
 
+    def test_one_missing_cost_column_is_enough_to_fall_back(self, segment_schemas) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN road_urban")
+        junctions._has_cost_columns_seen = False
+        assert not junctions.has_cost_columns(live)
+        junctions._has_cost_columns_seen = False
+
     def test_a_table_before_the_cost_columns_reads_none(self, segment_schemas) -> None:
         live, _staging = segment_schemas
         with connection.cursor() as cursor:

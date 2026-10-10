@@ -1236,7 +1236,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
 - `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
   America/New_York; federal holidays count as weekend), `weekday_offpeak` or
   `night` (21:00-07:00 on any day, OWNER-DECISIONS 469c; it routes on the
-  standard graph, as a weekday does); absent, the setting of the moment. It
+  standard graph, as a weekday does, so a weekend night does not count the
+  weekend's daytime closures, such as Beach Drive, as paths); absent, the
+  setting of the moment. Off-peak's sample instant is 20:30, before night
+  begins (it was 21:00), so a closure ending at 21:00 now counts as off-peak
+  car-free. It
   sets Valhalla's `date_time` (the next Saturday 09:00, Tuesday 08:00, Tuesday
   12:00 or Tuesday 22:00), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
@@ -1944,7 +1948,7 @@ avoid, though rare").
 | Severe tier speed factors (LTS 4, Avoid) | 1.1 / 1.2 / 1.3 at 40 / 45 / above | 1.2 / 1.4 / 1.6 | |
 | Severe tier lane factors | 1.1 / 1.25 | 1.25 (two lanes a direction) / 1.6 (three or more) | |
 | Rural factor (45 mph and over) | stopped side only | also a left off a severe road | |
-| Unposted speed (469) | none | the jurisdiction's statutory default, as the classifier reads it (`road_default_speed_mph`): the District's 20 mph, Maryland's and Virginia's urban 25-35 mph by class, the rural 50-55 mph; any tier, for cost only, never said | on a table built before that column, `UNKNOWN_SPEED_SEVERE_MPH` 45 mph for an LTS 4 / Avoid road (468's stopgap) |
+| Unposted speed (469, 469a) | none | the jurisdiction's statutory default (`stress.statutory_default_mph`, stored as `road_default_speed_mph`): the District 20 mph (alleys 15); Maryland 30 in an urban area (35 divided), 50 elsewhere (55 divided); Virginia 25 in an urban area, 55 elsewhere, 35 unpaved; where the state is unknown, the classifier's assumption. Any tier, for cost only, never said. An assumed speed inside an urban area never adds the rural factor | on a table built before that column, `UNKNOWN_SPEED_SEVERE_MPH` 45 mph for an LTS 4 / Avoid road (468's stopgap) |
 | `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
 | `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
 | `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 2,900 | 0.55 [0.88] |
@@ -1961,12 +1965,26 @@ not measured ones: the literature's peak-hour figure is a small Portland wearabl
 segment columns, `road_default_speed_mph` and `road_urban`, arrive with the next rebuild;
 until then an unposted LTS 4 road is read at 45 mph and every night junction at x0.85.
 
-Owner 469 also asks that the classifier read the same statutory defaults. It already does in
-the District (20 mph) and in Maryland's and Virginia's urban areas (OWNER-DECISIONS 112's
-MDOT figures, 25-35 mph by class). Outside urban areas it reads one table for both states
-(unclassified and tertiary 50 mph, secondary, primary and trunk 55), where the statutes differ:
-Maryland is 50 undivided and 55 divided, Virginia 55 on most highways. Changing it moves some
-rural tiers, so it is left for the owner to confirm and is not in this change.
+The factor is applied before the colour, so a rush-hour plan has more orange and red
+junctions and refines more often (the red trigger reads the factored cost), and a night plan
+fewer. A signalised left stays at the box-turn cap at every hour (468: "box-turn cap at
+signals"), so rush hour never lifts one to orange.
+
+The statutory sources (469, 469a): the District's 20 mph default since 2020-06-01 (DDOT,
+https://ddot.dc.gov/page/twenty-mph-20-mph-default-speed-limit-frequently-asked-questions);
+Maryland Transportation 21-801.1 (MDOT SHA,
+https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295); Code of Virginia 46.2-870
+to 46.2-878 and 46.2-1300 (VDOT,
+https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/). A business or
+residence district is read as inside a Census urban area, and divided as a carriageway of a
+divided road (`routemaker.divided`).
+
+Owner 469 also asks that the classifier read the same statutory defaults. It does in the
+District (20 mph). In Maryland's and Virginia's urban areas it reads OWNER-DECISIONS 112's MDOT
+imputation by class (25-35 mph), which is not the statute; outside them it reads one table for
+both states (unclassified and tertiary 50 mph, secondary, primary and trunk 55), where the
+statutes differ. Moving the classifier to the statutory figures changes tiers on many roads,
+so it is left for the owner to confirm and is not in this change; only junction cost reads them.
 
 `debug_junctions: true` on a route request adds `junctions_debug`, every junction event with
 its cost, calm miles, severity, ride-time factor and whether the speed was assumed. The

@@ -1438,7 +1438,32 @@ class TestTimeOfDay:
         assert m.assess(j, when="weekday_rush") is None
         assert cost(crossed=(QUIET,), control=Control.STOP) == m.NEIGHBOURHOOD_STOP_FT
 
+    def test_the_group_reading_carries_the_factor(self) -> None:
+        j = junction(crossed=(Road(4, urban=True),), control=Control.STOP)
+        event = m.assess(j, group=True, when="night")
+        assert event.time_factor == 0.5 and event.assumed_speed is True
+
+    def test_a_signalised_left_stays_at_the_box_turn_at_rush_hour(self) -> None:
+        """468: the box turn caps a signalised left at any hour, so rush hour cannot
+        lift it to orange."""
+        big = Road(4, speed_mph=45, lanes=3)
+        j = junction(movement=Movement.LEFT, incoming=big, control=Control.SIGNAL)
+        assert m.assess(j).cost_ft == m.BOX_TURN_CAP_FT
+        event = m.assess(j, when="weekday_rush")
+        assert event.cost_ft == m.BOX_TURN_CAP_FT and event.severity is None
+
     def test_the_cap_holds_at_rush_hour(self) -> None:
         wild = Road(5, speed_mph=60, lanes=4)
         event = m.assess(junction(movement=Movement.LEFT, outgoing=wild), when="weekday_rush")
         assert event.cost_ft == m.MAX_CROSSING_FT
+
+
+def test_an_assumed_speed_in_town_is_not_read_as_rural() -> None:
+    """A statutory default of 45 mph or more inside an urban area says nothing
+    about the road being rural; a posted one, or one outside, still does."""
+    stop = dict(control=Control.STOP)
+    town = cost(crossed=(Road(4, default_speed_mph=45, urban=True),), **stop)
+    country = cost(crossed=(Road(4, default_speed_mph=45, urban=False),), **stop)
+    posted = cost(crossed=(Road(4, speed_mph=45, urban=True),), **stop)
+    assert country == pytest.approx(min(town * m.RURAL_FACTOR, m.MAX_CROSSING_FT))
+    assert posted == country

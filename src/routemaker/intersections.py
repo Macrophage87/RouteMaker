@@ -443,7 +443,9 @@ def scale(road: Road, stopped_side: bool) -> float:
             factor *= _band(speed, SEVERE_SPEED_FACTORS, SEVERE_SPEED_FACTOR_FASTER)
         else:
             factor *= _band(speed, SPEED_FACTORS, SPEED_FACTOR_FASTER)
-        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH:
+        # A speed the law assumes is no sign of a rural road inside a town.
+        rural = road.speed_mph is not None or road.urban is not True
+        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH and rural:
             factor *= RURAL_FACTOR
     if road.lanes is not None:
         if hard:
@@ -701,6 +703,10 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     # weekend and at night.
     factor = time_factor(when, about.urban)
     cost = min(cost * factor, MAX_CROSSING_FT)
+    if kind == "left_from" and junction.control is Control.SIGNAL:
+        # The box turn is the way out at any hour (468: "box-turn cap at
+        # signals"), so rush hour cannot lift a signalised left above it.
+        cost = min(cost, BOX_TURN_CAP_FT)
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
     reason = reason_of(kind, about, junction.control)

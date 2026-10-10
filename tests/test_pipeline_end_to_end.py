@@ -4360,13 +4360,14 @@ def _segment_cost_columns(schema: str) -> dict[int, tuple]:
 
 def test_an_unposted_road_stores_its_statutory_default_and_urban_flag(states) -> None:
     """OWNER-DECISIONS 469, 469d-e: the segment row keeps the speed the classifier
-    assumed (an urban Maryland or Virginia secondary road's 35 mph here) and
+    assumed (the fixture's urban Virginia road takes the statutory 25 mph of a
+    business or residence district, Code of Virginia 46.2-874) and
     whether the way is in an urban area, for the junction model; a posted road
     keeps no default."""
     road = _one_road("secondary", name="Test Road")
     context, _ = run_pipeline(road, road.parent, skip=NOT_SWAPPED)
-    assert context.stress_by_way[100].default_speed_mph == 35
-    assert _segment_cost_columns(context.staging_schema)[100] == (35, True)
+    assert context.stress_by_way[100].default_speed_mph == 25
+    assert _segment_cost_columns(context.staging_schema)[100] == (25, True)
     road = _one_road("secondary", name="Test Road", maxspeed="35 mph")
     rural, _ = run_pipeline(road, road.parent, urban=(), skip=NOT_SWAPPED)
     assert _segment_cost_columns(rural.staging_schema)[100] == (None, False)

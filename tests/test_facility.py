@@ -151,6 +151,10 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         ("no @ (00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak", "night"}),
         # Closed to cars overnight only: car-free at night alone (OWNER-DECISIONS 469c).
         ("no @ (22:00-06:00)", {"night"}),
+        # Night is every night: weekday nights alone are not it.
+        ("no @ (Mo-Fr 22:00-06:00)", set()),
+        # Off-peak's evening instant is 20:30, before night begins at 21:00.
+        ("no @ (Mo-Fr 07:00-21:00)", {"weekday_rush", "weekday_offpeak"}),
         # One unreadable branch makes the value unreadable, in either order
         # and whatever the readable one covers (correctness review, round 3, R19).
         ("no @ (Sa-Su); no @ (sunset-sunrise)", set()),

@@ -231,12 +231,14 @@ class TestIntersectionsInTheAnswer:
         fake = world()
         fake.locate = locate_answer(signal=True)
         router(fake)
-        body = post(client, {**good_body(), "debug_junctions": True}).json()
+        body = post(client, {**good_body(), "debug_junctions": True, "when": "weekday_rush"}).json()
         assert body["intersections"] == []
         (row,) = body["junctions_debug"]
         assert row["control"] == "signal" and row["flagged"] is False and row["severity"] is None
-        assert row["time_factor"] in (0.85, 1.0, 1.25)  # the ride time is the moment's
-        assert row["cost_ft"] == round(600 * row["time_factor"])
+        assert row["time_factor"] == 1.25
+        assert row["cost_ft"] == 750
+        assert row["calm_mi"] == pytest.approx(row["cost_ft"] / 5280, abs=0.001)
+        assert row["calm_km"] == pytest.approx(row["calm_mi"] * 1.609344, abs=0.002)
         assert row["text"].endswith(" calm km)") and " calm mi (" in row["text"]
         assert row["assumed_speed"] is False
 
