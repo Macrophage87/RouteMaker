@@ -1092,9 +1092,30 @@ class TestRouterAlternates:
         refine.refine(trip_of("o", 4.0), self.ctx())
         (ask,) = [d for alt, d in deadlines if alt]
         (first_round,) = [d for alt, d in deadlines if not alt][:1]
-        assert refine.ALTERNATES_ROUND_RESERVE_S == refine.REFINE_ROUND_MIN_S
+        assert refine.ALTERNATES_ROUND_RESERVE_S > refine.REFINE_ROUND_MIN_S
         assert first_round.at - ask.at == pytest.approx(refine.ALTERNATES_ROUND_RESERVE_S)
         assert ask.at <= now + refine.REFINE_BUDGET_S - refine.REFINE_ROUND_MIN_S + 0.5
+
+    def test_an_ask_that_times_out_at_its_end_still_leaves_a_round(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        calm = analysis("c", "1" * 50, cost_s=4100.0, shift=200)
+        world = AlternatesWorld(monkeypatch, {"o": orig, "c": calm}, [trip_of("c", 5.0)] * 3, [])
+        clock = routing.clock
+        skew = [0.0]
+        monkeypatch.setattr(routing, "clock", lambda: clock() + skew[0])
+        call = world.call
+
+        def spy(variant, endpoint, payload, deadline):
+            if "alternates" in payload:
+                # The router answers nothing until the ask's own deadline has passed.
+                skew[0] = deadline.at - clock() + 0.05
+                raise routing.DeadlineExceeded("timed out")
+            return call(variant, endpoint, payload, deadline)
+
+        monkeypatch.setattr(routing, "_call", spy)
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert info["alternates"]["limited"] == "time"
+        assert info["rounds"] >= 1 and kept["legs"][0]["shape"] == "c"
 
     def test_not_asked_when_only_a_round_is_left(self, monkeypatch) -> None:
         orig = analysis("o", self.BUSY)

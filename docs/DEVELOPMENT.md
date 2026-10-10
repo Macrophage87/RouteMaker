@@ -2024,8 +2024,8 @@ Where the plan already asked for them with the same request (the hills slider's
 avoid half, `Context.router_trips`) those are ranked and none is asked again, and
 where that ask timed out none is asked at all; a route the target fitting
 (`_fit_target`, `_past_target`) asked for again with another costing gets the
-search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (5 s,
-a round's least) before the search's own end, so at least one round is always
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (6 s,
+a round's least and a second) before the search's own end, so at least one round is always
 left (the rounds were the whole calm search before 435), and the ask is not
 started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
 router's ask is held to its own `WEEKEND_TIMEOUT_S`.

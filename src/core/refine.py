@@ -803,9 +803,11 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
 ROUTER_ALTERNATES = 3
 # The ask and its readings stop this long before the search's own end, so that at
 # least one exclusion round is always left the time to run (the rounds were the
-# whole calm search before 435); and the ask is not started with less than
-# ALTERNATES_MIN_S left before that.
-ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S
+# whole calm search before 435): a round's least and a second over, so an ask that
+# times out at its own end still leaves one (re-check, correctness); and the ask is
+# not started with less than ALTERNATES_MIN_S left before that. Loops never ask:
+# their request has three locations or more.
+ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S + 1.0
 ALTERNATES_MIN_S = 1.0
 
 

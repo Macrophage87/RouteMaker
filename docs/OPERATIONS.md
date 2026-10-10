@@ -424,7 +424,7 @@ Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for
 router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
 7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
 search's measurements) and reads each (a trace and its `/locate`s): up to about 30
-calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (5 s)
+calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (6 s)
 before the search's own 14 s, so a round is always left, and a plan whose hills
 slider already asked for them reuses them. Not yet measured from the live router:
 after the deploy that carries it, compare plan times at 100 with the figures below,
