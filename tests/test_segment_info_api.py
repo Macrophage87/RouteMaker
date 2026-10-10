@@ -186,6 +186,7 @@ class TestAnswer:
             "found": False,
             "title": "No road here",
             "tier": None,
+            "step": None,
             "open": None,
             "osm_way_id": None,
             "distance_m": None,
