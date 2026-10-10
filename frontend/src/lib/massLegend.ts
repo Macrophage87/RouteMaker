@@ -173,7 +173,9 @@ export function CapacityStats({
   corkers?: { label: string; text: string } | null;
 }): ReactElement | null {
   const summary = capacitySummary(route.stress_spans);
+  // No riders figure (a table without the column): the panel keeps its older look, with no figures.
   if (!summary || summary.minRpm === null) return null;
+  const corkerTerm = corkers ? h("div", { key: "corkers", className: "capacity-corkers" }, h("dt", null, corkers.label), h("dd", null, corkers.text)) : null;
   const pair = capacityPair(summary, route.profile?.flow);
   const term = (line: CapacityLine, className: string) =>
     h("div", { key: line.key, className }, h("dt", null, capitalise(line.label)), h("dd", null, line.text));
@@ -186,7 +188,7 @@ export function CapacityStats({
       { className: "stats capacity-stats" },
       ...narrowestLines(pair).map((line) => term(line, `capacity-narrowest ${line.key}`)),
       ...typicalLines(pair).map((line) => term(line, `capacity-typical ${line.key}`)),
-      corkers ? h("div", { key: "corkers", className: "capacity-corkers" }, h("dt", null, corkers.label), h("dd", null, corkers.text)) : null,
+      corkerTerm,
     ),
     summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
   );

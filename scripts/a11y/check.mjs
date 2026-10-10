@@ -1364,14 +1364,16 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.key("End", "End", 35);
   await sleep(100);
   check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
+  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corkers held at once when the head reaches it", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed | 2 at 1 junction" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed | 3 at 2 junctions" && tables.crossHeads.at(-1) === "Corkers held at once when the head reaches it", JSON.stringify(tables));
   // The anticipated ride size (PLAN 128, 129, 139): a slider in the dials, named with its unit and read as riders; moving it
   // redraws the corker load and the ride's corkers, the link carries it, and nothing is planned again (it never reaches the API).
   const sizeAt = await p.eval(`(() => { const i = [...document.querySelectorAll('.dial input[type=range]')].find((x) => document.getElementById(x.getAttribute('aria-labelledby'))?.textContent === 'Anticipated ride size (riders)'); if (!i) return null; i.dataset.probe = 'ride-size'; return { min: i.min, max: i.max, step: i.step, value: i.value }; })()`);
   const sizeAx = await axNode(p, "input[data-probe=ride-size]");
   check("mass dials: the ride size slider is named with its unit and says riders, 100 to 2,000 in steps of 50, 500 by default",
     JSON.stringify(sizeAt) === JSON.stringify({ min: "100", max: "2000", step: "50", value: "500" }) && sizeAx?.role === "slider" && sizeAx.name === "Anticipated ride size (riders)" && sizeAx.valuetext === "500 riders", JSON.stringify({ sizeAt, sizeAx }));
-  const figure = await p.eval("document.querySelector('.capacity-corkers')?.textContent ?? ''");
-  check("mass summary: the route's figures list the corkers for the ride", figure === "CorkersAbout 8 for 500 riders", figure);
+  const headline = await p.eval("document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? ''");
+  check("mass chart: the corker summary gives the ride's corkers, the most held at once times 2", headline.includes("About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead."), headline);
   const plannedBefore = p.routeRequests;
   await p.eval("document.querySelector('input[data-probe=ride-size]').focus(); true");
   for (let i = 0; i < 10; i += 1) {
@@ -1381,11 +1383,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(3000);
   const resized = await p.eval("({ hash: location.hash, figure: document.querySelector('.capacity-corkers')?.textContent ?? '', summary: document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? '' })");
   const resizedAx = await axNode(p, "input[data-probe=ride-size]");
-  check("mass dials: ten steps right make 1,000 riders; the corker load and the ride's corkers follow, the link carries riders=1000, and nothing is planned again",
-    resizedAx?.valuetext === "1,000 riders" && /riders=1000/.test(resized.hash) && resized.figure === "CorkersAbout 12 for 1,000 riders" && resized.summary.includes("At 1,000 riders the group is about 3,110 ft (950 m) long") && resized.summary.includes("The most held at once is 6 corkers holding 3 junctions") && p.routeRequests === plannedBefore,
+  check("mass dials: ten steps right make 1,000 riders; the corker load and the ride's corkers follow in the summary, the link carries riders=1000, and nothing is planned again",
+    resizedAx?.valuetext === "1,000 riders" && /riders=1000/.test(resized.hash) && resized.summary.includes("About 12 corkers for the ride") && resized.summary.includes("At 1,000 riders the group is about 3,110 ft (950 m) long") && resized.summary.includes("The most held at once is 6 corkers holding 3 junctions") && p.routeRequests === plannedBefore,
     JSON.stringify({ valuetext: resizedAx?.valuetext, ...resized, plans: p.routeRequests - plannedBefore }));
-  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
-  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corkers held at once when the head reaches it", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed | 2 at 1 junction" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed | 3 at 2 junctions" && tables.crossHeads.at(-1) === "Corkers held at once when the head reaches it", JSON.stringify(tables));
   await p.close();
 }
 {
@@ -1393,7 +1393,6 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const unchecked = JSON.parse(JSON.stringify(S_MASS));
   unchecked.profile.crossings = null;
   unchecked.profile.crossings_complete = null;
-  unchecked.intersections = [];
   const p = await open({ route: unchecked, hash: hashFor("mass-ride", 0), junctions: false });
   const none = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { plot: c?.querySelector('.pc-corker-none')?.textContent, area: !!c?.querySelector('.pc-corker-area'), legend: [...(c?.querySelectorAll('.pc-legend li') ?? [])].map((x) => x.textContent), summary: c?.querySelector('.pc-summary')?.textContent, figure: !!document.querySelector('.capacity-corkers') }; })()`);
   const noneAx = await axNode(p, ".pc-chart-corkers .pc-plot");
@@ -1404,11 +1403,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
 }
 {
   // A stretch not checked for intersections: the NOT CHECKED block on the corker load, in the key, and the count "at least".
-  const gap = JSON.parse(JSON.stringify(S_MASS));
+  // On a table with the riders column, so the route's figures (and their corker line) are shown.
+  const gap = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
   gap.profile.unchecked = [{ from_m: 2600, to_m: 3800 }];
   const p = await open({ route: gap, hash: hashFor("mass-ride", 0), junctions: false });
   const block = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { blocks: [...c.querySelectorAll('.pc-unchecked .pc-unchecked-text')].map((x) => x.textContent), hatch: !!c.querySelector('.pc-unchecked rect[fill^="url(#"]'), legend: [...c.querySelectorAll('.pc-legend li')].map((x) => x.textContent), summary: c.querySelector('.pc-summary')?.textContent ?? '', figure: document.querySelector('.capacity-corkers')?.textContent ?? '' }; })()`);
-  check("mass chart, a stretch not checked: a hatched NOT CHECKED block on the corker load, named in the key, and the ride's corkers given as at least, with the reason",
+  check("mass chart, a stretch not checked: a hatched NOT CHECKED block on the corker load, named in the key, and the ride's corkers given as at least, with the reason, in the summary and the route's figures",
     JSON.stringify(block.blocks) === JSON.stringify(["NOT CHECKED"]) && block.hatch && block.legend.includes("Hatched grey: not checked for intersections (? where narrow)") && block.summary.includes("At least about 8 corkers for the ride") && block.figure === "CorkersAt least about 8 for 500 riders (may be low: part of the route was not checked for intersections)",
     JSON.stringify(block));
   await p.close();
