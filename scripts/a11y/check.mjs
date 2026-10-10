@@ -32,13 +32,15 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, init = "" } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles, admin });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
+  // A script run before the app starts (the Share section stubs or removes navigator.share).
+  if (init) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: init });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
@@ -2852,12 +2854,54 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 
+// ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
+{
+  // No share sheet: no Share button, and Copy link is still there.
+  const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
+  const none = await p.eval("({ share: [...document.querySelectorAll('.route-actions button')].some((e) => /^Share/.test(e.textContent.trim())), copy: [...document.querySelectorAll('.route-actions button')].some((e) => e.textContent.trim() === 'Copy link') })");
+  check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
+  await p.close();
+}
+{
+  // A stubbed share sheet: window.__shareMode says how it answers ("ok", "abort" or "fail").
+  const stub = `window.__shared = []; window.__shareMode = "ok";
+    Object.defineProperty(Navigator.prototype, "share", { configurable: true, value: function (d) { window.__shared.push(JSON.parse(JSON.stringify(d)));
+      return window.__shareMode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", window.__shareMode === "abort" ? "AbortError" : "NotAllowedError")); } });
+    Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
+  const p = await open({ init: stub });
+  await p.eval("(() => { const all = [...document.querySelectorAll('.route-actions button')]; const c = all.find((e) => e.textContent.trim() === 'Copy link'); const s = all.find((e) => e.textContent.trim() === 'Share'); if (c) c.id = '__copy'; if (s) s.id = '__share'; return true; })()");
+  const ax = await axNode(p, "#__share");
+  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, after: document.getElementById('__copy')?.nextElementSibling === s }; })()");
+  check("share: a button named Share route, right after Copy link, 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box?.after && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  await p.eval("document.getElementById('__copy').focus(); true");
+  await p.tab();
+  check("share: the next Tab stop after Copy link", await p.eval("document.activeElement?.id === '__share'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.enter();
+  await sleep(600);
+  const sent = await p.eval("({ shared: window.__shared, href: location.href })");
+  const one = sent.shared[0] ?? {};
+  check("share: Enter hands the sheet this page's link (Copy link's), the title, and a plain US-first text", sent.shared.length === 1 && one.url === sent.href && /#p=/.test(one.url) && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
+  const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '' }))()";
+  const afterOk = await p.eval(status);
+  check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
+  await p.eval("window.__shareMode = 'abort'; document.getElementById('__share').click(); true");
+  await sleep(600);
+  const afterAbort = await p.eval(status);
+  check("share: closing the sheet (AbortError) is silent", afterAbort.spoken === "" && afterAbort.shown === "", JSON.stringify(afterAbort));
+  await p.eval("window.__shareMode = 'fail'; document.getElementById('__share').click(); true");
+  await sleep(600);
+  const afterFail = await p.eval(status);
+  const polite = await p.eval("document.querySelector('.route-actions [role=status]')?.getAttribute('aria-live') !== 'assertive'");
+  check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite, JSON.stringify({ afterFail, polite }));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 466;
+const EXPECTED = 473;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

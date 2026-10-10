@@ -145,6 +145,7 @@ import {
   type ViewCause,
 } from "./lib/sidebar.ts";
 import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
+import { SHARE_LABEL, SHARE_NAME, canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
@@ -342,6 +343,8 @@ export function App() {
   const [linkSaid, setLinkSaid] = useState("");
   const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
+  // Share (owner, 2026-10-10; lib/share.ts): on the page only where the browser has a share sheet.
+  const [canShare] = useState(() => canShareLink(navigator, window.location.href));
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -1183,6 +1186,22 @@ export function App() {
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
+    }, 150);
+  };
+  // "Share": the same link as Copy link, to the phone's share sheet. The location line describes the button,
+  // so it is read before the sheet opens. Nothing is said when the sheet opened or the rider closed it;
+  // a failure is said, offering Copy link. It shares the said lines with Copy link, so the last press speaks.
+  const shareRoute = async () => {
+    if (!shown) return;
+    const press = ++linkPresses.current;
+    setLinkSaid("");
+    setLinkSpoken("");
+    const content = shareContent(linkToCopy(window.location, points, preset, dials), shown.distance_m, presetLabel(preset));
+    const said = shareSaidFor(await shareLink(navigator, content));
+    if (!said) return;
+    window.setTimeout(() => {
+      if (press === linkPresses.current) setLinkSaid(said);
+      if (press === linkPresses.current) setLinkSpoken(said);
     }, 150);
   };
 
@@ -2049,6 +2068,11 @@ export function App() {
               <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
                 {COPY_LINK}
               </button>
+              {canShare && (
+                <button type="button" className="secondary" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+                  {SHARE_LABEL}
+                </button>
+              )}
               <span role="status" className="visually-hidden">
                 {linkSpoken}
               </span>
