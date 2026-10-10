@@ -686,6 +686,20 @@ def test_the_stress_penalty_keeps_an_open_untagged_road_open(tier) -> None:
     assert _bike_access(marked) == ("true", "true")
 
 
+@pytest.mark.parametrize("tier", ["1", "2", "3", "4"])
+@pytest.mark.parametrize("name", sorted(CLASS_BARRED_WAYS))
+def test_a_half_step_never_opens_a_class_upstream_bars(name, tier) -> None:
+    # `rm:stress_half` (461a): the half step's marks are a cost, never a grant.
+    marked = {**CLASS_BARRED_WAYS[name], "rm:stress_tier": tier, "rm:stress_half": "yes"}
+    assert _bike_access(marked) == ("false", "false")
+
+
+@pytest.mark.parametrize("tier", ["1", "2", "3", "4"])
+def test_a_half_step_keeps_an_open_untagged_road_open(tier) -> None:
+    marked = {"highway": "residential", "rm:stress_tier": tier, "rm:stress_half": "yes"}
+    assert _bike_access(marked) == ("true", "true")
+
+
 def test_the_border_guard_does_not_delete_the_border_node() -> None:
     """The guard exists so a state crossing stays passable. Written as `error()`
     it deleted the crossing node instead, which is the one outcome its comment

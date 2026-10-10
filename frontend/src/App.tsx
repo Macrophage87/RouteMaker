@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { SuggestionReview } from "./SuggestionReview.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_HELP, ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
@@ -12,7 +13,7 @@ import { requestRoute, type RouteError, type RouteResponse, type RouteResult } f
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
-import { decodePlan, encodePlan } from "./lib/planHash.ts";
+import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -30,7 +31,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
-import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
+import { announceHow, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   BEST_ORDER_LABEL,
@@ -54,6 +55,8 @@ import {
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
+import { AvoidNotice } from "./AvoidNotice.tsx";
+import { avoidItems, avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
 import { chartKind, corkerFigure, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -143,6 +146,7 @@ import {
   type ViewCause,
 } from "./lib/sidebar.ts";
 import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
+import { SHARE_LABEL, SHARE_NAME, canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
@@ -161,6 +165,11 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
+import { AppStatusBar, InstallOffer, KeptRoutes, useAppStatus } from "./InstallableApp.tsx";
+import { isStandalone } from "./lib/installOffer.ts";
+import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
+import { KEEPING_SAID, KEEP_LABEL, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -190,6 +199,8 @@ type Status =
   | { kind: "confirm"; error: RouteError };
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+// A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
+const OPEN_AT = atFromHash(window.location.hash);
 
 const NARROW = "(max-width: 720px)";
 
@@ -242,15 +253,19 @@ export function App() {
   const [choice, setChoice] = useState(0);
   // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
   const [chosen, setChosen] = useState(false);
+  // The way round an Avoid-rated junction shown in place of the planned route (OWNER-DECISIONS 335).
+  const [aroundAvoid, setAroundAvoid] = useState(false);
   useEffect(() => {
     setChoice(0);
     setChosen(false);
+    setAroundAvoid(false);
   }, [answer]);
   const choose = useCallback((index: number) => {
     setChoice(index);
     setChosen(true);
+    setAroundAvoid(false);
   }, []);
-  const route = candidateRoute(answer, choice);
+  const route = shownRoute(answer, choice, aroundAvoid);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   // Whether that route was planned as a loop the rider chose, recorded with its
   // points: during a replan the toggle may already say otherwise, and the GPX
@@ -336,6 +351,8 @@ export function App() {
   const [linkSaid, setLinkSaid] = useState("");
   const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
+  // Share (owner, 2026-10-10; lib/share.ts): on the page only where the browser has a share sheet.
+  const [canShare] = useState(() => canShareLink(navigator, window.location.href));
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -432,9 +449,24 @@ export function App() {
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
   const scheduler = useRef<RouteScheduler<Plan> | null>(null);
+  // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
+  // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
+  const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
+  const keptNotice = useRef<string | null>(null);
+  // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
+  // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
+  const routedKey = useRef<string | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
-      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials }),
+      send: async (plan) => {
+        const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
+        keptShown.current = null;
+        if (result.ok || result.error.kind !== "network") return result;
+        const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials)).catch(() => undefined);
+        if (!kept) return result;
+        keptShown.current = kept;
+        return { ok: true, route: kept.answer };
+      },
       onState: (state: SchedulerState) => {
         if (state.kind === "in-flight" || state.kind === "pending") setStatus({ kind: "loading" });
         else if (state.kind === "waiting") setStatus({ kind: "waiting", seconds: state.seconds });
@@ -444,7 +476,13 @@ export function App() {
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
+          routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials);
           setStatus({ kind: "ok" });
+          const kept = keptShown.current;
+          const was = keptNotice.current;
+          keptNotice.current = kept ? offlineRouteNotice(kept) : null;
+          if (kept) setNotice(keptNotice.current);
+          else if (was) setNotice((n) => (n === was ? null : n));
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
           setStatus({ kind: "confirm", error: result.error });
@@ -583,6 +621,22 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
+  // same region; shown at the top of the planner (InstallableApp.tsx).
+  const appStatus = useAppStatus(riding, announce);
+  // Bumped when a route is kept, so Settings' list reads the store again.
+  const [keptVersion, setKeptVersion] = useState(0);
+  const [keeping, setKeeping] = useState(false);
+  const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
+  const keepAbort = useRef<AbortController | null>(null);
+  // Keep for offline: the installed app's (465a) and, by the owner's choice of 2026-10-10, a tab's too (keepOffered is the one switch).
+  const keepShown = keepOffered(isStandalone());
+  // Once a while after load (not at it: the store's first open takes about a second), what a keep or a
+  // removal cut short left unnamed is deleted (offlineKeep.ts sweepKept).
+  useEffect(() => {
+    const timer = window.setTimeout(() => void sweepKept(), 20_000);
+    return () => window.clearTimeout(timer);
+  }, []);
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
   // switch pressed, which is always on the page.
@@ -1179,6 +1233,34 @@ export function App() {
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
+  // "Share": the same link as Copy link, to the phone's share sheet. The location line describes the button,
+  // so it is read before the sheet opens. Nothing is said when the sheet opened or the rider closed it;
+  // a failure is said, offering Copy link. It shares the said lines with Copy link, so the last press speaks.
+  // A press while the sheet is open is skipped. shareLink is called before any await, so the press's user
+  // activation still holds. The distance is the route shown, so it is left out while a re-plan is pending
+  // (the link carries the current points).
+  const sharing = useRef(false);
+  const shareRoute = async () => {
+    if (!shown || sharing.current) return;
+    sharing.current = true;
+    const press = ++linkPresses.current;
+    setLinkSaid("");
+    setLinkSpoken("");
+    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetLabel(preset));
+    const outcome = shareLink(navigator, content);
+    let said: string;
+    try {
+      said = shareSaidFor(await outcome);
+    } finally {
+      sharing.current = false;
+    }
+    if (!said) return;
+    window.setTimeout(() => {
+      if (press === linkPresses.current) setLinkSaid(said);
+      if (press === linkPresses.current) setLinkSpoken(said);
+    }, 150);
+  };
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
@@ -1186,11 +1268,53 @@ export function App() {
     if (!shown) return;
     startRideGesture(prefs);
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
+    // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
+    // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
+    // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
+    keepAbort.current?.abort();
+    if (isStandalone() && routedKey.current) {
+      void keepLastRide({ plan: routedKey.current, title: keptTitle(), distanceM: shown.distance_m, answer: shown })
+        .then(() => setKeptVersion((v) => v + 1))
+        .catch(() => undefined);
+    }
     setRideAsk(false);
     setFollow(true);
     setBigText(false);
     setRideView(null);
     setRiding(true);
+  };
+  // Keep for offline (P3): the plan, its answer and the map along it; the press asks the browser to
+  // keep the site's storage (navigator.storage.persist), and what it did is said politely.
+  const keptTitle = () => {
+    const first = routedPoints[0];
+    const last = routedPoints[routedPoints.length - 1];
+    return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
+  };
+  const keepForOffline = async () => {
+    const plan = routedKey.current;
+    if (!shown || keeping || !plan) return;
+    setKeeping(true);
+    const controller = new AbortController();
+    keepAbort.current = controller;
+    setKeepSpoken((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
+    void askPersist();
+    const title = keptTitle();
+    const { outcome, removed } = await keepRoute({ plan, title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }, controller.signal).catch(() => ({ outcome: "failed" as const, removed: false }));
+    if (keepAbort.current === controller) keepAbort.current = null;
+    setKeeping(false);
+    setKeptVersion((v) => v + 1);
+    // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
+    if (removed) setKeepSpoken({ text: "", count: 0 });
+    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+  };
+  // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
+  const openKept = (kept: KeptRoute) => {
+    showPlanner(true);
+    // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
+    const plan = decodePlan(kept.plan);
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }) : kept.plan;
+    if (window.location.hash !== hash) window.location.hash = hash;
+    announce(`Opening ${kept.title}.`);
   };
   const startRide = () => {
     const opener = document.activeElement;
@@ -1243,6 +1367,8 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // A new answer: the Keep button's line was about the route before it.
+  useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
   // The layer in words: the points along the route shown, in riding order.
   const waterAlong = useMemo(
     () =>
@@ -1519,6 +1645,7 @@ export function App() {
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
           {ACCESS_LABEL}
         </button>
+        <InstallOffer idBase="tips-install" compact onSay={announce} />
       </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
@@ -1582,6 +1709,8 @@ export function App() {
           )}
         </div>
       )}
+      {/* First in the panel and announced first (335): the route goes through an Avoid-rated junction. */}
+      {shown && answer && <AvoidNotice answer={answer} choice={choice} around={aroundAvoid} onAround={setAroundAvoid} />}
       {shown && (
         <RouteSummary
           route={shown}
@@ -1701,6 +1830,7 @@ export function App() {
       <MapView
         points={riding ? NO_POINTS : points}
         loopVias={loopVias}
+        openAt={OPEN_AT}
         pointWarnings={riding ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale}
@@ -1762,6 +1892,7 @@ export function App() {
         request={roadInfo}
         massRide={massMap}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
@@ -1820,6 +1951,7 @@ export function App() {
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
+          keepLastRide={isStandalone()}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
@@ -1862,6 +1994,7 @@ export function App() {
             enabled={isBetaBuild(import.meta.env.VITE_BETA)}
             reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
           />
+          <AppStatusBar status={appStatus} />
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
               {order.map((id) => sections[id])}
@@ -2017,6 +2150,9 @@ export function App() {
                 <h3 id="settings-ride-heading">Ride mode</h3>
                 <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
               </section>
+              {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
+              {(keepShown || anyKept()) && <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} />}
+              <InstallOffer idBase="settings-install" onSay={announce} />
               <section aria-labelledby="settings-signin-heading">
                 <h3 id="settings-signin-heading">Signing in</h3>
                 <p className="hint">
@@ -2028,6 +2164,13 @@ export function App() {
                   ; your current plan is kept across the sign-in.
                 </p>
               </section>
+              {/* An instance admin's review of rider suggestions (OWNER-DECISIONS 460.5); nothing for anyone else. */}
+              <SuggestionReview
+                onStressChanged={(generation) => {
+                  const map = mapRef.current;
+                  if (map) refreshStressTiles(map, window.location.origin, generation);
+                }}
+              />
             </SheetFrame>
           </div>
 
@@ -2040,9 +2183,25 @@ export function App() {
               <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
                 {COPY_LINK}
               </button>
+              {canShare && (
+                <button type="button" className="secondary" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+                  {SHARE_LABEL}
+                </button>
+              )}
               <span role="status" className="visually-hidden">
                 {linkSpoken}
               </span>
+              {keepShown && (
+                <>
+                  <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+                    {KEEP_LABEL}
+                  </button>
+                  <p id="keep-offline-said" className="hint keep-said" role="status">
+                    {keepSpoken.text}
+                    {keepSpoken.count % 2 === 1 ? " " : ""}
+                  </p>
+                </>
+              )}
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}
@@ -2134,7 +2293,9 @@ function RouteSummary({
   // figures in view; Elevation and stress (322; Riders per minute, corker load and elevation on a Mass Ride),
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
-  const junctions = route.intersections == null ? null : junctionItems(route).length;
+  // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
+  const avoidCount = avoidItems(route).length;
+  const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
   const bikeshare = bikeshareOf(route);
   // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
   // is only the ride between the docks, so the walk to the first dock would read as off route.

@@ -398,12 +398,21 @@ class StressAdjustment:
     annotation_status: str
     public_note: str | None = None
     display: str = "route_only"
+    # A half step (OWNER-DECISIONS 441i-441l): the way is rated half a level above
+    # `tier` (1.5 to 4.5; never above Avoid). Stored as the lower level plus this flag,
+    # so every reader of the integer tier keeps working.
+    half: bool = False
+
+    @property
+    def step(self) -> float:
+        """The level as a number: 1, 1.5, 2, ... 4.5, 5."""
+        return int(self.tier) + (0.5 if self.half else 0.0)
 
     @property
     def direction(self) -> str:
-        if self.tier > self.computed_tier:
+        if self.step > self.computed_tier:
             return ADJUSTMENT_UP
-        if self.tier < self.computed_tier:
+        if self.step < self.computed_tier:
             return ADJUSTMENT_DOWN
         return ADJUSTMENT_SAME
 

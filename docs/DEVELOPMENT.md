@@ -1753,6 +1753,17 @@ Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
   every slider position" asks, and no longer reads as "the fastest legal
   route" there.
 
+**Half steps in the graph** (OWNER-DECISIONS 441i-441l, 461a; HALF-STEP-EDITOR phase 3). A
+half step reaches the transform as `rm:stress_half=yes` beside its lower `rm:stress_tier`
+(`pipeline.run`, from the override's `half`), and `half_step_marks` adds: 3.5 LTS 3's
+`use_sidepath` plus `maxspeed:practical` at the road's own speed but at least 90 and 11 lanes
+each way (0.8-1.2 of the midpoint between LTS 3 and LTS 4, modelled as for the table above); 2.5
+10 lanes each way and no `use_sidepath` (short of the midpoint, below LTS 3 except at
+`use_roads` 1.0); 1.5 nothing; 4.5 LTS 4's marks and never the alley mark. The rolling chart
+reads the same marks (`calm.road_multiplier`'s `half`, `HALF_GRADED_LANES`). docs/stress/
+stress-number.md section 3 has the table, why 2.5 stops short, and the one exception;
+`tests/test_half_step_model.py` pins them.
+
 **Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
 each leg (one fewer than the points) the index in `geometry.coordinates` of its
 last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to
@@ -4150,6 +4161,23 @@ Tests: `lib/sidebar.test.ts`.
   the fragment App writes to the address bar, which never holds the weight (313). Its
   "Link copied." is polite, said again on a second press, and cleared when the plan
   changes.
+- **Share** (owner, 2026-10-10; `lib/share.ts`) sits right after Copy link, only where
+  `canShareLink` finds `navigator.share` (and `canShare({ url })` says yes, where the
+  browser has it); elsewhere it is not rendered and Copy link stays. It hands
+  `navigator.share` the title "RouteMaker route", `shareText` ("4.7 mi (7.6 km) bike
+  route. Ride type: Default.") and `linkToCopy`'s URL unchanged. Visible word "Share",
+  accessible name "Share route", described by the location line (395) like Copy link.
+  `shareLink` maps the result: the sheet opened says nothing (browsers do not report
+  where the link went, so "Shared" could be untrue); AbortError (the rider closed the
+  sheet) and InvalidStateError (a sheet already open) say nothing; any other failure
+  goes to the same polite status and visible line as Copy link: "Could not open the
+  share sheet. Use Copy link instead." A press while a sheet is open is skipped (a
+  ref). `shareLink` calls `navigator.share` synchronously and `shareRoute` calls it
+  before any await, so the press's user activation holds (a test pins both). The text
+  leaves the distance out ("Bike route. Ride type: …") while a re-plan is pending, as
+  the route shown is then not the points the link carries. The a11y check stubs
+  `navigator.share` before the app starts (`open({ init })`), refusing a call without
+  user activation or while one is open, as browsers do.
 - **FacilityBreakdown's `part`**: "notices" (the traffic-tolerant warning, the roads
   best avoided, the hills search) stays in view; "figures" (the route colors and the
   bike facilities) goes in the Stress and facilities fold (`breakdownParts`).
@@ -4260,7 +4288,8 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
   accuracy (`here`): React state only (a test reads the sources for that, and that they reach only the
   note, the hint and the circle). Copy link shows one line, "This link includes your location as the
   start." (`linkLocationNote`; "as a point on the route" when only a later point came from the location),
-  decided by point object identity. The button is described by it, and a press says it with the
+  decided by point object identity. The button (and Share, where shown, so it is read before the share
+  sheet opens) is described by it, and a Copy link press says it with the
   confirmation ("Link copied. This link includes your location as the start."). A drag of a point that
   came from the location keeps the note (`movedFromHere`: the moved point is still the rider's spot); an
   undo that brings a point back restores it.
@@ -6159,9 +6188,15 @@ section (a heading each, the figures a description list with the source in words
 way's OSM id and distance, and the credit; then the bottom action row (441m), links drawn
 as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
 (`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
-OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
-release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
-passes it yet. A polite status region inside the dialog (always rendered, empty until the
+OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is an instance
+admin's third button in the row (StressEditor.tsx; docs/OPERATIONS.md, "Change LTS"); a rider
+the suggestion setting allows gets "Suggest a change" there instead (SuggestChange.tsx,
+`core.suggestions`; the admin reviews in the Settings sheet, SuggestionReview.tsx, and "Send to
+Discord" builds the copy-paste poll in `core.suggestion_post`; docs/OPERATIONS.md, "Rider
+suggestions"). Where the piece is part of a named stretch, the editor's "What to change" radio
+group offers the whole stretch (its pieces and length, miles first, kilometres in brackets;
+`core.stress_edits.named_stretch`, names from `core.road_names`; docs/OPERATIONS.md, "The whole
+named stretch"). A polite status region inside the dialog (always rendered, empty until the
 answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
 cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
 silent, since the modal makes everything outside it inert. On a phone it is a sheet from
@@ -6179,8 +6214,10 @@ otherwise), a drawn way winning over a hidden one (a mapped sidewalk) up to 15 m
 Its name and kind come from the standard router's `/locate` at the spot on the way, as the
 route's street names do, matched by OSM way id; the bicycle costing's edges say whether the
 graph lets a bicycle on, and the pedestrian then auto costing name a way it does not. Then:
-the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", whole tiers;
-441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
+the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", and the
+half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children", 2.5 "Fine
+for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
+high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
 (posted 55 mph)"), an override's tier before it and its category, its note only where the
 row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each
@@ -6385,6 +6422,176 @@ programme; nothing is ranked beyond distance, and the rider chooses.
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
 
+## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
+
+An "Avoid" rating above red for a junction, given only by a person (the owner, an instance
+admin, or a reviewed community suggestion), never by the junction model. It ships with an empty
+list. How an admin adds one: docs/OPERATIONS.md, "Avoid-rated junctions: adding one".
+
+### Storage
+
+`core.models.AvoidJunction` (table `avoid_junction`, migration `0015_avoid_junction`): a name, a
+point (`location`, SRID 4326, placed on the admin's map), a reason (shown to riders), evidence
+(not shown), `source` ("admin" or "community") with `suggestion_ref` for the suggestion it came
+from, the approval (who and when; an audited admin action, read-only on the form, as `Override`),
+and `plans_through` with `last_planned_through_at` (335's admin counts). It is kept apart from
+`Override` (way-keyed, applied by the rebuild) and from any rider-suggestion table: a reviewed
+junction suggestion becomes a row here with `source` "community" and the suggestion's id in
+`suggestion_ref`, so the suggestion flow (STRESS-SUGGEST, the half-step editor) can feed it
+without either table depending on the other's shape. No junction override table existed on
+release/v0.4.0; PR #38 (intersection costs) adds cost machinery to `routemaker.intersections` and
+`core.junctions` but no table, and this work does not touch either module.
+
+The migration is numbered 0015. It was written against 0012 and was re-pointed at
+`0014_segment_mtb_name`, the leaf of release/v0.4.0, when that was merged in; if another migration
+lands first it must be re-pointed again (or joined with a merge migration). The table is new and
+empty, so its order against the others does not matter.
+
+### Which junctions a route passes
+
+`routemaker.avoid_junctions.passages`: the route's line (lon, lat) comes within `MATCH_RADIUS_M`
+(15 m, 49 ft) of the junction's point; the pass is placed where the line comes nearest, and a
+second pass counts once the line has gone `LEAVE_RADIUS_M` (30 m) away again (a loop through it
+pays twice). It reads the line, not the junction model's events: the model reads only junctions
+where a road that can be busy is involved (`core.junctions.wanted`), and an Avoid rating is a
+person's judgement about a place whatever its roads.
+
+### How the 30-minute penalty reaches routing, and why no rebuild
+
+308: "Probably a 30 minute penalty like Avoid." An Avoid road pays `presets.AVOID_ENTRY_PENALTY_S`
+(1,800 cost seconds) on entry, through the graph: its tier-5 ways are the graph's alleys and the
+costing's `alley_penalty` is 1,800. A junction has no such hook. Valhalla's bicycle costing has
+no per-node charge a request can set, and marking junction nodes in the graph would need a
+rebuild for every change to the list, which 307 ("Planner-side where possible ... so no rebuild
+if feasible") rules out. So the penalty, `presets.AVOID_JUNCTION_PENALTY_S` (= the road's 1,800,
+restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal by
+`tests/test_avoid_junctions.py`), is charged on whole routes, in the router's own unit:
+
+- **The calm search** (`core.refine`). `Analysis.avoid_passages` are read with every candidate;
+  `Analysis.score` adds 1,800 s a pass; `avoid_junction_m` (the penalty over the ride's quiet
+  cost per metre, as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry) joins the top
+  figure (`top_m`, 307: "kept in the stress order's top level ... above red") and the
+  diminishing-returns weights (`stress_weight_m`, `_top_weight_m`), so at the top of the slider
+  the way round is worth its extra miles. `crossing_targets` puts the junction's own point first
+  among a round's exclusions (`avoid_targets`), clear of the route's ends. The Traffic-wins guard
+  (`_busier`, on the router's alternatives, the rounds and the wide search) counts each pass's
+  `avoid_junction_m` as exposure on both sides, so the LTS 3 a way round takes on in place of an
+  Avoid junction does not make it "busier"; the LTS 4 hold (250) and the trail seek's guard are
+  unchanged.
+- **A long ride** (`refine_long`): each leg's weight counts its Avoid junctions with its LTS 4
+  (`LONG_LTS4_PRIORITY * (lts4_m + avoid_junction_m) + lts3_m`), so a leg whose only fault is
+  one is searched, and before a leg with LTS 3; the whole is judged "not as calm" by the same
+  sum, with the legs' passes counted as the whole route's (`combine`, `_joined_passages`): a
+  junction within 15 m of a joint (a via point, or where the legs were cut) is passed by the
+  legs on both sides of it but counts once, as on the whole route's line. Every exclusion of a junction's point, in a round (`Target.radius`) or a kept point
+  (`_exclusion`), carries the 15 m radius `core.avoid_junctions.exclusions` asks.
+- **The guard's allowance.** `_busier` is `exposure_m + avoid_junction_m > _allowance(first
+  exposure) + first_avoid_m`: the tolerance is on the exposure alone.
+- **Every plan** (`core.avoid_junctions.settle`, after the search and the dodge pass, or where
+  the search does not run: Mass Ride, long rides, seeking hills, past the span). Where the answer
+  still passes one, the router is asked once more with the junction excluded
+  (`exclude_locations`, its point with a 15 m radius, which takes out every edge at the junction).
+  - `searched` is what the search did, not that it was asked: at least one round and not cut
+    short (`calm_search.rounds > 0` and no `limited`). Where it searched, its own decision stands
+    (it already weighed the penalty under its guards).
+  - Otherwise the way round replaces the answer where its router cost is less than the answer's
+    plus 1,800 s a pass.
+  - On Mass Ride and Group Ride (307) it replaces it where it takes on no LTS 4 (or Avoid road)
+    the answer did not have (`GROUP_LTS4_SLACK_M`, 1 m, for the traces' rounding) and is at most
+    1 mi (1.6 km) (`GROUP_EXTRA_MAX_M`) or 25% (`GROUP_EXTRA_SHARE`) of the answer longer,
+    whichever is more. **A default open for the owner**: the coordinator picked it on the review
+    of 351e65b (307 said only "where an alternative exists", which took any way round however
+    long). Reading both routes' stress costs a trace a leg of each (remembered).
+  - A loop never swaps: its way back was made by a different way (`refine.make_loop`, 266) and
+    the way round is a plain route through the same points, so it is offered, and the loop's
+    figures (`loop`) describe the route shown. (Adding the junction to `make_loop`'s excludes was
+    not done: its thinning ends with no excludes at all, which a fixed junction would remove.)
+  - After a swap the routes to choose from are dropped (`candidates` null): they were near-ties
+    of the route that was replaced, not weighed against the way round.
+  - Otherwise the answer keeps the junction and the way round is offered as `avoid_alternate`.
+    A way round that still passes the junction (the point is off the graph's node) is no way
+    round.
+  - Cost: **1 + legs** router calls: one `/route` for the way round, then a trace for each of its
+    legs where it is answered (swapped in, or offered as `avoid_alternate`), and on Mass Ride and
+    Group Ride a trace for each leg of the answer where not already remembered.
+- **Bikeshare** (`core.bikeshare.plan`): the ride leg's `avoid_alternate` carries the plan's
+  `bikeshare` (`alternate_block`: the same walks and docks, its own ride, total, ride step and
+  summary) and the GBFS credit in its `attribution`, so it can be shown in place of the ride.
+
+### The answer
+
+Every route body has `avoid_junctions` (each pass: id, name, reason, point, metres along the
+route scaled to `distance_m`, and `label`, the accessible name "Avoid-rated junction: <name>,
+<reason>") and `avoid_notice` (335's sentence, null where none). The answer also has
+`avoid_search` (passes left, their penalty, `decision` "kept" or "avoided", whether the way round
+was found) and `avoid_alternate` (the way round as a whole route body, with `extra_distance_m`
+and `extra_duration_s`). The description gains an `avoid` entry, severity "avoid": "Avoid-rated
+junction ahead at 0.7 mi (1.1 km): <name>, <reason>. Riding through it is a really bad idea.
+Please reconsider your route." (US units first). All additive.
+
+The notice and the description's entry end with the plea, `routemaker.avoid_junctions.PLEA`
+("Riding through it is a really bad idea. Please reconsider your route."; `PLEA_MANY` for
+several), and the front end's `AVOID_PLEA` is the same words (a test holds them equal). The
+owner, 2026-10-10 15:08 UTC, on the marker being named in the directions and the notice: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider."
+
+### The front end
+
+- `lib/avoidJunctions.ts` (pure): the items, the row name, the offer ("Show the route that avoids
+  it: 3.9 mi (6.3 km), 1.0 mi (1.6 km) longer"), and the marker's SVG; `lib/avoidIcon.ts` inlines
+  the Noto Emoji skull (`icons/noto-emoji-u2620.svg?raw`, so nothing is fetched and the CSP is
+  unchanged) on a dark disc (#1f2937) ringed in white, the halo of 310: the glyph's pale fills on
+  the disc, the disc on a light map and the ring on a dark one are each above 3:1.
+- `AvoidNotice.tsx`: first in the Route section, `role="alert"` so it is said as soon as it
+  appears, ahead of the route's own sentence (which waits `ANNOUNCE_SETTLE_MS`). It is the chosen
+  route's own notice (`avoidNoticeFor`): a route to choose from that avoids the junction has none,
+  one that passes it has its own; the way round is the answer's, so its button (`aroundAvoid` in
+  `App`, `shownRoute`) is offered only while the answer is chosen.
+- The map marker (`MapView`, `.avoid-marker`) is a `<button type="button">`, as the junction
+  markers are, so Tab reaches it, named by `avoidMarkerName` (the `label` and the plea); a click,
+  a tap, Enter or Space opens the road panel on the junction, and the focus comes back to it when
+  the panel closes. It is 40 px (`AVOID_ICON_PX`) against the junction markers' 24 ("Make it
+  larger than a normal icon"; markers keep their size at every zoom). The junction list
+  (`AvoidJunctionList`, its row name also ending with the plea), the description's entry and the
+  notice show the Unicode character (310) with `aria-hidden`, and their words name the rating.
+  Nowhere is the glyph's own name the accessible name (309). There is no legend row. The owner,
+  2026-10-10 15:03 UTC: "For avoid markers in intersection. No need to put it in legend. You'll only see this if you really try to force things." (309's "It gets a legend entry" is superseded.)
+- The road panel on the junction ("also when clicking on the intersection"): the marker opens
+  the road panel (`RoadInfoDialog`) at the junction's point, and the panel opened any other way
+  (a right-click, a long press, the I key, "Road info at map center") within `AVOID_SPOT_M` (25 m,
+  82 ft) of an Avoid-rated junction on the route shown (`avoidNearSpot`) leads with a warning
+  above its heading: "Avoid this intersection." and `avoidCardText` ("<name> is rated as
+  dangerous for bikes: <reason>. Riding through it is a really bad idea. Please reconsider your
+  route."). It opens the dialog's `aria-describedby`, so it is said as the panel opens; it is not
+  also an alert (the two together were said twice). The front end knows only the junctions the
+  route shown passes (the list is not sent otherwise), so the panel warns of those; the route
+  that avoids it, shown in place of the planned one, passes none.
+- Ride mode says an `avoid` entry as a hazard at every level but Quiet.
+- The Mass Ride route chart (333) does not mark Avoid junctions: its intersection ticks have a
+  table, a per-mile readout, a key and forced-colours rules, and a skull on the ticks alone would
+  be seen and not heard. Left out (PLAN.md, FOLLOWUP-ISECT-AVOID); on Mass Ride the plan goes
+  round one wherever the default limits allow.
+- The icon's Apache 2.0 notice and licence ship in `licenses.txt` (`BUNDLED_ICONS` in
+  `licences/notices.mjs`); the source record is docs/SOURCES.md and `fixtures/icons/README.md`.
+
+### Tests
+
+`tests/test_avoid_junctions.py` (the passes, the words, the score, `settle` with the Mass Ride
+and Group Ride limits and loops, the stored list and counts, POST /api/route with a stand-in
+router that routes round the junction only when it is excluded, a search that stopped before a
+round, the guard's allowance, the exclusion radius, a long ride's legs, bikeshare's way round,
+and the admin's counts, audited approval and withdrawal and a guild admin refused);
+`frontend/src/lib/avoidJunctions.test.ts` (the glyph's sha256 and contents, the marker and its
+size, the halo's contrast, the names, the plea against the API's, the offer, the chosen route's
+notice, the road panel's spot and warning); `frontend/src/licences/notices.test.mjs`; the a11y
+browser check's section 25 (the notice first and as an alert, the offer's name, the marker's
+button and computed name, the list row, the description, the way round by keyboard and back, the
+road panel's warning from a click on the marker, from Tab and Enter on it (the focus coming back)
+and from the I key on the junction, none away from it, and that the legend has no Avoid row).
+
+`scripts/a11y/check.mjs` reads the debugging port from `A11Y_CDP_PORT` (default 9222, as
+`run.sh` starts Chromium), so it can run beside another browser:
+`A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
+
 ## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
 
 **The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
@@ -6424,7 +6631,7 @@ dropped (no signal at the start, or a base map that is not served). Where they a
   (`/basemap/fonts/*`, `/sprites/*`: `private, max-age=86400`) and which answers MapLibre's own
   requests with no network.
 
-What is kept is for one ride: a ride never outlives the page (no service worker yet). End ride clears
+What is kept is for one ride: a ride never outlives the page (the service worker keeps the app, never a ride). End ride clears
 it (`clearCorridor`, from RideMode's unmount), the next ride's first `keepCorridor` (`first`) clears
 before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a time and never a place)
 lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
@@ -6469,3 +6676,94 @@ network emulated offline (`Network.emulateNetworkConditions`; the mock serves no
 its ranges are not shown there), that End ride clears the bucket and empties the IndexedDB store, and the report's words, links,
 radios, note field and 44 px targets, on a desktop and (with an Android user agent) a phone. The ride
 on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, are the owner's.
+
+## The installable app (WEB-NAV P1-P4; OWNER-DECISIONS 434, 465, 465a, 465b)
+
+**Manifest and icons (P1).** `frontend/public/manifest.webmanifest` names the app RouteMaker, opens `/`
+standalone (Q8, 465) with scope `/`, and lists four icons: 192 and 512 px, `any` and `maskable`.
+The icons, and the 180 px `apple-touch-icon.png`, are drawn from `frontend/public/favicon.svg` (Q10,
+465b) by `python3 scripts/make_app_icons.py`, which renders the SVG with Chromium's headless shell
+(full Chrome's `--headless=new` crops the bottom of a small window) and is run again only when the
+favicon changes; the PNGs are committed. The maskable icons draw the glyph at 60 % on full-bleed blue,
+so a launcher's circle or squircle cuts nothing. `index.html` links the manifest with
+`crossorigin="use-credentials"` (so the beta's password is sent with it), carries the light and dark
+theme colours and the Apple tags.
+
+**The service worker (P2).** Hand-written, no Workbox: `frontend/src/sw/swCore.mjs` is both the worker
+and a module the tests import. The Vite plugin `swPlugin.mjs` (`appWorker()` in `vite.config.ts`)
+writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (the module with its
+`export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
+Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
+falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first;
+the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from
+the kept routes' bucket first. Everything else is not intercepted at all (no `respondWith`):
+`/api/*`, `/auth/*`, `/tiles/*`, the base map archive, the admin, every other navigation and every
+non-GET. Nothing private is cached. Matches use `ignoreVary` (a module script's request carries Origin
+and the precache's did not, so an edge that varies on Origin, as `vite preview` does, missed every one).
+
+A new worker precaches only when the edge's `index.html` carries its own build id (`precache`), so a
+deploy caught half published fails the install and the browser retries on the next load. It then
+waits; `lib/appWorker.ts` (registered only in a production build in a secure context, with
+`updateViaCache: 'none'`, checked again at most hourly when the page comes back to the front) shows
+"A new version of RouteMaker is ready" with Reload at the top of the planner (`AppStatusBar` in
+`InstallableApp.tsx`), said once through App's live region and held during a ride. Only Reload sends
+`SKIP_WAITING`; activate deletes older builds' caches (never the kept routes'). The kill switch,
+`swKill.mjs`, deletes the worker's own caches, unregisters, and reloads only the pages it controls (no
+loop); the owner copies it over `sw.js` on disk (OPERATIONS, "The app's service worker").
+
+**Routes kept for offline (P3).** "Keep for offline" under a route's figures, in the installed app
+(465a) and in a browser tab (the owner's choice of 2026-10-10; `keepOffered` with its one switch
+`KEEP_IN_BROWSER_TAB` in `lib/offlineRoutes.ts`;
+`keepForOffline` in App, `lib/offlineKeep.ts`) saves the plan, its API answer and its title first (IndexedDB
+`routemaker-offline`, store `routes`), then walks the corridor with N5's `prefetchCorridor` (same
+pacing and caps) into its own store: base map ranges in the store `ranges`, stress tiles, glyphs and the
+sprite in the Cache Storage bucket `routemaker-offline-v1` (`lib/offlineRouteStore.ts`). It asks
+`navigator.storage.persist()` at that press. At most `MAX_KEPT` (10) routes of the rider's; the last
+ride is one more, replaced by the next. A route is kept under `keptPlanKey`: the plan the route on
+screen answers (set with the answer, so a keep during a re-plan in flight files it under its own plan),
+without Mass Ride's ride size, which the planner never gets; the scheduler's offline lookup, the last
+ride and Settings' Open use the same key (Open keeps the ride size set now). The record names each
+tile and range before it is written (`progressSaver` writes the record every 2 s and at the end), and
+keeping a plan again starts from what its record named (`keptRecord`). Tiles are shared between routes,
+so the Web Locks lock `routemaker-kept` orders every tab: a keep and a hand-on hold it shared for their
+whole run, the final record write included; Remove's freeing, the last ride's replacement and
+`sweepKept` (what no record names, after a Remove and 20 s after load) take it exclusive and work out
+what to free only once they hold it. Remove deletes the record at once and frees later; Remove of the
+route being kept stops that keep and waits for it first (and that keep's press stays quiet). Whatever
+decides what to free reads the list strictly (`listKeptOrThrow`): iOS drops the IndexedDB connection
+after the app is in the background, and a read that fails frees nothing (a keep then fails) rather than
+reading as "no routes". Without Web Locks this page's keeps wait for a freeing asked for before them,
+freeings take turns and wait for the keeps before them, and the sweep is skipped (`keptLocks`; `offlineKeep.test.ts` runs each order with an
+in-memory store and a fake lock manager). Start ride stops a keep still fetching, and the last ride's
+freeing waits for its final write.
+In the installed app (465a) the last ride's route is kept automatically: at End ride, RideMode's
+`clearCorridor(lastRideAdopter())` hands the ride's own corridor over, so nothing is fetched twice. End
+ride stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for
+it and is never stopped by the old ride's clear. The hand-on is bound to its ride's record (the savedAt
+taken at Start ride) and adopts nothing into a next ride's record that got there first.
+Reading back: `CorridorSource` takes a read-only `fallback` (the kept ranges), consulted only when the
+network fails; `corridorStress.kept` reads the ride's copy and then the kept routes'. When a plan
+request fails with a network error, App's scheduler answers from the kept route with a notice that it
+may be out of date (`offlineRouteNotice`); a planner error is shown as usual. Settings lists them
+(`KeptRoutes`) with Open and Remove; Remove frees only the tiles and ranges no other kept route uses
+(`orphans`); a failed Remove says so. With nothing kept the store is never opened (`anyKept`, a count
+in localStorage): a failed base map range waiting on a first IndexedDB open kept MapLibre's style from
+loading. Nothing kept holds a position (a unit test checks).
+
+**Install offer (P4).** `watchInstall(window)` in `main.tsx` holds `beforeinstallprompt` before the
+first render and hears `appinstalled`. `InstallOffer` (Settings, and short in More tips) shows "Install
+RouteMaker", the iOS line "Press Share, then Add to Home Screen." (any iOS browser has it), or a
+note that it is installed when running standalone. Never a pop-up. After the browser's dialog the
+outcome stays as a note and the focus goes to the heading (Settings) or the note (More tips).
+
+**Accessibility.** Real buttons, 44 px tall, whose names include the route (visually hidden text);
+offline, back online (not said during a ride), the new version, kept, removed and the install outcome
+said politely once; after a Remove the focus goes to the next row's Remove, else the heading
+(`focusAfterRemove`). Forced-colours styles for every new part.
+
+**Tests.** `node --test frontend/src/sw/swCore.test.mjs` (the rule table row by row, precache's build
+check, activate, the kill switch, the generated scripts run in `vm`); `npm test` (node's test runner)
+for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback and End ride's hand-on
+order (`corridorStore.test.ts`); the browser suite's installable-app
+group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
+debugging port), with offline emulated on the page and the worker's target,.

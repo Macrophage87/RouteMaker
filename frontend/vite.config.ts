@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { licenceNotices } from "./src/licences/notices.mjs";
 import { railFixtures } from "./src/lib/railFixturesPlugin.mjs";
+import { appWorker } from "./src/sw/swPlugin.mjs";
 
 // `npm run build` writes dist/, which the deploy step copies to
 // <DATA_ROOT>/frontend for Caddy to serve at / (docs/DEPLOYMENT.md, "The
@@ -26,8 +27,9 @@ const frontendRoot = new URL(".", import.meta.url).pathname;
 
 export default defineConfig({
   // licenceNotices completes what build.license writes (src/licences/notices.mjs);
-  // railFixtures refuses rail fixtures that no longer fit (src/lib/railFixturesPlugin.mjs).
-  plugins: [react(), licenceNotices(frontendRoot), railFixtures(`${frontendRoot}src/rail-data`)],
+  // railFixtures refuses rail fixtures that no longer fit (src/lib/railFixturesPlugin.mjs); appWorker
+  // writes the installable app's service worker, sw.js and its kill switch sw-kill.js (src/sw/swPlugin.mjs).
+  plugins: [react(), licenceNotices(frontendRoot), railFixtures(`${frontendRoot}src/rail-data`), appWorker()],
   // MapLibre's worker imports a chunk it shares with the main bundle.
   worker: { format: "es" },
   build: {

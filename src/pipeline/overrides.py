@@ -110,7 +110,12 @@ class OverrideRefused(ValueError):
 STRESS_REQUIRED_KEYS = frozenset(
     {"tier", "adjustment_id", "category", "visibility", "annotation_status", "display"}
 )
-STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note", "at_least"}
+STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note", "at_least", "half"}
+# `"half": true` is a half step (OWNER-DECISIONS 441i-441l, 461a): the way is rated half
+# a level above `tier` (1.5, 2.5, 3.5 or 4.5), stored as the lower level plus this flag so
+# every integer reader keeps working (the segment table's `stress_half`). Never with tier
+# 5: there is no step above Avoid, and 4.5 is never Avoid (441k). With `at_least`, the
+# floor is the half step: a way already at or above it keeps its own level.
 # `"at_least": true` makes the row a floor: the way is rated
 # max(the classifier's tier, the row's tier), so a way the classifier already
 # rates at or above the row's tier keeps the classifier's tier and its reason
@@ -159,6 +164,11 @@ def stress_value_problem(value: object) -> str | None:
         return f"tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
     if "at_least" in value and not isinstance(value["at_least"], bool):
         return "at_least is true (the tier is a floor) or false, or absent"
+    if "half" in value:
+        if not isinstance(value["half"], bool):
+            return "half is true (half a level above the tier) or false, or absent"
+        if value["half"] and tier >= STRESS_TIER_MAX:
+            return "a half step is 1.5 to 4.5: there is no step above Avoid (tier 5)"
     adjustment_id = value["adjustment_id"]
     if (
         not isinstance(adjustment_id, str)
@@ -233,7 +243,13 @@ def stress_adjustment(override: Override, computed):
         annotation_status=value["annotation_status"],
         public_note=value.get("public_note"),
         display=value["display"],
+        half=value.get("half") is True,
     )
+
+
+def step_of(value: dict) -> float:
+    """A stress row's level as a number (1 to 5, half steps included)."""
+    return int(value["tier"]) + (0.5 if value.get("half") is True else 0.0)
 
 
 @dataclass(frozen=True)
@@ -446,7 +462,7 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
         if (
             override.value.get("at_least") is True
             and current.tier is not None
-            and current.tier >= adjustment.tier
+            and _step_now(current) >= adjustment.step
         ):
             # A floor the way already meets: the classifier's tier stands.
             continue
@@ -478,6 +494,13 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
         applied += 1
 
     return applied, unmatched
+
+
+def _step_now(current) -> float:
+    """A way's level as it stands, half step included (an earlier row's half)."""
+    adjustment = getattr(current, "adjustment", None)
+    half = adjustment is not None and getattr(adjustment, "half", False)
+    return int(current.tier) + (0.5 if half else 0.0)
 
 
 def apply_jurisdiction(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int]]:

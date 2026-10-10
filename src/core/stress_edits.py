@@ -1,6 +1,8 @@
 """The road panel's "Change LTS": an instance admin's change of a road's traffic stress.
 
-OWNER-DECISIONS 441g, 441h, 460 (HALF-STEP-EDITOR-plan.md, phase 1: whole steps 1 to 5).
+OWNER-DECISIONS 441g, 441h, 441i-441l, 460, 461a (HALF-STEP-EDITOR-plan.md: phase 1, whole
+steps 1 to 5; phase 2, half steps 1.5 to 4.5, stored as the lower level plus `stress_half`;
+phase 5, the whole named stretch at once, `named_stretch`).
 
 An instance admin's change applies at once. `apply` does all of this in ONE transaction:
 
@@ -47,26 +49,40 @@ from pipeline import overrides
 from pipeline.schema import validate_schema_name
 from routemaker.stress import ADJUSTMENT_CATEGORIES, ADJUSTMENT_DISPLAYS
 
-from . import audit, segment_info, stress_tiles, tile_cache
+from . import audit, road_names, segment_info, stress_tiles, tile_cache
 from .models import AuditLogEntry, LiveEditGeneration, Override, StressEdit
 
 logger = logging.getLogger(__name__)
 
-# Phase 1 is whole steps. (Half steps are phase 2 and widen this and the value rules.)
-STEPS = (1, 2, 3, 4, 5)
+# Every step, 1 to 5 by halves (441i: "Have a slider from LTS 1-5. We can put half steps as
+# well"). 5 is Avoid; 4.5 is never Avoid (441k). A half step is stored as the lower level plus
+# the `stress_half` flag (the override value's `half`), so every integer reader keeps working.
+STEPS = (1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5)
 # OWNER-DECISIONS 460.8-11: "30-min Undo + full history". The history is the StressEdit
 # table; the Undo button and the endpoint stop answering after this long, and a later
 # reversal is a new change.
 UNDO_WINDOW = timedelta(minutes=30)
 REASON_MAX = 500
 # One road piece in phase 1; the named stretch (phase 5) widens it.
-MAX_WAYS = 1
+# A change is one road piece, or one named stretch of at most this many (phase 5).
+MAX_STRETCH_WAYS = 40
+MAX_WAYS = MAX_STRETCH_WAYS
+# A named stretch ends at a junction with a road of another name at this level or above: where
+# the junction model would warn of a high-stress crossing (orange or worse). An unsignalized
+# crossing of a 2.5 road costs 600 ft, the orange line (routemaker.intersections; the segment
+# table has no signals, so every junction is taken as unsignalized, the cautious reading).
+STRETCH_BREAK_STEP = 2.5
+
 EVIDENCE = "Instance admin's change in the road panel"
 # The classifier's own rule text is not kept on a live row once an override has replaced it.
 FLOOR_MET_RULE = "classifier (an owner override's floor was already met)"
 
 TIER_COLUMN = "stress_tier"
 RULE_COLUMN = "stress_rule"
+# A half step (pipeline.schema.STRESS_HALF_COLUMN). A live table built before it has no such
+# column: whole steps still work there, and a half step is refused until the column exists
+# (the next rebuild, or `manage.py add_stress_half_column`).
+HALF_COLUMN = "stress_half"
 ADJUSTMENT_COLUMNS = (
     "stress_adjustment_id",
     "stress_computed_tier",
@@ -75,7 +91,7 @@ ADJUSTMENT_COLUMNS = (
     "stress_adjustment_note",
     "stress_adjustment_display",
 )
-EDIT_COLUMNS = (TIER_COLUMN, RULE_COLUMN, *ADJUSTMENT_COLUMNS)
+EDIT_COLUMNS = (TIER_COLUMN, RULE_COLUMN, HALF_COLUMN, *ADJUSTMENT_COLUMNS)
 
 # pg_advisory_xact_lock key: one lock per way, so two edits of one road never interleave.
 _LOCK_BASE = 0x5354_0000_0000_0000
@@ -121,6 +137,12 @@ class Spec:
     reason: str
     public_note: str | None = None
     display: str = "route_only"
+    # Half a level above `tier` (1.5 to 4.5).
+    half: bool = False
+
+    @property
+    def step(self) -> float:
+        return self.tier + (0.5 if self.half else 0.0)
 
     def value(self, adjustment_id: str) -> dict:
         """The override row's value (`pipeline.overrides.stress_value_problem` holds the rules)."""
@@ -139,13 +161,25 @@ class Spec:
             value["public_note"] = self.public_note
         if self.at_least:
             value["at_least"] = True
+        if self.half:
+            value["half"] = True
         return value
+
+
+def split_step(step) -> tuple[int, bool]:
+    """A slider value (1, 1.5, ... 5) as (the lower level, whether it is a half step)."""
+    if isinstance(step, bool) or not isinstance(step, int | float):
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
+    if float(step) not in STEPS:
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
+    tier = int(step)
+    return tier, float(step) != tier
 
 
 def validate(spec: Spec) -> None:
     """Refuse a spec the value rules would refuse, naming the field."""
-    if spec.tier not in STEPS:
-        raise Invalid("The level is a whole step from 1 to 5.", "step")
+    if spec.tier not in (1, 2, 3, 4, 5) or (spec.half and spec.tier >= 5):
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
     if spec.category not in ADJUSTMENT_CATEGORIES:
         raise Invalid("Choose the reason's category from the list.", "category")
     if spec.display not in ADJUSTMENT_DISPLAYS:
@@ -274,10 +308,17 @@ def classifier_tier(row: dict) -> int | None:
     return int(computed) if computed is not None else None
 
 
+def current_step(row: dict) -> float | int:
+    """The road's level as it stands: its tier, and a half where the row says so."""
+    return segment_info.step_value(int(row[TIER_COLUMN]), row.get(HALF_COLUMN) is True)
+
+
 def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> dict:
     """What `row` holds once `spec` is applied (the rebuild's `apply_stress`, in place)."""
     state: dict = {}
-    if spec.at_least and base is not None and base >= spec.tier:
+    if HALF_COLUMN in row:
+        state[HALF_COLUMN] = False
+    if spec.at_least and base is not None and base >= spec.step:
         # A floor the way already meets: the classifier's tier stands and so does its rule,
         # where the row still has it.
         state[TIER_COLUMN] = base
@@ -287,13 +328,15 @@ def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> di
                 state[column] = None
         return state
     state[TIER_COLUMN] = spec.tier
+    if HALF_COLUMN in row:
+        state[HALF_COLUMN] = spec.half
     state[RULE_COLUMN] = f"override: stress adjustment {adjustment_id}"
     shown = bool(spec.public_note)
     if base is None:
         direction = None
-    elif spec.tier > base:
+    elif spec.step > base:
         direction = "up"
-    elif spec.tier < base:
+    elif spec.step < base:
         direction = "down"
     else:
         direction = "same"
@@ -311,17 +354,127 @@ def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> di
     return state
 
 
-def token_for(rows: dict, live: Override | None) -> str:
+def token_for(rows: dict, live) -> str:
     """An opaque stamp of the road's state: the editor sends it back, and a change in between
-    (another admin's edit, a promotion that rebuilt the table) makes the edit stale."""
+    (another admin's edit, a promotion that rebuilt the table) makes the edit stale.
+
+    `live` is the way's live override (or None); for a stretch, the list of its ways' live rows.
+    """
+    if isinstance(live, list):
+        marker = sorted(o.pk for o in live) if live else 0
+    else:
+        marker = live.pk if live else 0
     material = json.dumps(
         [
-            live.pk if live else 0,
-            [[k, r.get(TIER_COLUMN), r.get(RULE_COLUMN)] for k, r in rows.items()],
+            marker,
+            [
+                [k, r.get(TIER_COLUMN), r.get(RULE_COLUMN), r.get(HALF_COLUMN) is True]
+                for k, r in rows.items()
+            ],
         ],
         sort_keys=True,
     )
     return hashlib.sha256(material.encode()).hexdigest()[:20]
+
+
+def _live_overrides(way_ids: list[int], *, lock: bool = False) -> list[Override]:
+    """Every live stress row of the ways (one a way at most), by id."""
+    query = Override.objects.filter(
+        kind=Override.Kind.STRESS, osm_way_id__in=way_ids, approved=True, superseded_by__isnull=True
+    )
+    if lock:
+        query = query.select_for_update()
+    return list(query.order_by("id"))
+
+
+def token_of(rows: dict, way_ids: list[int], *, lock: bool = False) -> str:
+    """The token for one way (its live row) or a stretch (all its ways' live rows)."""
+    if len(way_ids) == 1:
+        return token_for(rows, _live_override(way_ids, lock=lock))
+    return token_for(rows, _live_overrides(way_ids, lock=lock))
+
+
+# --- A named stretch (phase 5) ------------------------------------------------------------
+
+
+def _check_stretch(schema: str, way_ids: list[int]) -> None:
+    """Refuse unless the ways are exactly a named stretch (as the editor offered it from one of
+    them), not any set of pieces."""
+    wanted = sorted(way_ids)
+    names = road_names.Names()
+    for way in wanted:
+        stretch = named_stretch(schema, way, names)
+        if stretch is not None and stretch["ways"] == wanted:
+            return
+        if stretch is not None and not stretch["capped"]:
+            # Uncapped, every piece of a stretch finds the same one.
+            break
+    if names.silent:
+        raise Invalid(
+            "The road names could not be checked just now, so the whole stretch cannot be "
+            "changed. Try again in a minute, or change this road piece alone.",
+            "osm_way_ids",
+            "names_unavailable",
+        )
+    raise Invalid(
+        "These road pieces are not one named stretch any more. Reopen the road to see it.",
+        "osm_way_ids",
+        "not_a_stretch",
+    )
+
+
+def named_stretch(schema: str, way_id: int, names: road_names.Names | None = None) -> dict | None:
+    """The named stretch the way is in (phase 5), or None where it is the only piece.
+
+    The road pieces of the same name connected end to end, out from this one, stopping at a
+    junction with a road of another name at `STRETCH_BREAK_STEP` or above (a high-stress
+    crossing, orange or worse), and at `MAX_STRETCH_WAYS` pieces. Names are the router's, as
+    the road panel shows them, else the table's (`core.road_names`). An unnamed way has none.
+    """
+    names = names or road_names.Names()
+    name = road_names.name_of(schema, way_id, names)
+    wanted = road_names.key(name)
+    if not wanted:
+        return None
+    found = [way_id]
+    seen = {way_id}
+    frontier = [way_id]
+    capped = False
+    while frontier and not capped:
+        ends = road_names.ends(schema, frontier)
+        frontier = []
+        for way in sorted(ends):
+            for point in ends[way]:
+                meeting = [m for m in road_names.touching(schema, point) if m["way"] != way]
+                same = []
+                busy = False
+                for m in meeting:
+                    if road_names.key(names.name(m["way"], point, m["table_name"])) == wanted:
+                        same.append(m["way"])
+                    elif m["level"] >= STRETCH_BREAK_STEP:
+                        busy = True
+                if busy:
+                    continue
+                for other in sorted(same):
+                    if other in seen:
+                        continue
+                    if len(found) >= MAX_STRETCH_WAYS:
+                        capped = True
+                        break
+                    seen.add(other)
+                    found.append(other)
+                    frontier.append(other)
+    if len(found) < 2:
+        return None
+    ways = sorted(found)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT COALESCE(sum(ST_Length(geometry::geography)), 0) FROM {schema}.segment "
+            "WHERE osm_way_id = ANY(%s)",
+            [ways],
+        )
+        length_m = float(cursor.fetchone()[0])
+    return {"name": name, "ways": ways, "pieces": len(ways), "length_m": length_m, "capped": capped}
 
 
 def _live_override(way_ids: list[int], *, lock: bool = False) -> Override | None:
@@ -350,8 +503,8 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
     first = next(iter(rows.values()))
     base = classifier_tier(first)
     current: dict = {
-        "step": int(first[TIER_COLUMN]),
-        "words": segment_info.TIER_WORDS.get(int(first[TIER_COLUMN]), ""),
+        "step": current_step(first),
+        "words": segment_info.words_for(int(first[TIER_COLUMN]), first.get(HALF_COLUMN) is True),
         "source": "classifier",
         "at_least": False,
         "category": None,
@@ -404,7 +557,12 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
         "can_raise_only": base is not None,
         "current": current,
         "expected": token_for(rows, live),
-        "steps": [{"value": s, "words": segment_info.TIER_WORDS[s]} for s in STEPS],
+        "steps": [
+            {"value": segment_info.step_value(int(s), s != int(s)), "words": w}
+            for s, w in segment_info.STEP_WORDS.items()
+        ],
+        # Whether the live table can hold a half step yet (HALF_COLUMN).
+        "half_steps": HALF_COLUMN in columns,
         "categories": [
             {"id": k, "label": v} for k, v in segment_info.ADJUSTMENT_CATEGORIES.items()
         ],
@@ -412,6 +570,29 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
         "note_max": overrides.PUBLIC_NOTE_MAX,
         "recent_edit": recent_out,
         "pieces": len(rows),
+    }
+
+
+def stretch_state(way_id: int) -> dict | None:
+    """The named stretch for the editor's extent choice, with its own token: asked only when the
+    admin chooses the whole stretch (the router is asked for names). None: the piece is alone."""
+    schema = live_schema()
+    columns = edit_columns(schema)
+    if live_oid(schema) is None or not columns:
+        raise NotFound("There is no road data to change yet.")
+    if not read_rows(schema, columns, [way_id]):
+        raise NotFound("That road is not in the data.")
+    stretch = named_stretch(schema, way_id)
+    if stretch is None:
+        return None
+    rows = read_rows(schema, columns, stretch["ways"])
+    return {
+        "name": stretch["name"],
+        "osm_way_ids": stretch["ways"],
+        "pieces": stretch["pieces"],
+        "length_m": round(stretch["length_m"], 1),
+        "capped": stretch["capped"],
+        "expected": token_of(rows, stretch["ways"]),
     }
 
 
@@ -432,8 +613,9 @@ def _actor_fields(actor) -> dict:
 def _summary(before: dict, after: dict) -> str:
     parts = []
     for key in after:
-        was = (before.get(key) or {}).get(TIER_COLUMN)
-        now = after[key].get(TIER_COLUMN)
+        was_row = before.get(key) or {}
+        was = current_step(was_row) if was_row.get(TIER_COLUMN) is not None else None
+        now = current_step(after[key]) if after[key].get(TIER_COLUMN) is not None else None
         parts.append(f"{key}: LTS {was} -> {now}")
     return "; ".join(parts[:8])[:1500]
 
@@ -476,9 +658,12 @@ def apply(
     """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale)."""
     way_ids = sorted(set(int(w) for w in way_ids))
     if not way_ids or len(way_ids) > MAX_WAYS:
-        raise Invalid(f"Change {MAX_WAYS} road piece at a time.", "osm_way_ids")
+        raise Invalid(f"Change at most {MAX_WAYS} road pieces at a time.", "osm_way_ids")
     validate(spec)
     schema = live_schema()
+    # Asked of the router before any lock is taken; the token below still catches a change.
+    if len(way_ids) > 1 and live_oid(schema) is not None:
+        _check_stretch(schema, way_ids)
     try:
         with transaction.atomic():
             _lock_ways(way_ids)
@@ -490,14 +675,21 @@ def apply(
             oid = live_oid(schema)
             if oid is None or not columns:
                 raise NotFound("There is no road data to change yet.")
+            if spec.half and HALF_COLUMN not in columns:
+                raise Invalid(
+                    "Half steps arrive with the next data update. Choose a whole step for now.",
+                    "step",
+                    "half_unavailable",
+                )
             rows = read_rows(schema, columns, way_ids, lock=True)
             if not {int(k.split(":")[0]) for k in rows} >= set(way_ids):
                 raise NotFound("That road is not in the data.")
-            live = _live_override(way_ids, lock=True)
-            if token_for(rows, live) != expected:
+            if token_of(rows, way_ids, lock=True) != expected:
                 raise Stale(
                     "Someone changed this road since you opened it. Reopen it to see the change."
                 )
+            lives = {o.osm_way_id: o for o in _live_overrides(way_ids, lock=True)}
+            live = lives.get(way_ids[0])
 
             bases = {k: classifier_tier(r) for k, r in rows.items()}
             if spec.at_least and any(b is None for b in bases.values()):
@@ -508,30 +700,45 @@ def apply(
                     "classifier_hidden",
                 )
 
-            # The new row, inert until the old one is out of the way (one live row a way).
-            row = Override.objects.create(
-                kind=Override.Kind.STRESS,
-                osm_way_id=way_ids[0],
-                value={},
-                reason=spec.reason.strip(),
-                evidence=EVIDENCE,
-                approved=False,
-                source=Override.Source.PANEL,
-                created_by=actor,
-                created_by_user_id=getattr(actor, "pk", None),
-            )
-            adjustment_id = f"edit-{row.pk}"
-            row.value = spec.value(adjustment_id)
-            row.save(update_fields=["value"])
-            if live is not None:
-                Override.objects.filter(pk=live.pk).update(superseded_by=row, superseded_at=now)
-            row.approved = True
-            row.approved_at = now
-            row.approved_by = actor
-            row.approved_by_user_id = getattr(actor, "pk", None)
-            row.save(
-                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
-            )
+            # One new row a way, inert until the old one is out of the way (one live row a
+            # way). A stretch's rows share the first row's adjustment id: one adjustment.
+            created: list[Override] = []
+            adjustment_id = ""
+            for way in way_ids:
+                new = Override.objects.create(
+                    kind=Override.Kind.STRESS,
+                    osm_way_id=way,
+                    value={},
+                    reason=spec.reason.strip(),
+                    evidence=EVIDENCE,
+                    approved=False,
+                    source=Override.Source.PANEL,
+                    created_by=actor,
+                    created_by_user_id=getattr(actor, "pk", None),
+                )
+                adjustment_id = adjustment_id or f"edit-{new.pk}"
+                new.value = spec.value(adjustment_id)
+                new.save(update_fields=["value"])
+                old = lives.get(way)
+                if old is not None:
+                    Override.objects.filter(pk=old.pk).update(superseded_by=new, superseded_at=now)
+                new.approved = True
+                new.approved_at = now
+                new.approved_by = actor
+                new.approved_by_user_id = getattr(actor, "pk", None)
+                new.save(
+                    update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+                )
+                created.append(new)
+            row = created[0]
+            pairs = [
+                {
+                    "way": o.osm_way_id,
+                    "override": o.pk,
+                    "replaced": getattr(lives.get(o.osm_way_id), "pk", None),
+                }
+                for o in created
+            ]
 
             after = {k: new_state(r, spec, adjustment_id, bases[k]) for k, r in rows.items()}
             before = {k: {c: r.get(c) for c in after[k]} for k, r in rows.items()}
@@ -548,7 +755,7 @@ def apply(
                 ways.append(
                     {
                         "osm_way_id": way,
-                        "step": int(now_rows[keys[0]][TIER_COLUMN]),
+                        "step": current_step(now_rows[keys[0]]),
                         "changed": changed,
                     }
                 )
@@ -558,6 +765,7 @@ def apply(
                 action=StressEdit.Action.SET,
                 override=row,
                 replaced=live,
+                override_rows=pairs,
                 osm_way_ids=way_ids,
                 before=before,
                 after={k: {c: now_rows[k].get(c) for c in after[k]} for k in rows},
@@ -596,6 +804,17 @@ def _later_touching(edit: StressEdit) -> bool:
         if set(later.osm_way_ids) & set(edit.osm_way_ids):
             return True
     return False
+
+
+def _pair_row(pk, way: int) -> Override | None:
+    """An edit's override row, only if it is that way's stress row (a pair names both)."""
+    if not pk:
+        return None
+    return (
+        Override.objects.select_for_update()
+        .filter(pk=pk, osm_way_id=way, kind=Override.Kind.STRESS)
+        .first()
+    )
 
 
 def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
@@ -644,18 +863,46 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
             )
         new_row = edit.override
         old_row = edit.replaced
+        # Every way's pair (a stretch has one a way); an edit from before phase 5 has only the FKs.
+        pairs = list(edit.override_rows or []) or [
+            {
+                "way": way_ids[0],
+                "override": new_row.pk if new_row else None,
+                "replaced": old_row.pk if old_row else None,
+            }
+        ]
         reinstated = None
-        if new_row is not None:
-            if old_row is not None and old_row.superseded_by_id == new_row.pk:
-                Override.objects.filter(pk=new_row.pk).update(
-                    superseded_by=old_row, superseded_at=now
+        undone_pairs = []
+        for pair in pairs:
+            new = _pair_row(pair["override"], pair["way"])
+            old = _pair_row(pair["replaced"], pair["way"])
+            back = None
+            if new is not None and new.superseded_by_id is not None:
+                # Something else replaced this edit's row since (a file reload, the admin):
+                # the table check above passed, so leave the rows as they are.
+                raise Stale(
+                    "This road's override has been replaced since. Make a new change instead.",
+                    None,
+                    "later_edit",
                 )
-                Override.objects.filter(pk=old_row.pk).update(
-                    superseded_by=None, superseded_at=None
-                )
-                reinstated = old_row
-            else:
-                Override.objects.filter(pk=new_row.pk).update(approved=False)
+            if new is not None:
+                if old is not None and old.superseded_by_id == new.pk:
+                    Override.objects.filter(pk=new.pk).update(superseded_by=old, superseded_at=now)
+                    Override.objects.filter(pk=old.pk).update(
+                        superseded_by=None, superseded_at=None
+                    )
+                    back = old
+                else:
+                    Override.objects.filter(pk=new.pk).update(approved=False)
+            if reinstated is None and back is not None and pair["way"] == way_ids[0]:
+                reinstated = back
+            undone_pairs.append(
+                {
+                    "way": pair["way"],
+                    "override": back.pk if back else None,
+                    "replaced": pair["override"],
+                }
+            )
         write_rows(schema, edit.before)
         now_rows = read_rows(schema, columns, way_ids)
         generation = bump_generation(schema, way_ids)
@@ -664,6 +911,7 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
             action=StressEdit.Action.UNDO,
             override=reinstated,
             replaced=new_row,
+            override_rows=undone_pairs,
             undoes=edit,
             osm_way_ids=way_ids,
             before=edit.after,
@@ -688,7 +936,7 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
     ways = [
         {
             "osm_way_id": w,
-            "step": int(next(r[TIER_COLUMN] for k, r in now_rows.items() if k.startswith(f"{w}:"))),
+            "step": current_step(next(r for k, r in now_rows.items() if k.startswith(f"{w}:"))),
             "changed": True,
         }
         for w in way_ids

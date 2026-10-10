@@ -51,6 +51,13 @@ check("upstream ran on the remapped tags: bike_forward is derived",
   out.bike_forward ~= nil, out.bike_forward)
 check("the rm: namespace never reaches the tile build", out["rm:stress_tier"] == nil)
 
+-- A half step (`rm:stress_half`, 461a) reaches the remap and is stripped like every rm: tag.
+local half = { highway = "secondary", ["rm:stress_tier"] = "3", ["rm:stress_half"] = "yes" }
+local _, half_out = ways_proc(half, 3)
+check("3.5 arrives: LTS 3's penalty and the half step's lanes", half_out.bicycle == "use_sidepath"
+  and half_out["lanes:forward"] ~= nil, half_out["lanes:forward"])
+check("rm:stress_half never reaches the tile build", half_out["rm:stress_half"] == nil)
+
 -- The same derived tier on a trail-class way must not turn bicycle access on for
 -- every sidewalk in the District.
 local trail = { highway = "footway", ["rm:stress_tier"] = "4", ["rm:trail_class"] = "yes",

@@ -49,6 +49,10 @@ export interface SegmentInfo {
   /** The compact lines; absent from an older API, when the details open instead. */
   summary?: SummaryRow[];
   tier: number | null;
+  /** The exact step, half steps included (1.5 ... 4.5); absent from an older API. `tier` is its whole level. */
+  step?: number | null;
+  /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
+  half_steps?: boolean | null;
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;
@@ -95,6 +99,11 @@ export type InfoState =
 /** The panel's words. */
 export const INFO_TITLE_LOADING = "Looking up the road here";
 export const NO_ROAD = "No road here";
+/** The panel's title for a way with no name (core/segment_info.py UNNAMED_ROAD_TITLE and
+ * UNNAMED_PATH_TITLE, the route description's words capitalised; a Python test ties them). */
+export const UNNAMED_ROAD_TITLE = "Unnamed road";
+export const UNNAMED_PATH_TITLE = "Unnamed path";
+export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE];
 /** How far the API looks for a way (core.segment_info.SNAP_RADIUS_M). */
 export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;

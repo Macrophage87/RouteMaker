@@ -455,6 +455,12 @@ ROAD_COST_COLUMNS = ("road_default_speed_mph", "road_urban")
 # The tier the junction model reads where AADT smoothing lowered the link's
 # (SEGMENT_DDL); absent on a table built before it.
 UNSMOOTHED_TIER_COLUMN = "stress_unsmoothed_tier"
+# A half step (OWNER-DECISIONS 441i-441l, 461a): the way is half a level above
+# `stress_tier` (1.5, 2.5, 3.5 or 4.5), so every reader of the integer tier keeps
+# working and reads the lower level (SEGMENT_DDL). Only an owner's override row sets
+# it; the classifier never does. Absent on a table built before it
+# (`manage.py add_stress_half_column` adds it in place).
+STRESS_HALF_COLUMN = "stress_half"
 
 # The Mass Ride map's per-segment usable width, metres (riders a minute follow from it)
 # (`routemaker.massflow`; OWNER-DECISIONS 325-327, 387). Carried in a stress tile
@@ -608,6 +614,12 @@ CREATE TABLE {schema}.segment (
     -- migration: this table is created whole on every rebuild; `core.junctions`
     -- checks for the column on a table built before it.
     stress_unsmoothed_tier      smallint CHECK (stress_unsmoothed_tier BETWEEN 1 AND 5),
+    -- A half step (OWNER-DECISIONS 441i-441l, 461a): true where an owner's override
+    -- rated the way half a level above `stress_tier` (1.5, 2.5, 3.5, 4.5). Never on
+    -- tier 5: there is no step above Avoid. Every integer reader reads the lower level;
+    -- the rules that read the half take the midpoint (docs/stress/stress-number.md).
+    stress_half                 boolean     NOT NULL DEFAULT false
+                                CHECK (NOT stress_half OR stress_tier < 5),
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL

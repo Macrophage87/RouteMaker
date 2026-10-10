@@ -9,6 +9,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
   BASEMAP_SOURCE_ID,
@@ -99,6 +100,8 @@ import {
   type JunctionGroup,
   type JunctionItem,
 } from "./lib/intersectionMarkers.ts";
+import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
+import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -121,6 +124,8 @@ export interface Frame {
 
 interface Props {
   points: LonLat[];
+  /** A spot to open at, at street level (`#at=lon,lat`, lib/planHash.ts atFromHash); else the usual view. */
+  openAt?: LonLat | null;
   /** "Make it a loop" is on: the first point is the start and finish, the rest are stops (OWNER-DECISIONS 374). */
   loopVias?: boolean;
   route: RouteResponse | null;
@@ -390,8 +395,8 @@ export function MapView(props: Props) {
     const map = new maplibregl.Map({
       container: container.current,
       style: style as maplibregl.StyleSpecification,
-      center: DC_CENTRE,
-      zoom: OPENING_ZOOM,
+      center: props.openAt ?? DC_CENTRE,
+      zoom: props.openAt ? AT_ZOOM : OPENING_ZOOM,
       minZoom: 7,
       maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
@@ -1189,6 +1194,38 @@ export function MapView(props: Props) {
     return () => {
       map.off("zoomend", draw);
     };
+  }, [props.route, props.stale]);
+
+  // The Avoid-rated junctions the route passes (OWNER-DECISIONS 307-310): the skull and
+  // crossbones on a ringed disc, drawn above the warning markers and larger than them. An
+  // image whose name is the rating, the reason and the plea (309; the owner, 2026-10-10:
+  // "this is a really bad idea, please reconsider"), never the glyph's; the list and the
+  // description say the same in text. A button, as the junction markers are, so Tab reaches
+  // it: a click, a tap, Enter or Space opens the road panel on the junction, which leads
+  // with its warning ("Yes, also when clicking on the intersection"), and the focus comes
+  // back to it when the panel closes. The I key or "Road info at map center" does the same.
+  const avoidMarkers = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    avoidMarkers.current.forEach((marker) => marker.remove());
+    avoidMarkers.current = [];
+    if (!map || !props.route || props.stale) return;
+    avoidMarkers.current = avoidItems(props.route).map((item) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "avoid-marker";
+      // The name alone, as the junction markers (a title as well is read twice).
+      element.setAttribute("aria-label", avoidMarkerName(item));
+      element.setAttribute("aria-haspopup", "dialog");
+      element.innerHTML = avoidMarkerSvg();
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a via point.
+        event.stopPropagation();
+        callbacks.current.onRoadInfo?.({ point: [item.lon, item.lat], origin: "spot" });
+      });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
+    });
   }, [props.route, props.stale]);
 
   // A click on the summary's list: take the map there and say why.

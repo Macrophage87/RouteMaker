@@ -1491,6 +1491,42 @@ dialog.road-info::backdrop {
   overflow-wrap: anywhere;
 }
 
+/* The extent choice (a named stretch, HALF-STEP-EDITOR phase 5): native radios, 44px rows. */
+.stress-editor-extent-choice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.stress-editor-extent-choice > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.stress-editor-radio {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-radio input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-radio > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
 .stress-editor-check {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -1851,7 +1887,8 @@ ul.station-links {
   /* A double ring in the system's own pair: Highlight alone was about 1.1:1
      on the light map in a dark theme. The marker keeps its colours
      (forced-color-adjust: none), so its box-shadow is kept too. */
-  .junction-marker:focus-visible {
+  .junction-marker:focus-visible,
+  .avoid-marker:focus-visible {
     outline: 3px solid CanvasText;
     outline-offset: 2px;
     box-shadow: 0 0 0 2px Canvas;
@@ -1896,7 +1933,7 @@ ul.station-links {
 /* The routes to choose from (OWNER-DECISIONS 265): a radio group, one row each, the
    figures in words (no colour carries the difference). */
 fieldset.candidates {
-  border: 1px solid var(--border, currentColor);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 12px 0;
@@ -3480,4 +3517,214 @@ details.zoom-notes {
 }
 .station-refresh {
   min-height: 44px;
+}
+
+/* An instance admin's review of rider suggestions (SuggestionReview.tsx; OWNER-DECISIONS 460.5). */
+.suggestion-review > button,
+.suggestion-post > button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.suggestion-review-said:empty {
+  display: none;
+}
+
+.suggestion-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.suggestion-item {
+  border-top: 1px solid var(--swatch-border);
+  padding: 10px 0;
+}
+
+.suggestion-item h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.suggestion-post {
+  margin-top: 10px;
+}
+
+.suggestion-post label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.suggestion-post textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+/* --- The installable app (WEB-NAV-plan.md section 8; InstallableApp.tsx): the status bar at the top of
+   the planner (offline, a new version ready), the routes kept for offline in Settings, Keep for offline
+   under a route, and the install offer. Words carry every state (no colour alone); every button is 44 px
+   high (the panel's rule above); the bar is a notice, never over the map. --- */
+.app-status {
+  margin: 8px 14px 4px;
+  display: grid;
+  gap: 6px;
+}
+.app-offline,
+.app-update {
+  margin: 0;
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  font-size: 0.9rem;
+}
+.app-update {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-update p {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+.app-update button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.route-actions .keep-offline {
+  flex: 1 1 100%;
+}
+/* Always drawn, empty at first: a live region added already holding its text is often not spoken. */
+.route-actions .keep-said {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.kept-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.kept-route {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+.kept-title {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.kept-detail {
+  margin: 2px 0 6px;
+}
+.kept-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kept-actions button {
+  flex: 1 1 6rem;
+  min-height: 44px;
+}
+.install-offer .install-app {
+  min-height: 44px;
+}
+@media (forced-colors: active) {
+  .app-offline,
+  .app-update,
+  .kept-route {
+    border-color: CanvasText;
+  }
+}
+
+/* Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335): the skull on a
+   dark disc ringed in white, above the warning markers; the notice at the top of the route
+   panel; the symbol beside the list rows and the description's entries, hidden from
+   assistive technology (the text names the rating, 309). */
+.avoid-marker {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  /* AVOID_ICON_PX: larger than the 24 px junction markers (the owner, 2026-10-10). */
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  line-height: 0;
+  z-index: 4;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.avoid-notice {
+  border: 2px solid var(--text);
+  border-left-width: 6px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 12px;
+  background: var(--bg);
+  color: var(--text);
+}
+.avoid-notice p {
+  margin: 0 0 6px;
+}
+.avoid-notice .avoid-symbol {
+  font-size: 1.25em;
+  margin-right: 4px;
+}
+.avoid-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.junction-avoid {
+  padding: 4px 0;
+}
+
+/* The road panel on an Avoid-rated junction (the owner, 2026-10-10): a strong warning first. */
+.road-info-avoid {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 3px solid var(--text);
+  border-left-width: 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.road-info-avoid p {
+  margin: 0;
+}
+.road-info-avoid-heading {
+  font-size: 1.15rem;
+}
+.road-info-avoid .avoid-symbol {
+  font-size: 1.3em;
+}
+.road-info-avoid-text {
+  margin-top: 0.25rem !important;
 }
