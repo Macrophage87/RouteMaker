@@ -219,12 +219,16 @@ async function clearKept(): Promise<void> {
   }
 }
 
-function stopKeeping(): Promise<void> {
+function stopNow(): void {
   running?.abort();
   running = null;
   keepingStress = false;
   source.keeping = false;
   done = new Set();
+}
+
+function stopKeeping(): Promise<void> {
+  stopNow();
   clearing = clearing.then(clearKept, clearKept);
   return clearing;
 }
@@ -281,18 +285,22 @@ async function snapshot(): Promise<CorridorSnapshot> {
  * End ride: stop fetching and keeping, and clear what was kept. `handOn`, when given (the installed
  * app's last ride, OWNER-DECISIONS 465a), is shown what the ride kept first, and copies it.
  */
-export async function clearCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
+export function clearCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
   generation += 1;
-  if (handOn) {
-    running?.abort();
-    running = null;
+  if (!handOn) return stopKeeping();
+  // Keeping stops at once; the hand-on runs inside the clears' chain, before this ride's clear and
+  // after any earlier one, so a Start ride that comes while it runs waits for it (keepCorridor awaits
+  // `clearing`) and is never stopped or cleared by it afterwards.
+  stopNow();
+  const hand = async () => {
     try {
       await handOn(await snapshot());
     } catch {
       // The last ride keeps its route without the map; the ride's own copy is cleared all the same.
     }
-  }
-  return stopKeeping();
+  };
+  clearing = clearing.then(hand, hand).then(clearKept, clearKept);
+  return clearing;
 }
 
 /**

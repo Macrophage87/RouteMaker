@@ -5,7 +5,7 @@
  *   suppressed) and an "Install RouteMaker" button is offered in Settings and in More tips; pressing it
  *   shows the browser's own install dialog. `appinstalled` hides the offer.
  * - iOS (Safari, and any iOS browser, which are all Safari underneath): no prompt exists, so one line
- *   says how: "In Safari, press Share, then Add to Home Screen."
+ *   says how: "Press Share, then Add to Home Screen."
  * - Running installed (standalone): a line saying so, and no offer.
  * - Anything else (Firefox on a desktop): nothing.
  *
@@ -17,7 +17,7 @@ export const INSTALL_LABEL = "Install RouteMaker";
 export const INSTALL_HEADING = "Install the app";
 export const INSTALL_WHY =
   "Installed, RouteMaker opens from your home screen in its own window, starts with no signal, and keeps the routes you keep for offline.";
-export const IOS_INSTALL = "In Safari, press Share, then Add to Home Screen.";
+export const IOS_INSTALL = "Press Share, then Add to Home Screen.";
 export const INSTALLED_NOTE = "RouteMaker is installed on this device.";
 export const INSTALLED_SAID = "RouteMaker is installed. Open it from your home screen or app list.";
 export const DISMISSED_SAID = "Not installed. The Install RouteMaker button is in Settings if you change your mind.";

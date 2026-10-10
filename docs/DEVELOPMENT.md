@@ -6226,24 +6226,36 @@ waits; `lib/appWorker.ts` (registered only in a production build in a secure con
 `swKill.mjs`, deletes the worker's own caches, unregisters, and reloads only the pages it controls (no
 loop); the owner copies it over `sw.js` on disk (OPERATIONS, "The app's service worker").
 
-**Routes kept for offline (P3).** "Keep for offline" under a route's figures (`keepForOffline` in App,
-`lib/offlineKeep.ts`) saves the plan, its API answer and its title first (IndexedDB
+**Routes kept for offline (P3).** "Keep for offline" under a route's figures, in the installed app only
+(465a; `keepOffered` with its one switch `KEEP_IN_BROWSER_TAB` in `lib/offlineRoutes.ts`;
+`keepForOffline` in App, `lib/offlineKeep.ts`) saves the plan, its API answer and its title first (IndexedDB
 `routemaker-offline`, store `routes`), then walks the corridor with N5's `prefetchCorridor` (same
 pacing and caps) into its own store: base map ranges in the store `ranges`, stress tiles, glyphs and the
 sprite in the Cache Storage bucket `routemaker-offline-v1` (`lib/offlineRouteStore.ts`). It asks
-`navigator.storage.persist()` at that press. At most `MAX_KEPT` (10) routes, the last ride included.
+`navigator.storage.persist()` at that press. At most `MAX_KEPT` (10) routes of the rider's; the last
+ride is one more, replaced by the next. A route is kept under `keptPlanKey`: the plan the route on
+screen answers (set with the answer, so a keep during a re-plan in flight files it under its own plan),
+without Mass Ride's ride size, which the planner never gets; the scheduler's offline lookup, the last
+ride and Settings' Open use the same key. The record names each tile and range as the walk keeps it
+(`progressSaver`, every 2 s and at the end), keeping a plan again starts from what its record named
+(`keptRecord`), and `sweepKept` deletes what no record names (after a Remove, and 20 s after load,
+never while a keep runs in the page). Start ride stops a keep still fetching.
 In the installed app (465a) the last ride's route is kept automatically: at End ride, RideMode's
-`clearCorridor(adoptCorridor)` hands the ride's own corridor over, so nothing is fetched twice.
+`clearCorridor(adoptCorridor)` hands the ride's own corridor over, so nothing is fetched twice. End ride
+stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for it
+and is never stopped by the old ride's clear.
 Reading back: `CorridorSource` takes a read-only `fallback` (the kept ranges), consulted only when the
 network fails; `corridorStress.kept` reads the ride's copy and then the kept routes'. When a plan
 request fails with a network error, App's scheduler answers from the kept route with a notice that it
 may be out of date (`offlineRouteNotice`); a planner error is shown as usual. Settings lists them
 (`KeptRoutes`) with Open and Remove; Remove frees only the tiles and ranges no other kept route uses
-(`orphans`). Nothing kept holds a position (a unit test checks).
+(`orphans`); a failed Remove says so. With nothing kept the store is never opened (`anyKept`, a count
+in localStorage): a failed base map range waiting on a first IndexedDB open kept MapLibre's style from
+loading. Nothing kept holds a position (a unit test checks).
 
 **Install offer (P4).** `watchInstall(window)` in `main.tsx` holds `beforeinstallprompt` before the
 first render and hears `appinstalled`. `InstallOffer` (Settings, and short in More tips) shows "Install
-RouteMaker", the iOS line "In Safari, press Share, then Add to Home Screen." (any iOS browser), or a
+RouteMaker", the iOS line "Press Share, then Add to Home Screen." (any iOS browser has it), or a
 note that it is installed when running standalone. Never a pop-up. After the browser's dialog the
 outcome stays as a note and the focus goes to the heading (Settings) or the note (More tips).
 
@@ -6253,7 +6265,9 @@ said politely once; after a Remove the focus goes to the next row's Remove, else
 (`focusAfterRemove`). Forced-colours styles for every new part.
 
 **Tests.** `node --test frontend/src/sw/swCore.test.mjs` (the rule table row by row, precache's build
-check, activate, the kill switch, the generated scripts run in `vm`); Vitest for `appWorker`,
-`installOffer`, `offlineRoutes` and the `CorridorSource` fallback; the browser suite's installable-app
+check, activate, the kill switch, the generated scripts run in `vm`); `npm test` (node's test runner)
+for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback and End ride's hand-on
+order (`corridorStore.test.ts`); the browser suite's installable-app
 group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
-debugging port), with offline emulated on the page and the worker's target.
+debugging port), with offline emulated on the page and the worker's target, and the page made to run
+as the installed app (`navigator.standalone`) for Keep for offline.

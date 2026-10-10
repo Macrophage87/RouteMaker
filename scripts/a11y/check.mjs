@@ -803,7 +803,7 @@ const federalFetched = (p) =>
   check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Ride mode, Routes kept for offline (and Install the app when offered) and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["Display", "Ride mode", "Routes kept for offline", "Signing in"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Ride mode and Signing in (with the installed app's Routes kept for offline and Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app" && h !== "Routes kept for offline")) === JSON.stringify(["Display", "Ride mode", "Signing in"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -2637,7 +2637,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await openSheet(p, "Settings");
   const ios = await p.eval("({ settings: document.querySelector('#sheet-settings .install-ios')?.textContent, tips: document.querySelector('.tips-body .install-ios')?.textContent, buttons: document.querySelectorAll('button.install-app').length, fit: (() => { const s = document.querySelector('#sheet-settings'); return s.scrollWidth <= s.clientWidth + 1; })() })");
   check("install on an iPhone: the Share line in Settings and More tips, no button, nothing spilling sideways at 375 px",
-    /In Safari, press Share, then Add to Home Screen\.$/.test(ios.settings ?? "") && ios.tips === "To install RouteMaker: In Safari, press Share, then Add to Home Screen." && ios.buttons === 0 && ios.fit, JSON.stringify(ios));
+    /Press Share, then Add to Home Screen\.$/.test(ios.settings ?? "") && ios.tips === "To install RouteMaker: Press Share, then Add to Home Screen." && ios.buttons === 0 && ios.fit, JSON.stringify(ios));
   await p.shot(`${SHOTS}/install_ios_375.png`);
   await p.close();
 }
@@ -2669,6 +2669,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("app worker: a navigation to /auth/login is not answered by the worker: it reaches the network (here the mock's empty 404), never the app's page", !signIn.app && !signIn.build, JSON.stringify(signIn));
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
   await p.waitFor("!!document.querySelector('.summary')", 40000);
+  await sleep(800);
+  check("keep for offline: a browser tab does not offer it (OWNER-DECISIONS 465a: the installed app's)", await p.eval("!document.querySelector('.keep-offline') && !document.querySelector('#keep-offline-said')"));
+  // From here the page runs as the installed app does (isStandalone: navigator.standalone, as iOS's home-screen app has it).
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'standalone', { configurable: true, get: () => true });" });
+  await p.s("Page.reload", {});
+  await p.waitFor("!!document.querySelector('.summary') && !!document.querySelector('.keep-offline')", 40000);
   await sleep(800);
 
   // Keep for offline: a real button under the route; what it did is said politely.
@@ -2744,7 +2750,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 456;
+const EXPECTED = 457;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

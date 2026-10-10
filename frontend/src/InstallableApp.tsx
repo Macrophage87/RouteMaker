@@ -15,7 +15,7 @@
  * page's top. What changes is said once, politely, through `onSay` (App's live region with its count).
  */
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import { AppWorker, OFFLINE_SAID, ONLINE_SAID, UPDATE_READY, UPDATE_RELOAD, browserWorkerEnv, updateOffered } from "./lib/appWorker.ts";
+import { AppWorker, OFFLINE_SAID, ONLINE_SAID, UPDATE_READY, UPDATE_RELOAD, UPDATE_RELOAD_NAME, browserWorkerEnv, updateOffered } from "./lib/appWorker.ts";
 import {
   DISMISSED_SAID,
   INSTALLED_NOTE,
@@ -31,7 +31,7 @@ import {
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
-import { KEPT_HEADING, KEPT_NONE, KEPT_PRIVATE, focusAfterRemove, keptDetail, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { KEPT_HEADING, KEPT_NONE, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 
 // ---- The new version and the network --------------------------------------------------------------
@@ -120,7 +120,7 @@ export function AppStatusBar({ status }: { status: AppStatus }) {
       {status.updateShown && (
         <div className="app-update">
           <p id="app-update-text">{UPDATE_READY}</p>
-          <button type="button" aria-describedby="app-update-text" onClick={status.reload}>
+          <button type="button" aria-label={UPDATE_RELOAD_NAME} onClick={status.reload}>
             {UPDATE_RELOAD}
           </button>
         </div>
@@ -225,7 +225,15 @@ export function KeptRoutes({ version, onOpen, onSay, headingRef }: { version: nu
     else removeRefs.current[target.row]?.focus();
   }, [routes, heading]);
   const remove = async (route: KeptRoute, index: number) => {
-    await removeKept(route.id).catch(() => undefined);
+    const removed = await removeKept(route.id).then(
+      () => true,
+      () => false,
+    );
+    if (!removed) {
+      // Still in the list, and the focus stays on its Remove.
+      onSay(removeFailedSaid(route.title));
+      return;
+    }
     const left = (routes?.length ?? 1) - 1;
     focusNext.current = focusAfterRemove(index, left);
     onSay(removedSaid(route.title, left));

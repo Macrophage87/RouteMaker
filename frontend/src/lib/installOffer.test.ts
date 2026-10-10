@@ -38,7 +38,7 @@ test("the offer: installed first, then the button, then the iOS line, else nothi
 
 test("the words are the plan's", () => {
   assert.equal(INSTALL_LABEL, "Install RouteMaker");
-  assert.equal(IOS_INSTALL, "In Safari, press Share, then Add to Home Screen.");
+  assert.equal(IOS_INSTALL, "Press Share, then Add to Home Screen.");
 });
 
 test("iOS: an iPhone, and an iPad that says it is a Mac; not a Mac, not Android", () => {

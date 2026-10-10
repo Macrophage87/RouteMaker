@@ -165,6 +165,7 @@ function fakeScope({ network } = {}) {
         };
       },
       keys: async () => [...stores.keys()],
+      has: async (name) => stores.has(name),
       delete: async (name) => stores.delete(name),
     },
     fetch: async (request, init) => {
@@ -327,6 +328,12 @@ test("a glyph: from the kept routes' bucket when there, else the network; the wo
   assert.equal((await respond(scope, "kept", get(glyph), "b1")).label, "kept");
   assert.equal((await respond(scope, "kept", get("/basemap/sprites/light.json"), "b1")).label, "network");
   assert.equal(scope.stores.get(OFFLINE_BUCKET).size, 1);
+});
+
+test("a glyph with no route kept: straight to the network, and the kept routes' bucket is not created", async () => {
+  const scope = fakeScope({ network: site("b1") });
+  assert.equal((await respond(scope, "kept", get("/basemap/fonts/Noto%20Sans%20Regular/0-255.pbf"), "b1")).label, "network");
+  assert.equal(scope.stores.has(OFFLINE_BUCKET), false);
 });
 
 // ---- the kill switch ------------------------------------------------------------------------------

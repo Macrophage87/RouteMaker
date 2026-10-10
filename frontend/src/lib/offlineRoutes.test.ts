@@ -7,6 +7,9 @@ import {
   LAST_RIDE_ID,
   MAX_KEPT,
   canKeep,
+  keptPlanKey,
+  keepOffered,
+  KEEP_IN_BROWSER_TAB,
   focusAfterRemove,
   keepSaid,
   keptDate,
@@ -15,6 +18,10 @@ import {
   keptId,
   offlineRouteNotice,
   orphans,
+  keptRecord,
+  progressSaver,
+  removeFailedSaid,
+  unreferenced,
   removedSaid,
   routeTitle,
   sizeText,
@@ -46,6 +53,34 @@ test("at most ten kept; replacing one already kept is always allowed", () => {
   assert.equal(canKeep(full, "new"), false);
   assert.equal(canKeep(full, "r3"), true);
   assert.equal(canKeep(full.slice(1), "new"), true);
+});
+
+test("Keep for offline is the installed app's (465a), with one switch for browser tabs", () => {
+  assert.equal(KEEP_IN_BROWSER_TAB, false);
+  assert.equal(keepOffered(true), true);
+  assert.equal(keepOffered(false), false);
+  assert.equal(keepOffered(false, true), true);
+});
+
+test("the last ride is not one of the ten: it is always kept, replacing the one before, and never blocks the rider's own", () => {
+  const full = Array.from({ length: MAX_KEPT }, (_, i) => kept(`r${i}`));
+  assert.equal(canKeep(full, LAST_RIDE_ID), true);
+  const nine = [...full.slice(1), kept(LAST_RIDE_ID, { lastRide: true })];
+  assert.equal(canKeep(nine, "new"), true);
+});
+
+test("the keep key is the planner's lookup key: Mass Ride's ride size (never sent) and the private weight are left out", () => {
+  const points: [number, number][] = [
+    [-77.04, 38.91],
+    [-77.01, 38.89],
+  ];
+  const dials = { stress: 60, hills: 50 };
+  // As App keeps it (the dials shown, with the ride size) and as the scheduler looks it up (the dials sent: no ride size, the weight added).
+  const kept = keptPlanKey(points, "mass-ride", { ...dials, rideSize: 1200 });
+  const lookedUp = keptPlanKey(points, "mass-ride", { ...dials, systemWeightKg: 94 });
+  assert.equal(kept, lookedUp);
+  assert.ok(!/riders=|weight/.test(kept), kept);
+  assert.notEqual(keptPlanKey(points, "default", dials), kept, "another ride type is another route");
 });
 
 test("with no network, a plan's kept route answers: the rider's own before the last ride's", () => {
@@ -114,4 +149,46 @@ test("no position is kept: a kept route holds the plan, the answer, tile and ran
     const code = readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
     assert.ok(!/\bfix\b|coords\.|watchPosition|getCurrentPosition|accuracy/i.test(code), `${name} touches a position`);
   }
+});
+
+test("keeping a plan again starts from what its record already names, so a keep cut short leaves nothing unnamed", () => {
+  const fields = { id: "#a", plan: "#a", title: "A", distanceM: 1000, answer: null, lastRide: false };
+  const fresh = keptRecord(fields, undefined, NOW);
+  assert.deepEqual([fresh.tiles, fresh.ranges, fresh.bytes, fresh.complete], [[], [], 0, false]);
+  const before = kept("#a", { tiles: ["/tiles/stress/14/1/2.pbf"], ranges: ["0:127"], bytes: 900 });
+  const again = keptRecord(fields, before, NOW + DAY);
+  assert.deepEqual(again.tiles, before.tiles);
+  assert.deepEqual(again.ranges, before.ranges);
+  assert.equal(again.bytes, 900);
+  assert.equal(again.complete, false);
+  again.tiles.push("/x");
+  assert.equal(before.tiles.length, 1, "the old record's lists are not shared");
+});
+
+test("a keep writes its record as it goes, at most every so often, and once more at the end", async () => {
+  let clock = 0;
+  const writes: number[] = [];
+  const saver = progressSaver(async () => void writes.push(clock), 2000, () => clock);
+  saver.noted();
+  assert.deepEqual(writes, [], "not again within the interval");
+  clock = 2500;
+  saver.noted();
+  saver.noted();
+  await Promise.resolve();
+  assert.deepEqual(writes, [2500], "one write, however many tiles came");
+  clock = 3000;
+  await saver.flush();
+  assert.deepEqual(writes, [2500, 3000], "the end always writes");
+});
+
+test("the sweep deletes only what no kept route names; tile URLs are compared as the store spells them", () => {
+  const routes = [kept("#a", { tiles: ["/tiles/stress/14/1/2.pbf?rev=3"], ranges: ["0:127", "500:20"] })];
+  const norm = (url: string) => new URL(url, "http://127.0.0.1/").href;
+  const free = unreferenced(routes, ["http://127.0.0.1/tiles/stress/14/1/2.pbf?rev=3", "http://127.0.0.1/tiles/stress/14/1/3.pbf"], ["0:127", "500:20", "900:40"], norm);
+  assert.deepEqual(free, { tiles: ["http://127.0.0.1/tiles/stress/14/1/3.pbf"], ranges: ["900:40"] });
+  assert.deepEqual(unreferenced([], ["a"], ["b"]), { tiles: ["a"], ranges: ["b"] }, "no route: all of it");
+});
+
+test("a removal that fails says so, and that the route is still kept", () => {
+  assert.equal(removeFailedSaid("Dupont Circle to Union Station"), "Could not remove Dupont Circle to Union Station. It is still kept; try again.");
 });

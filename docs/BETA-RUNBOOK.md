@@ -913,7 +913,10 @@ app back): `sudo cp -p "$RM_DATA/backups/index.html.pre-frontend-<time>" "$RM_DA
 Once the front end has the installable app's service worker (`sw.js`), save it beside `index.html` the same way
 (`sudo cp -p "$RM_DATA/frontend/sw.js" "$RM_DATA/backups/sw.js.pre-frontend-<time>"`) and put it back with the same
 `cp` and `mv -T` in an undo, so the worker and the page stay the same build (OPERATIONS.md, "The app's service worker:
-updates, rollback and the kill switch", which also has the kill switch). The installable app's edge changes, in this
+updates, rollback and the kill switch", which also has the kill switch). **An undo to a build from before the worker**
+has no saved `sw.js`, and neither this undo nor the agent's own restore removes the new one: after it, copy the kill
+switch over it (`sudo cp -p "$RM_DATA/frontend/sw-kill.js" "$RM_DATA/frontend/.sw.js.new" && sudo mv -T "$RM_DATA/frontend/.sw.js.new" "$RM_DATA/frontend/sw.js"`),
+which also reloads any page mid-ride (OPERATIONS.md, same section). The installable app's edge changes, in this
 template and the Caddyfile, are OPERATIONS.md, "The installable app at the edge".
 
 ## Continuous deployment
@@ -1137,7 +1140,9 @@ systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altoge
 `$RM_STATE/cd/backups/pre-release-<time>.dump` (restore it with
 `receive-data.sh --env-file .env --backups-dir "$RM_STATE/cd/backups" restore-dump <file>`, no sudo),
 the old front end's top-level files (`index.html`, `beta-build.txt`) are in `$RM_STATE/cd/backups/frontend.pre-release-<time>/`, and the previous
-tag is in `$RM_STATE/cd/previous-tag`. Pause the agent first (`pause --wait`); once the checkout and `TAG` are back,
+tag is in `$RM_STATE/cd/previous-tag`. If that saved directory has no `sw.js` (a tag from before the installable
+app), the restore leaves the newer `sw.js` in place, and so does the agent's own automatic rollback: copy the kill
+switch over it as in the "Front end only" undo above. Pause the agent first (`pause --wait`); once the checkout and `TAG` are back,
 `"$A" hold <the newer tag> "rolled back by hand"` (or the next pass would deploy it again),
 `"$A" mark-deployed <the previous tag>` (with `--force` if `status` showed `IN PROGRESS`: the
 hand rollback replaces the agent's), then `"$A" resume`. A later release (a higher tag) is the

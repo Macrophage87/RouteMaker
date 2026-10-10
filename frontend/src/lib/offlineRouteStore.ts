@@ -121,6 +121,26 @@ export const keptRanges: Pick<RangeStore, "get"> = {
   },
 };
 
+/** Every kept range's key (for the sweep of what no route names). */
+export async function rangeKeys(): Promise<string[]> {
+  return (await run<IDBValidKey[]>("ranges", "readonly", (s) => s.getAllKeys())).map(String);
+}
+
+/** Every URL in the kept routes' bucket, absolute ([] when there is none: it is not created). */
+export async function tileKeys(): Promise<string[]> {
+  if (typeof caches === "undefined" || !(await caches.has(OFFLINE_BUCKET))) return [];
+  return (await (await caches.open(OFFLINE_BUCKET)).keys()).map((r) => r.url);
+}
+
+/** Whether the bucket exists at all (no bucket is created by asking). */
+export async function hasBucket(): Promise<boolean> {
+  try {
+    return typeof caches !== "undefined" && (await caches.has(OFFLINE_BUCKET));
+  } catch {
+    return false;
+  }
+}
+
 export async function putRange(range: KeptRange): Promise<void> {
   await run("ranges", "readwrite", (s) => s.put(range));
 }

@@ -13,8 +13,8 @@ import { BASEMAP } from "../stressStyle.js";
 import { ByteBudget, CorridorSource, prefetchCorridor, type KeptRange, type PrefetchResult, type RangeStore, type TileJob } from "./corridor.ts";
 import { corridorStress, styleExtraUrls, stressTileUrl, type CorridorSnapshot } from "./corridorStore.ts";
 import type { LonLat } from "./geo.ts";
-import { LAST_RIDE_ID, canKeep, keptFor, keptId, orphans, type KeepOutcome, type KeptRoute } from "./offlineRoutes.ts";
-import { deleteKept, deleteRanges, deleteTiles, getKept, hasTile, keptRanges, listKept, putKept, putRange, putTile } from "./offlineRouteStore.ts";
+import { LAST_RIDE_ID, canKeep, keptFor, keptId, keptRecord, orphans, progressSaver, unreferenced, type KeepOutcome, type KeptRoute } from "./offlineRoutes.ts";
+import { anyKept, deleteKept, deleteRanges, deleteTiles, getKept, hasBucket, hasTile, keptRanges, listKept, putKept, putRange, putTile, rangeKeys, tileKeys } from "./offlineRouteStore.ts";
 import { fetchTile } from "./stressProtocol.ts";
 
 export interface KeepRequest<A> {
@@ -26,7 +26,7 @@ export interface KeepRequest<A> {
 }
 
 /** The kept ranges as the keeping archive's store: every range it reads or writes is noted for the route. */
-function notingStore(noted: Set<string>, bytes: { n: number }): RangeStore {
+function notingStore(noted: Set<string>, bytes: { n: number }, onKept: () => void): RangeStore {
   return {
     async get(key) {
       const kept = await keptRanges.get(key).catch(() => undefined);
@@ -37,6 +37,7 @@ function notingStore(noted: Set<string>, bytes: { n: number }): RangeStore {
       await putRange(range);
       noted.add(range.key);
       bytes.n += range.data.byteLength;
+      onKept();
     },
     // Never: other routes share these ranges, and only a removal frees them (offlineRoutes.ts orphans).
     async clear() {},
@@ -44,36 +45,42 @@ function notingStore(noted: Set<string>, bytes: { n: number }): RangeStore {
 }
 
 const PROTOBUF = { "Content-Type": "application/x-protobuf" };
+/** How often a keep under way writes its record (each write carries the whole answer). */
+const SAVE_EVERY_MS = 2000;
+/** Keeps and hand-ons under way in this page: the sweep waits until none is (it would take their tiles). */
+let busy = 0;
+
+async function busyWhile<T>(work: () => Promise<T>): Promise<T> {
+  busy += 1;
+  try {
+    return await work();
+  } finally {
+    busy -= 1;
+  }
+}
 
 /**
  * Keep a route: its record at once (so it is listed, and opens with no signal, even before the map
  * along it is in), then the map along it. Resolves with what the keep press says.
  */
-export async function keepRoute<A>(request: KeepRequest<A>, signal?: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A> }> {
+export function keepRoute<A>(request: KeepRequest<A>, signal?: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A> }> {
+  return busyWhile(() => keepRouteNow(request, signal));
+}
+
+async function keepRouteNow<A>(request: KeepRequest<A>, signal?: AbortSignal): Promise<{ outcome: KeepOutcome; route?: KeptRoute<A> }> {
   const id = keptId(request.plan, false);
   const existing = await listKept<A>();
   if (!canKeep(existing, id)) return { outcome: "full" };
-  const route: KeptRoute<A> = {
-    id,
-    plan: request.plan,
-    title: request.title,
-    distanceM: request.distanceM,
-    savedAt: Date.now(),
-    lastRide: false,
-    answer: request.answer,
-    tiles: [],
-    ranges: [],
-    bytes: 0,
-    complete: false,
-  };
+  const before = existing.find((r) => r.id === id);
+  const route = keptRecord({ id, plan: request.plan, title: request.title, distanceM: request.distanceM, answer: request.answer, lastRide: false }, before, Date.now());
   try {
     await putKept(route);
   } catch {
     return { outcome: "failed" };
   }
-  const result = await fetchMap(request.line, route, signal ?? new AbortController().signal);
+  let result: PrefetchResult;
   try {
-    await putKept(route);
+    result = await fetchMap(request.line, route, signal ?? new AbortController().signal);
   } catch {
     return { outcome: "failed" };
   }
@@ -81,12 +88,25 @@ export async function keepRoute<A>(request: KeepRequest<A>, signal?: AbortSignal
   return { outcome, route };
 }
 
+/**
+ * The map along `line`, into the kept routes' store. The record names each tile and range as it is
+ * kept (written every SAVE_EVERY_MS and at the end), so a keep cut short leaves nothing unnamed.
+ */
 async function fetchMap<A>(line: readonly LonLat[], route: KeptRoute<A>, signal: AbortSignal): Promise<PrefetchResult> {
   const ranges = new Set<string>(route.ranges);
   const tiles = new Set<string>(route.tiles);
   const bytes = { n: route.bytes };
+  const record = () => {
+    route.ranges = [...ranges];
+    route.tiles = [...tiles];
+    route.bytes = bytes.n;
+  };
+  const saver = progressSaver(async () => {
+    record();
+    await putKept(route);
+  }, SAVE_EVERY_MS);
   const budget = new ByteBudget();
-  const source = new CorridorSource(new FetchSource(BASEMAP.path), notingStore(ranges, bytes), budget);
+  const source = new CorridorSource(new FetchSource(BASEMAP.path), notingStore(ranges, bytes, () => saver.noted()), budget);
   source.keeping = true;
   const archive = new PMTiles(source);
 
@@ -102,6 +122,7 @@ async function fetchMap<A>(line: readonly LonLat[], route: KeptRoute<A>, signal:
     await putTile(url, new Response(data, { headers: { "Content-Type": response.headers.get("Content-Type") ?? "application/octet-stream" } }));
     tiles.add(url);
     bytes.n += data.byteLength;
+    saver.noted();
     return true;
   };
 
@@ -126,11 +147,13 @@ async function fetchMap<A>(line: readonly LonLat[], route: KeptRoute<A>, signal:
     }
   };
 
-  const result = await prefetchCorridor(line, { fetch: fetchJob, extras, full: () => budget.full, signal, done: new Set() });
-  route.ranges = [...ranges];
-  route.tiles = [...tiles];
-  route.bytes = bytes.n;
-  route.complete = !result.capped && !result.stopped && result.failed === 0;
+  let result: PrefetchResult | null = null;
+  try {
+    result = await prefetchCorridor(line, { fetch: fetchJob, extras, full: () => budget.full, signal, done: new Set() });
+  } finally {
+    route.complete = !!result && !result.capped && !result.stopped && result.failed === 0;
+    await saver.flush();
+  }
   return result;
 }
 
@@ -140,34 +163,25 @@ async function fetchMap<A>(line: readonly LonLat[], route: KeptRoute<A>, signal:
  */
 export async function keepLastRide<A>(request: Omit<KeepRequest<A>, "line">): Promise<void> {
   const before = await getKept<A>(LAST_RIDE_ID);
-  const route: KeptRoute<A> = {
-    id: LAST_RIDE_ID,
-    plan: request.plan,
-    title: request.title,
-    distanceM: request.distanceM,
-    savedAt: Date.now(),
-    lastRide: true,
-    answer: request.answer,
-    tiles: [],
-    ranges: [],
-    bytes: 0,
-    complete: false,
-  };
+  // Not one of the rider's ten (canKeep): the next ride replaces it.
+  const route = keptRecord({ id: LAST_RIDE_ID, plan: request.plan, title: request.title, distanceM: request.distanceM, answer: request.answer, lastRide: true }, undefined, Date.now());
   const others = (await listKept()).filter((r) => r.id !== LAST_RIDE_ID);
   if (before) await freeFor(before, others);
-  // Ten kept by the rider already: the last ride is not kept (theirs come first).
-  if (!canKeep(others, LAST_RIDE_ID)) {
-    if (before) await deleteKept(LAST_RIDE_ID);
-    return;
-  }
   await putKept(route);
-  await listKept();
 }
 
 /** End ride in the installed app: what the ride kept becomes the last ride's map. */
-export async function adoptCorridor(kept: CorridorSnapshot): Promise<void> {
+export function adoptCorridor(kept: CorridorSnapshot): Promise<void> {
+  return busyWhile(() => adoptNow(kept));
+}
+
+async function adoptNow(kept: CorridorSnapshot): Promise<void> {
   const route = await getKept(LAST_RIDE_ID);
   if (!route) return;
+  // Named before they are copied, so a copy cut short leaves nothing unnamed (a name with no tile is harmless).
+  route.ranges = kept.ranges.map((r) => r.key);
+  route.tiles = [...new Set([...kept.tiles.map((t) => t.url), ...styleExtraUrls()])];
+  await putKept(route);
   let bytes = 0;
   for (const range of kept.ranges) {
     await putRange(range);
@@ -215,7 +229,29 @@ export async function removeKept(id: string): Promise<void> {
   if (!removed) return;
   await deleteKept(id);
   await freeFor(removed, all.filter((r) => r.id !== id));
-  await listKept();
+  await sweepKept();
+}
+
+/**
+ * Delete what the store holds that no kept route names (a keep or a removal cut short, in this page or
+ * an earlier one). Run after a removal and once a while after load; never while a keep runs here.
+ */
+export async function sweepKept(): Promise<void> {
+  if (busy > 0) return;
+  // Nothing counted and no bucket: nothing to sweep, and the database is not opened.
+  if (!anyKept() && !(await hasBucket())) return;
+  try {
+    const routes = await listKept();
+    const tiles = await tileKeys();
+    const ranges = await rangeKeys().catch(() => [] as string[]);
+    if (busy > 0) return;
+    const base = typeof location === "undefined" ? "http://localhost/" : location.href;
+    const free = unreferenced(routes, tiles, ranges, (url) => new URL(url, base).href);
+    await deleteTiles(free.tiles);
+    await deleteRanges(free.ranges);
+  } catch {
+    // Storage refused: the next sweep tries again.
+  }
 }
 
 /** The kept answer for a plan, when the planner cannot be reached (App.tsx's route scheduler). */

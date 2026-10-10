@@ -132,6 +132,12 @@ async function fromCache(scope, name, request) {
   return (await cache.match(request, ANY_VARY)) ?? scope.fetch(request);
 }
 
+/** The kept routes' glyphs and sprite; with no route kept the bucket is not there, and opening it would create it. */
+async function fromKept(scope, request) {
+  if (!(await scope.caches.has(OFFLINE_BUCKET))) return scope.fetch(request);
+  return fromCache(scope, OFFLINE_BUCKET, request);
+}
+
 function staleWhileRevalidate(scope, request, waitUntil) {
   const answer = scope.caches.open(STATIC_CACHE).then(async (cache) => {
     const kept = await cache.match(request, ANY_VARY);
@@ -150,7 +156,7 @@ export function respond(scope, rule, request, buildId, waitUntil = () => undefin
   if (rule === "shell") return shell(scope, request, buildId, timeoutMs);
   if (rule === "precache") return fromCache(scope, buildCache(buildId), request);
   if (rule === "static") return staleWhileRevalidate(scope, request, waitUntil);
-  if (rule === "kept") return fromCache(scope, OFFLINE_BUCKET, request);
+  if (rule === "kept") return fromKept(scope, request);
   return scope.fetch(request);
 }
 

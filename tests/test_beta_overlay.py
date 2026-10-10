@@ -2876,7 +2876,7 @@ def test_the_tester_handout_says_how_to_install_and_keep_routes_for_offline() ->
     worker_words = (REPO / "frontend" / "src" / "lib" / "appWorker.ts").read_text()
     for needed, source in (
         ("Install RouteMaker", page_words),
-        ("press Share, then Add to Home Screen.", page_words),
+        ("Share, then Add to Home Screen.", page_words),
         ("Keep for offline", kept_words),
         ("Routes kept for offline", kept_words),
         ("A new version of RouteMaker is ready", worker_words),

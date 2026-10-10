@@ -162,9 +162,9 @@ import {
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { AppStatusBar, InstallOffer, KeptRoutes, useAppStatus } from "./InstallableApp.tsx";
 import { isStandalone } from "./lib/installOffer.ts";
-import { keepLastRide, keepRoute, keptAnswerFor } from "./lib/offlineKeep.ts";
-import { KEEPING_SAID, KEEP_LABEL, keepSaid, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
-import { askPersist } from "./lib/offlineRouteStore.ts";
+import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
+import { KEEPING_SAID, KEEP_LABEL, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -440,13 +440,16 @@ export function App() {
   // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
   const keptNotice = useRef<string | null>(null);
+  // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
+  // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
+  const routedKey = useRef<string | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
       send: async (plan) => {
         const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
-        const kept = await keptAnswerFor<RouteResponse>(encodePlan(plan.points, plan.preset, plan.dials)).catch(() => undefined);
+        const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials)).catch(() => undefined);
         if (!kept) return result;
         keptShown.current = kept;
         return { ok: true, route: kept.answer };
@@ -460,6 +463,7 @@ export function App() {
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
+          routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials);
           setStatus({ kind: "ok" });
           const kept = keptShown.current;
           const was = keptNotice.current;
@@ -611,6 +615,15 @@ export function App() {
   const [keptVersion, setKeptVersion] = useState(0);
   const [keeping, setKeeping] = useState(false);
   const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
+  const keepAbort = useRef<AbortController | null>(null);
+  // Keep for offline is the installed app's (OWNER-DECISIONS 465a; keepOffered is the one switch).
+  const keepShown = keepOffered(isStandalone());
+  // Once a while after load (not at it: the store's first open takes about a second), what a keep or a
+  // removal cut short left unnamed is deleted (offlineKeep.ts sweepKept).
+  useEffect(() => {
+    const timer = window.setTimeout(() => void sweepKept(), 20_000);
+    return () => window.clearTimeout(timer);
+  }, []);
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
   // switch pressed, which is always on the page.
@@ -1216,8 +1229,10 @@ export function App() {
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
-    if (isStandalone()) {
-      void keepLastRide({ plan: encodePlan(routedPoints, preset, dials), title: keptTitle(), distanceM: shown.distance_m, answer: shown })
+    // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
+    keepAbort.current?.abort();
+    if (isStandalone() && routedKey.current) {
+      void keepLastRide({ plan: routedKey.current, title: keptTitle(), distanceM: shown.distance_m, answer: shown })
         .then(() => setKeptVersion((v) => v + 1))
         .catch(() => undefined);
     }
@@ -1235,12 +1250,16 @@ export function App() {
     return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
   };
   const keepForOffline = async () => {
-    if (!shown || keeping) return;
+    const plan = routedKey.current;
+    if (!shown || keeping || !plan) return;
     setKeeping(true);
+    const controller = new AbortController();
+    keepAbort.current = controller;
     setKeepSpoken((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
     void askPersist();
     const title = keptTitle();
-    const { outcome } = await keepRoute({ plan: encodePlan(routedPoints, preset, dials), title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }).catch(() => ({ outcome: "failed" as const }));
+    const { outcome } = await keepRoute({ plan, title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }, controller.signal).catch(() => ({ outcome: "failed" as const }));
+    if (keepAbort.current === controller) keepAbort.current = null;
     setKeeping(false);
     setKeptVersion((v) => v + 1);
     setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
@@ -1302,6 +1321,8 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // A new answer: the Keep button's line was about the route before it.
+  useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
   // The layer in words: the points along the route shown, in riding order.
   const waterAlong = useMemo(
     () =>
@@ -2070,7 +2091,7 @@ export function App() {
                 <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
               </section>
               {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
-              <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} />
+              {(keepShown || anyKept()) && <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} />}
               <InstallOffer idBase="settings-install" onSay={announce} />
               <section aria-labelledby="settings-signin-heading">
                 <h3 id="settings-signin-heading">Signing in</h3>
@@ -2098,13 +2119,17 @@ export function App() {
               <span role="status" className="visually-hidden">
                 {linkSpoken}
               </span>
-              <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
-                {KEEP_LABEL}
-              </button>
-              <p id="keep-offline-said" className="hint keep-said" role="status">
-                {keepSpoken.text}
-                {keepSpoken.count % 2 === 1 ? " " : ""}
-              </p>
+              {keepShown && (
+                <>
+                  <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+                    {KEEP_LABEL}
+                  </button>
+                  <p id="keep-offline-said" className="hint keep-said" role="status">
+                    {keepSpoken.text}
+                    {keepSpoken.count % 2 === 1 ? " " : ""}
+                  </p>
+                </>
+              )}
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}

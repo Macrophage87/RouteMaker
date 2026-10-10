@@ -2566,6 +2566,16 @@ the old build's `dist/` (or rebuild the old tag). If only `index.html` goes back
 worker refuses to install against it and browsers that already have the new worker
 still load the old app from the network; restoring both keeps the two in step.
 
+**A rollback to a build from before the installable app** (the first release with `sw.js`
+or older) has no `sw.js` to put back, and every restore leaves the new one on disk:
+the beta's undo lines and `scripts/beta/auto-release.sh`'s own restore copy back only
+the files that were saved, and a build with no worker saved none. The new worker then
+stays registered against an older page. In that case, right after the restore, **copy
+`sw-kill.js` over `sw.js`** with the kill switch's command below (the new build's
+`sw-kill.js` is still in the directory): browsers drop the worker and its caches on
+their next load and run the old app with none. Leave it until the next release that
+has a worker replaces it.
+
 **The kill switch**, for a worker that misbehaves in a way a normal deploy cannot fix
 (plan section 10: "service-worker bugs outlive a deploy"). Every build writes
 `sw-kill.js` beside `sw.js` (from `frontend/src/sw/swKill.mjs`); it is never served
@@ -2587,6 +2597,11 @@ While it is in place, a page that registers `/sw.js` again gets the kill switch 
 which finds no page to reload and unregisters: there is no loop. The next normal deploy
 publishes a real `sw.js` and the worker comes back. Nothing else is needed: no edge
 change, no restart.
+
+**It reloads pages mid-ride.** A rider with Ride mode open has the page reloaded under
+them when the kill switch arrives: the ride ends, its cues and the corridor it kept are
+gone, and they must press Start ride again. Use it for a worker that is actually
+broken, not as a routine step, and prefer a quiet hour.
 
 ## Pausing the weekly rebuild
 
