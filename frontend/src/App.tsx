@@ -796,7 +796,8 @@ export function App() {
   // Shown only with two or more stops to order: on a ride of a start, an end and at
   // most one stop it could change nothing, and a standing reason would crowd every
   // short ride's tools (More tips says when it appears).
-  const orderShown = stopsThatMove(points, loopVias) >= 2;
+  // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
+  const orderShown = !isMassRide(preset) && stopsThatMove(points, loopVias) >= 2;
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
   // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
@@ -832,7 +833,7 @@ export function App() {
     const current = pointsRef.current;
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
-    if (stopsThatMove(current, loop) < 2) return;
+    if (isMassRide(ride.preset) || stopsThatMove(current, loop) < 2) return;
     orderingRef.current = true;
     setOrdering(true);
     announce(FINDING_ORDER_SAID);

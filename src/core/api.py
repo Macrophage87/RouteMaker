@@ -1390,6 +1390,10 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
     page reorders its points and asks for the route as usual. `confirm_long` and
     `target_distance_m` are accepted and play no part: past 93 mi (150 km) of straight
     line the order is by straight line, and the router is not asked."""
+    if body.preset == "mass-ride":
+        # OWNER-DECISIONS 449: hidden and off for Mass Ride, whose field rides the
+        # route in the order the organiser set.
+        return Status(400, {"error": "Mass Ride keeps its stops in the order given"})
     # A loop is as long as its way back too, as for /route.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:

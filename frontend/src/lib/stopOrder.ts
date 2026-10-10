@@ -64,7 +64,7 @@ function looksLikeOrder(value: unknown): value is StopOrder {
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Ask the API for the best order. A Mass Ride has no loop, so its flag is not sent, as for a route; nor is the weight. */
+/** Ask the API for the best order; not for a Mass Ride (the page has no button there). The weight is not sent. */
 export async function requestStopOrder(
   points: readonly LonLat[],
   preset: PresetId,
@@ -81,7 +81,7 @@ export async function requestStopOrder(
         preset,
         // The order does not use the weight, so it is not sent (OWNER-DECISIONS 264's privacy:
         // the weight leaves the device only for the plan that uses it).
-        ...dialFields({ ...dials, systemWeightKg: undefined, ...(preset === "mass-ride" ? { loop: false } : {}) }),
+        ...dialFields({ ...dials, systemWeightKg: undefined }),
       }),
     });
   } catch {

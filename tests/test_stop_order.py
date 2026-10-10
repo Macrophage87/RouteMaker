@@ -251,7 +251,7 @@ class TestEndpoint:
             {"preset": "default", "stress": 90, "hills": 30, "when": "weekday_rush"},
             {"preset": "cargo", "carrying": "people", "assist": True, "avoid_gravel": True},
             {"preset": "gravel", "hills": -60},
-            {"preset": "mass-ride"},
+            {"preset": "group-ride", "when": "weekend"},
         ):
             body = {"points": POINTS, **body}
             assert (
@@ -388,6 +388,13 @@ class TestEndpoint:
         router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(points))}))
         body = post(client, {"points": points, "preset": "default"}).json()
         assert body["order"][0] == 0 and body["order"][-1] == 4
+
+    def test_a_mass_ride_keeps_its_order(self, client, router) -> None:
+        fake = router(FakeRouter({}))
+        response = post(client, {"points": POINTS, "preset": "mass-ride"})
+        assert response.status_code == 400
+        assert "Mass Ride keeps its stops in the order given" in response.json()["error"]
+        assert fake.calls == []
 
     def test_the_body_is_checked_as_a_route_requests_is(self, client, router) -> None:
         router(FakeRouter({}))

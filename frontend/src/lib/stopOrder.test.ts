@@ -123,7 +123,7 @@ test("a quicker order that is longer says it is longer; an unknown saving is lef
 
 const dials: Dials = { ...startDials("default"), loop: true };
 
-test("the request is the route request's body, without a Mass Ride's loop or the weight", async () => {
+test("the request is the route request's body, without the weight", async () => {
   const sent: { url: string; body: Record<string, unknown> }[] = [];
   const fetchImpl = async (url: string, init: RequestInit) => {
     sent.push({ url, body: JSON.parse(String(init.body)) });
@@ -134,8 +134,7 @@ test("the request is the route request's body, without a Mass Ride's loop or the
   assert.equal(sent[0].url, "/api/stop-order");
   assert.deepEqual(sent[0].body.points, [S, A, B]);
   assert.equal(sent[0].body.loop, true);
-  await requestStopOrder([S, A, B, E], "mass-ride", { ...startDials("mass-ride"), loop: true }, fetchImpl);
-  assert.equal(sent[1].body.loop, undefined);
+  await requestStopOrder([S, A, B, E], "group-ride", startDials("group-ride"), fetchImpl);
   for (const { body } of sent) assert.equal(body.system_weight_kg, undefined, "the weight is not sent");
   assert.equal(sent[0].body.stress, dials.stress, "the dials are");
 });
@@ -191,7 +190,7 @@ test("the button is in the point tools, only with two or more stops, and says wh
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.equal(BEST_ORDER_LABEL, "Best order");
   assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
-  assert.match(app, /const orderShown = stopsThatMove\(points, loopVias\) >= 2;/);
+  assert.match(app, /const orderShown = !isMassRide\(preset\) && stopsThatMove\(points, loopVias\) >= 2;/);
   assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,600}aria-disabled=\{ordering \? true : undefined\}\s*>\s*\{BEST_ORDER_LABEL\}/);
   // A second press while one is being found is answered, not sent.
   assert.match(app, /if \(orderingRef\.current\) \{\s*announce\(STILL_FINDING_ORDER_SAID\);\s*return;/);
