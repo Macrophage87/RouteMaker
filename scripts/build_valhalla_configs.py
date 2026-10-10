@@ -79,8 +79,16 @@ OVERRIDES: dict = {
     "additional_data": {"elevation": ELEVATION_DIR},
     "loki": {
         # trace_attributes is what the stats block comes from; without it every
-        # route reports nothing.
-        "actions": ["route", "trace_route", "trace_attributes", "locate", "status"],
+        # route reports nothing. sources_to_targets is the riding-time matrix
+        # "Best order" orders a ride's stops by (OWNER-DECISIONS 449, core.stoporder).
+        "actions": [
+            "route",
+            "trace_route",
+            "trace_attributes",
+            "locate",
+            "status",
+            "sources_to_targets",
+        ],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
         "logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS},
     },
