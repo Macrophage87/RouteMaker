@@ -443,6 +443,8 @@ class TestTheSearchIsHandedTheRidesExposure:
             ({"preset": "cargo", "carrying": "cargo"}, False),
             ({"preset": "default"}, False),
             ({"preset": "default", "stress": 100}, False),
+            # FOLLOWUP-KIDS-PRESET (240 (B)): the same, with LTS 2 at a half.
+            ({"preset": "kids"}, "kids"),
         ],
     )
     def test_the_plan_s_context(self, client, router, monkeypatch, dials, averse):
@@ -458,6 +460,8 @@ class TestTheSearchIsHandedTheRidesExposure:
         monkeypatch.setattr(refine, "refine", spy)
         assert post(client, {**good_body(), **dials}).status_code == 200
         expected = presets.EXPOSURE_NOT_IN_CONTROL if averse else presets.EXPOSURE_STANDARD
+        if averse == "kids":
+            expected = presets.EXPOSURE_KIDS
         assert seen == [expected]
 
 

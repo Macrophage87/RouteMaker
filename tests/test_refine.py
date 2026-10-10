@@ -2573,6 +2573,7 @@ class TestStressAverseWeights:
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
             ("bikeshare", None),
+            ("kids", None),
         ):
             exposure = presets.exposure_for(name, carrying)
             assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}
@@ -2581,7 +2582,7 @@ class TestStressAverseWeights:
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
         for name in presets.PRESETS:
             # Bikeshare is calm by default too (OWNER-DECISIONS 304(3): casual riders).
-            if name in ("trailmaxxing", "bikeshare"):
+            if name in ("trailmaxxing", "bikeshare", "kids"):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
             assert exposure.weights == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}, name
@@ -2652,7 +2653,7 @@ class TestLts2Weight:
             assert (exposure.lts4, exposure.avoid, exposure.hold_lts4) == (8.0, 16.0, True)
 
     def test_nothing_on_any_other_ride(self) -> None:
-        weighed_rides = {("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)}
+        weighed_rides = {("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE), ("kids", None)}
         for name in presets.PRESETS:
             for carrying in presets.PRESETS[name].carrying or (None,):
                 if (name, carrying) not in weighed_rides:

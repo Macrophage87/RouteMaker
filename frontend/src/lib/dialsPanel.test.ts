@@ -29,7 +29,7 @@ test("the traffic-tolerant warning shows at the bottom of the slider, following 
 });
 
 test("Mass Ride's traffic slider is locked, and says why; no other ride type's is", () => {
-  // Trailmaxxing starts at the top (OWNER-DECISIONS 194), so its note is the
+  // Trailmaxxing (OWNER-DECISIONS 194) and Riding with kids (240 (B)) start at the top, so their note is the
   // calm detour's; every other ride type starts with none.
   const mass = panelView("mass-ride", startDials("mass-ride")).traffic;
   assert.equal(mass.disabled, true);
@@ -40,7 +40,7 @@ test("Mass Ride's traffic slider is locked, and says why; no other ride type's i
     const traffic = panelView(preset.id, startDials(preset.id)).traffic;
     assert.equal(traffic.disabled, false, preset.id);
     assert.equal(traffic.note, calmNote(startDials(preset.id).stress, preset.id), preset.id);
-    assert.equal(traffic.note === undefined, preset.id !== "trailmaxxing", preset.id);
+    assert.equal(traffic.note === undefined, preset.id !== "trailmaxxing" && preset.id !== "kids", preset.id);
     assert.equal(traffic.max, STRESS_MAX, preset.id);
   }
 });

@@ -551,6 +551,14 @@ export const S_DEFAULT = (() => {
   r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
   return r;
 })();
+/** Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): the top of the traffic slider, hills toward avoid. */
+export const S_KIDS = (() => {
+  const r = copy();
+  r.preset = "kids";
+  r.dials = { stress: 100, hills: -80, when: "weekday", carrying: null };
+  r.calm_search = { rate: 10, rounds: 2, excluded: 3, limited: null };
+  return r;
+})();
 /**
  * A Mass Ride with a group of signalized crossings (OWNER-DECISIONS 233, 234): a lone
  * unsignalized left, four signalized crossings within a quarter mile of one another (one red),

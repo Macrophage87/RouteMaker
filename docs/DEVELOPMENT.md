@@ -4173,6 +4173,58 @@ is not in control of the ride is stress-averse.
 - Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
   `scripts/mutants_trailseek.py`.
 
+### Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B))
+
+The owner, 2026-10-03, item 240 (B): "a 'Riding with kids' preset for children on their own
+bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower
+planning speeds and gentler hills. It builds on (A)."
+
+The ride type id is `kids` (links `/#preset=kids`, the short path `/kids`), the label
+"Riding with kids". It is defined like every other preset: `core.presets` (`KIDS`,
+`EXPOSURE_KIDS`, the `_preset("kids", ...)` row, `BRAKE_GRADES`), `frontend/src/lib/presets.ts`
+(the card's label and sentence), `frontend/src/lib/dials.ts` (`STARTS`, held equal to the API by
+`tests/test_presets.py`), the Caddyfile and the beta nginx template's preset redirects, and the
+stress page's cost table.
+
+**Developer defaults, for the owner to confirm.** The owner gave no numbers for these:
+
+| What | Default | Why |
+|---|---|---|
+| Traffic slider start | 100 (the top) | "LTS 3+ avoided hard": the least stressful route, LTS 4, Avoid and red junctions ranked first, with the LTS 4 hold, as Trailmaxxing |
+| LTS 2 weight | 0.5 of LTS 3 (`KIDS_LTS2_WEIGHT`) | "LTS 2 allowed but costly": twice 240 (A)'s quarter; a metre of LTS 3 still counts two of LTS 2 |
+| Planning speed | 6.2 mph (10 km/h) | a child of about six to ten on their own bike; Hybrid's own is 11.2 mph (18 km/h), Cargo Bike 8.7 mph (14 km/h), Mass Ride 6 mph (9.7 km/h) |
+| Hills slider start | -80 (`use_hills` 0.2) | "gentler hills": more hill-averse than Cargo Bike (-60), short of Mass Ride (-95) |
+| Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
+| Living streets | 1.0 (fully preferred) | as Trailmaxxing |
+| Bicycle type, turns, gates, surface | Hybrid; Valhalla's 5 s a turn, 30 s a gate; surface 0.25 | as Default |
+
+At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
+least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
+not planned leg by leg (`long_calm` stays Trailmaxxing's alone). The rider and bike weight
+keeps the model's 198 lb (90 kg) default; a child's lighter total is the rider's to set.
+
+**No rebuild.** It rides the existing graphs: the standard graph and its weekend twin, or
+the no-trail graph with "Keep to roads, not trails". No new Valhalla graph or variant was
+needed, because everything that makes it a kids' ride is a per-request costing option or
+the planner's search; LTS 2 is graded only in the search, not in the graph (240 (C),
+FOLLOWUP-DECIMAL-STRESS, backlog). Bike access is the graph's as for every ride: a way
+whose bicycle access is unclear stays closed.
+
+**Load.** Like Trailmaxxing it starts at 100, so every plan runs the calm search (about 20
+router calls; docs/OPERATIONS.md).
+
+**Screen readers.** The card is a toggle button in the ride-type dialog named by its label
+and sentence; choosing it moves the sliders (their values are said in words), the Ride
+line's spoken summary says "Riding with kids, calmest, avoids hills", and the link carries
+it. `scripts/a11y/check.mjs` section 25 covers the dialog, the keyboard, the request, the
+sliders, the target distance, a shared link and 320 px (`EXPECTED` 423); the mocked answer
+is `S_KIDS` in `scripts/a11y/cdp.mjs`.
+
+Tests: `tests/test_presets.py::TestRidingWithKids` and the tables there,
+`tests/test_refine.py`, `tests/test_route_description.py`, `tests/test_preset_links.py`,
+`tests/test_beta_overlay.py`, every test parametrised over the presets, and
+`frontend/src/lib/presets.test.ts`, `dials.test.ts`, `dialsPanel.test.ts`, `stressPage.test.ts`.
+
 ## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in

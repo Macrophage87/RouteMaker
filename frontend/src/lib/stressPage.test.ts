@@ -110,6 +110,10 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
   // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words.
   assert.match(text, /on Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also counts as a quarter of a mile of LTS 3/);
+  // FOLLOWUP-KIDS-PRESET (240 (B)): every place ride types are listed names it.
+  assert.match(page, /<tr><th scope="row">Trailmaxxing, Riding with kids<\/th><td>6<\/td>/);
+  assert.match(text, /Riding with kids counts a mile of LTS 2 as half a mile of LTS 3/);
+  assert.match(text, /Trailmaxxing, Cargo Bike with passengers and Riding with kids never pick a route/);
 });
 
 test("it says where it differs from the literature, and links the full list", () => {

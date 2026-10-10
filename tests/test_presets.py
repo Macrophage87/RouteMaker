@@ -32,6 +32,8 @@ CONTRACT_PRESETS = {
     "ebike",
     # FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245, 299).
     "bikeshare",
+    # FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)).
+    "kids",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -379,6 +381,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # Bikeshare's is the implementation's proposal, not the owner's table: a heavy
         # share bike brakes early (core.presets, "Bikeshare").
         "bikeshare": 0.04,
+        # Riding with kids': the implementation's proposal too (core.presets, "Riding with
+        # kids"), the cargo bike's 3%.
+        "kids": 0.03,
         "mountain-goat": None,
         "fast": None,
     }
@@ -491,3 +496,64 @@ class TestTargetDistance:
     def test_the_dials_bounds_are_a_sensible_range(self) -> None:
         assert presets.TARGET_DISTANCE_MIN_M < 1609 < presets.TARGET_DISTANCE_MAX_M
         assert presets.TARGET_DISTANCE_MAX_M >= 200_000  # the longest span a plan may have
+
+
+class TestRidingWithKids:
+    """FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): "a 'Riding with kids' preset for
+    children on their own bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+
+    avoided hard, slower planning speeds and gentler hills. It builds on (A)." The numbers
+    are developer defaults for the owner to confirm; these tests hold what the owner said,
+    not the numbers, except where a number is the whole point."""
+
+    def test_it_is_offered_and_rides_the_existing_graphs(self) -> None:
+        """No new Valhalla graph or variant: the standard graph, its weekend twin, and the
+        no-trail graph with trails off, as Default rides."""
+        assert presets.PRESETS["kids"].variant == Variant.STANDARD.value
+        for when in ("weekend", "weekday_rush", "weekday_offpeak"):
+            assert presets.variant_for_ride("kids", when) == presets.variant_for_ride(
+                "default", when
+            )
+        assert presets.variant_for_ride("kids", "weekend", trails_off=True) == "no-trail"
+        assert "kids" not in presets.OFFROAD_PRESETS
+        assert presets.PRESETS["kids"].assist_speed_kmh is None
+        assert presets.PRESETS["kids"].carrying is None
+
+    def test_lts3_and_worse_are_avoided_hard(self) -> None:
+        """The top of the slider: LTS 4, Avoid and red junctions ranked first, then LTS 3,
+        with item 250's weights and the LTS 4 hold."""
+        preset = presets.PRESETS["kids"]
+        assert preset.stress == presets.STRESS_MAX
+        assert presets.maxcalm_for(presets.stress_start("kids"))
+        assert options("kids")["use_roads"] == 0.0
+        exposure = presets.exposure_for("kids")
+        assert (exposure.lts3, exposure.lts4, exposure.avoid) == (1.0, 8.0, 16.0)
+        assert exposure.hold_lts4
+
+    def test_lts2_is_allowed_but_costly(self) -> None:
+        """Costlier than on Trailmaxxing and Cargo with passengers (item 240 (A)'s quarter),
+        and still cheaper than LTS 3, so it is allowed: never a search target."""
+        lts2 = presets.exposure_for("kids").lts2
+        assert presets.LTS2_WEIGHT < lts2 < presets.exposure_for("kids").lts3
+        assert lts2 == presets.KIDS_LTS2_WEIGHT
+
+    def test_it_plans_slower(self) -> None:
+        """Slower than every other ride type that sets a pace but Mass Ride's parade, and
+        than Hybrid's own: about 6 mph."""
+        speed = options("kids")["cycling_speed"]
+        assert 5 * MPH_TO_KMH <= speed <= 8 * MPH_TO_KMH
+        assert speed < presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
+        for name in ("cargo", "ebike", "bikeshare"):
+            assert speed < options(name)["cycling_speed"], name
+
+    def test_its_hills_are_gentler(self) -> None:
+        assert options("kids")["use_hills"] < options("cargo")["use_hills"]
+        assert options("kids")["use_hills"] < options("default")["use_hills"]
+        brake = presets.PRESETS["kids"].brake_grade
+        assert brake is not None and brake <= presets.PRESETS["cargo"].brake_grade
+        # Every dial exists on every preset: the rider may still seek hills.
+        assert presets.PRESETS["kids"].hills_seek
+
+    def test_it_prefers_living_streets_and_names_its_bicycle(self) -> None:
+        assert options("kids")["use_living_streets"] == 1.0
+        assert options("kids")["bicycle_type"] == "Hybrid"
+        assert not presets.PRESETS["kids"].long_calm

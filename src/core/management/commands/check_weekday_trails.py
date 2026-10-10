@@ -46,7 +46,7 @@ TRIPS = {
     "little-falls": ((-77.1050, 38.9570), (-77.0990, 38.9730)),
     "beach-moco": ((-77.0870, 39.0095), (-77.1030, 39.0222)),
 }
-STRESS_AVERSE = ("default", "cargo", "ebike", "trailmaxxing")
+STRESS_AVERSE = ("default", "cargo", "ebike", "trailmaxxing", "kids")
 REPORTED = ("group-ride", "fast", "mass-ride")
 WHENS = ("weekday_rush", "weekday_offpeak")
 MAX_ROAD_M = 100.0  # 330 ft

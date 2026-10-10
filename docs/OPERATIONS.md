@@ -419,7 +419,9 @@ the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
-every Trailmaxxing plan is one of these unless the rider moves the slider down.
+every Trailmaxxing plan is one of these unless the rider moves the slider down. So
+does Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)), though it is
+never planned leg by leg as a long calm plan.
 Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
 router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
 7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
@@ -2424,7 +2426,7 @@ to prevent.
 
 ### What the edge enforces
 
-Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the nine ids in `frontend/src/lib/presets.ts`; adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
+Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
 `/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
