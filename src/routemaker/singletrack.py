@@ -70,15 +70,17 @@ def is_singletrack(tags: dict[str, str]) -> bool:
 # ratings. Level 1 is S1 or IMBA 1 (green), 2 is S2 or IMBA 2 (blue), 3 is S3 or IMBA 3
 # (black) and 4 is S4 to S6 or IMBA 4 (red).
 MTB_LEVELS = (1, 2, 3, 4)
-# The highest grade each scale has; a larger number is not a grade on it, and is ignored.
+# The highest grade each scale has; a larger number (7 on `mtb:scale`, 5 on IMBA) is read as
+# the top, so a closed trail rated off the scale is still drawn as the hardest level, never
+# as the unrated grey that says Gravel and Mountain Goat may use it (review of slice 2).
 SCALE_TOP = {"mtb:scale": 6, "mtb:scale:imba": 4}
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 def scale_grade(value: str | None, top: int) -> int | None:
     """The hardest grade an MTB scale value names: `2+` 2, `1-` 1, `0` 0, a range or list
-    (`1-2`, `1;2`) its higher end, `S2` 2, `1.5` 1. None for no value, no number in it, or
-    only numbers past the scale's `top`.
+    (`1-2`, `1;2`) its higher end, `S2` 2, `1.5` 1, a number past the scale's `top` the
+    top. None for no value or no number in it.
 
     Unlike `grade` (the singletrack closure's reading, the number a value starts with), a
     range's higher end is taken: the map should not draw a trail easier than its mapper
@@ -86,8 +88,7 @@ def scale_grade(value: str | None, top: int) -> int | None:
     if value is None:
         return None
     grades = [int(float(number)) for number in _NUMBER.findall(value)]
-    on_scale = [g for g in grades if g <= top]
-    return max(on_scale) if on_scale else None
+    return min(max(grades), top) if grades else None
 
 
 def mtb_level(tags: dict[str, str]) -> int | None:
@@ -101,9 +102,12 @@ def mtb_level(tags: dict[str, str]) -> int | None:
     rating (an ordinary unpaved path, or the grey dots of an unrated mountain-bike trail).
     A way rated 0 on one scale and 1 or more on the other takes the other's level.
 
-    The rebuild writes it on the mountain-bike-only ways (`segment.mtb_level`, beside
-    `mtb_only`), not on every rated way: a paved trail that carries a rating (Upper Rock
-    Creek, the Cross County Trail) is not a mountain-bike trail (`is_singletrack`)."""
+    The rebuild writes it only on rated singletrack (`segment.mtb_level`;
+    `pipeline.trail_closures.mtb_level`), so a level always means a trail closed on every
+    graph: `is_singletrack` reads a value's leading number alone, and this reading would
+    give a level to a way it does not call singletrack (`S2`, `0-2`), which the off-road
+    graph may open. A paved trail that carries a rating (Upper Rock Creek, the Cross County
+    Trail) is not singletrack either, and gets none."""
     grades = [
         g for key in SCALE_KEYS if (g := scale_grade(tags.get(key), SCALE_TOP[key])) is not None
     ]
@@ -121,7 +125,7 @@ NAME_KEYS = ("name", "ref", "mtb:name")
 def mtb_name(tags: dict[str, str]) -> str | None:
     """The name the map labels a mountain-bike trail with: `name`, else `ref`, else
     `mtb:name`, trimmed; None when none of them has one. The rebuild writes it on the
-    mountain-bike-only ways (`segment.mtb_name`), as it does the level."""
+    mountain-bike-only ways (`segment.mtb_name`)."""
     for key in NAME_KEYS:
         value = (tags.get(key) or "").strip()
         if value:

@@ -3023,10 +3023,11 @@ def build_handlers(
                         map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         mtb_only=way.osm_id in context.mtb_only,
-                        # The difficulty level the mountain-bike layer draws it in (456).
-                        mtb_level=singletrack.mtb_level(way.tags)
-                        if way.osm_id in context.mtb_only
-                        else None,
+                        # The difficulty level the mountain-bike layer draws it in (456),
+                        # on rated singletrack alone: a level means closed on every graph.
+                        mtb_level=trail_closures.mtb_level(
+                            context.no_bicycle.get(way.osm_id), way.tags
+                        ),
                         # And its name, for the layer's label and the road panel (the
                         # owner, 2026-10-10).
                         mtb_name=singletrack.mtb_name(way.tags)

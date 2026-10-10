@@ -546,11 +546,12 @@ CREATE TABLE {schema}.segment (
     -- flags "walk your bike here" (`walk_bike`).
     mtb_only        boolean     NOT NULL DEFAULT false,
     walk_bike       boolean     NOT NULL DEFAULT false,
-    -- The difficulty level of a mountain-bike-only way (OWNER-DECISIONS 456, 456a-c;
-    -- `routemaker.singletrack.mtb_level`): the higher of `mtb:scale` and
-    -- `mtb:scale:imba`, S1-S3 to 1-3 and S4-S6 (IMBA 4) to 4. Null on every other way,
-    -- on one rated 0 (a gravel trail, 456b) or unrated, and on every row of a table
-    -- built before the column existed. The tiles carry it as `mtb_level`.
+    -- The difficulty level of rated singletrack (OWNER-DECISIONS 456, 456a-c;
+    -- `pipeline.trail_closures.mtb_level`): the higher of `mtb:scale` and
+    -- `mtb:scale:imba`, S1-S3 to 1-3 and S4-S6 (IMBA 4) to 4, so a level always means
+    -- closed on every graph. Null on every other way (the mountain-bike class included),
+    -- and on every row of a table built before the column existed. The tiles carry it as
+    -- `mtb_level`.
     mtb_level       smallint    CHECK (mtb_level BETWEEN 1 AND 4),
     -- The name of a mountain-bike-only way (`routemaker.singletrack.mtb_name`: `name`,
     -- else `ref`, else `mtb:name`; the owner, 2026-10-10), which the mountain-bike layer

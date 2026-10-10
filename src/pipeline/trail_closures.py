@@ -82,6 +82,16 @@ class TrailClosures:
         return Counter(self.reasons.values())
 
 
+def mtb_level(reason: str | None, tags: dict[str, str]) -> int | None:
+    """The difficulty level the rebuild writes (`segment.mtb_level`; OWNER-DECISIONS 456):
+    `routemaker.singletrack.mtb_level` on a way closed as rated singletrack, None on every
+    other. So a level always means closed on every graph, and the legend's "Not used for
+    routes" holds for every coloured line: a mountain-bike-class way whose rating the
+    singletrack rule does not read (`S2`, `0-2`) stays the grey dots the off-road graph
+    rides (review of slice 2)."""
+    return singletrack.mtb_level(tags) if reason == singletrack.NO_BICYCLE else None
+
+
 def drawn_singletrack(tags: dict[str, str], routes: trailaccess.WayRoutes, in_park: bool) -> bool:
     """Whether a rated singletrack way is drawn on the mountain-bike trail layer
     (OWNER-DECISIONS 454, 456; docs/MTB-TOPO-PLAN.md, slice 2): only where the rating is

@@ -271,9 +271,11 @@ def nearest_row(lat: float, lon: float) -> dict | None:
 
 
 def is_mtb_trail(row: dict) -> bool:
-    """A mountain-bike-class trail the map draws in its not-for-routes look (OWNER-DECISIONS
-    452a): closed as `mtb`, or `mtb_only` on a way the map draws (rated singletrack, also
-    `mtb_only`, is hidden and says so in its own words)."""
+    """A mountain-bike trail the map draws in its not-for-routes look (OWNER-DECISIONS
+    452a, 456): closed as `mtb`, or `mtb_only` on a way the map draws, which since 456 is
+    also rated singletrack that nothing but its rating closes (drawn in its level's colour on
+    the opt-in layer). Rated singletrack the map hides (`map_class` hidden) is not one: it
+    says so in its own words."""
     if row.get("bike_access_reason") == "mtb":
         return True
     return row.get("mtb_only") is True and row.get("map_class") != "hidden"
@@ -612,13 +614,14 @@ def riding_rows(row: dict) -> list[dict]:
     rows.append(_row("Surface", surface_words(row), OSM))
     level = row.get("mtb_level")
     words = mtb_level_words(level)
-    if words:
-        # OWNER-DECISIONS 456: the level the mountain-bike layer draws it in, in words.
+    if words and is_mtb_trail(row):
+        # OWNER-DECISIONS 456: the level the mountain-bike layer draws it in, in words; only
+        # on a way the layer draws, so a hidden way never names a colour.
         rows.append(
             _row(
                 "Mountain-bike difficulty",
-                f"{words[0].upper()}{words[1:]}: rated {MTB_LEVEL_SCALES[level]}"
-                " (the higher of mtb:scale and mtb:scale:imba)",
+                f"{words[0].upper()}{words[1:]}: a level {level} rating"
+                f" ({MTB_LEVEL_SCALES[level]})",
                 OSM,
             )
         )
@@ -777,12 +780,15 @@ def mtb_summary(row: dict) -> str:
     singletrack, which every graph closes."""
     level = mtb_level_words(row.get("mtb_level"))
     head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
+    # A level is written on rated singletrack alone (`pipeline.trail_closures.mtb_level`),
+    # which every graph closes, so a levelled trail never says the off-road graph uses it.
+    closed_everywhere = bool(level) or row.get("bike_access_reason") == "singletrack"
     # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
     # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
     # Trail, not used for routes".
     name = (row.get("mtb_name") or "").strip()
     head = f"{head}: {name}," if name else f"{head},"
-    if row.get("bike_access_reason") == "singletrack":
+    if closed_everywhere:
         return f"{head} not used for routes"
     return f"{head} not used for routes (Gravel and Mountain Goat may use it)"
 

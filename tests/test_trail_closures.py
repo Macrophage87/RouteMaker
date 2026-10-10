@@ -144,3 +144,28 @@ def test_rated_singletrack_is_drawn_on_the_mtb_layer_only_where_its_rating_alone
 def test_a_paved_rated_trail_is_neither_singletrack_nor_drawn_as_one():
     result = run([way(30, {"highway": "path", "surface": "asphalt", "mtb:scale": "2"})])
     assert result.reasons == {} and result.drawn_singletrack == set()
+
+
+def test_a_level_is_written_on_rated_singletrack_alone_so_it_always_means_closed_everywhere():
+    """Review of slice 2: `is_singletrack` reads a value's leading number, the level reading
+    any number. A way the singletrack rule does not call singletrack (`S2`, `0-2`) keeps no
+    level, so it stays the grey dots the off-road graph rides (or an open trail), never a line the
+    legend says is not used for routes; one rated off the scale (IMBA 5) is level 4."""
+    dirt = {"highway": "path", "surface": "dirt", "bicycle": "yes"}
+    cases = {
+        40: ({**dirt, "mtb:scale": "S2"}, "mtb", None),
+        # Read as 0 by the access rules (exempt: a gravel trail), so open and no level.
+        41: ({**dirt, "mtb:scale": "0-2"}, None, None),
+        42: ({**dirt, "mtb:scale:imba": "5"}, "singletrack", 4),
+        43: ({**dirt, "mtb:scale": "7"}, "singletrack", 4),
+        44: ({**dirt, "mtb:scale": "2"}, "singletrack", 2),
+        45: ({**dirt, "mtb:scale": "0", "mtb:scale:imba": "3"}, "singletrack", 3),
+        # Not a mountain-bike way at all: no level whatever its rating.
+        46: ({"highway": "path", "surface": "asphalt", "mtb:scale": "3"}, None, None),
+    }
+    result = run([way(i, tags) for i, (tags, _, _) in cases.items()])
+    for osm_id, (tags, reason, level) in cases.items():
+        assert result.reason(osm_id) == reason, osm_id
+        assert tc.mtb_level(result.reason(osm_id), tags) == level, osm_id
+    # Every way with a level is singletrack, closed on every graph (not OFFROAD_KEEPS).
+    assert all(result.reason(i) not in tc.OFFROAD_KEEPS for i in (42, 43, 44, 45))

@@ -420,18 +420,21 @@ class TestAnswer:
         assert summary(body)[-1] == f"Bikes: Mountain-bike trail, {words}, not used for routes"
         difficulty = section(body, "riding")["Mountain-bike difficulty"]
         assert difficulty["value"] == (
-            f"{words[0].upper()}{words[1:]}: rated {scale}"
-            " (the higher of mtb:scale and mtb:scale:imba)"
+            f"{words[0].upper()}{words[1:]}: a level {level} rating ({scale})"
         )
+        assert "mtb:" not in difficulty["value"], "no raw OSM key names"
         assert difficulty["source"] == segment_info.OSM
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
             "Closed: mountain-bike singletrack, not used for routes by any ride type"
         )
 
-    def test_a_rated_mountain_bike_class_trail_keeps_the_off_road_words(
+    def test_a_levelled_trail_never_says_the_off_road_graph_uses_it(
         self, client, segment_schemas, router
     ) -> None:
+        """Review of slice 2: the rebuild writes a level on rated singletrack alone, which every
+        graph closes; a row with a level and another reason (a table edited by hand, or one
+        built before that rule) still does not promise Gravel and Mountain Goat use it."""
         live, _ = segment_schemas
         insert(
             live,
@@ -445,8 +448,24 @@ class TestAnswer:
         router.answers = {"bicycle": [], "pedestrian": [edge(125, use="path")]}
         assert summary(get(client).json())[-1] == (
             "Bikes: Mountain-bike trail, level 2 (blue), not used for routes"
-            " (Gravel and Mountain Goat may use it)"
         )
+
+    def test_a_hidden_way_never_names_a_colour(self, client, segment_schemas, router) -> None:
+        live, _ = segment_schemas
+        insert(
+            live,
+            128,
+            [SPOT, east(SPOT, 50)],
+            is_trail_class=True,
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=3,
+            map_class="hidden",
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(128, use="path")]}
+        body = get(client).json()
+        assert "Mountain-bike difficulty" not in section(body, "riding")
+        assert "black" not in " ".join(summary(body))
 
     def test_a_named_trail_is_named_on_the_bikes_line_and_as_the_title(
         self, client, segment_schemas, router

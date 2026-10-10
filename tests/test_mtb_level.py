@@ -21,10 +21,11 @@ from routemaker.singletrack import MTB_LEVELS, mtb_level, mtb_name, scale_grade
         ("1;3", 6, 3),
         ("1.5", 6, 1),
         ("6", 6, 6),
-        ("7", 6, None),
-        ("5", 4, None),
+        # Past the scale's top reads as the top (review of slice 2): never the unrated grey.
+        ("7", 6, 6),
+        ("5", 4, 4),
         ("4", 4, 4),
-        ("2;9", 6, 2),
+        ("2;9", 6, 6),
         ("yes", 6, None),
         ("", 6, None),
         (None, 6, None),
@@ -57,6 +58,10 @@ def test_scale_grade_reads_the_hardest_grade_on_the_scale(value, top, expected) 
         ({"mtb:scale": "1", "mtb:scale:imba": "3"}, 3),
         ({"mtb:scale": "5", "mtb:scale:imba": "2"}, 4),
         ({"mtb:scale": "2", "mtb:scale:imba": "garbage"}, 2),
+        # Off the scale: the hardest level.
+        ({"mtb:scale": "7"}, 4),
+        ({"mtb:scale:imba": "5"}, 4),
+        ({"mtb:scale": "9"}, 4),
         # 0 on one scale and 1 or more on the other is singletrack (456b): the other's level.
         ({"mtb:scale": "0", "mtb:scale:imba": "2"}, 2),
         ({"mtb:scale": "3", "mtb:scale:imba": "0"}, 3),
@@ -78,8 +83,6 @@ def test_the_level_is_the_higher_rating(tags, level) -> None:
         # Unrated, or nothing on a scale.
         {},
         {"mtb:scale": "yes"},
-        {"mtb:scale": "9"},
-        {"mtb:scale:imba": "6"},
         {"mtb:scale:uphill": "3"},
     ],
 )
