@@ -180,8 +180,10 @@ repository), and the owner's answers so far. None of it is the model described a
     [0.18 km].
   - A road with no mapped speed is read at its jurisdiction's statutory default speed
     (decisions 469 and 469a; 469a gives Virginia's: 55 mph [89 km/h] on most highways,
-    25 mph [40 km/h] in business and residence districts), for the junction cost only,
-    and that speed is never shown. This replaced the report's 45 mph [72 km/h] guess.
+    25 mph [40 km/h] in business and residence districts), for the junction cost and,
+    under 469, wherever the classifier needs a speed (to be reconciled with the
+    classifier's own defaults; [classification.md](classification.md)). This replaced
+    468's 45 mph [72 km/h] answer, which applied to the junction cost only.
   - Before this is merged: an API debug field that lists every junction, and a new run of
     the 116-route sample with every junction counted, shown to the owner.
 - **Decision 468a**: a time-of-day factor on busy-road junction costs, from the ride's

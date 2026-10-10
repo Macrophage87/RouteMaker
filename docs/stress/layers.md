@@ -5,18 +5,18 @@
 ## The ride layer, z12-13 (OWNER-DECISIONS 391, 402, 402a)
 
 At z12 and z13 the stress map is a "where to ride" view (`src/core/stress_tiles.py:35-42`,
-`RIDE_LAYER` `:232-240`; `ride_layer_predicate`, `src/pipeline/schema.py:373-386`). It
+`RIDE_LAYER` `:233-241`; `ride_layer_predicate`, `src/pipeline/schema.py:375-388`). It
 draws:
 
 | What | Rule | Threshold |
 |---|---|---|
-| Long, connected traffic-free paths | A path whose connected network (paths within 100 ft [30 m] of one another, `CALM_PATH_GAP_M`) or named run is long enough. No mountain-bike trails | 0.25 mi [400 m] (`RIDE_PATH_RUN_MI`, `schema.py:343`) |
-| Calm roads | A continuous run of named LTS 1-2 road (`CALM_ROAD_MAX_TIER = 2`, `:345`), not a trail | 2 mi [3.2 km] (`RIDE_ROAD_RUN_MI`, `:352`; the owner's proposed bar, "not yet confirmed") |
+| Long, connected traffic-free paths | A path whose connected network (paths within 100 ft [30 m] of one another, `CALM_PATH_GAP_M`) or named run is long enough. No mountain-bike trails | 0.25 mi [400 m] (`RIDE_PATH_RUN_MI`, `schema.py:345`) |
+| Calm roads | A continuous run of named LTS 1-2 road (`CALM_ROAD_MAX_TIER = 2`, `:347`), not a trail | 2 mi [3.2 km] (`RIDE_ROAD_RUN_MI`, `:354`; the owner's proposed bar, "not yet confirmed") |
 | Timed car-free roads | Any road closed to cars at set times, whatever its length | - |
 
 It never draws a road at LTS 3 or above. A table built before the `calm_run_m` column
 falls back to the old busy level (paths plus faint LTS 3+ roads, `busy_predicate`,
-`schema.py:400-414`). The legend says which applies (`frontend/src/lib/stressLegend.ts`,
+`schema.py:402-416`). The legend says which applies (`frontend/src/lib/stressLegend.ts`,
 `RIDE_RUN_MI` `:60`, held equal to the schema by a test).
 
 ### Calm runs (`src/pipeline/calm_roads.py`)
@@ -46,7 +46,7 @@ section 3).
 
 At the top of the slider the trail seek looks for corridors of paths and protected
 ways at LTS 1 or 2, and roads closed to cars at some time
-(`SEEK_INDEX_PREDICATE`, `schema.py:415-425`; `src/core/trailseek.py`). Stress limits
+(`SEEK_INDEX_PREDICATE`, `schema.py:417-427`; `src/core/trailseek.py`). Stress limits
 its candidates to the two calm tiers.
 
 ## Mass Ride capacity (OWNER-DECISIONS 325-327, 387, 394, 404)
@@ -67,7 +67,7 @@ How stress meets it:
 | Where | What |
 |---|---|
 | Mass Ride tiles (`src/core/mass_tiles.py:13-14`, `:37`) | Carry each segment's `rpm` and `tier`. An Avoid stretch (tier 5) is drawn "AVOID" at every zoom, whatever its capacity |
-| Road panel, Mass Ride capacity (`src/core/segment_info.py:660-682`) | Usable width and riders a minute. "Not used by a mass ride" where no width is known and the tier is 5 |
+| Road panel, Mass Ride capacity (`src/core/segment_info.py:671-693`) | Usable width and riders a minute. "Not used by a mass ride" where no width is known and the tier is 5 |
 | Routing | Mass Ride's own costs: slider locked at 0 on the no-trail graph, so LTS 3 and 4 cost nothing extra, and Avoid pays the 1,800 s entry charge ([routing-costs.md](routing-costs.md)) |
 | Junctions | Orange at a crossing of LTS 3, red at LTS 4 or Avoid, signalized crossings grouped (`intersections.py:548-584`, `:785-`). The calm search does not run, so junctions are reported, not used to choose the route |
 | Major junctions on the route chart | A crossed or joined road at LTS 3 or above (`CORKER_TIER = BUSY_TIER`, `intersections.py:922-934`): where corkers are needed |

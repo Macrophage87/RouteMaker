@@ -47,7 +47,7 @@ above.
 
 ## Zoom rules
 
-| Zoom | What the tiles carry (`stress_tiles.py:20-50`, `:128-146`, `level_for` `:247-254`) | How it is drawn |
+| Zoom | What the tiles carry (`stress_tiles.py:20-50`, `:128-146`, `level_for` `:248-255`) | How it is drawn |
 |---|---|---|
 | 10-11 | Long traffic-free paths and trails only, and roads closed to cars at set times. z10 has a higher bar than z11 | Thinner: line x0.55 at z10, x0.75 at z11, rails x0.4 / x0.6, never under 1 px (`ZOOMED_OUT_*`, `:720-746`) |
 | 12-13 | The **ride layer**: long connected paths, calm roads in runs of 2 mi [3.2 km] or more, timed car-free roads. **No road at LTS 3 or above** ([layers.md](layers.md)) | Full width. On a table without `calm_run_m` (built before 391), the old busy level instead: paths plus LTS 3+ roads, drawn faint (40% opacity, 0.6 width, a dark edge; `FAINT`, `:748`) |

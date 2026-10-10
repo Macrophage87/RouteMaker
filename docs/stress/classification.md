@@ -5,9 +5,9 @@
 
 Paths are relative to the repository root and line numbers are
 for `main` when this set was written. A tier is set once per data rebuild, in the
-`CLASSIFY_STRESS` stage (`src/pipeline/run.py:1659-1860`), then changed by approved
-override rows in `APPLY_OVERRIDES` (`run.py:1979-2087`). Stage order is at
-`run.py:2717-2730`.
+`CLASSIFY_STRESS` stage (`src/pipeline/run.py:1663-1864`), then changed by approved
+override rows in `APPLY_OVERRIDES` (`run.py:1983-2091`). Stage order is at
+`run.py:2723-2736`.
 
 ## The scale
 
@@ -32,16 +32,16 @@ half-step editor). Half-step words (1.5 "Probably comfortable for older children
 | Input | Where it comes from | How it is read |
 |---|---|---|
 | OSM tags | The region extract (Geofabrik, OSM contributors, ODbL) | `highway`, `maxspeed`, `lanes`/`lanes:forward`/`:backward`, `oneway`, `cycleway*` and width and buffer, `parking*`, `shoulder*`, `surface`, `tracktype`, `smoothness`, `motor_vehicle`/`motorcar`/`vehicle`/`access`, `bicycle`, `expressway`, `service`, `maxspeed:type`/`source:maxspeed` |
-| Traffic counts (AADT) | DDOT 2024 Traffic Volume (DC Open Data), VDOT AADT, and the DC Roadway Block count where no count layer reached the way | Matched to ways by geometry (`src/pipeline/conflation.py`; `run.py:1631-1657`). A trail-class way never takes a motor count (`run.py:1633-1642`). |
+| Traffic counts (AADT) | DDOT 2024 Traffic Volume (DC Open Data), VDOT AADT, and the DC Roadway Block count where no count layer reached the way | Matched to ways by geometry (`src/pipeline/conflation.py`; `run.py:1635-1661`). A trail-class way never takes a motor count (`run.py:1637-1646`). |
 | AADT smoothing | `src/pipeline/aadt_smoothing.py` | See below. |
-| DC agency street record | DC Roadway Block (DDOT / DC GIS) | Posted speed, lanes, one-way, bike lane, parking and parking width override the way's own tags in the District (`run.py:1709-1745`; `conflation.overlay_road_facts`, `conflation.py:902-`; OWNER-DECISIONS 190). A bike facility OSM maps as a separate way stays there. The owner may withhold a block's speed (`agency_blocks` in an override file; see [overrides.md](overrides.md)). |
+| DC agency street record | DC Roadway Block (DDOT / DC GIS) | Posted speed, lanes, one-way, bike lane, parking and parking width override the way's own tags in the District (`run.py:1713-1749`; `conflation.overlay_road_facts`, `conflation.py:902-`; OWNER-DECISIONS 190). A bike facility OSM maps as a separate way stays there. The owner may withhold a block's speed (`agency_blocks` in an override file; see [overrides.md](overrides.md)). |
 | Urban or rural | The coverage polygon's urban-area layer (U.S. Census Bureau) | Picks the default speed table (`stress.py:142-194`). |
-| State | State polygons from the extract (`src/pipeline/states.py`; `run.py:1665-1671`) | DC's statutory 20 mph (15 mph in alleys) for an unposted way; MD and VA urban defaults (`stress.py:198-223`, `:788-806`). A missing state refuses the rebuild. |
+| State | State polygons from the extract (`src/pipeline/states.py`; `run.py:1669-1675`) | DC's statutory 20 mph (15 mph in alleys) for an unposted way; MD and VA urban defaults (`stress.py:198-223`, `:788-806`). A missing state refuses the rebuild. |
 | Divided roads | `src/routemaker/divided.py` | A one-way carriageway of a two-way road is scored as the two-way road (`stress.py:816`). |
-| Separate bikeway beside a road | `routemaker.facility.separate_pairs` (`run.py:1698-1700`) | Counts as bike infrastructure for the arterial and collector floors. |
-| Curated speed limits | `fixtures/speed/` (`src/routemaker/speed_corrections.py`; OWNER-DECISIONS 131) | Fill a missing `maxspeed` only. A posted speed wins (`run.py:1746-1748`). |
-| Curated bike lanes | `fixtures/bike_lanes/` (`src/routemaker/bike_lanes.py`; OWNER-DECISIONS 433) | Add a painted lane OSM lacks (`run.py:1749-1751`). The owner's reading then holds the way at LTS 4 on 3 or more lanes a direction or at 45 mph or more (`bike_lanes.owner_tier`, `bike_lanes.py:86-102`; `run.py:1786-1791`). |
-| Named corridors | `fixtures/corridors/` (`src/routemaker/corridors.py`; OWNER-DECISIONS 284-286, 294-296) | Set the tier on owner-judged stretches, matched by street name and an axis, not by way id (`run.py:1817-1826`). |
+| Separate bikeway beside a road | `routemaker.facility.separate_pairs` (`run.py:1702-1704`) | Counts as bike infrastructure for the arterial and collector floors. |
+| Curated speed limits | `fixtures/speed/` (`src/routemaker/speed_corrections.py`; OWNER-DECISIONS 131) | Fill a missing `maxspeed` only. A posted speed wins (`run.py:1750-1752`). |
+| Curated bike lanes | `fixtures/bike_lanes/` (`src/routemaker/bike_lanes.py`; OWNER-DECISIONS 433) | Add a painted lane OSM lacks (`run.py:1753-1755`). The owner's reading then holds the way at LTS 4 on 3 or more lanes a direction or at 45 mph or more (`bike_lanes.owner_tier`, `bike_lanes.py:86-102`; `run.py:1790-1795`). |
+| Named corridors | `fixtures/corridors/` (`src/routemaker/corridors.py`; OWNER-DECISIONS 284-286, 294-296) | Set the tier on owner-judged stretches, matched by street name and an axis, not by way id (`run.py:1821-1830`). |
 | Override rows | The `Override` table, approved rows only | Applied last. See [overrides.md](overrides.md). |
 
 ## Rule order in `classify` (`stress.py:704-746`, `_classify` `:749-1149`)
@@ -72,24 +72,24 @@ recorded in `assumed` (`stress.py:135-137`).
    window holds at least 3 ways and 820 ft [250 m] of road (`aadt_smoothing.py:57-59`).
    It only ever lowers a count. The segment still publishes the agency's count. When the
    raw count gives a higher tier, that tier is kept as `stress_unsmoothed_tier`
-   (`run.py:1771-1785`). The junction model and the calm-road breaks read the higher of
+   (`run.py:1775-1789`). The junction model and the calm-road breaks read the higher of
    the two, so the volume bunched at an intersection is charged there, not on the link
    (`src/core/junctions.py:765-773`; `src/pipeline/calm_roads.py:21-23`, `:98`). The
    rebuild can be told not to smooth (`RebuildContext.smooth_volume`, `run.py:621`).
-2. **Curated bike lane, owner's tier** (`run.py:1786-1791`).
-3. **Named corridors** (`run.py:1817-1826`): an entry sets the tier, up or down, for the
+2. **Curated bike lane, owner's tier** (`run.py:1790-1795`).
+3. **Named corridors** (`run.py:1821-1830`): an entry sets the tier, up or down, for the
    ways of its role (through or side lanes) in its range along the axis. A way with a
    protected lane, a separate bikeway or a path facility is exempt, and so is any
    trail-class way (`corridors.py:27-33`). VALIDATE refuses a build whose sentinel
    stretches do not come out as the files say (`src/pipeline/lts_sentinels.py`).
-4. **Stress override rows** (`run.py:2026`, `overrides.apply_stress`): they outrank
+4. **Stress override rows** (`run.py:2030`, `overrides.apply_stress`): they outrank
    everything above. See [overrides.md](overrides.md).
-5. **Car-free for good** (`run.py:1383-`, called at `:2228`): a road closed to motor
+5. **Car-free for good** (`run.py:1386-`, called at `:2232`): a road closed to motor
    traffic outright, including by an approved `motor_vehicle=no` access row, becomes
    LTS 1 and a path, unless a curated stress row set its tier. A road closed to cars
    only at set times keeps its tier in the table. For a ride inside the closure it reads
    as tier 1 (`src/core/routing.py:377-382`; `stressStyle.js:664`) and is a path on the
-   weekend graph (`run.py:1448-1449`).
+   weekend graph (`run.py:1451-1452`).
 
 ## Closures are access, not stress
 
@@ -119,8 +119,8 @@ The motor-restriction cap (step 9) is skipped on a way closed to bicycles
 ## What the tier leaves the rebuild as
 
 - `segment.stress_tier` (1-5), `stress_rule`, `stress_assumed`, the volume source, count
-  and year, `stress_unsmoothed_tier`, and the adjustment columns (`schema.py:482`,
-  `:569-577`; `src/pipeline/writers.py`).
-- `rm:stress_tier` on each way of each graph variant (`run.py:2398`), read by
+  and year, `stress_unsmoothed_tier`, and the adjustment columns (`schema.py:484`,
+  `:571-579`; `src/pipeline/writers.py`).
+- `rm:stress_tier` on each way of each graph variant (`run.py:2402`), read by
   `lua/graph.lua:67`, which drives the costs in [routing-costs.md](routing-costs.md).
 - The stress tiles' `tier` property (`src/core/stress_tiles.py`), which [drawing.md](drawing.md) covers.

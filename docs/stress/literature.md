@@ -218,6 +218,30 @@ five riders (we have not confirmed the sample size from the full text).
   junction model works on the traced route ([intersections.md](intersections.md),
   section 1).
 
+### Statutory default speed limits (decisions 469 and 469a) **planned**
+
+Decision 469 replaces the junction model's assumed 45 mph [72 km/h] for a road with no
+mapped speed with each jurisdiction's statutory default, for the junction cost and
+wherever the classifier needs a speed ([intersections.md](intersections.md), section 9).
+It is not built. The sources, as the owner gave them (not yet re-read for this page):
+
+- **District of Columbia**: a 20 mph [32 km/h] default where no other limit is posted,
+  since 2020-06-01. DDOT,
+  [20 MPH default speed limit, frequently asked questions](https://ddot.dc.gov/page/twenty-mph-20-mph-default-speed-limit-frequently-asked-questions).
+- **Maryland**: the statutory maximums, Transportation Article 21-801.1: 30 mph
+  [48 km/h] in a business district; 30 mph [48 km/h] on an undivided and 35 mph [56 km/h]
+  on a divided residential road; 50 mph [80 km/h] undivided and 55 mph [89 km/h] divided
+  elsewhere; 70 mph [113 km/h] on interstates and expressways. Maryland DOT State Highway
+  Administration, [speed limits](https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295).
+- **Virginia** (469a): unless posted otherwise, 55 mph [89 km/h] on most highways, 25 mph
+  [40 km/h] in business and residence districts, and at most 35 mph [56 km/h] on unpaved
+  roads; Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300. VDOT,
+  [speed limits](https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/).
+
+**Open point:** 469 asks for these sources to be cited here and on the rider page
+(`/about/stress.html`). They are listed here; the rider page's credit is still to come,
+with the 469 build.
+
 ## Where the evidence has gaps
 
 We found no test, on whole routes, of rating a route by its worst stretch against rating
