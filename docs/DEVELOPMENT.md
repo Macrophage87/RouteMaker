@@ -6166,7 +6166,9 @@ restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal
 - **A long ride** (`refine_long`): each leg's weight counts its Avoid junctions with its LTS 4
   (`LONG_LTS4_PRIORITY * (lts4_m + avoid_junction_m) + lts3_m`), so a leg whose only fault is
   one is searched, and before a leg with LTS 3; the whole is judged "not as calm" by the same
-  sum. Every exclusion of a junction's point, in a round (`Target.radius`) or a kept point
+  sum, with the legs' passes counted as the whole route's (`combine`, `_joined_passages`): a
+  junction within 15 m of a joint (a via point, or where the legs were cut) is passed by the
+  legs on both sides of it but counts once, as on the whole route's line. Every exclusion of a junction's point, in a round (`Target.radius`) or a kept point
   (`_exclusion`), carries the 15 m radius `core.avoid_junctions.exclusions` asks.
 - **The guard's allowance.** `_busier` is `exposure_m + avoid_junction_m > _allowance(first
   exposure) + first_avoid_m`: the tolerance is on the exposure alone.

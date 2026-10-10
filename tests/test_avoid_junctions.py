@@ -9,6 +9,7 @@ excluded.
 
 from __future__ import annotations
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -792,3 +793,116 @@ def test_a_bikeshare_way_round_keeps_the_walks_docks_and_the_operators_credit() 
     assert ride_step in block["summary"]
     # The plan's own block is untouched.
     assert plan["ride_m"] != block["ride_m"]
+
+
+def joint_reads():
+    """Two 30 km legs that meet within 15 m of an Avoid junction (a via point there):
+    the first passes it at its end, the second at its start."""
+    first = refine.Analysis(
+        length_m=30_000, cost_s=1, exposure_m=500, climb_m=0,
+        pieces=[SimpleNamespace(metres=30_000.0)], classes=[], events=[], lts3_m=500.0,
+        avoid_passages=[model.Passage(junction(), 29_995.0)], avoid_junction_m=1800 / 0.44,
+    )  # fmt: skip
+    second = refine.Analysis(
+        length_m=30_000, cost_s=1, exposure_m=0, climb_m=0,
+        pieces=[SimpleNamespace(metres=30_000.0)], classes=[], events=[],
+        avoid_passages=[model.Passage(junction(), 5.0)], avoid_junction_m=1800 / 0.44,
+    )  # fmt: skip
+    return first, second
+
+
+def test_a_junction_at_a_joint_counts_once_for_the_whole_route() -> None:
+    """`combine`: both legs beside a via point within 15 m of the junction pass it, but
+    the whole route's line passes it once (`model.passages`), so the whole counts it once;
+    a loop back through it later in the next leg still counts again."""
+    first, second = joint_reads()
+    whole = refine.combine([first, second])
+    assert [p.m for p in whole.avoid_passages] == [29_995.0]
+    assert whole.avoid_junction_m == pytest.approx(1800 / 0.44)
+    later = dataclasses.replace(
+        second,
+        avoid_passages=[model.Passage(junction(), 5.0), model.Passage(junction(), 20_000.0)],
+        avoid_junction_m=2 * 1800 / 0.44,
+    )
+    again = refine.combine([first, later])
+    assert [p.m for p in again.avoid_passages] == [29_995.0, 50_000.0]
+    assert again.avoid_junction_m == pytest.approx(2 * 1800 / 0.44)
+    # Another junction at the joint is its own pass.
+    other = dataclasses.replace(
+        second, avoid_passages=[model.Passage(junction(2, "Elm St", "blind corner"), 5.0)]
+    )
+    assert len(refine.combine([first, other]).avoid_passages) == 2
+
+
+def test_a_long_ride_through_a_junction_at_a_via_point_keeps_its_calmer_legs(monkeypatch) -> None:
+    """`refine_long`: the whole route passes a junction at a via point once, and the legs'
+    passes are counted as the whole's, so the legs put back together (calmer, through the
+    same junction once) are not "worse" for it and are answered, not the router's route."""
+    first, second = joint_reads()
+    whole = refine.Analysis(
+        length_m=60_000, cost_s=1, exposure_m=500, climb_m=0, pieces=[], classes=[], events=[],
+        lts3_m=500.0, avoid_passages=[model.Passage(junction(), 29_995.0)],
+        avoid_junction_m=1800 / 0.44,
+    )  # fmt: skip
+    calmer_first = dataclasses.replace(first, lts3_m=0.0, exposure_m=0.0)
+    legs = [{"a": {"lon": 0, "lat": 0}, "b": {"lon": 1, "lat": 0}, "user": 0},
+            {"a": {"lon": 1, "lat": 0}, "b": {"lon": 2, "lat": 0}, "user": 1}]  # fmt: skip
+    leg_trips = [{"legs": [{"shape": "a"}], "summary": {"length": 30.0}},
+                 {"legs": [{"shape": "b"}], "summary": {"length": 30.0}}]  # fmt: skip
+    around_a = {"legs": [{"shape": "a2"}], "summary": {"length": 30.0}}
+    asked = iter(leg_trips)
+    monkeypatch.setattr(routing, "_call", lambda *a, **k: {"trip": next(asked)})
+
+    def read(trip, ctx, deadline, with_events=True):
+        shape = (trip.get("legs") or [{}])[0].get("shape")
+        return {"a": first, "a2": calmer_first, "b": second}.get(shape, whole)
+
+    monkeypatch.setattr(refine, "analyse", read)
+    monkeypatch.setattr(refine, "long_legs", lambda whole, ctx: legs)
+
+    def search(trip, sub):
+        if trip["legs"][0]["shape"] == "a":
+            sub.options.extend([(trip, first), (around_a, calmer_first)])
+        return trip, {"rate": 1.0, "rounds": 0, "excluded": 0, "limited": None}
+
+    monkeypatch.setattr(refine, "refine", search)
+    ctx = plain_ctx(
+        request={"locations": [{"lon": 0, "lat": 0}, {"lon": 1, "lat": 0}, {"lon": 2, "lat": 0}]},
+        points=[(0, 0), (1, 0), (2, 0)],
+        avoid=(junction(),),
+    )
+    got, info = refine.refine_long({"legs": [{"shape": "whole"}], "summary": {"length": 60.0}}, ctx)
+    assert info["long"]["answered"] == "legs"
+    assert [leg["shape"] for leg in got["legs"]] == ["a2", "b"]
+
+
+def test_a_bikeshare_way_round_asks_again_whether_walking_is_as_quick() -> None:
+    """`bikeshare.alternate_block`: the "Walking the whole way" note is weighed against the
+    way round's own total, not copied from the plan's (the review's nit)."""
+    from core import bikeshare
+
+    block = {
+        "ride_m": 3000.0, "ride_s": 900.0, "walk_s": 300.0, "total_s": 1200.0,
+        "steps": [{"kind": "ride", "text": "Ride 1.9 mi (3.0 km) to the dock."}],
+        "summary": "Bikeshare, classic bike: about 20 min in all.",
+        "notes": ["The walk to the destination is long, 0.4 mi (0.6 km)."],
+    }  # fmt: skip
+    around = {"distance_m": 4000.0, "duration_s": 1500.0}  # 1,800 s in all
+    walk = bikeshare.WalkLeg([[0.0, 0.0], [1.0, 0.0]], 2400.0, 1700.0)
+    note = bikeshare._walk_note(walk, 1800.0)
+    assert note and note.startswith("Walking the whole way, 1.5 mi")
+    # Slower than the plan, but as quick as the way round: said for the way round only.
+    out = bikeshare.alternate_block(block, around, walk)
+    assert out["notes"] == [block["notes"][0], note]
+    assert bikeshare._walk_note(walk, block["total_s"]) is None
+    # As quick as the plan but not as the (faster) way round: dropped from it.
+    quicker = {"distance_m": 2500.0, "duration_s": 600.0}  # 900 s in all
+    planned = {**block, "notes": [*block["notes"], bikeshare._walk_note(
+        bikeshare.WalkLeg([[0.0, 0.0], [1.0, 0.0]], 1500.0, 1000.0), 1200.0
+    )]}  # fmt: skip
+    out = bikeshare.alternate_block(
+        planned, quicker, bikeshare.WalkLeg([[0.0, 0.0], [1.0, 0.0]], 1500.0, 1000.0)
+    )
+    assert out["notes"] == [block["notes"][0]]
+    # No pedestrian route: no note either way.
+    assert bikeshare.alternate_block(block, around, None)["notes"] == block["notes"]

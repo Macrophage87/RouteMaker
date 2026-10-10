@@ -2102,6 +2102,30 @@ def more_routes(chosen: list, ctx: Context, reference: list[float]) -> list:
     return chosen
 
 
+def _joined_passages(reads: list[Analysis], starts: list[float]) -> list:
+    """The legs' Avoid-junction passes (307) as the whole route's, in metres along the
+    whole. A junction within `MATCH_RADIUS_M` of a joint (a via point, or where a long
+    plan cut its legs) is passed by the end of one leg and the start of the next; the
+    whole route's line passes it once (`avoid_model.passages`), so it counts once here:
+    the next leg's first pass is dropped where it is the same junction as the leg
+    before's last pass and both are within `LEAVE_RADIUS_M` of the joint."""
+    found: list = []
+    for read, start in zip(reads, starts, strict=True):
+        for p in read.avoid_passages:
+            at = p.m + start
+            last = found[-1] if found else None
+            if (
+                last is not None
+                and last.junction.id == p.junction.id
+                and last.m < start
+                and start - last.m <= avoid_model.LEAVE_RADIUS_M
+                and p.m <= avoid_model.LEAVE_RADIUS_M
+            ):
+                continue
+            found.append(avoid_model.Passage(p.junction, at))
+    return found
+
+
 def combine(reads: list[Analysis]) -> Analysis:
     """The readings of a route's legs as the reading of the whole: the figures added,
     the pieces and junctions in order (a leg read without its junctions has none)."""
@@ -2109,6 +2133,12 @@ def combine(reads: list[Analysis]) -> Analysis:
     for read in reads[:-1]:
         along += _road_m(read)
         via.append(along)
+    passages = _joined_passages(reads, [0.0, *via])
+    # Each pass costs the same quiet metres (`analyse`), so the whole's figure is the
+    # passes counted once each times one pass's.
+    unit_m = next(
+        (r.avoid_junction_m / len(r.avoid_passages) for r in reads if r.avoid_passages), 0.0
+    )
     return Analysis(
         length_m=sum(r.length_m for r in reads),
         cost_s=sum(r.cost_s for r in reads),
@@ -2122,12 +2152,8 @@ def combine(reads: list[Analysis]) -> Analysis:
         lts3_m=sum(r.lts3_m for r in reads),
         avoid_m=sum(r.avoid_m for r in reads),
         effort_m=sum(r.effort_m for r in reads),
-        avoid_passages=[
-            avoid_model.Passage(p.junction, p.m + start)
-            for r, start in zip(reads, [0.0, *via], strict=True)
-            for p in r.avoid_passages
-        ],
-        avoid_junction_m=sum(r.avoid_junction_m for r in reads),
+        avoid_passages=passages,
+        avoid_junction_m=unit_m * len(passages),
     )
 
 
@@ -2417,7 +2443,9 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     lts4 -= traded
     # The Avoid-rated junctions (307) count with the LTS 4, as they do in each leg's
     # weight: a leg that goes round one, on LTS 3, is not "worse" for it.
-    top = lts4 + sum(a.avoid_junction_m for a in finals)
+    # The legs' passes are counted as the whole route's (`combine`): a junction at a
+    # joint, which both legs beside it pass, counts once, as it does in `whole`.
+    top = lts4 + combine(finals).avoid_junction_m
     whole_top = whole.lts4_m + whole.avoid_junction_m
     worse = top > whole_top + MAXCALM_STEPS[0] or (
         top > whole_top - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
