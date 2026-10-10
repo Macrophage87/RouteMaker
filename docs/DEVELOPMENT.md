@@ -5490,7 +5490,7 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
 - Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py`,
   `tests/test_bikeshare_shared.py` (the shared copy), `tests/test_bikeshare_nearby.py` (the nearest
   stations, stale stations, a chosen station) (fixtures in `tests/data/gbfs`, a sample and not a
-  dataset), `frontend/src/lib/bikeshare.test.ts`, `frontend/src/lib/stations.test.ts`, section 22 of
+  dataset), `frontend/src/lib/bikeshare.test.ts`, `frontend/src/lib/stations.test.ts`, sections 22 and 23 of
   `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.
 
 Source citation and licence notes (OWNER-DECISIONS 301, 304, 305): the map attribution and the route
@@ -5531,4 +5531,4 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   forgotten when its point moves or the ride type changes, added to the request by
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
-  section 22 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+  section 23 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).

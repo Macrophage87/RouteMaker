@@ -2076,14 +2076,19 @@ def weighed(a: refine.Analysis, exposure: presets.Exposure = AVERSE) -> refine.A
 
 class TestStressAverseWeights:
     def test_trailmaxxing_and_cargo_with_passengers_weigh_lts4_at_8_and_avoid_at_16(self) -> None:
-        for name, carrying in (("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)):
+        for name, carrying in (
+            ("trailmaxxing", None),
+            ("cargo", presets.CARRYING_PEOPLE),
+            ("bikeshare", None),
+        ):
             exposure = presets.exposure_for(name, carrying)
             assert exposure.weights == {"3": 1.0, "4": 8.0, "5": 16.0}, name
             assert exposure.hold_lts4, name
 
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
         for name in presets.PRESETS:
-            if name == "trailmaxxing":
+            # Bikeshare is calm by default too (OWNER-DECISIONS 304(3): casual riders).
+            if name in ("trailmaxxing", "bikeshare"):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
             assert exposure.weights == {"3": 1.0, "4": 2.0, "5": 3.0}, name
