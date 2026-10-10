@@ -68,6 +68,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from django.db import connection, transaction
@@ -86,6 +87,9 @@ class SwapOutcome:
     build_id: str
     promoted: dict[Variant, str | None] = field(default_factory=dict)
     schema: SwapResult | None = None
+    # Rows the road panel's edits (core.stress_edits) changed in the promoted table; -1 if
+    # re-applying them failed (logged; the approved rows are still read by the next rebuild).
+    edits_reapplied: int = 0
 
 
 @dataclass(frozen=True)
@@ -341,8 +345,19 @@ def describe_state(
     return lines
 
 
-def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -> SwapOutcome:
-    """Promote, repoint, rename - and undo whatever was done if a later step fails."""
+def perform_swap(
+    tiles_dir: Path,
+    build_id: str,
+    upstreams: Mapping[str, str],
+    overrides_read_at: datetime | None = None,
+) -> SwapOutcome:
+    """Promote, repoint, rename - and undo whatever was done if a later step fails.
+
+    Once the new table is live, the road panel's edits made after `overrides_read_at` (when
+    the rebuild read the approved overrides) are re-applied to it, so an edit an admin made
+    while the rebuild ran is not lost (`core.stress_edits.after_promotion`). That step never
+    undoes or fails the promotion.
+    """
     outcome = SwapOutcome(build_id=build_id)
     links_before = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
     rows_before = upstream_states(upstreams)
@@ -371,6 +386,9 @@ def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -
                 error, failures, describe_state(links_before, rows_before)
             ) from error
         raise
+    from core import stress_edits
+
+    outcome.edits_reapplied = stress_edits.after_promotion(overrides_read_at)
     return outcome
 
 
@@ -540,3 +558,9 @@ def rollback(tiles_dir: Path) -> None:
         failures = restore_everything(tiles_dir, links_before, rows_before)
         _note_undo_failures(error, failures, "the rollback's undo")
         raise
+
+    # The older table is live again. It predates edits an admin made in the road panel since
+    # it was built; re-apply them (never raising: the rollback stands whatever this does).
+    from core import stress_edits
+
+    stress_edits.after_rollback()

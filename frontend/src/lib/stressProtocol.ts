@@ -162,11 +162,77 @@ export interface ProtocolHost {
 
 let registered = false;
 
-/** Register the protocol, once per page. */
-export function registerStressProtocol(host: ProtocolHost, get?: typeof fetch): void {
+/**
+ * Ride mode's kept tiles (lib/corridorStore.ts; WEB-NAV-plan.md section 6). During a ride the kept tile
+ * is read first (in a real dead spot the phone still says it is online, and a request can hang rather
+ * than fail), and the network gets NETWORK_TIMEOUT_MS before the kept tiles are tried again with any
+ * edit generation. Outside a ride nothing is kept, so the kept tiles answer nothing (`kept` gives null).
+ */
+export interface OfflineTiles {
+  /** Whether a ride is keeping tiles now. */
+  riding(): boolean;
+  /** A kept tile of this URL's own edit generation (`?rev=`), or with `anyRev` of any. */
+  kept(url: string, anyRev?: boolean): Promise<ArrayBuffer | null>;
+  /** Keep a tile the map loaded; whether it was kept. */
+  keep(url: string, data: ArrayBuffer): Promise<boolean>;
+}
+
+/** How long a ride's tile request may take before the kept tiles answer (a hung request in a dead spot): above
+ * the 5.46 s a cold draw on a busy host once took (docs/OPERATIONS.md), so a slow draw is not cut off. */
+export const NETWORK_TIMEOUT_MS = 6000;
+
+function offlineNow(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/**
+ * `get` with each request aborted after `ms`. The timer is left to run out rather than cleared at the
+ * headers, so a body that stalls is cut too; aborting a finished request does nothing.
+ */
+export function withTimeout(get: typeof fetch, ms: number): typeof fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const outer = init?.signal;
+    if (outer?.aborted) controller.abort();
+    else outer?.addEventListener("abort", () => controller.abort(), { once: true });
+    setTimeout(() => controller.abort(), ms);
+    return get(input, { ...init, signal: controller.signal });
+  }) as typeof fetch;
+}
+
+/** One tile through the protocol: the network, and with `offline` the ride's kept tiles around it. */
+export async function loadTile(
+  url: string,
+  signal: AbortSignal,
+  get?: typeof fetch,
+  offline?: OfflineTiles,
+  timeoutMs = NETWORK_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  const riding = offline?.riding() ?? false;
+  if (offline && (riding || offlineNow())) {
+    const kept = await offline.kept(url);
+    if (kept) return kept;
+  }
+  try {
+    const data = await fetchTile(url, { get: riding ? withTimeout(get ?? ((i, o) => fetch(i, o)), timeoutMs) : get, signal });
+    if (riding) void offline?.keep(url, data);
+    return data;
+  } catch (error) {
+    if (!offline || signal.aborted) throw error;
+    const kept = await offline.kept(url, true);
+    if (kept) return kept;
+    throw error;
+  }
+}
+
+/**
+ * Register the protocol, once per page. With `offline`, a tile the network fails to give (or any, while
+ * the browser says it is offline) is looked for among the ride's kept tiles before it fails.
+ */
+export function registerStressProtocol(host: ProtocolHost, get?: typeof fetch, offline?: OfflineTiles): void {
   if (registered) return;
   host.addProtocol(STRESS_PROTOCOL, async (params, abort) => ({
-    data: await fetchTile(httpUrl(params.url), { get, signal: abort.signal }),
+    data: await loadTile(httpUrl(params.url), abort.signal, get, offline),
   }));
   registered = true;
 }

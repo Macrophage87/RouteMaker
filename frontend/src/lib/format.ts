@@ -50,6 +50,26 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
   return `${minMiles} to ${maxMiles} ${MILES_WORD} (${km(minM)} to ${km(maxM)} km)`;
 }
 
+/**
+ * A stretch of the route, as the API's description words one (src/routemaker/describe.py
+ * range_words): "1.1 to 1.8 mi (1.7 to 2.9 km)", miles to a tenth and kilometres to a tenth in
+ * brackets; a short one in feet.
+ */
+export function formatMileRange(fromM: number, toM: number): string {
+  const mi = (m: number) => (m / METRES_PER_MILE).toFixed(1);
+  const km = (m: number) => (m / 1000).toFixed(1);
+  // Under a tenth of a mile, describe.py range_words' feet rule: where it starts and how long, in feet
+  // ("1.2 mi (1.9 km), for 300 ft (91 m)"). Also where both ends round to the same tenth, which
+  // range_words does not check, so "0.6 to 0.6 mi" is never said.
+  if (toM - fromM < FEET_BELOW_M || mi(fromM) === mi(toM)) {
+    const length = toM - fromM;
+    const feet = length * FEET_PER_METRE;
+    const ft = feet >= 100 ? Math.round(feet / 10) * 10 : Math.round(feet);
+    return `${mi(fromM)} mi (${km(fromM)} km), for ${ft} ft (${Math.round(length)} m)`;
+  }
+  return `${mi(fromM)} to ${mi(toM)} mi (${km(fromM)} to ${km(toM)} km)`;
+}
+
 /** "55 to 1,543 pounds (25 to 700 kg)": a weight range, pounds first. */
 export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: number): string {
   return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
@@ -62,6 +82,22 @@ export function formatDistance(metres: number): string {
     return `${roundShort(metres * FEET_PER_METRE)} ft (${roundShort(metres)} m)`;
   }
   return `${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
+}
+
+/**
+ * A station's distance from where the rider is (the nearest-stations lists, OWNER-DECISIONS 466a):
+ * miles to a tenth with the metres in brackets to the nearest ten while under a kilometre,
+ * "0.2 mi (320 m)", then kilometres, "1.8 mi (2.9 km)"; below a tenth of a mile feet first,
+ * "490 ft (150 m)".
+ */
+export function formatStationDistance(metres: number): string {
+  if (!usable(metres)) return "distance unknown";
+  if (metres < FEET_BELOW_M) {
+    const feet = metres >= 30 ? Math.round((metres * FEET_PER_METRE) / 10) * 10 : Math.round(metres * FEET_PER_METRE);
+    return `${feet} ft (${roundShort(metres)} m)`;
+  }
+  const metric = metres < 995 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1)} km`;
+  return `${milesFigure(metres)} mi (${metric})`;
 }
 
 /**
@@ -125,6 +161,19 @@ export function formatPerMile(ratio: number): string {
     return `${miles.toFixed(1)} mi (${((miles * METRES_PER_MILE) / 1000).toFixed(1)} km)`;
   }
   return formatRoughDistance(ratio * METRES_PER_MILE);
+}
+
+/**
+ * A group's length, a rough figure: under a mile in feet to the nearest 10 and metres to the
+ * nearest 5, "1,560 ft (475 m)"; from a mile, miles to two places, "1.18 mi (1.9 km)".
+ */
+export function formatGroupLength(metres: number): string {
+  if (!usable(metres)) return DASH;
+  if (metres < METRES_PER_MILE) {
+    const feet = Math.round((metres * FEET_PER_METRE) / 10) * 10;
+    return `${feet.toLocaleString("en-US")} ft (${Math.round(metres / 5) * 5} m)`;
+  }
+  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${(metres / 1000).toFixed(1)} km)`;
 }
 
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */

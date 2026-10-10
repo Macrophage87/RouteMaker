@@ -83,6 +83,11 @@ needed; reload the page to get the box back.
   the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
   and the borders and text stronger, and changes the stress colors to ones that do not rely
   on red and green. Both switches are the same setting.
+- Ride mode (section 9) has its own heading, "Ride mode", which takes the focus when a ride
+  starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
+  never move your focus: they are said through two live regions (the urgent ones, such as
+  "Left now" and leaving the route, interrupt), or by RouteMaker's own voice, as you chose. With
+  the focus anywhere in Ride mode, W says where you are and C puts the map back on you.
 
 
 7. Reporting a problem
@@ -105,3 +110,41 @@ opens, but planning a route says "Router unavailable", place search and the road
 say they are "not available right now", and Sign in shows a "Back soon" or "502 Bad Gateway"
 page (the browser's Back button takes you back to your route). That is the update, not something you did.
 Wait about 20 minutes and try again. Report it only if it lasts more than half an hour.
+
+
+9. Ride mode: directions while you ride
+---------------------------------------
+
+For short rides, up to 30 miles (48 km), on a phone with the screen on and the page in front.
+For longer rides, use Download GPX with a bike computer, which keeps going with the screen off.
+You stay responsible for riding safely; the route can be wrong.
+
+- Plan a route, then press "Start ride", under the route's figures or in Directions. The
+  browser asks to use your location.
+- The first time, it asks how to say the cues: with your screen reader, RouteMaker's voice,
+  both, or neither (on screen only), and how much: Full (every turn, early and again close to
+  it), Stoker (each turn once ahead and as it happens, busy crossings and stops: for the rider
+  behind on a tandem) or Quiet (only arrival). Both choices stay on this device; change them in
+  "Ride settings" during a ride, or in Settings.
+- "Where am I?" says the street you are on, the next turn and the distance to the next stop
+  and the end. On a long trail away from roads it says the trail and a distance from its last
+  junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
+  the planned route" says which way the route is instead.
+- At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
+  phone, so it still shows in a dead spot with no signal. A line under the buttons says what was
+  saved. It lasts for this ride only: it is cleared when you press "End ride", when the next
+  ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
+  Finding a new way off the route still needs a signal.
+- "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole, a
+  streetlight out or anything else, with the nearest junction on your route as the place. On a
+  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; there
+  is always a link to DC 311 online and a button to copy the report for it. RouteMaker sends
+  nothing and keeps nothing. Check the place before you send it.
+- Your position stays on your phone. It is sent only when a new way is found from where you
+  are, or when you ask for the nearest water or restroom (as "Use my location" does when
+  planning), and never kept.
+- Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
+  Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
+  than 10 minutes, the ride pauses; press Resume.
+- "Big text" hides the map and shows the next cue large. "End ride" goes back to the planner.

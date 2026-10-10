@@ -1,0 +1,279 @@
+{
+ "data": {
+  "stations": [
+   {
+    "capacity": 19,
+    "lat": 38.912647,
+    "lon": -77.045796,
+    "name": "Connecticut Ave & R St NW",
+    "region_id": "42",
+    "short_name": "31299",
+    "station_id": "fx-020",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 15,
+    "lat": 38.900358,
+    "lon": -77.012108,
+    "name": "1st & H St NW",
+    "region_id": "42",
+    "short_name": "31638",
+    "station_id": "fx-008",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 55,
+    "lat": 38.89696,
+    "lon": -77.00493,
+    "name": "Columbus Circle / Union Station",
+    "region_id": "42",
+    "short_name": "31623",
+    "station_id": "fx-019",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.908326,
+    "lon": -77.038377,
+    "name": "17th St & Massachusetts Ave NW",
+    "region_id": "42",
+    "short_name": "31267",
+    "station_id": "fx-002",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.900412,
+    "lon": -77.001949,
+    "name": "3rd & H St NE",
+    "region_id": "42",
+    "short_name": "31616",
+    "station_id": "fx-018",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 28,
+    "lat": 38.894972,
+    "lon": -77.003135,
+    "name": "2nd St & Massachusetts Ave NE",
+    "region_id": "42",
+    "short_name": "31641",
+    "station_id": "fx-017",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 20,
+    "lat": 38.899703,
+    "lon": -77.008911,
+    "name": "North Capitol St & G Pl NE",
+    "region_id": "42",
+    "short_name": "31637",
+    "station_id": "fx-025",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 24,
+    "lat": 38.89967,
+    "lon": -77.003666,
+    "name": "2nd & G St NE",
+    "region_id": "42",
+    "short_name": "31639",
+    "station_id": "fx-016",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 27,
+    "lat": 38.911086,
+    "lon": -77.045061,
+    "name": "20th & Q St NW",
+    "region_id": "42",
+    "short_name": "31982",
+    "station_id": "fx-013",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.905711,
+    "lon": -77.047318,
+    "name": "New Hampshire Ave & Ward Pl NW",
+    "region_id": "42",
+    "short_name": "31212",
+    "station_id": "fx-021",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 20,
+    "lat": 38.907045,
+    "lon": -77.044975,
+    "name": "20th & N St NW ",
+    "region_id": "42",
+    "short_name": "32301",
+    "station_id": "fx-011",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 27,
+    "lat": 38.905067,
+    "lon": -77.041779,
+    "name": "18th & M St NW",
+    "region_id": "42",
+    "short_name": "31221",
+    "station_id": "fx-004",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.911268,
+    "lon": -77.041829,
+    "name": "18th & New Hampshire Ave NW",
+    "region_id": "42",
+    "short_name": "31324",
+    "station_id": "fx-005",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.902444,
+    "lon": -77.008246,
+    "name": "North Capitol & K St NE",
+    "region_id": "42",
+    "short_name": "31675",
+    "station_id": "fx-023",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 24,
+    "lat": 38.909394,
+    "lon": -77.048728,
+    "name": "22nd & P ST NW",
+    "region_id": "42",
+    "short_name": "31285",
+    "station_id": "fx-015",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 35,
+    "lat": 38.908905,
+    "lon": -77.04478,
+    "name": "20th & O St NW / Dupont South",
+    "region_id": "42",
+    "short_name": "31234",
+    "station_id": "fx-012",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 24,
+    "lat": 38.905496,
+    "lon": -77.044976,
+    "name": "20th & M St NW ",
+    "region_id": "42",
+    "short_name": "31139",
+    "station_id": "fx-010",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.9121,
+    "lon": -77.0387,
+    "name": "17th & Corcoran St NW",
+    "region_id": "42",
+    "short_name": "31214",
+    "station_id": "fx-000",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 24,
+    "lat": 38.905996,
+    "lon": -77.039802,
+    "name": "Rhode Island & Connecticut Ave NW",
+    "region_id": "42",
+    "short_name": "31239",
+    "station_id": "fx-026",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 15,
+    "lat": 38.914729,
+    "lon": -77.045425,
+    "name": "20th St & Florida Ave NW",
+    "region_id": "42",
+    "short_name": "31110",
+    "station_id": "fx-014",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.912648,
+    "lon": -77.041834,
+    "name": "18th & R St NW",
+    "region_id": "42",
+    "short_name": "31278",
+    "station_id": "fx-006",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 33,
+    "lat": 38.897108,
+    "lon": -77.011616,
+    "name": "New Jersey Ave & F St NW",
+    "region_id": "42",
+    "short_name": "31655",
+    "station_id": "fx-022",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 8,
+    "lat": 38.914807,
+    "lon": -77.041448,
+    "name": "18th & Swann St NW",
+    "region_id": "42",
+    "short_name": "32366",
+    "station_id": "fx-007",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 23,
+    "lat": 38.897446,
+    "lon": -77.009888,
+    "name": "North Capitol St & F St NW",
+    "region_id": "42",
+    "short_name": "31624",
+    "station_id": "fx-024",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 17,
+    "lat": 38.902386,
+    "lon": -77.005649,
+    "name": "1st & K St NE",
+    "region_id": "42",
+    "short_name": "31662",
+    "station_id": "fx-009",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.906767,
+    "lon": -77.038627,
+    "name": "17th St & Rhode Island Ave NW",
+    "region_id": "42",
+    "short_name": "31210",
+    "station_id": "fx-003",
+    "station_type": "classic"
+   },
+   {
+    "capacity": 19,
+    "lat": 38.909858,
+    "lon": -77.038566,
+    "name": "17th & P St NW",
+    "region_id": "42",
+    "short_name": "31330",
+    "station_id": "fx-001",
+    "station_type": "classic"
+   }
+  ]
+ },
+ "last_updated": 1791098656,
+ "ttl": 60,
+ "version": "1.1"
+}

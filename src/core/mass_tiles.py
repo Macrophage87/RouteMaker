@@ -369,14 +369,15 @@ def render(
 TAG_COLUMNS = (FACILITY_COLUMN, MAP_CLASS_COLUMN, MASS_WIDTH_COLUMN)
 
 
-def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
+def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int = 0) -> str:
     """Weak, as the stress tiles' (stress_tiles.etag_for), and never equal to one: `mass-`,
     the table's oid, the letters of the columns it reads, the boundary's digest and this
     format. `W/"mass-` and a ten-digit oid, `+fmw`, `-` and six hex digits, `-v2"`: 33
     characters, under the cache's 64."""
     carried = "".join(stress_tiles.ETAG_LETTERS[c] for c in sorted(optional) if c in TAG_COLUMNS)
     digest = dc_boundary()[2]
-    return f'W/"mass-{oid}{"+" + carried if carried else ""}-{digest}-v{FORMAT_VERSION}"'
+    edited = f"-e{generation}" if generation else ""
+    return f'W/"mass-{oid}{"+" + carried if carried else ""}-{digest}{edited}-v{FORMAT_VERSION}"'
 
 
 @require_http_methods(["GET", "HEAD"])
@@ -388,12 +389,12 @@ def mass_tile(request, z: int, x: int, y: int) -> HttpResponse:
         return response
     if not MIN_ZOOM <= z <= MAX_ZOOM or outside_dc(z, x, y):
         return stress_tiles._tile_response(b"")
-    oid, optional = stress_tiles.live_table()
+    oid, optional, generation = stress_tiles.live_state()
     if oid is None:
         response = JsonResponse({"error": "no stress data has been built yet"}, status=404)
         response["Cache-Control"] = "no-store"
         return response
-    etag = etag_for(oid, optional)
+    etag = etag_for(oid, optional, generation)
     if MASS_WIDTH_COLUMN not in optional:
         # A table from before the capacity column: there is nothing to draw.
         return stress_tiles._tile_response(b"", etag=etag)
@@ -421,4 +422,4 @@ def mass_tile(request, z: int, x: int, y: int) -> HttpResponse:
         ratelimit.release(held)
     if drawn_oid == oid:
         tile_cache.put(etag, z, x, y, body)
-    return stress_tiles._tile_response(body, etag=etag_for(drawn_oid, optional))
+    return stress_tiles._tile_response(body, etag=etag_for(drawn_oid, optional, generation))

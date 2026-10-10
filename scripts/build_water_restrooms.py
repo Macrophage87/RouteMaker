@@ -38,10 +38,31 @@ What counts, from the OSM wiki's own tag definitions
   rule that unclear access is closed.
 - in use only: disused=yes and abandoned=yes are left out (lifecycle-prefixed
   keys such as disused:amenity never match in the first place).
+- historic springs are left out: a natural=spring with historic=* (any value
+  but "no", <https://wiki.openstreetmap.org/wiki/Key:historic>) or ruins=yes
+  is a landmark, not a source, unless it is also marked drinking_water=yes,
+  amenity=drinking_water or amenity=water_point (owner request, 2026-10-10:
+  drop historic springs).
 
 Nodes and ways are read (a restroom building is often a way); a way is placed
 at the mean of its nodes. Points outside the coverage box are dropped, and
 coordinates are rounded to 5 decimals, about 3 ft (1 m).
+
+One restroom, not two (owner request, 2026-10-10): an amenity=toilets node
+that lies inside a closed way tagged amenity=toilets or building=toilets is
+merged into that way, so the map and the lists show one place. The merged
+place keeps the way's id and position (the building is the place; the node is
+the same restroom mapped again inside it) and the tags of both: for each key
+the richer element's value wins, richer meaning more of the details the layer
+shows (DETAIL_KEYS), the node on a tie as it is the element mapped as the
+restroom itself; tags only one of them has are kept. Several nodes in one
+building merge into it the same way. A building that is not public or not in
+use (access, disused, abandoned) is left out with every node inside it, as
+unclear access is closed; a node inside a public building that is not public
+(a staff toilet, say) is left out on its own, and the building still shows.
+A building=toilets way with no amenity=toilets and no public node inside stays
+out, as before (it says nothing about public use). Areas mapped as relations
+(multipolygons) are not read; restroom buildings are plain ways.
 
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt):
@@ -77,6 +98,22 @@ DRINKABLE_HOSTS_AMENITY = frozenset({"fountain", "shelter", "toilets"})
 BASIC_DISPOSAL = frozenset(
     {"chemical", "pitlatrine", "bucket", "dry_toilet", "incineration", "composting"}
 )
+# The details the layer shows or reads, counted to pick the richer element when
+# a restroom node and its building are merged.
+DETAIL_KEYS = frozenset(
+    {
+        "name",
+        "access",
+        "fee",
+        "wheelchair",
+        "opening_hours",
+        "seasonal",
+        "toilets:disposal",
+        "portable",
+        "drinking_water",
+        "bottle",
+    }
+)
 YES_NO = frozenset({"yes", "no"})
 WHEELCHAIR = frozenset({"yes", "limited", "no"})
 MAX_TEXT = 80
@@ -97,10 +134,19 @@ class Amenity:
     bottle: bool = False
 
 
+def is_historic_spring(tags: dict[str, str]) -> bool:
+    """A spring mapped as a historic landmark and not marked drinkable."""
+    if tags.get("natural") not in SOURCES_NATURAL or tags.get("drinking_water") == "yes":
+        return False
+    return tags.get("historic", "no") != "no" or tags.get("ruins") == "yes"
+
+
 def water_of(tags: dict[str, str]) -> str | None:
     """'p' for drinking water, 'n' for an untreated source, None for neither."""
     amenity = tags.get("amenity")
     drinking = tags.get("drinking_water")
+    if is_historic_spring(tags) and amenity not in ("drinking_water", "water_point"):
+        return None
     source = (
         tags.get("man_made") in SOURCES_MAN_MADE
         or tags.get("natural") in SOURCES_NATURAL
@@ -171,46 +217,159 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity 
     )
 
 
+@dataclass(frozen=True)
+class Element:
+    """An OSM element as read, before it is classified."""
+
+    osm: str
+    tags: dict[str, str]
+    lon: float
+    lat: float
+    ring: tuple[tuple[float, float], ...] = ()  # a closed way's corners
+
+
+def is_toilet_building(tags: dict[str, str]) -> bool:
+    return tags.get("amenity") == "toilets" or tags.get("building") == "toilets"
+
+
+def _inside(lon: float, lat: float, ring: tuple[tuple[float, float], ...]) -> bool:
+    """Even-odd ray test; a point on an edge may fall either way, which is fine here."""
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        (xi, yi), (xj, yj) = ring[i], ring[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _richness(e: Element) -> tuple[int, int]:
+    # More layer details first; on a tie the node, mapped as the restroom itself.
+    return (sum(k in DETAIL_KEYS for k in e.tags), e.osm.startswith("n"))
+
+
+def merged_tags(members: list[Element]) -> dict[str, str] | None:
+    """One restroom's tags from its building and the nodes inside, or None to leave it out.
+
+    Per key the richest element's value wins; keys only one has are kept. A
+    building that is not public or not in use takes the whole place out; a node
+    inside that is not public is left out on its own (and a bare building=toilets
+    left with no public node goes too).
+    """
+    if not all(is_public(m.tags) for m in members if not m.osm.startswith("n")):
+        return None
+    members = [m for m in members if not m.osm.startswith("n") or is_public(m.tags)]
+    if not any(m.tags.get("amenity") == "toilets" for m in members):
+        # A bare building=toilets whose only restroom node was not public.
+        return None
+    tags: dict[str, str] = {}
+    for m in sorted(members, key=_richness, reverse=True):
+        for k, v in m.tags.items():
+            tags.setdefault(k, v)
+    tags["amenity"] = "toilets"
+    return tags
+
+
+def merge_restrooms(nodes: list[Element], buildings: list[Element]) -> list[Element]:
+    """Fold each amenity=toilets node inside a restroom building into that building.
+
+    Returns the elements to classify: merged buildings, amenity=toilets
+    buildings with no node inside, and the nodes no building holds. A
+    building=toilets way with nothing inside is left out, as it was before.
+    """
+    inside: dict[str, list[Element]] = {b.osm: [] for b in buildings}
+    loose: list[Element] = []
+    boxes = [
+        (
+            b,
+            min(x for x, _ in b.ring),
+            min(y for _, y in b.ring),
+            max(x for x, _ in b.ring),
+            max(y for _, y in b.ring),
+        )
+        for b in buildings
+        if len(b.ring) >= 3
+    ]
+    for n in nodes:
+        home = next(
+            (
+                b
+                for b, w, s, e, north in boxes
+                if w <= n.lon <= e and s <= n.lat <= north and _inside(n.lon, n.lat, b.ring)
+            ),
+            None,
+        )
+        if home is None:
+            loose.append(n)
+        else:
+            inside[home.osm].append(n)
+    out: list[Element] = []
+    for b in buildings:
+        held = inside[b.osm]
+        if not held:
+            if b.tags.get("amenity") == "toilets":
+                out.append(b)
+            continue
+        tags = merged_tags([b, *held])
+        if tags is not None:
+            out.append(Element(b.osm, tags, b.lon, b.lat, b.ring))
+    return out + loose
+
+
 def read_extract(path: Path) -> list[Amenity]:
     import osmium
 
-    found: list[Amenity] = []
+    others: list[Element] = []
+    toilet_nodes: list[Element] = []
+    buildings: list[Element] = []
 
     def wanted(tags: dict[str, str]) -> bool:
         return water_of(tags) is not None or toilet_of(tags) is not None
 
     def tagged(t) -> bool:
-        return "amenity" in t or "man_made" in t or "natural" in t
+        # Cheap first test; every other building is skipped without a copy of its tags.
+        return "amenity" in t or "man_made" in t or "natural" in t or t.get("building") == "toilets"
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
             if not tagged(n.tags):
                 return
             tags = dict(n.tags)
-            if wanted(tags):
-                a = classify(f"n{n.id}", tags, n.location.lon, n.location.lat)
-                if a:
-                    found.append(a)
+            if not wanted(tags):
+                return
+            e = Element(f"n{n.id}", tags, n.location.lon, n.location.lat)
+            (toilet_nodes if tags.get("amenity") == "toilets" else others).append(e)
 
         def way(self, w):
             if not tagged(w.tags):
                 return
             tags = dict(w.tags)
-            if not wanted(tags):
+            building = is_toilet_building(tags)
+            if not (building or wanted(tags)):
                 return
             nodes = [nd for nd in w.nodes if nd.location.valid()]
             if not nodes:
                 return
             # A closed way repeats its first node; count it once.
-            if len(nodes) > 1 and nodes[0].ref == nodes[-1].ref:
+            closed = len(nodes) > 1 and nodes[0].ref == nodes[-1].ref
+            if closed:
                 nodes = nodes[:-1]
             lon = sum(nd.location.lon for nd in nodes) / len(nodes)
             lat = sum(nd.location.lat for nd in nodes) / len(nodes)
-            a = classify(f"w{w.id}", tags, lon, lat)
-            if a:
-                found.append(a)
+            ring = tuple((nd.location.lon, nd.location.lat) for nd in nodes) if closed else ()
+            e = Element(f"w{w.id}", tags, lon, lat, ring)
+            if building and closed:
+                buildings.append(e)
+            elif wanted(tags):
+                others.append(e)
 
     Handler().apply_file(str(path), locations=True)
+    found: list[Amenity] = []
+    for e in others + merge_restrooms(toilet_nodes, buildings):
+        a = classify(e.osm, e.tags, e.lon, e.lat)
+        if a:
+            found.append(a)
     return found
 
 

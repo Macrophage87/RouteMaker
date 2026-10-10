@@ -1,0 +1,409 @@
+{
+ "data": {
+  "bikes": [
+   {
+    "bike_id": "fx-bike-000",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.909547,
+    "lon": -77.048475,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-001",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.893674,
+    "lon": -77.001047,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-002",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.897733,
+    "lon": -77.009401,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-003",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.892833,
+    "lon": -77.001187,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-004",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.893583,
+    "lon": -77.003194,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-005",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.915729,
+    "lon": -77.050304,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-006",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.910731,
+    "lon": -77.052617,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-007",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912657,
+    "lon": -77.045854,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-008",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.90895,
+    "lon": -77.044678,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-009",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.910671,
+    "lon": -77.052594,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-010",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.8978,
+    "lon": -77.010306,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-011",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.901892,
+    "lon": -76.997806,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-012",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.915122,
+    "lon": -77.041579,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-013",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.905178,
+    "lon": -77.038623,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-014",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912843,
+    "lon": -77.038456,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-015",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912662,
+    "lon": -77.045949,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-016",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.90907,
+    "lon": -77.045226,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-017",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.91271,
+    "lon": -77.045956,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-018",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.902844,
+    "lon": -77.048904,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-019",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.907266,
+    "lon": -77.046495,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-020",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.8972,
+    "lon": -77.010387,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-021",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.897311,
+    "lon": -77.003095,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-022",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.909028,
+    "lon": -77.044723,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-023",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.897409,
+    "lon": -77.001642,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-024",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912619,
+    "lon": -77.04592,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-025",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.904002,
+    "lon": -77.048909,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-026",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.897231,
+    "lon": -77.0007,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-027",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.904066,
+    "lon": -77.004284,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-028",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.910053,
+    "lon": -77.034446,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-029",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.909739,
+    "lon": -77.052514,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-030",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912082,
+    "lon": -77.03866,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-031",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912196,
+    "lon": -77.038746,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-032",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.89942,
+    "lon": -76.997405,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-033",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.907271,
+    "lon": -77.04025,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-034",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.908961,
+    "lon": -77.04459,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-035",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912721,
+    "lon": -77.03568,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-036",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.899015,
+    "lon": -76.998245,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-037",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.908894,
+    "lon": -77.044678,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-038",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912125,
+    "lon": -77.038672,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-039",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.911794,
+    "lon": -77.038612,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-040",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.896287,
+    "lon": -77.010931,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-041",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.917366,
+    "lon": -77.041573,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-042",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.892036,
+    "lon": -77.002924,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-043",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912307,
+    "lon": -77.038594,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-044",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.905135,
+    "lon": -77.038675,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-045",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.895348,
+    "lon": -77.01107,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-046",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.91708,
+    "lon": -77.044986,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-047",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.912186,
+    "lon": -77.038701,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-048",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.89803,
+    "lon": -77.007406,
+    "type": "electric_bike"
+   },
+   {
+    "bike_id": "fx-bike-049",
+    "is_disabled": 0,
+    "is_reserved": 0,
+    "lat": 38.895694,
+    "lon": -77.009264,
+    "type": "electric_bike"
+   }
+  ]
+ },
+ "last_updated": 1791098657,
+ "ttl": 60,
+ "version": "1.1"
+}

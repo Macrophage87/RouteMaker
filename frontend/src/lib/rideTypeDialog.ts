@@ -36,7 +36,7 @@ export function initialCard(current: PresetId): number {
  * brings the loop back.
  */
 export function choose(preset: PresetId, carrying: Carrying | null, current: Dials): Dials {
-  const start = startDials(preset, carrying, current.when, current.assist);
+  const start = startDials(preset, carrying, current.when, current.assist, current.bike ?? null);
   return {
     ...start,
     ...(current.avoidGravel ? { avoidGravel: true } : {}),
@@ -47,6 +47,6 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
 
 /** Whether the rider has moved a slider away from the ride type's start. */
 export function isCustom(preset: PresetId, dials: Dials): boolean {
-  const start = startDials(preset, dials.carrying, dials.when, dials.assist);
+  const start = startDials(preset, dials.carrying, dials.when, dials.assist, dials.bike ?? null);
   return start.stress !== dials.stress || start.hills !== dials.hills;
 }

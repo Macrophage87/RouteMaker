@@ -89,6 +89,24 @@ def segment_schemas():
 
 
 @pytest.fixture(autouse=True)
+def _no_bikeshare_network(monkeypatch):
+    """No test reaches the bikeshare operator's feeds: the process's cache is replaced by
+    one whose fetch always fails, and a test that wants feeds installs its own `Gbfs`
+    (tests/test_bikeshare_api.py). A suite run must never make a request to a third party."""
+    try:
+        from core import gbfs
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+
+    def refuse(url: str, timeout: float) -> bytes:
+        raise gbfs.Unavailable("no network in tests")
+
+    monkeypatch.setattr(gbfs, "client", gbfs.Gbfs(refuse))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _weekend_router_state(monkeypatch):
     """core.routing remembers a failed weekend router for a minute; no test
     inherits another's memory of one. And it plans a weekend ride on the

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import { LIGHT } from "@protomaps/basemaps";
 import { massLayers } from "./massStyle.js";
+import { baseSurfaces } from "./testSupport/baseSurfaces.ts";
 import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
 import {
   FACILITIES,
@@ -20,7 +21,9 @@ import {
   UNPAVED_DASH,
   UNPAVED_PALETTES,
   contrastRatio,
+  isMtbLayerId,
   isMtbTrail,
+  MTB_LAYER_IDS,
   mtbHides,
   mtbTrailLayers,
   mtbTrailPaint,
@@ -102,7 +105,7 @@ test("only the mountain-bike class moves: each routable filter differs from the 
     const hidden = stressFilters(when, false, false);
     const routable = stressFilters(when, false, false, true);
     for (const [id, filter] of Object.entries(hidden)) {
-      if (id === MTB_ID) continue;
+      if (isMtbLayerId(id)) continue;
       // The cut sits after the ride time's drawn-at clause, ahead of the layer's own clauses.
       const plain = routable[id] as unknown[];
       assert.deepEqual(filter, [plain[0], plain[1], mtbHides, ...plain.slice(2)], id);
@@ -130,8 +133,11 @@ test("the not-for-routes line: thin, mid-grey, fine dots, no casing or rails, fr
       setAccessibility(strong, { remember: false });
       const layers = stressOverlayLayers("stress") as Layer[];
       assert.equal(layers[0].id, MTB_ID, "the bottom layer: every routable line draws over it");
-      assert.equal(layers.filter((l) => l.id.startsWith("mtb")).length, 1, "one layer: no casing, ring or rail of its own");
+      // The unrated trails' dots are one layer, with no casing, ring or rail of its own; the rest of the
+      // mountain-bike layer is the levels' casings and lines (456; mtbLevels.test.ts).
+      assert.deepEqual(layers.filter((l) => l.id.startsWith("mtb")).map((l) => l.id), MTB_LAYER_IDS);
       const [layer] = mtbTrailLayers("stress") as Layer[];
+      assert.equal(layer.id, MTB_ID);
       assert.equal(layer.minzoom, MTB_MIN_ZOOM);
       assert.deepEqual(layer.paint, mtbTrailPaint(strong));
       assert.deepEqual(layer.paint["line-dasharray"], MTB_TRAIL.dash);
@@ -152,19 +158,7 @@ test("the not-for-routes line: thin, mid-grey, fine dots, no casing or rails, fr
   assert.ok(MTB_TRAIL.dash[1] >= 2 * MTB_TRAIL.dash[0], "gaps at least twice the dots: separate dots, not a dashed line");
 });
 
-/** The light base map's surfaces a trail can lie over (as stressContrast.test.ts). */
-function surfaces(): Record<string, string> {
-  const out: Record<string, string> = {};
-  const SURFACE = /^(background|earth|park_|wood_|scrub_|hospital|industrial|school|pedestrian|glacier|sand|beach|aerodrome|runway|water|zoo|military|pier|other|minor|link|major$|highway$|bridges_)/;
-  for (const [key, value] of Object.entries(LIGHT)) {
-    if (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) && SURFACE.test(key) && !key.includes("casing")) out[key] = value.toLowerCase();
-  }
-  for (const [key, value] of Object.entries((LIGHT as { landcover?: Record<string, string> }).landcover ?? {})) {
-    const m = value.match(/^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
-    if (m) out[`landcover.${key}`] = `#${m.slice(1, 4).map((n) => Number(n).toString(16).padStart(2, "0")).join("")}`;
-  }
-  return out;
-}
+const surfaces = baseSurfaces;
 
 test("the grey is at least 3:1 from every surface of the base map, plain and (stronger) with the accessibility switch, and is no stress colour", () => {
   const found = surfaces();

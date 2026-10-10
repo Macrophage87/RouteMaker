@@ -143,8 +143,26 @@ export async function requestNearest(
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         points: [from, ...places.map((place) => place.point)],
-        preset,
-        ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false }),
+        // A Bikeshare plan takes exactly two points and its own bike fields; the way to the
+        // nearest place is ridden like the default ride type (no dock walk, no bike choice).
+        ...(preset === "bikeshare"
+          ? {
+              preset: "default",
+              ...dialFields({
+                ...dials,
+                bike: undefined,
+                ending: undefined,
+                pickupStation: undefined,
+                dropoffStation: undefined,
+                systemWeightKg: undefined,
+                targetDistanceM: undefined,
+                loop: false,
+              }),
+            }
+          : {
+              preset,
+              ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false }),
+            }),
       }),
     });
   } catch {

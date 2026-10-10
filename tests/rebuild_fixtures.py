@@ -418,7 +418,7 @@ SEPARATE_ROAD_ID = 700
 BESIDE_TRAIL_ID = 701
 
 
-def build_dials_extract(path: Path) -> None:
+def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = None) -> None:
     """The two things PUBLIC-DIALS reads from the map that only the rebuild
     can: a road closed to motor traffic every weekend, and a trail lying 5 m
     beside a road that says it maps its bike facility separately.
@@ -502,7 +502,12 @@ def build_dials_extract(path: Path) -> None:
             ),
             # OWNER-DECISIONS 111 and 93: singletrack is closed; the C&O towpath,
             # either side of lock 21, is not.
-            SINGLETRACK_ID: ([11, 12], {"highway": "path", "mtb:scale": "2", "surface": "dirt"}),
+            # `singletrack_tags` replaces its tags (a test of what the mountain-bike layer
+            # draws, OWNER-DECISIONS 456).
+            SINGLETRACK_ID: (
+                [11, 12],
+                singletrack_tags or {"highway": "path", "mtb:scale": "2", "surface": "dirt"},
+            ),
             TOWPATH_ABOVE_ID: (
                 [13, 14],
                 {

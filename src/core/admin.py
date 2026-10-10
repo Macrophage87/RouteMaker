@@ -48,6 +48,7 @@ from .models import (
     PendingInstanceAdminRemoval,
     RoleMapping,
     Session,
+    StressEdit,
     User,
     ValhallaUpstream,
     cancel_instance_admin_removal,
@@ -470,13 +471,90 @@ class OverrideAdmin(InstanceAdminOnly):
     source may never be the sole basis for a row.
     """
 
-    list_display = ("kind", "osm_way_id", "approved", "approved_at")
-    list_filter = ("kind", "approved")
+    list_display = ("kind", "osm_way_id", "approved", "approved_at", "source", "superseded_by")
+    list_filter = ("kind", "approved", "source")
     search_fields = ("osm_way_id", "reason")
     # The approval flag itself is read-only: approval crosses guilds, so it is
     # an audited action rather than a checkbox on a change form. Locking only the
     # timestamp, as an earlier version did, was backwards.
-    readonly_fields = ("approved", "approved_at")
+    #
+    # And so is everything the road panel's editor writes (`core.stress_edits`): who made
+    # and approved the row, and which later row replaced it. A row replaced by a panel
+    # edit stays approved and is marked superseded, because unapproving it would let the
+    # loader re-approve it from an old file.
+    readonly_fields = (
+        "approved",
+        "approved_at",
+        "source",
+        "created_by_user_id",
+        "approved_by_user_id",
+        "superseded_by",
+        "superseded_at",
+        "fingerprint",
+    )
+    # The accounts are shown by the application's user id (`created_by_user_id`), never as
+    # the Discord id a `User` prints as.
+    exclude = ("created_by", "approved_by")
+
+    def save_model(self, request, obj, form, change) -> None:
+        if not change:
+            obj.source = Override.Source.ADMIN
+            obj.created_by = request.user
+            obj.created_by_user_id = request.user.pk
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(StressEdit, site=site)
+class StressEditAdmin(AuditedAdmin):
+    """The road panel's edit history: every change and undo, with what each way held
+    before and after, who made it (the application's user id, never a Discord id) and when.
+
+    Read-only to everyone, an instance admin included, for the reason the audit log is: a
+    history that can be edited from the surface it records is not one. The private reason
+    is on the override row it created, not here.
+    """
+
+    list_display = ("at", "actor_label", "action", "osm_way_ids", "override", "generation")
+    list_filter = ("action",)
+    ordering = ("-at",)
+    exclude = ("actor",)
+    readonly_fields = (
+        "at",
+        "actor_user_id",
+        "action",
+        "override",
+        "replaced",
+        "undoes",
+        "osm_way_ids",
+        "before",
+        "after",
+        "applied_to",
+        "reapplied_to",
+        "generation",
+    )
+
+    @admin.display(description="by", ordering="actor_user_id")
+    def actor_label(self, obj) -> str:
+        if obj.actor_id is not None:
+            return f"user {obj.actor_user_id}"
+        if obj.actor_user_id is not None:
+            return f"deleted user {obj.actor_user_id}"
+        return "no actor"
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_module_permission(self, request) -> bool:
+        return self.has_view_permission(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
 
 
 def _discord_id_help(what: str, steps: str) -> str:

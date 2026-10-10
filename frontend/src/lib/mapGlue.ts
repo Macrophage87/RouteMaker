@@ -18,6 +18,13 @@ import {
   mtbTrailPaint,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
+  MTB_LEVELS,
+  isMtbLayerId,
+  mtbLevelCasingLayerId,
+  mtbLevelLayerId,
+  mtbLevelPaint,
+  MTB_LABEL_LAYER_ID,
+  mtbLabelColor,
   unpavedLayers,
   UNPAVED_DASH,
   accessibilityOn,
@@ -53,8 +60,9 @@ export interface OverlayMap {
  * every ride type, Mass Ride too ("Three map layers for everyone (every mode, signed out too)").
  */
 export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn(), mtb: boolean = mtbTrailsOn()): boolean {
-  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode.
-  if (id === MTB_TRAIL_LAYER_ID) return mtb;
+  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode,
+  // for the unrated trails' dots and each level's casing and line alike (456).
+  if (isMtbLayerId(id)) return mtb;
   return visible && (MASS_IDS.has(id) ? mass : !mass);
 }
 
@@ -180,6 +188,16 @@ export function setStressPalette(
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
+  // Each level's line and cross-ticks (456): wider with the accessibility switch; the colours and the ticks' dash (in widths) stay.
+  for (const { level } of MTB_LEVELS) {
+    const paint = mtbLevelPaint(level);
+    if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
+    if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
+  }
+  // The trail names (2026-10-10): an unrated trail's grey follows the dots' with the accessibility switch.
+  if (map.getLayer(MTB_LABEL_LAYER_ID)) {
+    map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
+  }
 }
 
 /** The parts of a MapLibre map the route's coloured sections use. */
@@ -294,10 +312,18 @@ export function setStressVisibility(map: OverlayMap, visible: boolean): void {
  * The markers effect's dependencies: the points, the counter App bumps to
  * put a dragged marker back without changing the points (a drag outside the
  * area), and the loop toggle, which renames them (OWNER-DECISIONS 374).
- * Without the counter a put-back marker stays where it was dropped.
+ * Without the counter a put-back marker stays where it was dropped. `federal`
+ * is a Mass Ride's per-point federal-land warnings (lib/federalStops.ts, item
+ * 239), which change a marker's name and badge; passed as an array, it is
+ * compared by its words, so a new array saying the same keeps the markers.
  */
-export function markerDeps<P>(points: readonly P[], markerReset: number, loop?: boolean): readonly unknown[] {
-  return [points, markerReset, loop === true];
+export function markerDeps<P>(
+  points: readonly P[],
+  markerReset: number,
+  loop?: boolean,
+  federal?: ReadonlyArray<string | null>,
+): readonly unknown[] {
+  return [points, markerReset, loop === true, (federal ?? []).map((w) => w ?? "").join("\n")];
 }
 
 /** What is under the pointer, as MapView finds it. */

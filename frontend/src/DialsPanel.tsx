@@ -16,8 +16,9 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
-import { WHENS, type Dials, type When } from "./lib/dials.ts";
-import { panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
+import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
+import { BIKES } from "./lib/bikeshare.ts";
+import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
 import { WeightSetting } from "./lib/weightDialog.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
@@ -63,7 +64,7 @@ function Slider(props: {
         type="range"
         min={view.min}
         max={view.max}
-        step={5}
+        step={view.step ?? 5}
         value={props.value}
         aria-labelledby={nameId}
         aria-valuetext={view.words}
@@ -187,6 +188,22 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
+/** The dials with a ride size, the default taken off the object (so the link stays as it was). */
+function withRideSize(dials: Dials, riders: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitRideSize(riders);
+  if (fitted === undefined || fitted === RIDE_SIZE_DEFAULT) delete next.rideSize;
+  else next.rideSize = fitted;
+  return next;
+}
+
+/** The dials with the bike chosen: its hills start, and no ending outside a dock for a classic. */
+function withBike(dials: Dials, bike: Bike): Dials {
+  const next: Dials = { ...dials, bike, hills: BIKESHARE_HILLS[bike] };
+  if (bike === "classic") delete next.ending;
+  return next;
+}
+
 export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
@@ -197,7 +214,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
   useEffect(() => () => keys.current.cancel(), []);
   const commitDraft = () => {
     const { draft: now, dials: was, onCommit: commit } = latest.current;
-    if (now.stress !== was.stress || now.hills !== was.hills) commit(now);
+    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize) commit(now);
   };
   const release = (settle: boolean) => {
     if (settle) keys.current.later(commitDraft);
@@ -211,6 +228,27 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
           roads (OWNER-DECISIONS 463, 463b), avoid gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
       <h3 id="dials-heading">Ride settings</h3>
+      {offersBike(preset) && (
+        <fieldset className="bikeshare-bike">
+          <legend>Bike</legend>
+          {BIKES.map((option) => (
+            <label key={option.id} className="toggle">
+              <input
+                type="radio"
+                name="bikeshare-bike"
+                value={option.id}
+                checked={(dials.bike ?? "classic") === option.id}
+                onChange={() => onCommit(withBike(dials, option.id))}
+              />
+              <span>
+                {option.label}
+                <span className="hint">{option.hint}</span>
+              </span>
+            </label>
+          ))}
+          <p className="hint">Choosing a bike moves the hills slider to where it starts for that bike.</p>
+        </fieldset>
+      )}
       {view.assistToggle && (
         <label className="toggle">
           <input
@@ -246,6 +284,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
+      {/* Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139): the corker load's group length. */}
+      {view.rideSize && (
+        <Slider
+          label={RIDE_SIZE_LABEL}
+          view={view.rideSize}
+          value={rideSizeOf(draft)}
+          onDraft={(riders) => setDraft(withRideSize(draft, riders))}
+          onRelease={release}
+        />
+      )}
       <fieldset className="when">
         <legend>When</legend>
         <label className="toggle">

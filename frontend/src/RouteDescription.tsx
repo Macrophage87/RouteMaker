@@ -22,6 +22,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
+import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { ROUTE_FOLDS, copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import { Fold } from "./lib/sidebarParts.ts";
@@ -56,9 +57,15 @@ export function RouteDescription({
   route,
   fold = false,
   rideAction = null,
+  federal = [],
 }: {
   route: RouteResponse;
   fold?: boolean;
+  /**
+   * A Mass Ride's federal-land lines (lib/federalStops.ts federalLines, item 239): the heading
+   * line, the stops on federal land and the parkway stretches; empty elsewhere.
+   */
+  federal?: readonly string[];
   /** Ride mode's Start ride, offered with the directions too (WEB-NAV-plan.md Q1, OWNER-DECISIONS 465). */
   rideAction?: ReactNode;
 }) {
@@ -96,13 +103,13 @@ export function RouteDescription({
     // reader hears (a11y re-check of 2b0cf00).
     const press = ++presses.current;
     setCopied("");
-    const done = await copy(descriptionText(route, view));
+    const done = await copy(descriptionText(route, view, federal));
     window.setTimeout(() => {
       if (press === presses.current) setCopied(done ? "done" : "failed");
     }, COPY_REPLY_DELAY_MS);
   };
   const onDownload = () => {
-    const blob = new Blob([descriptionText(route, view)], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([descriptionText(route, view, federal)], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -129,6 +136,27 @@ export function RouteDescription({
       </li>
     );
   });
+
+  // Named in the list's own words, before the steps (item 239): a reader who cannot point at the map's
+  // shading hears which stops are on federal land and which stretches are on a parkway.
+  const federalBlock = (hidden: boolean) =>
+    federal[0] === FEDERAL_UNCHECKED ? (
+      // "Federal land could not be checked for this route.": one line, not a heading over a list.
+      <p className="federal-route federal-unchecked" hidden={hidden}>
+        {federal[0]}
+      </p>
+    ) : federal.length > 1 ? (
+      <div className="federal-route" hidden={hidden}>
+        <p className="federal-route-heading" id={`${listId}-federal`}>
+          {federal[0]}
+        </p>
+        <ul aria-labelledby={`${listId}-federal`}>
+          {federal.slice(1).map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
 
   const actions = (
     <div className="actions description-actions">
@@ -171,6 +199,7 @@ export function RouteDescription({
           </label>
         ) : null}
         {lead && <p className="hint capacity-lead">{lead}</p>}
+        {federalBlock(false)}
         {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
         <ol className="description-list">{items}</ol>
         {actions}
@@ -206,6 +235,7 @@ export function RouteDescription({
           {lead}
         </p>
       )}
+      {federalBlock(!open)}
       {hiddenNote && (
         <p className="hint lanes-hidden" hidden={!open}>
           {hiddenNote}

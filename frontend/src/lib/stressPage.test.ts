@@ -102,12 +102,18 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   const regions = [...page.matchAll(/<div [^>]*role="region"[^>]*>/g)].map((m) => m[0]);
   assert.deepEqual(regions, ['<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">']);
   assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
-  assert.match(text, /Their level adds nothing at LTS 1 or 2\. A quiet street counts as 1\./);
+  assert.match(text, /Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets \(LTS 2\) count a little extra\. A quiet street counts as 1\./);
   assert.match(text, /Traffic-free paths and protected bike lanes count for less, and painted bike lanes a little less \(except on Mass Ride\)/);
   assert.doesNotMatch(text, /always count as about 1/);
   // The LTS 4 hold is one combined figure against the router's first route (the spec re-check's R2).
   assert.match(text, /more LTS 4, Avoid and very high stress crossings, counted together, than the router's own first route/);
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
+  // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words.
+  assert.match(text, /On Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also costs a quarter of what a mile of LTS 3 adds, so those routes lean toward LTS 1 streets\. Like LTS 3's extra cost, it fades to nothing at the slider's busiest end\./);
+  // FOLLOWUP-KIDS-PRESET (240 (B)): every place ride types are listed names it.
+  assert.match(page, /<tr><th scope="row">Trailmaxxing, Riding with kids<\/th><td>6<\/td>/);
+  assert.match(text, /Riding with kids counts a mile of LTS 2 as half a mile of LTS 3/);
+  assert.match(text, /Trailmaxxing, Cargo Bike with passengers and Riding with kids never pick a route/);
 });
 
 test("it says where it differs from the literature, and links the full list", () => {
@@ -211,7 +217,10 @@ test("the stress chart is described as built, not planned", () => {
   assert.match(chart, /calm miles per mile/);
   assert.match(chart, /1 mile \[1\.6 km\]|mile \[1\.6 km\]/, "US units first, metric in brackets");
   assert.match(chart, /except Mass Ride/);
-  assert.match(chart, /an estimate/);
+  // Each road at its own routing cost (stress-number.md section 4): the page says so, and calls the
+  // figure an estimate only where a road's details were missing.
+  assert.match(chart, /by its own speed, lanes and bike lane/);
+  assert.doesNotMatch(chart, /For now the figure is an estimate|not yet by its own speed/);
   assert.doesNotMatch(text, /stress chart \(planned\)|A stress number and a rolling stress chart/);
 });
 

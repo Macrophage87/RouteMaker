@@ -15,7 +15,9 @@ export type PresetId =
   | "gravel"
   | "fast"
   | "cargo"
-  | "ebike";
+  | "ebike"
+  | "bikeshare"
+  | "kids";
 
 export interface PresetOption {
   id: PresetId;
@@ -72,6 +74,19 @@ export const PRESETS: readonly PresetOption[] = [
     id: "ebike",
     label: "E-bike",
     description: "Leaves out ways mapped as closed to e-bikes, minds hills less, times at assisted pace.",
+  },
+  {
+    id: "bikeshare",
+    label: "Bikeshare",
+    description:
+      "Walk to a dock with a bike, ride dock to dock, then walk to your destination. Choose a classic bike (hill-averse, slower) or an e-bike. Calm streets and paths first; docks are chosen from live availability where it can be read.",
+  },
+  {
+    // FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): children on their own bikes.
+    id: "kids",
+    label: "Riding with kids",
+    description:
+      "Children on their own bikes: paths and the quietest streets strongly preferred, other quiet streets only when they save a real detour, busy streets avoided hard. Gentler hills, and times at a child's pace.",
   },
 ];
 

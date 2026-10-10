@@ -401,3 +401,16 @@ test("a Mass Ride's kept loop is not sent; another ride type's is (OWNER-DECISIO
   assert.deepEqual(bodies[0], { points, preset: "mass-ride", stress: 0, hills: 0 });
   assert.equal(bodies[1].loop, true);
 });
+
+test("Bikeshare's kept loop is not sent either: its API refuses one, and the switch is hidden there", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const impl = async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response("{}", { status: 500 });
+  };
+  const points: Array<[number, number]> = [[-77.04, 38.91], [-77.01, 38.89]];
+  const dials = { stress: 80, hills: -60, when: null, carrying: null, assist: false, loop: true, bike: "classic" as const };
+  await requestRoute(points, "bikeshare", { fetchImpl: impl, dials });
+  assert.equal(bodies[0].loop, undefined);
+  assert.equal(bodies[0].bike, "classic");
+});

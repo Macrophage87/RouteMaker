@@ -75,6 +75,9 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 # served there. The beta fills its own cache: docs/BETA-RUNBOOK.md runs predraw_stress_tiles
 # after the first start and after every `db --update-data`.
 #
+# bikeshare_feed_cache is excluded too: its one row is the operator's live feed, replaced every
+# minute (core.gbfs); a shipped copy would be stale on arrival and is not ours to distribute.
+#
 # And no identities (OWNER-DECISIONS 367.3, "strip users"): the beta starts with no accounts and
 # the owner claims instance admin there afresh. Every table that holds a person, or a row that
 # points at one, is excluded as a whole, so the restore's foreign keys (added in post-data) have
@@ -96,7 +99,7 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 EXCLUDED_TABLE_DATA=(
 	app_session django_session rate_limit_window cached_membership
 	procrastinate_events procrastinate_jobs procrastinate_periodic_defers procrastinate_workers
-	django_admin_log scheduled_run stress_tile_cache
+	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping
 )

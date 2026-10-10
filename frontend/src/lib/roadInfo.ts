@@ -213,9 +213,19 @@ export function infoError(status: number): string {
 }
 
 /** Ask the API about a spot. */
-export async function fetchSegmentInfo(origin: string, point: LonLat, signal?: AbortSignal): Promise<InfoState> {
+export async function fetchSegmentInfo(
+  origin: string,
+  point: LonLat,
+  signal?: AbortSignal,
+  fresh = false,
+): Promise<InfoState> {
   try {
-    const response = await fetch(segmentInfoUrl(origin, point), { signal, headers: { Accept: "application/json" } });
+    // `fresh` after an edit: the answer is cached for five minutes, and the rider has just changed it.
+    const response = await fetch(segmentInfoUrl(origin, point), {
+      signal,
+      headers: { Accept: "application/json" },
+      ...(fresh ? { cache: "reload" as const } : {}),
+    });
     if (!response.ok) return { kind: "error", message: infoError(response.status) };
     const info = (await response.json()) as SegmentInfo;
     if (!info || typeof info.found !== "boolean" || !Array.isArray(info.sections)) {
@@ -300,6 +310,23 @@ export function infoSaid(state: InfoState): string {
   const stress = stressPhrase(info);
   const closed = info.open === false ? " Bikes not allowed here." : "";
   return `${info.title}${stress ? `: ${stress}` : ""}.${closed}`;
+}
+
+/**
+ * The status sentence said again when the spot's federal area changes after the road's answer
+ * (a Mass Ride whose federal data comes late; item 239), or null when there is nothing to say
+ * again: no request, an answer still loading, or an answer that belongs to an earlier request
+ * (`stateFor`, the request `state` was fetched for), whose road must not be said with the new
+ * spot's area.
+ */
+export function refreshedSaid(
+  request: InfoRequest | null,
+  stateFor: InfoRequest | null,
+  state: InfoState,
+  federalSaid: string,
+): string | null {
+  if (!request || stateFor !== request || state.kind === "loading") return null;
+  return [infoSaid(state), federalSaid].filter(Boolean).join(" ");
 }
 
 /** Whether a key press asks for the road at the centre: I, unmodified, on the map itself. */

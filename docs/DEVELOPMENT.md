@@ -613,7 +613,8 @@ alone. Shape comes first and colour second:
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
-  `routemaker.trailaccess.MTB` and rated singletrack, which is hidden anyway).
+  `routemaker.trailaccess.MTB` and rated singletrack, which was hidden until
+  456 and is now drawn where only its rating closes it: next bullet).
   `stressFilters` puts `mtbHides` (`["!=", ["get", "mtb"], true]`) into every
   routable layer's filter, right after the ride time's drawn-at clause, and
   the one layer `mtb-trail` (`mtbTrailLayers`, the bottom of
@@ -647,6 +648,33 @@ alone. Shape comes first and colour second:
   says the dotted line is drawn "when the Mountain-bike trails map layer is
   on". docs/MTB-TOPO-PLAN.md has the
   rest of the mountain-bike and topo work.
+- **Mountain-bike levels (456, 456a-c; MTB-TOPO-PLAN slice 2).** The tiles
+  carry `mtb_level` (1-4, left out when null; `segment.mtb_level` from
+  `routemaker.singletrack.mtb_level`, the higher of `mtb:scale` and
+  `mtb:scale:imba`, 0 being no level, 456b). `MTB_LEVELS` in `stressStyle.js`
+  holds each level's colour, name, dash (in line widths) and pattern words;
+  `mtbTrailLayers` adds, after the grey dots (now filtered to the trails with
+  no `mtb_level`), `mtb-level-casing-1..4` (the shared dark cross-ticks,
+  `MTB_LEVEL.tick` in `MTB_LEVEL.tickDash`; 452a) and then
+  `mtb-level-1..4` (`mtbLevelPaint`), all from zoom 14 and all in
+  `MTB_LAYER_IDS`, which `overlayLayerShown` (`isMtbLayerId`) shows by the
+  layer's switch alone and the Mass Ride filter leaves without `massHides`.
+  `setStressPalette` re-applies the widths with the accessibility switch.
+  The legend adds a row a level after the dots' row (`mtbLevelLegend`,
+  `MtbLevelSwatch`, aria-hidden swatch; "Level 2 (blue)" then the rating,
+  colour and pattern in words), in the Mass Ride legend too. The road panel
+  (`core.segment_info`, `mtb_summary`, `MTB_LEVEL_COLOURS`, held equal to the
+  front end's names by a test) says "Mountain-bike trail, level 2 (blue), not
+  used for routes" and adds a "Mountain-bike difficulty" row under Riding.
+  The rebuild draws rated singletrack (`map_class` road, with `mtb`) where
+  nothing but its rating closes it (`pipeline.trail_closures.drawn_singletrack`),
+  and hides the rest as before. mtbLevels.test.ts holds each colour at 3:1
+  from the base map (`testSupport/baseSurfaces.ts`, shared with
+  mtbTrail.test.ts), each pattern distinct from the others and from every
+  other line pattern on the map, every level unlike every stress tier on
+  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
+  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
+  only (`pipeline.trail_closures.mtb_level`).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -825,7 +853,7 @@ the credits (301). The front-end ones are 71 of 71 killed; the Python ones need 
 PLAN.md FOLLOWUP-FEDERAL-LAYER. The Mass Ride map shades the land under federal
 control, as information and not legal advice: ownership is not police
 jurisdiction. The routing and description half of item 239 (stops inside federal
-land, the parkway stretches) is a later step and is not here.
+land, the parkway stretches) is the next section.
 
 * **Data.** `scripts/build_federal_land.py` merges the National Parks, Reservations
   and Military Bases layers (fetched once each, records in
@@ -873,6 +901,94 @@ validity and a few known places), and the browser check section 9 of
 `scripts/a11y/check.mjs` (`scripts/a11y/run.sh`: the section, switch, legend at 320
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
+
+### Federal stops and parkways (item 239, the routing part)
+
+PLAN.md FOLLOWUP-FEDERAL-LAYER, "Still to do". On a Mass Ride, the places the group
+stops on federal land and the stretches it rides on a National Park Service parkway,
+in the map, the points list, the route description and the road panel. All of it is
+`frontend/src/lib/federalStops.ts`; every other ride type is unchanged.
+
+* **Client side, not the API.** The overlay's file is already in the page for a Mass
+  Ride (MapView fetches it whatever the shading switch says, `federalWanted`), and
+  `federalLand.ts` already had the point-in-polygon test. Reading the same file on the
+  server would mean shipping a front-end asset into the api image, a second parser
+  and a new field on the route answer, for the same answer; the points list and the
+  markers need it before any route is planned anyway. So the stops and the parkway
+  test run in the browser, with a bounding box per area cached so a point is tested
+  against only the few areas near it. The cost: the description lines are worded in
+  `federalStops.ts`, not `describe.py`, so they are placed before the API's entries
+  rather than among them, and they come only once the file has loaded. Until then, or
+  if it cannot be had, a Mass Ride's description, copied text, cue sheet and GPX
+  description carry one line instead, "Federal land could not be checked for this
+  route." (`FEDERAL_UNCHECKED`, `federalRouteLines`).
+* **Stops** (239 (b)). `federalAreaAt` (`federalLand.ts`, which `federalPoints` uses
+  too) gives a point's most specific area (FEDERAL_KINDS order) with its agency; failing
+  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 66 ft (20 m),
+  marked `near` and said "next to" (238: "err on the side of flagging", for a stop on a
+  simplified boundary). `stopWarning` says "End is inside U.S.
+  Capitol grounds, managed by Architect of the Capitol – federal land: check permit
+  requirements for gathering here." Where the data names no agency (Military Bases)
+  the kind is said instead ("Fort Leslie J. McNair (Military installation)"), never an
+  invented manager. The start, the end and every Stop N are checked. The planner has
+  no separate regroup or staging point: a regroup is planned as a stop, so it is a
+  Stop N here.
+* **Riding through** (239 (c)). A stretch on an ordinary city street inside an area is
+  not warned.
+* **Parkways** (239 (d)). `PARKWAYS` lists the five the owner named. A description
+  stretch is on one when its OpenStreetMap street name matches it ("Rock Creek and
+  Potomac Parkway Northwest", "Rock Creek Parkway", "Clara Barton Parkway", ...), or
+  when it is an unnamed or parkway-named road stretch with two of its quarter points
+  inside the NPS layer's polygon of that parkway (only those inside the District are in
+  that layer). Unnamed means the API's own words, `describe.py` `UNNAMED_ROAD` ("unnamed
+  road") and `UNTRACED_STREET` ("this part of the route"), which `federalStops.ts` repeats
+  and `tests/test_describe.py` holds equal. A path is never a federal road, by name or by
+  polygon: a stretch with `facility` "path" or the street "unnamed path" is skipped
+  (Rock Creek's trail is inside the parkway's polygon, and a "Suitland Parkway Trail"
+  matches the parkway's name).
+  Stretches on one parkway less than `PARKWAY_JOIN_M` (525 ft, 160 m) apart are one run, said
+  as "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park
+  Service parkway – federal road: check permit requirements for riding it as a group."
+  OpenStreetMap's `operator` tag is not in the routing data (the segments carry the
+  name, not the operator), so it is not read; adding it is a pipeline change for a
+  rebuild.
+* **Where it shows.**
+  - *The map:* a marker for a point on federal land has the class `pin-federal`, a
+    square "!" badge at its corner (a shape, not only a colour), and the warning in its
+    accessible name and title (`MapView` `pointWarnings`, part of `markerDeps`).
+  - *The points list:* the row gets the warning on a line of its own with the same
+    badge (`PointsList` `warnings`), before Remove in the reading order. The planner's
+    separate list of points on federal land is gone (the rows say it); the planner
+    still says "None of your points is on federal land." when none is, and the Map
+    layers sheet keeps its list and says what the badge means (`FEDERAL_BADGE`).
+  - *The description:* `federalLines` (a heading line that says it is information, not
+    legal advice, and that federal ownership is not police jurisdiction; the stops; the
+    parkway runs) is listed under its heading before the steps in Directions, and is in
+    the copied text, the downloaded cue sheet and the GPX file's description
+    (`descriptionText`, `gpxDescriptionText`, `exportOf`). Nothing is said when there is
+    nothing to say. The GPX description keeps the lines where the API gave no entries,
+    and counts them when it chooses the full text or the overview (`GPX_FULL_MAX_CHARS`).
+  - *The road panel:* the keyboard's and screen reader's way to ask what a shaded area
+    is. "Road info at map center" (I on the map) and a right-click or long press, on a
+    Mass Ride, show "Federal land: Inside ... – federal land: check permit requirements
+    for gathering here." with the caveat, whether or not a road is found, and the
+    dialog's status sentence ends with it, said again if the data comes after the road's
+    answer.
+* **Units.** The run's range goes through `format.ts` `formatMileRange` (miles first,
+  kilometres in brackets), as every unit does. For a short run it follows `describe.py`
+  `range_words`' feet rule (under a tenth of a mile, where it starts and its length in
+  feet), and it also uses feet where both ends round to the same tenth, which
+  `range_words` does not check.
+
+Tests: `lib/federalStops.test.ts` (the area and its words, the rows and markers only on
+a Mass Ride with the data, the five parkways by name and nothing else, runs joined and
+by the NPS layer with a path and a city street left out, the description, text and GPX
+lines, the rendered row, the marker and road-panel wiring, the real file at Lafayette
+Square, the Capitol and the Rock Creek and Potomac Parkway), and the browser check's
+section "The Mass Ride's stops on federal land and its parkway stretches"
+(`scripts/a11y/check.mjs`, 8 checks: the End row and marker at the Capitol and not the
+Start, the Directions list and its name, I at the map's center over the Capitol and off
+it, no warning on another ride type, and the row at 320 px with text spacing).
 
 ### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
 
@@ -1607,7 +1723,7 @@ about today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is about today's 4 to 80.
 | primary, 2 lanes each way, 35 mph | 0 / 1.05 | 1.14 / 4.62 (4.1x) | 2.63 / 10.42 (4.0x) | 4.70 / 21.06 (4.5x) | 6.23 / 29.80 (4.8x) | 7.38 / 36.74 (5.0x) |
 | primary, 2 lanes each way, 40 mph, painted lane | 0 / 0.82 | 1.26 / 3.97 (3.1x) | 3.00 / 9.10 (3.0x) | 5.51 / 18.42 (3.3x) | 7.39 / 26.08 (3.5x) | 8.82 / 32.14 (3.6x) |
 | trunk, 3 lanes each way, 45 mph | 0 / 0.91 | 1.55 / 4.63 (3.0x) | 3.85 / 10.88 (2.8x) | 7.58 / 22.74 (3.0x) | 10.54 / 32.62 (3.1x) | 12.84 / 40.52 (3.2x) |
-| primary, 2 lanes each way, 55 mph | 0 / 0.82 | 1.46 / 4.19 (2.9x) | 3.59 / 9.78 (2.7x) | 6.76 / 20.15 (3.0x) | 9.20 / 28.70 (3.1x) | 11.07 / 35.51 (3.2x) |
+| primary, 2 lanes each way, 55 mph (89 km/h) | 0 / 0.81 | 1.47 / 4.18 (2.8x) | 3.61 / 9.77 (2.7x) | 6.81 / 20.12 (3.0x) | 9.27 / 28.68 (3.1x) | 11.16 / 35.48 (3.2x) |
 
 Over every combination of class, 1-4 lanes, no, shared or painted lane and a
 prior truck route, the smallest ratio at slider positions 5 to 100 is at
@@ -4221,6 +4337,112 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
+
+The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
+calm-search score, about a quarter of LTS 3, on"
+"Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no rebuild."
+Item 241's rationale applies: a rider who
+is not in control of the ride is stress-averse.
+
+- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+  `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
+  0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
+  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
+  LTS 2 weight, since 240 (A) does not name it.
+- Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
+  weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
+  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
+  weigh it the same way.
+- At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
+  weight would never price a route where Cargo with passengers starts (review, blocking).
+  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
+  quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
+  `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
+  costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
+  slider does not move, the calm search does not turn on, and the router's requests are
+  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
+  kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
+  with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3
+  adds nothing.
+  If the owner prefers the weight to wait until the rider moves the slider above 80, the
+  term is one commit to drop.
+- At the top (100, maxcalm) the weight is in the second figure of the ranking:
+  `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
+  with the same LTS 4 and red junctions, 656 ft (200 m) more LTS 2 is worth one 164 ft
+  (50 m) tie step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
+  1 mi (1.6 km) of LTS 2 saved can buy 1.25 mi (2 km) of extra riding with no target, a
+  quarter of what a mile of LTS 3 buys. LTS 4 still ranks first whatever the LTS 2.
+- LTS 2 never starts a search of its own, so it adds no router calls: `calm_targets` still
+  excludes only LTS 3 and worse, and the trail seek is handed the busy spans of LTS 3 and
+  worse only (`refine.seek_weights`), so a stretch of LTS 2 never starts a seek. The routing
+  graph does not grade LTS 2 (240 (C) stays with
+  FOLLOWUP-DECIMAL-STRESS in the backlog), so nothing is rebuilt.
+- The rolling stress chart is unchanged: it shows traffic stress, not the ranking's LTS 2
+  preference, so LTS 2 is priced by the road's own cost alone and an all-quiet route still
+  reads about 1 (461d) on these rides too.
+- Not measured on the live routers in this change (no router here). The 12 trips and the
+  owner's route are the place to measure it, as item 250 was.
+- Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
+  `scripts/mutants_trailseek.py`.
+
+### Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B))
+
+The owner, 2026-10-03, item 240 (B): "a 'Riding with kids' preset for children on their own
+bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower
+planning speeds and gentler hills. It builds on (A)."
+
+The ride type id is `kids` (links `/#preset=kids`, the short path `/kids`), the label
+"Riding with kids". It is defined like every other preset: `core.presets` (`KIDS`,
+`EXPOSURE_KIDS`, the `_preset("kids", ...)` row, `BRAKE_GRADES`), `frontend/src/lib/presets.ts`
+(the card's label and sentence), `frontend/src/lib/dials.ts` (`STARTS`, held equal to the API by
+`tests/test_presets.py`), the Caddyfile and the beta nginx template's preset redirects, and the
+stress page's cost table.
+
+**Developer defaults, for the owner to confirm.** The owner gave no numbers for these:
+
+| What | Default | Why |
+|---|---|---|
+| Traffic slider start | 100 (the top) | "LTS 3+ avoided hard": the least stressful route, LTS 4, Avoid and red junctions ranked first, with the LTS 4 hold, as Trailmaxxing |
+| LTS 2 weight | 0.5 of LTS 3 (`KIDS_LTS2_WEIGHT`) | "LTS 2 allowed but costly": twice 240 (A)'s quarter; a metre of LTS 3 still counts two of LTS 2 |
+| Planning speed | 6.2 mph (10 km/h) | a child of about six to ten on their own bike; Hybrid's own is 11.2 mph (18 km/h), Cargo Bike 8.7 mph (14 km/h), Mass Ride 6 mph (9.7 km/h) |
+| Hills slider start | -80 (`use_hills` 0.2) | "gentler hills": more hill-averse than Cargo Bike (-60), short of Mass Ride (-95) |
+| Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
+| Living streets | 1.0 (fully preferred) | as Trailmaxxing |
+| Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
+| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
+
+At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
+least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
+not planned leg by leg (`long_calm` stays Trailmaxxing's alone). The rider and bike weight
+keeps the model's 198 lb (90 kg) default; a child's lighter total is the rider's to set.
+
+**No rebuild.** It rides the existing graphs: the standard graph and its weekend twin, or
+the no-trail graph with "Keep to roads, not trails". No new Valhalla graph or variant was
+needed, because everything that makes it a kids' ride is a per-request costing option or
+the planner's search; LTS 2 is graded only in the search, not in the graph (240 (C),
+FOLLOWUP-DECIMAL-STRESS, backlog). Bike access is the graph's as for every ride: a way
+whose bicycle access is unclear stays closed.
+
+**Load.** Like Trailmaxxing it starts at 100, so every plan runs the calm search (about 20
+router calls; docs/OPERATIONS.md).
+
+**Screen readers.** The card is a toggle button in the ride-type dialog named by its label
+and sentence; choosing it moves the sliders (their values are said in words), the Ride
+line's spoken summary says "Riding with kids, calmest, avoids hills", and the link carries
+it. `scripts/a11y/check.mjs` section 25 covers the dialog, the keyboard, the request, the
+sliders, the target distance, a shared link and 320 px (`EXPECTED` 423); the mocked answer
+is `S_KIDS` in `scripts/a11y/cdp.mjs`.
+
+Tests: `tests/test_presets.py::TestRidingWithKids` and the tables there,
+`tests/test_refine.py`, `tests/test_route_description.py`, `tests/test_preset_links.py`,
+`tests/test_beta_overlay.py`, every test parametrised over the presets, and
+`frontend/src/lib/presets.test.ts`, `dials.test.ts`, `dialsPanel.test.ts`, `stressPage.test.ts`.
+
 ## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in
@@ -5384,8 +5606,9 @@ WB&A Trail is the test case.
 
 ## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 
-The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
-riders per minute". Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
+The "Elevation and stress" fold of the route summary, and on a Mass Ride "Riders per
+minute, corker load and elevation" (three charts; see "A Mass Ride's three charts" below).
+Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
 the rider-marked hazards (part 3) are not part of it. Both folds stay: the chart's sits
 above "Stress and facilities" (decided, 394: "keep both").
 
@@ -5445,10 +5668,11 @@ leg had any elevation), built by `core.routing.route_profile`:
 
 **The flow model** is `routemaker.flow`; there was no flow code before it, only PLAN's
 "The headline number: modelled throughput". It is accepted as the working model
-(OWNER-DECISIONS 394); sources pending FOLLOWUP-FLOW-CALIBRATION (docs/SOURCES.md, "The
-Mass Ride flow model"). The level figure rests on the owner's DC Bike Party counts (item
-173, indicative, good to about ±25%, item 175); the grade factors are not from a
-measurement.
+(OWNER-DECISIONS 394); FOLLOWUP-FLOW-CALIBRATION's literature check is in
+docs/FLOW-CALIBRATION.md, its references in docs/SOURCES.md ("The Mass Ride flow
+model"), and the owner's video check is pending. The level figure rests on the owner's
+DC Bike Party counts (item 173, indicative, good to about ±25%, item 175); the grade
+factors are not from a measurement.
 
 - Level capacity: `60 x 0.37 riders/m2 x 0.7 utilisation x usable width x 1.9 m/s`, about
   99 riders a minute for an 11 ft (3.35 m) lane.
@@ -5535,7 +5759,9 @@ and the junction list never see them.
   intersections tables' rows, the narrowest point's mark, and the thinning of junction
   names (`placeCrossings`). Units come from `format.ts` (`formatAxisDistance` was added
   there: nothing else writes a unit).
-- `ElevationChart.tsx` draws it. The picture is one `role="slider"` with `aria-valuetext`
+- `ElevationChart.tsx` draws it for every ride type but Mass Ride, and hands a Mass Ride to
+  `MassRideCharts.tsx` (below); what the two share (the plot's edges, the patterns, the
+  junction shapes, the tables) is in `chartParts.tsx`. The picture is one `role="slider"` with `aria-valuetext`
   the spoken sentence at the keyboard's (or a click's) position, never the hover's, and
   `aria-describedby` the key hint alone (the summary is the text just before it). Its SVG
   is `aria-hidden`, and so is the visible readout under it, which follows the hover: a
@@ -5580,6 +5806,104 @@ and the junction list never see them.
   the Avoid block's outer frame is CanvasText and its inner frame Canvas.
   The chart's type is 11 viewBox units.
 
+**A Mass Ride's three charts** (the owner, 2026-10-10: "Have 3 charts for mass ride: Riders
+per minute, Corker load, Elevation. They should all be there."; 147: "visualize rider flow,
+elevation, and anticipated corker requirements over the route"). `MassRideCharts.tsx` draws
+three charts in that order, one under the other, each 360 viewBox units wide with the same
+plot edges (`chartParts.LEFT`, `RIGHT`) and the same distance scale, so a mile is at the same
+place on all three and on each one's own distance axis (miles, km in brackets).
+
+- **Riders per minute**: the riders area in the band colours and patterns, the 60/120/200
+  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), and
+  the Avoid blocks, as before.
+- **Corker load**: a step area (one series: a blue fill under a step line in the text
+  colour), a tick from the marker row down through the plot at each junction needing
+  corkers, the junction markers (triangle, diamond, dot) above, their thinned names under
+  it (`placeCrossings`), a dotted line at half the top, and the side's top figure in
+  corkers held at once ("4", "corkers", "at once"). A stretch not checked for intersections
+  (`profile.unchecked`) is a grey hatched block with a dashed frame and "NOT CHECKED" (or
+  "?" where narrow); intersections not checked at all (`crossings: null`) draw no area and
+  say "Intersections not checked" in the plot, never a load of 0 (an older answer with no
+  cruising pace says "Group length not known").
+- **Elevation**: the elevation line and area with the amber grade bands, dotted and hatched.
+
+**The corker load rolls with the length of the ride.** The owner, 2026-10-10: "Corkers were
+intended to also have a rollback based on the length of the ride." So the window is the
+group's length at the anticipated ride size, slid along the route (PLAN "Corkers needed",
+139's "at once"), and the chart is **the corkers held at once with the group's head at each
+point** (`lib/profileChart.ts`, "The corker load"):
+
+- **Anticipated ride size** (128, 129): a slider in the Mass Ride dials, after Hills,
+  100 to 2,000 riders in steps of 50, 500 by default (`dials.ts` `RIDE_SIZE_*`). Its name is
+  "Anticipated ride size (riders)" and its value text "500 riders"; it is an `input
+  type="range"`, so the arrow keys, Page Up/Down, Home and End move it. It is kept with the
+  other dials: in the plan link as `riders=N` (absent at 500, so older links read 500), and
+  only on a Mass Ride (`fitDials`). It never reaches the API: App leaves it out of the dials
+  a plan is made from, so moving it redraws the corker load and plans nothing.
+- **The group's length**: riders ÷ (cruising density × usable width), which is riders over
+  the flow a second times the cruising pace. Nothing is copied into the front end: the API
+  sends `profile.level_riders_per_min` (the level figure at each sample, from the width
+  alone, `flow.level_riders_per_min`), `flow.cruise_pace_ms` (`flow.CRUISE_PACE_MS`, 7 mph)
+  and `flow.default_level_riders_per_min` (two 11 ft lanes, `flow.GROUP_DEFAULT_WIDTH_M`);
+  `flow.group_length_m` is the same rule in Python. 500 riders on a 22 ft (6.7 m) road at
+  7 mph are about 1,560 ft (474 m); 2,000 about 1.18 mi (1.9 km), PLAN's worked example.
+- **The width at each point** (the choice made here): the group fills the road behind its
+  head until the road holds every rider (`groupRoad`, `tailAt`), so it is shorter on a wide
+  avenue and longer on a narrow street, and across a change of width it is in between.
+  Where no width is known (Avoid, an untraced leg, outside DC) the route's median level
+  figure stands in, and with none at all the default road. Before the start the group is
+  still forming, at the first stretch's width; past the end, at the last one's.
+- **Held at once**: a junction needing corkers (`corkers_needed`: 142 and 400, a crossing of
+  or a turn onto an LTS 3 or worse road) is held from when the head reaches it until the
+  tail passes it, so the load steps up at each tick and down a group's length later
+  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs:
+  **2 for a two-way road, 1 for a one-way** (crossings now carry `oneway`, from the road's
+  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) takes 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. Near the end
+  the junctions stay held to the end, so a group longer than the route holds every one at
+  its end.
+- **The ride's headline**: "about N corkers" = the most held at once × the rotation factor
+  (2: corkers leapfrog to the junctions ahead), rounded up (`ROTATION_FACTOR`). It is in the
+  chart's summary and in the route's figures beside the carrying capacity ("Corkers: About 8
+  for 500 riders", `corkerFigure`, `CapacityStats`). Where only the flagged junctions were
+  found (`crossings_complete: false`) or part of the route was not checked, it is "At least
+  about N ... (may be low: ...)", never a firm figure.
+- The top is the peak rounded up to an even number, at least 4.
+
+Defaults still open for the owner: the rotation factor (2, PLAN's proposal), 2 corkers per
+junction where it is not known whether the road is one-way, and the 500-rider default
+(PLAN's proposal; the range is the owner's, 129). PLAN's one corker per approach lane, and
+one per approach at a signal entered on green, are not built: every two-way junction takes 2.
+
+Screen readers: each chart is a `role="group"` named by its `h4` heading, with its own
+summary before the picture, a slider (`aria-label` "Riders per minute along the route",
+"Corker load along the route", "Elevation along the route") over an `aria-hidden` SVG,
+an `aria-hidden` readout, and its own key (`aria-label` "Riders per minute key" ...). The
+three sliders share one position (and one key hint, which also says so): Tab from one to
+the next carries on at the same mile, and moving any of them moves the map's marker and the
+other two charts' markers. Tab between them keeps the position (the blur looks at
+`relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
+about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
+1.3, corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
+riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
+not checked for intersections." where it was not, and "intersections not checked, so the
+corkers needed are not known" with no crossings; where only the flagged junctions were
+found, every reading says so too: "Mile 1.2: at least 2 corkers holding 1 junction at once
+(500 riders, group about 1,560 ft (475 m) long; only flagged junctions were found)", and the
+key adds "Only flagged junctions were found, so the load may be low"); elevation, "Mile 1.2: elevation 341 ft (104 m), grade 6%."
+The summaries split the old one: riders (narrowest and typical figures, outside DC, Avoid,
+and "Part of the route could not be traced, so its width is not known." where it was not),
+corker load (the intersections and how many need corkers, the group's length at the ride
+size, the most held at once, where, and how many more places reach it, the ride's corkers,
+and how they are counted; with no junction needing corkers it says "No junction needing
+corkers was found where the route was checked." wherever part was not checked, never that
+none are needed), elevation (range, steepest, climbs); `summaryText(.., "mass")` is
+unchanged, pinned word for word in the tests. The key names the dotted line ("Dotted line:
+2 corkers at once, half the chart's height"). The intersections table gains a "Corkers held at
+once when the head reaches it" column ("4 at 2 junctions", or "None"). Colour is never the only cue: the load is
+one series with its line, the ticks are shapes at places, the unchecked block has a hatch,
+frame and word; in forced colours the step line, ticks, half line and the unchecked frame
+and word follow CanvasText. Every other ride type keeps "Elevation and stress" unchanged.
+
 **Deploying it.** Code only: no migration, no data rebuild, no new setting.
 
 - Localhost: tag the running image first, so a rollback is a retag and not a rebuild
@@ -5605,9 +5929,28 @@ role, name, key-hint description and value text, the summary, the patterns and t
 path, the arrow, C, Home and End keys, a hover leaving the spoken value alone, the map
 marker, the position kept, the tables and their names, a phone's collapsed fold and fit,
 and the Mass Ride chart's area, patterns, guide colours and contrast, the narrowest mark,
-Avoid, thinned names, sentence, I key and tables, and forced colours).
-`scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
-crossings on the Mass Ride.
+Avoid, thinned names, sentence, I key and tables, and forced colours; and five more for a
+Mass Ride's three charts: the groups, headings, slider names and keys in order, the corker
+load's summary, its area, ticks, side figures, key and shared axis, and Tab on to the corker
+load's and the elevation's sliders at the same mile with their value texts; and three for
+the ride size: the slider's name, value text and range, the route's corkers figure, and ten
+steps to 1,000 riders redrawing the load and the figure, carried in the link, with no new
+plan; and two for the corker load not known: crossings `null` (the plot's words, no area, the
+key, summary and value text, no corker figure) and an unchecked stretch (the hatched NOT
+CHECKED block, its key, and "At least about 8"); EXPECTED 422 after the release merge).
+`node scripts/a11y/check.mjs --port <vite> --cdp <chromium>` (or `A11Y_CDP_PORT`) runs it
+against a Vite and a Chromium of your own; Chromium's port defaults to 9222. The three charts' math is in `lib/corkerLoad.test.ts` (the group's
+length and the worked example, the width at each point, an unknown width and an older
+answer, the sliding window, close junctions adding up, the ends, a group longer than the
+route, one-way junctions, junctions needing none, the headline and its rounding, may be low,
+no intersections, not checked, unchecked stretches with no corkers, the partial caveat in
+the reading, the readings and summaries, the one-chart summary as a literal, the riders
+summary's untraced width, the shapes, the table's column, and the ride size's range, plan
+link and slider);
+`tests/test_profile_flow.py` checks the group length's worked example, the level figure and
+pace the API sends, and a major's `oneway`. `scripts/a11y/cdp.mjs` mocks a profile on every
+route and riders, the level figure (22 ft), an Avoid stretch and crossings (13th Street
+one-way) on the Mass Ride.
 
 ## The rolling stress chart (OWNER-DECISIONS 460.12, 461, 461a-e, 469b)
 
@@ -5621,8 +5964,37 @@ junctions included. The design is docs/stress/stress-number.md section 4 (on
 `calm.Pricing` made in `plan` from the slider position, the preset's exposure weights, the
 target, the graph and `refine.quiet_cost_per_m`):
 
-- Each stress section (`stress_spans`) counts its length times its multiplier `M`, a quiet
-  street's metre being 1. At LTS 3 and up, `M = 1 + added / 2.2 + rate x w(L)`: `added` is
+- **Each road at its own routing cost** (stress-number.md section 4; 461c). `trace_leg`
+  also asks for `calm.TRACE_ATTRIBUTES` (each edge's use, class, lane count, cycle lane,
+  shoulder, truck route, bicycle network, tagged speed, density, roundabout flag and
+  surface); `calm.road_of_edge` puts them on each `Piece` (`Piece.road`), and `plan` hands
+  the pieces with their tiers to `route_profile` (`_calm_pieces`). `calm.edge_factor`
+  restates Valhalla 3.9.1's bicycle edge cost for the edge (sif/bicyclecost.cc
+  `BicycleCost::EdgeCost`: `1 + accommodation x roadway stress`, the lane, truck, class and
+  speed terms, `use_sidepath` from LTS 3 off trail-class ways, the network factor), with
+  the speed the graph gave the edge (`road_speed_kph`: 140 on a graded edge, which reports
+  15 lanes, taken as tagged, so 130 rough and 175 on a turn channel; a tagged `maxspeed`;
+  else the class default or, density over 8, the builder's urban speed,
+  mjolnir/speed_assigner.h). A graded edge carries the sidepath term whatever the live
+  tier says. Grade, surface, turns, gates and the alley charge are left out (not traffic,
+  or counted on their own). `M = factor / calm.quiet_factor`, the same factor for a
+  residential street with no lane at its default speed (urban or rural, as the road is) at
+  the ride's `use_roads`, so each figure is relative to the local quiet street: the
+  reference road (an untagged residential street) reads exactly 1 (461d), a residential
+  street tagged 25 mph about 1.13, and a path about 0.67 at Default; plus the calm-rate term above 80. At the top of the slider LTS 3 and up keep
+  the worth rule's figure (the ranking's own price), and stairs and ferries their tier's.
+  It reproduces the "Graded stress" table above, every cell, to 0.01 (`tests/test_calm.py`
+  `TestOwnCost`). Each piece is priced at its stress section's tier and rating
+  (`calm.with_section_tiers`), so a folded sliver is neither a rated island nor an
+  unshown Avoid entry. The sums run over every piece; each section's step is its mean.
+  A Valhalla upgrade that touches `bicyclecost.cc` or the speed assigner must be checked
+  against `edge_factor`.
+- **The tier's figure** (`calm.multiplier`) stands in for a piece with no edge attributes (a
+  router or test double not asked for them; `estimate: true`). So does a stress edit since
+  the last rebuild: where the live tier and the graph disagree about grading
+  (`calm.disagrees`), the road keeps the graph's cost and the answer says `estimate: true`.
+  Each stress section (`stress_spans`) then counts its length times its
+  multiplier `M`, a quiet street's metre being 1. At LTS 3 and up, `M = 1 + added / 2.2 + rate x w(L)`: `added` is
   the middle of the five modelled road types' range for the slider's `use_roads` (the
   "Graded stress" table above; linear between its columns), 2.2 is
   `refine.QUIET_COST_FACTOR`, and the calm-rate term is the score's above 80. Avoid is LTS
@@ -5640,7 +6012,10 @@ target, the graph and `refine.quiet_cost_per_m`):
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
   0.679 at 40, 1 from 70). At the top of the slider the worth rule's exchange stands in
   (`refine.stress_weight_m`): a red junction 5 x 2 x its cost, an orange one 5 x 1, an
-  unflagged one nothing (2.5 in place of 5 with a target). This is not 469b(5)'s
+  unflagged one nothing (10 in place of 5 with a target). A junction's cost is in feet of
+  quiet riding and Avoid's entry in quiet metres, so both count one for one beside each
+  road's own cost (461d: "1,200 ft = about 0.23 calm mi"), and the worth figure is
+  unscaled at the top of the slider, like the LTS 3 and up stretches. This is not 469b(5)'s
   `calm_mi`, which is the junction's own cost for the junction list (the
   `intersections` rows); at 70 and above the two agree. Each is counted once in every
   window that holds it, so a crossing raises the mile around it. A junction or Avoid
@@ -5648,49 +6023,67 @@ target, the graph and `refine.quiet_cost_per_m`):
 - The window is `calm.WINDOW_M` (1 mi, one setting), centred and cut at the route's ends.
   An unrated section counts in neither the calm miles nor the miles; a window with nothing
   rated has no value.
-- **It is an estimate** (`estimate: true`): the tier's figure is the middle of its range
-  over road types, not the road's own speed and lanes. docs/stress/stress-number.md lists
-  the exact routes (Valhalla's per-node cost from the trace, or restating Valhalla's
-  formula from the segment's speed and lanes); neither is built. Its words say so.
+- **`estimate`** is false where every rated piece was priced by its own cost, true where
+  any took the tier's figure. The chart's key and source line call the figure an estimate
+  only then. (Valhalla's per-node `elapsed_cost` was not used: it holds the grade, surface
+  and turn costs in one figure, and the trace gives a turn's time, not its cost, so the
+  traffic part cannot be taken out of it.)
 
 **The contract.** `profile.calm` (`core.api.ProfileCalmOut`, null on a Mass Ride or where
 it failed; a failure costs only the score): `ratio` (one per `profile.m`), `steps` (each
 section's own multiplier and tier), `points` (junctions and Avoid entries, with a flagged
 junction's marker), `total_calm_m`, `rated_m`, `junctions_counted` (false where the
-junctions were not read), `bands` (the 2.5 and 3.5 half-step midpoints at this position,
-461a: 2.67 and 9.34 at Default), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
+junctions were not read), `bands` (461a; read from representative roads at their own cost, `calm.BAND_*`: halfway
+between a 25 mph collector at LTS 2 and at LTS 3, and between a 40 mph two-lane-each-way
+primary at LTS 3 and a graded street at LTS 4; 2.01 and 11.26 at Default; a guide, so at 10 on
+the slider a 35 mph two-lane-each-way LTS 2 primary reads "LTS 3 level", and at the top
+of the slider they mix a road's own cost with the worth rule's tier prices), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
 and the Avoid entries); the others count in `ratio` and the total. On a long route the
 highest window's sample is kept when the profile is thinned (`calm.peak_index`), so the
 most stressful mile survives.
 
-**Where it differs from the design** (stress-number.md section 4): each stretch is priced
-by its tier at the slider position, not by its own routing cost (an estimate, above; whether
-to allow that is the owner's question in the design, asked 2026-10-10); half steps are not
-read yet; Mass Ride has no score.
+**Where it differs from the design** (stress-number.md section 4): the step line is each
+section's mean, not every edge; the band edges come from representative roads, so each
+tier's typical road lands in its own band; half steps are not read yet; Mass Ride has no
+calm-mile score (it has its three charts instead, from the owner's words of 2026-10-10,
+below). The owner's question of 2026-10-10 (was the per-tier estimate acceptable?) is
+answered by building the exact cost, normalised so the local quiet street is 1 (the scale
+the owner sees is unchanged); the estimate is now only the fallback.
 
 **The chart** (`ElevationChart.tsx`; the decisions in `lib/profileChart.ts`, "The rolling
 stress chart"): a log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
 value, so 1.4 and a spike at 14 both read; the area filled in the map's LTS 2, 3 and 4
 colours with the stress bar's patterns, cut where the line crosses a guide; dotted guides
-at the two band edges, labelled "LTS 3 from 2.7" and "LTS 4 from 9.3" in the text colour
+at the two band edges, labelled "LTS 3 from 2.0" and "LTS 4 from 11.3" in the text colour
 beside a swatch with the band's colour and pattern (only the LTS 4 guide where both edges
 are one, at 0 on the slider, where LTS 3 costs nothing extra); the side's figures 0.5, 1,
 2, 5, 10 ... to the top; a quiet line at 1; a dashed step line of each section's own
 figure, so a short busy stretch is seen at its true level (the step line and the guides are
 the text colour over a casing in the panel colour, so one is 3:1 from any band); Avoid stretches as the magenta "A" blocks;
 and the flagged junctions' triangle and diamond above the track. The key says it is a log scale and
-an estimate. The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
+that about 1 is all quiet streets (and calls it an estimate only with `estimate: true`). The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
 level" (", Avoid nearby" where the window holds some) and "Next junction to watch: very
 high stress, mile 1.4", so the markers have words. The summary gives the route's total in
 calm miles with calm km in brackets, the average (calm km per km), the most stressful mile
 and the flagged junctions in it, and whether junctions were counted; the source line says
-it is an estimate. "Climbs and rolling stress as tables" adds a table of the value every
+each road is priced by its own speed, lanes and bike lane (or, with `estimate: true`, that it is an estimate). "Climbs and rolling stress as tables" adds a table of the value every
 half mile (a mile past 10 mi, two past 40, five past 80), what it reads as, and the flagged
 junctions since the row before. An older answer with no `calm`, or one whose score failed
 (`calm: null`), keeps the strip.
 
-Not done: Mass Ride keeps its riders chart (its routing charges no junction cost; the
-question in stress-number.md stays open); half steps arrive with the half-step editor
+Mass Ride has no rolling stress line (its routing charges no junction cost and almost
+nothing for traffic: use_roads 1, no grading). The owner wrote on 2026-10-10: "Have 3
+charts for mass ride: Riders per minute, Corker load, Elevation. They should all be
+there." That matches 147 ("visualize rider flow, elevation, and anticipated corker
+requirements over the route"). So a Mass Ride has no calm-mile score: the riders per
+minute stay the headline figure (116, 118, 328-329), and a Mass Ride draws three charts on
+one distance axis, riders per minute, the corker load and the elevation (built on
+`claude/v0-4-0-mass-charts`; "A Mass Ride's three charts" in the route chart above). The
+corker load rolls with the length of the ride (the owner, 2026-10-10: "Corkers were
+intended to also have a rollback based on the length of the ride"): the corkers held at
+once by a group of the anticipated ride size, with "about N corkers" for the ride; its
+defaults (rotation factor 2, 2 corkers a junction where one-way is not known, 500 riders)
+are open for the owner. Half steps arrive with the half-step editor
 (the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
 change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
 the model's own `cost_ft`.
@@ -5906,3 +6299,173 @@ Detour here re-plans through `replan(here, via)`: `replanPoints` gives here, the
 and the end, and `detourPoints` puts the place second, so the new route cues it as a stop. It goes
 through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
 way is said and left alone.
+
+## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
+
+`POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and
+optionally `ending` (`dock`, or `outside_dock` for an e-bike) plans a walk, a ride dock to dock and
+a walk. Two points only. The answer is the ride leg's route body, with the walks, docks,
+availability, fee information and notes under `bikeshare` (`core.api.BikesharePlanOut`).
+
+- `core/gbfs.py`: the operator's official GBFS feeds. One live copy for the whole deployment, not one
+  per api worker: a worker looks at its own memory (`CACHE_TTL_S` 60 s), then at the shared copy
+  (`DatabaseStore`: the single row of `core.models.BikeshareFeedCache`, replaced in place at each
+  refresh, with a PostgreSQL advisory lock so only one worker reads the feeds while the others wait up
+  to `SHARED_WAIT_S` for its row), and only then reads the feeds. A `STALE_GRACE_S` of 120 s serves the
+  last copy when a refresh fails, and `FAILURE_PAUSE_S` 15 s (noted in the row, so every worker
+  honours it) before trying again; only `https` on `ALLOWED_HOSTS`, redirects included; no history is
+  kept (no earlier reading, no row per station or reading), nothing is republished or exported, and a
+  request carries no user data (no cookie, no address, no body). A feed that fails is "unknown", never
+  "empty": no `station_status` means availability is unknown and the plan says so. `StationStatus`
+  keeps `num_bikes_disabled`, `num_docks_disabled`, `is_renting`, `is_returning` and `last_reported`;
+  a station whose `last_reported` is more than `STATION_STALE_S` (30 min) before the reading
+  (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
+  `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
+  and never touch the network.
+- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
+  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
+  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
+  Valhalla pedestrian costing on the standard graph at 3 mph.
+- The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
+  exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
+  hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
+- The out-of-dock ending (244) needs the operator's `geofencing_zones` (GBFS 2.1) and a destination in
+  no zone that bars ending a ride. The operator publishes none today, so only docks are offered, and
+  the answer says why (`endings[].reason`). The fee is read from `system_pricing_plans`, matched by
+  what the plan says (`gbfs.OUT_OF_DOCK`); with none named the answer says the fee is not in the
+  operator's data. Fees are shown as information, never as a quote, and none is built in.
+- Tiles: the standard graph is built with `include_pedestrian: true`; a pedestrian route over it was
+  checked on 2026-10-04 (Union Station to the Capitol area, 1.04 km). The graph's stress remap can
+  make a cycleway cost like a path closed to pedestrians for bicycles only; walking uses Valhalla's
+  own pedestrian costing and is not routed by stress.
+- Tests: `tests/test_gbfs.py`, `tests/test_bikeshare.py`, `tests/test_bikeshare_api.py`,
+  `tests/test_bikeshare_shared.py` (the shared copy), `tests/test_bikeshare_nearby.py` (the nearest
+  stations, stale stations, a chosen station) (fixtures in `tests/data/gbfs`, a sample and not a
+  dataset), `frontend/src/lib/bikeshare.test.ts`, `frontend/src/lib/stations.test.ts`, sections 23 and 24 of
+  `scripts/a11y/check.mjs`, and `scripts/mutants_bikeshare.py`.
+
+Source citation and licence notes (OWNER-DECISIONS 301, 304, 305): the map attribution and the route
+credits say "Capital Bikeshare" and nothing more (`core.gbfs.CREDIT`, `BIKESHARE_CREDIT` in
+`frontend/src/lib/bikeshare.ts`; a test holds them equal). What it cites is the operator's official GBFS
+feed, operated by Lyft, used under the operator's Data License Agreement (item 300: official endpoints
+only, short in-memory caching, no republishing, no logos, no implied affiliation, nothing tied to users).
+Out-of-dock endings stay off for good: the operator's no-parking zones exist only inside its app, with no
+public map or feed, so using them would breach the licence. The plan says so in plain words and links
+https://capitalbikeshare.com/how-it-works/ebike for the current parking rules. No fee is built in.
+
+### The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a)
+
+When a rider is choosing where to undock, the Bikeshare panel lists the 3 stations nearest the start
+that are **at least 3/4 full** (bikes / (bikes + free docks) >= 0.75, installed, renting, reporting in
+the last 30 minutes); when choosing where to dock, the 3 nearest to the end that are **at most 1/4 full**
+(<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
+reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
+question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
+programme; nothing is ranked beyond distance, and the rider chooses.
+
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
+  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
+  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
+  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+  no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
+  no station list; with no availability feed `availability` is `unknown` and the list is empty.
+- A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
+  id; Bikeshare only; not a drop-off with the `outside_dock` ending). The plan starts or ends there in
+  place of the nearest docks; if the station can no longer serve (no bike of the type, not renting,
+  full, silent for 30 minutes) the answer is 422 `no_bikeshare` saying why, never a silent swap.
+- Front end: `NearbyStations.tsx` under the points while the ride type is Bikeshare, a pick-up list
+  once a start is placed and a drop-off list once an end is. Each station is a real `<button>` named
+  exactly as it is read, "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)" (`lib/stations.ts` `stationLabel`, US
+  units first, metric in brackets), with `aria-pressed` for the chosen one (also marked in text, not by
+  colour alone) and a polite status line (loading, how many, none, an error). Pressing the chosen
+  station again hands the choice back. A chosen station is session state in `App` (`stationPins`),
+  forgotten when its point moves or the ride type changes, added to the request by
+  `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
+- Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
+  section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
+
+**The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
+`keepCorridor(line)` (`lib/corridorStore.ts`), which fetches every tile within `CORRIDOR_M` (300 m,
+about 1,000 ft) of the line (`corridorTiles`, `corridorJobs` in `lib/corridor.ts`): the stress tiles at
+z14, 13 and 12 and the base map at z15 down to z12, deepest first and each in route order, leaving out
+any a previous route of the ride already kept. `prefetchCorridor` runs them one at a time,
+`STRESS_GAP_MS` (450 ms, after a random wait of up to `START_JITTER_MS`, 2 s, so riders behind one carrier NAT stay under the per-address tile limit) after a stress tile and `BASE_GAP_MS` after a base map tile; a stress tile goes
+through `fetchTile` and so the protocol's page queue (two of the page's requests in flight, the API's
+per-client draw cap, `TILES_IN_FLIGHT`) and its 429/503 backoff. At most `MAX_JOBS` tiles a route and
+`MAX_BYTES` (40 MB) kept in all (`ByteBudget`: full once a take is refused, since tiles never fill it
+to the byte, and freed again when bytes are given back); a tile counts as kept only when its write
+succeeded (the Cache Storage put resolved, every IndexedDB range's transaction completed; a failed
+write gives its bytes back), and the counts are per kind; a kind failing `STOP_AFTER_FAILURES` times in a row is
+dropped (no signal at the start, or a base map that is not served). Where they are kept:
+
+* Stress tiles: the Cache Storage bucket `routemaker-corridor-v1`, keyed by the tile's URL without its
+  `?rev=` (`stressKey`), the edit generation kept beside it in a header, so an admin's edit mid-ride
+  replaces the tile rather than orphaning it. The protocol's loader (`loadTile` in
+  `lib/stressProtocol.ts`, given `corridorStress` by App) during a ride reads a kept tile of the same
+  generation first (in a real dead spot the phone often still says it is online, and a request hangs
+  rather than fails), then gives the network `NETWORK_TIMEOUT_MS` (6 s, above the 5.46 s cold draw in docs/OPERATIONS.md) before falling back to a kept
+  tile of any generation; it keeps each tile the map loads during a ride. Outside a ride the bucket is
+  neither read nor opened (opening would create it).
+* The base map: `region.pmtiles` is read by HTTP range, and Cache Storage refuses 206 answers, so
+  MapView adds the protocol's archive itself (`basemapArchive`), a `PMTiles` over a `CorridorSource`
+  over the usual `FetchSource`. While keeping, it stores every range it reads (header, root and leaf
+  directories, tiles) in IndexedDB (`routemaker-corridor`, store `ranges`, keyed `offset:length`) with
+  the archive's ETag (an answer with no ETag is not kept, since a later file could not be told
+  apart); a range asked for with that ETag is answered from the store first, the header
+  (asked with none) from the network first, and any kept range answers when the network fails. A new
+  ETag (the archive refreshed under the same name) empties the store. Outside a ride with nothing kept,
+  the store is never touched: a first IndexedDB open takes about a second, and a header refusal held
+  back that long kept MapLibre's style from loading in the browser suite.
+* Glyphs (the style's Latin stacks, `fontStacks`, ranges 0-255, 256-511 and 8192-8447) and the sprite:
+  fetched once into the browser's HTTP cache, which the edge lets keep them a day
+  (`/basemap/fonts/*`, `/sprites/*`: `private, max-age=86400`) and which answers MapLibre's own
+  requests with no network.
+
+What is kept is for one ride: a ride never outlives the page (no service worker yet). End ride clears
+it (`clearCorridor`, from RideMode's unmount), the next ride's first `keepCorridor` (`first`) clears
+before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a time and never a place)
+lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
+opens nothing). The clears run in order on one promise chain and End ride bumps a generation, so a
+quick Start ride after End ride waits for the clear and a `keepCorridor` still waiting when End ride
+comes starts nothing. RideMode shows `corridorNote` under its controls, which says what was saved
+("Only the stress lines along the route are saved for dead spots, not the base map." when the base
+map was not); it is not said, since it changes nothing the rider must do. A re-plan still needs a
+signal.
+
+**The 311 report (N6).** "Report a problem to DC 311" (`Report311` in `RideMode.tsx`,
+`lib/report311.ts`), inside DC only (`inDc` on the rider's place on the line). DC's Text to 311 page
+(ouc.dc.gov/service/text-311, read 2026-10-10) gives the short code 32311 and the keywords POTHOLE,
+STREETLIGHT and TRASH that go straight to a request; it names none for a fallen tree, and anything else
+goes through MENU to "Other Service Requests", which sends the texter to 311 Online. So Pothole and
+Streetlight out, on a phone (`canText`: Android, iPhone, an iPad that says it is a Mac), are a Text to
+DC 311 link first, `smsHref` (iOS reads `sms:32311&body=`, Android `sms:32311?body=`, RFC 5724),
+named "Text to DC 311 (3 2 3 1 1)" so a screen reader reads the code digit by digit. "Open DC 311
+online (new tab)" (https://311.dc.gov/) and Copy the report are always there too, since a tablet or a
+phone may not send texts; for Something else, and on a desktop (370), they are the way. `reportText`
+is "Location: <place>, Washington, DC." then the rider's note (at most 120 characters), shown and
+copied as is; the text adds DC's keyword in front (`forText`), which a hint says. US units only, since
+it is the message itself. Whether DC's service reads a keyword and a place in one message is not
+verified until a real text is sent (the owner's).
+
+The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
+position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
+between two stretches and each flagged crossing (a junction entry names the street crossed), and the
+nearest to the rider's progress, behind or ahead, is the place ("near Q Street Northwest and R Street
+Northwest"), which may be the last junction passed, as the owner accepted. On a named trail (a path
+stretch with a name) with no junction within `TRAIL_MARKER_M` (a quarter mile), 465's trail marker:
+the trail, the distance along the line from its last junction behind (else its next ahead) and the
+compass direction from there ("on the Capital Crescent Trail, about 1.2 miles northwest of
+Massachusetts Avenue Northwest"). Where am I? says the same on such a trail. OSM's posted mile markers
+(`highway=milestone`) and the trail's own start are not in the route's data, so this is a distance
+from a junction rather than a mile number (PLAN.md, FOLLOWUP-WEB-NAV, for the owner to confirm).
+
+**Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
+`loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
+tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
+network emulated offline (`Network.emulateNetworkConditions`; the mock serves no base map archive, so
+its ranges are not shown there), that End ride clears the bucket and empties the IndexedDB store, and the report's words, links,
+radios, note field and 44 px targets, on a desktop and (with an Android user agent) a phone. The ride
+on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, are the owner's.

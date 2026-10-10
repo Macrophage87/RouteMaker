@@ -12,8 +12,29 @@ the repository's `.gitignore` ignores every directory of that name.
 
 What counts as drinking or untreated water, how a restroom's type is read
 from `toilets:disposal`, and what is left out (customers-only, private,
-disused), is in the script's docstring, with the OSM
-wiki pages it follows. The file is one point per line, short keys:
+disused, historic springs), is in the script's docstring, with the OSM
+wiki pages it follows.
+
+Two rules from the owner's requests of 2026-10-10 (relayed in the v0.4.0
+work; not yet in an OWNER-DECISIONS file):
+
+- One restroom, not two. An `amenity=toilets` node inside a closed way tagged
+  `amenity=toilets` or `building=toilets` is merged into that way: one point,
+  with the way's id and position. Tags only one of them has are kept; where both
+  have a key, the element with more of the details the layer shows
+  (`DETAIL_KEYS`: name, access, fee, wheelchair, opening hours, seasonal,
+  disposal, portable, drinking water, bottle) wins, and the node on a tie, as it
+  is the element mapped as the restroom itself. Several nodes in one building
+  become one place. A building that is not public or not in use is left out
+  with what is inside it (unclear access is closed); a non-public node inside a
+  public building is left out on its own. A `building=toilets` with no public node inside
+  and no `amenity=toilets` stays out, as before.
+- No historic springs. A `natural=spring` with `historic=*` (any value but
+  `no`) or `ruins=yes` is a landmark, not a water source, and is left out unless
+  it is also `drinking_water=yes` (or `amenity=drinking_water` or
+  `amenity=water_point`), which says it is still usable.
+
+The file is one point per line, short keys:
 
 | Key | Meaning |
 | --- | --- |
@@ -29,6 +50,10 @@ wiki pages it follows. The file is one point per line, short keys:
 | `b` | 1 for `bottle=yes` on drinking water |
 
 ## Status
+
+The committed file predates the two 2026-10-10 rules above: it still has
+restroom nodes beside their buildings and historic springs, until the next
+refresh (below).
 
 Generated on the build host on 2026-10-09 from that day's extract
 (`<DATA_ROOT>/extracts/source.osm.pbf`), commit dce6451: 2,263 points, all
@@ -54,3 +79,11 @@ then update the figures above and commit the file.
 
 Rerun the command above on a newer extract. Nothing else changes: the map reads
 the file as it is.
+
+The first refresh after the 2026-10-10 rules: expect fewer restrooms (each node
+merged into its building drops one point, and a merged place takes the
+building's `w` id in place of the node's `n` id) and fewer untreated water
+points (historic springs). Update the figures and digest in "Status", drop the
+note that the file predates the rules, and commit the file. The test
+`test_bundled_file_is_well_formed` checks the result; the front end needs no
+change.

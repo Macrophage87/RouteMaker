@@ -1,0 +1,17 @@
+{
+ "data": {
+  "plans": [
+   {
+    "currency": "USD",
+    "description": "$1.00 unlock fee, $0.15 per minute.",
+    "is_taxable": true,
+    "name": "EBIKE SINGLE RIDE",
+    "plan_id": "EBIKE_SINGLE_RIDE",
+    "price": "1.00"
+   }
+  ]
+ },
+ "last_updated": 1791098655,
+ "ttl": 60,
+ "version": "1.1"
+}

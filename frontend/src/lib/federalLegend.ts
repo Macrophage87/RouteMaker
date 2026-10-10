@@ -28,11 +28,18 @@ export const FEDERAL_HEADING = "Federal land";
  * hidden while the switch is off.
  */
 export const FEDERAL_HELP =
-  "The shading marks federal land by kind, as the legend lists them. Tap or click a shaded area for its name and " +
+  "Shading marks federal land by kind. Press I on the map, or tap or click an area, for its name and " +
   "manager; the list under the switch names the areas your points are on.";
 export const FEDERAL_OWNERSHIP =
   "Shading is where land is owned or kept by the federal government. Ownership is not police jurisdiction: in most " +
   "cases the roads are still city roads. It matters most for stopping, and for the parkways.";
+/**
+ * What the route's own warnings look like (item 239; lib/federalStops.ts): the badge on a marker
+ * and in the points list, and the Directions' lines.
+ */
+export const FEDERAL_BADGE =
+  "A point on federal land has a ! badge on its marker and in the points list. Directions names those stops " +
+  "and any National Park Service parkway the route rides on.";
 export const FEDERAL_UNAVAILABLE = "Federal land shading is unavailable for now. The map and your route are not affected.";
 export const FEDERAL_LOADING = "Loading federal land…";
 
@@ -91,9 +98,9 @@ export function FederalLegend(): ReactElement {
 export const FEDERAL_POINTS_HEADING = "Your points on federal land:";
 export const FEDERAL_POINTS_NONE = "None of your points is on federal land.";
 
-/** "Stop 2 – The Mall (National Park Service)". */
+/** "Stop 2 – The Mall (National Park Service)"; "Stop 2 – next to The Mall (...)" within 20 m of its edge. */
 export function federalPointText(point: FederalPoint, name: string): string {
-  return `${name} – ${point.name} (${point.manager})`;
+  return `${name} – ${point.near ? "next to " : ""}${point.name} (${point.manager})`;
 }
 
 /**
@@ -165,6 +172,7 @@ export function FederalLandSection({ on, onChange, status, points = null, pointC
     h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),
     on && status !== "unavailable" && h(FederalLegend),
     h(FederalPointsList, { found: points, count: pointCount, nameOf }),
+    h("p", { className: "hint federal-badge" }, FEDERAL_BADGE),
     h("p", { className: "hint" }, FEDERAL_HELP),
     h("p", { className: "hint" }, FEDERAL_OWNERSHIP),
     h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),

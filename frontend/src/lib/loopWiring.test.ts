@@ -147,14 +147,16 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   assert.match(search, /\{placeEffectHint\(effect, loop\)\}/);
   const map = source("../MapView.tsx");
   assert.match(map, /pointLabel\(index, props\.points\.length, props\.loopVias === true\)/);
-  assert.match(map, /\}, markerDeps\(props\.points, props\.markerReset, props\.loopVias\)\);/);
+  // The federal-land warnings (item 239) rename a marker too.
+  assert.match(map, /\}, markerDeps\(props\.points, props\.markerReset, props\.loopVias, props\.pointWarnings\)\);/);
   assert.match(map, /loop: \(\) => callbacks\.current\.loopVias === true,/);
   assert.equal(count(map, /dragPreview\(grabbed\.legPoints, grabbed\.leg, /g), 2);
   assert.match(map, /points: edit\.points, legPoints: edit\.legPoints/);
   const rail = source("../railInteraction.ts");
   assert.match(rail, /stationRoles\(options\.pointCount\(\), options\.loop\?\.\(\) === true\)/);
   const gpx = source("../GpxPanel.tsx");
-  assert.match(gpx, /loop = false \} = props;/);
-  assert.match(gpx, /writeGpx\(exportOf\(route, routedPoints, loop\)\)/);
+  // A Mass Ride's federal-land lines (item 239) ride along into the file's description.
+  assert.match(gpx, /loop = false, federal = \[\] \} = props;/);
+  assert.match(gpx, /writeGpx\(exportOf\(route, routedPoints, loop, federal\)\)/);
   assert.equal(count(gpx, /exportOf\(/g), 1, "one export, of the routed points");
 });
