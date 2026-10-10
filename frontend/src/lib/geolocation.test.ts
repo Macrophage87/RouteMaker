@@ -601,7 +601,12 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // Storage is the one term left out: session() is the sign-in round trip's, on purpose (signIn.ts).
   assert.doesNotMatch(app, new RegExp(LEAKS.source.replace("Storage|", "")));
   assert.doesNotMatch(app, /watchPosition/);
-  assert.equal((app.match(/locate\(/g) ?? []).length, 1, "one look-up path");
+  // Two look-up paths, both through the one gate: Use my location, and the nearest-place search from
+  // the rider's location (lib/nearest.ts), whose position goes only in its own request, as a route's points do.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 2, "two look-up paths");
+  const nearest = body(app, "const findNearest", "const rideToNearest");
+  assert.match(nearest, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*gate\.finish\(press\);/);
+  assert.doesNotMatch(nearest, LEAKS);
   for (const file of ["../PlaceSearch.tsx", "../MapView.tsx"]) assert.doesNotMatch(code(read(file)), LEAKS, file);
 });
 

@@ -91,6 +91,8 @@ import {
   locateSupport,
   maxPointsNotice,
   locateGate,
+  LOCATE_MESSAGES,
+  LOCATION_OUTSIDE,
   movedFromHere,
   placeFix,
   type Fix,
@@ -138,6 +140,22 @@ import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import {
+  findingSaid,
+  foundSaid,
+  metroPlaces,
+  nearestInStraightLine,
+  noneKnownSaid,
+  rankNearest,
+  requestNearest,
+  WATER_NOT_LOADED,
+  waterPlaces,
+  type Nearby,
+  type NearestFrom,
+  type NearestKind,
+  type NearestPlace,
+} from "./lib/nearest.ts";
+import { NearestFinder, type NearestList } from "./lib/nearestFinder.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -246,16 +264,24 @@ export function App() {
   };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
   const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
-  const waterRequested = useRef(false);
+  // One load at a time, shared by the layer and the nearest-water search (which loads it with the layer
+  // off too); a load that failed is forgotten, so the next asks again.
+  const waterLoad = useRef<Promise<WaterPoint[] | null> | null>(null);
+  const ensureWater = useCallback(() => {
+    if (!waterLoad.current) {
+      waterLoad.current = loadWaterRestrooms(waterRestroomsUrl).then((data) => {
+        if (!data) waterLoad.current = null;
+        setWaterData(data);
+        setWaterStatus(data ? "ready" : "unavailable");
+        return data;
+      });
+    }
+    return waterLoad.current;
+  }, []);
   const waterOn = waterPrefs.on;
   useEffect(() => {
-    if (!waterOn || waterRequested.current) return;
-    waterRequested.current = true;
-    void loadWaterRestrooms(waterRestroomsUrl).then((data) => {
-      setWaterData(data);
-      setWaterStatus(data ? "ready" : "unavailable");
-    });
-  }, [waterOn]);
+    if (waterOn) void ensureWater();
+  }, [waterOn, ensureWater]);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -755,6 +781,112 @@ export function App() {
     announce(placed.said);
   }, [commit, announce, loopVias]);
 
+  // Find the nearest water, restroom or Metro station (lib/nearest.ts; owner, 2026-10-10): from the
+  // rider's location, the map's center or the plan's start, the three nearest by bike on this ride's
+  // own settings. A pick is an edit like any other: Ride here plans from there to it (one edit, so
+  // Undo puts the plan back), Add as stop puts it into the plan. The location look-up is this
+  // search's own; its fix is kept only as Use my location's is (in memory, in `here`).
+  const nearestFromOptions: NearestFrom[] = [
+    ...(locateReady.available ? (["location"] as const) : []),
+    "centre",
+    ...(points.length > 0 ? (["start"] as const) : []),
+  ];
+  const [nearestFromChosen, setNearestFrom] = useState<NearestFrom>(locateReady.available ? "location" : "centre");
+  const nearestFrom = nearestFromOptions.includes(nearestFromChosen) ? nearestFromChosen : nearestFromOptions[0];
+  const [nearestBusy, setNearestBusy] = useState(false);
+  const nearestBusyRef = useRef(false);
+  const [nearestStatus, setNearestStatus] = useState("");
+  const [nearestList, setNearestList] = useState<(NearestList & { origin: LonLat; from: NearestFrom }) | null>(null);
+  const waterPrefsRef = useRef(waterPrefs);
+  waterPrefsRef.current = waterPrefs;
+  const findNearest = async (kind: NearestKind) => {
+    if (nearestBusyRef.current) {
+      setNearestStatus("Still searching.");
+      return;
+    }
+    nearestBusyRef.current = true;
+    setNearestBusy(true);
+    setNearestList(null);
+    setNearestStatus(findingSaid(kind));
+    const from = nearestFrom;
+    try {
+      let origin: LonLat | null = null;
+      if (from === "location") {
+        // Use my location's gate: one look-up at a time, whichever asked.
+        const press = gate.begin();
+        if (press === null) {
+          setNearestStatus(FINDING_LOCATION);
+          return;
+        }
+        const result = await locate(geoEnv);
+        gate.finish(press);
+        if (!result.ok) {
+          setNearestStatus(LOCATE_MESSAGES[result.reason]);
+          return;
+        }
+        origin = result.fix.point;
+        setHere(result.fix);
+      } else if (from === "start") {
+        origin = pointsRef.current[0] ?? null;
+      } else {
+        const centre = mapRef.current?.getCenter();
+        origin = centre ? [centre.lng, centre.lat] : null;
+      }
+      if (origin === null) {
+        setNearestStatus("There is nowhere to search from yet.");
+        return;
+      }
+      if (!insideCoverage(origin)) {
+        setNearestStatus(from === "location" ? LOCATION_OUTSIDE : "That spot is outside the area this map covers.");
+        return;
+      }
+      let places: NearestPlace[];
+      if (kind === "metro") {
+        places = metroPlaces(RAIL_STATIONS);
+      } else {
+        const data = await ensureWater();
+        if (!data) {
+          setNearestStatus(WATER_NOT_LOADED);
+          return;
+        }
+        places = waterPlaces(data, kind, waterPrefsRef.current);
+      }
+      if (places.length === 0) {
+        setNearestStatus(noneKnownSaid(kind));
+        return;
+      }
+      const candidates = nearestInStraightLine(origin, places);
+      const ride = rideRef.current;
+      const result = await requestNearest(origin, candidates, ride.preset, ride.dials);
+      if (!result.ok) {
+        setNearestStatus(`Nothing found. ${result.message}`);
+        return;
+      }
+      const items = rankNearest(candidates, result.answer);
+      setNearestList({ kind, items, origin, from });
+      setNearestStatus(foundSaid(kind, from, items));
+    } finally {
+      nearestBusyRef.current = false;
+      setNearestBusy(false);
+    }
+  };
+  const rideToNearest = (item: Nearby) => {
+    if (!nearestList) return;
+    const { origin, from } = nearestList;
+    const had = pointsRef.current.length > 0;
+    namer.remember(item.place.point, item.place.title);
+    const ride = rideRef.current;
+    // To a place and no further: a loop the rider had on is turned off, in the same edit.
+    commit([origin, item.place.point], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    if (from === "location") setFromHere((prior) => [...prior, origin]);
+    setNotice(null);
+    announce(`Planning a route to ${item.place.title}.${had ? " Undo puts your plan back." : ""}`);
+  };
+  const addNearestStop = (item: Nearby) => {
+    namer.remember(item.place.point, item.place.title);
+    placeSpot("via", item.place.point);
+  };
+
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
@@ -1188,6 +1320,18 @@ export function App() {
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
+      <NearestFinder
+        from={nearestFrom}
+        fromOptions={nearestFromOptions}
+        onFrom={setNearestFrom}
+        onFind={(kind) => void findNearest(kind)}
+        busy={nearestBusy}
+        status={nearestStatus}
+        list={nearestList}
+        canAddStop={points.length >= 2}
+        onRide={rideToNearest}
+        onAddStop={addNearestStop}
+      />
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
           zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}

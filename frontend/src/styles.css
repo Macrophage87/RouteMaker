@@ -2708,3 +2708,34 @@ details.zoom-notes {
   padding: 0;
   color: var(--text-muted);
 }
+
+/* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
+.nearest fieldset.nearest-from {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest .nearest-kinds button,
+.nearest-list button {
+  min-height: 44px;
+}
+
+.nearest-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.nearest-list li > span:first-child {
+  flex: 1 1 14em;
+}
