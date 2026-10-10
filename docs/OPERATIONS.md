@@ -4155,11 +4155,14 @@ nothing changes on the map until the rebuild promotes a table with the new colum
 the Mountain-bike trails layer draws every mountain-bike trail as the grey dots, as before.
 
 **The column.** `segment.mtb_level` (smallint, 1 to 4, null otherwise; a CHECK holds the range),
-written by the rebuild on the mountain-bike-only ways (`mtb_only`) from
-`routemaker.singletrack.mtb_level`: the higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3
-and S4-S6 (IMBA 4) to 4. Values such as `2+`, `1-` and `S2` read as their number; a range or
-list (`1-2`, `1;2`) as its higher end; a number past the scale's top (7 on `mtb:scale`, 5 on
-IMBA) is ignored. **A rating of 0 is no level**: 0 is the easiest grade on both scales, and a way
+written by the rebuild **on rated singletrack only** (`pipeline.trail_closures.mtb_level`: the way
+closed as `singletrack`, which every graph closes), from `routemaker.singletrack.mtb_level`: the
+higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3 and S4-S6 (IMBA 4) to 4. So a level
+always means "not used for routes" by any ride type: a mountain-bike-class way whose rating the
+singletrack rule does not read (`S2`, `0-2`: it reads a value's leading number) gets no level and
+stays the grey dots the off-road graph rides. Values such as `2+`, `1-` and `S2` read as their
+number; a range or list (`1-2`, `1;2`) as its higher end; a number past the scale's top (7 on
+`mtb:scale`, 5 on IMBA) reads as the top, level 4. **A rating of 0 is no level**: 0 is the easiest grade on both scales, and a way
 rated 0 on its scale or scales, and not 1 or more on the other, is a gravel trail, not an MTB level
 (456b), so its `mtb_level` is null, like an unrated way's. The model's migration (core 0013,
 after 0012, the bikeshare cache) is state-only, as 0010 was: the table is unmanaged and created
@@ -4188,27 +4191,32 @@ the segments are written (`pipeline.trail_routes.mtb_level_counts`): the counts 
 slice 3 (Gravel's "roughest I'll ride" setting) is to be shown to the owner with.
 
 **The front end** (`stressStyle.js`, `MTB_LEVELS`, `mtbTrailLayers`): with the layer on, each
-level is drawn in its colour with a pattern of its own (in line widths) over a solid white casing,
-from zoom 14, under every routable line; an unrated mountain-bike trail keeps the grey dots
-(`mtb-trail`, the plan's default):
+level is drawn in its colour with a pattern of its own (in line widths), from zoom 14, under every
+routable line; an unrated mountain-bike trail keeps the grey dots (`mtb-trail`, the plan's default).
+Every level shares one not-for-routes mark no stress tier has (452a, "clearly unlike any routable
+trail or road"; `MTB_LEVEL`): short dark (#1c1917) cross-ticks under the line, 2 px past it a side,
+a tick 1.5 px long every 10.5 px, where every tier sits on a solid casing; gaps of 1.5 line widths
+or more, where no tier's passes 1; and a 2 px line (2.5 px with the accessibility switch), thinner
+than any tier. The review screenshot, z15, the four levels beside LTS 2, LTS 4 and Avoid, is
+reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with the switch on).
 
 | Level | Rated | Colour | Pattern | Lowest ratio to the base map |
 | --- | --- | --- | --- | --- |
-| 1 | S1 or IMBA 1 | green #2e7d32 | long dashes [6, 2] | 3.00:1 (scrub) |
+| 1 | S1 or IMBA 1 | green #28702c | long dashes [6, 2] | 3.57:1 (scrub) |
 | 2 | S2 or IMBA 2 | blue #1565c0 | short dashes [3, 2] | 3.36:1 (scrub) |
 | 3 | S3 or IMBA 3 | black #1c1917 | dash-dot [4, 1.5, 1, 1.5] | 10.24:1 (scrub) |
 | 4 | S4 to S6 or IMBA 4 | red #c62828 | dash-dot-dot [4, 1.5, 1, 1.5, 1, 1.5] | 3.29:1 (scrub) |
 
-Each colour is at least 3:1 from every surface of the light base map (the green only just, 3.0009:1
-on scrub, which the white casing backs up) and at least 5:1 from its casing (mtbLevels.test.ts).
-Lines are 2 px with a 1 px casing a side, 3 px and 1.5 px with the accessibility switch. The legend
-has a row a level while the layer is on ("Level 2 (blue)", "Mountain-bike trail rated S2 or IMBA 2:
-blue short dashes on a white edge. Not used for routes."), in the Mass Ride legend too, and the road
-panel names the level: the Bikes line reads "Mountain-bike trail, level 2 (blue), not used for
-routes" (with "(Gravel and Mountain Goat may use it)" only on the mountain-bike class, which the
-off-road graph opens; rated singletrack is closed on every graph), and the Riding section has a
-"Mountain-bike difficulty" row ("Level 2 (blue): rated S2 or IMBA 2 (the higher of mtb:scale and
-mtb:scale:imba)"). The switch's description is now "From zoom 14: levels 1 to 4 by colour and
+Each colour is at least 3.25:1 from every surface of the light base map (mtbLevels.test.ts; the
+line's gaps show the map, with no casing behind them). The green was the starting #2e7d32, 3.0009:1 on
+scrub; the review of slice 2 darkened it to #28702c (park 3.60:1, wood 3.75:1, light roads 5.11:1
+and up). The ticks are 10.24:1 or more. The legend has a row a level while the layer is on
+("Level 2 (blue)", "Mountain-bike trail rated S2 or IMBA 2: blue short dashes crossed by dark ticks.
+Not used for routes."), in the Mass Ride legend too, and the road panel names the level: the Bikes
+line reads "Mountain-bike trail, level 2 (blue), not used for routes" (a levelled trail never adds
+"(Gravel and Mountain Goat may use it)", which only the unrated mountain-bike class, open on the
+off-road graph, says), and the Riding section has a "Mountain-bike difficulty" row ("Level 2 (blue):
+a level 2 rating (S2 or IMBA 2)"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
@@ -4224,7 +4232,7 @@ The front end labels each named mountain-bike trail along its line (`mtb-trail-l
 layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
 on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
 collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels. The text is in the line's own
-colour, each 4.5:1 or more against the halo (green 5.13:1, blue 5.75:1, black 17.49:1, red 5.62:1,
+colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,
 the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
 not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
 Rosaryville Trail, not used for routes", and the panel's title and Name row fall back to it where

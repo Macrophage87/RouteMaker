@@ -654,7 +654,8 @@ alone. Shape comes first and colour second:
   `mtb:scale:imba`, 0 being no level, 456b). `MTB_LEVELS` in `stressStyle.js`
   holds each level's colour, name, dash (in line widths) and pattern words;
   `mtbTrailLayers` adds, after the grey dots (now filtered to the trails with
-  no `mtb_level`), `mtb-level-casing-1..4` (solid white, `MTB_LEVEL`) and then
+  no `mtb_level`), `mtb-level-casing-1..4` (the shared dark cross-ticks,
+  `MTB_LEVEL.tick` in `MTB_LEVEL.tickDash`; 452a) and then
   `mtb-level-1..4` (`mtbLevelPaint`), all from zoom 14 and all in
   `MTB_LAYER_IDS`, which `overlayLayerShown` (`isMtbLayerId`) shows by the
   layer's switch alone and the Mass Ride filter leaves without `massHides`.
@@ -669,8 +670,11 @@ alone. Shape comes first and colour second:
   nothing but its rating closes it (`pipeline.trail_closures.drawn_singletrack`),
   and hides the rest as before. mtbLevels.test.ts holds each colour at 3:1
   from the base map (`testSupport/baseSurfaces.ts`, shared with
-  mtbTrail.test.ts) and from the casing, each pattern distinct from the
-  others and from every other line pattern on the map, and the filters.
+  mtbTrail.test.ts), each pattern distinct from the others and from every
+  other line pattern on the map, every level unlike every stress tier on
+  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
+  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
+  only (`pipeline.trail_closures.mtb_level`).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

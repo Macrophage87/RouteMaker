@@ -76,9 +76,9 @@ slices (2-6) wait for bikeshare.
      owner's host (docs/OPERATIONS.md, "Mountain-bike difficulty levels"). `segment.mtb_level`
      (smallint 1-4, CHECK), migration core 0013 (state-only, after 0012), tile property
      `mtb_level` (left out when null), ETag letter `d`; `FORMAT_VERSION` stays 8 (the property
-     comes only with a new table). The front end draws each level in the starting colours, each
-     with its own dash pattern (long dashes, short dashes, dash-dot, dash-dot-dot) over a white
-     casing; legend rows per level while the layer is on (Mass Ride legend too); the road panel's
+     comes only with a new table). The front end draws each level in its colour (the starting
+     values, the green darkened to #28702c), each with its own dash pattern (long dashes, short
+     dashes, dash-dot, dash-dot-dot) and the shared dark cross-ticks; legend rows per level while the layer is on (Mass Ride legend too); the road panel's
      Bikes line reads "Mountain-bike trail, level 2 (blue), not used for routes" and its Riding
      section has a "Mountain-bike difficulty" row. The rebuild log gives the ways and miles per level
      (drawn and not) that slice 3 is to be shown with.
@@ -87,21 +87,31 @@ slices (2-6) wait for bikeshare.
      it has unrated (an ordinary unpaved path, or the grey dots if it is mountain-bike class).
    - Default picked: values read as their number (`2+` 2, `1-` 1, `S2` 2); a range or list (`1-2`,
      `1;2`) as its higher end, so a trail is never drawn easier than its mapper rated any part of
-     it; a number past the scale's top (7 on `mtb:scale`, 5 on IMBA) is ignored.
-   - Default picked: the level is written on the mountain-bike-only ways (`mtb_only`: the
-     mountain-bike class and rated singletrack), not on every rated way; a paved trail with a rating
-     (Upper Rock Creek, the Cross County Trail) is not a mountain-bike trail.
+     it; a number past the scale's top (7 on `mtb:scale`, 5 on IMBA) reads as the top, level 4
+     (review of slice 2: never the unrated grey, which says Gravel and Mountain Goat may use it).
+   - Default picked (review of slice 2): the level is written **on rated singletrack only**
+     (`pipeline.trail_closures.mtb_level`), so a level always means closed on every graph. A
+     mountain-bike-class way whose rating the singletrack rule does not read (`S2`, `0-2`) gets no
+     level and stays the grey dots the off-road graph rides; a paved trail with a rating (Upper Rock
+     Creek, the Cross County Trail) is not singletrack and gets none.
    - Default picked, and a change the levels need: **rated singletrack is now drawn on the layer**.
      It was `map_class='hidden'` (never in a tile), so with no change the levels would have had
      almost nothing to draw. It is now drawn (with `mtb`, so only on this layer) where nothing but
      its rating closes it; where the tag rules would close it anyway (`bicycle=no`, private, park
      paths, err closed and the rest) or it is a walk-your-bike way, it stays hidden, so the layer
-     never draws a trail a bicycle may not be allowed on. Routing is unchanged.
-   - Default picked: one white casing for every level (`MTB_LEVEL.casing`), the colour and the
-     pattern differing by level; lines 2 px with a 1 px casing a side (3 px and 1.5 px with the
-     accessibility switch). Contrast against the base map, lowest surface (scrub): green 3.00:1
-     (just at the bar), blue 3.36:1, black 10.24:1, red 3.29:1; each at least 5:1 from the casing.
-     The green is the one to darken if the owner wants more margin.
+     never draws a trail a bicycle may not be allowed on. Routing is unchanged. This is a change
+     of what the map shows: rated singletrack that is open but for its rating was hidden under 126
+     and is now drawn on the opt-in layer, under 452a (the not-for-routes look), 454 (an optional
+     layer, off by default, which overrides 126 for the trails it draws) and 457a.
+   - Default picked (review of slice 2, 452a "clearly unlike any routable trail or road"): one
+     not-for-routes mark shared by every level (`MTB_LEVEL`), the colour and the pattern differing
+     by level: short dark cross-ticks under the line in place of a casing (every stress tier has a
+     solid casing), gaps of 1.5 line widths or more (no tier's passes 1), and a 2 px line (2.5 px
+     with the accessibility switch), thinner than any tier. It replaced a solid white casing, which
+     made a level read as one more routable line. mtbLevels.test.ts compares every level with every
+     tier on dash, edge and width; the z15 screenshot is reports/v0.4.0/mtb-levels-vs-stress.png in
+     the project files. Contrast against the base map, lowest surface (scrub): green #28702c 3.57:1
+     (darkened from the starting #2e7d32, 3.0009:1), blue 3.36:1, black 10.24:1, red 3.29:1.
    - Trail names: the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available." Built
      on the same branch as a later commit: `segment.mtb_name` (core migration 0014) from the OSM
      `name`, else `ref`, else `mtb:name`, on the mountain-bike-only ways; tile property `name`
@@ -137,7 +147,10 @@ slices (2-6) wait for bikeshare.
 6. **The Mountain Bike mode** (90, 111, 148, 454). A ride type of its own, separate from
    Mountain Goat, that seeks trails rather than closing them: its own graph or variant built on
    the off-road graph, opening singletrack up to a chosen level, with the mountain-bike layer on
-   and drawing those trails as routable (`MTB_TRAILS_ROUTABLE` / `routableMtb`). Trail pages
+   and drawing those trails as routable (`MTB_TRAILS_ROUTABLE` / `routableMtb`). It must then
+   filter the routable mountain-bike lines on `mtb_level` (the levels it opens), as the
+   not-for-routes layer does: `routableMtb` today only switches the not-for-routes layers off and
+   lets the routable layers draw every `mtb` way, whatever its level. Trail pages
    link to MORE (Mid-Atlantic Off-Road Enthusiasts) for trailheads and trail information. The
    criteria ("a whole set of criteria") are the owner's to set; this plan asks for them when the
    slice starts.
