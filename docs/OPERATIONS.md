@@ -2161,6 +2161,11 @@ new one needs, beyond resuming across jobs:
 - **A durable volume sized** for one checkpointed build plus scratch (the resume gate's
   formula above).
 
+The mechanism for the first four (a run key, a durable store with a local-directory
+implementation, publish and restore that hash every file, and validation by content) is
+`pipeline.checkpoint_store`; it is not wired into the rebuild yet, so nothing above changes.
+docs/CLOUD-REBUILD-PLAN.md has the rest and the questions for the owner.
+
 ## The source extract
 
 The rebuild's first stage produces the map it builds from, rather than expecting
