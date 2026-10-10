@@ -2100,7 +2100,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const whole = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
   check("named stretch: a labelled group (What to change) of two radios, This road piece checked; the stretch named with its pieces and length in miles, kilometres in brackets; rows at least 44px",
     group.legend === "What to change" && group.count === 2 && group.checked[0] && !group.checked[1] && group.same && group.rows.every((h) => h >= 44) &&
-      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.8 mi (1.2 km)" &&
+      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)" &&
       /busy crossing/.test(group.help), JSON.stringify({ group, piece, whole }));
 
   await p.eval(`document.querySelector('${EDITOR} fieldset input[data-n="0"]').focus(); true`);
