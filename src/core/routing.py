@@ -75,6 +75,7 @@ from django.utils import timezone
 
 from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
 from pipeline.variants import Variant
+from routemaker import avoid_junctions as avoid_rules
 from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
@@ -83,7 +84,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import presets
+from . import avoid_junctions, presets
 
 logger = logging.getLogger(__name__)
 
@@ -2110,6 +2111,9 @@ def plan(
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     exposure = presets.exposure_for(preset_name, dials.carrying)
+    # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
+    # request time: empty as shipped.
+    avoid_list = avoid_junctions.approved()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -2296,6 +2300,7 @@ def plan(
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
+        avoid=avoid_list,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
@@ -2347,6 +2352,17 @@ def plan(
     if not loop:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
+    # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
+    # where it is worth 30 minutes a pass and the search did not already weigh it (or
+    # always, on Mass Ride and Group Ride), else offered (`core.avoid_junctions`).
+    avoid_info, avoid_trip = None, None
+    if avoid_list:
+        searched = refine_limited is None and not (past and fit is None)
+        trip, avoid_info, avoid_trip = avoid_junctions.settle(
+            trip, refine_context.request, variant, preset_name, deadline, avoid_list, searched
+        )
+        if avoid_info is not None and avoid_info["decision"] == "avoided":
+            dodges = None
     if refined is not None and maxcalm:
         refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
@@ -2528,6 +2544,14 @@ def plan(
             leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
         )
         described_full, described_overview = described if described else (None, None)
+        # The Avoid-rated junctions it passes (307, 335), at their distance along the
+        # route as the router measures it; each also an entry of the description.
+        avoid_found = avoid_rules.passages(coordinates, avoid_list) if avoid_list else []
+        line_m = avoid_rules.line_length_m(coordinates)
+        length_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+        avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
+        described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
+        described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
         joined_at = clock()
         if joined_at - started > budget_s:
             logger.warning(
@@ -2652,9 +2676,28 @@ def plan(
             "description": described_full,
             "description_overview": described_overview,
             "moved_points": moved_points,
+            "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
+            "avoid_notice": avoid_rules.notice(avoid_found),
         }
 
     body = _answer(trip, refined, dodges_of=dodges)
+    body["avoid_search"] = avoid_info
+    body["avoid_alternate"] = None
+    if avoid_list:
+        avoid_junctions.record(avoid_junctions.passages_of(trip, avoid_list))
+    if avoid_trip is not None:
+        # The best route round the junction, however much longer (335), answered as a
+        # whole route of its own so the client draws and describes it as it does this one.
+        if deadline.at - clock() >= ALTERNATE_MIN_S:
+            try:
+                around = _answer(avoid_trip, None, True)
+                around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
+                around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
+                body["avoid_alternate"] = around
+            except (DeadlineExceeded, RouterUnavailable, NoRoute):
+                avoid_info["alternate"] = "time"
+        else:
+            avoid_info["alternate"] = "time"
     candidates = []
     for found, _reading in refine_context.candidates[1:]:
         # Each is read in full (its traces are remembered, its junctions read once

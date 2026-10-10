@@ -880,13 +880,14 @@ class DescriptionEntryOut(Schema):
     a `junction` is a flagged junction that is not a turn, at a point, and a
     `via` is where a via point is reached (`Stop 1`, as the points list calls it);
     a `walk` is a short stretch to walk the bicycle over (a kept
-    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)).
+    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)); an `avoid` is an
+    Avoid-rated junction ahead (307), at a point, its `severity` "avoid".
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid"]
     from_m: int
     to_m: int
     from_mi: float
@@ -902,7 +903,7 @@ class DescriptionEntryOut(Schema):
     turn: DescriptionTurnOut | None = Field(
         description="How the stretch is entered, where it begins at a change of street."
     )
-    severity: Literal["orange", "red"] | None = None
+    severity: Literal["orange", "red", "avoid"] | None = None
     via: int | None = Field(default=None, description="On a `via`: its number, from 1.")
     group: DescriptionGroupOut | None = Field(
         default=None,
@@ -1223,6 +1224,44 @@ class BikesharePlanOut(Schema):
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
 
 
+class AvoidJunctionOut(Schema):
+    """An Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS
+    307-310, 335): rated by a person, never by the model, and rare."""
+
+    id: int
+    name: str
+    reason: str
+    lon: float
+    lat: float
+    m: int = Field(description="Metres along the route, scaled to `distance_m`.")
+    label: str = Field(
+        description=(
+            'The accessible name of its marker and list row (309): "Avoid-rated junction:'
+            ' <name>, <reason>". The skull and crossbones the client draws beside it is'
+            " hidden from assistive technology."
+        )
+    )
+
+
+class AvoidSearchOut(Schema):
+    """What the plan did about Avoid-rated junctions on its route (308, 335). Null where
+    the route passes none."""
+
+    passed: int = Field(description="Passes through Avoid-rated junctions the answer still makes.")
+    penalty_s: int = Field(description="Their routing penalty, 1,800 cost seconds a pass (308).")
+    decision: Literal["kept", "avoided"] = Field(
+        description=(
+            '"avoided": the way round replaced the route (it cost less than the route plus'
+            ' the penalty, or the ride is Mass Ride or Group Ride, 307); "kept": the route'
+            " still passes one, and `avoid_alternate` is the way round where one was found."
+        )
+    )
+    alternate: Literal["found", "no_route", "time"] | None = Field(
+        description="Whether the way round was found; null once it replaced the route."
+    )
+    avoided: int = Field(description="Passes the way round took out.")
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
@@ -1267,6 +1306,17 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
+    # and the notice the panel shows first and announces (335). Additive: empty and null
+    # where it passes none, which is nearly always (the list ships empty).
+    avoid_junctions: list[AvoidJunctionOut] = Field(default_factory=list)
+    avoid_notice: str | None = Field(
+        default=None,
+        description=(
+            '"This route goes through an Avoid-rated junction: <name>, <reason>." (335);'
+            " null where it passes none."
+        ),
+    )
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
@@ -1368,7 +1418,23 @@ class CandidateOut(RouteBody):
     )
 
 
+class AvoidAlternateOut(RouteBody):
+    """The best route round the Avoid-rated junctions the answer passes, however much
+    longer (335): a whole route body of its own."""
+
+    extra_distance_m: float = Field(description="How much longer than the answer, metres.")
+    extra_duration_s: float = Field(description="How much longer than the answer, seconds.")
+
+
 class RouteOut(RouteBody):
+    avoid_search: AvoidSearchOut | None = None
+    avoid_alternate: AvoidAlternateOut | None = Field(
+        default=None,
+        description=(
+            "Where the answer still passes an Avoid-rated junction (335): the best route that"
+            " avoids it, to offer as an alternate; null otherwise."
+        ),
+    )
     bikeshare: BikesharePlanOut | None = Field(
         default=None,
         description=(

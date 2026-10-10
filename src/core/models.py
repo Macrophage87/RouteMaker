@@ -1314,3 +1314,74 @@ class BikeshareFeedCache(models.Model):
 
     def __str__(self) -> str:
         return f"bikeshare feeds as of {self.fetched_at}"
+
+
+class AvoidJunction(models.Model):
+    """A junction rated Avoid (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335).
+
+    "Would only be added through community (or my) input": never assigned by the
+    junction model, only by a person. An instance admin writes or approves each row;
+    an unapproved row is inert. The list ships empty.
+
+    Read at request time (`core.avoid_junctions.approved`), so adding one changes the
+    next plan with no rebuild: a route that passes it pays `AVOID_JUNCTION_PENALTY_S`
+    (30 minutes, 308) in the plan's comparison, and where one is still used the answer
+    says so first and offers the best route round it (335).
+
+    Kept apart from `Override` (way-keyed, applied by the rebuild) and from any rider
+    suggestion table: a reviewed suggestion becomes a row here with `source`
+    "community" and its reference in `suggestion_ref`, so the suggestion flow can feed
+    it without this table knowing its shape.
+
+    `plans_through` counts the plans whose answer passed it (335: "how often plans pass
+    through them, to keep both rare"): a counter and a date, never the route, the rider
+    or the request.
+    """
+
+    class Source(models.TextChoices):
+        ADMIN = "admin", "Owner or instance admin"
+        COMMUNITY = "community", "Community suggestion, reviewed"
+
+    name = models.CharField(
+        max_length=200,
+        help_text='The junction as riders know it, e.g. "Main St and 1st Ave". Shown to riders.',
+    )
+    location = models.PointField(
+        srid=4326,
+        help_text="The junction's centre: where the roads' centre lines meet.",
+    )
+    reason = models.CharField(
+        max_length=300,
+        help_text="Why it is rated Avoid, in a few plain words. Shown to riders.",
+    )
+    evidence = models.TextField(
+        blank=True,
+        help_text="What the rating rests on (reports, a visit, crashes). Not shown to riders.",
+    )
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.ADMIN)
+    # The rider suggestion this came from, once suggestions exist (STRESS-SUGGEST): its
+    # id or link, as text, so this table does not depend on that one's shape.
+    suggestion_ref = models.CharField(max_length=200, blank=True)
+    # Approval changes routing for every guild: instance admin only, an audited action
+    # (`AvoidJunctionAdmin`), never a checkbox on the form.
+    approved = models.BooleanField(default=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    approved_by_user_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_by_user_id = models.BigIntegerField(null=True, blank=True)
+    plans_through = models.PositiveIntegerField(default=0)
+    last_planned_through_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "avoid_junction"
+        ordering = ["name", "id"]
+        indexes = [models.Index(fields=["approved"], name="avoid_junction_approved")]
+
+    def __str__(self) -> str:
+        return f"Avoid-rated junction: {self.name}"

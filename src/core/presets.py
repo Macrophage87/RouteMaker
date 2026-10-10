@@ -165,6 +165,12 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
 # own 600 s exactly as before.
 AVOID_ENTRY_PENALTY_S = 1800
+# An Avoid-rated junction's penalty (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 308: "Probably a
+# 30 minute penalty like Avoid."): the same 1,800 cost seconds as an Avoid road's entry
+# charge, once for each pass, applied on whole routes at plan time rather than in the
+# graph, so the list needs no rebuild (`core.avoid_junctions`; restated as
+# `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S`, held equal by its tests).
+AVOID_JUNCTION_PENALTY_S = AVOID_ENTRY_PENALTY_S
 
 # Valhalla's own default, and well below the 1.0 at which the surface exclusion
 # arms, so surface is a cost multiplier rather than a gate on all three.

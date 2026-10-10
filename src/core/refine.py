@@ -74,6 +74,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 
+from routemaker import avoid_junctions as avoid_model
 from routemaker import effort, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
@@ -309,6 +310,13 @@ class Context:
     # Each leg's LTS 4 and Avoid metres on the router's first route (set by
     # `refine`), which no candidate may exceed where the exposure holds them.
     first_lts4: list = field(default_factory=list)
+    # The approved Avoid-rated junctions (`core.avoid_junctions.approved`, 307-310):
+    # each pass costs a candidate AVOID_JUNCTION_PENALTY_S (308), and the first rounds
+    # exclude them (`crossing_targets`).
+    avoid: tuple = ()
+    # The router's first route's `Analysis.avoid_junction_m` (set by `refine`), which the
+    # Traffic-wins guard counts with its exposure (`_busier`).
+    first_avoid_m: float = 0.0
 
 
 @dataclass
@@ -335,12 +343,18 @@ class Analysis:
     # OWNER-DECISIONS 262, 263): its length weighted by the grade it rides, which
     # the Hills slider blends with the actual distance.
     effort_m: float = 0.0
+    # Its passes through Avoid-rated junctions (`routemaker.avoid_junctions`, 307), and
+    # their penalty as metres of quiet riding at the ride's speed (308: 30 minutes each,
+    # as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry charge).
+    avoid_passages: list = field(default_factory=list)
+    avoid_junction_m: float = 0.0
 
     def score(self, ctx: Context) -> float:
-        """The router's cost plus the extra price (see the module docstring)."""
+        """The router's cost plus the extra price (see the module docstring), and 30
+        minutes for each pass through an Avoid-rated junction (308)."""
         penalty = model.penalty_m(self.events) if self.events else 0.0
         extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
-        return self.cost_s + ctx.quiet_cost * extra
+        return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
 
     @property
     def red_m(self) -> float:
@@ -357,8 +371,10 @@ class Analysis:
     def top_m(self) -> float:
         """The top figure of the ranking and of the LTS 4 hold: metres of LTS 4 and
         Avoid, plus the cost of the red junctions (OWNER-DECISIONS 259: "weight Very
-        Stressful and LTS4 equally", in the junction's own cost)."""
-        return self.lts4_m + self.red_m
+        Stressful and LTS4 equally", in the junction's own cost), and the penalty of each
+        Avoid-rated junction it passes (307: "kept in the stress order's top level ...
+        above red")."""
+        return self.lts4_m + self.red_m + self.avoid_junction_m
 
     @property
     def second_m(self) -> float:
@@ -455,7 +471,8 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     """A route's stress as one figure for the diminishing-returns rule (268), in
     metres of LTS 3: its LTS 3, LTS 4 and Avoid metres at WORTH_WEIGHTS, plus its red
     junctions' cost at the LTS 4 weight and its orange junctions' cost at the LTS 3
-    weight."""
+    weight, and each Avoid-rated junction's penalty in quiet metres, one for one (308:
+    30 minutes, as it is in the score)."""
     w = WORTH_WEIGHTS
     lts4_only = read.lts4_m - read.avoid_m
     return (
@@ -464,13 +481,20 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
         + w.avoid * read.avoid_m
         + w.lts4 * read.red_m
         + w.lts3 * read.orange_m
+        + read.avoid_junction_m
     )
 
 
 def _top_weight_m(read: Analysis) -> float:
-    """The top figure's part of `stress_weight_m`: LTS 4, Avoid and red junctions."""
+    """The top figure's part of `stress_weight_m`: LTS 4, Avoid, red junctions and
+    Avoid-rated junctions."""
     w = WORTH_WEIGHTS
-    return w.lts4 * (read.lts4_m - read.avoid_m) + w.avoid * read.avoid_m + w.lts4 * read.red_m
+    return (
+        w.lts4 * (read.lts4_m - read.avoid_m)
+        + w.avoid * read.avoid_m
+        + w.lts4 * read.red_m
+        + read.avoid_junction_m
+    )
 
 
 def _second_weight_m(read: Analysis) -> float:
@@ -640,6 +664,7 @@ def analyse(
     marks: list = []
     offset = 0.0
     via_m: list[float] = []
+    line: list = []
     for number, leg in enumerate(legs):
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
@@ -649,10 +674,12 @@ def analyse(
         shape = routing.decode_polyline6(leg.get("shape", ""))
         raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
         marks.extend(trace_junctions.edge_midpoints(trace, shape, offset))
+        line.extend(shape[1:] if line else shape)
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
     classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
     weights = ctx.exposure.weights
     result = Analysis(
@@ -674,6 +701,10 @@ def analyse(
             ctx.mass_kg,
         )
         or float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
+        avoid_passages=avoid_passages,
+        avoid_junction_m=(
+            avoid_model.penalty_s(avoid_passages) / ctx.quiet_cost if ctx.quiet_cost > 0 else 0.0
+        ),
     )
     if with_events:
         ctx.analyses[key] = result
@@ -737,19 +768,35 @@ def calm_targets(analysis: Analysis, ctx: Context, min_tier: int = 3) -> list[Ta
     return kept
 
 
+def avoid_targets(analysis: Analysis, ctx: Context) -> list[Target]:
+    """The Avoid-rated junctions the route passes (307), each its own point: an
+    exclusion on a junction's node takes out every edge there, which is the way
+    round. Not near the route's ends, where the router must leave and arrive."""
+    return [
+        Target((p.junction.lon, p.junction.lat), 5)
+        for p in analysis.avoid_passages
+        if _clear_of_ends(p.m, analysis.length_m, analysis.via_m)
+    ]
+
+
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The approaches to the worst junctions."""
+    """The Avoid-rated junctions the route passes, then the approaches to the worst
+    junctions."""
+    avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
-        return []
+        return avoid
     worst = sorted(
         (e for e in analysis.events if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT),
         key=lambda e: -e.cost_ft,
     )
-    return [
-        Target(e.approach, 4)
-        for e in worst
-        if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
-    ][:CROSSING_POINTS_PER_ROUND]
+    return (
+        avoid
+        + [
+            Target(e.approach, 4)
+            for e in worst
+            if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
+        ][:CROSSING_POINTS_PER_ROUND]
+    )
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
@@ -791,6 +838,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         hard_stop = min(hard_stop, ctx.stop_at)
     stop_at = min(routing.clock() + ctx.search_budget_s, hard_stop)
     first_exposure = best.exposure_m
+    ctx.first_avoid_m = best.avoid_junction_m
     original = best
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
@@ -910,7 +958,7 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         # (Traffic wins), the LTS 4 hold, and junctions that could be read.
         if read is None or read.events is None:
             continue
-        if read.exposure_m > _allowance(first_exposure) or more_lts4(read, ctx.first_lts4, ctx):
+        if _busier(read, first_exposure, ctx) or more_lts4(read, ctx.first_lts4, ctx):
             continue
         found["ranked"] += 1
         if ctx.options is not None:
@@ -1449,6 +1497,16 @@ def _allowance(exposure_m: float) -> float:
     return exposure_m * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
 
 
+def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
+    """The Traffic-wins guard against the router's first route, with each pass through
+    an Avoid-rated junction counted as exposure at its penalty's quiet metres
+    (`Analysis.avoid_junction_m`), on both sides: a way round an Avoid junction is not
+    "busier" for the LTS 3 it takes on in place of it (308: the route uses one only
+    where there is no reasonable alternative). With no Avoid junction on either it is
+    the plain guard."""
+    return read.exposure_m + read.avoid_junction_m > _allowance(first_exposure + ctx.first_avoid_m)
+
+
 # A seek candidate asked with the search's exclusions is asked again without
 # them when it is longer than the leg and the corridor's detour by more than
 # this share and this many metres (review r1: 145 to 150 exclusions sent the
@@ -1500,7 +1558,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             break
         if read is None or read.events is None:
             continue
-        busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        busier = _busier(read, first_exposure, ctx)
         busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)
         if better(read, best, ctx) and not busier:
             best, best_trip = read, candidate
@@ -1602,7 +1660,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             info["limited"] = "untraceable"
             break
         info["rounds"] += 1
-        busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        busier = _busier(current, first_exposure, ctx)
         # Never more LTS 4 than the router's first route on a stress-averse ride
         # (OWNER-DECISIONS 250), however much calmer the rest of it scores. A
         # round the hold refuses does not count against the search's patience
@@ -2048,6 +2106,12 @@ def combine(reads: list[Analysis]) -> Analysis:
         lts3_m=sum(r.lts3_m for r in reads),
         avoid_m=sum(r.avoid_m for r in reads),
         effort_m=sum(r.effort_m for r in reads),
+        avoid_passages=[
+            avoid_model.Passage(p.junction, p.m + start)
+            for r, start in zip(reads, [0.0, *via], strict=True)
+            for p in r.avoid_passages
+        ],
+        avoid_junction_m=sum(r.avoid_junction_m for r in reads),
     )
 
 

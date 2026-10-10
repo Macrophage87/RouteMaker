@@ -27,6 +27,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.gis.admin import GISModelAdmin
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.db.models import Count, Q, Sum
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.http import Http404
@@ -37,6 +38,7 @@ from django.views.decorators.csrf import csrf_protect
 from .audit import record as record_audit
 from .models import (
     AuditLogEntry,
+    AvoidJunction,
     BorderCrossing,
     CachedMembership,
     ConfiguredGuild,
@@ -502,6 +504,118 @@ class OverrideAdmin(InstanceAdminOnly):
             obj.created_by = request.user
             obj.created_by_user_id = request.user.pk
         super().save_model(request, obj, form, change)
+
+
+@admin.register(AvoidJunction, site=site)
+class AvoidJunctionAdmin(InstanceAdminOnly, GISModelAdmin):
+    """Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335).
+
+    Instance admin only: an approved row changes routing for every guild at the next
+    plan (`core.avoid_junctions`), with no rebuild. The point is placed by clicking on
+    the map, as a jurisdiction's polygon is drawn. A new row is inert until approved,
+    and approval is an audited action, never a checkbox on the form (as `Override`).
+
+    The list page leads with the counts 335 asks for: how many are rated Avoid, and how
+    often plans passed through them, "to keep both rare".
+    """
+
+    gis_widget = SelfHostedOpenLayersWidget
+    change_list_template = "admin/core/avoidjunction/change_list.html"
+
+    list_display = (
+        "name",
+        "reason",
+        "approved",
+        "source",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    list_filter = ("approved", "source")
+    search_fields = ("name", "reason", "suggestion_ref")
+    fields = (
+        "name",
+        "location",
+        "reason",
+        "evidence",
+        "source",
+        "suggestion_ref",
+        "approved",
+        "approved_at",
+        "approved_by_user_id",
+        "created_at",
+        "created_by_user_id",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    readonly_fields = (
+        "approved",
+        "approved_at",
+        "approved_by_user_id",
+        "created_at",
+        "created_by_user_id",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    actions = ("approve_selected", "withdraw_selected")
+
+    def save_model(self, request, obj, form, change) -> None:
+        if not change:
+            obj.created_by = request.user
+            obj.created_by_user_id = request.user.pk
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Approve the selected Avoid junctions (routing changes at once)")
+    def approve_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        now = timezone.now()
+        count = 0
+        for row in queryset.filter(approved=False):
+            row.approved = True
+            row.approved_at = now
+            row.approved_by = request.user
+            row.approved_by_user_id = request.user.pk
+            row.save(
+                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+            )
+            audit(request, "approve", "avoidjunction", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(
+            request, f"Approved {count} Avoid junction(s): the next plan avoids them."
+        )
+
+    @admin.action(description="Withdraw the selected Avoid junctions (back to unapproved)")
+    def withdraw_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        count = 0
+        for row in queryset.filter(approved=True):
+            row.approved = False
+            row.approved_at = None
+            row.save(update_fields=["approved", "approved_at"])
+            audit(request, "withdraw", "avoidjunction", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(request, f"Withdrew {count} Avoid junction(s).")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self._is_instance_admin(request):
+            actions.pop("approve_selected", None)
+            actions.pop("withdraw_selected", None)
+        return actions
+
+    def changelist_view(self, request, extra_context=None):
+        counts = AvoidJunction.objects.aggregate(
+            n_approved=Count("id", filter=Q(approved=True)),
+            n_waiting=Count("id", filter=Q(approved=False)),
+            n_plans=Sum("plans_through", filter=Q(approved=True)),
+        )
+        extra = {
+            "avoid_approved": counts["n_approved"] or 0,
+            "avoid_waiting": counts["n_waiting"] or 0,
+            "avoid_plans_through": counts["n_plans"] or 0,
+        }
+        return super().changelist_view(request, {**(extra_context or {}), **extra})
 
 
 @admin.register(StressEdit, site=site)
