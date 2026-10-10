@@ -373,13 +373,12 @@ class TestOwnCost:
             assert out["ratio"] == [1.0, 1.0]
             assert out["total_calm_m"] == round(3 * MILE)
 
-    def test_junctions_keep_their_meaning_on_the_own_cost_scale(self) -> None:
-        # A junction's quiet feet are priced at 2.2; on the own-cost scale they are scaled by
-        # 2.2 over the quiet street's factor, so they cost the router the same.
+    def test_junctions_count_one_for_one_on_the_own_cost_scale(self) -> None:
+        # Review R1 and 461d ("1,200 ft = about 0.23 calm mi"): a junction's cost is in feet
+        # of quiet riding, so it counts one for one beside each road's own cost.
         pieces = [(1000.0, 2, "none", calm.QUIET_URBAN)]
         out = calm.score([span(0, 1000, 2)], [Event(500, 1000)], DEFAULT, [0], pieces=pieces)
-        scale = calm.QUIET_FACTOR / calm.quiet_factor(DEFAULT.use_roads)
-        assert out["total_calm_m"] == round(1000 + 1000 * 0.3048 * scale)
+        assert out["total_calm_m"] == round(1000 + 304.8)
 
     def test_a_path_counts_below_a_quiet_street(self) -> None:
         path = road(

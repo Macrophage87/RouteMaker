@@ -20,9 +20,10 @@ costs, at the rider's preset and slider position:
   lane, shoulder, truck route, bicycle network, and the speed the graph gave it) and the
   ride's `use_roads`, and divided by the same factor for a quiet street (`quiet_factor`: a
   residential street with no lane at its default speed, urban or rural as the road is), so
-  an all-quiet route reads exactly 1 (461d). A junction's and an Avoid entry's quiet metres,
-  priced at 2.2 (which was measured with the grade in), are scaled by 2.2 over the quiet
-  street's factor (`junction_scale`) to keep their meaning. LTS 3 and up carry the
+  an all-quiet route reads about 1 (461d; exactly 1 for an untagged residential street,
+  the reference). A junction's cost is already in feet of quiet riding and an Avoid
+  entry's in quiet metres, so both count one for one (461d: "1,200 ft = about 0.23 calm
+  mi"). LTS 3 and up carry the
   `use_sidepath` mark the graph writes there; LTS 4 and Avoid also the graph's top speed
   and lane count (read off the edge: its lane count is 15, and such an edge carries the
   mark whatever the live tier says). Each piece is rated and graded as the stress section
@@ -415,13 +416,6 @@ def quiet_factor(use_roads: float, urban: bool = True) -> float:
     return edge_factor(QUIET_URBAN if urban else QUIET_RURAL, 1, use_roads)
 
 
-def junction_scale(pricing: Pricing) -> float:
-    """What a junction's or an Avoid entry's quiet metres (priced at `QUIET_FACTOR`) are
-    multiplied by on the own-cost scale, so they keep their meaning there: 2.2 over the
-    urban quiet street's factor."""
-    return QUIET_FACTOR / quiet_factor(pricing.use_roads)
-
-
 def disagrees(tier: int, road: Road, pricing: Pricing) -> bool:
     """Whether the live tier and the graph disagree about grading: a graded edge the live
     table rates under LTS 4, or an LTS 4 or Avoid way the graph did not grade (a stress
@@ -594,23 +588,21 @@ def with_section_tiers(pieces: Sequence[Costed], sections: Sequence[Step]) -> li
     return out
 
 
-def points_of(
-    steps: Sequence[Step], events: Sequence | None, pricing: Pricing, scale: float = 1.0
-) -> list[Point]:
+def points_of(steps: Sequence[Step], events: Sequence | None, pricing: Pricing) -> list[Point]:
     """The calm metres counted at a place, in route order: every junction the model
-    charges for (flagged or not), and each entry into Avoid. `scale` puts their quiet
-    metres on the own-cost scale (`junction_scale`)."""
+    charges for (flagged or not), and each entry into Avoid, in quiet metres one for one
+    (461d)."""
     out: list[Point] = []
     starts = [s.from_m for s in steps]
     for event in events or ():
         flagged = bool(getattr(event, "flagged", False))
         severity = getattr(event, "severity", None) if flagged else None
-        counted = scale * junction_m(
+        counted = junction_m(
             float(getattr(event, "cost_ft", 0.0) or 0.0), severity, flagged, pricing
         )
         if counted > 0 and _rated_at(steps, starts, float(event.m)):
             out.append(Point(float(event.m), counted, "junction", severity))
-    entry = scale * avoid_entry_m(pricing)
+    entry = avoid_entry_m(pricing)
     previous: Step | None = None
     for step in steps:
         joined = previous is not None and previous.tier == 5 and previous.to_m >= step.from_m
@@ -711,14 +703,14 @@ def _built(
     routing cost) the sums run over every piece at its own multiplier, graded as its
     section's tier (`with_section_tiers`), and a section's figure is the mean over it (its
     calm metres over its rated metres), so the step line keeps one step a section. The
-    junctions and Avoid entries are read against the sections, put on the own-cost scale
-    (`junction_scale`). Without the pieces each section takes its tier's figure."""
+    junctions and Avoid entries are read against the sections, at their quiet metres.
+    Without the pieces each section takes its tier's figure."""
     sections = steps_of(spans, pricing)
     if pieces is None:
         points = points_of(sections, events, pricing)
         return Rolling(sections, points), sections, points, False
     fine, exact = piece_steps(pieces, pricing, sections)
-    points = points_of(sections, events, pricing, junction_scale(pricing))
+    points = points_of(sections, events, pricing)
     rolling = Rolling(fine, points)
     sent = []
     for s in sections:

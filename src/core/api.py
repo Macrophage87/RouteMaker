@@ -957,9 +957,9 @@ class ProfileCalmOut(Schema):
     calm miles per actual mile over the window centred on each sample (cut at the route's
     ends), each junction's cost at the ride's intersection weight counted once in every
     window that holds them (at the top of the slider, the worth rule's exchange). Each road
-    counts at its own routing cost over a quiet street's (`calm.quiet_factor`), so 1.0 is
-    all quiet-street riding; a path or a protected lane counts below it. Every ride type
-    but Mass Ride."""
+    counts at its own routing cost over the local quiet street's (`calm.quiet_factor`), so
+    about 1.0 is all quiet-street riding; a path or a protected lane counts below it. Every
+    ride type but Mass Ride."""
 
     window_m: int = Field(description="The window's length, metres (461e: about a mile).")
     ratio: list[float | None] = Field(

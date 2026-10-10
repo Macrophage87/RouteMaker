@@ -1277,7 +1277,7 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
   if (rated > 0) {
     const average = calm.total_calm_m / rated;
     out.push(
-      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; 1 is all quiet streets.`,
+      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; about 1 is all quiet streets.`,
     );
   }
   const peak = calmPeak(profile, calm);

@@ -241,16 +241,20 @@ length `w` centered on the point at distance `x`:
   - `M = factor / Q`, where `Q` is the same factor for a quiet street at the ride's
     `use_roads` (`quiet_factor`: a residential street with no lane at its default speed,
     urban, 20 mph [30 km/h], or rural, 22 mph [35 km/h], as the road is; 1.77 urban at
-    Default). So **an all-quiet route reads exactly 1**, as 461d's "1.0 = all calm
-    riding" says. (Dividing by `QUIET_COST_FACTOR`'s 2.2 would not: it was measured on
+    Default). So every figure is **relative to the local quiet street**, urban or rural,
+    and an all-quiet route reads about 1, as 461d's "1.0 = all calm riding" says: exactly
+    1 on the reference road, an untagged residential street, and a little over where a
+    quiet street is tagged faster than its default (a residential street tagged 25 mph
+    [40 km/h] in town reads about 1.13). (Dividing by `QUIET_COST_FACTOR`'s 2.2 would not: it was measured on
     the live router with the grade in, which each road's figure leaves out, and put a
     quiet street at 0.8 to 0.9.) At Default a traffic-free path reads about 0.67, a 25 mph
     [40 km/h] LTS 3 collector about 2.9, a 35 mph [56 km/h] two-lane-each-way LTS 3
     primary about 5.4, and a graded LTS 4 street from about 16 up. Above 80 the calm-rate
     term `rate x w(L)` is added, as before.
-  - **Junctions and Avoid entries** are priced in quiet meters at 2.2 (the junction
-    model's feet, Avoid's 1,800 s), so on this scale they are multiplied by 2.2 / `Q`
-    (urban; `junction_scale`, 1.24 at Default) and cost the router what they did.
+  - **Junctions and Avoid entries** count one for one: a junction's `cost_ft` is already
+    in feet of quiet riding and Avoid's entry in quiet meters, so 1,200 ft is about 0.23
+    calm mi (461d) on this scale too. At the top of the slider the junction's worth
+    figure is likewise unscaled, like the LTS 3 and up stretches.
   - Each piece is **rated and graded as the stress section it lies in**
     (`with_section_tiers`), so a sliver folded into its neighbour (under 33 ft [10 m],
     `MIN_SPAN_M`) is neither a rated island inside an unrated section nor an Avoid entry
@@ -305,8 +309,8 @@ length `w` centered on the point at distance `x`:
   either (other than the graded edges, read off their 15 lanes) is priced at its
   `maxspeed`.
 - The owner's question of 2026-10-10, whether the per-tier estimate was acceptable, is
-  **answered by building the exact cost, with the scale normalised so that a quiet street
-  is exactly 1**. The scale the owner sees (1.0 = all calm riding) is unchanged; the
+  **answered by building the exact cost, with the scale normalised so that the local
+  quiet street is 1**. The scale the owner sees (1.0 = all calm riding) is unchanged; the
   estimate remains only as the fallback.
 - A junction's calm miles are what the ranking charges for it. Every junction the model
   charges for counts, flagged or not: its cost (`cost_ft`, `intersections.cost_of`, see
@@ -321,9 +325,9 @@ length `w` centered on the point at distance `x`:
   junctions could not be read, none are counted, and the summary says so
   (`junctions_counted`).
 - Avoid's **entry charge** (1,800 s) counts as quiet meters at the ride's speed
-  (`avoid_entry_m`), at the point the route enters an Avoid stretch. With each road's own
-  cost both are scaled by 2.2 / `Q`, above.
-- The scale matches the multiplier. **1.0 is a quiet street**, and higher is more
+  (`avoid_entry_m`), at the point the route enters an Avoid stretch.
+- The scale matches the multiplier. **1.0 is the local quiet street** (the reference
+  road above), and higher is more
   stress. Quiet meters per meter, or calm miles per mile.
 - **Intersection costs are being revised (planned).** Decision 468 (option C) adds a
   severe tier for unsignalised LTS 4 and Avoid junctions, with a cap of about 2 mi
@@ -365,7 +369,13 @@ Each preset and slider position gives its own edges (at the top of the slider 3.
 the LTS 4 guide is drawn. The test (`test_each_tiers_typical_road_lands_in_its_own_band`)
 checks the quiet streets, the collector and the arterial and two LTS 4 roads at six
 slider positions. The edges stay a guide: an unusually fast LTS 2 road can read over the
-lower edge. Avoid has no band of
+lower edge. At 10 on the slider, for one, a 35 mph [56 km/h] primary with two lanes each
+way that is rated LTS 2 reads about 1.26, over the lower edge of 1.17, so the chart calls
+it "LTS 3 level". At the top of the slider the two edges mix scales: LTS 3 and up are the
+worth rule's figures (the ranking's own price, `1 + 5 x w`), while the LTS 2 collector
+the lower edge starts from is at its own routing cost, so the lower edge is a midpoint
+between a road's cost and a tier's price, and the upper edge lies between two worth
+figures. Avoid has no band of
 its own. Where the mile around a point holds any Avoid, its words add ", Avoid nearby"
 (`avoidNear`, `profileChart.ts:1222-1233`). Each flagged junction also keeps its own
 marker, so averaging never hides a very high-stress crossing.
@@ -398,7 +408,7 @@ marker, so averaging never hides a very high-stress crossing.
   (`ElevationChart.tsx:358-360`). Unflagged junctions count in the line but have no
   marker.
 - **The key** says the line is calm miles per mile (calm km per km) over the mile around
-  each point, on a log scale, and that 1 is all quiet streets (`ElevationChart.tsx`).
+  each point, on a log scale, and that about 1 is all quiet streets (`ElevationChart.tsx`).
   The source line under the chart says each road is priced by its own speed, lanes and
   bike lane (`calmSource`, `profileChart.ts`). Only where some stretch took its tier's
   figure (`estimate: true`) do the key and the source line call it an estimate.
@@ -435,9 +445,8 @@ rolling stress chart").
 An LTS 2 quiet street (M = 1) for the whole route, with one crossing at 1.0 mi:
 straight across an LTS 4 road from a stop, 35 mph (x1.0), 2 lanes each way (x1.1), no
 count, 3,000 x 1.1 = 3,300 ft, about 0.625 calm mi [1.0 calm km] at weight 1.0 (today's
-figures). Window 1 mi [1.6 km]. The built score gives these figures, with the junction
-in the tier's quiet meters (priced by each road's own cost it is scaled by 2.2 / 1.77,
-about 0.78 calm mi, and the plateau reads about 1.78).
+figures). Window 1 mi [1.6 km]. The built score gives these figures (the street is the
+reference road, so it reads exactly 1, and the junction counts one for one).
 
 | Window centered at | Window | R |
 |---|---|---|

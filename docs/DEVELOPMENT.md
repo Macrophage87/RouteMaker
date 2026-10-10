@@ -5554,8 +5554,9 @@ target, the graph and `refine.quiet_cost_per_m`):
   tier says. Grade, surface, turns, gates and the alley charge are left out (not traffic,
   or counted on their own). `M = factor / calm.quiet_factor`, the same factor for a
   residential street with no lane at its default speed (urban or rural, as the road is) at
-  the ride's `use_roads`, so a quiet street reads exactly 1 (461d) and a path about 0.67
-  at Default; plus the calm-rate term above 80. At the top of the slider LTS 3 and up keep
+  the ride's `use_roads`, so each figure is relative to the local quiet street: the
+  reference road (an untagged residential street) reads exactly 1 (461d), a residential
+  street tagged 25 mph about 1.13, and a path about 0.67 at Default; plus the calm-rate term above 80. At the top of the slider LTS 3 and up keep
   the worth rule's figure (the ranking's own price), and stairs and ferries their tier's.
   It reproduces the "Graded stress" table above, every cell, to 0.01 (`tests/test_calm.py`
   `TestOwnCost`). Each piece is priced at its stress section's tier and rating
@@ -5584,9 +5585,10 @@ target, the graph and `refine.quiet_cost_per_m`):
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
   0.679 at 40, 1 from 70). At the top of the slider the worth rule's exchange stands in
   (`refine.stress_weight_m`): a red junction 5 x 2 x its cost, an orange one 5 x 1, an
-  unflagged one nothing (2.5 in place of 5 with a target). Junction and Avoid charges are
-  in 2.2 quiet metres, so with each road's own cost they are scaled by 2.2 /
-  `quiet_factor` (`calm.junction_scale`, 1.24 at Default). This is not 469b(5)'s
+  unflagged one nothing (10 in place of 5 with a target). A junction's cost is in feet of
+  quiet riding and Avoid's entry in quiet metres, so both count one for one beside each
+  road's own cost (461d: "1,200 ft = about 0.23 calm mi"), and the worth figure is
+  unscaled at the top of the slider, like the LTS 3 and up stretches. This is not 469b(5)'s
   `calm_mi`, which is the junction's own cost for the junction list on
   `wip/isect-costs-c`; at 70 and above the two agree. Each is counted once in every
   window that holds it, so a crossing raises the mile around it. A junction or Avoid
@@ -5606,7 +5608,9 @@ section's own multiplier and tier), `points` (junctions and Avoid entries, with 
 junction's marker), `total_calm_m`, `rated_m`, `junctions_counted` (false where the
 junctions were not read), `bands` (461a; read from representative roads at their own cost, `calm.BAND_*`: halfway
 between a 25 mph collector at LTS 2 and at LTS 3, and between a 40 mph two-lane-each-way
-primary at LTS 3 and a graded street at LTS 4; 2.01 and 11.26 at Default), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
+primary at LTS 3 and a graded street at LTS 4; 2.01 and 11.26 at Default; a guide, so at 10 on
+the slider a 35 mph two-lane-each-way LTS 2 primary reads "LTS 3 level", and at the top
+of the slider they mix a road's own cost with the worth rule's tier prices), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
 and the Avoid entries); the others count in `ratio` and the total. On a long route the
 highest window's sample is kept when the profile is thinned (`calm.peak_index`), so the
 most stressful mile survives.
@@ -5615,7 +5619,7 @@ most stressful mile survives.
 section's mean, not every edge; the band edges come from representative roads, so each
 tier's typical road lands in its own band; half steps are not read yet; Mass Ride has no
 score. The owner's question of 2026-10-10 (was the per-tier estimate acceptable?) is
-answered by building the exact cost, normalised so a quiet street is exactly 1 (the scale
+answered by building the exact cost, normalised so the local quiet street is 1 (the scale
 the owner sees is unchanged); the estimate is now only the fallback.
 
 **The chart** (`ElevationChart.tsx`; the decisions in `lib/profileChart.ts`, "The rolling
@@ -5629,7 +5633,7 @@ are one, at 0 on the slider, where LTS 3 costs nothing extra); the side's figure
 figure, so a short busy stretch is seen at its true level (the step line and the guides are
 the text colour over a casing in the panel colour, so one is 3:1 from any band); Avoid stretches as the magenta "A" blocks;
 and the flagged junctions' triangle and diamond above the track. The key says it is a log scale and
-that 1 is all quiet streets (and calls it an estimate only with `estimate: true`). The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
+that about 1 is all quiet streets (and calls it an estimate only with `estimate: true`). The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
 level" (", Avoid nearby" where the window holds some) and "Next junction to watch: very
 high stress, mile 1.4", so the markers have words. The summary gives the route's total in
 calm miles with calm km in brackets, the average (calm km per km), the most stressful mile
