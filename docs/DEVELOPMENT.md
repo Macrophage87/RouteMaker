@@ -853,7 +853,7 @@ the credits (301). The front-end ones are 71 of 71 killed; the Python ones need 
 PLAN.md FOLLOWUP-FEDERAL-LAYER. The Mass Ride map shades the land under federal
 control, as information and not legal advice: ownership is not police
 jurisdiction. The routing and description half of item 239 (stops inside federal
-land, the parkway stretches) is a later step and is not here.
+land, the parkway stretches) is the next section.
 
 * **Data.** `scripts/build_federal_land.py` merges the National Parks, Reservations
   and Military Bases layers (fetched once each, records in
@@ -901,6 +901,94 @@ validity and a few known places), and the browser check section 9 of
 `scripts/a11y/check.mjs` (`scripts/a11y/run.sh`: the section, switch, legend at 320
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
+
+### Federal stops and parkways (item 239, the routing part)
+
+PLAN.md FOLLOWUP-FEDERAL-LAYER, "Still to do". On a Mass Ride, the places the group
+stops on federal land and the stretches it rides on a National Park Service parkway,
+in the map, the points list, the route description and the road panel. All of it is
+`frontend/src/lib/federalStops.ts`; every other ride type is unchanged.
+
+* **Client side, not the API.** The overlay's file is already in the page for a Mass
+  Ride (MapView fetches it whatever the shading switch says, `federalWanted`), and
+  `federalLand.ts` already had the point-in-polygon test. Reading the same file on the
+  server would mean shipping a front-end asset into the api image, a second parser
+  and a new field on the route answer, for the same answer; the points list and the
+  markers need it before any route is planned anyway. So the stops and the parkway
+  test run in the browser, with a bounding box per area cached so a point is tested
+  against only the few areas near it. The cost: the description lines are worded in
+  `federalStops.ts`, not `describe.py`, so they are placed before the API's entries
+  rather than among them, and they come only once the file has loaded. Until then, or
+  if it cannot be had, a Mass Ride's description, copied text, cue sheet and GPX
+  description carry one line instead, "Federal land could not be checked for this
+  route." (`FEDERAL_UNCHECKED`, `federalRouteLines`).
+* **Stops** (239 (b)). `federalAreaAt` (`federalLand.ts`, which `federalPoints` uses
+  too) gives a point's most specific area (FEDERAL_KINDS order) with its agency; failing
+  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 66 ft (20 m),
+  marked `near` and said "next to" (238: "err on the side of flagging", for a stop on a
+  simplified boundary). `stopWarning` says "End is inside U.S.
+  Capitol grounds, managed by Architect of the Capitol – federal land: check permit
+  requirements for gathering here." Where the data names no agency (Military Bases)
+  the kind is said instead ("Fort Leslie J. McNair (Military installation)"), never an
+  invented manager. The start, the end and every Stop N are checked. The planner has
+  no separate regroup or staging point: a regroup is planned as a stop, so it is a
+  Stop N here.
+* **Riding through** (239 (c)). A stretch on an ordinary city street inside an area is
+  not warned.
+* **Parkways** (239 (d)). `PARKWAYS` lists the five the owner named. A description
+  stretch is on one when its OpenStreetMap street name matches it ("Rock Creek and
+  Potomac Parkway Northwest", "Rock Creek Parkway", "Clara Barton Parkway", ...), or
+  when it is an unnamed or parkway-named road stretch with two of its quarter points
+  inside the NPS layer's polygon of that parkway (only those inside the District are in
+  that layer). Unnamed means the API's own words, `describe.py` `UNNAMED_ROAD` ("unnamed
+  road") and `UNTRACED_STREET` ("this part of the route"), which `federalStops.ts` repeats
+  and `tests/test_describe.py` holds equal. A path is never a federal road, by name or by
+  polygon: a stretch with `facility` "path" or the street "unnamed path" is skipped
+  (Rock Creek's trail is inside the parkway's polygon, and a "Suitland Parkway Trail"
+  matches the parkway's name).
+  Stretches on one parkway less than `PARKWAY_JOIN_M` (525 ft, 160 m) apart are one run, said
+  as "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park
+  Service parkway – federal road: check permit requirements for riding it as a group."
+  OpenStreetMap's `operator` tag is not in the routing data (the segments carry the
+  name, not the operator), so it is not read; adding it is a pipeline change for a
+  rebuild.
+* **Where it shows.**
+  - *The map:* a marker for a point on federal land has the class `pin-federal`, a
+    square "!" badge at its corner (a shape, not only a colour), and the warning in its
+    accessible name and title (`MapView` `pointWarnings`, part of `markerDeps`).
+  - *The points list:* the row gets the warning on a line of its own with the same
+    badge (`PointsList` `warnings`), before Remove in the reading order. The planner's
+    separate list of points on federal land is gone (the rows say it); the planner
+    still says "None of your points is on federal land." when none is, and the Map
+    layers sheet keeps its list and says what the badge means (`FEDERAL_BADGE`).
+  - *The description:* `federalLines` (a heading line that says it is information, not
+    legal advice, and that federal ownership is not police jurisdiction; the stops; the
+    parkway runs) is listed under its heading before the steps in Directions, and is in
+    the copied text, the downloaded cue sheet and the GPX file's description
+    (`descriptionText`, `gpxDescriptionText`, `exportOf`). Nothing is said when there is
+    nothing to say. The GPX description keeps the lines where the API gave no entries,
+    and counts them when it chooses the full text or the overview (`GPX_FULL_MAX_CHARS`).
+  - *The road panel:* the keyboard's and screen reader's way to ask what a shaded area
+    is. "Road info at map center" (I on the map) and a right-click or long press, on a
+    Mass Ride, show "Federal land: Inside ... – federal land: check permit requirements
+    for gathering here." with the caveat, whether or not a road is found, and the
+    dialog's status sentence ends with it, said again if the data comes after the road's
+    answer.
+* **Units.** The run's range goes through `format.ts` `formatMileRange` (miles first,
+  kilometres in brackets), as every unit does. For a short run it follows `describe.py`
+  `range_words`' feet rule (under a tenth of a mile, where it starts and its length in
+  feet), and it also uses feet where both ends round to the same tenth, which
+  `range_words` does not check.
+
+Tests: `lib/federalStops.test.ts` (the area and its words, the rows and markers only on
+a Mass Ride with the data, the five parkways by name and nothing else, runs joined and
+by the NPS layer with a path and a city street left out, the description, text and GPX
+lines, the rendered row, the marker and road-panel wiring, the real file at Lafayette
+Square, the Capitol and the Rock Creek and Potomac Parkway), and the browser check's
+section "The Mass Ride's stops on federal land and its parkway stretches"
+(`scripts/a11y/check.mjs`, 8 checks: the End row and marker at the Capitol and not the
+Start, the Directions list and its name, I at the map's center over the Capitol and off
+it, no warning on another ride type, and the row at 320 px with text spacing).
 
 ### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
 
@@ -4178,6 +4266,112 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
+
+The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
+calm-search score, about a quarter of LTS 3, on"
+"Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no rebuild."
+Item 241's rationale applies: a rider who
+is not in control of the ride is stress-averse.
+
+- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+  `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
+  0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
+  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
+  LTS 2 weight, since 240 (A) does not name it.
+- Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
+  weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
+  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
+  weigh it the same way.
+- At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
+  weight would never price a route where Cargo with passengers starts (review, blocking).
+  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
+  quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
+  `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
+  costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
+  slider does not move, the calm search does not turn on, and the router's requests are
+  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
+  kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
+  with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3
+  adds nothing.
+  If the owner prefers the weight to wait until the rider moves the slider above 80, the
+  term is one commit to drop.
+- At the top (100, maxcalm) the weight is in the second figure of the ranking:
+  `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
+  with the same LTS 4 and red junctions, 656 ft (200 m) more LTS 2 is worth one 164 ft
+  (50 m) tie step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
+  1 mi (1.6 km) of LTS 2 saved can buy 1.25 mi (2 km) of extra riding with no target, a
+  quarter of what a mile of LTS 3 buys. LTS 4 still ranks first whatever the LTS 2.
+- LTS 2 never starts a search of its own, so it adds no router calls: `calm_targets` still
+  excludes only LTS 3 and worse, and the trail seek is handed the busy spans of LTS 3 and
+  worse only (`refine.seek_weights`), so a stretch of LTS 2 never starts a seek. The routing
+  graph does not grade LTS 2 (240 (C) stays with
+  FOLLOWUP-DECIMAL-STRESS in the backlog), so nothing is rebuilt.
+- The rolling stress chart is unchanged: it shows traffic stress, not the ranking's LTS 2
+  preference, so LTS 2 is priced by the road's own cost alone and an all-quiet route still
+  reads about 1 (461d) on these rides too.
+- Not measured on the live routers in this change (no router here). The 12 trips and the
+  owner's route are the place to measure it, as item 250 was.
+- Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
+  `scripts/mutants_trailseek.py`.
+
+### Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B))
+
+The owner, 2026-10-03, item 240 (B): "a 'Riding with kids' preset for children on their own
+bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower
+planning speeds and gentler hills. It builds on (A)."
+
+The ride type id is `kids` (links `/#preset=kids`, the short path `/kids`), the label
+"Riding with kids". It is defined like every other preset: `core.presets` (`KIDS`,
+`EXPOSURE_KIDS`, the `_preset("kids", ...)` row, `BRAKE_GRADES`), `frontend/src/lib/presets.ts`
+(the card's label and sentence), `frontend/src/lib/dials.ts` (`STARTS`, held equal to the API by
+`tests/test_presets.py`), the Caddyfile and the beta nginx template's preset redirects, and the
+stress page's cost table.
+
+**Developer defaults, for the owner to confirm.** The owner gave no numbers for these:
+
+| What | Default | Why |
+|---|---|---|
+| Traffic slider start | 100 (the top) | "LTS 3+ avoided hard": the least stressful route, LTS 4, Avoid and red junctions ranked first, with the LTS 4 hold, as Trailmaxxing |
+| LTS 2 weight | 0.5 of LTS 3 (`KIDS_LTS2_WEIGHT`) | "LTS 2 allowed but costly": twice 240 (A)'s quarter; a metre of LTS 3 still counts two of LTS 2 |
+| Planning speed | 6.2 mph (10 km/h) | a child of about six to ten on their own bike; Hybrid's own is 11.2 mph (18 km/h), Cargo Bike 8.7 mph (14 km/h), Mass Ride 6 mph (9.7 km/h) |
+| Hills slider start | -80 (`use_hills` 0.2) | "gentler hills": more hill-averse than Cargo Bike (-60), short of Mass Ride (-95) |
+| Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
+| Living streets | 1.0 (fully preferred) | as Trailmaxxing |
+| Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
+| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
+
+At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
+least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
+not planned leg by leg (`long_calm` stays Trailmaxxing's alone). The rider and bike weight
+keeps the model's 198 lb (90 kg) default; a child's lighter total is the rider's to set.
+
+**No rebuild.** It rides the existing graphs: the standard graph and its weekend twin, or
+the no-trail graph with "Keep to roads, not trails". No new Valhalla graph or variant was
+needed, because everything that makes it a kids' ride is a per-request costing option or
+the planner's search; LTS 2 is graded only in the search, not in the graph (240 (C),
+FOLLOWUP-DECIMAL-STRESS, backlog). Bike access is the graph's as for every ride: a way
+whose bicycle access is unclear stays closed.
+
+**Load.** Like Trailmaxxing it starts at 100, so every plan runs the calm search (about 20
+router calls; docs/OPERATIONS.md).
+
+**Screen readers.** The card is a toggle button in the ride-type dialog named by its label
+and sentence; choosing it moves the sliders (their values are said in words), the Ride
+line's spoken summary says "Riding with kids, calmest, avoids hills", and the link carries
+it. `scripts/a11y/check.mjs` section 25 covers the dialog, the keyboard, the request, the
+sliders, the target distance, a shared link and 320 px (`EXPECTED` 423); the mocked answer
+is `S_KIDS` in `scripts/a11y/cdp.mjs`.
+
+Tests: `tests/test_presets.py::TestRidingWithKids` and the tables there,
+`tests/test_refine.py`, `tests/test_route_description.py`, `tests/test_preset_links.py`,
+`tests/test_beta_overlay.py`, every test parametrised over the presets, and
+`frontend/src/lib/presets.test.ts`, `dials.test.ts`, `dialsPanel.test.ts`, `stressPage.test.ts`.
+
 ## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in
@@ -6125,6 +6319,176 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
+
+An "Avoid" rating above red for a junction, given only by a person (the owner, an instance
+admin, or a reviewed community suggestion), never by the junction model. It ships with an empty
+list. How an admin adds one: docs/OPERATIONS.md, "Avoid-rated junctions: adding one".
+
+### Storage
+
+`core.models.AvoidJunction` (table `avoid_junction`, migration `0015_avoid_junction`): a name, a
+point (`location`, SRID 4326, placed on the admin's map), a reason (shown to riders), evidence
+(not shown), `source` ("admin" or "community") with `suggestion_ref` for the suggestion it came
+from, the approval (who and when; an audited admin action, read-only on the form, as `Override`),
+and `plans_through` with `last_planned_through_at` (335's admin counts). It is kept apart from
+`Override` (way-keyed, applied by the rebuild) and from any rider-suggestion table: a reviewed
+junction suggestion becomes a row here with `source` "community" and the suggestion's id in
+`suggestion_ref`, so the suggestion flow (STRESS-SUGGEST, the half-step editor) can feed it
+without either table depending on the other's shape. No junction override table existed on
+release/v0.4.0; PR #38 (intersection costs) adds cost machinery to `routemaker.intersections` and
+`core.junctions` but no table, and this work does not touch either module.
+
+The migration is numbered 0015. It was written against 0012 and was re-pointed at
+`0014_segment_mtb_name`, the leaf of release/v0.4.0, when that was merged in; if another migration
+lands first it must be re-pointed again (or joined with a merge migration). The table is new and
+empty, so its order against the others does not matter.
+
+### Which junctions a route passes
+
+`routemaker.avoid_junctions.passages`: the route's line (lon, lat) comes within `MATCH_RADIUS_M`
+(15 m, 49 ft) of the junction's point; the pass is placed where the line comes nearest, and a
+second pass counts once the line has gone `LEAVE_RADIUS_M` (30 m) away again (a loop through it
+pays twice). It reads the line, not the junction model's events: the model reads only junctions
+where a road that can be busy is involved (`core.junctions.wanted`), and an Avoid rating is a
+person's judgement about a place whatever its roads.
+
+### How the 30-minute penalty reaches routing, and why no rebuild
+
+308: "Probably a 30 minute penalty like Avoid." An Avoid road pays `presets.AVOID_ENTRY_PENALTY_S`
+(1,800 cost seconds) on entry, through the graph: its tier-5 ways are the graph's alleys and the
+costing's `alley_penalty` is 1,800. A junction has no such hook. Valhalla's bicycle costing has
+no per-node charge a request can set, and marking junction nodes in the graph would need a
+rebuild for every change to the list, which 307 ("Planner-side where possible ... so no rebuild
+if feasible") rules out. So the penalty, `presets.AVOID_JUNCTION_PENALTY_S` (= the road's 1,800,
+restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal by
+`tests/test_avoid_junctions.py`), is charged on whole routes, in the router's own unit:
+
+- **The calm search** (`core.refine`). `Analysis.avoid_passages` are read with every candidate;
+  `Analysis.score` adds 1,800 s a pass; `avoid_junction_m` (the penalty over the ride's quiet
+  cost per metre, as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry) joins the top
+  figure (`top_m`, 307: "kept in the stress order's top level ... above red") and the
+  diminishing-returns weights (`stress_weight_m`, `_top_weight_m`), so at the top of the slider
+  the way round is worth its extra miles. `crossing_targets` puts the junction's own point first
+  among a round's exclusions (`avoid_targets`), clear of the route's ends. The Traffic-wins guard
+  (`_busier`, on the router's alternatives, the rounds and the wide search) counts each pass's
+  `avoid_junction_m` as exposure on both sides, so the LTS 3 a way round takes on in place of an
+  Avoid junction does not make it "busier"; the LTS 4 hold (250) and the trail seek's guard are
+  unchanged.
+- **A long ride** (`refine_long`): each leg's weight counts its Avoid junctions with its LTS 4
+  (`LONG_LTS4_PRIORITY * (lts4_m + avoid_junction_m) + lts3_m`), so a leg whose only fault is
+  one is searched, and before a leg with LTS 3; the whole is judged "not as calm" by the same
+  sum, with the legs' passes counted as the whole route's (`combine`, `_joined_passages`): a
+  junction within 15 m of a joint (a via point, or where the legs were cut) is passed by the
+  legs on both sides of it but counts once, as on the whole route's line. Every exclusion of a junction's point, in a round (`Target.radius`) or a kept point
+  (`_exclusion`), carries the 15 m radius `core.avoid_junctions.exclusions` asks.
+- **The guard's allowance.** `_busier` is `exposure_m + avoid_junction_m > _allowance(first
+  exposure) + first_avoid_m`: the tolerance is on the exposure alone.
+- **Every plan** (`core.avoid_junctions.settle`, after the search and the dodge pass, or where
+  the search does not run: Mass Ride, long rides, seeking hills, past the span). Where the answer
+  still passes one, the router is asked once more with the junction excluded
+  (`exclude_locations`, its point with a 15 m radius, which takes out every edge at the junction).
+  - `searched` is what the search did, not that it was asked: at least one round and not cut
+    short (`calm_search.rounds > 0` and no `limited`). Where it searched, its own decision stands
+    (it already weighed the penalty under its guards).
+  - Otherwise the way round replaces the answer where its router cost is less than the answer's
+    plus 1,800 s a pass.
+  - On Mass Ride and Group Ride (307) it replaces it where it takes on no LTS 4 (or Avoid road)
+    the answer did not have (`GROUP_LTS4_SLACK_M`, 1 m, for the traces' rounding) and is at most
+    1 mi (1.6 km) (`GROUP_EXTRA_MAX_M`) or 25% (`GROUP_EXTRA_SHARE`) of the answer longer,
+    whichever is more. **A default open for the owner**: the coordinator picked it on the review
+    of 351e65b (307 said only "where an alternative exists", which took any way round however
+    long). Reading both routes' stress costs a trace a leg of each (remembered).
+  - A loop never swaps: its way back was made by a different way (`refine.make_loop`, 266) and
+    the way round is a plain route through the same points, so it is offered, and the loop's
+    figures (`loop`) describe the route shown. (Adding the junction to `make_loop`'s excludes was
+    not done: its thinning ends with no excludes at all, which a fixed junction would remove.)
+  - After a swap the routes to choose from are dropped (`candidates` null): they were near-ties
+    of the route that was replaced, not weighed against the way round.
+  - Otherwise the answer keeps the junction and the way round is offered as `avoid_alternate`.
+    A way round that still passes the junction (the point is off the graph's node) is no way
+    round.
+  - Cost: **1 + legs** router calls: one `/route` for the way round, then a trace for each of its
+    legs where it is answered (swapped in, or offered as `avoid_alternate`), and on Mass Ride and
+    Group Ride a trace for each leg of the answer where not already remembered.
+- **Bikeshare** (`core.bikeshare.plan`): the ride leg's `avoid_alternate` carries the plan's
+  `bikeshare` (`alternate_block`: the same walks and docks, its own ride, total, ride step and
+  summary) and the GBFS credit in its `attribution`, so it can be shown in place of the ride.
+
+### The answer
+
+Every route body has `avoid_junctions` (each pass: id, name, reason, point, metres along the
+route scaled to `distance_m`, and `label`, the accessible name "Avoid-rated junction: <name>,
+<reason>") and `avoid_notice` (335's sentence, null where none). The answer also has
+`avoid_search` (passes left, their penalty, `decision` "kept" or "avoided", whether the way round
+was found) and `avoid_alternate` (the way round as a whole route body, with `extra_distance_m`
+and `extra_duration_s`). The description gains an `avoid` entry, severity "avoid": "Avoid-rated
+junction ahead at 0.7 mi (1.1 km): <name>, <reason>. Riding through it is a really bad idea.
+Please reconsider your route." (US units first). All additive.
+
+The notice and the description's entry end with the plea, `routemaker.avoid_junctions.PLEA`
+("Riding through it is a really bad idea. Please reconsider your route."; `PLEA_MANY` for
+several), and the front end's `AVOID_PLEA` is the same words (a test holds them equal). The
+owner, 2026-10-10 15:08 UTC, on the marker being named in the directions and the notice: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider."
+
+### The front end
+
+- `lib/avoidJunctions.ts` (pure): the items, the row name, the offer ("Show the route that avoids
+  it: 3.9 mi (6.3 km), 1.0 mi (1.6 km) longer"), and the marker's SVG; `lib/avoidIcon.ts` inlines
+  the Noto Emoji skull (`icons/noto-emoji-u2620.svg?raw`, so nothing is fetched and the CSP is
+  unchanged) on a dark disc (#1f2937) ringed in white, the halo of 310: the glyph's pale fills on
+  the disc, the disc on a light map and the ring on a dark one are each above 3:1.
+- `AvoidNotice.tsx`: first in the Route section, `role="alert"` so it is said as soon as it
+  appears, ahead of the route's own sentence (which waits `ANNOUNCE_SETTLE_MS`). It is the chosen
+  route's own notice (`avoidNoticeFor`): a route to choose from that avoids the junction has none,
+  one that passes it has its own; the way round is the answer's, so its button (`aroundAvoid` in
+  `App`, `shownRoute`) is offered only while the answer is chosen.
+- The map marker (`MapView`, `.avoid-marker`) is a `<button type="button">`, as the junction
+  markers are, so Tab reaches it, named by `avoidMarkerName` (the `label` and the plea); a click,
+  a tap, Enter or Space opens the road panel on the junction, and the focus comes back to it when
+  the panel closes. It is 40 px (`AVOID_ICON_PX`) against the junction markers' 24 ("Make it
+  larger than a normal icon"; markers keep their size at every zoom). The junction list
+  (`AvoidJunctionList`, its row name also ending with the plea), the description's entry and the
+  notice show the Unicode character (310) with `aria-hidden`, and their words name the rating.
+  Nowhere is the glyph's own name the accessible name (309). There is no legend row. The owner,
+  2026-10-10 15:03 UTC: "For avoid markers in intersection. No need to put it in legend. You'll only see this if you really try to force things." (309's "It gets a legend entry" is superseded.)
+- The road panel on the junction ("also when clicking on the intersection"): the marker opens
+  the road panel (`RoadInfoDialog`) at the junction's point, and the panel opened any other way
+  (a right-click, a long press, the I key, "Road info at map center") within `AVOID_SPOT_M` (25 m,
+  82 ft) of an Avoid-rated junction on the route shown (`avoidNearSpot`) leads with a warning
+  above its heading: "Avoid this intersection." and `avoidCardText` ("<name> is rated as
+  dangerous for bikes: <reason>. Riding through it is a really bad idea. Please reconsider your
+  route."). It opens the dialog's `aria-describedby`, so it is said as the panel opens; it is not
+  also an alert (the two together were said twice). The front end knows only the junctions the
+  route shown passes (the list is not sent otherwise), so the panel warns of those; the route
+  that avoids it, shown in place of the planned one, passes none.
+- Ride mode says an `avoid` entry as a hazard at every level but Quiet.
+- The Mass Ride route chart (333) does not mark Avoid junctions: its intersection ticks have a
+  table, a per-mile readout, a key and forced-colours rules, and a skull on the ticks alone would
+  be seen and not heard. Left out (PLAN.md, FOLLOWUP-ISECT-AVOID); on Mass Ride the plan goes
+  round one wherever the default limits allow.
+- The icon's Apache 2.0 notice and licence ship in `licenses.txt` (`BUNDLED_ICONS` in
+  `licences/notices.mjs`); the source record is docs/SOURCES.md and `fixtures/icons/README.md`.
+
+### Tests
+
+`tests/test_avoid_junctions.py` (the passes, the words, the score, `settle` with the Mass Ride
+and Group Ride limits and loops, the stored list and counts, POST /api/route with a stand-in
+router that routes round the junction only when it is excluded, a search that stopped before a
+round, the guard's allowance, the exclusion radius, a long ride's legs, bikeshare's way round,
+and the admin's counts, audited approval and withdrawal and a guild admin refused);
+`frontend/src/lib/avoidJunctions.test.ts` (the glyph's sha256 and contents, the marker and its
+size, the halo's contrast, the names, the plea against the API's, the offer, the chosen route's
+notice, the road panel's spot and warning); `frontend/src/licences/notices.test.mjs`; the a11y
+browser check's section 25 (the notice first and as an alert, the offer's name, the marker's
+button and computed name, the list row, the description, the way round by keyboard and back, the
+road panel's warning from a click on the marker, from Tab and Enter on it (the focus coming back)
+and from the I key on the junction, none away from it, and that the legend has no Avoid row).
+
+`scripts/a11y/check.mjs` reads the debugging port from `A11Y_CDP_PORT` (default 9222, as
+`run.sh` starts Chromium), so it can run beside another browser:
+`A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
 
 ## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
 

@@ -163,6 +163,8 @@ export const STARTS: Record<PresetId, Start> = {
   ebike: { stress: 70, hills: -50, seek: true },
   // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
+  // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
+  kids: { stress: 100, hills: -80, seek: true },
 };
 
 export const WHENS: readonly { id: When; label: string }[] = [

@@ -46,6 +46,7 @@ same words.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -678,11 +679,9 @@ def plan(
 
     # Is the whole walk about as quick? One more pedestrian route says so.
     direct = services.walk(origin, dest)
-    if direct is not None and direct.duration_s <= walk_s + ride_s:
-        notes.append(
-            f"Walking the whole way, {miles(direct.distance_m)} in about "
-            f"{minutes(direct.duration_s)}, is as quick as this plan."
-        )
+    walk_note = _walk_note(direct, walk_s + ride_s)
+    if walk_note:
+        notes.append(walk_note)
 
     steps = [{"kind": "walk", "text": _start_step(start, bike, walk_start, snapshot)}]
     steps.append({"kind": "ride", "text": _end_step(end, ride_m, bike)})
@@ -772,7 +771,59 @@ def plan(
         "credit": gbfs.CREDIT,
     }
     body["attribution"] = [*ride.get("attribution", []), gbfs.CREDIT]
+    if body.get("avoid_alternate"):
+        # The way round an Avoid-rated junction (335) is shown in place of the ride
+        # leg, so it carries the same walks and docks (its ride and totals its own)
+        # and the operator's credit (the review of 351e65b).
+        around = dict(body["avoid_alternate"])
+        around["bikeshare"] = alternate_block(body["bikeshare"], around, direct)
+        around["attribution"] = [*around.get("attribution", []), gbfs.CREDIT]
+        body["avoid_alternate"] = around
     return body
+
+
+def _walk_note(direct: WalkLeg | None, total_s: float) -> str | None:
+    """The note that walking the whole way is as quick, where it is (`direct`, the
+    pedestrian route from the start to the destination, against the plan's `total_s`)."""
+    if direct is None or direct.duration_s > total_s:
+        return None
+    return (
+        f"Walking the whole way, {miles(direct.distance_m)} in about "
+        f"{minutes(direct.duration_s)}, is as quick as this plan."
+    )
+
+
+def alternate_block(block: dict, around: dict, direct: WalkLeg | None = None) -> dict:
+    """A bikeshare plan's `bikeshare` for its way round an Avoid-rated junction: the
+    same walks, docks, availability, endings and notes, with the ride's length and time,
+    the total, the ride step and the summary for the way round. Whether walking the whole
+    way (`direct`) is as quick is asked again against the way round's own total."""
+    out = copy.deepcopy(block)
+    old_ride_m = float(block.get("ride_m") or 0.0)
+    old_total_s = float(block.get("total_s") or 0.0)
+    ride_m = float(around.get("distance_m") or 0.0)
+    ride_s = float(around.get("duration_s") or 0.0)
+    total_s = float(block.get("walk_s") or 0.0) + ride_s
+    out["ride_m"] = round(ride_m, 1)
+    out["ride_s"] = round(ride_s, 1)
+    out["total_s"] = round(total_s, 1)
+    notes = [n for n in out.get("notes") or [] if n != _walk_note(direct, old_total_s)]
+    walk_note = _walk_note(direct, total_s)
+    if walk_note:
+        notes.append(walk_note)
+    out["notes"] = notes
+    summary = str(out.get("summary") or "")
+    summary = summary.replace(
+        f"about {minutes(old_total_s)} in all", f"about {minutes(total_s)} in all", 1
+    )
+    for step in out.get("steps") or []:
+        if step.get("kind") != "ride":
+            continue
+        before = step["text"]
+        step["text"] = before.replace(f"Ride {miles(old_ride_m)}", f"Ride {miles(ride_m)}", 1)
+        summary = summary.replace(before, step["text"], 1)
+    out["summary"] = summary
+    return out
 
 
 class RoutingServices:

@@ -183,6 +183,29 @@ class TestTheRankingsFigures:
         assert totals["lts3_m"] == 100.0 + 0.5 * 40.0 - 0.5 * 60.0
         assert totals["avoid_m"] == 50.0 and totals["lts45_m"] == 30.0
 
+    def test_lts2_counts_one_and_a_half_and_two_and_a_half_at_their_midpoints(self) -> None:
+        # 1.5 is half LTS 2; 2.5 half LTS 2 and half LTS 3 (the kids' LTS 2 weight reads it).
+        stress = {"1": 80.0, "2": 120.0, "3": 0.0, "4": 0.0, "5": 0.0, "unknown": 0.0}
+        halves = {"1": 20.0, "2": 40.0, "3": 0.0, "4": 0.0}
+        totals = refine.stress_totals(stress, halves)
+        assert totals["lts2_m"] == 120.0 + 0.5 * 20.0 - 0.5 * 40.0
+        assert totals["lts3_m"] == 0.5 * 40.0
+        # Each metre of 2.5 is counted once in all: half as LTS 2, half as LTS 3.
+        whole = refine.stress_totals(stress, dict.fromkeys(halves, 0.0))
+        assert totals["lts2_m"] + totals["lts3_m"] == whole["lts2_m"] + 0.5 * 20.0
+
+    def test_the_worth_figure_weighs_lts2_with_its_half_steps(self) -> None:
+        pieces = [piece(), piece(), piece()]
+        classes = [cls("1", True), cls("2"), cls("2", True)]
+        read = analysis(pieces, classes, lts2_weight=0.5)
+        w = refine.WORTH_WEIGHTS
+        lts2 = 50.0 + 100.0 + 50.0  # 1.5's half, LTS 2, 2.5's half
+        expected = w.lts3 * 50.0 + w.lts3 * 0.5 * lts2  # 2.5's other half is LTS 3
+        assert read.lts2_m == lts2
+        assert refine.stress_weight_m(
+            read, refine.Context.__new__(refine.Context)
+        ) == pytest.approx(expected)
+
     def test_the_worth_figure_counts_four_and_a_half_at_the_midpoint_of_lts4_and_avoid(
         self,
     ) -> None:

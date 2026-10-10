@@ -19,6 +19,12 @@
  * empty until the answer comes, as the weight dialog's total is), so a rider who stays on
  * the heading hears it come in: the page's own region is outside the modal, which makes it
  * inert and drops it from the accessibility tree (the a11y review's S1).
+ *
+ * On an Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID; the owner, 2026-10-10
+ * 15:08 UTC: "Yes, also when clicking on the intersection. ... Basically something to say: this
+ * is a really bad idea, please reconsider.") the panel leads with a warning, above its heading,
+ * and it opens the dialog's description (`aria-describedby`), so it is said as the panel opens.
+ * Not also an alert: the two together were said twice (the review of 351e65b).
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -33,6 +39,7 @@ import {
   streetViewPoint,
   infoHeading,
   infoSaid,
+  refreshedSaid,
   osmEditUrl,
   shownSections,
   shownSummary,
@@ -53,6 +60,8 @@ import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts"
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
 import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
+import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -61,6 +70,13 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
+  avoid?: AvoidItem | null;
+  /**
+   * On a Mass Ride, the federal area the spot is in (lib/federalStops.ts federalAreaAt; item 239), or
+   * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
+   */
+  federal?: FederalArea | null;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -92,7 +108,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, massRide, station, avoid = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -107,6 +123,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const [said, setSaid] = useState("");
   // Who is asking (three yes/no flags, once per page) and whether the stress editor is open.
   const [me, setMe] = useState<Me>(NO_ME);
+  // The federal area's sentence, read when the answer comes (the prop is the spot's, set with the request).
+  const federalSaid = federal ? stopWarningShort(federal) : "";
+  const federalSaidRef = useRef(federalSaid);
+  federalSaidRef.current = federalSaid;
+  // The request `state` holds the answer for: null while it is loading, so a late area is never
+  // said with the previous spot's road.
+  const stateFor = useRef<InfoRequest | null>(null);
   const [editing, setEditing] = useState(false);
   // A rider's "Suggest a change" form (OWNER-DECISIONS 441h; SuggestChange.tsx), open in place of the row.
   const [suggesting, setSuggesting] = useState(false);
@@ -134,6 +157,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     }
     shown.current = request;
     headingRef.current?.focus();
+    stateFor.current = null;
     setState({ kind: "loading" });
     setSaid("");
     setEditing(false);
@@ -143,8 +167,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     const controller = new AbortController();
     fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
       (next) => {
+        stateFor.current = request;
         setState(next);
-        setSaid(infoSaid(next));
+        // The spot's federal area, after the road, in the same status sentence (item 239).
+        setSaid([infoSaid(next), federalSaidRef.current].filter(Boolean).join(" "));
       },
       () => undefined,
     );
@@ -182,6 +208,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       suggestButton.current?.focus();
     }
   }, [suggesting]);
+  // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
+  // is said again with the area, so a screen reader hears it without reading on.
+  useEffect(() => {
+    const again = refreshedSaid(request, stateFor.current, state, federalSaid);
+    if (again !== null) setSaid(again);
+    // Only a change of the area's words: the answer's own arrival sets `said` above.
+  }, [federalSaid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
@@ -263,7 +296,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       ref={dialogRef}
       className="road-info"
       aria-labelledby={id("title")}
-      aria-describedby={id("where")}
+      aria-describedby={avoid ? `${id("avoid")} ${id("where")}` : id("where")}
       aria-busy={state.kind === "loading" ? true : undefined}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => {
@@ -277,6 +310,17 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
       }}
     >
       <div className="road-info-body">
+        {request && avoid && (
+          <div className="road-info-avoid" id={id("avoid")}>
+            <p className="road-info-avoid-heading">
+              <span className="avoid-symbol" aria-hidden="true">
+                {AVOID_SYMBOL}
+              </span>{" "}
+              <strong>{AVOID_CARD_HEADING}.</strong>
+            </p>
+            <p className="road-info-avoid-text">{avoidCardText(avoid)}</p>
+          </div>
+        )}
         <header>
           <h2 id={id("title")} ref={headingRef} tabIndex={-1}>
             {infoHeading(state)}
@@ -329,6 +373,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
         {state.kind === "loading" && <p className="road-info-status">Looking up this road…</p>}
         {state.kind === "error" && <p className="road-info-status">{state.message}</p>}
         {state.kind === "ready" && !state.info.found && <p className="road-info-status">{NO_ROAD_HINT}</p>}
+        {federal && (
+          // In view whatever the road answer is: a spot in a park may have no road within reach.
+          <p className="road-info-federal">
+            <span className="road-info-label">Federal land:</span> {federalSaid}{" "}
+            <span className="road-info-federal-note">{FEDERAL_ADVICE}</span>
+          </p>
+        )}
         {summary.length > 0 && (
           <ul className="road-info-summary" aria-label="Summary">
             {summary.map((row) => (
