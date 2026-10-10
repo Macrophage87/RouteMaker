@@ -164,10 +164,12 @@ Transportation Research Part F. A small study that measured riders' stress with 
 Stress at peak hours was reported at about 1.75 times off-peak, in a sample said to be
 five riders (we have not confirmed the sample size from the full text).
 - **Taken:** the direction of the **planned** time-of-day factor (decision 468a).
-- **Differs:** the size. **The x1.25 rush-hour and x0.85 off-hours factors are
-  proposed, not confirmed**: the owner is to confirm them with the route sample. They are
-  much milder than 1.75 because the sample is so small, and they would apply only to
-  junctions with a busy road.
+- **Differs:** the size. The owner set the bands (decisions 469c-469e, **planned**, not
+  built): x1.25 in the weekday rush windows (7-10 AM and 4-7 PM), x1.0 at other weekday
+  hours to about 9 PM, x0.85 in weekend daytime, and at night x0.5 in urban areas and
+  x0.85 outside them. The rush-hour factor is much milder than 1.75 because the sample is
+  so small, and the factors would apply only to junctions with a busy road. The night
+  bands are the owner's own judgment, not from this study.
 
 ## Other design guides and studies
 
@@ -211,7 +213,7 @@ five riders (we have not confirmed the sample size from the full text).
   (`tl_2024_us_uac20`; U.S. public domain; full record in
   [docs/SOURCES.md](../SOURCES.md)): which places are urban, for the default speed
   limits.
-- **Valhalla** 3.5.1 ([bicyclecost.cc](https://github.com/valhalla/valhalla/blob/master/src/sif/bicyclecost.cc)):
+- **Valhalla** 3.6.3 ([bicyclecost.cc](https://github.com/valhalla/valhalla/blob/master/src/sif/bicyclecost.cc)):
   the router. It cannot see which road is crossed at a junction, which is why the
   junction model works on the traced route ([intersections.md](intersections.md),
   section 1).

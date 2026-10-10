@@ -23,7 +23,7 @@ window of about a mile).
 | Status | built | planned | built | planned | built | planned | built | planned | built |
 
 Today the value is `segment.stress_tier` (1-5). A road closed to cars at the time of the
-ride counts as 1 (`src/core/routing.py:365`). A piece no segment rated is `unknown` and
+ride counts as 1 (`src/core/routing.py:382`). A piece no segment rated is `unknown` and
 has no number. Half steps arrive with the half-step editor (441i-441l; HALF-STEP-EDITOR-plan).
 They are stored as the lower tier plus a half flag, so every integer reader keeps
 working. The number is ordinal, as LTS is. Harvey, Fang & Rodriguez (MTI 19-20) warn
@@ -46,21 +46,21 @@ today's code, in three parts.
 - **Router.** `M = 1 + added(L) / 2.2`. `added(L)` is the graded cost per meter as a
   multiple of time ([routing-costs.md](routing-costs.md), section 1). 2.2 is
   `QUIET_COST_FACTOR`, the measured cost of a meter of quiet street as a multiple of its
-  time (`src/core/refine.py:136-139`), the same exchange rate RouteMaker's own score uses.
+  time (`src/core/refine.py:141-144`), the same exchange rate RouteMaker's own score uses.
   Valhalla's factor depends on the road's speed and lanes, so a range is given over the
   five modeled road types.
 - **Calm rate above 80.** Plus `rate x w(L)`, the exposure weight `w` at that position's
-  calm rate (`Analysis.score`, `refine.py:321-325`).
+  calm rate (`Analysis.score`, `refine.py:336-340`).
 - **Top of the slider (100).** There is no per-meter price. Ranking is in the strict
   order, and the worth rule sets the exchange: a meter of LTS 3-equivalent stress saved
   is worth 5 m of extra distance with no target, and 2.5 m past a target
-  (`refine.py:405-508`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
+  (`refine.py:420-543`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
   past a target. Up to a rider's target distance a meter of stress saved is worth 10 m
-  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py:441`; owner decision 435, "One
-  rule"), so the multiplier there is `1 + 10 x w_std(L)`. The rolling chart uses that
+  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py:441`; the owner's "One rule",
+  2026-10-10, filed under 435; not yet in OWNER-DECISIONS), so the multiplier there is `1 + 10 x w_std(L)`. The rolling chart uses that
   price wherever a target is set (section 4).
 
-Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py:161`). It is
+Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py:166`). It is
 shown as quiet-street distance at the preset's planning speed
 (`1800 / (2.2 x 3.6 / km/h)` meters).
 
@@ -86,22 +86,22 @@ Notes:
 
 - The stress-averse weights (1/8/16) count in the score only above 80. At 80 (Cargo with
   passengers) and at 100 (Trailmaxxing) they reach only the Traffic-wins guard,
-  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:419-425`).
+  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:442-448`).
 - The tier adds nothing at LTS 1 or LTS 2, in any layer: no rule separates them. The
   facility class still changes the cost. A traffic-free path costs `0.1 + 0.9u` of its
-  time with no roadway term (`lua/routemaker_remap.lua:1089-1094`), a factor of about
+  time with no roadway term (`lua/routemaker_remap.lua:1224-1229`), a factor of about
   1.19 at Default, against about 2.2 for a quiet street (`QUIET_COST_FACTOR`). So a path
   meter counts about 0.55 quiet meters, on every graph except no-trail (Mass Ride), which
   has no facility classes. A street with a protected lane is priced `(0.15 + 0.6u)` times
   its stress, about 1.25 at Default, so it counts for about 0.57, the same as a path
-  (`lua/routemaker_remap.lua:1086-1089`). The 1 in the table is a quiet street: a quiet
+  (`lua/routemaker_remap.lua:1221-1224`). The 1 in the table is a quiet street: a quiet
   street counts as 1, and paths and protected bike lanes count for less (except on Mass
   Ride). It is not every calm way.
 - The Fast and Group columns are interpolated between the modeled positions
   ([routing-costs.md](routing-costs.md), section 1).
 - Junction costs are separate. They are added at their point (section 4) and weighted by
   the intersection weight: 0.25 at 0, 0.357 at 10, 0.679 at 40, 1.0 from 70
-  (`refine.py:209-214`). Mass Ride's routing charges none (the calm search does not run
+  (`refine.py:214-219`). Mass Ride's routing charges none (the calm search does not run
   on it).
 
 ## 3. Half steps: midpoints (461a) **planned**
@@ -147,7 +147,7 @@ use the midpoints exactly (phase 2).
 | Exposure weight, standard (0 / 1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
 | Exposure weight, stress-averse (0 / 1 / 8 / 16) | 0 | 0.5 | 4.5 | 12 |
 | Worth rule weight (1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
-| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:818`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
+| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:957`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
 | Strict order: top / second figure | - | 0 / 0.5 | 0.5 / 0.5 | 1 / 0 |
 | Junction, stopped side (0 / 1,200 / 3,000 ft, before factors) | 0 | 600 ft (orange) | 2,100 ft (red) | 3,000 ft |
 | Junction at a signal (0 / 150 / 300 ft) | 0 | 75 ft | 225 ft | 300 ft |
@@ -225,7 +225,7 @@ length `w` centered on the point at distance `x`:
     in a straight line between the modeled slider positions (`calm.py:109-117`). So
     Default (70) counts LTS 3 as 4.33 and LTS 4 as 14.34, and Group Ride (40) 2.39 and
     5.82. The calm-rate term `rate x w(L)` counts only above 80. Avoid counts as LTS 4
-    per meter. On the no-trail graph LTS 4 counts what LTS 3 does (no grading).
+    per meter, plus the calm-rate term at Avoid's own weight above 80. On the no-trail graph LTS 4 counts what LTS 3 does (no grading).
   - At the top of the slider (Trailmaxxing) the worth rule's exchange stands in:
     `1 + 5 x w_std(L)` with no target (LTS 3 6, LTS 4 11, Avoid 16), and
     `1 + 10 x w_std(L)` with a target set (11, 21 and 31), the price of the miles up to
@@ -244,7 +244,8 @@ length `w` centered on the point at distance `x`:
     facility and tier, with the costing in [routing-costs.md](routing-costs.md)
     section 1. It needs no router change, but it restates Valhalla's formula.
 
-  Until one is built, the per-tier figure above is a stress-to-score mapping, which
+  Until one is built, the per-tier figure above (the design's fallback) is a
+  stress-to-score mapping, which
   departs from 461c. The chart says it is an estimate. Whether to allow it is an
   **owner question** (asked 2026-10-10).
 - A junction's calm miles are what the ranking charges for it. Every junction the model
@@ -267,10 +268,12 @@ length `w` centered on the point at distance `x`:
 - **Intersection costs are being revised (planned).** Decision 468 (option C) adds a
   severe tier for unsignalised LTS 4 and Avoid junctions, with a cap of about 2 mi
   [3.2 km], prices a merge for the lane changes before a left turn, and shows costs in
-  calm miles; 468a adds a time-of-day factor, higher in weekday rush hours and a little
-  lower off hours and weekends (proposed x1.25 and x0.85; the owner is to confirm with
-  the sample). None of that is built. The chart reads the model's own `cost_ft`, so its
-  junction figures follow when the revision merges.
+  calm miles; 468a adds a time-of-day factor (469c-e: x1.25 at the existing weekday rush
+  windows, 7-10 AM and 4-7 PM; x1.0 at other weekday hours to about 9 PM; x0.85 weekend
+  daytime; at night, about 9 PM to 7 AM, x0.5 in urban areas and x0.85 outside them;
+  whether night applies every day of the week is still proposed). None of that is
+  built. The chart reads the model's own `cost_ft`, so its junction figures follow when
+  the revision merges.
 
 ### Words as a guide
 
@@ -300,23 +303,27 @@ marker, so averaging never hides a very high-stress crossing.
   (`usableCalm`, `profileChart.ts:1108-1113`; `ElevationChart.tsx:156`, `:364-370`). A
   failure costs only the score (`src/core/routing.py:1563-1592`). The route panel's
   stress bar is unchanged ([drawing.md](drawing.md)).
-- **Scale.** A log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest value
-  (`CALM_FLOOR`, `calmTop`, `calmScale`, `profileChart.ts:1089`, `:1128-1135`,
-  `:1153-1157`), so a mile at 1.4 and a spike at 14 both read. The side is labeled
-  "calm mi", with the figures 0.5, 1, 2, 5, 10 ... to the top, and a quiet line at 1.
+- **Scale.** A log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
+  value, the highest step and 1.15 times the upper guide, and at least 2 (`CALM_FLOOR`,
+  `calmTop`, `calmScale`, `profileChart.ts:1089`, `:1128-1135`, `:1153-1157`), so a mile
+  at 1.4 and a spike at 14 both read. The side is labeled "calm mi per mi"
+  (`ElevationChart.tsx:295-300`), with figures from 0.5, 1, 2, 5, 10 ... to the top (any
+  that would crowd are dropped, `calmTicks`, `profileChart.ts:1142-1150`), and a quiet
+  line at 1.
 - **The picture.** The area under the line is filled in the map's LTS 2, 3 and 4 colors
   with the stress bar's patterns, cut where the line crosses a guide. Dotted guides at
   the band edges are labeled, for Default, "LTS 3 from 2.7" and "LTS 4 from 9.3" beside a
   swatch of the band (`ElevationChart.tsx:338-357`). A dashed step line shows each
   section's own figure, so a short busy stretch is still seen at its true level. Avoid
-  stretches are the magenta "A" blocks. The flagged junctions are marked above the
+  stretches are the magenta blocks marked "AVOID" ("A" where narrow; `avoidLabel`,
+  `profileChart.ts:137-139`). The flagged junctions are marked above the
   track: a triangle for higher stress (orange) and a diamond for very high stress (red)
   (`ElevationChart.tsx:358-360`). Unflagged junctions count in the line but have no
   marker (`calm.py:365-371`).
 - **The key** says the line is calm miles per mile (calm km per km) over the mile around
   each point, on a log scale, that 1 is all quiet streets, and that it is an estimate
-  (`ElevationChart.tsx:488-543`). The source line under the chart says the same
-  (`calmSource`, `profileChart.ts:1297-1301`).
+  (`ElevationChart.tsx:488-543`). The source line under the chart also says it is an
+  estimate (`calmSource`, `profileChart.ts:1297-1301`).
 - **Units.** Calm miles per mile, which is also calm km per km. The route total is
   given as calm miles with calm km after it, for example "7.4 calm mi (11.9 calm km)"
   (`calmDistance`, `profileChart.ts:1304-1308`); the app's text puts the metric in
@@ -329,9 +336,10 @@ marker, so averaging never hides a very high-stress crossing.
   in calm miles over the rated distance, the average, the most stressful mile with the
   flagged junctions and Avoid in it, and, where they could not be read, that junctions
   are not counted (`calmSentences`, `profileChart.ts:1272-1294`). "Climbs and rolling
-  stress as tables" adds a table with the value at the start, every half mile up to
-  10 mi, every mile up to 40 mi, every 2 mi up to 80 mi and every 5 mi past that, and at
-  the end: what it reads as, and the flagged junctions since the row before
+  stress as tables" adds a table with the value at the start, at a fixed interval set
+  by the route's length (every half mile [0.8 km] on a route up to 10 mi [16 km], every
+  mile up to 40 mi [64 km], every 2 mi [3.2 km] up to 80 mi [129 km], and every 5 mi
+  [8 km] beyond), and at the end: what it reads as, and the flagged junctions since the row before
   (`calmRowStep`, `calmRows`, `profileChart.ts:1319-1345`; `ElevationChart.tsx:187`,
   `:731-755`).
 - **Long routes.** Where a long route's profile is thinned, the sample at the highest
@@ -350,7 +358,7 @@ built.
 
 An LTS 2 quiet street (M = 1) for the whole route, with one crossing at 1.0 mi:
 straight across an LTS 4 road from a stop, 35 mph (x1.0), 2 lanes each way (x1.1), no
-count, 3,000 x 1.1 = 3,300 ft, about 0.625 calm mi [1.0 km] at weight 1.0 (today's
+count, 3,000 x 1.1 = 3,300 ft, about 0.625 calm mi [1.0 calm km] at weight 1.0 (today's
 figures). Window 1 mi [1.6 km]. The built score gives these figures.
 
 | Window centered at | Window | R |
@@ -362,11 +370,11 @@ figures). Window 1 mi [1.6 km]. The built score gives these figures.
 The route total is 2 + 0.625 = **2.625 calm mi** [4.2 calm km] over 2 mi. With the
 junction counted once in every window around it, the crossing raises the line over the
 whole mile rather than spiking. The step line stays at 1, and the crossing has its red
-diamond at 1.0 mi (3,300 ft is over the 2,000 ft red threshold).
+diamond at 1.0 mi (3,300 ft is over the 2,000 ft [610 m] red threshold).
 
 ### Where the built chart differs from the design
 
-The design here recommended one 1 mi window, each segment's own cost, the junction
+The design here recommended one 1 mi [1.6 km] window, each segment's own cost, the junction
 markers and a faint step line. The window, the markers and the step line are built.
 The differences:
 
@@ -376,13 +384,16 @@ The differences:
   owner was asked on 2026-10-10 whether to allow it.
 - **Only flagged junctions have a marker.** Every junction counts in the line and the
   total, but only the orange and red ones are marked and listed (461b asked for each
-  junction to be "shown as a spike at its location").
+  junction to be "shown as a spike at its location"). This has not been put to the
+  owner yet (an open point).
 - **With a target at the top of the slider**, the worth rule's figure is 10, the price
-  up to the target, not 2.5, the price past it.
+  up to the target, not 2.5, the price past it. This has not been put to the owner yet
+  (an open point).
 - **The words** are "LTS 1 to 2 level", "LTS 3 level" and "LTS 4 level", not the road
-  panel's words, and Avoid is ", Avoid nearby" rather than a band of its own.
+  panel's words, and Avoid is ", Avoid nearby" rather than a band of its own. This has
+  not been put to the owner yet (an open point).
 - **Mass Ride** has no chart, and **half steps** are not read (both above).
 
 Still **planned**: each stretch's own cost, half steps (section 3), a Mass Ride chart,
-the junction revision (467, 468, 468a, with the rush-hour factor only proposed), and
+the junction revision (467, 468, 468a with 469c-e's time bands; none of it is built), and
 4.5's entry charge (section 3, an owner question).

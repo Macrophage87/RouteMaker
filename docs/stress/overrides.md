@@ -9,7 +9,7 @@ the model.
 ## Three kinds, three places
 
 `HANDLED_KINDS` (`overrides.py:99`). An approved row of any other kind refuses the
-rebuild (`src/pipeline/run.py:1985-2003`).
+rebuild (`src/pipeline/run.py:1986-2004`).
 
 | Kind | What it changes | When | Lines |
 |---|---|---|---|
@@ -48,17 +48,17 @@ shown to riders (`overrides.py:447-452`).
 ## Order of precedence for a way's tier
 
 1. The classifier (`stress.classify`).
-2. The curated bike lane's owner tier, then named corridors (`run.py:1785-1825`).
+2. The curated bike lane's owner tier, then named corridors (`run.py:1786-1826`).
 3. Approved stress rows: a row that sets the tier wins; a floor only raises
-   (`run.py:2025`).
+   (`run.py:2026`).
 4. Car-free for good becomes LTS 1, except where a curated stress row set the tier
-   (`run.py:1382-`).
+   (`run.py:1383-`).
 
 An agency **block correction** (`agency_blocks` in a file) is not a row. It withholds
 one fact of a DC Roadway Block record (only the posted speed), so OSM's value stands
 and the classifier rates the way from it (`fixtures/overrides/README.md`, "Block
 corrections"; `src/routemaker/agency_roads.py`, `withheld_blocks`, `resolve_withheld`;
-`run.py:1597-1610`).
+`run.py:1598-1611`).
 
 ## Files, the loader and retire lists
 
@@ -110,7 +110,7 @@ a `fingerprint` of its way: `name`, `highway`, `length_m` and a simplified `line
 (`src/pipeline/rematch.py`, `fingerprint_of`). The database row has none, so the
 rebuild reads it from the image's copy of the files (`rematch.load_fingerprints`).
 When an approved row's way is missing, `rematch.resolve` (`rematch.py:534-`, called at
-`run.py:2009`) looks for ways of the same name and class along the stored line. Its
+`run.py:2010`) looks for ways of the same name and class along the stored line. Its
 constants are at `rematch.py:63-95`:
 
 - within 20 ft [6 m] of the line (`TOLERANCE_M`);

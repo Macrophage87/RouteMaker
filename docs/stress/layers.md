@@ -67,7 +67,7 @@ How stress meets it:
 | Where | What |
 |---|---|
 | Mass Ride tiles (`src/core/mass_tiles.py:13-14`, `:37`) | Carry each segment's `rpm` and `tier`. An Avoid stretch (tier 5) is drawn "AVOID" at every zoom, whatever its capacity |
-| Road panel, Mass Ride capacity (`src/core/segment_info.py:657-679`) | Usable width and riders a minute. "Not used by a mass ride" where no width is known and the tier is 5 |
+| Road panel, Mass Ride capacity (`src/core/segment_info.py:660-682`) | Usable width and riders a minute. "Not used by a mass ride" where no width is known and the tier is 5 |
 | Routing | Mass Ride's own costs: slider locked at 0 on the no-trail graph, so LTS 3 and 4 cost nothing extra, and Avoid pays the 1,800 s entry charge ([routing-costs.md](routing-costs.md)) |
 | Junctions | Orange at a crossing of LTS 3, red at LTS 4 or Avoid, signalized crossings grouped (`intersections.py:548-584`, `:785-`). The calm search does not run, so junctions are reported, not used to choose the route |
 | Major junctions on the route chart | A crossed or joined road at LTS 3 or above (`CORKER_TIER = BUSY_TIER`, `intersections.py:922-934`): where corkers are needed |

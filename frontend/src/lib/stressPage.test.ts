@@ -103,7 +103,7 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   assert.deepEqual(regions, ['<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">']);
   assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
   assert.match(text, /Their level adds nothing at LTS 1 or 2\. A quiet street counts as 1\./);
-  assert.match(text, /Traffic-free paths and protected bike lanes count for less \(except on Mass Ride\)/);
+  assert.match(text, /Traffic-free paths and protected bike lanes count for less, and painted bike lanes a little less \(except on Mass Ride\)/);
   assert.doesNotMatch(text, /always count as about 1/);
   // The LTS 4 hold is one combined figure against the router's first route (the spec re-check's R2).
   assert.match(text, /more LTS 4, Avoid and very high stress crossings, counted together, than the router's own first route/);
@@ -118,7 +118,7 @@ test("it says where it differs from the literature, and links the full list", ()
   assert.equal(h2s.filter((h) => /^Sources/.test(h)).length, 1, h2s.join(" | "));
   assert.doesNotMatch(page, /<code>docs\/stress\/literature\.md<\/code>/);
   assert.match(text, /We add an Avoid level/);
-  assert.match(text, /the proposed rush-hour change/);
+  assert.match(text, /the planned rush-hour change/);
 });
 
 test("the sources list: one list under Sources, one item for each source, plain text titles", () => {
@@ -177,12 +177,15 @@ test("the sources are credited in text", () => {
   }
 });
 
-test("what is not built is marked planned, and what is only proposed says so", () => {
+// The crossing-cost time bands were decided (OWNER-DECISIONS 469c-469e) but are not built, so the page
+// gives them as planned, not as an unconfirmed idea.
+test("what is not built is marked planned", () => {
   assert.match(page, /<h2 id="planned">Half steps and crossing costs \(planned\)<\/h2>/);
   assert.match(text, /Planned, not built yet\./);
   assert.match(page, /<h3>Half steps<\/h3>/);
   assert.match(page, /<h3>Crossing costs<\/h3>/);
-  assert.match(text, /A further idea is proposed but not yet confirmed: crossings would cost a little more at rush hour/);
+  assert.match(text, /Crossings will also cost a little more at weekday rush hours, and less at night and on weekend days\. These are planned, and the numbers are not final\./);
+  assert.doesNotMatch(text, /proposed but not yet confirmed|proposed rush-hour/);
   assert.doesNotMatch(text, /Its details are still to be confirmed|single setting/);
 });
 
@@ -198,4 +201,20 @@ test("the stress chart is described as built, not planned", () => {
   assert.match(chart, /except Mass Ride/);
   assert.match(chart, /an estimate/);
   assert.doesNotMatch(text, /stress chart \(planned\)|A stress number and a rolling stress chart/);
+});
+
+// The page names the app's own controls (accessibility review r5, SF2): the chart's slider and the
+// tables' disclosure. Both names are read from the app's source too, so a rename there breaks this
+// test rather than leaving a blind rider looking for a control that is no longer called that.
+test("the stress chart's control names on the page are the app's own", () => {
+  const chart = (page.match(/<h2 id="stress-chart">[\s\S]*?<\/section>/)?.[0] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const app = readFileSync(new URL("../ElevationChart.tsx", import.meta.url), "utf8");
+  for (const name of ["Elevation and rolling stress along the route", "Climbs and rolling stress as tables"]) {
+    assert.ok(chart.includes(`"${name}"`), `the page quotes "${name}"`);
+    assert.ok(app.includes(`"${name}"`), `ElevationChart.tsx still uses "${name}"`);
+  }
+  assert.match(chart, /slider named "Elevation and rolling stress along the route"/);
+  assert.match(chart, /Tab to it and use the arrow keys/);
+  assert.match(chart, /every half mile \[0\.8 km\]/);
+  assert.doesNotMatch(chart, /the road,/, "the slider reads the stretch's stress, not a road name");
 });

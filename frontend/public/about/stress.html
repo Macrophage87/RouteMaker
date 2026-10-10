@@ -205,8 +205,8 @@
     yardstick is a quiet street: a mile of quiet street counts as 1 calm mile. A
     busier stretch costs more, as if it were longer.</p>
     <p>Their level adds nothing at LTS 1 or 2. A quiet street counts as 1.
-    Traffic-free paths and protected bike lanes count for less (except on Mass
-    Ride), so routes lean toward them.</p>
+    Traffic-free paths and protected bike lanes count for less, and painted bike
+    lanes a little less (except on Mass Ride), so routes lean toward them.</p>
     <p>The table shows how many calm miles one mile of each busier level counts as.
     Each figure is a range, because faster and wider roads of the same level cost
     more.</p>
@@ -274,31 +274,36 @@
     every ride type except Mass Ride.</p>
     <p>The chart shows calm miles per mile (a calm mile is explained under
     <a href="#routes">How ride types and the slider use the ratings</a>). 1 means all
-    quiet streets. Traffic-free paths and bike lanes on calm roads count for less,
-    and busier roads for more. Each point is worked out over the mile [1.6 km] around it, or less
-    near the start and end. Crossings count too: a crossing's cost is added to every
+    quiet streets. Traffic-free paths and protected bike lanes count for less,
+    painted bike lanes a little less, and busier roads for more. Each point is worked
+    out over the mile [1.6 km] around it, or less near the start and end. Crossings count too: a crossing's cost is added to every
     point within half a mile [0.8 km] of it. So a quiet street that crosses many busy
     roads can read higher than a straight, busier one.</p>
     <ul>
       <li>The scale is squeezed toward the top, so a stretch at 1.4 and a spike at 14
       both show. 1 to 2 takes as much height as 5 to 10.</li>
-      <li>The area under the line is colored like the map: low stress, LTS 3 level and
-      LTS 4 level, with the same patterns as the stress bar. Dotted lines mark where
-      the color changes, for example "LTS 3 from 2.7" and "LTS 4 from 9.3" on the
-      Default ride type. These change with the ride type and the slider.</li>
+      <li>The area under the line is colored like the map: low stress, LTS 3 level,
+      and LTS 4 level or higher, with the same patterns as the stress bar. Dotted
+      lines mark where the color changes, for example "LTS 3 from 2.7" and "LTS 4 from
+      9.3" on the Default ride type at its starting slider. These change with the ride
+      type and the slider.</li>
       <li>A dashed line shows each stretch's own figure, so a short busy stretch still
       shows at its true level.</li>
-      <li>Avoid stretches are magenta blocks marked "A". Above the chart, an orange
-      triangle marks a higher stress junction and a red diamond a very high stress
-      junction. Other crossings count in the line but have no marker.</li>
+      <li>Avoid stretches are magenta blocks marked "AVOID", or "A" where short. Just
+      above the stress chart, an orange triangle marks a higher stress junction and a
+      red diamond a very high stress junction. Other crossings count in the line but
+      have no marker.</li>
     </ul>
-    <p>Without the picture: the chart is one control you can move along with the
-    arrow keys. At each point it says the elevation, the road, and how the mile
-    around reads, for example "1.4 calm miles per mile, LTS 1 to 2 level", and the
-    next junction to watch. The summary above the chart gives the route's total in
-    calm miles (with calm kilometers), the average, and the most stressful mile and
-    what is in it. "Climbs and rolling stress as tables" lists the figure every half
-    mile on shorter routes, and less often on longer ones.</p>
+    <p>Without the picture: the chart is a slider named "Elevation and rolling stress
+    along the route". Tab to it and use the arrow keys to move along the route. Page Up
+    and Page Down move further, Home and End go to the ends, and C goes to the next
+    climb. At each point it says the mile, the elevation and grade, the stress of the
+    stretch you are on, and how the mile around reads, for example "1.4 calm miles per
+    mile, LTS 1 to 2 level". It then gives the next junction to watch. The summary above
+    the chart gives the route's total in calm miles (with calm kilometers), the average,
+    and the most stressful mile and what is in it. Under the chart, a section you can
+    open, "Climbs and rolling stress as tables", lists the figure every half mile
+    [0.8 km] on shorter routes, and less often on longer ones.</p>
     <p>For now the figure is an estimate: each stretch is priced by its stress level,
     not yet by its own speed and lanes. The chart's key says so.</p>
   </section>
@@ -328,10 +333,9 @@
     in the color of the level above.</p>
     <h3>Crossing costs</h3>
     <p>The costs of crossings will also be revised. The hardest crossings will cost
-    more, and changing lanes to turn left will have a cost of its own. A further idea
-    is proposed but not yet confirmed: crossings would cost a little more at rush hour,
-    and a little less at off hours and on weekends. These are planned, and the numbers
-    are not final.</p>
+    more, and changing lanes to turn left will have a cost of its own. Crossings will
+    also cost a little more at weekday rush hours, and less at night and on weekend
+    days. These are planned, and the numbers are not final.</p>
   </section>
 
   <section>
@@ -345,7 +349,7 @@
     streets more than the studies suggest. The planned crossing costs are our own
     choices, set at the top of the published ranges, and higher for the worst crossings
     at the owner's direction. We also chose the size of the
-    proposed rush-hour change ourselves, because the one study behind it is small. The
+    planned rush-hour change ourselves, because the one study behind it is small. The
     full list, with a link to each source and the reason for each
     difference, is on the page
     <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/stress/literature.md">Traffic

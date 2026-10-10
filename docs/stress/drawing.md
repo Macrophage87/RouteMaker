@@ -17,7 +17,7 @@ Color is never the only cue: every tier differs in width and dash too.
 | 4 | Heavy or fast traffic | [8, 1] | 5 |
 | 5 Avoid | Legal, but best avoided | [5, 1, 0.5, 1] (dash-dot, only Avoid) | 6.5 |
 
-Each line has a casing 1 px wider on each side (`CASING_EXTRA_PX`, `:1153-1158`). The
+Each line has a casing 1 px wider on each side (`CASING_EXTRA_PX`, `:1159-1164`). The
 accessibility switch (labeled High contrast) draws stronger: +0.5 px line, a casing 1.5 px a side, and the
 calm tiers' casings pushed to black or white (`STRONG_*`, `:202-203`; `tiersFor`,
 `:269-294`). The legend labels above are the legend's. The road panel's words are
@@ -38,7 +38,7 @@ who uses them (`:155-162`; OWNER-DECISIONS 321). The CVD palette keeps every adj
 pair CIEDE2000 20 or more apart under protanopia, deuteranopia and tritanopia (Machado
 2009), and its lightness falls tier by tier (`:105-118`; `stressContrast.test.ts`).
 Unpaved ways use a brown ramp per palette, darker for busier
-(`UNPAVED_PALETTES`, `:377-400`), with a dotted center mark (`UNPAVED_DASH`, `:1034`).
+(`UNPAVED_PALETTES`, `:377-400`), with a dotted center mark (`UNPAVED_DASH`, `:1040`).
 A trail with no surface mapped is dashed [2, 1.5] (`UNKNOWN_SURFACE_DASH`, `:425`).
 
 **There is no dark-mode map palette.** `prefers-color-scheme: dark` restyles the panels
@@ -58,13 +58,13 @@ The map asks for nothing past z14, and z15-16 draw from the z14 tile.
 Other rules:
 
 - **Painted lanes on LTS 4 and Avoid** are not drawn unless the rider turns them on
-  (`HIGH_STRESS_LANE_MIN_TIER = 4`, `:1208`; filter at `:956-960`; switch stored per
-  device, `:1211-1250`).
+  (`HIGH_STRESS_LANE_MIN_TIER = 4`, `:1214`; filter at `:962-966`; switch stored per
+  device, `:1217-1256`).
 - Facility rails: path (purple, solid), protected (magenta, dashed), painted lane (light
-  purple, dotted) (`FACILITIES`, `:1186-1197`). An unpaved trail and a trail with no
+  purple, dotted) (`FACILITIES`, `:1192-1203`). An unpaved trail and a trail with no
   surface get no path rail.
 - Mountain-bike trails draw in their own not-for-routes look from z14 (`MTB_TRAIL`,
-  `:879-901`; OWNER-DECISIONS 452a, 454).
+  `:880-905`; OWNER-DECISIONS 452a, 454).
 
 ## Half steps (441r-441v, 458-458b, 460.1) **planned**
 
@@ -115,7 +115,8 @@ with its percentage (`frontend/src/lib/stressBar.ts`). Avoid is the route's mage
 there (OWNER-DECISIONS 397). The bar is unchanged. Under the elevation in the route
 chart, the rolling stress chart (460.12, built in PR #34) replaces the stress strip on
 every ride type but Mass Ride. Its area takes the map's LTS 2, 3 and 4 colors and the
-stress bar's patterns, Avoid stretches are the magenta "A" blocks, and flagged
-junctions are an orange triangle or a red diamond (`frontend/src/ElevationChart.tsx:292-362`).
+stress bar's patterns, Avoid stretches are the magenta blocks marked "AVOID" ("A"
+where narrow), and flagged junctions are an orange triangle or a red diamond
+(`frontend/src/ElevationChart.tsx:292-362`).
 An answer with no score keeps the strip (`:364-370`). See
 [stress-number.md](stress-number.md), section 4.
