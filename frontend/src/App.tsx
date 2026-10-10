@@ -139,6 +139,9 @@ import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
+import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
+import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -243,6 +246,28 @@ export function App() {
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   const [federalData, setFederalData] = useState<FederalData | null>(null);
+  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type, its
+  // switches kept on this device; the data is fetched the first time it is shown.
+  const [waterPrefs, setWaterPrefsState] = useState<WaterPrefs>(() => readWaterPrefs());
+  const changeWaterPrefs = (next: WaterPrefs) => {
+    setWaterPrefsState(next);
+    saveWaterPrefs(next);
+  };
+  const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
+  const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
+  const waterRequested = useRef(false);
+  const waterOn = waterPrefs.on;
+  useEffect(() => {
+    if (!waterOn || waterRequested.current) return;
+    waterRequested.current = true;
+    setWaterStatus("loading");
+    void loadWaterRestrooms(waterRestroomsUrl).then((data) => {
+      // A failed load is tried again the next time the layer is switched on.
+      if (!data) waterRequested.current = false;
+      setWaterData(data);
+      setWaterStatus(data ? "ready" : "unavailable");
+    });
+  }, [waterOn]);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -1066,6 +1091,20 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // The layer in words: the points along the route shown, in riding order.
+  const waterAlong = useMemo(
+    () =>
+      waterOn && waterData && shown
+        ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
+        : null,
+    [waterOn, waterData, waterPrefs, shown],
+  );
+  // Named in the plan as the list says it, as a place picked from search is.
+  const addWaterStop = (item: WaterAlong) => {
+    const point: LonLat = [item.point.lon, item.point.lat];
+    namer.remember(point, waterTitle(item.point));
+    placeSpot("via", point);
+  };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
   const lineEdit = useMemo<LineEdit | null>(() => {
@@ -1380,6 +1419,9 @@ export function App() {
           ride={{ onStart: startRide, startRef: startRideRef }}
         />
       )}
+      {shown && waterOn && waterStatus === "ready" && (
+        <WaterAlongList items={waterAlong} onAddStop={addWaterStop} headingId="water-along-planner-heading" level="h3" />
+      )}
       {shown && rideAsk && (
         <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
           onKeyDown={(event) => {
@@ -1512,6 +1554,8 @@ export function App() {
         rail={rail}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
+        water={waterData}
+        waterPrefs={waterPrefs}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1643,7 +1687,7 @@ export function App() {
               headingRef={layersHeadingRef}
             >
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
-                  (Mass Ride's alone), rail stations; trails and terrain (454); then the full legend. */}
+                  (Mass Ride's alone), water and restrooms, rail stations; trails and terrain (454); then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
@@ -1683,6 +1727,14 @@ export function App() {
                 points={federalData ? federalPoints(points, federalData) : null}
                 pointCount={points.length}
                 nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
+              />
+
+              <WaterSection
+                prefs={waterPrefs}
+                onChange={changeWaterPrefs}
+                status={waterStatus}
+                items={waterAlong}
+                onAddStop={addWaterStop}
               />
 
               {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
