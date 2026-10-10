@@ -19,9 +19,10 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
-import { useHighStressLanes } from "./useStressStyle.ts";
+import { MtbTrailsSwitch } from "./lib/mtbTrailsSwitch.ts";
+import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
@@ -31,6 +32,14 @@ import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
+import {
+  BEST_ORDER_LABEL,
+  FINDING_ORDER_SAID,
+  STILL_FINDING_ORDER_SAID,
+  applyAnswer,
+  requestStopOrder,
+  stopsThatMove,
+} from "./lib/stopOrder.ts";
 import {
   addedSaid,
   editingTips,
@@ -67,7 +76,7 @@ import {
 } from "./lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
-import { StressLegend } from "./lib/stressLegend.ts";
+import { MtbTrailLegend, StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -220,6 +229,7 @@ export function App() {
   const [stressVisible, setStressVisible] = useState(true);
   useStressStyle();
   const showHighLanes = useHighStressLanes();
+  const showMtbTrails = useMtbTrails();
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -778,6 +788,70 @@ export function App() {
     commit(reversedPoints(current, loopVias));
     announce(reversedSaid(loopVias));
   };
+  // Best order (OWNER-DECISIONS 449): the stops in the order with the least riding time, as
+  // one edit Undo takes back. The answer is used only for the ride it was asked about
+  // (stopOrder.applyAnswer). What came of it is the Points notice, a status, so it is seen
+  // and said once; it is cleared once the points change again.
+  const [ordering, setOrdering] = useState(false);
+  const orderingRef = useRef(false);
+  const orderNoticeFor = useRef<readonly LonLat[] | null>(null);
+  // Shown only with two or more stops to order: on a ride of a start, an end and at
+  // most one stop it could change nothing, and a standing reason would crowd every
+  // short ride's tools (More tips says when it appears).
+  // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
+  const orderShown = !isMassRide(preset) && stopsThatMove(points, loopVias) >= 2;
+  const reverseButton = useRef<HTMLButtonElement>(null);
+  const orderFocused = useRef(false);
+  // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
+  // had the focus, the focus goes to Reverse beside it rather than to the page's top.
+  useLayoutEffect(() => {
+    if (orderShown || !orderFocused.current) return;
+    orderFocused.current = false;
+    if (document.activeElement === null || document.activeElement === document.body) reverseButton.current?.focus();
+  }, [orderShown]);
+  useEffect(() => {
+    if (orderNoticeFor.current !== null && orderNoticeFor.current !== points) {
+      orderNoticeFor.current = null;
+      setNotice(null);
+    }
+  }, [points]);
+  const orderNotice = (text: string, after: readonly LonLat[]) => {
+    // Cleared and set again a moment later, as the location's notice is, so the same
+    // answer twice is said twice.
+    // The location's timer, shared, so a later notice of either is not overwritten by the other's.
+    cancelLocateNotice();
+    setNotice(null);
+    locateNoticeTimer.current = window.setTimeout(() => {
+      if (pointsRef.current !== after) return;
+      orderNoticeFor.current = after;
+      setNotice(text);
+    }, 150);
+  };
+  const bestOrder = async () => {
+    if (orderingRef.current) {
+      announce(STILL_FINDING_ORDER_SAID);
+      return;
+    }
+    const current = pointsRef.current;
+    const ride = rideRef.current;
+    const loop = loopStops(ride.preset, ride.dials.loop);
+    if (isMassRide(ride.preset) || stopsThatMove(current, loop) < 2) return;
+    orderingRef.current = true;
+    setOrdering(true);
+    announce(FINDING_ORDER_SAID);
+    const result = await requestStopOrder(current, ride.preset, ride.dials);
+    orderingRef.current = false;
+    setOrdering(false);
+    const now = rideRef.current;
+    const applied = applyAnswer(
+      { points: current, preset: ride.preset, dials: ride.dials, loop },
+      { points: pointsRef.current, preset: now.preset, dials: now.dials },
+      result,
+      namer,
+    );
+    if (applied.commit) commit(applied.commit);
+    orderNotice(applied.say, pointsRef.current);
+  };
   const clearAll = () => {
     setConfirmedKm(null);
     setEditPoints(false);
@@ -1088,13 +1162,14 @@ export function App() {
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
           zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
-      {/* The compact row: Reverse, Undo, Redo and Clear. */}
+      {/* The compact row: Reverse, Best order, Undo, Redo and Clear. */}
       <div className="actions point-tools">
         {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
             the Tab order with its reason as its description, as the loop toggle does
             (DialsPanel), and a press says the reason. */}
         <button
           type="button"
+          ref={reverseButton}
           onClick={reverse}
           disabled={points.length < 2}
           aria-disabled={reverseHint ? true : undefined}
@@ -1102,6 +1177,24 @@ export function App() {
         >
           Reverse
         </button>
+        {/* Best order (OWNER-DECISIONS 449), with two or more stops to order; aria-disabled
+            while the order is found (the focus stays on it, a press says it is still working),
+            with the same label, so the row does not reflow under a finger. */}
+        {orderShown && (
+          <button
+            type="button"
+            onClick={() => void bestOrder()}
+            onFocus={() => (orderFocused.current = true)}
+            onBlur={(event) => {
+              // Only a move to another element clears the mark: a blur from the button's own removal
+              // has none, so the effect above moves the focus (and only if it is on nothing).
+              if (event.relatedTarget) orderFocused.current = false;
+            }}
+            aria-disabled={ordering ? true : undefined}
+          >
+            {BEST_ORDER_LABEL}
+          </button>
+        )}
         {!narrow && (
           <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
             Undo
@@ -1394,7 +1487,7 @@ export function App() {
               headingRef={layersHeadingRef}
             >
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
-                  (Mass Ride's alone), rail stations; then the full legend. */}
+                  (Mass Ride's alone), rail stations; trails and terrain (454); then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
@@ -1438,6 +1531,13 @@ export function App() {
 
               {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
+              {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. Topo lines
+                  and climbs join the mountain-bike trails here once the tiles carry them (docs/MTB-TOPO-PLAN.md). */}
+              <section aria-labelledby="terrain-heading">
+                <h3 id="terrain-heading">Trails and terrain</h3>
+                <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+              </section>
+
               {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
               {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
 
@@ -1450,6 +1550,8 @@ export function App() {
                     <>
                       <MassLegend />
                       <MassZoomNotes zoom={zoom} shown={stressVisible} />
+                      {/* 454: the mountain-bike trails' layer shows in Mass Ride too, so its row does. */}
+                      <MtbTrailLegend />
                     </>
                   ) : (
                     <>

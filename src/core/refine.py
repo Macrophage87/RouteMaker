@@ -16,7 +16,10 @@ not in the graph"). So the two things the owner asked for on 2026-10-01 -
   `exclude_locations`: the busy ways (or the approach to a bad crossing) of the
   best route so far are excluded, the router is asked again, and the new route
   is kept if it scores better. Exclusions accumulate, so each round can clear
-what the last one found. The score is the router's own cost for the route
+what the last one found. Before the rounds the router's own alternatives are
+read and ranked with its first route the same way (OWNER-DECISIONS 435,
+`_router_alternates`), and the rounds start from whichever ranks first.
+The score is the router's own cost for the route
 (its time with the stress, hill, turn and gate prices of the request) plus an
 extra price, in the router's cost seconds, for what the router cannot see:
 
@@ -282,6 +285,15 @@ class Context:
     loop_overlap: float | None = None
     # How many routes the rider is offered at most, this one included (0: one).
     alternates: int = 0
+    # Whether the search also asks the router for its own alternative routes and
+    # ranks them with the rest (OWNER-DECISIONS 435, `_router_alternates`): set by the
+    # plan wherever the calm search runs (above the old top of the slider).
+    rank_alternates: bool = False
+    # The router's routes for this very request where the plan already asked for its
+    # alternatives (the hills slider's avoid half), its first route first, which the
+    # search ranks instead of asking again; an empty list where that ask timed out (so
+    # none is asked again); None: none asked yet.
+    router_trips: list | None = None
     # Where the search keeps every candidate it read that the hold and the guards
     # allow, as (trip, reading), for a long plan to choose among across its legs
     # (`refine_long`); None: not kept.
@@ -713,7 +725,8 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
-    """The best of the original route and the routes found by excluding what is
+    """The best of the original route, the router's own alternatives (where
+    `Context.rank_alternates` asks for them) and the routes found by excluding what is
     worst about each in turn, and what the search did.
 
     The calm search goes down the tiers: the first round excludes the LTS 4 and
@@ -761,7 +774,8 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["top_m_before"] = round(best.top_m, 1)
     if ctx.exposure.hold_lts4:
         info["lts4_before_m"] = round(best.lts4_m, 1)
-    best, best_trip = _search(trip, best, first_exposure, stop_at, ctx, info)
+    best, best_trip = _router_alternates(trip, best, first_exposure, stop_at, ctx, info)
+    best, best_trip = _search(best_trip, best, first_exposure, stop_at, ctx, info)
     if ctx.wide:
         best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
     if ctx.seek:
@@ -780,6 +794,103 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
             pick_candidates(pool, ctx, ctx.first_lts4), ctx, ctx.first_lts4
         )
     return best_trip, info
+
+
+# The router's own alternative routes (OWNER-DECISIONS 435, "Yes, rank alternatives by
+# our own stress measures"): the calm search asks for them once, before its rounds,
+# and every one is read and ranked with the router's first route and the search's
+# detours by the same rule (`better`: the score below the top of the slider, the
+# stress order and the worth of the extra miles at it) and the same guards. The
+# rounds then start from whichever ranks first. Valhalla gives alternatives only
+# between two locations, and `max_alternates` is 3 (valhalla/valhalla-*.json).
+ROUTER_ALTERNATES = 3
+# The ask and its readings stop this long before the search's own end, so that at
+# least one exclusion round is always left the time to run (the rounds were the
+# whole calm search before 435): a round's least and a second over, so an ask that
+# times out at its own end still leaves one (re-check, correctness); and the ask is
+# not started with less than ALTERNATES_MIN_S left before that. Loops never ask:
+# their request has three locations or more.
+ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S + 1.0
+ALTERNATES_MIN_S = 1.0
+
+
+def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
+    """The best of the router's first route and its alternatives, read and ranked as
+    every other candidate (see ROUTER_ALTERNATES), and its trip. The plan's own
+    alternatives are used where it already asked for them with this request
+    (`Context.router_trips`), and none are asked for again where that ask timed out.
+    `info["alternates"]` says how many routes other than this one the router gave,
+    how many could be read and passed the guards, whether one was taken, and
+    `limited` (`time`: the ask or a reading ran out of its time; null otherwise); it
+    is absent where they were not asked for (`Context.rank_alternates` off, a plan
+    with stops or a loop, or no time for it)."""
+    locations = ctx.request.get("locations") or []
+    if not ctx.rank_alternates or len(locations) != 2:
+        return best, trip
+    alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
+    given = ctx.router_trips
+    if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
+        return best, trip
+    found = {"given": 0, "ranked": 0, "taken": False, "limited": None}
+    info["alternates"] = found
+    if given == []:
+        # The plan's own ask for them timed out (`routing._route`): not asked again.
+        found["limited"] = "time"
+    if given is None:
+        request = {k: v for k, v in ctx.request.items() if k != "exclude_locations"}
+        request["alternates"] = ROUTER_ALTERNATES
+        limit = min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        if ctx.variant in routing.TWIN_VARIANTS:
+            limit = min(limit, routing.WEEKEND_TIMEOUT_S)
+        started = routing.clock()
+        try:
+            answer = routing._call(ctx.variant, "route", request, routing.Deadline(alt_stop, limit))
+        except routing.RouterRefused:
+            return best, trip
+        except (routing.DeadlineExceeded, routing.RouterUnavailable) as error:
+            logger.warning(
+                "the %s router did not answer the calm search's ask for alternatives in"
+                " %.1f s (%s); searching without them",
+                ctx.variant,
+                routing.clock() - started,
+                type(error).__name__,
+            )
+            found["limited"] = "time"
+            return best, trip
+        given = [answer.get("trip") or {}] + [
+            (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
+        ]
+    own = tuple(leg.get("shape", "") for leg in trip.get("legs") or [])
+    best_trip = trip
+    for candidate in given:
+        legs = candidate.get("legs") or []
+        # The route the search starts from is not an alternative to itself.
+        if not legs or tuple(leg.get("shape", "") for leg in legs) == own:
+            continue
+        found["given"] += 1
+        if too_long(_trip_m(candidate), ctx):
+            continue
+        if alt_stop - routing.clock() <= 0:
+            found["limited"] = "time"
+            break
+        try:
+            read = analyse(candidate, ctx, routing.Deadline(alt_stop, ctx.deadline.per_call_s))
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            found["limited"] = "time"
+            break
+        # The guards every candidate meets: not busier than the router's first route
+        # (Traffic wins), the LTS 4 hold, and junctions that could be read.
+        if read is None or read.events is None:
+            continue
+        if read.exposure_m > _allowance(first_exposure) or more_lts4(read, ctx.first_lts4, ctx):
+            continue
+        found["ranked"] += 1
+        if ctx.options is not None:
+            ctx.options.append((candidate, read))
+        if better(read, best, ctx):
+            best, best_trip = read, candidate
+            found["taken"] = True
+    return best, best_trip
 
 
 def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
@@ -2134,6 +2245,10 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             worth_rule=False,
             options=[],
             alternates=0,
+            # Not on a long plan's legs: each has only its share of the time, and the
+            # router's alternatives roughly double a long leg's route
+            # (`routing.SEEK_MAX_SPAN_M`'s measurements).
+            rank_alternates=False,
             stop_at=now + share,
             search_budget_s=share * LONG_SEARCH_SHARE,
             seek_budget_s=share * (1 - LONG_SEARCH_SHARE),

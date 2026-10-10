@@ -1131,6 +1131,18 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
         return _call(variant, "route", plain, Deadline(deadline.at, limit)), True
 
 
+def plan_alternates(request: dict, trips: list, timed_out: bool, refitted: bool) -> list | None:
+    """The router's routes the calm search may rank as this request's alternatives
+    (OWNER-DECISIONS 435, `refine.Context.router_trips`): the plan's own where it asked
+    for them (the hills slider's avoid half) and the request was not asked again with
+    another costing since (`refitted`: the target fitting, `_fit_target` and
+    `_past_target`); an empty list where that ask timed out, so none is asked again;
+    None where the search must ask for itself."""
+    if "alternates" not in request or refitted:
+        return None
+    return [] if timed_out else trips
+
+
 def straight_span_m(points: list) -> float:
     """The sum of the straight-line distances between consecutive points."""
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
@@ -2201,6 +2213,11 @@ def plan(
         target_m=target_m,
         # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
         alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
+        # the plan's own, where it asked for them with the request the search starts
+        # from (none again where that ask timed out), else asked for by the search.
+        rank_alternates=presets.calm_rate_for(stress_dial) > 0,
+        router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
     )
     if past:

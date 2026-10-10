@@ -203,7 +203,7 @@ class TestNoRouteWithinTheTarget:
         fake = FakeRouter(
             {
                 "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
-                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 6,
                 "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
             }
         )
@@ -903,9 +903,14 @@ class TestSeekingHillsAtTheTop:
         assert body["hills_seek"]["chosen"] == 0
 
     def test_no_climb_search_among_alternatives_is_asked(self, client, segments, router) -> None:
+        """The router's first route is asked without alternatives: no climb search picks
+        among them. The calm search alone asks for them, after the route is read, to rank
+        them by stress (OWNER-DECISIONS 435)."""
         fake = router(standard_router())
         post(client, top_body(hills=50))
-        assert all("alternates" not in p for _u, p in fake.calls)
+        routes = [p for url, p in fake.calls if url.endswith("/route")]
+        assert "alternates" not in routes[0]
+        assert [("alternates" in p) for p in routes[1:]].count(True) == 1
 
     def test_below_the_top_it_is_the_climb_search_as_before(self, client, segments, router) -> None:
         router(standard_router())
@@ -989,7 +994,7 @@ class TestOverTheTargetByChoice:
         fake = FakeRouter(
             {
                 "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
-                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 6,
                 "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
             }
         )
