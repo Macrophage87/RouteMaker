@@ -3156,8 +3156,54 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
-.ride-mode-settings > summary {
+.ride-mode-settings > summary,
+.ride-report > summary {
   min-height: 44px;
+}
+
+/* Report to DC 311 (lib/report311.ts): the note field and the actions at 44px, the link drawn as a button. */
+.ride-report-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.ride-report-note input {
+  min-height: 44px;
+  font: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ride-report-text {
+  overflow-wrap: anywhere;
+}
+
+.ride-report-label {
+  font-weight: 700;
+}
+
+.ride-report-actions button,
+.ride-report-actions .action-link {
+  min-height: 44px;
+  padding: 8px 14px;
+  box-sizing: border-box;
+}
+
+.ride-report-actions .action-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  text-decoration: underline;
+}
+
+.ride-report-actions .action-link.secondary {
+  background: transparent;
+  color: var(--accent);
 }
 
 .ride-toggle {
