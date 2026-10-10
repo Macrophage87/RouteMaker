@@ -80,6 +80,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 
+from routemaker import avoid_junctions as avoid_model
 from routemaker import calm, effort, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
@@ -317,6 +318,13 @@ class Context:
     # Each leg's LTS 4 and Avoid metres on the router's first route (set by
     # `refine`), which no candidate may exceed where the exposure holds them.
     first_lts4: list = field(default_factory=list)
+    # The approved Avoid-rated junctions (`core.avoid_junctions.approved`, 307-310):
+    # each pass costs a candidate AVOID_JUNCTION_PENALTY_S (308), and the first rounds
+    # exclude them (`crossing_targets`).
+    avoid: tuple = ()
+    # The router's first route's `Analysis.avoid_junction_m` (set by `refine`), which the
+    # Traffic-wins guard counts with its exposure (`_busier`).
+    first_avoid_m: float = 0.0
 
 
 @dataclass
@@ -348,14 +356,20 @@ class Analysis:
     # OWNER-DECISIONS 262, 263): its length weighted by the grade it rides, which
     # the Hills slider blends with the actual distance.
     effort_m: float = 0.0
+    # Its passes through Avoid-rated junctions (`routemaker.avoid_junctions`, 307), and
+    # their penalty as metres of quiet riding at the ride's speed (308: 30 minutes each,
+    # as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry charge).
+    avoid_passages: list = field(default_factory=list)
+    avoid_junction_m: float = 0.0
 
     def score(self, ctx: Context) -> float:
-        """The router's cost plus the extra price (see the module docstring)."""
+        """The router's cost plus the extra price (see the module docstring), and 30
+        minutes for each pass through an Avoid-rated junction (308)."""
         penalty = model.penalty_m(self.events) if self.events else 0.0
         extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
         if ctx.rate == 0 and self.lts2_weight > 0:
             extra += self.lts2_weight * lts3_added_m(ctx) * self.lts2_m
-        return self.cost_s + ctx.quiet_cost * extra
+        return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
 
     @property
     def red_m(self) -> float:
@@ -372,8 +386,10 @@ class Analysis:
     def top_m(self) -> float:
         """The top figure of the ranking and of the LTS 4 hold: metres of LTS 4 and
         Avoid, plus the cost of the red junctions (OWNER-DECISIONS 259: "weight Very
-        Stressful and LTS4 equally", in the junction's own cost)."""
-        return self.lts4_m + self.red_m
+        Stressful and LTS4 equally", in the junction's own cost), and the penalty of each
+        Avoid-rated junction it passes (307: "kept in the stress order's top level ...
+        above red")."""
+        return self.lts4_m + self.red_m + self.avoid_junction_m
 
     @property
     def second_m(self) -> float:
@@ -485,9 +501,11 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     """A route's stress as one figure for the diminishing-returns rule (268), in
     metres of LTS 3: its LTS 3, LTS 4 and Avoid metres at WORTH_WEIGHTS, plus its red
     junctions' cost at the LTS 4 weight and its orange junctions' cost at the LTS 3
-    weight, and on a ride that weighs LTS 2 (FOLLOWUP-LTS2-WEIGHT) its LTS 2 metres at
+    weight, on a ride that weighs LTS 2 (FOLLOWUP-LTS2-WEIGHT) its LTS 2 metres at
     that share of the LTS 3 weight: a quarter (a half on Riding with kids), so a mile
-    of LTS 2 saved buys a quarter (a half) of what a mile of LTS 3 does."""
+    of LTS 2 saved buys a quarter (a half) of what a mile of LTS 3 does, and each
+    Avoid-rated junction's penalty in quiet metres, one for one (308: 30 minutes, as
+    it is in the score)."""
     w = WORTH_WEIGHTS
     lts4_only = read.lts4_m - read.avoid_m
     return (
@@ -496,14 +514,21 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
         + w.avoid * read.avoid_m
         + w.lts4 * read.red_m
         + w.lts3 * read.orange_m
+        + read.avoid_junction_m
         + w.lts3 * read.lts2_weight * read.lts2_m
     )
 
 
 def _top_weight_m(read: Analysis) -> float:
-    """The top figure's part of `stress_weight_m`: LTS 4, Avoid and red junctions."""
+    """The top figure's part of `stress_weight_m`: LTS 4, Avoid, red junctions and
+    Avoid-rated junctions."""
     w = WORTH_WEIGHTS
-    return w.lts4 * (read.lts4_m - read.avoid_m) + w.avoid * read.avoid_m + w.lts4 * read.red_m
+    return (
+        w.lts4 * (read.lts4_m - read.avoid_m)
+        + w.avoid * read.avoid_m
+        + w.lts4 * read.red_m
+        + read.avoid_junction_m
+    )
 
 
 def _second_weight_m(read: Analysis) -> float:
@@ -674,6 +699,7 @@ def analyse(
     marks: list = []
     offset = 0.0
     via_m: list[float] = []
+    line: list = []
     for number, leg in enumerate(legs):
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
@@ -683,10 +709,12 @@ def analyse(
         shape = routing.decode_polyline6(leg.get("shape", ""))
         raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
         marks.extend(trace_junctions.edge_midpoints(trace, shape, offset))
+        line.extend(shape[1:] if line else shape)
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
     classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
     weights = ctx.exposure.weights
     result = Analysis(
@@ -710,6 +738,10 @@ def analyse(
             ctx.mass_kg,
         )
         or float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
+        avoid_passages=avoid_passages,
+        avoid_junction_m=(
+            avoid_model.penalty_s(avoid_passages) / ctx.quiet_cost if ctx.quiet_cost > 0 else 0.0
+        ),
     )
     if with_events:
         ctx.analyses[key] = result
@@ -731,6 +763,10 @@ class Target:
 
     point: tuple[float, float]
     tier: int
+    # Metres round the point the router excludes every edge within (`exclude_locations`'
+    # `radius`); None for the router's default (the nearest edge). An Avoid-rated
+    # junction's is `MATCH_RADIUS_M`, as `core.avoid_junctions.exclusions` asks.
+    radius: int | None = None
 
 
 def _marks(analysis: Analysis) -> list:
@@ -773,19 +809,46 @@ def calm_targets(analysis: Analysis, ctx: Context, min_tier: int = 3) -> list[Ta
     return kept
 
 
+def avoid_targets(analysis: Analysis, ctx: Context) -> list[Target]:
+    """The Avoid-rated junctions the route passes (307), each its own point: an
+    exclusion on a junction's node takes out every edge there, which is the way
+    round. Not near the route's ends, where the router must leave and arrive."""
+    return [
+        Target((p.junction.lon, p.junction.lat), 5, int(avoid_model.MATCH_RADIUS_M))
+        for p in analysis.avoid_passages
+        if _clear_of_ends(p.m, analysis.length_m, analysis.via_m)
+    ]
+
+
+def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) -> dict:
+    """One `exclude_locations` entry: an Avoid-rated junction's point (from a Target or a
+    kept point) with `MATCH_RADIUS_M`, so every edge at it goes, else the point alone."""
+    if radius is None and any(j.lon == lon and j.lat == lat for j in ctx.avoid):
+        radius = int(avoid_model.MATCH_RADIUS_M)
+    out: dict = {"lon": lon, "lat": lat}
+    if radius:
+        out["radius"] = radius
+    return out
+
+
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The approaches to the worst junctions."""
+    """The Avoid-rated junctions the route passes, then the approaches to the worst
+    junctions."""
+    avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
-        return []
+        return avoid
     worst = sorted(
         (e for e in analysis.events if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT),
         key=lambda e: -e.cost_ft,
     )
-    return [
-        Target(e.approach, 4)
-        for e in worst
-        if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
-    ][:CROSSING_POINTS_PER_ROUND]
+    return (
+        avoid
+        + [
+            Target(e.approach, 4)
+            for e in worst
+            if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
+        ][:CROSSING_POINTS_PER_ROUND]
+    )
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
@@ -827,6 +890,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         hard_stop = min(hard_stop, ctx.stop_at)
     stop_at = min(routing.clock() + ctx.search_budget_s, hard_stop)
     first_exposure = best.exposure_m
+    ctx.first_avoid_m = best.avoid_junction_m
     original = best
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
@@ -946,7 +1010,7 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         # (Traffic wins), the LTS 4 hold, and junctions that could be read.
         if read is None or read.events is None:
             continue
-        if read.exposure_m > _allowance(first_exposure) or more_lts4(read, ctx.first_lts4, ctx):
+        if _busier(read, first_exposure, ctx) or more_lts4(read, ctx.first_lts4, ctx):
             continue
         found["ranked"] += 1
         if ctx.options is not None:
@@ -967,7 +1031,7 @@ def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
     locations = ctx.request.get("locations") or []
     request = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
     if excludes:
-        request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]
+        request["exclude_locations"] = [_exclusion(lon, lat, ctx) for lon, lat in excludes]
     request["locations"] = [
         locations[leg],
         *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
@@ -1493,6 +1557,17 @@ def _allowance(exposure_m: float) -> float:
     return exposure_m * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
 
 
+def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
+    """The Traffic-wins guard against the router's first route, with each pass through
+    an Avoid-rated junction counted as exposure at its penalty's quiet metres
+    (`Analysis.avoid_junction_m`), on both sides: a way round an Avoid junction is not
+    "busier" for the LTS 3 it takes on in place of it (308: the route uses one only
+    where there is no reasonable alternative). With no Avoid junction on either it is
+    the plain guard. The guard's tolerance (`_allowance`) is on the exposure alone: the
+    first route's Avoid junctions are added at their penalty, not scaled up with it."""
+    return read.exposure_m + read.avoid_junction_m > _allowance(first_exposure) + ctx.first_avoid_m
+
+
 # A seek candidate asked with the search's exclusions is asked again without
 # them when it is longer than the leg and the corridor's detour by more than
 # this share and this many metres (review r1: 145 to 150 exclusions sent the
@@ -1544,7 +1619,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             break
         if read is None or read.events is None:
             continue
-        busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        busier = _busier(read, first_exposure, ctx)
         busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)
         if better(read, best, ctx) and not busier:
             best, best_trip = read, candidate
@@ -1614,7 +1689,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                 sent.add(frozenset(t.point for t in asked))
                 request = {k: v for k, v in ctx.request.items() if k != "alternates"}
                 request["exclude_locations"] = [
-                    {"lon": t.point[0], "lat": t.point[1]} for t in asked
+                    _exclusion(t.point[0], t.point[1], ctx, t.radius) for t in asked
                 ]
                 try:
                     answer = routing._call(ctx.variant, "route", request, round_deadline)
@@ -1646,7 +1721,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             info["limited"] = "untraceable"
             break
         info["rounds"] += 1
-        busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        busier = _busier(current, first_exposure, ctx)
         # Never more LTS 4 than the router's first route on a stress-averse ride
         # (OWNER-DECISIONS 250), however much calmer the rest of it scores. A
         # round the hold refuses does not count against the search's patience
@@ -2072,6 +2147,30 @@ def more_routes(chosen: list, ctx: Context, reference: list[float]) -> list:
     return chosen
 
 
+def _joined_passages(reads: list[Analysis], starts: list[float]) -> list:
+    """The legs' Avoid-junction passes (307) as the whole route's, in metres along the
+    whole. A junction within `MATCH_RADIUS_M` of a joint (a via point, or where a long
+    plan cut its legs) is passed by the end of one leg and the start of the next; the
+    whole route's line passes it once (`avoid_model.passages`), so it counts once here:
+    the next leg's first pass is dropped where it is the same junction as the leg
+    before's last pass and both are within `LEAVE_RADIUS_M` of the joint."""
+    found: list = []
+    for read, start in zip(reads, starts, strict=True):
+        for p in read.avoid_passages:
+            at = p.m + start
+            last = found[-1] if found else None
+            if (
+                last is not None
+                and last.junction.id == p.junction.id
+                and last.m < start
+                and start - last.m <= avoid_model.LEAVE_RADIUS_M
+                and p.m <= avoid_model.LEAVE_RADIUS_M
+            ):
+                continue
+            found.append(avoid_model.Passage(p.junction, at))
+    return found
+
+
 def combine(reads: list[Analysis]) -> Analysis:
     """The readings of a route's legs as the reading of the whole: the figures added,
     the pieces and junctions in order (a leg read without its junctions has none)."""
@@ -2079,6 +2178,12 @@ def combine(reads: list[Analysis]) -> Analysis:
     for read in reads[:-1]:
         along += _road_m(read)
         via.append(along)
+    passages = _joined_passages(reads, [0.0, *via])
+    # Each pass costs the same quiet metres (`analyse`), so the whole's figure is the
+    # passes counted once each times one pass's.
+    unit_m = next(
+        (r.avoid_junction_m / len(r.avoid_passages) for r in reads if r.avoid_passages), 0.0
+    )
     return Analysis(
         length_m=sum(r.length_m for r in reads),
         cost_s=sum(r.cost_s for r in reads),
@@ -2094,6 +2199,8 @@ def combine(reads: list[Analysis]) -> Analysis:
         lts2_m=sum(r.lts2_m for r in reads),
         lts2_weight=max((r.lts2_weight for r in reads), default=0.0),
         effort_m=sum(r.effort_m for r in reads),
+        avoid_passages=passages,
+        avoid_junction_m=unit_m * len(passages),
     )
 
 
@@ -2291,10 +2398,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     slack = 0.0
     if ctx.ceiling_m is not None:
         slack = max(ctx.ceiling_m - sum(_trip_m(t) for t in firsts), 0.0)
-    weights = [LONG_LTS4_PRIORITY * r.lts4_m + r.lts3_m for r in reads]
+    # A leg's Avoid-rated junctions (307) count with its LTS 4, at their penalty's quiet
+    # metres (`Analysis.avoid_junction_m`): a leg through one is searched, and first.
+    weights = [LONG_LTS4_PRIORITY * (r.lts4_m + r.avoid_junction_m) + r.lts3_m for r in reads]
     order = sorted(
         (j for j in range(len(legs)) if weights[j] > 0),
-        key=lambda j: (-reads[j].lts4_m, -reads[j].lts3_m, j),
+        key=lambda j: (-(reads[j].lts4_m + reads[j].avoid_junction_m), -reads[j].lts3_m, j),
     )
     limited: str | None = None
     for turn, j in enumerate(order):
@@ -2379,8 +2488,14 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # OWNER-DECISIONS 259) is not counted against the whole.
     traded = sum(max(0.0, f.lts4_m - r.lts4_m) for f, r in zip(finals, reads, strict=True))
     lts4 -= traded
-    worse = lts4 > whole.lts4_m + MAXCALM_STEPS[0] or (
-        lts4 > whole.lts4_m - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
+    # The Avoid-rated junctions (307) count with the LTS 4, as they do in each leg's
+    # weight: a leg that goes round one, on LTS 3, is not "worse" for it.
+    # The legs' passes are counted as the whole route's (`combine`): a junction at a
+    # joint, which both legs beside it pass, counts once, as it does in `whole`.
+    top = lts4 + combine(finals).avoid_junction_m
+    whole_top = whole.lts4_m + whole.avoid_junction_m
+    worse = top > whole_top + MAXCALM_STEPS[0] or (
+        top > whole_top - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
     )
     lts4 += traded
     if not changed or worse or too_long(length, ctx):

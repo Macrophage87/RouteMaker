@@ -105,7 +105,7 @@ export interface Cue {
   movement: "left" | "right" | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
-  severity: "orange" | "red" | null;
+  severity: "orange" | "red" | "avoid" | null;
   /** The stretch's tier after the cue, 1-5, or null. */
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
@@ -186,6 +186,8 @@ export function measureMap(route: Pick<RouteResponse, "distance_m" | "leg_ends" 
 function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null): CueKind | null {
   if (entry.kind === "via") return "stop";
   if (entry.kind === "walk") return "walk";
+  // An Avoid-rated junction ahead (OWNER-DECISIONS 307): a hazard, said at every level but Quiet.
+  if (entry.kind === "avoid") return "hazard";
   if (entry.kind === "junction") return entry.severity || entry.group ? "hazard" : null;
   const movement = entry.turn?.movement ?? null;
   if (movement === "left" || movement === "right") return "turn";
@@ -244,7 +246,7 @@ export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severit
   if (level === "full") return true;
   // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches.
   if (cue.kind === "turn" || cue.kind === "walk") return true;
-  if (cue.kind === "hazard") return cue.severity === "orange" || cue.severity === "red";
+  if (cue.kind === "hazard") return cue.severity === "orange" || cue.severity === "red" || cue.severity === "avoid";
   if (cue.kind === "busy") return (cue.tier ?? 0) >= 4;
   return false;
 }

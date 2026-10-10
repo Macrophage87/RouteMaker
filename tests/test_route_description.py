@@ -290,7 +290,9 @@ class TestSchema:
             "text",
             "text_lanes_hidden",
         }
-        assert entry["properties"]["kind"]["enum"] == ["stretch", "junction", "via", "walk"]
+        # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
+        kinds = ["stretch", "junction", "via", "walk", "avoid"]
+        assert entry["properties"]["kind"]["enum"] == kinds
         for field in (
             "kind",
             "from_m",

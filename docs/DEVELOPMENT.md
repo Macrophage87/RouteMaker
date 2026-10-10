@@ -6301,6 +6301,176 @@ programme; nothing is ranked beyond distance, and the rider chooses.
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
 
+## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
+
+An "Avoid" rating above red for a junction, given only by a person (the owner, an instance
+admin, or a reviewed community suggestion), never by the junction model. It ships with an empty
+list. How an admin adds one: docs/OPERATIONS.md, "Avoid-rated junctions: adding one".
+
+### Storage
+
+`core.models.AvoidJunction` (table `avoid_junction`, migration `0015_avoid_junction`): a name, a
+point (`location`, SRID 4326, placed on the admin's map), a reason (shown to riders), evidence
+(not shown), `source` ("admin" or "community") with `suggestion_ref` for the suggestion it came
+from, the approval (who and when; an audited admin action, read-only on the form, as `Override`),
+and `plans_through` with `last_planned_through_at` (335's admin counts). It is kept apart from
+`Override` (way-keyed, applied by the rebuild) and from any rider-suggestion table: a reviewed
+junction suggestion becomes a row here with `source` "community" and the suggestion's id in
+`suggestion_ref`, so the suggestion flow (STRESS-SUGGEST, the half-step editor) can feed it
+without either table depending on the other's shape. No junction override table existed on
+release/v0.4.0; PR #38 (intersection costs) adds cost machinery to `routemaker.intersections` and
+`core.junctions` but no table, and this work does not touch either module.
+
+The migration is numbered 0015. It was written against 0012 and was re-pointed at
+`0014_segment_mtb_name`, the leaf of release/v0.4.0, when that was merged in; if another migration
+lands first it must be re-pointed again (or joined with a merge migration). The table is new and
+empty, so its order against the others does not matter.
+
+### Which junctions a route passes
+
+`routemaker.avoid_junctions.passages`: the route's line (lon, lat) comes within `MATCH_RADIUS_M`
+(15 m, 49 ft) of the junction's point; the pass is placed where the line comes nearest, and a
+second pass counts once the line has gone `LEAVE_RADIUS_M` (30 m) away again (a loop through it
+pays twice). It reads the line, not the junction model's events: the model reads only junctions
+where a road that can be busy is involved (`core.junctions.wanted`), and an Avoid rating is a
+person's judgement about a place whatever its roads.
+
+### How the 30-minute penalty reaches routing, and why no rebuild
+
+308: "Probably a 30 minute penalty like Avoid." An Avoid road pays `presets.AVOID_ENTRY_PENALTY_S`
+(1,800 cost seconds) on entry, through the graph: its tier-5 ways are the graph's alleys and the
+costing's `alley_penalty` is 1,800. A junction has no such hook. Valhalla's bicycle costing has
+no per-node charge a request can set, and marking junction nodes in the graph would need a
+rebuild for every change to the list, which 307 ("Planner-side where possible ... so no rebuild
+if feasible") rules out. So the penalty, `presets.AVOID_JUNCTION_PENALTY_S` (= the road's 1,800,
+restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal by
+`tests/test_avoid_junctions.py`), is charged on whole routes, in the router's own unit:
+
+- **The calm search** (`core.refine`). `Analysis.avoid_passages` are read with every candidate;
+  `Analysis.score` adds 1,800 s a pass; `avoid_junction_m` (the penalty over the ride's quiet
+  cost per metre, as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry) joins the top
+  figure (`top_m`, 307: "kept in the stress order's top level ... above red") and the
+  diminishing-returns weights (`stress_weight_m`, `_top_weight_m`), so at the top of the slider
+  the way round is worth its extra miles. `crossing_targets` puts the junction's own point first
+  among a round's exclusions (`avoid_targets`), clear of the route's ends. The Traffic-wins guard
+  (`_busier`, on the router's alternatives, the rounds and the wide search) counts each pass's
+  `avoid_junction_m` as exposure on both sides, so the LTS 3 a way round takes on in place of an
+  Avoid junction does not make it "busier"; the LTS 4 hold (250) and the trail seek's guard are
+  unchanged.
+- **A long ride** (`refine_long`): each leg's weight counts its Avoid junctions with its LTS 4
+  (`LONG_LTS4_PRIORITY * (lts4_m + avoid_junction_m) + lts3_m`), so a leg whose only fault is
+  one is searched, and before a leg with LTS 3; the whole is judged "not as calm" by the same
+  sum, with the legs' passes counted as the whole route's (`combine`, `_joined_passages`): a
+  junction within 15 m of a joint (a via point, or where the legs were cut) is passed by the
+  legs on both sides of it but counts once, as on the whole route's line. Every exclusion of a junction's point, in a round (`Target.radius`) or a kept point
+  (`_exclusion`), carries the 15 m radius `core.avoid_junctions.exclusions` asks.
+- **The guard's allowance.** `_busier` is `exposure_m + avoid_junction_m > _allowance(first
+  exposure) + first_avoid_m`: the tolerance is on the exposure alone.
+- **Every plan** (`core.avoid_junctions.settle`, after the search and the dodge pass, or where
+  the search does not run: Mass Ride, long rides, seeking hills, past the span). Where the answer
+  still passes one, the router is asked once more with the junction excluded
+  (`exclude_locations`, its point with a 15 m radius, which takes out every edge at the junction).
+  - `searched` is what the search did, not that it was asked: at least one round and not cut
+    short (`calm_search.rounds > 0` and no `limited`). Where it searched, its own decision stands
+    (it already weighed the penalty under its guards).
+  - Otherwise the way round replaces the answer where its router cost is less than the answer's
+    plus 1,800 s a pass.
+  - On Mass Ride and Group Ride (307) it replaces it where it takes on no LTS 4 (or Avoid road)
+    the answer did not have (`GROUP_LTS4_SLACK_M`, 1 m, for the traces' rounding) and is at most
+    1 mi (1.6 km) (`GROUP_EXTRA_MAX_M`) or 25% (`GROUP_EXTRA_SHARE`) of the answer longer,
+    whichever is more. **A default open for the owner**: the coordinator picked it on the review
+    of 351e65b (307 said only "where an alternative exists", which took any way round however
+    long). Reading both routes' stress costs a trace a leg of each (remembered).
+  - A loop never swaps: its way back was made by a different way (`refine.make_loop`, 266) and
+    the way round is a plain route through the same points, so it is offered, and the loop's
+    figures (`loop`) describe the route shown. (Adding the junction to `make_loop`'s excludes was
+    not done: its thinning ends with no excludes at all, which a fixed junction would remove.)
+  - After a swap the routes to choose from are dropped (`candidates` null): they were near-ties
+    of the route that was replaced, not weighed against the way round.
+  - Otherwise the answer keeps the junction and the way round is offered as `avoid_alternate`.
+    A way round that still passes the junction (the point is off the graph's node) is no way
+    round.
+  - Cost: **1 + legs** router calls: one `/route` for the way round, then a trace for each of its
+    legs where it is answered (swapped in, or offered as `avoid_alternate`), and on Mass Ride and
+    Group Ride a trace for each leg of the answer where not already remembered.
+- **Bikeshare** (`core.bikeshare.plan`): the ride leg's `avoid_alternate` carries the plan's
+  `bikeshare` (`alternate_block`: the same walks and docks, its own ride, total, ride step and
+  summary) and the GBFS credit in its `attribution`, so it can be shown in place of the ride.
+
+### The answer
+
+Every route body has `avoid_junctions` (each pass: id, name, reason, point, metres along the
+route scaled to `distance_m`, and `label`, the accessible name "Avoid-rated junction: <name>,
+<reason>") and `avoid_notice` (335's sentence, null where none). The answer also has
+`avoid_search` (passes left, their penalty, `decision` "kept" or "avoided", whether the way round
+was found) and `avoid_alternate` (the way round as a whole route body, with `extra_distance_m`
+and `extra_duration_s`). The description gains an `avoid` entry, severity "avoid": "Avoid-rated
+junction ahead at 0.7 mi (1.1 km): <name>, <reason>. Riding through it is a really bad idea.
+Please reconsider your route." (US units first). All additive.
+
+The notice and the description's entry end with the plea, `routemaker.avoid_junctions.PLEA`
+("Riding through it is a really bad idea. Please reconsider your route."; `PLEA_MANY` for
+several), and the front end's `AVOID_PLEA` is the same words (a test holds them equal). The
+owner, 2026-10-10 15:08 UTC, on the marker being named in the directions and the notice: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider."
+
+### The front end
+
+- `lib/avoidJunctions.ts` (pure): the items, the row name, the offer ("Show the route that avoids
+  it: 3.9 mi (6.3 km), 1.0 mi (1.6 km) longer"), and the marker's SVG; `lib/avoidIcon.ts` inlines
+  the Noto Emoji skull (`icons/noto-emoji-u2620.svg?raw`, so nothing is fetched and the CSP is
+  unchanged) on a dark disc (#1f2937) ringed in white, the halo of 310: the glyph's pale fills on
+  the disc, the disc on a light map and the ring on a dark one are each above 3:1.
+- `AvoidNotice.tsx`: first in the Route section, `role="alert"` so it is said as soon as it
+  appears, ahead of the route's own sentence (which waits `ANNOUNCE_SETTLE_MS`). It is the chosen
+  route's own notice (`avoidNoticeFor`): a route to choose from that avoids the junction has none,
+  one that passes it has its own; the way round is the answer's, so its button (`aroundAvoid` in
+  `App`, `shownRoute`) is offered only while the answer is chosen.
+- The map marker (`MapView`, `.avoid-marker`) is a `<button type="button">`, as the junction
+  markers are, so Tab reaches it, named by `avoidMarkerName` (the `label` and the plea); a click,
+  a tap, Enter or Space opens the road panel on the junction, and the focus comes back to it when
+  the panel closes. It is 40 px (`AVOID_ICON_PX`) against the junction markers' 24 ("Make it
+  larger than a normal icon"; markers keep their size at every zoom). The junction list
+  (`AvoidJunctionList`, its row name also ending with the plea), the description's entry and the
+  notice show the Unicode character (310) with `aria-hidden`, and their words name the rating.
+  Nowhere is the glyph's own name the accessible name (309). There is no legend row. The owner,
+  2026-10-10 15:03 UTC: "For avoid markers in intersection. No need to put it in legend. You'll only see this if you really try to force things." (309's "It gets a legend entry" is superseded.)
+- The road panel on the junction ("also when clicking on the intersection"): the marker opens
+  the road panel (`RoadInfoDialog`) at the junction's point, and the panel opened any other way
+  (a right-click, a long press, the I key, "Road info at map center") within `AVOID_SPOT_M` (25 m,
+  82 ft) of an Avoid-rated junction on the route shown (`avoidNearSpot`) leads with a warning
+  above its heading: "Avoid this intersection." and `avoidCardText` ("<name> is rated as
+  dangerous for bikes: <reason>. Riding through it is a really bad idea. Please reconsider your
+  route."). It opens the dialog's `aria-describedby`, so it is said as the panel opens; it is not
+  also an alert (the two together were said twice). The front end knows only the junctions the
+  route shown passes (the list is not sent otherwise), so the panel warns of those; the route
+  that avoids it, shown in place of the planned one, passes none.
+- Ride mode says an `avoid` entry as a hazard at every level but Quiet.
+- The Mass Ride route chart (333) does not mark Avoid junctions: its intersection ticks have a
+  table, a per-mile readout, a key and forced-colours rules, and a skull on the ticks alone would
+  be seen and not heard. Left out (PLAN.md, FOLLOWUP-ISECT-AVOID); on Mass Ride the plan goes
+  round one wherever the default limits allow.
+- The icon's Apache 2.0 notice and licence ship in `licenses.txt` (`BUNDLED_ICONS` in
+  `licences/notices.mjs`); the source record is docs/SOURCES.md and `fixtures/icons/README.md`.
+
+### Tests
+
+`tests/test_avoid_junctions.py` (the passes, the words, the score, `settle` with the Mass Ride
+and Group Ride limits and loops, the stored list and counts, POST /api/route with a stand-in
+router that routes round the junction only when it is excluded, a search that stopped before a
+round, the guard's allowance, the exclusion radius, a long ride's legs, bikeshare's way round,
+and the admin's counts, audited approval and withdrawal and a guild admin refused);
+`frontend/src/lib/avoidJunctions.test.ts` (the glyph's sha256 and contents, the marker and its
+size, the halo's contrast, the names, the plea against the API's, the offer, the chosen route's
+notice, the road panel's spot and warning); `frontend/src/licences/notices.test.mjs`; the a11y
+browser check's section 25 (the notice first and as an alert, the offer's name, the marker's
+button and computed name, the list row, the description, the way round by keyboard and back, the
+road panel's warning from a click on the marker, from Tab and Enter on it (the focus coming back)
+and from the I key on the junction, none away from it, and that the legend has no Avoid row).
+
+`scripts/a11y/check.mjs` reads the debugging port from `A11Y_CDP_PORT` (default 9222, as
+`run.sh` starts Chromium), so it can run beside another browser:
+`A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
+
 ## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
 
 **The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
