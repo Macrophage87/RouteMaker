@@ -956,8 +956,9 @@ class ProfileCalmOut(Schema):
     """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
     calm miles per actual mile over the window centred on each sample (cut at the route's
     ends), each junction's cost at the ride's intersection weight counted once in every
-    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
-    all quiet-street riding; a path or a protected lane counts below it. Every ride type
+    window that holds them (at the top of the slider, the worth rule's exchange). Each road
+    counts at its own routing cost over a quiet metre's (`refine.QUIET_COST_FACTOR`), so 1.0
+    is a typical quiet street; a path or a protected lane counts below it. Every ride type
     but Mass Ride."""
 
     window_m: int = Field(description="The window's length, metres (461e: about a mile).")
@@ -979,8 +980,10 @@ class ProfileCalmOut(Schema):
     )
     estimate: bool = Field(
         description=(
-            "True while each tier's cost is the middle of its modelled range, not the"
-            " road's own speed and lanes."
+            "False where every road is priced by its own routing cost (its own speed, lanes"
+            " and cycle lane, as the router costs it); true where some stretch took its"
+            " tier's figure instead (the middle of the tier's modelled range), as a trace"
+            " with no edge attributes does."
         )
     )
 

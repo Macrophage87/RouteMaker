@@ -474,7 +474,29 @@ class TestRouteProfile:
         # Raised over the mile around the LTS 3 stretch only.
         assert ratio[0] > 1.0 and ratio[-1] == 1.0
         assert body["calm"]["junctions_counted"] is True
+        assert body["calm"]["estimate"] is True
         assert routing.route_profile([self.leg(heights)], spans)["calm"] is None
+
+    def test_with_the_traced_pieces_each_road_is_priced_by_its_own_cost(self):
+        """stress-number.md section 4: each road at its own routing cost, so not an estimate."""
+        heights = [10.0] * 200
+        spans = [
+            {"from_m": 0, "to_m": 300, "tier": 3, "facility": "none"},
+            {"from_m": 300, "to_m": 5970, "tier": 2, "facility": "none"},
+        ]
+        busy = calm.Road(road_class="primary", lanes=2, speed_limit_kph=56)
+        quiet = calm.Road(road_class="residential", density=20)
+        pieces = [(300.0, 3, "none", busy), (5670.0, 2, "none", quiet)]
+        pricing = calm.Pricing(use_roads=0.1)
+        body = routing.route_profile(
+            [self.leg(heights)], spans, calm_pricing=pricing, events=[], calm_pieces=pieces
+        )
+        assert body["calm"]["estimate"] is False
+        first, second = body["calm"]["steps"]
+        assert first["ratio"] == pytest.approx(
+            calm.edge_factor(busy, 3, 0.1) / calm.QUIET_FACTOR, abs=0.01
+        )
+        assert second["ratio"] == pytest.approx(0.8, abs=0.01)
 
     def test_a_long_route_keeps_the_peak_window_when_thinned(self, monkeypatch):
         """Correctness review nit: the most stressful mile survives thinning."""

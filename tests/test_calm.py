@@ -264,3 +264,153 @@ class TestWindowEdges:
         samples = list(range(0, 9001, 30))
         i = calm.peak_index(spans, [], DEFAULT, samples, window_m=MILE)
         assert abs(samples[i] - 3050) <= MILE / 2
+
+
+# The five modelled roadways of docs/DEVELOPMENT.md "Graded stress": (class, lanes each way,
+# speed km/h as the graph stores it, cycle lane), and their LTS 3 / LTS 4 added cost at
+# use_roads 0.10 (Default) and 0.0, as that table gives them.
+GRADED_TABLE = [
+    (("secondary", 1, 48, "none"), {0.1: (4.13, 28.38), 0.0: (4.75, 34.82)}),
+    (("primary", 2, 56, "none"), {0.1: (6.23, 29.80), 0.0: (7.38, 36.74)}),
+    (("trunk", 3, 72, "none"), {0.1: (10.54, 32.62), 0.0: (12.84, 40.52)}),
+]
+
+
+def road(**kw) -> calm.Road:
+    return calm.Road(**kw)
+
+
+class TestOwnCost:
+    """Each road priced by its own routing cost (stress-number.md section 4; 461c)."""
+
+    @pytest.mark.parametrize(("roadway", "added"), GRADED_TABLE)
+    def test_the_costing_reproduces_the_graded_stress_table(self, roadway, added) -> None:
+        cls, lanes, kph, lane = roadway
+        plain = road(road_class=cls, lanes=lanes, speed_limit_kph=kph, cycle_lane=lane)
+        graded = road(road_class=cls, lanes=calm.GRADED_LANES, speed_limit_kph=kph)
+        for u, (lts3, lts4) in added.items():
+            base = calm.edge_factor(plain, 1, u)
+            assert calm.edge_factor(plain, 3, u) - base == pytest.approx(lts3, abs=0.01)
+            assert calm.edge_factor(graded, 4, u) - base == pytest.approx(lts4, abs=0.01)
+
+    def test_a_quiet_street_reads_near_one(self) -> None:
+        # An urban residential street at its 30 km/h default: 1.77 / 2.2 at Default.
+        quiet = road(road_class="residential", density=20)
+        ratio, own = calm.road_multiplier(2, "none", quiet, DEFAULT)
+        assert own is True
+        assert ratio == pytest.approx(0.80, abs=0.01)
+
+    def test_a_path_counts_as_the_facility_figure_did(self) -> None:
+        path = road(use="cycleway", road_class="service_other", cycle_lane="dedicated")
+        ratio, _ = calm.road_multiplier(1, "path", path, DEFAULT)
+        assert ratio == pytest.approx(calm.multiplier(1, "path", DEFAULT), abs=0.001)
+
+    def test_a_faster_wider_lts_3_road_costs_more_than_a_slow_one(self) -> None:
+        slow = road(road_class="tertiary", speed_limit_kph=40)
+        fast = road(road_class="primary", lanes=3, speed_limit_kph=72)
+        slow_ratio, _ = calm.road_multiplier(3, "none", slow, DEFAULT)
+        fast_ratio, _ = calm.road_multiplier(3, "none", fast, DEFAULT)
+        assert fast_ratio > 2 * slow_ratio
+
+    def test_a_trail_class_way_never_carries_the_stress_mark(self) -> None:
+        path = road(use="footway", road_class="service_other")
+        assert calm.edge_factor(path, 3, 0.1) == calm.edge_factor(path, 1, 0.1)
+
+    def test_above_80_the_calm_rate_is_added_to_the_roads_own_cost(self) -> None:
+        at90 = calm.Pricing(
+            use_roads=presets.use_roads_for(90), rate=presets.calm_rate_for(90), weights=(1, 2, 3)
+        )
+        r = road(road_class="secondary", speed_limit_kph=48)
+        ratio, _ = calm.road_multiplier(4, "none", r, at90)
+        own = calm.edge_factor(r, 4, at90.use_roads) / calm.QUIET_FACTOR
+        assert ratio == pytest.approx(own + at90.rate * 2, abs=1e-9)
+
+    def test_at_the_top_lts_3_and_up_keep_the_worth_rules_price(self) -> None:
+        top = calm.Pricing(use_roads=0.0, maxcalm=True)
+        r = road(road_class="primary", lanes=2, speed_limit_kph=56)
+        assert calm.road_multiplier(3, "none", r, top) == (6.0, True)
+
+    def test_without_attributes_the_tiers_figure_stands_in(self) -> None:
+        assert calm.road_multiplier(3, "none", None, DEFAULT) == (
+            calm.multiplier(3, "none", DEFAULT),
+            False,
+        )
+        assert calm.road_multiplier(None, None, None, DEFAULT) == (None, True)
+
+
+class TestRoadSpeed:
+    def test_a_tagged_speed_stands_and_rough_pavement_lowers_it(self) -> None:
+        assert calm.road_speed_kph(road(road_class="primary", speed_limit_kph=56)) == 56
+        rough = road(road_class="primary", speed_limit_kph=56, surface="paved_rough")
+        assert calm.road_speed_kph(rough) == 46
+
+    def test_an_untagged_road_takes_its_class_default_urban_or_rural(self) -> None:
+        assert calm.road_speed_kph(road(road_class="secondary")) == 60
+        assert calm.road_speed_kph(road(road_class="secondary", density=9)) == 49
+        circle = road(road_class="secondary", density=9, roundabout=True)
+        assert calm.road_speed_kph(circle) == 25
+
+    def test_a_graded_edge_is_at_the_graphs_top_speed(self) -> None:
+        assert calm.road_speed_kph(road(road_class="residential", lanes=15)) == 140
+
+
+class TestRoadOfEdge:
+    def test_an_edge_with_attributes(self) -> None:
+        edge = {
+            "use": "road",
+            "road_class": "primary",
+            "lane_count": 2,
+            "cycle_lane": "shared",
+            "shoulder": False,
+            "truck_route": True,
+            "bicycle_network": 2,
+            "speed_limit": 30,
+            "density": 12,
+            "roundabout": False,
+            "surface": "paved_smooth",
+        }
+        got = calm.road_of_edge(edge, miles=True)
+        assert got is not None
+        assert got.lanes == 2 and got.cycle_lane == "shared" and got.truck_route
+        assert got.bike_network is True
+        assert got.speed_limit_kph == pytest.approx(48.28, abs=0.01)
+        assert calm.road_of_edge({**edge, "speed_limit": "unlimited"}).speed_limit_kph is None
+
+    def test_an_edge_without_them_has_none(self) -> None:
+        assert calm.road_of_edge({"way_id": 1, "length": 0.1}) is None
+
+
+class TestScoreFromPieces:
+    QUIET = calm.Road(road_class="residential", density=20)
+    BUSY = calm.Road(road_class="primary", lanes=2, speed_limit_kph=56)
+
+    def test_every_piece_priced_by_its_own_cost_is_not_an_estimate(self) -> None:
+        pieces = [(800.0, 2, "none", self.QUIET), (800.0, 3, "none", self.BUSY)]
+        out = calm.score([span(0, 800, 2), span(800, 1600, 3)], [], DEFAULT, [0], pieces=pieces)
+        assert out["estimate"] is False
+        busy, _ = calm.road_multiplier(3, "none", self.BUSY, DEFAULT)
+        assert [s["ratio"] for s in out["steps"]] == [pytest.approx(0.8, abs=0.01), round(busy, 2)]
+        assert out["total_calm_m"] == pytest.approx(800 * 0.804 + 800 * busy, abs=2)
+
+    def test_a_piece_with_no_attributes_makes_it_an_estimate(self) -> None:
+        pieces = [(800.0, 2, "none", self.QUIET), (800.0, 3, "none", None)]
+        out = calm.score([span(0, 1600, 2)], [], DEFAULT, [0], pieces=pieces)
+        assert out["estimate"] is True
+        assert calm.score([span(0, 1600, 2)], [], DEFAULT, [0])["estimate"] is True
+
+    def test_a_section_reads_the_mean_of_its_pieces(self) -> None:
+        # A short busy piece folded into a quiet section still counts, at its own cost.
+        pieces = [(950.0, 2, "none", self.QUIET), (50.0, 3, "none", self.BUSY)]
+        out = calm.score([span(0, 1000, 2)], [], DEFAULT, [500], pieces=pieces)
+        busy, _ = calm.road_multiplier(3, "none", self.BUSY, DEFAULT)
+        quiet, _ = calm.road_multiplier(2, "none", self.QUIET, DEFAULT)
+        mean = (950 * quiet + 50 * busy) / 1000
+        assert out["steps"][0]["ratio"] == pytest.approx(mean, abs=0.01)
+        assert out["ratio"] == [pytest.approx(mean, abs=0.01)]
+
+    def test_unrated_pieces_count_in_neither_and_their_junctions_not_at_all(self) -> None:
+        pieces = [(100.0, 2, "none", self.QUIET), (1500.0, None, None, None)]
+        spans = [span(0, 100, 2), span(100, 1600, None, None)]
+        out = calm.score(spans, [Event(800, 1200, "orange", True)], DEFAULT, [0], pieces=pieces)
+        assert out["rated_m"] == 100
+        assert out["points"] == []
