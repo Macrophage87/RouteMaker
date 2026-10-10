@@ -2779,6 +2779,39 @@ details.zoom-notes {
   color: var(--text-muted);
 }
 
+/* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
+.nearest fieldset.nearest-from {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest .nearest-kinds button,
+.ride-detour .nearest-kinds button,
+.ride-detour > summary,
+.nearest-list button {
+  min-height: 44px;
+}
+
+.nearest-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.nearest-list li > span:first-child {
+  flex: 1 1 14em;
+}
+
 /*
  * Ride mode (WEB-NAV-plan.md; RideMode.tsx). The planner is hidden; a cue card sits at the top of the
  * map and the ride's buttons at the bottom, each on the page's own background so its text keeps the

@@ -76,6 +76,29 @@ def free_stops(points: list, loop: bool) -> int:
     return max(0, len(points) - 2)
 
 
+def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
+    """The router (variant) and costing the ride's own route would be asked on: the
+    preset's and dials' stress, hills, time and assist, with /route's choice of a twin
+    graph that is down or not promoted left to the standard one. Shared with
+    `core.nearest`, whose riding distances are on the same graph."""
+    preset = presets.PRESETS[preset_name]
+    stress = (
+        presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
+    )
+    hills = preset.hills if dials.hills is None else dials.hills
+    when = dials.when or routing.default_when()
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    variant = presets.variant_for_ride(preset_name, when, assist)
+    if variant in routing.TWIN_VARIANTS and (
+        routing._twin_down(variant) or not routing._is_promoted(variant)
+    ):
+        variant = routing.Variant.STANDARD.value
+    costing = presets.costing(
+        preset_name, stress, hills, assist=assist, avoid_gravel=bool(dials.avoid_gravel)
+    )
+    return variant, costing
+
+
 def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, str]:
     """One router call, and the graph that answered it, with /route's handling of a
     twin graph (`routing.plan`): a weekend or off-road router gets at most
@@ -99,6 +122,11 @@ def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, st
         return answer, standard
     routing._mark_twin(variant, True)
     return answer, variant
+
+
+def ask_matrix(variant: str, payload: dict, deadline) -> dict:
+    """One matrix call on the ride's graph (`_ask`); shared with `core.nearest`."""
+    return _ask(variant, "sources_to_targets", payload, deadline)[0]
 
 
 def _pairs_chains(n: int) -> list[list[int]]:
@@ -218,7 +246,7 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
         "units": "kilometers",
     }
     try:
-        answer, _ = _ask(variant, "sources_to_targets", payload, deadline)
+        answer = ask_matrix(variant, payload, deadline)
     except (routing.RouterUnavailable, routing.RouterRefused, routing.DeadlineExceeded) as error:
         # Out of time too: the straight-line order needs no router, so it is still answered.
         logger.warning("the %s router gave no riding-time matrix: %s", variant, error)
@@ -288,21 +316,8 @@ def order(points: list, preset_name: str, dials: routing.Dials, started: float |
             "after_m": None,
         }
 
-    preset = presets.PRESETS[preset_name]
-    stress = (
-        presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
-    )
-    hills = preset.hills if dials.hills is None else dials.hills
+    variant, costing = ride_graph(preset_name, dials)
     when = dials.when or routing.default_when()
-    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, when, assist)
-    if variant in routing.TWIN_VARIANTS and (
-        routing._twin_down(variant) or not routing._is_promoted(variant)
-    ):
-        variant = routing.Variant.STANDARD.value
-    costing = presets.costing(
-        preset_name, stress, hills, assist=assist, avoid_gravel=bool(dials.avoid_gravel)
-    )
 
     # A long ride is ordered by straight line without asking the router: a matrix
     # of 26 points over that span holds a router's workers well past the answer's

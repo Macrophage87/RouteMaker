@@ -161,8 +161,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # surface-unknown paths told apart by a missing `unpaved` (376); and the Mass Ride
 # capacity, `rpm`, on a table that has the column (OWNER-DECISIONS 325-327, 387). 7: the
 # rebuild bundle, which carries both, with the roadside trails' `roadside` (403) and
-# NO-BIKE-PATHS' `mtb` and `rough` (290, 291).
-FORMAT_VERSION = 7
+# NO-BIKE-PATHS' `mtb` and `rough` (290, 291). 8: a judged trail bridge's `unpaved` is its
+# trail's surface, not its deck's (BRIDGE_UNPAVED).
+FORMAT_VERSION = 8
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -356,6 +357,20 @@ OPTIONAL_EXPRESSIONS = {
     ),
 }
 
+# A short bridge inside a trail is drawn in its trail's surface, not its deck's, where the
+# rebuild has judged it (`trail_bridge`: 1 between paved trail ways, 2 where an end is
+# unpaved; `pipeline.trail_routes.judge_bridges`). The owner, 2026-10-09, on the C&O
+# towpath's Seneca Aqueduct drawn as a paved path in the middle of the unpaved towpath:
+# "We made woodden bridges paved, so they didn't mess with the paved routing. Now it makes
+# the unpaved routing look weird." The deck stays paved for routing and in the road panel
+# (OWNER-DECISIONS 440, `segment.is_unpaved`); only the map's surface mark follows the
+# trail, as the zoomed-out rule already judges it (`long_trails_predicate`). Any other way,
+# and a bridge the rebuild left to its own deck (0), is drawn as `is_unpaved` holds it.
+BRIDGE_UNPAVED = (
+    f"CASE WHEN s.{TRAIL_BRIDGE_COLUMN} = 2 THEN true "
+    f"WHEN s.{TRAIL_BRIDGE_COLUMN} = 1 THEN false ELSE s.is_unpaved END"
+)
+
 # What an optional property is drawn from on a table without its column: the
 # facility is derived from the trail network (an off-road path, or nothing),
 # so the trails carry the path's rails at every zoom before the column exists;
@@ -422,6 +437,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     with `clip`, drawing only what lies inside the coverage box."""
     template = _MERGED if level.merged else _PER_SEGMENT
     carried = {name: f"s.{column}" for name, column in PROPERTIES.items()}
+    if TRAIL_BRIDGE_COLUMN in optional:
+        carried["unpaved"] = BRIDGE_UNPAVED
     for name, column in OPTIONAL_PROPERTIES.items():
         if column in optional:
             carried[name] = OPTIONAL_EXPRESSIONS.get(name, f"s.{column}")
@@ -557,7 +574,7 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
     # key with all of them (a `+` and one letter each, twelve in all: `W/"stress-` and a
-    # ten-digit oid, `+` and twelve letters, `-v7"`, 37 characters), in the order of the
+    # ten-digit oid, `+` and twelve letters, `-v8"`, 37 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'

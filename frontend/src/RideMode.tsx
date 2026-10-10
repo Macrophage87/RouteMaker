@@ -17,12 +17,13 @@
  * - Big text (map hidden), Re-centre (and the C key), heading-up, the ride's settings, End ride.
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
- * one sent is a re-plan's start point, in a POST body, as planning with "Use my location" sends it.
+ * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
+ * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import type { Dials } from "./lib/dials.ts";
-import type { LonLat } from "./lib/geo.ts";
+import { insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
@@ -62,6 +63,28 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, browserRideEnv, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import {
+  DETOUR_BUSY,
+  DETOUR_FULL,
+  DETOUR_HELP,
+  DETOUR_KINDS,
+  DETOUR_SUMMARY,
+  NEAREST_KINDS,
+  NO_FIX_YET,
+  STILL_SEARCHING,
+  detourPoints,
+  findingSaid,
+  nearbyText,
+  nounOf,
+  requestNearest,
+  rideLocate,
+  searchNearest,
+  type Found,
+  type Nearby,
+  type NearestKind,
+} from "./lib/nearest.ts";
+import type { WaterPoint } from "./lib/waterRestrooms.ts";
+import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 
 /** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
 export const rideVoice = new Voice(browserSpeech());
@@ -188,6 +211,7 @@ export function RideMode({
   onBig,
   onView,
   onEnd,
+  water,
   geoEnv,
 }: {
   route: RouteResponse;
@@ -207,6 +231,8 @@ export function RideMode({
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
   onEnd: () => void;
+  /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
+  water?: () => Promise<WaterPoint[] | null>;
   geoEnv?: RideGeoEnv;
 }) {
   const [route, setRoute] = useState(plannedRoute);
@@ -280,18 +306,44 @@ export function RideMode({
     [notify],
   );
 
+  // The detour's own status (below): said like an answer, since the rider asked for it.
+  const [detourStatus, setDetourStatus] = useState("");
+  const [detourList, setDetourList] = useState<Found | null>(null);
+  const sayDetour = useCallback((text: string) => {
+    setDetourStatus(text);
+    // On demand, as Where am I? is: through the rider's outputs, and the polite region with neither chosen.
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+  }, []);
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
+  // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
+  // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat) => {
-      if (ended.current || !gate.begin(Date.now())) return;
+    async (here: LonLat, via?: LonLat) => {
+      if (ended.current) return;
+      const current = rideRef.current;
+      const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
+      const points = via ? detourPoints(left, via) : left;
+      if (!points) {
+        sayDetour(DETOUR_FULL);
+        return;
+      }
+      if (!gate.begin(Date.now())) {
+        // Only a detour is the rider's own ask; an automatic re-plan held back by the gate says nothing.
+        if (via) sayDetour(DETOUR_BUSY);
+        return;
+      }
       const ticket = (replanTicket.current += 1);
       setReplanning(true);
       setReplanNote("");
-      const current = rideRef.current;
-      const points = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
-      // found (plan section 3, off route said once); the note stays on screen for all.
+      // found (plan section 3, off route said once); the note stays on screen for all. A detour's outcome
+      // answers the rider's ask, so it is said whatever the level (sayDetour).
       const tell = (note: string) => {
+        if (via) {
+          sayDetour(note);
+          return;
+        }
         const level = prefsRef.current.verbosity;
         if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) announcer.current?.say(note, false);
       };
@@ -328,7 +380,7 @@ export function RideMode({
       setReplanNote(REPLAN_FOUND);
       tell(REPLAN_FOUND);
     },
-    [dials, preset, gate],
+    [dials, preset, gate, sayDetour],
   );
 
   const onFix = useCallback(
@@ -502,6 +554,63 @@ export function RideMode({
     if (here) void replan(here);
   };
 
+  // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be
+  // detours"): the three nearest by bike from the rider's position, on the ride's own settings; Detour here
+  // re-plans through the chosen one. The position is the ride's own fix; nothing new is looked up.
+  const detourBusy = useRef(false);
+  const findDetour = async (kind: NearestKind) => {
+    if (detourBusy.current) {
+      sayDetour(STILL_SEARCHING);
+      return;
+    }
+    if (!water) return;
+    detourBusy.current = true;
+    setDetourList(null);
+    sayDetour(findingSaid(kind));
+    try {
+      const fix = rideRef.current.goodFix ?? rideRef.current.fix;
+      if (!fix) {
+        sayDetour(NO_FIX_YET);
+        return;
+      }
+      const outcome = await searchNearest({
+        kind,
+        from: "location",
+        locate: async () => rideLocate(fix),
+        start: () => null,
+        centre: () => null,
+        inside: insideCoverage,
+        water,
+        stations: [],
+        request: (from, places) => requestNearest(from, places, preset, { ...dials, loop: false }),
+      });
+      if (ended.current) return;
+      if (outcome.found) setDetourList(outcome.found);
+      sayDetour(outcome.said);
+    } finally {
+      detourBusy.current = false;
+    }
+  };
+  const detour = (item: Nearby) => {
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    setKeepPlanned(false);
+    // The rider asked: not held back by the automatic re-plans' spacing.
+    gate.online();
+    setDetourList(null);
+    // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
+    whereRef.current?.focus();
+    sayDetour(`Finding a way to ${item.place.title}.`);
+    void replan(here, item.place.point);
+  };
+
   // Off route over (back on, or a new route): its buttons go; a focus inside them goes to Where am I?.
   const wasOff = useRef(false);
   useEffect(() => {
@@ -638,6 +747,46 @@ export function RideMode({
             End ride
           </button>
         </div>
+        {water && (
+          <details className="fold ride-detour">
+            <summary>{DETOUR_SUMMARY}</summary>
+            <div className="fold-body">
+              <div className="actions nearest-kinds">
+                {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
+                  <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Shown, not a live region: what it says is said through the ride's own outputs (sayDetour). */}
+              <p className="hint nearest-status">{detourStatus}</p>
+              {detourList && detourList.items.length > 0 && (
+                <div className="nearest-list">
+                  <h3 id={`${settingsId}-detour`}>{`Nearest ${nounOf(detourList.kind)}`}</h3>
+                  <ol role="list" aria-labelledby={`${settingsId}-detour`}>
+                    {detourList.items.map((item) => (
+                      <li key={item.place.id}>
+                        <span>{nearbyText(item)}</span>
+                        <span className="actions">
+                          <button
+                            type="button"
+                            className="secondary"
+                            aria-label={`Detour here: ${item.place.title}`}
+                            onClick={() => detour(item)}
+                          >
+                            Detour here
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="hint">{WATER_CAUTION}</p>
+                </div>
+              )}
+              <p className="hint">{DETOUR_HELP}</p>
+            </div>
+          </details>
+        )}
         <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>
           <div className="fold-body">
