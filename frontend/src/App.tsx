@@ -2075,7 +2075,7 @@ function RouteSummary({
   const moved = movedPointsNote(route, points.length);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
-  // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
+  // figures in view; Elevation and stress (322; Riders per minute, corker load and elevation on a Mass Ride),
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   const junctions = route.intersections == null ? null : junctionItems(route).length;

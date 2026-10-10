@@ -127,6 +127,24 @@ export function formatPerMile(ratio: number): string {
   return formatRoughDistance(ratio * METRES_PER_MILE);
 }
 
+/** A count for every mile of route, per km in brackets, to a tenth: "6 per mile (3.7 per km)" (a Mass Ride's corker load). */
+export function formatCountPerMile(perMile: number): string {
+  const tenth = (v: number) => String(Math.round(v * 10) / 10);
+  return `${tenth(perMile)} per mile (${tenth(perMile / (METRES_PER_MILE / 1000))} per km)`;
+}
+
+/** The same on a chart's side, in two lines: ["6/mi", "(3.7/km)"]. */
+export function formatAxisPerMile(perMile: number): [string, string] {
+  const tenth = (v: number) => String(Math.round(v * 10) / 10);
+  return [`${tenth(perMile)}/mi`, `(${tenth(perMile / (METRES_PER_MILE / 1000))}/km)`];
+}
+
+/** A window along the route as it is said: "half mile (0.8 km)" for half a mile, else as `formatDistance`. */
+export function formatWindow(metres: number): string {
+  if (Math.abs(metres - METRES_PER_MILE / 2) < 1e-6) return `half mile (${(metres / 1000).toFixed(1)} km)`;
+  return formatDistance(metres);
+}
+
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
 export function formatRoughDistance(metres: number): string {
   if (!usable(metres)) return DASH;

@@ -1295,16 +1295,29 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 {
-  // The Mass Ride version: the riders-per-minute area in place of the strip, and the major intersections.
+  // The Mass Ride version: three charts (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each under its own heading, on one distance axis.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false });
-  const heading = await p.eval("[...document.querySelectorAll('h3')].map((x) => x.textContent).filter((t) => /^Elevation/.test(t))");
-  check("mass chart: the fold is \"Elevation and riders per minute\"", JSON.stringify(heading) === JSON.stringify(["Elevation and riders per minute"]), JSON.stringify(heading));
+  const heading = await p.eval("[...document.querySelectorAll('h3')].map((x) => x.textContent).filter((t) => /^Elevation|^Riders per minute/.test(t))");
+  check("mass chart: the fold is \"Riders per minute, corker load and elevation\"", JSON.stringify(heading) === JSON.stringify(["Riders per minute, corker load and elevation"]), JSON.stringify(heading));
+  const groups = await p.eval(`[...document.querySelectorAll('.elevation-chart .pc-chart')].map((g) => ({ role: g.getAttribute('role'), heading: g.querySelector('h4')?.textContent, name: document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent, summary: (g.querySelector('.pc-summary')?.textContent ?? '').length > 20, slider: g.querySelector('.pc-plot')?.getAttribute('role'), label: g.querySelector('.pc-plot')?.getAttribute('aria-label'), svg: g.querySelector('.pc-svg')?.getAttribute('aria-hidden'), key: g.querySelector('.pc-legend')?.getAttribute('aria-label') }))`);
+  check("mass chart: three charts in the owner's order, each a group named by its h4 heading, with its own summary, a named slider over a hidden picture, and its own key",
+    JSON.stringify(groups.map((g) => [g.role, g.heading, g.name, g.summary, g.slider, g.label, g.svg, g.key])) === JSON.stringify([
+      ["group", "Riders per minute", "Riders per minute", true, "slider", "Riders per minute along the route", "true", "Riders per minute key"],
+      ["group", "Corker load", "Corker load", true, "slider", "Corker load along the route", "true", "Corker load key"],
+      ["group", "Elevation", "Elevation", true, "slider", "Elevation along the route", "true", "Elevation key"],
+    ]), JSON.stringify(groups));
+  const corkerSummary = await p.eval("document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? ''");
+  check("mass chart: the corker load's summary says the intersections, where the load is highest (per mile, per km in brackets) and how it is counted",
+    corkerSummary.startsWith("7 major intersections, 7 needing corkers. The corker load is highest around mile 1.3, and at 2 more places: 3 junctions needing corkers in the half mile around, 6 per mile (3.7 per km).") && /in the half mile \(0\.8 km\) centred on each point, per mile; a tick marks each one\.$/.test(corkerSummary), corkerSummary);
+  const corker = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return { area: !!c.querySelector('.pc-corker-area') && !!c.querySelector('.pc-corker-line'), ticks: c.querySelectorAll('.pc-svg .pc-corker-tick').length, side: [...c.querySelectorAll('.pc-svg .pc-axis-text tspan')].map((t) => t.textContent), legend: [...c.querySelectorAll('.pc-legend li')].map((x) => x.textContent), uniqueIds: ids.length === new Set(ids).size, sameAxis: [...document.querySelectorAll('.elevation-chart .pc-svg')].map((s) => s.getAttribute('viewBox').split(' ')[2]) }; })()`);
+  check("mass chart: the corker load is a step area with a tick at each junction needing corkers, its side per mile with per km in brackets, its key in words, all three on one axis, and no id used twice",
+    corker.area && corker.ticks === 7 && JSON.stringify(corker.side) === JSON.stringify(["6/mi", "(3.7/km)"]) && corker.legend.includes("Tick: a junction needing corkers") && corker.legend.some((t) => /^Junctions needing corkers per mile \(per km\), over the half mile \(0\.8 km\) around each point$/.test(t)) && corker.legend.includes("Higher stress junction (triangle)") && corker.uniqueIds && JSON.stringify(corker.sameAxis) === JSON.stringify(["360", "360", "360"]), JSON.stringify(corker));
   const shape = await p.eval(`(() => ({
     strip: !!document.querySelector('.pc-strip-frame'),
     patterns: [...document.querySelectorAll('.pc-svg pattern[id*="-flow-"]')].map((x) => x.id.replace(/^.*-flow-/, '')).sort(),
     fills: [...new Set([...document.querySelectorAll('.pc-svg path[fill-opacity]')].map((x) => x.getAttribute('fill')))].sort(),
     guides: [...document.querySelectorAll('.pc-guide-text')].map((x) => x.textContent),
-    ticks: document.querySelectorAll('.pc-tick').length,
+    ticks: document.querySelectorAll('.pc-svg .pc-tick').length,
     names: [...document.querySelectorAll('.pc-cross-text')].map((x) => x.textContent),
     legend: [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent),
   }))()`);
@@ -1318,14 +1331,27 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: the narrowest point is marked with a shape and its figure (147)", marks.caret && marks.label === "Narrowest 55", JSON.stringify(marks));
   check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Marked Avoid (A where narrow): no capacity given") && shape.legend.includes("Narrowest with the hills (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
   check("mass chart: Avoid is magenta with a white word at the chart's 11-unit type and a texture of its own, not the bottleneck's cross-hatch (397)", marks.avoidFill === "#d6008f" && marks.avoidSize === 11 && /255, 255, 255|#fff/i.test(marks.avoidInk) && !!marks.avoidHatch && marks.avoidHatch !== marks.bottleneckHatch, JSON.stringify(marks));
-  check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
+  check("mass chart: every major intersection (all need corkers here) has a tick on the corker load, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
   check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const ax = await axNode(p, ".pc-plot");
-  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Elevation and riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(ax));
+  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(ax));
   await p.shot(`${SHOTS}/chart_mass_focused.png`);
+  // The three sliders share one position: Tab on to the corker load, then the elevation, at the same mile.
+  await p.tab();
+  await sleep(150);
+  const corkerAx = await axNode(p, ".pc-chart-corkers .pc-plot");
+  check("mass chart: Tab goes on to the corker load's slider at the same mile, which says the count, the rate (per km in brackets) and the next junction with corkers",
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-corkers .pc-plot')")) && corkerAx?.name === "Corker load along the route" && corkerAx.valuetext === "Mile 1.2: 2 junctions needing corkers in the half mile around, 4 per mile (2.5 per km). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(corkerAx));
+  await p.tab();
+  await sleep(150);
+  const elevAx = await axNode(p, ".pc-chart-elevation .pc-plot");
+  check("mass chart: and on to the elevation's slider, which says the elevation (feet first) and the grade there",
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
+  await p.eval("document.querySelector('.pc-plot').focus(); true");
+  await sleep(100);
   await p.key("i", "KeyI", 73);
   await sleep(100);
   check("mass chart: I jumps to the next major intersection", /^Mile 1\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
@@ -1335,8 +1361,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.key("End", "End", 35);
   await sleep(100);
   check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
-  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]) }; })()`);
-  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker and corkers", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed", JSON.stringify(tables));
+  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
+  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corker load there", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed | 2 per mile (1.2 per km)" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed | 4 per mile (2.5 per km)" && tables.crossHeads.at(-1) === "Corker load around it", JSON.stringify(tables));
   await p.close();
 }
 {
@@ -2264,7 +2290,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 373;
+const EXPECTED = 378;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -10,7 +10,7 @@
  * first with metric in brackets, as everywhere else (format.ts).
  */
 import type { ProfileCalm, ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
-import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance } from "./format.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatCountPerMile, formatDistance, formatWindow } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
   NARROWEST_BOTH,
@@ -34,10 +34,19 @@ export function chartKind(route: Pick<RouteResponse, "preset">): ChartKind {
   return route.preset === "mass-ride" ? "mass" : "stress";
 }
 
-/** The fold's name, and its heading for a screen reader's list. */
+/** The fold's name, and its heading for a screen reader's list. A Mass Ride's fold holds three charts, in the owner's order (2026-10-10). */
 export function foldName(kind: ChartKind): string {
-  return kind === "mass" ? "Elevation and riders per minute" : "Elevation and stress";
+  return kind === "mass" ? "Riders per minute, corker load and elevation" : "Elevation and stress";
 }
+
+/** A Mass Ride's three charts, in the order drawn (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each with its heading and its slider's name. */
+export const MASS_CHARTS = [
+  { key: "riders", heading: "Riders per minute", name: "Riders per minute along the route" },
+  { key: "corkers", heading: "Corker load", name: "Corker load along the route" },
+  { key: "elevation", heading: "Elevation", name: "Elevation along the route" },
+] as const;
+
+export type MassChartKey = (typeof MASS_CHARTS)[number]["key"];
 
 /** The profile when it can be drawn: at least two samples with a height. */
 export function usableProfile(route: Pick<RouteResponse, "profile">): RouteProfile | null {
@@ -786,12 +795,8 @@ export function capacitySentences(pair: CapacityPair): string[] {
   return out;
 }
 
-/**
- * The summary: the chart's text alternative, said before it and kept beside it. Elevation range and
- * the steepest section; then the stress along the route, or on a Mass Ride the narrowest point and
- * the climbs' cost.
- */
-export function summaryText(route: RouteResponse, profile: RouteProfile, kind: ChartKind = chartKind(route)): string {
+/** The summary's elevation sentences: the range, the steepest section and the climbs (every chart kind; on a Mass Ride, the Elevation chart's summary). */
+export function elevationSentences(route: Pick<RouteResponse, "distance_m">, profile: RouteProfile): string[] {
   const total = axisLength(route, profile);
   const heights = profile.elevation_m.filter((e): e is number => e !== null);
   const lo = Math.min(...heights);
@@ -805,37 +810,50 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
   }
   const climbs = profile.climbs.length;
   sentences.push(climbs === 0 ? "No sustained climbs." : `${climbs} sustained ${climbs === 1 ? "climb" : "climbs"}, listed in the table.`);
+  return sentences;
+}
+
+/** A Mass Ride's riders sentences: the narrowest points and the typical figures (424), the parts outside DC (427), and the stretches marked Avoid (325). */
+export function ridersSentences(route: Pick<RouteResponse, "stress_spans">, profile: RouteProfile): string[] {
+  const sentences = capacitySentences(capacityPair(capacitySummary(route.stress_spans), profile.flow));
+  // 427: the parts outside DC have no figure, said in words (the narrowest and typical are DC's).
+  if ((profile.outside_dc ?? []).length > 0) sentences.push(OUTSIDE_DC_FIGURES);
+  const avoid = profile.avoid ?? [];
+  if (avoid.length > 0) {
+    const at = listWords(avoid.slice(0, 3).map((r) => miles(r.from_m)));
+    sentences.push(`${avoid.length === 1 ? "One stretch is" : `${avoid.length} stretches are`} marked Avoid, no capacity given, from mile${avoid.length === 1 ? "" : "s"} ${at}${avoid.length > 3 ? " and more" : ""}.`);
+  }
+  return sentences;
+}
+
+/** A Mass Ride's intersection sentences (333, 396): how many major intersections and how many need corkers, said as partial, or not checked, where they are. */
+export function crossingSentences(profile: RouteProfile): string[] {
+  const crossings = profile.crossings;
+  if (crossings === null || crossings === undefined) return ["Major intersections were not checked for this route."];
+  const needing = crossings.filter((c) => c.corkers_needed).length;
+  const sentences = [
+    crossingsPartial(profile)
+      ? `Only the ${PARTIAL_JUNCTIONS}s were found, so the list may be incomplete: ${
+          crossings.length === 0 ? "none found" : `${crossings.length} found, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}`
+        }.`
+      : crossings.length === 0
+        ? "No major intersections."
+        : `${crossings.length} major ${crossings.length === 1 ? "intersection" : "intersections"}, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}.`,
+  ];
+  if ((profile.unchecked ?? []).length > 0) sentences.push("Part of the route could not be traced, so its width and intersections are not known.");
+  return sentences;
+}
+
+/**
+ * The summary: the chart's text alternative, said before it and kept beside it. Elevation range and
+ * the steepest section; then the stress along the route, or on a Mass Ride the narrowest point and
+ * the climbs' cost. A Mass Ride draws three charts, each with its own part of this (`massSummaries`).
+ */
+export function summaryText(route: RouteResponse, profile: RouteProfile, kind: ChartKind = chartKind(route)): string {
+  const total = axisLength(route, profile);
+  const sentences = elevationSentences(route, profile);
   if (kind === "mass") {
-    sentences.push(...capacitySentences(capacityPair(capacitySummary(route.stress_spans), profile.flow)));
-    // 427: the parts outside DC have no figure, said in words (the narrowest and typical are DC's).
-    if ((profile.outside_dc ?? []).length > 0) sentences.push(OUTSIDE_DC_FIGURES);
-    const avoid = profile.avoid ?? [];
-    if (avoid.length > 0) {
-      const at = listWords(avoid.slice(0, 3).map((r) => miles(r.from_m)));
-      sentences.push(`${avoid.length === 1 ? "One stretch is" : `${avoid.length} stretches are`} marked Avoid, no capacity given, from mile${avoid.length === 1 ? "" : "s"} ${at}${avoid.length > 3 ? " and more" : ""}.`);
-    }
-    const crossings = profile.crossings;
-    if (crossings === null || crossings === undefined) {
-      sentences.push("Major intersections were not checked for this route.");
-    } else if (crossingsPartial(profile)) {
-      const needing = crossings.filter((c) => c.corkers_needed).length;
-      sentences.push(
-        `Only the ${PARTIAL_JUNCTIONS}s were found, so the list may be incomplete: ${
-          crossings.length === 0
-            ? "none found"
-            : `${crossings.length} found, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}`
-        }.`,
-      );
-      if ((profile.unchecked ?? []).length > 0) sentences.push("Part of the route could not be traced, so its width and intersections are not known.");
-    } else {
-      const needing = crossings.filter((c) => c.corkers_needed).length;
-      sentences.push(
-        crossings.length === 0
-          ? "No major intersections."
-          : `${crossings.length} major ${crossings.length === 1 ? "intersection" : "intersections"}, ${needing === 0 ? "none needing corkers" : `${needing} needing corkers`}.`,
-      );
-      if ((profile.unchecked ?? []).length > 0) sentences.push("Part of the route could not be traced, so its width and intersections are not known.");
-    }
+    sentences.push(...ridersSentences(route, profile), ...crossingSentences(profile));
   } else {
     const shares = stressShares(route.stress_spans, total);
     if (shares) sentences.push(`Traffic stress along it: ${shares}.`);
@@ -883,6 +901,8 @@ export interface CrossingRow {
   street: string;
   marker: string;
   corkers: string;
+  /** The corker load at the junction ("6 per mile (3.7 per km)"), when the table is given one. */
+  load?: string;
 }
 
 const CONTROL_WORDS: Readonly<Record<ProfileCrossing["control"], string>> = {
@@ -955,12 +975,14 @@ export function crossingCaption(profile: RouteProfile): string {
     : "Major intersections, in the order ridden";
 }
 
-export function crossingRows(profile: RouteProfile): CrossingRow[] {
+/** The intersections table's rows; with the corker load, each row also says the load at that junction (`load`, the Corker load chart in words). */
+export function crossingRows(profile: RouteProfile, load?: CorkerLoad | null): CrossingRow[] {
   return (profile.crossings ?? []).map((c) => ({
     mile: `Mile ${miles(c.m)}`,
     street: crossingName(c),
     marker: crossingMarkerWords(c),
     corkers: c.corkers_needed ? "Corkers needed" : "No corkers needed",
+    ...(load ? { load: corkerCell(corkerAt(load, c.m)) } : {}),
   }));
 }
 
@@ -1349,4 +1371,209 @@ export function calmRows(profile: RouteProfile, calm: ProfileCalm, totalM: numbe
       junctions,
     };
   });
+}
+
+// ---- The corker load (OWNER-DECISIONS 139, 142, 147, 400; the owner, 2026-10-10) -----------------
+
+/**
+ * A Mass Ride's second chart (the owner, 2026-10-10: "Have 3 charts for mass ride: Riders per minute,
+ * Corker load, Elevation"; 147's "corkers needed at each point"). Nothing yet says how many corkers a
+ * junction needs (PLAN "Corkers needed" proposes one per approach lane; not built), and the app knows
+ * neither the ride's size nor the group's length, so 139's "how many intersections the group spans at
+ * once" cannot be read yet. The chart is the default instead: a rolling count of the junctions needing
+ * corkers (`corkers_needed`; 142 and 400: a crossing of, or a turn onto, an LTS 3 or worse road) in the
+ * half mile (0.8 km) centred on each point, given per mile. It is made from what the API already sends
+ * (`profile.crossings`), so the API is unchanged.
+ *
+ * The window is half-open: a junction at `j` counts at the points `x` with `j - w/2 <= x < j + w/2`
+ * (from a quarter mile before it to just short of a quarter mile past it), so the count at any spot is
+ * the count of the step it lies in. The window is cut at the route's ends and the count is still
+ * divided by the whole half mile, so a lone junction near the start reads 2 a mile, as it would
+ * mid-route, and does not spike for being near an end.
+ */
+export const CORKER_WINDOW_M = METRES_PER_MILE / 2;
+
+export interface CorkerStep {
+  from_m: number;
+  to_m: number;
+  /** The junctions needing corkers in the window around any point of the step. */
+  count: number;
+  /** `count` over the window, per mile. */
+  perMile: number;
+}
+
+export interface CorkerLoad {
+  windowM: number;
+  /** The steps, end to end from 0 to the route's length, neighbours with the same count merged. */
+  steps: CorkerStep[];
+  /** Metres along the route of each junction needing corkers, in order (the chart's ticks). */
+  junctions: number[];
+  /** The first step with the highest count; null where no junction needs corkers. */
+  peak: CorkerStep | null;
+  /** Only the flagged junctions were found (`crossings_complete: false`), so the load may read low. */
+  partial: boolean;
+  /** The stretches not checked for intersections (`profile.unchecked`): the load there is not known. */
+  unchecked: ProfileRange[];
+}
+
+/** Junctions in a window, per mile. */
+export function corkersPerMile(count: number, windowM: number = CORKER_WINDOW_M): number {
+  return windowM > 0 ? count / (windowM / METRES_PER_MILE) : 0;
+}
+
+/** The junctions whose window holds the point `x`: `j - half <= x < j + half`. */
+function countAround(junctions: readonly number[], x: number, half: number): number {
+  return junctions.filter((j) => j - half <= x && x < j + half).length;
+}
+
+/**
+ * The rolling corker load along a route of `totalM` metres; null where the intersections were not
+ * checked (`crossings: null`), so the chart says "not checked", never a load of 0.
+ */
+export function corkerLoad(
+  profile: Pick<RouteProfile, "crossings" | "crossings_complete" | "unchecked">,
+  totalM: number,
+  windowM: number = CORKER_WINDOW_M,
+): CorkerLoad | null {
+  const crossings = profile.crossings;
+  if (crossings === null || crossings === undefined) return null;
+  const length = Math.max(totalM, 0);
+  const half = windowM / 2;
+  const junctions = crossings
+    .filter((c) => c.corkers_needed && Number.isFinite(c.m))
+    .map((c) => Math.min(Math.max(c.m, 0), length))
+    .sort((a, b) => a - b);
+  const cuts = new Set<number>([0, length]);
+  for (const j of junctions) {
+    for (const at of [j - half, j + half]) if (at > 0 && at < length) cuts.add(at);
+  }
+  const edges = [...cuts].sort((a, b) => a - b);
+  const steps: CorkerStep[] = [];
+  for (let i = 1; i < edges.length; i += 1) {
+    const from = edges[i - 1];
+    const to = edges[i];
+    const count = countAround(junctions, from, half);
+    const last = steps[steps.length - 1];
+    if (last && last.count === count) last.to_m = to;
+    else steps.push({ from_m: from, to_m: to, count, perMile: corkersPerMile(count, windowM) });
+  }
+  if (steps.length === 0) {
+    const count = countAround(junctions, 0, half);
+    steps.push({ from_m: 0, to_m: length, count, perMile: corkersPerMile(count, windowM) });
+  }
+  const peak = steps.reduce<CorkerStep | null>((best, s) => (s.count > 0 && (best === null || s.count > best.count) ? s : best), null);
+  return { windowM, steps, junctions, peak, partial: profile.crossings_complete === false, unchecked: [...(profile.unchecked ?? [])] };
+}
+
+/** The step a position lies in (the first before the start, the last at or past the end). */
+export function corkerAt(load: CorkerLoad, metres: number): CorkerStep {
+  for (const s of load.steps) if (metres >= s.from_m && metres < s.to_m) return s;
+  return metres < load.steps[0].from_m ? load.steps[0] : load.steps[load.steps.length - 1];
+}
+
+/** A load per mile as it is said, per km in brackets: "6 per mile (3.7 per km)". */
+export function corkerRate(perMile: number): string {
+  return formatCountPerMile(perMile);
+}
+
+/** The window as it is said: "half mile (0.8 km)". */
+export function corkerWindowWords(windowM: number = CORKER_WINDOW_M): string {
+  return formatWindow(windowM);
+}
+
+/** The intersections table's Corker load cell: "6 per mile (3.7 per km)", or "None". */
+export function corkerCell(step: CorkerStep): string {
+  return step.count === 0 ? "None" : corkerRate(step.perMile);
+}
+
+/** The chart's top, per mile: the peak, and at least 4 (two junctions in the half mile), so one junction is not drawn full height. */
+export function corkerTop(load: CorkerLoad): number {
+  return Math.max(4, Math.ceil(load.peak?.perMile ?? 0));
+}
+
+/** Whether any of a stretch was not checked for intersections. */
+export function uncheckedWithin(load: Pick<CorkerLoad, "unchecked">, from: number, to: number): boolean {
+  return load.unchecked.some((r) => r.to_m > from && r.from_m < to);
+}
+
+/** The load's outline: one step line from the start to the end. */
+export function corkerLine(load: CorkerLoad, x: (m: number) => number, y: (perMile: number) => number): string {
+  return load.steps
+    .map((s, i) => `${i === 0 ? "M" : "L"}${f(x(s.from_m))} ${f(y(s.perMile))} L${f(x(s.to_m))} ${f(y(s.perMile))}`)
+    .join(" ");
+}
+
+/** The load's area: the step line closed down to the baseline. */
+export function corkerArea(load: CorkerLoad, x: (m: number) => number, y: (perMile: number) => number, baseline: number): string {
+  if (load.steps.length === 0) return "";
+  const first = load.steps[0];
+  const last = load.steps[load.steps.length - 1];
+  return `M${f(x(first.from_m))} ${f(baseline)} L${corkerLine(load, x, y).slice(1)} L${f(x(last.to_m))} ${f(baseline)} Z`;
+}
+
+/**
+ * What the Corker load slider says at a position: "Mile 1.3: 3 junctions needing corkers in the
+ * half mile around, 6 per mile (3.7 per km). Next: 15th Street Northwest at mile 1.3, corkers
+ * needed." Where part of the window was not checked it says so; with the intersections not
+ * checked at all, that the load is not known.
+ */
+export function corkerReading(profile: RouteProfile, load: CorkerLoad | null, metres: number): string {
+  const m = profile.m[nearestIndex(profile.m, metres)] ?? metres;
+  if (!load) return `${mileWord(m)}: intersections not checked, so the corker load is not known.`;
+  const step = corkerAt(load, m);
+  const half = load.windowM / 2;
+  const what =
+    step.count === 0
+      ? "no junctions needing corkers in the half mile around"
+      : `${step.count} ${step.count === 1 ? "junction" : "junctions"} needing corkers in the half mile around, ${corkerRate(step.perMile)}`;
+  const gap = uncheckedWithin(load, m - half, m + half) ? " Part of that half mile was not checked for intersections." : "";
+  return `${mileWord(m)}: ${what}.${gap}${crossingClause(profile, m)}`;
+}
+
+/** The Corker load chart's summary sentences: the intersections and corkers, where the load is highest, and how it is counted. */
+export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null): string[] {
+  if (!load) return ["Major intersections were not checked for this route, so the corker load is not known."];
+  const sentences = crossingSentences(profile);
+  const peak = load.peak;
+  if (!peak) {
+    sentences.push(load.partial ? "None of the junctions found needs corkers." : "No junction needs corkers, so the corker load is 0 along the whole route.");
+  } else {
+    const from = miles(peak.from_m);
+    const to = miles(peak.to_m);
+    const where = from === to ? `around mile ${from}` : `from mile ${from} to ${to}`;
+    const more = load.steps.filter((s) => s !== peak && s.count === peak.count).length;
+    const also = more === 0 ? "" : `, and at ${more} more ${more === 1 ? "place" : "places"}`;
+    sentences.push(`The corker load is highest ${where}${also}: ${peak.count} ${peak.count === 1 ? "junction" : "junctions"} needing corkers in the half mile around, ${corkerRate(peak.perMile)}.`);
+  }
+  sentences.push(`The load counts the junctions needing corkers in the ${corkerWindowWords(load.windowM)} centred on each point, per mile; a tick marks each one.`);
+  return sentences;
+}
+
+/** What the Elevation slider says at a position: "Mile 1.2: elevation 310 ft (94 m), grade 6%." */
+export function elevationReading(profile: RouteProfile, metres: number): string {
+  const index = nearestIndex(profile.m, metres);
+  const e = profile.elevation_m[index];
+  const parts = [e === null || e === undefined ? "elevation not known" : `elevation ${elevationWords(e)}`];
+  const grade = gradeWords(profile.grade_pct[index]);
+  if (grade) parts.push(grade);
+  return `${mileWord(profile.m[index])}: ${parts.join(", ")}.`;
+}
+
+/** Each of a Mass Ride's three charts' summaries, said before its picture. */
+export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null): Record<MassChartKey, string> {
+  const riders = ridersSentences(route, profile);
+  return {
+    riders: (riders.length > 0 ? riders : ["Riders per minute are not known for this route."]).join(" "),
+    corkers: corkerSentences(profile, load).join(" "),
+    elevation: elevationSentences(route, profile).join(" "),
+  };
+}
+
+/** Each of a Mass Ride's three sliders' value text at a position. */
+export function massReadings(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, metres: number): Record<MassChartKey, string> {
+  return {
+    riders: readingAt(route, profile, metres, "mass").text,
+    corkers: corkerReading(profile, load, metres),
+    elevation: elevationReading(profile, metres),
+  };
 }
