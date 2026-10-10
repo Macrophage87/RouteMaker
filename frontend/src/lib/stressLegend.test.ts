@@ -34,6 +34,7 @@ import {
   legendWidths,
   setAccessibility,
   setHighStressLanes,
+  setMtbTrails,
   tiersFor,
   unpavedWidth,
   MTB_TRAIL,
@@ -52,7 +53,7 @@ test("at zoom 12-13 the notice says this is the where-to-ride view and what wait
   const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
   assert.equal(
     out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom 14.",
   );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
@@ -76,7 +77,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; mountain-bike trails and every short path show from zoom 14.",
+    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14, and mountain-bike trails too when their layer is on.",
   );
   // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
   assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
@@ -84,7 +85,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
     hint.includes(
       "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
         "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
-        "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
+        "shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
     ),
   );
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
@@ -299,7 +300,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
 });
 
-test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom (OWNER-DECISIONS 452a)", () => {
+test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom, while their layer is on (OWNER-DECISIONS 452a, 454)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
     label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line.",
@@ -308,7 +309,16 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
     withSwitches(strong, false, () => {
       for (const zoom of [10, 12, 14, 16]) {
         for (const foldedZoom of [false, true]) {
-          const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          // 454: off until the rider turns it on, and the legend names only what the map draws.
+          const off = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          assert.doesNotMatch(off, /class="mtb-trail"/, `zoom ${zoom}, folded ${foldedZoom}: no row while the layer is off`);
+          setMtbTrails(true, { remember: false });
+          let html: string;
+          try {
+            html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          } finally {
+            setMtbTrails(false, { remember: false });
+          }
           const list = html.slice(html.indexOf('aria-label="Traffic stress legend"'), html.indexOf("</ul>"));
           const row = /<li class="mtb-trail">([\s\S]*?)<\/li>/.exec(list);
           assert.ok(row, `zoom ${zoom}, folded ${foldedZoom}: the row is in the stress legend's list`);
