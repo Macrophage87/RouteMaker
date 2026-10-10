@@ -27,6 +27,7 @@ FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s|RESTART_POLICY=%s\n' "$*" "${RESTART_POLICY-<unset>}" >>"$FAKE_DIR/calls.log"
 case "$1" in
   info) [ -e "$FAKE_DIR/docker_down" ] && exit 1; exit 0 ;;
+  ps) cat "$FAKE_DIR/ps_owners" 2>/dev/null; exit 0 ;;
   compose)
     [ "$2" = version ] && { cat "$FAKE_DIR/compose_version" 2>/dev/null || echo 2.29.1; exit 0; }
     exit 0 ;;
@@ -187,6 +188,37 @@ class LocalUpTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, bad)
             self.assertFalse(self.env_file.exists(), bad)
 
+    # --- An existing stack ---------------------------------------------------------
+
+    def test_a_first_run_refuses_to_take_over_an_existing_stack(self) -> None:
+        (self.fake / "ps_owners").write_text("/home/someone/src/RouteMaker\n")
+        result = self.run_script("--data-root", str(self.data_root))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("already exists", result.stderr)
+        self.assertIn("/home/someone/src/RouteMaker", result.stderr)
+        self.assertFalse(self.env_file.exists())
+        self.assertFalse(any(c.startswith(("run ", "compose --")) for c in self.calls()))
+
+    def test_a_stack_started_from_another_checkout_is_refused(self) -> None:
+        self.env_file.write_text(f"DATA_ROOT={self.data_root}\nCOMPOSE_PROJECT_NAME=routemaker\n")
+        (self.fake / "ps_owners").write_text(f"/home/someone/wt/t9\n{REPO}\n")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("/home/someone/wt/t9", result.stderr)
+        self.assertFalse(any(c.startswith(("run ", "compose --")) for c in self.calls()))
+
+    def test_a_stack_started_from_this_checkout_is_started(self) -> None:
+        self.env_file.write_text(f"DATA_ROOT={self.data_root}\nCOMPOSE_PROJECT_NAME=routemaker\n")
+        (self.fake / "ps_owners").write_text(f"{REPO}\n\n")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(
+            any(
+                "ps -a --filter label=com.docker.compose.project=routemaker" in c
+                for c in self.calls()
+            )
+        )
+
     # --- Docker -------------------------------------------------------------------
 
     def test_docker_not_answering_stops_it_before_anything_is_written(self) -> None:
@@ -301,8 +333,8 @@ class LocalUpTests(unittest.TestCase):
         self.assertFalse(self.env_file.exists())
         self.assertFalse(self.data_root.exists())
         for call in self.calls():
-            self.assertRegex(call, r"^(info|compose version)", call)
-        for step in ("prepare_data_root.sh", "fetch_basemap.sh", "npm ci", " build", " up -d"):
+            self.assertRegex(call, r"^(info|compose version|ps -a )", call)
+        for step in ("prepare_data_root.sh", "fetch_basemap.sh", "npm\\ ci", " build", " up -d"):
             self.assertRegex(result.stdout, rf"DRYRUN: .*{re.escape(step)}", step)
 
     def test_help(self) -> None:

@@ -28,6 +28,12 @@
 #          started: they have nothing to serve until the first rebuild.
 #   8. Collects the admin's static files, and prints what is up and what is next.
 #
+# One stack per COMPOSE_PROJECT_NAME: if containers of that project exist, they
+# must have been started from this checkout, and a first run (no .env) refuses
+# when any exist. Otherwise a run from another checkout or worktree would
+# rebuild the shared ${TAG} images from its code (the next recreate puts them in
+# service) and republish the front end that localhost serves.
+#
 # The network it needs on a first run: Docker Hub and ghcr.io (images), pypi.org
 # and deb.debian.org (the image builds), registry.npmjs.org (the front end) and
 # build.protomaps.com plus github.com (the base map). Routing data is not fetched
@@ -93,7 +99,11 @@ die() { printf 'local-up: %s\n' "$*" >&2; exit 1; }
 # A step that changes something: printed and skipped under --dry-run.
 run() {
   if [ "$DRY_RUN" = 1 ]; then
-    if [ "$1" = dc ]; then shift; say "DRYRUN: docker compose $*"; else say "DRYRUN: $*"; fi
+    # %q, so a printed command can be pasted back into a shell as it is.
+    local words
+    if [ "$1" = dc ]; then shift; words=" docker compose"; else words=""; fi
+    printf -v words '%s%s' "$words" "$(printf ' %q' "$@")"
+    say "DRYRUN:$words"
     return 0
   fi
   "$@"
@@ -127,6 +137,30 @@ compose_version=$("$DOCKER" compose version --short 2>/dev/null || true)
 case "$compose_version" in
   "" | 0.* | 1.*) die "needs the docker compose plugin, v2 or later (found '${compose_version:-none}')" ;;
 esac
+
+# --- One stack per project name --------------------------------------------------
+# A compose project already holding containers belongs to the checkout that
+# started it. Starting it from here would recreate those containers from this
+# checkout, and with a new .env against a new, empty data root with new
+# secrets: a working stack taken over. So a project that exists must have been
+# started from this directory, and a first run (no .env yet) needs no project at all.
+if [ -e "$ENV_FILE" ]; then
+  project=$(env_get COMPOSE_PROJECT_NAME)
+else
+  project=routemaker
+fi
+if [ -n "$project" ]; then
+  owners=$("$DOCKER" ps -a --filter "label=com.docker.compose.project=$project" \
+    --format '{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null | sort -u | sed '/^$/d' || true)
+  if [ -n "$owners" ]; then
+    if [ ! -e "$ENV_FILE" ]; then
+      die "a stack named '$project' already exists (started from: $(echo $owners)), and there is no $ENV_FILE. Run this from that checkout, or point LOCAL_UP_ENV_FILE at its .env; writing a new .env here would take that stack over with new secrets and a new data root."
+    fi
+    for owner in $owners; do
+      [ "$owner" = "$REPO_DIR" ] || die "the stack '$project' was started from $owner, not $REPO_DIR. Run scripts/local-up.sh from there: from here it would rebuild that stack's images and republish its front end from this checkout."
+    done
+  fi
+fi
 
 # --- 2. .env ---------------------------------------------------------------------
 if [ -e "$ENV_FILE" ]; then

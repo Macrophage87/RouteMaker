@@ -34,7 +34,9 @@ That is the whole of it, the first time and every time after; the site is at
 <http://localhost>. The first run writes a local `.env` with fresh secrets (an
 existing one is never touched), prepares the data directory (`~/rmdata`, or
 `--data-root DIR`), fetches the base map, builds the front end and the images,
-and starts the stack. Later runs skip whatever is already done. `--help` lists
+and starts the stack. Later runs skip whatever is already done. It refuses to
+touch a stack that was started from another checkout or worktree: run it from
+that one. `--help` lists
 the options; `--dry-run` shows what a run would do.
 
 Routing needs data that the first rebuild makes (hours, and three reference
