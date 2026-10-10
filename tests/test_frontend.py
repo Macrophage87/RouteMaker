@@ -86,7 +86,10 @@ def test_the_page_sets_no_referrer_policy_of_its_own() -> None:
 
 
 def licence_sections(text: str) -> dict[str, tuple[str, str, str]]:
-    """dist/licenses.txt by package: (version, licence, body under its heading)."""
+    """dist/licenses.txt by package: (version, licence, body under its heading). The bundled
+    icons follow a `---` rule under a heading of their own (notices.mjs withIconNotices) and are
+    not packages, so the read stops at the rule."""
+    text = text.split("\n---\n\nIcons bundled with the app:", 1)[0]
     heading = re.compile(r"^## (.+?) - (\S+) \((.+)\)$", re.M)
     found = list(heading.finditer(text))
     sections = {}
