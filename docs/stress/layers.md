@@ -58,7 +58,7 @@ minute (`src/routemaker/massflow.py:1-30`):
 
 That is about 29.5 riders a minute for each meter of usable width, or about 99 per
 11 ft [3.35 m] lane. It is written as `segment.mass_usable_width_m` and checked by
-VALIDATE (`src/pipeline/mass_capacity.py`). The model is from the owner's counts of
+VALIDATE_SEGMENTS (`src/pipeline/mass_capacity.py`). The model is from the owner's counts of
 DC Bike Party rides, accepted as the working model. Its sources are pending
 FOLLOWUP-FLOW-CALIBRATION (docs/SOURCES.md).
 

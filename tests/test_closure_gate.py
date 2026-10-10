@@ -1,4 +1,4 @@
-"""The rebuild's bicycle-closure gate (VALIDATE), without Valhalla.
+"""The rebuild's bicycle-closure gate (VALIDATE_TILES), without Valhalla.
 
 Valhalla's C++ parser reopened 753 singletrack ways after the transform had
 closed them, and nothing between the build and the swap looked

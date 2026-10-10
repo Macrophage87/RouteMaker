@@ -80,7 +80,7 @@ recorded in `assumed` (`stress.py:135-137`).
 3. **Named corridors** (`run.py:2100-2109`): an entry sets the tier, up or down, for the
    ways of its role (through or side lanes) in its range along the axis. A way with a
    protected lane, a separate bikeway or a path facility is exempt, and so is any
-   trail-class way (`corridors.py:27-33`). VALIDATE refuses a build whose sentinel
+   trail-class way (`corridors.py:27-33`). VALIDATE_SEGMENTS refuses a build whose sentinel
    stretches do not come out as the files say (`src/pipeline/lts_sentinels.py`).
 4. **Stress override rows** (`run.py:2309`, `overrides.apply_stress`): they outrank
    everything above. See [overrides.md](overrides.md).
