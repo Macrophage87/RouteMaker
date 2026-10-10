@@ -683,6 +683,9 @@ class RebuildContext:
     trail_routes: dict[int, int] = field(default_factory=dict)
     # Ways in a route=mtb relation (OWNER-DECISIONS 378).
     mountain_bike_ways: set[int] = field(default_factory=set)
+    # Ways on a national or international bicycle route, which no mountain-bike marker
+    # takes off the map (`pipeline.trail_routes.is_mountain_bike`).
+    national_route_ways: frozenset[int] = frozenset()
     # The name of the route relation each way is in (`pipeline.trail_routes`).
     route_names: dict[int, str] = field(default_factory=dict)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
@@ -1847,6 +1850,7 @@ def build_handlers(
         routes = trail_routes.read_routes(context.source_pbf)
         context.trail_routes = routes.levels
         context.mountain_bike_ways = routes.mountain_bike
+        context.national_route_ways = routes.national
         context.route_names = routes.names
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
@@ -2950,10 +2954,12 @@ def build_handlers(
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
             # A mountain-bike trail never qualifies as a long trail (OWNER-DECISIONS
-            # 378): it has no route level and no name to chain a run by.
-            mountain_bike = (
-                way.osm_id in context.mountain_bike_ways
-                or trail_routes.is_mountain_bike_way(way.tags)
+            # 378): it has no route level and no name to chain a run by. A way on a
+            # national bicycle route is never one (the C&O towpath, 2026-10-09).
+            mountain_bike = trail_routes.is_mountain_bike(
+                way.osm_id in context.mountain_bike_ways,
+                way.tags,
+                way.osm_id in context.national_route_ways,
             )
             way_facility = context.facility_by_way.get(way.osm_id, "none")
             car_free_when = sorted(context.car_free_by_way.get(way.osm_id, ()))

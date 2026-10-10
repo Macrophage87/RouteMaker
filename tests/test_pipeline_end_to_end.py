@@ -49,6 +49,7 @@ from rebuild_fixtures import (
     NAMED_ROAD_ON_ID,
     NAMED_STREET_EAST_ID,
     NAMED_STREET_ID,
+    NATIONAL_MTB_ID,
     ONE_WAY_ID,
     OUTSIDE_ROAD_ID,
     PARALLEL_COUNT,
@@ -4410,6 +4411,12 @@ def test_the_rebuild_writes_the_long_trail_columns(
     assert (name, route) == (None, 0), "a mountain-bike trail never qualifies (378)"
     assert run is None and bridge == 0
 
+    # The same mountain-bike route over a trail on a national bicycle route: the national
+    # route keeps it, its level and its name (the C&O towpath, the owner, 2026-10-09).
+    name, route, run, bridge = rows[NATIONAL_MTB_ID]
+    assert (name, route) == ("Canal Trail", 3)
+    assert run == pytest.approx(865, rel=0.03)
+
     name, route, run, bridge = rows[REGIONAL_ROUTE_ID]
     assert (name, route) == ("Beta Route", 3), "the route's level, and its name"
     assert run == pytest.approx(13_800, rel=0.02)
@@ -4465,6 +4472,7 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     rows = ride_rows(settings.SEGMENT_SCHEMA_STAGING)
 
     assert rows[MOUNTAIN_BIKE_ID][3] is None, "a mountain-bike trail never has a calm run"
+    assert rows[NATIONAL_MTB_ID][3] == pytest.approx(865, rel=0.03), "one on a national route has"
     assert rows[REGIONAL_ROUTE_ID][3] >= 12_875
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
