@@ -777,6 +777,40 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert "alias @PAGES_DIR@/401.html;" in page
 
 
+def test_the_back_soon_page_replaces_only_nginxs_own_502_and_stays_behind_the_password() -> None:
+    full = stage("full")
+    https = full[full.index("listen 443") :]
+    assert re.search(r"^\s*error_page 502 /rmbeta-502\.html;", https, re.M)
+    # no other status goes there, and the api's own error answers are never swapped for it
+    assert re.findall(r"^\s*error_page\b.*$", https, re.M) == [
+        "    error_page 401 /rmbeta-401.html;",
+        "    error_page 502 /rmbeta-502.html;",
+    ]
+    assert not re.search(r"^\s*proxy_intercept_errors", full, re.M)
+    page = dict(locations(full))["= /rmbeta-502.html"]
+    assert re.search(r"^\s*internal;", page, re.M), page
+    assert "alias @PAGES_DIR@/502.html;" in page and "auth_basic" not in page
+    assert 'add_header Cache-Control "no-store" always;' in page
+    assert "default-src 'none'" in page
+
+
+def test_the_runbook_checks_nginx_can_read_both_pages() -> None:
+    runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
+    loop = next(
+        ln for ln in runbook.splitlines() if ln.startswith("for f in ") and "401.html" in ln
+    )
+    assert '"$RM_SRC/deploy/beta/502.html"' in loop
+
+
+def test_the_back_soon_page_is_small_plain_and_says_what_to_do() -> None:
+    page = (REPO / "deploy" / "beta" / "502.html").read_text()
+    assert page.startswith("<!doctype html>") and '<html lang="en">' in page
+    assert "<title>" in page and "<h1>" in page and "<main>" in page
+    assert "Back button" in page and "person who gave you access" in page
+    assert "<script" not in page and "http" not in page.replace("http-equiv", "")
+    assert len(page) < 2000
+
+
 def test_the_sign_in_page_is_small_plain_and_names_no_channel() -> None:
     page = (REPO / "deploy" / "beta" / "401.html").read_text()
     assert page.startswith("<!doctype html>") and '<html lang="en">' in page
@@ -917,6 +951,7 @@ def test_rendering_the_full_stage_fills_every_placeholder(tmp_path: Path) -> Non
     assert "server 127.0.0.1:8087;" in text
     assert "root /data/routemaker/frontend;" in text
     assert f"alias {REPO}/deploy/beta/401.html;" in text
+    assert f"alias {REPO}/deploy/beta/502.html;" in text
     assert "ssl_certificate     /etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem;" in text
     assert "include /etc/letsencrypt/options-ssl-nginx.conf;" in text
     assert '"~^https://routemaker\\.cieply\\.com\\|" 0;' in text
@@ -2221,6 +2256,10 @@ def test_the_renderer_can_leave_out_the_sign_in_page() -> None:
     assert "error_page 401 /rmbeta-401.html;" in with_page.stdout
     assert not re.search(r"^\s*error_page 401", without.stdout, re.M)
     assert "location = /rmbeta-401.html" not in without.stdout
+    # the 502 page is read from the same directory, so the same recovery leaves it out too
+    assert "error_page 502 /rmbeta-502.html;" in with_page.stdout
+    assert not re.search(r"^\s*error_page 502", without.stdout, re.M)
+    assert "location = /rmbeta-502.html" not in without.stdout
     assert without.stdout.count("{") == without.stdout.count("}")
     assert "auth_basic_user_file" in without.stdout and "location = /robots.txt" in without.stdout
 
@@ -2561,6 +2600,12 @@ def test_the_renderer_needs_the_sign_in_page_only_without_the_flag(tmp_path: Pat
     assert accepted.returncode == 0, accepted.stderr
     assert not re.search(r"^\s*error_page 401", accepted.stdout, re.M)
     assert "location = /rmbeta-401.html" not in accepted.stdout
+    # with the sign-in page back but no 502.html, the renderer still refuses
+    shutil.copy(REPO / "deploy" / "beta" / "401.html", tmp_path / "deploy" / "beta")
+    refused = run("sh", script, *args, cwd=tmp_path)
+    assert (
+        refused.returncode == 2 and "cannot read" in refused.stderr and "502.html" in refused.stderr
+    )
 
 
 def test_the_source_check_covers_every_beta_service_not_only_the_overlays(tmp_path: Path) -> None:
