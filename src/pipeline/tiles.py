@@ -191,10 +191,10 @@ def tile_build_commands(
     Four commands, not two, and the two additions are the ones nothing ran.
     `mjolnir.admin` and `mjolnir.timezone` are in TILE_PATH_KEYS, so they are
     retargeted into this dated build directory along with every other tile path
-    - and only these commands ever put a file there. 3.5.1 does not refuse a
+    - and only these commands ever put a file there. Valhalla (3.5.1 and 3.6.3) does not refuse a
     build without them, it warns and carries on
-    (src/mjolnir/graphbuilder.cc:431-444 for both databases, and
-    src/mjolnir/graphenhancer.cc:1293-1296 again for the admin one), so the
+    (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3, for both
+    databases, and src/mjolnir/graphenhancer.cc:1293-1296 at 3.5.1 again for the admin one), so the
     graph comes out with no timezone at all and every `date_time.type: 3`
     request - which PLAN:82 builds the whole request design on - evaluates its
     conditional restrictions against nothing. PLAN:13 commits to running both.
@@ -226,7 +226,8 @@ def tile_build_commands(
     - so a redirect is the only way to name its output, and the command runner
     cannot be the thing that captures it, since the runner decodes as text and
     this is a SQLite file. It is also written to run in a scratch directory: it
-    begins `rm -rf dist` and `rm -f ./timezones-with-oceans.shapefile.zip` and
+    begins `rm -rf dist` and `rm -f ./timezones-with-oceans-1970.shapefile.zip` (the
+    3.6.3 name; 3.5.1's had no `-1970`) and
     unzips into the working directory (:21-22, :28), so it is given the build
     directory as its cwd rather than whatever the rebuild happens to be in. The
     redirect goes to a `.part` name that is moved into place only on success,
@@ -234,7 +235,7 @@ def tile_build_commands(
     otherwise leave an empty file where the build config says the database is.
 
     And the move waits on the `.part` being a timezone database, not only on the
-    script's exit status. The 3.5.1 script's `error_exit` decides whether to
+    script's exit status. The 3.5.1 and 3.6.3 scripts' `error_exit` decides whether to
     exit from `pkg-config geos --modversion | grep -cvF 3.9`, and it exits only
     when that count is 0: when GEOS is 3.9, or when there is no pkg-config to
     ask. Measured in ghcr.io/valhalla/valhalla:3.5.1 with the network cut off:
@@ -595,8 +596,10 @@ def trace_attributes(
 
     NOT EXECUTED AGAINST A REAL BUILD: no Valhalla binary exists in this
     environment. The one-shot invocation form and the attribute names are from
-    the 3.5.1 source and documentation; the first real rebuild is what confirms
-    the attribute names.
+    the 3.5.1 source and documentation, re-read at 3.6.3; the first real
+    rebuild is what confirms the attribute names. (A 3.6.3 `trace_attributes`
+    over a Baltimore extract, with the pyvalhalla 3.6.3 binaries, answered with
+    the edge attributes `core.routing` asks for: reports/valhalla-3.6/README.md.)
     """
     output = run(["valhalla_service", str(config_path), "trace_attributes", json.dumps(request)])
     start = output.stdout.find("{")

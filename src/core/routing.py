@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import bisect
 import dataclasses
+import http.client
 import itertools
 import json
 import logging
@@ -156,7 +157,8 @@ class RouterUnavailable(Exception):
 
 
 class RouterRefused(Exception):
-    """The router answered 4xx; `code` is Valhalla's error_code if it gave one."""
+    """The router answered 4xx, or 500 with one of its catch-all codes;
+    `code` is Valhalla's error_code if it gave one."""
 
     def __init__(self, status: int, code: int | None, message: str) -> None:
         super().__init__(message)
@@ -184,6 +186,10 @@ class DeadlineExceeded(Exception):
     """The request's time budget ran out before the router had answered."""
 
 
+# Valhalla's catch-all error codes, one per service stage (src/exceptions.cc).
+UNKNOWN_ERROR_CODES = frozenset({199, 299, 499})
+
+
 def _transport(url: str, payload: dict, timeout: float) -> dict:
     """POST JSON, return JSON. The one place this module touches the network."""
     request = urllib.request.Request(
@@ -196,11 +202,22 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
-        if 400 <= error.code < 500:
-            try:
-                body = json.loads(error.read() or b"{}")
-            except ValueError:
-                body = {}
+        try:
+            body = json.loads(error.read() or b"{}")
+        except (OSError, http.client.HTTPException, ValueError):
+            # Unreadable, cut off or not JSON: the status alone decides.
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        # From 3.6.0 Valhalla answers its catch-all "Unknown" errors (199, 299,
+        # 499: an exception it did not classify while serving this request) with
+        # 500 rather than 400 (valhalla/valhalla#5359). That is still one
+        # request the router could not serve, not a router that is down, so it
+        # is a refusal as it was under 3.5.1: read as an outage it would mark a
+        # weekend or off-road router down for every rider over one bad request.
+        if 400 <= error.code < 500 or (
+            error.code == 500 and body.get("error_code") in UNKNOWN_ERROR_CODES
+        ):
             raise RouterRefused(
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error

@@ -1577,8 +1577,10 @@ not an oversight:
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per
 metre over the same edge with no tier, as a multiple of the edge's time cost:
-Valhalla 3.5.1's bicycle edge cost is `time * factor`, with `factor = 1 +
-grade + accommodation * roadway_stress` (sif/bicyclecost.cc), so the stress
+Valhalla's bicycle edge cost (3.5.1 and 3.6.3) is `time * factor`, with
+`factor = 1 + grade + accommodation * roadway_stress` (sif/bicyclecost.cc;
+3.6.3 then multiplies by a per-request linear-feature factor, 1 unless a
+request sends `linear_cost_factors`, which RouteMaker does not), so the stress
 level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
 LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
 accommodation factor. LTS 4 and up add the graph's top practical speed (140,
@@ -1735,7 +1737,7 @@ it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
-Valhalla 3.5.1's bicycle costing prices a node through its stop impact and turn
+Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a node through its stop impact and turn
 type, a few seconds. Measured on the live standard router (2026-10-01):
 `/trace_attributes` over routes along Wisconsin Avenue, Pennsylvania Avenue SE,
 K Street, Rhode Island Avenue, Georgia Avenue and Rockville Pike and across
@@ -1760,7 +1762,10 @@ of the owner's item 166. Against it the literature review's costs are 30 to 100
 seconds of riding. The tiles do carry stop, yield and signal flags
 (`/locate`'s `edge.stop_sign`, `yield_sign`, `traffic_signal` and the node's own
 `traffic_signal`, matched to a traced edge by `edge.id`); `/trace_attributes`
-does not return them and `/expansion` is not enabled. The router's cost for a
+did not return them under 3.5.1 and `/expansion` is not enabled. (From 3.6.0
+`/trace_attributes` returns `node.traffic_signal` and `edge.traffic_signal`,
+valhalla/valhalla#5121 and #5385, but still no stop or yield flags; the
+junction model keeps reading `/locate`.) The router's cost for a
 metre of quiet residential street, from the same traces, is 2.2 times its time
 (median; 1.8 to 2.9 at `use_roads` 0 to 1).
 
@@ -2006,6 +2011,18 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
+**One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
+2026-10-10). Below the top of the slider a longer candidate must also be worth its
+miles, as at the top: the stress it saves (`refine.stress_weight_m`, metres of LTS 3
+with LTS 4, Avoid and the flagged junctions weighted as at the top) must be at least
+the metres it adds over `refine.worth_ratio`, which rises with the calm rate from 1
+just above 80 to 5 at 100 (`WORTH_DEFAULT`): about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+so at 90 a mile [1.6 km] of LTS 3 saved buys about 1.7 mi [2.8 km] of riding. The score
+still decides first. Crossing avoidance alone (80 and below, no calm rate) is
+unchanged. The proposal's worked case, 2.75 mi [4.4 km] more for 650 ft [198 m] less
+LTS 3 with more flagged crossings, is refused at every position, with a target or
+without.
+
 There is no cap on the detour. The search keeps the best-scoring candidate, and
 never one that is busier than the router's own route ("Traffic wins", OWNER-DECISIONS
 61, said of hill avoidance and carried here): a candidate with more than 2 per
@@ -2063,8 +2080,7 @@ climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
 alternative. Not measured on the live router from this branch (it was built where
 the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
 run after deploy). The detour acceptance rule decision 435 asks to revisit is
-unchanged here, pending the owner's answer to the proposal sent with this change
-(PLAN.md, 435, records it).
+the owner's "One rule" ("One rule for the extra miles", below).
 
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
@@ -3670,7 +3686,7 @@ answer on the source tags pinned.
 
 ## Lua
 
-The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it
+The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 and 3.6.3) requires it
 (`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
 `graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
 under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
@@ -4132,8 +4148,11 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   in the UI and the link (`targetmi`, miles to a tenth). The API takes whole metres from 1,000
   (0.6 mi) to 1,000,000 (620 mi).
 - **It is a target, not a maximum** (271): the planner aims at or under it, and up to it the extra
-  distance is free (the rider asked for it). Past it a longer route is taken only where the stress it
-  saves pays for the miles past the target at the stricter bar (`refine.WORTH_OVER_TARGET`, below),
+  distance costs half the default's price, 1 mi [1.6 km] of LTS 3 saved per 10 mi [16 km]
+  (`refine.WORTH_UP_TO_TARGET`; OWNER-DECISIONS 435, the owner's "One rule" of 2026-10-10: free
+  until then, so a route a little calmer could add any miles up to the target). Past it a longer
+  route is taken only where the stress it saves pays for the miles past the target at the stricter
+  bar (`refine.WORTH_OVER_TARGET`, below),
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
@@ -4268,11 +4287,13 @@ were not worth it:
   LTS 4 saving, against 287(1), which keeps LTS 4 first in the stress order. `choose_options` and the loop's way
   back use the same rule through `worth_it`.
 - **The charge** (`refine.distance_charge_m`), the stress the extra distance must save:
-  - no target: the metres added over `WORTH_DEFAULT` = **5** (1 mi of LTS 3 per 5 mi), measured as
-    the Hills slider weighs distance (`level3`), so a longer route that is less effort with Hills set
-    to avoid is not charged for it;
-  - with a target (271): nothing up to it, and the actual metres past it over `WORTH_OVER_TARGET` =
-    **2.5** (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
+  - no target: the metres added over the slider's `worth_ratio` (435, "One rule"): `WORTH_DEFAULT` =
+    **5** at the top (1 mi of LTS 3 per 5 mi), and below it about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+    measured as the Hills slider weighs distance (`level3`), so a longer route that is less effort
+    with Hills set to avoid is not charged for it;
+  - with a target (271): the actual metres up to it over `WORTH_UP_TO_TARGET` = **10** (1 mi of LTS 3
+    per 10 mi; 435, where 271 made them free), and those past it over `WORTH_OVER_TARGET` = **2.5**
+    (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
   - a leg of a plan with stops is charged at the whole trip's length (`rest_m`), and a spliced trip
     is checked again as a whole (`seek.whole_trip: "not_worth"`).
 - **A long plan**: each leg's search keeps every option with no price on distance of its own
@@ -4631,8 +4652,8 @@ from, below):
    contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
 
    The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
-   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
-   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance was free
+   within the target, 287(2), until 435 made it half price). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
    replacement is never the main road a few metres on and the case does not arise; and turns are not in
    the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
    own, outside 258 to 262.
@@ -5135,7 +5156,7 @@ Two narrower readings keep access where it was:
   bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
   a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
 
-Valhalla 3.5.1 prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+Valhalla (3.5.1 and 3.6.3) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
 and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before
