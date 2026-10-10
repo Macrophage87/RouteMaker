@@ -19,12 +19,22 @@ router's own unit (cost seconds), in two places that need no rebuild:
 - Every plan, after the search or where it does not run (`settle`): where the
   answer still passes one, the router is asked once more with the junction
   excluded (`exclude_locations`, the junction's point with a radius of
-  `MATCH_RADIUS_M`, which takes out every edge there). Where the search did not
-  run, the way round replaces the answer when its cost is less than the answer's
-  plus 30 minutes for each pass; on Mass Ride and Group Ride it replaces it
-  whenever it exists (307: "exclude Avoid junctions where an alternative
-  exists"). Otherwise the answer keeps the junction, says so first, and offers the
-  way round as `avoid_alternate`, however much longer (335).
+  `MATCH_RADIUS_M`, which takes out every edge there): one /route call. Where the
+  search did not run (or stopped before a round: `searched` is what it did, not
+  what was asked), the way round replaces the answer when its cost is less than
+  the answer's plus 30 minutes for each pass. On Mass Ride and Group Ride (307:
+  "exclude Avoid junctions where an alternative exists") it replaces it when it
+  takes on no LTS 4 (or Avoid road) the answer did not have and is at most
+  `GROUP_EXTRA_MAX_M` (1 mi (1.6 km)) or `GROUP_EXTRA_SHARE` (25%) of the answer
+  longer, whichever is more: a default open for the owner (the review of 351e65b),
+  which reads both routes' stress (one trace a leg of each, remembered). A loop
+  never swaps: its way back was made by a different way (`refine.make_loop`) and
+  the way round is a plain route through the same points, so it is offered.
+  Otherwise the answer keeps the junction, says so first, and offers the way round
+  as `avoid_alternate`, however much longer (335), which the plan then answers in
+  full: one trace a leg. So a plan through an Avoid junction costs 1 /route call
+  plus a trace for each leg of the way round (and, on Mass Ride and Group Ride, a
+  trace for each leg of the answer, where not already remembered).
 
 Where the search ran, its own guards ("Traffic wins": never a busier route, the
 LTS 4 hold) stand: a way round they refused is offered, not imposed.
@@ -51,6 +61,14 @@ GROUP_PRESETS = frozenset({"mass-ride", "group-ride"})
 # The least time (seconds) left in the plan's budget to ask for the way round: one
 # route call. Less than that and the answer keeps the junction and says so.
 ALTERNATE_MIN_S = 4.0
+# How much longer a way round may be for Mass Ride and Group Ride to take it in place
+# of the answer: this much, or this share of the answer, whichever is more; and it may
+# take on no LTS 4 (or Avoid road) beyond the answer's, past `GROUP_LTS4_SLACK_M` (the
+# traces' rounding). A default the coordinator picked for the owner to confirm (the
+# review of 351e65b); a way round outside it is offered beside the notice instead.
+GROUP_EXTRA_MAX_M = 1609.344
+GROUP_EXTRA_SHARE = 0.25
+GROUP_LTS4_SLACK_M = 1.0
 
 
 def approved() -> tuple[AvoidJunction, ...]:
@@ -123,6 +141,29 @@ def _junctions_of(found: Sequence[Passage]) -> list[AvoidJunction]:
     return seen
 
 
+def group_takes(trip: dict, around: dict, ctx, deadline) -> bool:
+    """Whether Mass Ride or Group Ride takes the way round in place of the answer: no
+    LTS 4 (or Avoid road) beyond the answer's, and no more than GROUP_EXTRA_MAX_M or
+    GROUP_EXTRA_SHARE longer, whichever is more. Where either route's stress cannot be
+    read (no context, no time, untraceable) it does not: the way round is offered."""
+    from . import refine, routing
+
+    length = routing._trip_length_m(trip)
+    extra = routing._trip_length_m(around) - length
+    if extra > max(GROUP_EXTRA_MAX_M, GROUP_EXTRA_SHARE * length):
+        return False
+    if ctx is None:
+        return False
+    try:
+        before = refine.analyse(trip, ctx, deadline, with_events=False)
+        after = refine.analyse(around, ctx, deadline, with_events=False)
+    except (routing.DeadlineExceeded, routing.RouterUnavailable):
+        return False
+    if before is None or after is None:
+        return False
+    return after.lts4_m <= before.lts4_m + GROUP_LTS4_SLACK_M
+
+
 def settle(
     trip: dict,
     request: dict,
@@ -131,12 +172,17 @@ def settle(
     deadline,
     junctions: Sequence[AvoidJunction],
     searched: bool,
+    ctx=None,
+    loop: bool = False,
 ) -> tuple[dict, dict | None, dict | None]:
     """The answer's trip, what was done about Avoid junctions (None: the route passes
     none), and the way round to offer (a trip, or None).
 
-    `searched`: the calm search ran and weighed the penalty already (see the module's
-    docstring)."""
+    `searched`: the calm search ran at least one round and was not cut short, so it
+    weighed the penalty already (see the module's docstring). `ctx`: the plan's
+    `refine.Context`, for reading the stress of both routes on Mass Ride and Group
+    Ride. `loop`: the plan is a loop, which keeps its route and is offered the way
+    round."""
     from . import routing
 
     found = passages_of(trip, junctions)
@@ -172,8 +218,10 @@ def settle(
         return trip, info, None
     info["alternate"] = "found"
     swap = False
-    if preset_name in GROUP_PRESETS:
-        swap = True
+    if loop:
+        swap = False
+    elif preset_name in GROUP_PRESETS:
+        swap = group_takes(trip, around, ctx, deadline)
     elif not searched:
         swap = routing._router_cost(around) + model.penalty_s(left) < routing._router_cost(
             trip

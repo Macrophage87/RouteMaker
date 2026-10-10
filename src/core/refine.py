@@ -726,6 +726,10 @@ class Target:
 
     point: tuple[float, float]
     tier: int
+    # Metres round the point the router excludes every edge within (`exclude_locations`'
+    # `radius`); None for the router's default (the nearest edge). An Avoid-rated
+    # junction's is `MATCH_RADIUS_M`, as `core.avoid_junctions.exclusions` asks.
+    radius: int | None = None
 
 
 def _marks(analysis: Analysis) -> list:
@@ -773,10 +777,21 @@ def avoid_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     exclusion on a junction's node takes out every edge there, which is the way
     round. Not near the route's ends, where the router must leave and arrive."""
     return [
-        Target((p.junction.lon, p.junction.lat), 5)
+        Target((p.junction.lon, p.junction.lat), 5, int(avoid_model.MATCH_RADIUS_M))
         for p in analysis.avoid_passages
         if _clear_of_ends(p.m, analysis.length_m, analysis.via_m)
     ]
+
+
+def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) -> dict:
+    """One `exclude_locations` entry: an Avoid-rated junction's point (from a Target or a
+    kept point) with `MATCH_RADIUS_M`, so every edge at it goes, else the point alone."""
+    if radius is None and any(j.lon == lon and j.lat == lat for j in ctx.avoid):
+        radius = int(avoid_model.MATCH_RADIUS_M)
+    out: dict = {"lon": lon, "lat": lat}
+    if radius:
+        out["radius"] = radius
+    return out
 
 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
@@ -979,7 +994,7 @@ def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
     locations = ctx.request.get("locations") or []
     request = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
     if excludes:
-        request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]
+        request["exclude_locations"] = [_exclusion(lon, lat, ctx) for lon, lat in excludes]
     request["locations"] = [
         locations[leg],
         *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
@@ -1503,8 +1518,9 @@ def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
     (`Analysis.avoid_junction_m`), on both sides: a way round an Avoid junction is not
     "busier" for the LTS 3 it takes on in place of it (308: the route uses one only
     where there is no reasonable alternative). With no Avoid junction on either it is
-    the plain guard."""
-    return read.exposure_m + read.avoid_junction_m > _allowance(first_exposure + ctx.first_avoid_m)
+    the plain guard. The guard's tolerance (`_allowance`) is on the exposure alone: the
+    first route's Avoid junctions are added at their penalty, not scaled up with it."""
+    return read.exposure_m + read.avoid_junction_m > _allowance(first_exposure) + ctx.first_avoid_m
 
 
 # A seek candidate asked with the search's exclusions is asked again without
@@ -1628,7 +1644,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                 sent.add(frozenset(t.point for t in asked))
                 request = {k: v for k, v in ctx.request.items() if k != "alternates"}
                 request["exclude_locations"] = [
-                    {"lon": t.point[0], "lat": t.point[1]} for t in asked
+                    _exclusion(t.point[0], t.point[1], ctx, t.radius) for t in asked
                 ]
                 try:
                     answer = routing._call(ctx.variant, "route", request, round_deadline)
@@ -2309,10 +2325,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     slack = 0.0
     if ctx.ceiling_m is not None:
         slack = max(ctx.ceiling_m - sum(_trip_m(t) for t in firsts), 0.0)
-    weights = [LONG_LTS4_PRIORITY * r.lts4_m + r.lts3_m for r in reads]
+    # A leg's Avoid-rated junctions (307) count with its LTS 4, at their penalty's quiet
+    # metres (`Analysis.avoid_junction_m`): a leg through one is searched, and first.
+    weights = [LONG_LTS4_PRIORITY * (r.lts4_m + r.avoid_junction_m) + r.lts3_m for r in reads]
     order = sorted(
         (j for j in range(len(legs)) if weights[j] > 0),
-        key=lambda j: (-reads[j].lts4_m, -reads[j].lts3_m, j),
+        key=lambda j: (-(reads[j].lts4_m + reads[j].avoid_junction_m), -reads[j].lts3_m, j),
     )
     limited: str | None = None
     for turn, j in enumerate(order):
@@ -2397,8 +2415,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # OWNER-DECISIONS 259) is not counted against the whole.
     traded = sum(max(0.0, f.lts4_m - r.lts4_m) for f, r in zip(finals, reads, strict=True))
     lts4 -= traded
-    worse = lts4 > whole.lts4_m + MAXCALM_STEPS[0] or (
-        lts4 > whole.lts4_m - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
+    # The Avoid-rated junctions (307) count with the LTS 4, as they do in each leg's
+    # weight: a leg that goes round one, on LTS 3, is not "worse" for it.
+    top = lts4 + sum(a.avoid_junction_m for a in finals)
+    whole_top = whole.lts4_m + whole.avoid_junction_m
+    worse = top > whole_top + MAXCALM_STEPS[0] or (
+        top > whole_top - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
     )
     lts4 += traded
     if not changed or worse or too_long(length, ctx):

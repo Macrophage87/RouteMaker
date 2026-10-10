@@ -46,6 +46,7 @@ same words.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -772,7 +773,42 @@ def plan(
         "credit": gbfs.CREDIT,
     }
     body["attribution"] = [*ride.get("attribution", []), gbfs.CREDIT]
+    if body.get("avoid_alternate"):
+        # The way round an Avoid-rated junction (335) is shown in place of the ride
+        # leg, so it carries the same walks and docks (its ride and totals its own)
+        # and the operator's credit (the review of 351e65b).
+        around = dict(body["avoid_alternate"])
+        around["bikeshare"] = alternate_block(body["bikeshare"], around)
+        around["attribution"] = [*around.get("attribution", []), gbfs.CREDIT]
+        body["avoid_alternate"] = around
     return body
+
+
+def alternate_block(block: dict, around: dict) -> dict:
+    """A bikeshare plan's `bikeshare` for its way round an Avoid-rated junction: the
+    same walks, docks, availability, endings and notes, with the ride's length and time,
+    the total, the ride step and the summary for the way round."""
+    out = copy.deepcopy(block)
+    old_ride_m = float(block.get("ride_m") or 0.0)
+    old_total_s = float(block.get("total_s") or 0.0)
+    ride_m = float(around.get("distance_m") or 0.0)
+    ride_s = float(around.get("duration_s") or 0.0)
+    total_s = float(block.get("walk_s") or 0.0) + ride_s
+    out["ride_m"] = round(ride_m, 1)
+    out["ride_s"] = round(ride_s, 1)
+    out["total_s"] = round(total_s, 1)
+    summary = str(out.get("summary") or "")
+    summary = summary.replace(
+        f"about {minutes(old_total_s)} in all", f"about {minutes(total_s)} in all", 1
+    )
+    for step in out.get("steps") or []:
+        if step.get("kind") != "ride":
+            continue
+        before = step["text"]
+        step["text"] = before.replace(f"Ride {miles(old_ride_m)}", f"Ride {miles(ride_m)}", 1)
+        summary = summary.replace(before, step["text"], 1)
+    out["summary"] = summary
+    return out
 
 
 class RoutingServices:

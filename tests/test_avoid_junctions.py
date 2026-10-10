@@ -9,12 +9,23 @@ excluded.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from django.contrib.gis.geos import Point as GeoPoint
-from test_admin_scoping import admin_url, as_instance_admin, instance_admin  # noqa: F401
+from test_admin_scoping import (  # noqa: F401
+    admin_url,
+    as_guild_admin,
+    as_instance_admin,
+    guild,
+    guild_admin,
+    instance_admin,
+)
+from test_bikeshare import DUPONT, UNION, FakeServices
+from test_bikeshare import run as run_bikeshare
 from test_route_api import LAT, VERTICES, post, route_answer
 
-from core import avoid_junctions, presets, refine, routing
+from core import avoid_junctions, gbfs, presets, refine, routing
 from core.models import AuditLogEntry, AvoidJunction
 from routemaker import avoid_junctions as model
 from routemaker import calm
@@ -159,7 +170,8 @@ def test_the_calm_search_scores_a_pass_at_30_minutes_and_ranks_it_above_red() ->
         length_m=3000, cost_s=500, exposure_m=0, climb_m=0, pieces=[], classes=[], events=[],
         avoid_passages=[model.Passage(junction(), 1500.0)],
     )  # fmt: skip
-    assert refine.crossing_targets(long_one, ctx) == [refine.Target(JUNCTION, 5)]
+    # With the 15 m radius `core.avoid_junctions.exclusions` asks, so every edge at it goes.
+    assert refine.crossing_targets(long_one, ctx) == [refine.Target(JUNCTION, 5, 15)]
     near_start = refine.Analysis(
         length_m=3000, cost_s=500, exposure_m=0, climb_m=0, pieces=[], classes=[], events=[],
         avoid_passages=[model.Passage(junction(), 100.0)],
@@ -264,17 +276,70 @@ class TestSettle:
         assert info["decision"] == "kept"
 
     @pytest.mark.parametrize("preset", ["mass-ride", "group-ride"])
-    def test_mass_ride_and_group_ride_take_any_way_round(self, around, preset) -> None:
+    @pytest.mark.parametrize(
+        ("route_km", "around_km", "lts4", "taken"),
+        [
+            (2.2, 3.5, (0, 0), True),  # 0.8 mi longer: within the 1 mi
+            (2.2, 4.0, (0, 0), False),  # 1.1 mi longer: past the 1 mi (and past 25%)
+            (10.0, 12.4, (0, 0), True),  # 24% longer: past the 1 mi, within 25%
+            (10.0, 12.6, (0, 0), False),  # 26% longer
+            (2.2, 2.5, (0, 120), False),  # takes on LTS 4
+            (2.2, 2.5, (300, 300.5), True),  # no LTS 4 beyond the route's own (rounding)
+        ],
+    )
+    def test_mass_ride_and_group_ride_take_a_way_round_within_the_default_limits(
+        self, around, monkeypatch, preset, route_km, around_km, lts4, taken
+    ) -> None:
         """307: "Mass Ride and Group Ride exclude Avoid junctions where an alternative
-        exists"."""
-        around(AroundRouter(trip_of(DETOUR, 30.0, 99_999)))
+        exists", within the default the coordinator picked for the owner (the review of
+        351e65b): no LTS 4 added, at most 1 mi (1.6 km) or 25% longer, whichever is more.
+        Outside it, the route is kept and the way round offered."""
+        around(AroundRouter(trip_of(DETOUR, around_km, 99_999)))
+        read = {route_km: lts4[0], around_km: lts4[1]}
+        monkeypatch.setattr(
+            refine,
+            "analyse",
+            lambda trip, ctx, deadline, with_events=True: SimpleNamespace(
+                lts4_m=read[trip["summary"]["length"]]
+            ),
+        )
+        trip, info, offered = avoid_junctions.settle(
+            trip_of(VERTICES, route_km, 500), {}, "standard", preset, far_deadline(),
+            [junction()], True, ctx=object(),
+        )  # fmt: skip
+        if taken:
+            assert trip["summary"]["length"] == around_km
+            assert info["decision"] == "avoided" and offered is None
+        else:
+            assert trip["summary"]["length"] == route_km
+            assert info["decision"] == "kept" and info["alternate"] == "found"
+            assert offered["summary"]["length"] == around_km
+
+    def test_group_ride_keeps_the_route_where_the_stress_cannot_be_read(self, around) -> None:
+        around(AroundRouter(trip_of(DETOUR, 2.5, 99_999)))
+        trip, info, offered = avoid_junctions.settle(
+            trip_of(VERTICES, 2.2, 500), {}, "standard", "group-ride", far_deadline(),
+            [junction()], True, ctx=None,
+        )  # fmt: skip
+        assert trip["summary"]["length"] == 2.2
+        assert info["decision"] == "kept" and offered is not None
+
+    @pytest.mark.parametrize("preset", ["default", "mass-ride"])
+    def test_a_loop_keeps_its_route_and_is_offered_the_way_round(
+        self, around, monkeypatch, preset
+    ) -> None:
+        """A loop's way back was made by a different way (`refine.make_loop`); the way
+        round is a plain route through the same points, so it is offered, never swapped
+        in, and the loop's own figures describe the route shown (the review of 351e65b)."""
+        around(AroundRouter(trip_of(DETOUR, 2.3, 500 + 10)))
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: SimpleNamespace(lts4_m=0.0))
         trip, info, offered = avoid_junctions.settle(
             trip_of(VERTICES, 2.2, 500), {}, "standard", preset, far_deadline(),
-            [junction()], True,
+            [junction()], False, ctx=object(), loop=True,
         )  # fmt: skip
-        assert trip["summary"]["length"] == 30.0
-        assert info["decision"] == "avoided"
-        assert offered is None
+        assert trip["summary"]["length"] == 2.2
+        assert info["decision"] == "kept"
+        assert offered["summary"]["length"] == 2.3
 
     def test_no_way_round_keeps_the_route_and_says_so(self, around) -> None:
         around(AroundRouter(refuse=True))
@@ -363,10 +428,12 @@ def trace_for(payload):
 
 class PlanRouter:
     """The direct route through the junction, unless the junction is excluded; then
-    the way round, which costs `detour_cost` against the direct route's 500."""
+    the way round, `detour_km` long, which costs `detour_cost` against the direct
+    route's 500."""
 
-    def __init__(self, detour_cost: float) -> None:
+    def __init__(self, detour_cost: float, detour_km: float = 6.0) -> None:
         self.detour_cost = detour_cost
+        self.detour_km = detour_km
         self.excluded: list[list] = []
 
     def __call__(self, url: str, payload: dict, timeout: float) -> dict:
@@ -381,7 +448,7 @@ class PlanRouter:
             for e in excludes
         ):
             self.excluded.append(excludes)
-            answer = route_answer([(DETOUR, 6.0, [])])
+            answer = route_answer([(DETOUR, self.detour_km, [])])
             answer["trip"]["summary"]["cost"] = self.detour_cost
             return answer
         answer = route_answer([(VERTICES, 2.2, [])])
@@ -418,16 +485,51 @@ class TestRouteApi:
     def test_mass_ride_goes_round_and_says_nothing_is_passed(
         self, client, segment_schemas, plan_router
     ) -> None:
+        """A way round 0.8 mi (1.3 km) longer with no LTS 4 added: within the default."""
         add_row()
-        fake = plan_router(PlanRouter(detour_cost=99_999.0))
+        fake = plan_router(PlanRouter(detour_cost=99_999.0, detour_km=3.5))
         body = post(client, body_for("mass-ride")).json()
         assert fake.excluded
-        assert body["distance_m"] == 6000.0
+        assert body["distance_m"] == 3500.0
         assert body["avoid_junctions"] == []
         assert body["avoid_notice"] is None
         assert body["avoid_search"]["decision"] == "avoided"
         assert body["avoid_alternate"] is None
         assert AvoidJunction.objects.get().plans_through == 0
+
+    def test_mass_ride_keeps_a_route_whose_way_round_is_too_long_and_offers_it(
+        self, client, segment_schemas, plan_router
+    ) -> None:
+        """2.4 mi (3.8 km) longer is past 1 mi and past 25%: the notice and the offer."""
+        add_row()
+        plan_router(PlanRouter(detour_cost=99_999.0, detour_km=6.0))
+        body = post(client, body_for("mass-ride")).json()
+        assert body["distance_m"] == 2200.0
+        assert body["avoid_notice"].startswith("This route goes through an Avoid-rated junction")
+        assert body["avoid_search"]["decision"] == "kept"
+        assert body["avoid_alternate"]["distance_m"] == 6000.0
+        assert AvoidJunction.objects.get().plans_through == 1
+
+    def test_a_search_that_stopped_before_a_round_leaves_the_plan_to_weigh_it(
+        self, client, segment_schemas, plan_router, monkeypatch
+    ) -> None:
+        """`searched` is what the search did (a round, not cut short), not that it was
+        asked for: one that returned early has weighed nothing, so the plan's own
+        comparison takes the cheaper way round. The routes to choose from were the
+        replaced route's near-ties: none are offered (the review of 351e65b)."""
+        add_row()
+
+        def stopped(trip, ctx):
+            ctx.candidates = [(trip, None), (trip, None)]
+            return trip, {"rate": ctx.rate, "rounds": 0, "excluded": 0, "limited": "time"}
+
+        monkeypatch.setattr(refine, "refine", stopped)
+        plan_router(PlanRouter(detour_cost=500.0 + 900.0))
+        body = post(client, body_for("default")).json()
+        assert body["avoid_search"]["decision"] == "avoided"
+        assert body["distance_m"] == 6000.0
+        assert body["avoid_notice"] is None
+        assert body["candidates"] is None
 
     def test_a_kept_junction_is_noticed_described_counted_and_the_way_round_offered(
         self, client, segment_schemas, plan_router, monkeypatch
@@ -532,3 +634,161 @@ class TestAdmin:
         from core.admin import AvoidJunctionAdmin
 
         assert "approved" in AvoidJunctionAdmin.readonly_fields
+
+    def test_withdrawal_is_audited_and_clears_who_approved_it(
+        self,
+        as_instance_admin,  # noqa: F811
+    ) -> None:
+        row = add_row(approved=True)
+        row.approved_by_user_id = 77
+        row.save()
+        response = as_instance_admin.post(
+            admin_url("core_avoidjunction_changelist"),
+            {"action": "withdraw_selected", "_selected_action": [row.pk], "index": 0},
+        )
+        assert response.status_code == 302
+        row.refresh_from_db()
+        assert not row.approved
+        assert row.approved_at is None
+        assert row.approved_by is None and row.approved_by_user_id is None
+        assert AuditLogEntry.objects.filter(
+            action="withdraw",
+            model="avoidjunction",
+            object_id=str(row.pk),
+            outcome=AuditLogEntry.Outcome.ALLOWED,
+        ).exists()
+        assert avoid_junctions.approved() == ()
+
+    def test_a_guild_admin_is_refused_and_the_refusal_audited(
+        self,
+        as_guild_admin,  # noqa: F811
+    ) -> None:
+        """An approved row changes routing for every guild: one club's admin may not
+        approve, withdraw or edit one."""
+        row = add_row(approved=False)
+        response = as_guild_admin.post(
+            admin_url("core_avoidjunction_changelist"),
+            {"action": "approve_selected", "_selected_action": [row.pk], "index": 0},
+        )
+        assert response.status_code == 403
+        row.refresh_from_db()
+        assert not row.approved
+        assert AuditLogEntry.objects.filter(
+            model="avoidjunction", outcome=AuditLogEntry.Outcome.REFUSED
+        ).exists()
+        assert as_guild_admin.get(admin_url("core_avoidjunction_change", row.pk)).status_code == 403
+
+
+# --- The review of 351e65b: the search's guards, exclusions and long rides -------------------
+
+
+def plain_ctx(**changes):
+    ctx = refine.Context(
+        variant="standard", request={}, costing={}, when="weekend",
+        deadline=routing.Deadline(routing.clock() + 60, 10), traces={}, points=[],
+        roadway_only=False, with_facility=False, group=False, rate=1.0, weight=1.0,
+        climb_weight=0.0, quiet_cost=0.44,
+    )  # fmt: skip
+    for key, value in changes.items():
+        setattr(ctx, key, value)
+    return ctx
+
+
+def test_the_traffic_wins_allowance_is_on_the_exposure_not_on_the_junctions_metres() -> None:
+    """`_busier`: exposure plus the Avoid junctions' metres against the first route's
+    allowance plus its Avoid junctions' metres, unscaled (the review's 9)."""
+    ctx = plain_ctx(first_avoid_m=10_000.0)
+    first_exposure = 1000.0
+    allowance = refine._allowance(first_exposure) + 10_000.0
+    read = refine.Analysis(
+        length_m=1, cost_s=1, exposure_m=allowance, climb_m=0, pieces=[], classes=[], events=[]
+    )
+    assert not refine._busier(read, first_exposure, ctx)
+    read.exposure_m = allowance + 1.0
+    assert refine._busier(read, first_exposure, ctx)
+
+
+def test_an_exclusion_on_an_avoid_junction_carries_its_15_m_radius() -> None:
+    ctx = plain_ctx(avoid=(junction(),))
+    assert refine._exclusion(JUNCTION[0], JUNCTION[1], ctx) == {
+        "lon": JUNCTION[0], "lat": JUNCTION[1], "radius": 15,
+    }  # fmt: skip
+    assert refine._exclusion(-77.0, 38.0, ctx) == {"lon": -77.0, "lat": 38.0}
+    assert refine._exclusion(-77.0, 38.0, ctx, 15)["radius"] == 15
+
+
+def test_a_long_rides_leg_through_an_avoid_junction_is_searched_first(monkeypatch) -> None:
+    """`refine_long`: a leg's Avoid junctions count with its LTS 4 in its weight, so a leg
+    whose only fault is one is searched, and before a leg with LTS 3 (the review's 3)."""
+    whole = refine.Analysis(
+        length_m=60_000, cost_s=1, exposure_m=500, climb_m=0, pieces=[], classes=[], events=[]
+    )
+    plain = refine.Analysis(
+        length_m=30_000, cost_s=1, exposure_m=500, climb_m=0, pieces=[], classes=[],
+        events=[], lts3_m=500.0,
+    )  # fmt: skip
+    through = refine.Analysis(
+        length_m=30_000, cost_s=1, exposure_m=0, climb_m=0, pieces=[], classes=[], events=[],
+        avoid_passages=[model.Passage(junction(), 100.0)], avoid_junction_m=1800 / 0.44,
+    )  # fmt: skip
+    legs = [{"a": {"lon": 0, "lat": 0}, "b": {"lon": 1, "lat": 0}, "user": 0},
+            {"a": {"lon": 1, "lat": 0}, "b": {"lon": 2, "lat": 0}, "user": 0}]  # fmt: skip
+    leg_trips = [{"legs": [{"shape": "a"}], "summary": {"length": 30.0}},
+                 {"legs": [{"shape": "b"}], "summary": {"length": 30.0}}]  # fmt: skip
+    asked = iter(leg_trips)
+    monkeypatch.setattr(routing, "_call", lambda *a, **k: {"trip": next(asked)})
+
+    def read(trip, ctx, deadline, with_events=True):
+        shape = (trip.get("legs") or [{}])[0].get("shape")
+        return {"a": plain, "b": through}.get(shape, whole)
+
+    monkeypatch.setattr(refine, "analyse", read)
+    monkeypatch.setattr(refine, "long_legs", lambda whole, ctx: legs)
+    searched: list[str] = []
+
+    def search(trip, sub):
+        searched.append(trip["legs"][0]["shape"])
+        return trip, {"rate": 1.0, "rounds": 0, "excluded": 0, "limited": None}
+
+    monkeypatch.setattr(refine, "refine", search)
+    ctx = plain_ctx(
+        request={"locations": [{"lon": 0, "lat": 0}, {"lon": 2, "lat": 0}]},
+        points=[(0, 0), (2, 0)],
+        avoid=(junction(),),
+    )
+    refine.refine_long({"legs": [{"shape": "whole"}], "summary": {"length": 60.0}}, ctx)
+    assert searched == ["b", "a"]
+
+
+def test_a_bikeshare_way_round_keeps_the_walks_docks_and_the_operators_credit() -> None:
+    """The review's 8: the way round is shown in place of the ride leg, so it carries the
+    plan's `bikeshare` (its ride and totals its own) and the GBFS credit."""
+
+    class WithWayRound(FakeServices):
+        def ride(self, a, b):
+            body = super().ride(a, b)
+            body["avoid_alternate"] = {
+                **body,
+                "distance_m": body["distance_m"] + 1000.0,
+                "duration_s": body["duration_s"] + 300.0,
+                "extra_distance_m": 1000.0,
+                "extra_duration_s": 300.0,
+            }
+            return body
+
+    services = WithWayRound(ride_speed_kmh=presets.BIKESHARE_BIKES["classic"].speed_kmh)
+    body, _ = run_bikeshare(UNION, DUPONT, services=services)
+    plan = body["bikeshare"]
+    around = body["avoid_alternate"]
+    assert around["attribution"] == ["© OpenStreetMap contributors, ODbL", gbfs.CREDIT]
+    block = around["bikeshare"]
+    assert block["credit"] == gbfs.CREDIT
+    assert block["start"] == plan["start"] and block["end"] == plan["end"]
+    assert block["walk_s"] == plan["walk_s"]
+    assert block["ride_m"] == pytest.approx(plan["ride_m"] + 1000.0, abs=0.2)
+    assert block["total_s"] == pytest.approx(block["walk_s"] + block["ride_s"], abs=0.2)
+    ride_step = [s for s in block["steps"] if s["kind"] == "ride"][0]["text"]
+    assert ride_step != [s for s in plan["steps"] if s["kind"] == "ride"][0]["text"]
+    assert ride_step in block["summary"]
+    # The plan's own block is untouched.
+    assert plan["ride_m"] != block["ride_m"]

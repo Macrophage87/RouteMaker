@@ -2353,16 +2353,31 @@ def plan(
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
     # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
-    # where it is worth 30 minutes a pass and the search did not already weigh it (or
-    # always, on Mass Ride and Group Ride), else offered (`core.avoid_junctions`).
+    # where it is worth 30 minutes a pass and the search did not already weigh it (on
+    # Mass Ride and Group Ride, where it adds no LTS 4 and not too much distance; never
+    # on a loop), else offered (`core.avoid_junctions`). `searched` is what the search
+    # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
     if avoid_list:
-        searched = refine_limited is None and not (past and fit is None)
+        searched = (
+            refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
+        )
         trip, avoid_info, avoid_trip = avoid_junctions.settle(
-            trip, refine_context.request, variant, preset_name, deadline, avoid_list, searched
+            trip,
+            refine_context.request,
+            variant,
+            preset_name,
+            deadline,
+            avoid_list,
+            searched,
+            ctx=refine_context,
+            loop=bool(loop),
         )
         if avoid_info is not None and avoid_info["decision"] == "avoided":
             dodges = None
+            # The routes to choose from were near-ties of the route it replaced: none
+            # are offered beside a route they were not weighed against.
+            refine_context.candidates = refine_context.candidates[:1]
     if refined is not None and maxcalm:
         refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
@@ -2687,7 +2702,8 @@ def plan(
         avoid_junctions.record(avoid_junctions.passages_of(trip, avoid_list))
     if avoid_trip is not None:
         # The best route round the junction, however much longer (335), answered as a
-        # whole route of its own so the client draws and describes it as it does this one.
+        # whole route of its own so the client draws and describes it as it does this one:
+        # a trace for each of its legs.
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
                 around = _answer(avoid_trip, None, True)

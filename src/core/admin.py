@@ -592,7 +592,12 @@ class AvoidJunctionAdmin(InstanceAdminOnly, GISModelAdmin):
         for row in queryset.filter(approved=True):
             row.approved = False
             row.approved_at = None
-            row.save(update_fields=["approved", "approved_at"])
+            # Who approved it goes too: the audit log keeps both actions and their actors.
+            row.approved_by = None
+            row.approved_by_user_id = None
+            row.save(
+                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+            )
             audit(request, "withdraw", "avoidjunction", row.pk, AuditLogEntry.Outcome.ALLOWED)
             count += 1
         self.message_user(request, f"Withdrew {count} Avoid junction(s).")

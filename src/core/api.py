@@ -1424,6 +1424,13 @@ class AvoidAlternateOut(RouteBody):
 
     extra_distance_m: float = Field(description="How much longer than the answer, metres.")
     extra_duration_s: float = Field(description="How much longer than the answer, seconds.")
+    bikeshare: BikesharePlanOut | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only: the answer's walks and docks around this way round, its ride and"
+            " totals its own, so it is shown in place of the ride leg with the operator's credit."
+        ),
+    )
 
 
 class RouteOut(RouteBody):
