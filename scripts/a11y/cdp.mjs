@@ -445,7 +445,7 @@ const profileFor = (distance, mass = false) => {
           rated_m: distance,
           junctions_counted: true,
           bands: [2.67, 9.34],
-          estimate: true,
+          estimate: false,
         },
   };
 };

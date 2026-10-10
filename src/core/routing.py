@@ -290,6 +290,10 @@ class Piece:
     use: str = field(default="", compare=False)
     heading_in: float | None = field(default=None, compare=False)
     heading_out: float | None = field(default=None, compare=False)
+    # The edge's costing attributes (`calm.road_of_edge`), which the rolling stress score
+    # prices each road by (docs/stress/stress-number.md section 4); None from a trace that
+    # has none.
+    road: calm.Road | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -318,6 +322,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "use": str(edge.get("use") or ""),
             "heading_in": _heading(edge.get("begin_heading")),
             "heading_out": _heading(edge.get("end_heading")),
+            "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
@@ -729,8 +734,9 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                     # The route description's street names (routemaker.describe).
                     "edge.names",
                     "shape",
-                    # What the intersection model reads (core.junctions).
-                    *trace_junctions.TRACE_ATTRIBUTES,
+                    # What the intersection model reads (core.junctions), and what the
+                    # rolling stress score prices each road by (routemaker.calm).
+                    *dict.fromkeys(trace_junctions.TRACE_ATTRIBUTES + calm.TRACE_ATTRIBUTES),
                 ],
                 "action": "include",
             },
@@ -1359,6 +1365,29 @@ def _flow_stretches(
     return out
 
 
+def _calm_pieces(leg_runs: list, pieces: list[Piece], classes: list) -> list[calm.Costed]:
+    """The traced pieces as the rolling stress score prices them (`calm.Costed`), in the order
+    ridden and cut as the stress sections are (`stress_spans`): each piece's length, tier,
+    facility and edge attributes, so each road counts at its own routing cost. A leg that
+    could not be traced is one unrated stretch."""
+    out: list[calm.Costed] = []
+    for run in leg_runs:
+        if isinstance(run, tuple):
+            for i in range(run[0], run[1]):
+                tier, kind = classes[i][0], classes[i][1]
+                out.append(
+                    (
+                        pieces[i].metres,
+                        int(tier) if tier in STRESS_KEYS and tier != "unknown" else None,
+                        kind if kind != "unknown" else None,
+                        pieces[i].road,
+                    )
+                )
+        else:
+            out.append((run, None, None, None))
+    return out
+
+
 def _round_or_none(value: float | None, places: int = 1) -> float | None:
     return None if value is None else round(value, places)
 
@@ -1491,6 +1520,7 @@ def route_profile(
     majors_complete: bool = True,
     calm_pricing: calm.Pricing | Callable[[], calm.Pricing] | None = None,
     events: list | None = None,
+    calm_pieces: list[calm.Costed] | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
     router's per-leg samples (`ELEVATION_INTERVAL_M`): where each sample is along the
@@ -1516,8 +1546,11 @@ def route_profile(
     (`routemaker.calm`, OWNER-DECISIONS 460.12, 461d, 461e): calm miles per mile over the
     mile around each sample, from the sections (`spans`) and the junction `events` (None:
     not read, so not counted, and the answer says so); the highest window's sample is kept
-    when a long route is thinned. `calm_pricing` may be a function that makes it. A
-    failure there costs only the score, sent as `calm: null`.
+    when a long route is thinned. `calm_pricing` may be a function that makes it. Each road
+    is priced by its own routing cost from `calm_pieces`, the traced pieces with their
+    edges' attributes (`calm.Costed`); without them each section takes its tier's figure,
+    an estimate, and the answer says so. A failure there costs only the score, sent as
+    `calm: null`.
 
     The climbs (`climbs.runs`) are found once, and every figure is worked out on every
     sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
@@ -1576,7 +1609,7 @@ def route_profile(
         if calm_pricing is not None:
             try:
                 pricing = calm_pricing() if callable(calm_pricing) else calm_pricing
-                peak = calm.peak_index(spans, events, pricing, sample_m)
+                peak = calm.peak_index(spans, events, pricing, sample_m, pieces=calm_pieces)
                 if peak is not None and peak not in keep:
                     keep = sorted([*keep, peak])
             except Exception:  # noqa: BLE001 - the chart is drawn without the score
@@ -1601,7 +1634,9 @@ def route_profile(
         }
         if pricing is not None:
             try:
-                body["calm"] = calm.score(spans, events, pricing, [sample_m[i] for i in keep])
+                body["calm"] = calm.score(
+                    spans, events, pricing, [sample_m[i] for i in keep], pieces=calm_pieces
+                )
             except Exception:  # noqa: BLE001 - the chart is drawn without the score
                 logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
@@ -2486,6 +2521,7 @@ def plan(
                 junction_weight=refine.intersection_weight(stress_dial),
             ),
             events,
+            None if mass_ride else _calm_pieces(leg_runs, pieces, classes),
         )
         profile_s = clock() - profiled_from
         described = describe_route(
