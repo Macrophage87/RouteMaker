@@ -5302,8 +5302,9 @@ WB&A Trail is the test case.
 
 ## The route chart (OWNER-DECISIONS 322, 323, 325, 328-333, 387, 394, 396, 397, 399, 400)
 
-The "Elevation and stress" fold of the route summary, and on a Mass Ride "Elevation and
-riders per minute". Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
+The "Elevation and stress" fold of the route summary, and on a Mass Ride "Riders per
+minute, corker load and elevation" (three charts; see "A Mass Ride's three charts" below).
+Built on `wip/elevation-chart`; the capacity map (part 1 of 387) and
 the rider-marked hazards (part 3) are not part of it. Both folds stay: the chart's sits
 above "Stress and facilities" (decided, 394: "keep both").
 
@@ -5453,7 +5454,9 @@ and the junction list never see them.
   intersections tables' rows, the narrowest point's mark, and the thinning of junction
   names (`placeCrossings`). Units come from `format.ts` (`formatAxisDistance` was added
   there: nothing else writes a unit).
-- `ElevationChart.tsx` draws it. The picture is one `role="slider"` with `aria-valuetext`
+- `ElevationChart.tsx` draws it for every ride type but Mass Ride, and hands a Mass Ride to
+  `MassRideCharts.tsx` (below); what the two share (the plot's edges, the patterns, the
+  junction shapes, the tables) is in `chartParts.tsx`. The picture is one `role="slider"` with `aria-valuetext`
   the spoken sentence at the keyboard's (or a click's) position, never the hover's, and
   `aria-describedby` the key hint alone (the summary is the text just before it). Its SVG
   is `aria-hidden`, and so is the visible readout under it, which follows the hover: a
@@ -5498,6 +5501,63 @@ and the junction list never see them.
   the Avoid block's outer frame is CanvasText and its inner frame Canvas.
   The chart's type is 11 viewBox units.
 
+**A Mass Ride's three charts** (the owner, 2026-10-10: "Have 3 charts for mass ride: Riders
+per minute, Corker load, Elevation. They should all be there."; 147: "visualize rider flow,
+elevation, and anticipated corker requirements over the route"). `MassRideCharts.tsx` draws
+three charts in that order, one under the other, each 360 viewBox units wide with the same
+plot edges (`chartParts.LEFT`, `RIGHT`) and the same distance scale, so a mile is at the same
+place on all three and on each one's own distance axis (miles, km in brackets).
+
+- **Riders per minute**: the riders area in the band colours and patterns, the 60/120/200
+  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), and
+  the Avoid blocks, as before.
+- **Corker load**: a step area (one series: a blue fill under a step line in the text
+  colour), a tick from the marker row down through the plot at each junction needing
+  corkers, the junction markers (triangle, diamond, dot) above, their thinned names under
+  it (`placeCrossings`), a dotted line at half the top, and the side's top figure per mile
+  with per km under it ("6/mi", "(3.7/km)"). A stretch not checked for intersections
+  (`profile.unchecked`) is a grey hatched block with a dashed frame and "NOT CHECKED" (or
+  "?" where narrow); intersections not checked at all (`crossings: null`) draw no area and
+  say "Intersections not checked" in the plot, never a load of 0.
+- **Elevation**: the elevation line and area with the amber grade bands, dotted and hatched.
+
+The corker load is the default the owner's answer leaves open (`lib/profileChart.ts`, "The
+corker load"): nothing defines a corker count per junction yet (PLAN "Corkers needed"
+proposes one per approach lane), and the app knows neither the ride size nor the group's
+length, so 139's "how many intersections the group spans at once" cannot be read. So the
+chart is **a rolling count of the junctions needing corkers (`corkers_needed`: 142 and 400,
+a crossing of or a turn onto an LTS 3 or worse road) in the half mile (0.8 km) centred on
+each point, given per mile** (`CORKER_WINDOW_M`), with a tick at each such junction. One
+junction in the window is 2 a mile (1.2 per km); three are 6 (3.7 per km). The window is
+half-open (a junction counts from a quarter mile before it to just short of a quarter mile
+past it), so the load at any spot is the step it lies in; it is cut at the route's ends and
+still divided by the whole half mile, so a junction at the start reads 2 a mile, as
+mid-route, and never spikes for being near an end. The top is the peak, at least 4 a mile.
+It is worked out in the browser from `profile.crossings`, which the API already sends: no
+API change. When a ride size (and so a group length) exists, the window should become the
+group's length and the chart "the junctions the group holds at once", as 139 asks.
+
+Screen readers: each chart is a `role="group"` named by its `h4` heading, with its own
+summary before the picture, a slider (`aria-label` "Riders per minute along the route",
+"Corker load along the route", "Elevation along the route") over an `aria-hidden` SVG,
+an `aria-hidden` readout, and its own key (`aria-label` "Riders per minute key" ...). The
+three sliders share one position (and one key hint, which also says so): Tab from one to
+the next carries on at the same mile, and moving any of them moves the map's marker and the
+other two charts' markers. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
+about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
+1.3, corkers needed."); corker load, "Mile 1.2: 2 junctions needing corkers in the half mile
+around, 4 per mile (2.5 per km). Next: ..." (with "Part of that half mile was not checked
+for intersections." where it was not, and "intersections not checked, so the corker load is
+not known" with no crossings); elevation, "Mile 1.2: elevation 341 ft (104 m), grade 6%."
+The summaries split the old one: riders (narrowest and typical figures, outside DC, Avoid),
+corker load (the intersections and how many need corkers, where the load is highest and how
+many more places reach it, and how it is counted), elevation (range, steepest, climbs);
+`summaryText(.., "mass")` is unchanged. The intersections table gains a "Corker load around
+it" column ("4 per mile (2.5 per km)", or "None"). Colour is never the only cue: the load is
+one series with its line, the ticks are shapes at places, the unchecked block has a hatch,
+frame and word; in forced colours the step line, ticks, half line and the unchecked frame
+and word follow CanvasText. Every other ride type keeps "Elevation and stress" unchanged.
+
 **Deploying it.** Code only: no migration, no data rebuild, no new setting.
 
 - Localhost: tag the running image first, so a rollback is a retag and not a rebuild
@@ -5523,7 +5583,14 @@ role, name, key-hint description and value text, the summary, the patterns and t
 path, the arrow, C, Home and End keys, a hover leaving the spoken value alone, the map
 marker, the position kept, the tables and their names, a phone's collapsed fold and fit,
 and the Mass Ride chart's area, patterns, guide colours and contrast, the narrowest mark,
-Avoid, thinned names, sentence, I key and tables, and forced colours).
+Avoid, thinned names, sentence, I key and tables, and forced colours; and five more for a
+Mass Ride's three charts: the groups, headings, slider names and keys in order, the corker
+load's summary, its area, ticks, side figures, key and shared axis, and Tab on to the corker
+load's and the elevation's sliders at the same mile with their value texts; EXPECTED 378).
+The three charts' math is in `lib/corkerLoad.test.ts` (the window and its words, one
+junction, close junctions adding up, the edges, a route shorter than the window, junctions
+needing none, no intersections, not checked, partial, unchecked stretches, the readings and
+summaries, the shapes and the table's column).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
@@ -5603,7 +5670,8 @@ most stressful mile survives.
 
 **Where it differs from the design** (stress-number.md section 4): the step line is each
 section's mean, not every edge; the band edges are the tier's figures, a guide; half steps
-are not read yet; Mass Ride has no score. The owner's question of 2026-10-10 (was the
+are not read yet; Mass Ride has no calm-mile score (it has its three charts instead, the
+owner's answer of 2026-10-10, below). The owner's question of 2026-10-10 (was the
 per-tier estimate acceptable?) is settled by building the exact cost; the estimate is now
 only the fallback.
 
@@ -5628,17 +5696,17 @@ half mile (a mile past 10 mi, two past 40, five past 80), what it reads as, and 
 junctions since the row before. An older answer with no `calm`, or one whose score failed
 (`calm: null`), keeps the strip.
 
-Not done: Mass Ride keeps its riders chart (its routing charges no junction cost; the
-question in stress-number.md stays open). No owner decision defines a Mass Ride score:
-461b-e define the calm-mile score from what the routing charges, and a Mass Ride's
-routing charges almost nothing for traffic (use_roads 1, no grading, no junction cost),
-while 116, 118 and 328-329 make riders a minute its headline figure. Undefined: what a
-Mass Ride score measures, its unit, and whether it replaces or sits beside the riders
-chart. The options put to the owner: (a) the riders-per-minute line is the Mass Ride score
-and nothing more is built (recommended: it is what 116 and 118 call the headline score);
-(b) add the calm-mile line under it, priced at weight 1 with the ordinary ride's road and
-junction costs and labelled "not used to choose the route" (the design's proposal); (c) a
-rolling corker load (crossings needing corkers per mile, from 139, 142 and 147). Half steps arrive with the half-step editor
+Mass Ride has no rolling stress line (its routing charges no junction cost and almost
+nothing for traffic: use_roads 1, no grading). The owner settled what it shows instead on
+2026-10-10: "Have 3 charts for mass ride: Riders per minute, Corker load, Elevation. They
+should all be there." That matches 147 ("visualize rider flow, elevation, and anticipated
+corker requirements over the route"). So the Mass Ride score is not one number: the riders
+per minute stay the headline figure (116, 118, 328-329), and a Mass Ride draws three
+charts on one distance axis, riders per minute, the corker load and the elevation (built
+on `claude/v0-4-0-mass-charts`; "A Mass Ride's three charts" in the route chart above). The
+calm-mile line is not drawn for a Mass Ride. The corker load's default (no corker count
+or ride size exists yet): the junctions needing corkers in the half mile (0.8 km) around
+each point, per mile, with a tick at each. Half steps arrive with the half-step editor
 (the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
 change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
 the model's own `cost_ft`.

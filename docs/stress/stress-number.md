@@ -391,12 +391,13 @@ marker, so averaging never hides a very high-stress crossing.
 ### Mass Ride
 
 Mass Ride has no rolling score: `plan` passes no pricing for it
-(`src/core/routing.py:2475-2478`), and its chart keeps the riders per minute. Its
-routing charges no junction cost. The proposal to show the model's cost at weight 1,
-labeled "not used to choose the route", is still an **owner question** and is not
-built. No owner decision defines a Mass Ride score yet (what it measures, its unit, and
-how it sits beside the riders chart), so none is built; the options are in
-docs/DEVELOPMENT.md, "The rolling stress chart".
+(`src/core/routing.py:2475-2478`), and its routing charges no junction cost. The owner
+settled what a Mass Ride shows on 2026-10-10: "Have 3 charts for mass ride: Riders per
+minute, Corker load, Elevation. They should all be there." So there is no calm-mile score
+(and no line at weight 1) for a Mass Ride: it draws riders per minute, a rolling corker
+load (the junctions needing corkers in the half mile [0.8 km] around each point, per mile)
+and the elevation, as three charts on one distance axis (docs/DEVELOPMENT.md, "A Mass
+Ride's three charts").
 
 ### Worked example (Default, made-up route, 2 mi [3.2 km])
 
@@ -440,8 +441,8 @@ differences:
 - **The words** are "LTS 1 to 2 level", "LTS 3 level" and "LTS 4 level", not the road
   panel's words, and Avoid is ", Avoid nearby" rather than a band of its own. This has
   not been put to the owner yet (an open point).
-- **Mass Ride** has no chart, and **half steps** are not read (both above).
+- **Mass Ride** has no rolling stress chart (it has its three charts), and **half steps** are not read (both above).
 
-Still **planned**: half steps (section 3), a Mass Ride score (undefined, above),
+Still **planned**: half steps (section 3),
 the junction revision (467, 468, 468a with 469c-e's time bands; none of it is built), and
 4.5's entry charge (section 3, an owner question).
