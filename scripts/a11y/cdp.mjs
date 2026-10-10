@@ -143,7 +143,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
   // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
   // the next write instead ({ status, body }).
-  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0 };
+  // `stretch` true makes the road one piece of a three-piece named stretch (phase 5).
+  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0, stretch: false };
   // Rider suggestions (core/suggestions.py): `suggester` makes this visitor a rider the settings allow;
   // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
   page.suggestRequests = [];
@@ -249,14 +250,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         status = 200;
         body = JSON.stringify({ edit_id: road.edits + 1, ways: [{ osm_way_id: 101, step: road.tier, changed: true }], generation: road.generation, undo_until: new Date().toISOString() });
         road.edits += 1;
-      } else if (!undo && record.body && record.body.expected === `tok-${road.generation}`) {
+      } else if (!undo && record.body && (record.body.expected === `tok-${road.generation}` || (road.stretch && record.body.expected === `stretch-${road.generation}`))) {
         road.was = road.tier;
         road.tier = record.body.step;
         road.edits += 1;
         road.edit = road.edits;
         road.generation += 1;
         status = 200;
-        body = JSON.stringify({ edit_id: road.edit, ways: [{ osm_way_id: 101, step: road.tier, changed: road.tier !== road.was }], generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
+        const ways = record.body.osm_way_ids.map((id) => ({ osm_way_id: id, step: road.tier, changed: road.tier !== road.was }));
+        body = JSON.stringify({ edit_id: road.edit, ways, generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
       } else {
         status = 409;
         body = JSON.stringify({ error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" });
@@ -752,6 +754,9 @@ export function editorState(road) {
     note_max: 200,
     recent_edit: road.edit ? { id: road.edit, action: "set", at: new Date().toISOString(), can_undo: true } : null,
     pieces: 1,
+    stretch: road.stretch
+      ? { name: "Connecticut Avenue Northwest", osm_way_ids: [100, 101, 102], pieces: 3, length_m: 1207, capped: false, expected: `stretch-${road.generation}` }
+      : null,
   };
 }
 

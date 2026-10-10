@@ -16,6 +16,8 @@
  * focus to it, and none of it needs a pointer.
  */
 
+import { formatDistance } from "./format.ts";
+
 /** GET /api/me: three yes/no flags, no name and no id. */
 export interface Me {
   signed_in: boolean;
@@ -67,6 +69,46 @@ export interface EditorState {
   pieces: number;
   /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
   half_steps?: boolean;
+  /** The named stretch the piece is in (phase 5), or null where it is the only piece. */
+  stretch?: EditorStretch | null;
+}
+
+/** The ways of one name end to end, to the next high-stress crossing (core/stress_edits.named_stretch). */
+export interface EditorStretch {
+  name: string;
+  osm_way_ids: number[];
+  pieces: number;
+  length_m: number;
+  /** The stretch goes on past the most one change takes (40 pieces). */
+  capped: boolean;
+  /** The stretch's own token, sent back with a change of it. */
+  expected: string;
+}
+
+export type Extent = "piece" | "stretch";
+
+export const EXTENT_LEGEND = "What to change";
+export const STRETCH_HELP =
+  "A named stretch is the pieces of this road, end to end, up to a busy crossing.";
+export const STRETCH_CAPPED = "It goes on further; one change takes at most 40 pieces.";
+
+/** The extent choice's two options, US units first with metric in brackets. */
+export function extentOptions(title: string, stretch: EditorStretch): { value: Extent; text: string }[] {
+  return [
+    { value: "piece", text: `This road piece: ${title}` },
+    {
+      value: "stretch",
+      text: `The whole named stretch of ${stretch.name}: ${stretch.pieces} pieces, ${formatDistance(stretch.length_m)}`,
+    },
+  ];
+}
+
+/** The ways a save sends and the token that goes with them. */
+export function saveTarget(state: EditorState, extent: Extent): { osm_way_ids: number[]; expected: string } {
+  if (extent === "stretch" && state.stretch) {
+    return { osm_way_ids: state.stretch.osm_way_ids, expected: state.stretch.expected };
+  }
+  return { osm_way_ids: [state.osm_way_id], expected: state.expected };
 }
 
 export interface EditedWay {
@@ -198,6 +240,18 @@ export function savedSaid(result: EditResult, steps: readonly EditorStep[], floo
   const way = result.ways[0];
   const undo = `You can undo it for ${UNDO_MINUTES} minutes.`;
   if (!way) return `Saved. ${undo}`;
+  if (result.ways.length > 1) {
+    const n = result.ways.length;
+    const changed = result.ways.filter((w) => w.changed).length;
+    if (changed === 0) {
+      return floorOnly
+        ? `Saved. All ${n} road pieces are already at least that level, so nothing changed. ${undo}`
+        : `Saved. All ${n} road pieces already had ${levelPhrase(way.step, steps)}, so nothing changed on the map. ${undo}`;
+    }
+    const which = changed === n ? `all ${n} road pieces` : `${changed} of the ${n} road pieces`;
+    const level = floorOnly ? "at least " : "";
+    return `Changed ${which} to ${level}${levelPhrase(Math.min(...result.ways.map((w) => w.step)), steps)}. ${AFTER_REBUILD} ${undo}`;
+  }
   if (!way.changed) {
     return floorOnly
       ? `Saved. This road is already at least that level, so nothing changed. ${undo}`
@@ -208,6 +262,12 @@ export function savedSaid(result: EditResult, steps: readonly EditorStep[], floo
 
 export function undoneSaid(result: EditResult, steps: readonly EditorStep[]): string {
   const way = result.ways[0];
+  if (result.ways.length > 1) {
+    const levels = new Set(result.ways.map((w) => w.step));
+    return levels.size === 1
+      ? `Undone. All ${result.ways.length} road pieces are back to ${levelPhrase(way.step, steps)}.`
+      : `Undone. All ${result.ways.length} road pieces are back to their earlier levels.`;
+  }
   return way ? `Undone. This road is back to ${levelPhrase(way.step, steps)}.` : "Undone.";
 }
 

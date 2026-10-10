@@ -1586,8 +1586,33 @@ half-step way and the graph's Lua transform prices it between its two levels
 section 3). Until the next rebuild after this release, the router prices a half step as its lower
 level; the map, the road panel and RouteMaker's own ranking use the half step at once.
 
-**Not in this phase:** a named stretch longer than one road piece (`docs/` plan:
-HALF-STEP-EDITOR-plan.md phase 5).
+**The whole named stretch (phase 5; 441g, 460.3).** Where the road piece is one of several of
+the same name end to end, the editor asks **What to change**: "This road piece: <name>" (the
+default) or "The whole named stretch of <name>: N pieces, X mi (Y km)". The stretch
+(`core.stress_edits.named_stretch`) is the drawn road pieces of that name connected end to end,
+out from the piece opened, and it ends:
+
+- at a junction with a road of another name at 2.5 or above (the higher of its tier and its
+  unsmoothed tier, plus its half step): where an unsignalized crossing would carry the orange
+  "higher stress" warning or worse (`routemaker.intersections`; an unsignalized crossing of a 2.5
+  road costs 600 ft, the orange line). The segment table holds no signals, so every junction is
+  read as unsignalized: the cautious reading of the owner's "any crossing that would carry a high
+  stress intersection warning" (460.3). A stretch can end at a decent signal the full junction
+  model would not warn at; the admin then changes the next stretch too. (Default taken
+  2026-10-10.)
+- at 40 pieces (one change takes at most 40; the editor says when the stretch goes on).
+
+Names are the router's, as the road panel shows them, else the table's (`core.road_names`: the
+table keeps a name only on calm and long-trail ways). With the router down, a busy road has no
+name and so no stretch: the editor offers the piece alone.
+
+A stretch change is one adjustment: one approved override row a way (each superseding that way's
+live row), all with the same `adjustment_id` (`edit-<first row id>`), one `stress_edit` row
+listing every way and every pair (`override_rows`), one audit entry and one tile refresh over
+them all. Undo (30 minutes) puts every piece back and reinstates every replaced row. The API
+takes the stretch only as the editor offered it: `osm_way_ids` must be exactly a named stretch
+(else 400), with the stretch's own token from the editor state (`stretch.expected`; a change to
+any piece in between is a 409). A single piece's token and request are as before.
 
 ## Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; HALF-STEP-EDITOR phase 4)
 
@@ -1660,7 +1685,8 @@ CSRF, same-site, 60 writes an hour. Every action is an `audit_log` entry. All an
 `Cache-Control: no-store`. The suggester's account is on the `stress_suggestion` row for the admin
 only; the table is left out of the beta's data shipment (`scripts/beta/ship-data.sh`).
 
-**The migration** is `core/migrations/0014_stress_suggestions.py` (two new tables, nothing
+**The migration** is `core/migrations/0014_stress_suggestions.py` (two new tables, and the
+named stretch's `stress_edit.override_rows`, a JSON list defaulting to empty; nothing else
 changed). It depends on `0012_bikeshare_feed_cache`: `0013` is the MTB difficulty levels on another
 branch. **When both merge, re-point 0014 to depend on 0013 (or renumber it) so the chain stays
 linear.** `migrate` runs at `up`, as always. "Only raise it" is

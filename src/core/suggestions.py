@@ -19,17 +19,15 @@ only; it is never in the post, the tiles or anything a rider reads.
 
 from __future__ import annotations
 
-from django.db import connection, transaction
+from django.db import transaction
 from django.utils import timezone
 
-from . import audit, segment_info, stress_edits, suggestion_post
+from . import audit, road_names, segment_info, stress_edits, suggestion_post
 from .models import AuditLogEntry, StressSuggestion, SuggestionSettings
 
 REASON_MAX = 500
 # Suggestions one account may have waiting at once, and a day.
 OPEN_MAX = 20
-# A road's cross streets: the names of other roads within this many metres of its ends.
-CROSS_STREET_M = 2.0
 CATEGORY = "other"
 
 
@@ -72,41 +70,31 @@ def _road(way_id: int) -> tuple[dict, str]:
     rows = stress_edits.read_rows(schema, columns, [way_id])
     if not rows:
         raise stress_edits.NotFound("That road is not in the data.")
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT trail_name FROM {schema}.segment WHERE osm_way_id = %s "
-            "ORDER BY ordinal LIMIT 1",
-            [way_id],
-        )
-        row = cursor.fetchone()
-    return next(iter(rows.values())), (row[0] or "") if row else ""
+    return next(iter(rows.values())), road_names.name_of(schema, way_id)
 
 
 def cross_streets(way_id: int, name: str) -> tuple[str, str] | None:
-    """The names of the roads at the way's two ends, where each end has one of another name."""
+    """The names of the roads at the way's two ends, where each end has one of another name
+    (the router's names, as the road panel shows them, else the table's)."""
     schema = stress_edits.live_schema()
-    sql = f"""
-        WITH way AS (
-            SELECT ST_LineMerge(ST_Union(geometry ORDER BY ordinal)) AS g
-            FROM {schema}.segment WHERE osm_way_id = %s
-        ), ends AS (
-            SELECT 1 AS n, ST_StartPoint(ST_GeometryN(g, 1)) AS p FROM way
-            UNION ALL
-            SELECT 2, ST_EndPoint(ST_GeometryN(g, ST_NumGeometries(g))) FROM way
+    names = road_names.Names()
+    own = road_names.key(name)
+    found: list[str] = []
+    for point in road_names.ends(schema, [way_id]).get(way_id, []):
+        others = sorted(
+            {
+                n
+                for m in road_names.touching(schema, point)
+                if m["way"] != way_id
+                and (n := names.name(m["way"], point, m["table_name"]))
+                and road_names.key(n) != own
+            }
         )
-        SELECT e.n, min(s.trail_name)
-        FROM ends AS e
-        JOIN {schema}.segment AS s
-          ON ST_DWithin(s.geometry::geography, e.p::geography, %s)
-        WHERE s.osm_way_id <> %s AND s.map_class = 'road' AND s.trail_name IS NOT NULL
-          AND lower(s.trail_name) <> lower(%s)
-        GROUP BY e.n
-    """
-    with connection.cursor() as cursor:
-        cursor.execute(sql, [way_id, CROSS_STREET_M, way_id, name or ""])
-        found = dict(cursor.fetchall())
-    if found.get(1) and found.get(2) and found[1] != found[2]:
-        return (found[1], found[2])
+        if not others:
+            return None
+        found.append(others[0])
+    if len(found) == 2 and road_names.key(found[0]) != road_names.key(found[1]):
+        return (found[0], found[1])
     return None
 
 

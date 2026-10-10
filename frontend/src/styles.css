@@ -1442,6 +1442,42 @@ dialog.road-info::backdrop {
   overflow-wrap: anywhere;
 }
 
+/* The extent choice (a named stretch, HALF-STEP-EDITOR phase 5): native radios, 44px rows. */
+.stress-editor-extent-choice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.stress-editor-extent-choice > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.stress-editor-radio {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-radio input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-radio > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
 .stress-editor-check {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -1826,7 +1862,7 @@ ul.station-links {
 /* The routes to choose from (OWNER-DECISIONS 265): a radio group, one row each, the
    figures in words (no colour carries the difference). */
 fieldset.candidates {
-  border: 1px solid var(--border, currentColor);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 12px 0;

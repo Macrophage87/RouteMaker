@@ -40,6 +40,23 @@ def _columns():
     segment_info.forget_columns()
 
 
+@pytest.fixture(autouse=True)
+def router(monkeypatch):
+    """The router's names by way, at any spot (`names`); silent while `names` is None, so the
+    table's names stand."""
+
+    class Fake:
+        names: dict[int, str] | None = None
+
+    def fake(lat, lon, costing):
+        if Fake.names is None:
+            raise segment_info.RouterSilent("down")
+        return [{"edge_info": {"way_id": w, "names": [n]}} for w, n in Fake.names.items()]
+
+    monkeypatch.setattr(segment_info, "locate_edges", fake)
+    return Fake
+
+
 def cross_street(schema, way, name, lon) -> None:
     """A street running north-south across (lon, LAT)."""
     with connection.cursor() as cursor:
@@ -254,6 +271,22 @@ class TestReview:
         assert s.status == "sent_to_discord" and s.sent_at is not None
         # Still waiting: approve or delete it later.
         assert post(client, ACTION.format(s.pk, "approve"), {}, csrf).status_code == 200
+
+    def test_the_poll_names_roads_as_the_panel_does_even_where_the_table_has_no_name(
+        self, live, router
+    ) -> None:
+        # A busy road and its cross streets carry no name in the table (only calm and long
+        # ways do); the router names them, as in the road panel.
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {live}.segment SET trail_name = NULL")
+        router.names = {WAY: "Georgia Avenue NW", 6001: "Elm Street", 6002: "Ash Avenue"}
+        open_to("signed_in")
+        s = suggest()
+        assert s.road_name == "Georgia Avenue NW"
+        post_ = suggestions.post_for(s, "http://testserver")
+        assert post_.text.splitlines()[0] == (
+            "**How comfortable is biking on Georgia Avenue NW, between Elm Street and Ash Avenue?**"
+        )
 
     def test_a_rider_cannot_take_an_action(self, live) -> None:
         open_to("signed_in")

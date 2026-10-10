@@ -3,6 +3,9 @@
 # Numbered 0014 and depending on 0012: 0013 is taken by the MTB difficulty levels on
 # another branch. When both merge, re-point this to depend on 0013 (or renumber it) so the
 # chain stays linear (docs/OPERATIONS.md, "Rider suggestions").
+#
+# Also adds `StressEdit.override_rows`, every way's override pair for a named stretch edited
+# at once (HALF-STEP-EDITOR phase 5).
 
 import django.db.models.deletion
 import django.utils.timezone
@@ -16,6 +19,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddField(
+            model_name="stressedit",
+            name="override_rows",
+            field=models.JSONField(blank=True, default=list),
+        ),
         migrations.CreateModel(
             name="SuggestionSettings",
             fields=[

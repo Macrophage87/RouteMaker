@@ -5695,7 +5695,10 @@ admin's third button in the row (StressEditor.tsx; docs/OPERATIONS.md, "Change L
 the suggestion setting allows gets "Suggest a change" there instead (SuggestChange.tsx,
 `core.suggestions`; the admin reviews in the Settings sheet, SuggestionReview.tsx, and "Send to
 Discord" builds the copy-paste poll in `core.suggestion_post`; docs/OPERATIONS.md, "Rider
-suggestions"). A polite status region inside the dialog (always rendered, empty until the
+suggestions"). Where the piece is part of a named stretch, the editor's "What to change" radio
+group offers the whole stretch (its pieces and length, miles first, kilometres in brackets;
+`core.stress_edits.named_stretch`, names from `core.road_names`; docs/OPERATIONS.md, "The whole
+named stretch"). A polite status region inside the dialog (always rendered, empty until the
 answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
 cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
 silent, since the modal makes everything outside it inert. On a phone it is a sheet from

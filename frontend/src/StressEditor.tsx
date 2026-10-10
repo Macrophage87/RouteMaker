@@ -11,6 +11,8 @@
  *   public note, each a labelled native control.
  * - The result is a sentence in a polite status region (always rendered, empty until it speaks); an
  *   error is an alert that names the field and moves the focus to it. Undo sits beside the message.
+ * - Where the piece is part of a named stretch (phase 5), a radio group chooses "This road piece" or
+ *   "The whole named stretch" (its pieces and length, US units first); the piece is the default.
  * - The editor's heading takes the focus when it opens and after a save; Cancel and Escape close
  *   the editor (not the panel) and the caller returns the focus to the "Change LTS" button.
  */
@@ -18,6 +20,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   CATEGORY_LABEL,
   DISPLAY_LABEL,
+  EXTENT_LEGEND,
+  STRETCH_CAPPED,
+  STRETCH_HELP,
   DISPLAY_OPTIONS,
   EDITOR_HEADING,
   HALF_STEP_HELP,
@@ -31,6 +36,8 @@ import {
   REASON_LABEL,
   countText,
   csrfFromCookie,
+  extentOptions,
+  saveTarget,
   currentText,
   fetchEditorState,
   formProblem,
@@ -45,6 +52,7 @@ import {
   type EditResult,
   type EditorLoad,
   type EditorState,
+  type Extent,
 } from "./lib/stressEditor.ts";
 
 interface Props {
@@ -71,6 +79,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [display, setDisplay] = useState<DisplayWhere>("route_only");
+  const [extent, setExtent] = useState<Extent>("piece");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ field: Field | null; message: string } | null>(null);
   // What the status region says, and the change Undo would take back.
@@ -134,16 +143,17 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
     }
     setError(null);
     setSaving(true);
+    const target = saveTarget(state, extent);
     const outcome = await saveEdit(
       origin,
       {
-        osm_way_ids: [wayId],
+        osm_way_ids: target.osm_way_ids,
         step,
         at_least: atLeast,
         category,
         reason: reason.trim(),
         ...(note.trim() ? { public_note: note.trim(), display } : { display: "route_only" as const }),
-        expected: state.expected,
+        expected: target.expected,
       },
       csrfFromCookie(document.cookie),
     );
@@ -206,9 +216,32 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
       {state && (
         <form onSubmit={onSubmit} noValidate aria-describedby={error ? id("error") : undefined}>
           <p className="stress-editor-now">{currentText(state.current, state.steps)}</p>
-          <p className="stress-editor-extent">
-            <span className="road-info-label">This road piece:</span> {title}
-          </p>
+          {state.stretch ? (
+            <fieldset className="stress-editor-field stress-editor-extent-choice" aria-describedby={id("extent-help")}>
+              <legend>{EXTENT_LEGEND}</legend>
+              {extentOptions(title, state.stretch).map((option) => (
+                <div className="stress-editor-radio" key={option.value}>
+                  <input
+                    id={id(`extent-${option.value}`)}
+                    type="radio"
+                    name={id("extent")}
+                    value={option.value}
+                    checked={extent === option.value}
+                    onChange={() => setExtent(option.value)}
+                  />
+                  <label htmlFor={id(`extent-${option.value}`)}>{option.text}</label>
+                </div>
+              ))}
+              <p id={id("extent-help")} className="hint">
+                {STRETCH_HELP}
+                {state.stretch.capped ? ` ${STRETCH_CAPPED}` : ""}
+              </p>
+            </fieldset>
+          ) : (
+            <p className="stress-editor-extent">
+              <span className="road-info-label">This road piece:</span> {title}
+            </p>
+          )}
           <div className="stress-editor-field">
             <label htmlFor={id("step")}>{LEVEL_LABEL}</label>
             <div className="stress-editor-slider">

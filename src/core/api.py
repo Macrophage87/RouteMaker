@@ -2507,6 +2507,15 @@ class RecentEditOut(Schema):
     can_undo: bool
 
 
+class StretchOut(Schema):
+    name: str
+    osm_way_ids: list[int] = Field(description="Send these as osm_way_ids to change them all.")
+    pieces: int
+    length_m: float
+    capped: bool = Field(description="True where the stretch goes on past the most one edit takes.")
+    expected: str = Field(description="The stretch's own token, sent back with a stretch edit.")
+
+
 class EditorStateOut(Schema):
     osm_way_id: int
     classifier_step: int | None = Field(
@@ -2524,6 +2533,10 @@ class EditorStateOut(Schema):
     half_steps: bool = Field(
         default=True,
         description="False until the live table can hold a half step (the next data update).",
+    )
+    stretch: StretchOut | None = Field(
+        default=None,
+        description="The named stretch the road piece is in, or null where it is the only piece.",
     )
 
 
@@ -2563,7 +2576,9 @@ class StressEditIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     osm_way_ids: list[StrictInt] = Field(
-        min_length=1, max_length=1, description="The road piece to change (one, for now)."
+        min_length=1,
+        max_length=40,
+        description="One road piece, or a named stretch's pieces (the editor state's stretch).",
     )
     step: StrictFloat = Field(
         description="The level, 1 to 5 by halves (1.5, 2.5, 3.5, 4.5 are half steps; 5 is Avoid)."

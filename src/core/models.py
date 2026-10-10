@@ -1239,6 +1239,10 @@ class StressEdit(models.Model):
     replaced = models.ForeignKey(
         Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # Every way's pair, [{"way", "override", "replaced"}] (row ids or null): a named stretch
+    # has one a way (HALF-STEP-EDITOR phase 5). `override`/`replaced` above are the first
+    # way's; an edit from before phase 5 has only those.
+    override_rows = models.JSONField(default=list, blank=True)
     # For an undo, the edit it undid.
     undoes = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="undone_by"

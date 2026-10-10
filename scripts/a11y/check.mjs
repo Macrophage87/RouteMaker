@@ -2083,6 +2083,46 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 {
+  // A named stretch (HALF-STEP-EDITOR phase 5): a radio group, the piece by default, the stretch's
+  // pieces and length in miles with kilometres in brackets; Save sends every piece and says how many.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.editRoad.stretch = true;
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  const group = await p.eval(`(() => { const f = document.querySelector('${EDITOR} fieldset'); const r = [...f.querySelectorAll('input[type=radio]')];
+    r.forEach((x, i) => { x.dataset.n = i; });
+    return { legend: f.querySelector('legend')?.textContent, count: r.length, checked: r.map((x) => x.checked), same: new Set(r.map((x) => x.name)).size === 1,
+      rows: [...f.querySelectorAll('.stress-editor-radio')].map((d) => Math.round(d.getBoundingClientRect().height)), help: document.getElementById(f.getAttribute('aria-describedby'))?.textContent ?? '' }; })()`);
+  const piece = await axNode(p, `${EDITOR} fieldset input[data-n="0"]`);
+  const whole = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  check("named stretch: a labelled group (What to change) of two radios, This road piece checked; the stretch named with its pieces and length in miles, kilometres in brackets; rows at least 44px",
+    group.legend === "What to change" && group.count === 2 && group.checked[0] && !group.checked[1] && group.same && group.rows.every((h) => h >= 44) &&
+      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.8 mi (1.2 km)" &&
+      /busy crossing/.test(group.help), JSON.stringify({ group, piece, whole }));
+
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[data-n="0"]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  const moved = await p.eval(`({ checked: document.querySelector('${EDITOR} fieldset input[data-n="1"]').checked, focus: document.activeElement?.dataset?.n })`);
+  check("named stretch: the arrow key moves the choice to the whole stretch, as native radios do", moved.checked && moved.focus === "1", JSON.stringify(moved));
+
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast traffic the whole way");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed all/.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  check("named stretch: Save sends every piece with the stretch's own token, and the status region says how many pieces changed and to what",
+    JSON.stringify(sent?.body.osm_way_ids) === "[100,101,102]" && sent?.body.expected === "stretch-0" && sent?.body.step === 3.5 &&
+      /^Changed all 3 road pieces to LTS 3\.5, stressful even for experienced cyclists\./.test(said), JSON.stringify({ body: sent?.body, said }));
+  await p.close();
+}
+{
   // A phone: the editor stacks in one column, controls at least 44px tall, nothing scrolls sideways.
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 375, height: 812, mobile: true, ride: false, junctions: false, admin: true });
   const opened = await panelByKey(p);
@@ -2573,7 +2613,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 424;
+const EXPECTED = 427;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

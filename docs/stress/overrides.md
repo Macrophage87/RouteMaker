@@ -104,6 +104,10 @@ corrections"; `src/routemaker/agency_roads.py`, `withheld_blocks`, `resolve_with
   (460.5) sends it to Discord as a copy-paste plain-English poll and decides later
   (HALF-STEP-EDITOR-plan sections 5.1-5.3; the owner, 2026-10-10; docs/OPERATIONS.md,
   "Rider suggestions"). **Built.**
+- The editor can change a whole named stretch at once (441g, 460.3): one override row a
+  way, all sharing one `adjustment_id`, so the stretch reads as one adjustment. It ends
+  at a junction with a road of another name at 2.5 or above (docs/OPERATIONS.md, "The
+  whole named stretch"). **Built.**
 
 ## Re-matching by fingerprint (OWNER-DECISIONS 282)
 
