@@ -10,6 +10,7 @@ import {
   formatDistance,
   formatDuration,
   formatExtra,
+  formatFeet,
   formatPerMile,
   formatRoughDistance,
   formatRunMiles,
@@ -156,3 +157,8 @@ test("a run for the map's explanations: a quarter mile in feet, not rounded to 0
   assert.equal(formatRunMiles(2.5), formatDistance(2.5 * METRES_PER_MILE));
 });
 
+
+test("a set distance in feet: whole feet with a thousands comma, whole metres", () => {
+  assert.equal(formatFeet(304.8), "1,000 ft (305 m)");
+  assert.equal(formatFeet(15.24), "50 ft (15 m)");
+});

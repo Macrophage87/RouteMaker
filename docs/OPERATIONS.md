@@ -1851,6 +1851,17 @@ above. Sources, licence text verbatim, retrieval times and digests are in
 `/assets/`, served and compressed with the rest of the front end and fetched
 only when a Mass Ride is open; no edge, compose or deploy change.
 
+The water and restrooms layer (`frontend/src/lib/waterRestrooms.ts`) is
+OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
+`frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
+by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
+not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
+federal-land file and fetched when the layer is on, which it is by default; no
+edge, compose or deploy change. A release that first carries it adds to its
+checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
+compressed, and is named by the published front end's script.
+
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
 in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:

@@ -1771,3 +1771,11 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 - 303: "Keep it LTS 4, and only lower ratings. In most cases, the smoothing is probably bunching by the intersection. Given that our routing is a sum of intersection stress and route stress, we don't want to double count." Way 930215092 stays LTS 4 like the other side lanes; a smoothed count replaces a raw one only when it is lower.
 
   Implemented as: smoothing replaces a count only where the median is lower, so a tier can fall and never rise. Following the owner's reason (ARTERIAL review r0, SF1; for the owner to confirm), only the link reads the median: the segment table publishes the agency's count (`volume_aadt`) and keeps the tier on that count (`stress_unsmoothed_tier`), and the junction model reads both, so the volume bunched at an intersection is charged at the intersection and not twice. At 1st St NW the link is LTS 2 and the Q St junction is still rated on DDOT's 10,665 and LTS 3.
+
+**2026-10-09. Public water and restrooms (owner, in the project chat; not yet numbered in OWNER-DECISIONS).**
+
+- Owner, 2026-10-09: "I noticed that OSM sometimes has public water fountains and restrooms. That should be a layer, especially on trailmaxxing and gravel."
+- Owner, 2026-10-09: "I'd want to also make sure there's a distinction for those who care about regular flush restrooms; and port-a-potties and similar facilities. Also remote areas sometimes contain nonpotable water sources. Mark them too but with a different icon than potable water. People would carry filters."
+- Owner, 2026-10-09: "This is likely to want to be always on, but perhaps not shown at every zoom." Then: "On by default, removable".
+
+  Implemented as (PR #23): a Water and restrooms section in the Map layers sheet, on by default for every ride type, drawn from zoom 12 in, with switches for the layer, basic toilets and untreated water kept on the device. Each kind has its own shape as well as colour, and the points within 1,000 ft (305 m) of the planned route are listed in words in riding order with an Add as stop button. What counts (the OSM tags) is in the docstring of `scripts/build_water_restrooms.py`; the data, its counts and how to refresh it are in `frontend/src/amenity-data/README.md`.
