@@ -5137,7 +5137,8 @@ stays hidden. Tests: `tests/test_facility.py`.
 ## Hard surfaces (OWNER-DECISIONS 440)
 
 `routemaker.surfaces` is the one definition of a paved surface. `is_paved` is the
-map's and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
+map's (but for a judged short bridge, drawn in its trail's surface: `core.stress_tiles.
+BRIDGE_UNPAVED`, docs/OPERATIONS.md "Short bridges") and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
 graph's (`lua/routemaker_remap.lua`, `M.PAVED_SURFACES` and `M.PAVED_PREFIXES`, kept
 equal by `tests/test_surfaces.py`): road paving and its `:` variants, wood and
 `boardwalk`, metal and `metal_grid`, brick, bricks, sett, tartan, rubber, cobblestone and
@@ -5665,3 +5666,39 @@ map and the canvas's name, Escape back to the map, the button and Close back to 
 help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
 opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
 /api/segment-info.
+
+## Find the nearest water, restroom or Metro
+
+The owner, 2026-10-10: "Have the option to route to the nearest public water source, restroom, or
+metro stop. Let people choose the three closest." A fold in the planner under the points
+(`lib/nearestFinder.ts`, written with createElement so `lib/nearest.test.ts` renders it): "Search
+from" (My location where the browser can share it, the default; the map's center; the plan's start
+once there is one), then Nearest water, Nearest restroom and Nearest Metro. The places are the map's
+own (`lib/nearest.ts`): the water layer's points (drinking water only; restrooms of every type, titled
+with their type; the file is loaded for the search even with the layer off),
+and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), MARC left out. The 8
+nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
+dials (not the weight, loop or target), which answers each one's riding distance and time from
+Valhalla's `sources_to_targets` on the ride's own graph and costing (`stoporder.ride_graph`, shared
+with Best order), or straight lines when the router gives none. The 3 nearest by bike
+(`NEAREST_SHOWN`; one the router cannot reach is left out) are listed in words, US units first, each
+with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
+a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more
+points, Add as stop (`placeSpot("via")`). One status line, always rendered, says what is happening
+and what was found, the nearest by name and distance; it is cleared and set again a moment later so a
+repeat is said again, and with the planner out of sight it is said through the app's region. The
+buttons are `aria-disabled` while a search runs. The search itself is `searchNearest` (plain, tested
+with stand-ins); App hands it the look-up, the map's center, the water file and the request. A list
+is put away when the ride type or a slider changes, when "Search from" changes, or when the plan's
+start moves under a search from the start. The location look-up goes
+through Use my location's gate, so there is one look-up at a time (a press during the other's says
+so); the fix stays in memory as that
+button's does, and the position leaves the device only in the search's own request, as a route's
+points do (`geolocation.test.ts` pins both look-up paths). While riding, Ride mode's "Water or restroom" fold (`RideMode.tsx`) runs the same
+`searchNearest` from the ride's own fix (`rideLocate`; no new look-up), water and restrooms only
+(`DETOUR_KINDS`), on the ride's preset and dials without the loop. Its answer is said through the
+rider's outputs as Where am I? is (`announcer.answer`, and the polite region with neither chosen).
+Detour here re-plans through `replan(here, via)`: `replanPoints` gives here, the stops not yet passed
+and the end, and `detourPoints` puts the place second, so the new route cues it as a stop. It goes
+through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
+way is said and left alone.
