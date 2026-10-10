@@ -494,9 +494,9 @@ class TestRouteProfile:
         assert body["calm"]["estimate"] is False
         first, second = body["calm"]["steps"]
         assert first["ratio"] == pytest.approx(
-            calm.edge_factor(busy, 3, 0.1) / calm.QUIET_FACTOR, abs=0.01
+            calm.edge_factor(busy, 3, 0.1) / calm.quiet_factor(0.1, urban=False), abs=0.01
         )
-        assert second["ratio"] == pytest.approx(0.8, abs=0.01)
+        assert second["ratio"] == 1.0
 
     def test_a_long_route_keeps_the_peak_window_when_thinned(self, monkeypatch):
         """Correctness review nit: the most stressful mile survives thinning."""

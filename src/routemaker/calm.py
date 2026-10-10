@@ -18,18 +18,25 @@ costs, at the rider's preset and slider position:
   grade (and the surface, which is not traffic) is worked out here from the edge's own
   attributes as the trace returns them (`TRACE_ATTRIBUTES`: its class, use, lanes, cycle
   lane, shoulder, truck route, bicycle network, and the speed the graph gave it) and the
-  ride's `use_roads`, and divided by the quiet metre's 2.2. So a road is priced by its own
-  speed and lanes, as the router prices it, and a quiet street reads near 1 (an urban
-  residential street at its 30 km/h default about 0.8 at Default). LTS 3 and up carry the
+  ride's `use_roads`, and divided by the same factor for a quiet street (`quiet_factor`: a
+  residential street with no lane at its default speed, urban or rural as the road is), so
+  an all-quiet route reads exactly 1 (461d). A junction's and an Avoid entry's quiet metres,
+  priced at 2.2 (which was measured with the grade in), are scaled by 2.2 over the quiet
+  street's factor (`junction_scale`) to keep their meaning. LTS 3 and up carry the
   `use_sidepath` mark the graph writes there; LTS 4 and Avoid also the graph's top speed
-  and lane count (read off the edge: its lane count is 15). Avoid pays its entry charge
-  where the route enters it.
+  and lane count (read off the edge: its lane count is 15, and such an edge carries the
+  mark whatever the live tier says). Each piece is rated and graded as the stress section
+  it lies in, so a folded sliver is neither a rated island nor an unseen Avoid entry. Where
+  the live tier and the graph disagree about grading (a stress edit since the last
+  rebuild), the answer says `estimate`. Avoid pays its entry charge where the route enters
+  it.
 - **The tier's figure** (`multiplier`), where the trace gave no attributes (an older answer,
   a test double): `1 + added / 2.2` at LTS 3 and up, where `added` is the middle of the five
   modelled road types' range for the slider's `use_roads` (docs/DEVELOPMENT.md "Graded
   stress"; `ADDED`), linear between positions, and the facility class at LTS 1-2. This is
-  the design's fallback and an estimate, and the answer says so (`estimate`). The band
-  edges are always read from it: they are a guide, not a price.
+  the design's fallback and an estimate, and the answer says so (`estimate`).
+- **The band edges** are read from representative roads at their own cost (`bands`), so each
+  tier's typical road lands in its own band.
 - **Above 80 on the slider.** The calm rate prices each tier's metres at its exposure weight
   (`refine.Analysis.score`): `+ rate x w(L)`.
 - **The top of the slider (100).** There is no per-metre price; the worth rule's exchange
@@ -290,11 +297,16 @@ def road_speed_kph(road: Road) -> int:
     rises with: the graded tiers' 140, a tagged `maxspeed`, or the class's default, as the
     graph builder adjusts them (mjolnir/speed_assigner.h `SpeedAssigner::UpdateSpeed`, with
     no speed configuration, as RouteMaker builds)."""
-    if graded(road):
-        return GRADED_SPEED_KPH
     rough = road.surface in ROUGH_SURFACES
-    tagged = road.speed_limit_kph is not None
-    speed = round(road.speed_limit_kph) if tagged else RURAL_SPEED.get(road.road_class, 25)
+    # The graded speed is written as `maxspeed:practical`, which the builder takes as a
+    # tagged speed: a graded turn channel is 175 km/h and a graded rough road 130.
+    tagged = graded(road) or road.speed_limit_kph is not None
+    if graded(road):
+        speed = GRADED_SPEED_KPH
+    elif road.speed_limit_kph is not None:
+        speed = round(road.speed_limit_kph)
+    else:
+        speed = RURAL_SPEED.get(road.road_class, 25)
     if road.use in ("ramp", "turn_channel"):
         # A link keeps its speed but for these factors (`kTurnChannelFactor`, with
         # `infer_turn_channels` on as valhalla/*.json set it; `kRampFactor`,
@@ -310,6 +322,8 @@ def road_speed_kph(road: Road) -> int:
         if rough:
             speed = speed - 10 if speed >= 50 else speed - 5 if speed > 15 else speed
         return speed
+    # The trace's `density` is the edge's average, not the start node's density the builder's
+    # urban test read, so on an edge that crosses the urban line the two can differ.
     if road.density > MAX_RURAL_DENSITY:
         speed = URBAN_SPEED.get(road.road_class, speed)
     if road.roundabout:
@@ -359,7 +373,8 @@ def _path_factor(road: Road, u: float) -> float:
 def edge_factor(road: Road, tier: int, use_roads: float) -> float:
     """Valhalla's cost of a metre of the edge as a multiple of its time, grade and surface
     left out: `1 + accommodation x roadway stress`. The stress mark is the graph's from
-    LTS 3, never on a trail-class way."""
+    LTS 3, never on a trail-class way; a graded edge carries it whatever `tier` says (the
+    two are written together, and a stress edit changes the tier before a rebuild)."""
     u = min(max(use_roads, 0.0), 1.0)
     stress = 1.0
     accommodation = 1.0
@@ -378,30 +393,64 @@ def edge_factor(road: Road, tier: int, use_roads: float) -> float:
             stress += TRUCK_STRESS
         stress += road_factor * ROAD_CLASS_FACTOR.get(road.road_class, 0.5)
         stress *= _speed_penalty(road_speed_kph(road), u)
-    if tier >= SIDEPATH_TIER and road.use not in TRAIL_USES:
+    if (tier >= SIDEPATH_TIER or graded(road)) and road.use not in TRAIL_USES:
         accommodation += 3.0 * (1.0 - u)
     if road.bike_network:
         accommodation *= BICYCLE_NETWORK_FACTOR
     return 1.0 + accommodation * stress
 
 
+# The quiet street the scale's 1 is (461d: "1.0 = all calm riding"): a residential street with
+# no lane at its default speed, urban (density over 8, 20 mph (30 km/h)) or rural
+# (22 mph (35 km/h)).
+QUIET_URBAN = Road(road_class="residential", density=MAX_RURAL_DENSITY + 1)
+QUIET_RURAL = Road(road_class="residential", density=0)
+
+
+def quiet_factor(use_roads: float, urban: bool = True) -> float:
+    """The router's cost of a metre of quiet street as a multiple of its time, grade left
+    out, at this `use_roads`: what a road's own cost is divided by. (`QUIET_FACTOR`'s 2.2
+    was measured with the grade in, so dividing by it would put a quiet street at 0.8 to
+    0.9.)"""
+    return edge_factor(QUIET_URBAN if urban else QUIET_RURAL, 1, use_roads)
+
+
+def junction_scale(pricing: Pricing) -> float:
+    """What a junction's or an Avoid entry's quiet metres (priced at `QUIET_FACTOR`) are
+    multiplied by on the own-cost scale, so they keep their meaning there: 2.2 over the
+    urban quiet street's factor."""
+    return QUIET_FACTOR / quiet_factor(pricing.use_roads)
+
+
+def disagrees(tier: int, road: Road, pricing: Pricing) -> bool:
+    """Whether the live tier and the graph disagree about grading: a graded edge the live
+    table rates under LTS 4, or an LTS 4 or Avoid way the graph did not grade (a stress
+    edit since the last rebuild, or a way the transform could not mark)."""
+    if graded(road):
+        return tier < 4
+    return tier >= 4 and not pricing.no_trail and road.use not in TRAIL_USES
+
+
 def road_multiplier(
     tier: int | None, facility: str | None, road: Road | None, pricing: Pricing
 ) -> tuple[float | None, bool]:
-    """Calm metres a metre of this edge counts for, and whether that is its own cost (False:
-    the tier's figure stands in, as the trace gave no attributes). At the top of the slider
-    LTS 3 and up take the worth rule's figure, which is the ranking's own price."""
+    """Calm metres a metre of this edge counts for, and whether that is its own cost as the
+    graph prices it (False: the tier's figure stands in, as the trace gave no attributes, or
+    the live tier and the graph disagree, `disagrees`). At the top of the slider LTS 3 and
+    up take the worth rule's figure, which is the ranking's own price."""
     if tier is None:
         return None, True
     if road is None:
         return multiplier(tier, facility, pricing), False
     level = min(tier, 5)
+    agreed = not disagrees(level, road, pricing)
     if road.use in NOT_TRAFFIC_USES or (pricing.maxcalm and level >= 3):
-        return multiplier(tier, facility, pricing), True
-    own = edge_factor(road, level, pricing.use_roads) / QUIET_FACTOR
+        return multiplier(tier, facility, pricing), agreed
+    urban = road.density > MAX_RURAL_DENSITY
+    own = edge_factor(road, level, pricing.use_roads) / quiet_factor(pricing.use_roads, urban)
     if level >= 3:
         own += pricing.rate * pricing.weights[level - 3]
-    return own, True
+    return own, agreed
 
 
 def avoid_entry_m(pricing: Pricing) -> float:
@@ -424,16 +473,37 @@ def junction_m(cost_ft: float, severity: str | None, flagged: bool, pricing: Pri
 MIN_BAND_GAP = 0.05
 
 
+# The representative roads the band edges are read from (review S3: a 25 mph LTS 3 street must
+# not be said as "LTS 1 to 2 level" over a road the map colours LTS 3), all urban, priced by
+# the router's own cost at the ride's position:
+# - the busiest typical calm road and the calmest typical LTS 3 one: a 25 mph (40 km/h)
+#   collector with one lane each way and no bike lane, at LTS 2 and at LTS 3;
+# - the busiest typical LTS 3 road: a 40 mph (64 km/h) primary, two lanes each way;
+# - the calmest LTS 4 road: a graded residential street (the graph's top speed and lanes), or,
+#   on the no-trail graph, which grades nothing, a 45 mph (72 km/h) trunk, three lanes each way.
+BAND_COLLECTOR = Road(road_class="tertiary", speed_limit_kph=40, density=MAX_RURAL_DENSITY + 1)
+BAND_ARTERIAL = Road(
+    road_class="primary", lanes=2, speed_limit_kph=64, density=MAX_RURAL_DENSITY + 1
+)
+BAND_GRADED = Road(road_class="residential", lanes=GRADED_LANES, density=MAX_RURAL_DENSITY + 1)
+BAND_TRUNK = Road(road_class="trunk", lanes=3, speed_limit_kph=72, density=MAX_RURAL_DENSITY + 1)
+
+
 def bands(pricing: Pricing) -> tuple[float, float]:
-    """Where the words change (docs/stress/stress-number.md "Words as a guide"): the
-    half-step midpoints 2.5 and 3.5 (461a), from a quiet street's 1. Where LTS 3 costs
-    no more than a quiet street (0 on the slider) there is no LTS 3 band: both edges are
-    the 3.5 midpoint."""
-    m3 = multiplier(3, None, pricing) or 1.0
-    m4 = multiplier(4, None, pricing) or 1.0
-    high = max((m3 + m4) / 2, 1.0 + MIN_BAND_GAP)
-    low = (1.0 + m3) / 2
-    if low < 1.0 + MIN_BAND_GAP:
+    """Where the words change (docs/stress/stress-number.md "Words as a guide"): halfway
+    between the busiest typical calm road and the calmest typical LTS 3 road, and halfway
+    between the busiest typical LTS 3 road and the calmest LTS 4 one, each at its own cost
+    (`BAND_*`), so each tier's typical road lands in its own band. Where LTS 3 costs no more
+    than LTS 2 (0 on the slider) there is no LTS 3 band: both edges are the upper one."""
+
+    def at(road: Road, tier: int) -> float:
+        return road_multiplier(tier, "none", road, pricing)[0] or 1.0
+
+    calm_top, lts3_low = at(BAND_COLLECTOR, 2), at(BAND_COLLECTOR, 3)
+    lts4_low = at(BAND_TRUNK if pricing.no_trail else BAND_GRADED, 4)
+    high = max((at(BAND_ARTERIAL, 3) + lts4_low) / 2, 1.0 + MIN_BAND_GAP)
+    low = (calm_top + lts3_low) / 2
+    if lts3_low - calm_top < MIN_BAND_GAP or low < 1.0 + MIN_BAND_GAP:
         low = high
     return low, high
 
@@ -480,17 +550,24 @@ def steps_of(spans: Sequence[dict], pricing: Pricing) -> list[Step]:
 Costed = tuple[float, int | None, str | None, Road | None]
 
 
-def piece_steps(pieces: Sequence[Costed], pricing: Pricing) -> tuple[list[Step], bool]:
+def piece_steps(
+    pieces: Sequence[Costed], pricing: Pricing, sections: Sequence[Step] | None = None
+) -> tuple[list[Step], bool]:
     """The route's traced pieces, each at its own road's multiplier, adjacent equal ones
-    joined; and whether every rated piece was priced by its own cost (False: some took the
-    tier's figure)."""
+    joined; and whether every rated piece was priced by its own cost as the graph prices it
+    (False: some took the tier's figure, or its live tier and the graph disagree). With
+    `sections`, each piece is rated and graded as its section's tier
+    (`with_section_tiers`); whether the graph agrees is still read against its own."""
     out: list[Step] = []
     exact = True
     at = 0.0
-    for metres, tier, facility, road in pieces:
+    shown = with_section_tiers(pieces, sections) if sections is not None else pieces
+    for (metres, own_tier, _f, road), (_m, tier, facility, _r) in zip(pieces, shown, strict=True):
         if metres <= 0:
             continue
         ratio, own = road_multiplier(tier, facility, road, pricing)
+        if ratio is not None and road is not None and own_tier is not None:
+            own = not disagrees(min(own_tier, 5), road, pricing)
         exact = exact and own
         lo, at = at, at + metres
         if out and out[-1].ratio == ratio and out[-1].tier == tier:
@@ -500,20 +577,40 @@ def piece_steps(pieces: Sequence[Costed], pricing: Pricing) -> tuple[list[Step],
     return out, exact
 
 
-def points_of(steps: Sequence[Step], events: Sequence | None, pricing: Pricing) -> list[Point]:
+def with_section_tiers(pieces: Sequence[Costed], sections: Sequence[Step]) -> list[Costed]:
+    """Each piece with the tier of the section its middle lies in (None in an unrated one or
+    in a hole), so the score rates and grades what the map colours: a piece shorter than
+    `routing.MIN_SPAN_M` folded into its neighbour is not a rated island in an unrated
+    section, nor an Avoid entry the chart does not show (review S1)."""
+    starts = [s.from_m for s in sections]
+    out: list[Costed] = []
+    at = 0.0
+    for metres, _tier, facility, road in pieces:
+        middle = at + metres / 2
+        at += metres
+        i = bisect.bisect_right(starts, middle) - 1
+        inside = 0 <= i < len(sections) and sections[i].from_m <= middle <= sections[i].to_m
+        out.append((metres, sections[i].tier if inside else None, facility, road))
+    return out
+
+
+def points_of(
+    steps: Sequence[Step], events: Sequence | None, pricing: Pricing, scale: float = 1.0
+) -> list[Point]:
     """The calm metres counted at a place, in route order: every junction the model
-    charges for (flagged or not), and each entry into Avoid."""
+    charges for (flagged or not), and each entry into Avoid. `scale` puts their quiet
+    metres on the own-cost scale (`junction_scale`)."""
     out: list[Point] = []
     starts = [s.from_m for s in steps]
     for event in events or ():
         flagged = bool(getattr(event, "flagged", False))
         severity = getattr(event, "severity", None) if flagged else None
-        counted = junction_m(
+        counted = scale * junction_m(
             float(getattr(event, "cost_ft", 0.0) or 0.0), severity, flagged, pricing
         )
         if counted > 0 and _rated_at(steps, starts, float(event.m)):
             out.append(Point(float(event.m), counted, "junction", severity))
-    entry = avoid_entry_m(pricing)
+    entry = scale * avoid_entry_m(pricing)
     previous: Step | None = None
     for step in steps:
         joined = previous is not None and previous.tier == 5 and previous.to_m >= step.from_m
@@ -611,22 +708,24 @@ def _built(
     and whether every rated metre was priced by its own road's cost.
 
     With the traced `pieces` (stress-number.md section 4: each road priced by its own
-    routing cost) the sums run over every piece at its own multiplier, and a section's
-    figure is the mean over it (its calm metres over its rated metres), so the step line
-    keeps one step a section. Without them each section takes its tier's figure."""
+    routing cost) the sums run over every piece at its own multiplier, graded as its
+    section's tier (`with_section_tiers`), and a section's figure is the mean over it (its
+    calm metres over its rated metres), so the step line keeps one step a section. The
+    junctions and Avoid entries are read against the sections, put on the own-cost scale
+    (`junction_scale`). Without the pieces each section takes its tier's figure."""
     sections = steps_of(spans, pricing)
     if pieces is None:
         points = points_of(sections, events, pricing)
         return Rolling(sections, points), sections, points, False
-    fine, exact = piece_steps(pieces, pricing)
-    points = points_of(fine, events, pricing)
+    fine, exact = piece_steps(pieces, pricing, sections)
+    points = points_of(sections, events, pricing, junction_scale(pricing))
     rolling = Rolling(fine, points)
     sent = []
     for s in sections:
         calm_hi, rated_hi = rolling.upto(s.to_m)
         calm_lo, rated_lo = rolling.upto(s.from_m)
         rated = rated_hi - rated_lo
-        mean = (calm_hi - calm_lo) / rated if rated > 0 else None
+        mean = (calm_hi - calm_lo) / rated if rated > 0 and s.tier is not None else None
         sent.append(Step(s.from_m, s.to_m, mean, s.tier))
     return rolling, sent, points, exact
 

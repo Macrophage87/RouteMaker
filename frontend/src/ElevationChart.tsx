@@ -8,7 +8,7 @@
  *   hatched, so colour is not the only cue), and under it the rolling stress chart (460.12, 461d,
  *   461e): calm miles per actual mile over the mile around each point, junctions included, on a log
  *   scale, the area filled in the map's tier colours and the stress bar's patterns between guides at
- *   the half-step midpoints, a faint step line of each stretch's own figure, Avoid stretches in the
+ *   the API's band edges, a faint step line of each stretch's own figure, Avoid stretches in the
  *   magenta, and the flagged junctions' markers. Where the API sends no score (an older answer), the
  *   rolling stress strip of 322 in the map's styles stands in.
  * - Mass Ride: in place of the strip, a filled area of the grade-adjusted riders a minute in the
@@ -488,7 +488,7 @@ export function ElevationChart({
         {calm ? (
           <>
             <li className="pc-legend-strip">
-              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); 1 is a typical quiet street
+              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); 1 is all quiet streets
             </li>
             {CALM_BANDS.map((band) => {
               const cls = spanClass({ tier: band.tier, facility: "none" });

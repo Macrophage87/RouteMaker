@@ -2563,7 +2563,7 @@ details.zoom-notes {
 }
 
 /* The rolling stress chart (OWNER-DECISIONS 460.12): the line in the text colour over its banded area,
-   the faint dashed step line of each stretch's own figure, a quiet line at 1 (a typical quiet street), and
+   the faint dashed step line of each stretch's own figure, a quiet line at 1 (all quiet streets), and
    the guides at the half-step midpoints in the text colour (the band colour is on the swatch beside the
    label, as the riders guides do). */
 .pc-calm-line {

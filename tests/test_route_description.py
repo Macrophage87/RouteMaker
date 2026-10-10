@@ -19,7 +19,7 @@ from test_route_api import (
 from test_route_intersections import arterial, locate_answer, world  # noqa: F401
 
 from core import api, presets, routing
-from routemaker import describe
+from routemaker import calm, describe
 
 db = pytest.mark.django_db(transaction=True)
 
@@ -458,3 +458,50 @@ class TestTheSearchIsHandedTheRidesExposure:
         assert post(client, {**good_body(), **dials}).status_code == 200
         expected = presets.EXPOSURE_STRESS_AVERSE if averse else presets.EXPOSURE_STANDARD
         assert seen == [expected]
+
+
+@db
+@pytest.mark.usefixtures("arterial")
+class TestRollingStressFromTheTrace:
+    """Review S4: each road's own routing cost, end to end (docs/stress/stress-number.md
+    section 4): the trace is asked for the edge attributes, the pieces carry them, and the
+    answer's rolling stress is not an estimate."""
+
+    ATTRIBUTES = {
+        "lane_count": 1,
+        "cycle_lane": "none",
+        "shoulder": False,
+        "truck_route": False,
+        "bicycle_network": 0,
+        "density": 20,
+        "roundabout": False,
+        "surface": "paved",
+    }
+
+    def test_the_plan_prices_each_road_by_its_own_cost(self, client, router, monkeypatch):
+        fake = named_world()
+        for edge in fake.answers["trace_attributes"]["edges"]:
+            edge.update(self.ATTRIBUTES)
+        router(fake)
+        seen = []
+        real = routing.pieces_of_trace
+
+        def spy(trace):
+            made = real(trace)
+            seen.extend(made)
+            return made
+
+        monkeypatch.setattr(routing, "pieces_of_trace", spy)
+        body = post(client, good_body()).json()
+        traces = [p for url, p in fake.calls if url.endswith("/trace_attributes")]
+        assert traces
+        for payload in traces:
+            assert set(calm.TRACE_ATTRIBUTES) <= set(payload["filters"]["attributes"])
+        assert seen and all(isinstance(p.road, calm.Road) for p in seen)
+        assert seen[0].road.road_class == "residential" and seen[0].road.density == 20
+        assert body["profile"]["calm"]["estimate"] is False
+
+    def test_without_the_attributes_it_says_estimate(self, client, router):
+        router(named_world())
+        body = post(client, good_body()).json()
+        assert body["profile"]["calm"]["estimate"] is True
