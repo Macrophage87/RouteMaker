@@ -16,6 +16,8 @@ import {
   stressLayers,
   stressOverlayLayers,
   mtbTrailPaint,
+  mtbTrailsOn,
+  MTB_TRAIL_LAYER_ID,
   unpavedLayers,
   UNPAVED_DASH,
   accessibilityOn,
@@ -46,9 +48,13 @@ export interface OverlayMap {
 /**
  * Whether an overlay layer shows: with the overlay's switch on, a Mass Ride layer only in that
  * mode and every other (stress-map) layer only out of it (OWNER-DECISIONS 417, 417a: no trail,
- * protected bike lane or other facility layer at any zoom on the Mass Ride map).
+ * protected bike lane or other facility layer at any zoom on the Mass Ride map). The mountain-bike
+ * trails' line follows its own switch only (`mtb`, 454), with the stress map on or off and in
+ * every ride type, Mass Ride too ("Three map layers for everyone (every mode, signed out too)").
  */
-export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn()): boolean {
+export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn(), mtb: boolean = mtbTrailsOn()): boolean {
+  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode.
+  if (id === MTB_TRAIL_LAYER_ID) return mtb;
   return visible && (MASS_IDS.has(id) ? mass : !mass);
 }
 
@@ -169,10 +175,10 @@ export function setStressPalette(
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
   }
   // The mountain-bike trails' not-for-routes line (452a): wider and darker with the accessibility switch.
-  if (map.getLayer("mtb-trail")) {
+  if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
     const paint = mtbTrailPaint();
-    map.setPaintProperty("mtb-trail", "line-color", paint["line-color"]);
-    map.setPaintProperty("mtb-trail", "line-width", paint["line-width"]);
+    map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
+    map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
 }
 

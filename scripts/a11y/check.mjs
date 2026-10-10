@@ -645,6 +645,45 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 12a. "Mountain-bike trails" (OWNER-DECISIONS 454): an optional map layer, off until turned on ----
+{
+  const p = await open();
+  await openSheet(p);
+  const id = "#mtb-trails-switch";
+  const before = await axNode(p, id);
+  check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
+  check("mtb layer: described in plain words: what it draws, from which zoom, and that it is not used for routes",
+    /^Trails for mountain bikes, drawn as a thin grey dotted line from zoom 14\. Not used for routes; Gravel and Mountain Goat may use them\.$/.test(before?.description ?? ""), before?.description ?? "");
+  const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
+  const at = (name) => headings.indexOf(name);
+  check("mtb layer: under its own heading, Trails and terrain, after Rail stations and before Legend",
+    at("Trails and terrain") > at("Rail stations") && at("Rail stations") > at("Traffic stress") && at("Legend") > at("Trails and terrain"), JSON.stringify(headings));
+  await p.eval(`document.querySelector('${id}').focus(); true`);
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space turns it on, it is remembered in this browser, and the focus stays on it",
+    (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on" && (await p.eval(`document.activeElement?.id === 'mtb-trails-switch'`)));
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space again turns it off", (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "false" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "off");
+  await p.close();
+}
+{
+  // Every ride type (454): a Mass Ride has the switch too, and with it on its legend names the line.
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await openSheet(p);
+  await sleep(1500);
+  const ax = await axNode(p, "#mtb-trails-switch");
+  check("mtb layer: a Mass Ride has the same switch", ax?.role === "switch" && ax?.name === "Mountain-bike trails", JSON.stringify(ax));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
+  const row = await p.eval("(() => { const e = document.querySelector('#sheet-layers .mass-legend') && document.querySelector('#sheet-layers [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
+  check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailNot used for routes"), JSON.stringify(row));
+  // Leave the browser as the later sections expect it: the layer off.
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
+  await p.close();
+}
+
 // ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318) ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
@@ -1382,6 +1421,11 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
   // OWNER-DECISIONS 452a: the mountain-bike trails draw in a not-for-routes look, and the stress legend has a row
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
+  // 454: only while their layer is on, which is off until the rider turns it on.
+  check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail')`));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
   const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
     const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
@@ -1389,6 +1433,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
   check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
     !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
   await p.close();
 }
 {
@@ -1940,7 +1985,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 334;
+const EXPECTED = 342;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

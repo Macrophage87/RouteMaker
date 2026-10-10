@@ -18,7 +18,8 @@
       "trace_route",
       "trace_attributes",
       "locate",
-      "status"
+      "status",
+      "sources_to_targets"
     ],
     "logging": {
       "color": false,

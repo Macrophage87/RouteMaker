@@ -26,7 +26,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -1008,6 +1008,16 @@ export function MapView(props: Props) {
   useEffect(
     () =>
       subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+    [],
+  );
+
+  // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
+  useEffect(
+    () =>
+      subscribeMtbTrails(() => {
+        const map = mapRef.current;
+        if (map && loaded.current) setStressVisibility(map, callbacks.current.stressVisible);
+      }),
     [],
   );
 

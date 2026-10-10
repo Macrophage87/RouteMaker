@@ -607,8 +607,9 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
-- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
-  own, for every ride type (the owner: "I want people to know where the trails
+- **Mountain-bike trails (452a, 454).** Drawn, while the "Mountain-bike
+  trails" map layer is on (454, below), in a not-for-routes look of their
+  own (the owner: "I want people to know where the trails
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
@@ -623,8 +624,10 @@ alone. Shape comes first and colour second:
   base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
   `routableMtb` is the switch a future MTB mode turns on: the class moves back
   into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
-  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
-  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  `isRoad` leaves `mtb` out; the routable stress layers stay hidden there, but
+  `mtb-trail` follows its own switch and keeps its filter without `massHides`
+  (nearly every trail row carries a capacity), and the Mass Ride legend gets
+  its row too (`MtbTrailLegend`). The tiles' `rough` is a rough surface, not this class. The
   legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
   `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
   the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
@@ -632,6 +635,18 @@ alone. Shape comes first and colour second:
   `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
   nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
   ride the class on the off-road graph, and their route draws over the dots.
+  Since 454 the line is an optional map layer, off until the rider turns it on:
+  the "Mountain-bike trails" switch under "Trails and terrain" in the Map
+  layers sheet (`lib/mtbTrailsSwitch.ts`; `stressStyle.js` `mtbTrailsOn`,
+  `setMtbTrails`, kept per browser under `routemaker.mtbTrails`, "on" or
+  "off"). `overlayLayerShown` shows `mtb-trail` by that switch alone, with the
+  stress map on or off and in every ride type, Mass Ride too; MapView sets the
+  visibility again in place when it changes. The legend row shows only while
+  the layer is on. The road panel answers from the segment table, so it still
+  describes a mountain-bike trail with the layer off; its Bike access line
+  says the dotted line is drawn "when the Mountain-bike trails map layer is
+  on". docs/MTB-TOPO-PLAN.md has the
+  rest of the mountain-bike and topo work.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -1191,7 +1206,7 @@ before, at the preset's own starting positions:
 ```sh
 curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
     -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "cargo",
-         "carrying": "people", "stress": 90, "hills": -40, "when": "weekend"}'
+         "carrying": "people", "stress": 80, "hills": -40, "when": "weekend"}'
 ```
 
 - `stress`, integer 0-100, rescaled on 2026-10-01 (OWNER-DECISIONS 163 and 164;
@@ -1231,7 +1246,7 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   is car-free at weekday rush; supported since the round-1 mutation review).
   A condition it cannot read - a month range, `sunset` - closes nothing.
 - `carrying`: `cargo` or `people` ("Cargo with passengers", item 241), Cargo Bike only
-  (400 elsewhere); it sets the stress slider's start (90, Default's, or 100).
+  (400 elsewhere); it sets the stress slider's start (70, Default's, or 80).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
   routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
@@ -1573,7 +1588,10 @@ comes from its own speed, so no duration changes, and the speed limit and
 access stay OSM's. Not on the no-trail graph: Mass Ride is locked at 0.
 
 The stress levels, LTS 3 / LTS 4 (and the ratio), modelled from the costing
-code for representative roadways at each slider position:
+code for representative roadways at each slider position. (Positions in this
+table and the measurements below it are on the scale before the 2026-10-01
+rescale: the old position `q` is now `q * 7 / 9` up to 90, so the columns are
+about today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is about today's 4 to 80.)
 
 | Roadway | 0 | 25 | 50 | 75 | 90 | 100 |
 |---|---|---|---|---|---|---|
@@ -2003,6 +2021,51 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
+**The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
+alternatives by our own stress measures"; found comparing a planned route with a
+ridden one: the search only rerouted around the router's first route and never
+looked at the router's own alternatives). Wherever the calm search runs (above
+80, `Context.rank_alternates`), before its first round it asks the router once for
+the same route with `alternates` 3 (`refine.ROUTER_ALTERNATES`, the service's
+`max_alternates`), reads each alternative (its trace, stress and junctions) and
+ranks it with the first route by the rule every candidate meets (`refine.better`:
+below the top of the slider the score above, so the slider's rate sets how much
+distance a metre of LTS 3 avoided is worth; at the top the stress order and the
+worth of the extra miles) and the same guards (not busier than the first route, the
+LTS 4 hold, junctions read, within the ceiling). The rounds then start from
+whichever ranks first, so their exclusions are that route's busy stretches; the
+Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
+of the slider every alternative that passes the guards also joins the routes the
+rider is offered (`candidates`).
+
+Where the plan already asked for them with the same request (the hills slider's
+avoid half, `Context.router_trips`) those are ranked and none is asked again, and
+where that ask timed out none is asked at all; a route the target fitting
+(`_fit_target`, `_past_target`) asked for again with another costing gets the
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (6 s,
+a round's least and a second) before the search's own end, so at least one round is always
+left (the rounds were the whole calm search before 435), and the ask is not
+started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
+router's ask is held to its own `WEEKEND_TIMEOUT_S`.
+
+`calm_search.alternates` (`api.AlternatesOut`) says how many routes the router gave
+other than the one the search starts from (`given`: where the hills slider chose
+one of the router's alternatives, the router's first route is one of them), how
+many passed the guards (`ranked`), whether one was taken (`taken`), and `limited`,
+`time` where the ask or a reading ran out of its time (the search's own `limited`
+is unaffected: its rounds still run). It is null where none were asked for: a plan
+with stops or a loop (Valhalla gives alternatives between two locations only), a
+long calm plan's legs (each has only its share of the time, and alternatives
+roughly double a long leg's route; "Time, alternates and limits" below), or too
+little time left. The ask is one more `/route` (with alternatives: on the live
+router a warm 7.5 mi [12 km] route went from 0.2 s to 1 to 2 s with them, the
+climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative. Not measured on the live router from this branch (it was built where
+the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
+run after deploy). The detour acceptance rule decision 435 asks to revisit is
+unchanged here, pending the owner's answer to the proposal sent with this change
+(PLAN.md, 435, records it).
+
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
 round) as the exclusions, one round, at every position but Mass Ride's: the new
@@ -2044,8 +2107,7 @@ the host took 4 to 17 s, and the first plan after a process starts a few seconds
 more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
-`max_alternates` 3 (the search does not use alternates; Valhalla's alternates
-are near-optimal in its own cost, which is not where a calmer route is) and
+`max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
 - starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
@@ -4328,6 +4390,56 @@ so are links (`loop=1`). A Mass Ride's link keeps `loop=1`, but its request leav
 (`api.requestRoute`; `routing.loop_wanted` ignores it there anyway).
 A loop implied by an end on the start, with the toggle off, keeps "Start"
 and "End". Mass Ride has no loop, and its hints do not mention the toggle.
+
+**Stops in any order (OWNER-DECISIONS 449).** "Best order" (`App.tsx`, in the point tools after
+Reverse; `lib/stopOrder.ts`; a one-press button, the owner's choice of 2026-10-10 over 449's switch)
+puts the stops in the order with the least riding time. It is never shown on a Mass Ride, and the API
+refuses one (400). Otherwise it shows only with two or more stops to order (`stopsThatMove`): the points between the start and the end, or in a
+loop the rider chose every point after the start (a ride that already ends on its start keeps that
+end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
+standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
+it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
+beside it. A press sends the ride as a route request would (points, preset and dials; not the
+weight, which the order does not use) to `POST /api/stop-order`
+(`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
+found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
+said, and another press says "Still finding the best order." The answer is used only if the points,
+ride type and dials are still those it was asked for, and only if it fits them (`applyAnswer`,
+`fitsOrder`: every point once, the start first, the end last unless it is a stop). A new order is one
+`commit`, so Undo puts the old one back, and the route is asked for as after any edit; an order
+already best commits nothing. What came of it is the Points notice (a status, so it is seen and said
+once; cleared when the points change again): each stop that moved, by place name or coordinates, with
+its old number, how many stayed, and what it saves (`bestOrderSaid`), for example "Stops put in the
+best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1). The
+other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter. Undo puts the old
+order back." An order already best, an answer by straight line, a refusal and a ride changed meanwhile
+each say so there.
+
+On the server, `core.stoporder.order` asks the ride's own router (the graph and costing `/route`
+would use, `presets.variant_for_ride` and `presets.costing`; a test plans the same bodies through
+both and compares) for the riding times between every pair of points (Valhalla's
+`sources_to_targets`, added to `loki.actions` by `scripts/build_valhalla_configs.py`). A weekend or
+off-road router is handled as `/route` handles it: at most 15 s, and one that does not answer or has
+no tiles leaves the standard graph to answer and is remembered as down.
+`routemaker.stoporder.best_order` chooses the order: exact (Held-Karp) up to 13 stops, about a quarter of a second; past
+that, local moves (or-opt and 2-opt) from the rider's order, the nearest-neighbour order and eight
+seeded shuffles, stopping new starts after 3 s, which is not proven best (`exact` false). Costs are
+read in the direction ridden (one-way streets, climbs); a pair the router cannot join is never chosen.
+The rider's order is kept unless the new one saves at least 1% (`MIN_SAVING_FRACTION`), so a
+reshuffle for nothing does not renumber the stops. The times are the router's own routes between the
+points, not the calm search's or the hills slider's choice, which run only when the route itself is
+planned, and the matrix is asked without a `date_time`. Past 93 mi (150 km) of straight line (the
+route API's long-ride line) the router is not asked, and a ride past 124 mi (200 km), a loop's way
+back included, is refused as `/route` refuses it. A router out of time also leaves the straight-line order. A router that does not serve the matrix (one started
+before this change, or one that is down) is not an error: the order is chosen by straight-line
+distance and the answer's `by` says so, as the page then does. Whether the ride is a loop and ends on
+its start is read from the rider's points, as the page reads it; the router is asked about the
+points it would route (a Zoo point at the racks). The answer: `order` (indices into the points sent;
+a loop's return to the start is not in it), `changed`, `by` (`riding_time`, `straight_line`, or null
+with fewer than two stops, when the router is not asked), `exact`, and `before_s`/`after_s`,
+`before_m`/`after_m` for the rider's order and the new one. Tests: tests/test_stop_order.py (the
+solver against brute force over every order, and the endpoint through a fake router) and
+frontend/src/lib/stopOrder.test.ts.
 
 ### The tables
 
