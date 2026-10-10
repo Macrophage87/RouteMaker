@@ -57,7 +57,7 @@ import { IntersectionList } from "./IntersectionList.tsx";
 import { AvoidNotice } from "./AvoidNotice.tsx";
 import { avoidItems, avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
-import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
+import { chartKind, corkerFigure, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
 import { RIDE_SAFETY, RideMode, RideSettingsFields, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
@@ -67,7 +67,7 @@ import { NearbyStations } from "./NearbyStations.tsx";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf, routeCredits } from "./lib/bikeshare.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
-import type { Dials, Ending } from "./lib/dials.ts";
+import { rideSizeOf, type Dials, type Ending } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
@@ -90,6 +90,7 @@ import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import { corridorStress } from "./lib/corridorStore.ts";
 import { refreshStressTiles } from "./lib/mapStyle.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
@@ -164,7 +165,8 @@ import { NearestFinder } from "./lib/nearestFinder.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
-registerStressProtocol(maplibregl);
+// With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
+registerStressProtocol(maplibregl, undefined, corridorStress);
 
 /**
  * One entry of the undo history: the points as they were, and, for an edit
@@ -225,9 +227,13 @@ export function App() {
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
   const stationChoice = useMemo(() => activePins(preset, points, stationPins), [preset, points, stationPins]);
+  // Mass Ride's ride size (PLAN items 128, 139) only redraws the corker load: it is never sent, so moving it
+  // must not plan again. The dials the request is made from leave it out, keyed on what is left.
+  const { rideSize, ...routeDials } = dials;
+  const routeKey = JSON.stringify(routeDials);
   const planDials = useMemo(
-    () => withStations(withWeight(dials, weight), stationChoice),
-    [dials, weight, stationChoice],
+    () => withStations(withWeight(routeDials, weight), stationChoice),
+    [routeKey, weight, stationChoice],
   );
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
@@ -862,7 +868,7 @@ export function App() {
   // a new "Search from", or a start that moved under a "start" search put it away.
   // Not the loop: Ride here turns it off in its own edit, and the list stays for a second pick. A search
   // under way when one changes is thrown away when it answers (the epoch).
-  const nearestKey = JSON.stringify([preset, { ...dials, loop: false }, nearestFrom]);
+  const nearestKey = JSON.stringify([preset, { ...routeDials, loop: false }, nearestFrom]);
   const nearestEpoch = useRef(0);
   useEffect(() => {
     nearestEpoch.current += 1;
@@ -1591,6 +1597,7 @@ export function App() {
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
           ride={{ onStart: startRide, startRef: startRideRef }}
+          rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
         />
       )}
@@ -2087,6 +2094,7 @@ function RouteSummary({
   picker,
   pickerCount,
   ride,
+  rideSize,
   onEnding,
 }: {
   route: RouteResponse;
@@ -2100,6 +2108,8 @@ function RouteSummary({
   /** The routes to choose from (CandidatePicker), or null with one route. */
   picker: ReactNode;
   pickerCount: number;
+  /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
+  rideSize: number;
   onEnding: (ending: Ending) => void;
 }) {
   useStressStyle();
@@ -2116,7 +2126,7 @@ function RouteSummary({
   const moved = movedPointsNote(route, points.length);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
-  // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
+  // figures in view; Elevation and stress (322; Riders per minute, corker load and elevation on a Mass Ride),
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
@@ -2181,7 +2191,7 @@ function RouteSummary({
       </dl>
       {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
-      <CapacityStats route={route} />
+      <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && (
         <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
           <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
@@ -2223,7 +2233,7 @@ function RouteSummary({
           // Offered collapsed on a small screen (OWNER-DECISIONS 322); open beside the map.
           open={chartFoldOpen(narrow)}
         >
-          <ElevationChart route={route} profile={profile} onScrub={onScrub} />
+          <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />
         </Fold>
       )}
       {capacity && (

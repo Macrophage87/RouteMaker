@@ -143,6 +143,19 @@ export function formatPerMile(ratio: number): string {
   return formatRoughDistance(ratio * METRES_PER_MILE);
 }
 
+/**
+ * A group's length, a rough figure: under a mile in feet to the nearest 10 and metres to the
+ * nearest 5, "1,560 ft (475 m)"; from a mile, miles to two places, "1.18 mi (1.9 km)".
+ */
+export function formatGroupLength(metres: number): string {
+  if (!usable(metres)) return DASH;
+  if (metres < METRES_PER_MILE) {
+    const feet = Math.round((metres * FEET_PER_METRE) / 10) * 10;
+    return `${feet.toLocaleString("en-US")} ft (${Math.round(metres / 5) * 5} m)`;
+  }
+  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${(metres / 1000).toFixed(1)} km)`;
+}
+
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
 export function formatRoughDistance(metres: number): string {
   if (!usable(metres)) return DASH;

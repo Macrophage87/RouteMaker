@@ -1,10 +1,9 @@
 """The Avoid-rated junction list (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335).
 
-Numbered 0015 because 0013 and 0014 are taken by work in flight (0014 is the
-half-step editor's). It depends on 0012, the latest migration on release/v0.4.0
-when it was written: re-point `dependencies` at whichever migration is the leaf
-when this merges (or add a merge migration), so the graph has one leaf. The table
-is new and empty, so the order against the others does not matter.
+Written against 0012 and re-pointed, when release/v0.4.0 was merged in, at
+0014_segment_mtb_name, then the leaf, so the graph has one leaf. If another
+migration lands first, re-point it again (or add a merge migration). The table is
+new and empty, so the order against the others does not matter.
 """
 
 import django.contrib.gis.db.models.fields
@@ -17,7 +16,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0012_bikeshare_feed_cache"),
+        ("core", "0014_segment_mtb_name"),
     ]
 
     operations = [

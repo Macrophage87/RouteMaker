@@ -82,6 +82,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _tier_or_none(getattr(row["stress"], "unsmoothed_tier", None)),
             row.get("mass_usable_width_m"),
             row.get("bike_access_reason"),
+            row.get("mtb_level"),
+            row.get("mtb_name"),
         )
         for row in rows
     ]
@@ -92,7 +94,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -127,6 +129,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         unsmoothed_tier,
                         mass_capacity,
                         access_reason,
+                        mtb_level,
+                        mtb_name,
                     ),
                 )
                 for (
@@ -163,6 +167,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     unsmoothed_tier,
                     mass_capacity,
                     access_reason,
+                    mtb_level,
+                    mtb_name,
                 ) in batch
             )
             cursor.execute(
@@ -176,7 +182,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
-                     stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason)
+                     stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
+                     mtb_level, mtb_name)
                     VALUES {args}"""
             )
             written += len(batch)

@@ -2427,6 +2427,8 @@ details.zoom-notes {
   --pc-guide-0: #d7191c; /* 5.2:1 on --bg */
   --pc-guide-1: #b45309; /* 5.0:1 on --bg */
   --pc-guide-2: #1a9850; /* 3.7:1 on --bg */
+  /* The corker load's fill (a Mass Ride's second chart): a blue apart from the riders bands. */
+  --pc-corker: #4f6bd8;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2439,6 +2441,7 @@ details.zoom-notes {
     --pc-guide-0: #d7191c; /* 3.2:1 on --bg */
     --pc-guide-1: #f28e2b; /* 6.9:1 on --bg */
     --pc-guide-2: #1a9850; /* 4.5:1 on --bg */
+    --pc-corker: #7b93f0;
   }
 }
 
@@ -2615,6 +2618,74 @@ details.zoom-notes {
   stroke-width: 1.2;
 }
 
+/* A Mass Ride's three charts (the owner, 2026-10-10; MassRideCharts.tsx): each a group under its own
+   heading, on one distance axis. */
+.pc-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pc-chart + .pc-chart {
+  border-top: 1px solid var(--swatch-border);
+  padding-top: 8px;
+}
+
+.pc-chart-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* The corker load: one series, so a single fill with the step line in the text colour over it; the
+   ticks mark each junction needing corkers (a shape and a place, not a colour). */
+.pc-corker-area {
+  fill: var(--pc-corker);
+  fill-opacity: 0.55;
+}
+
+.pc-corker-line {
+  stroke: var(--pc-line);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.pc-corker-tick {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+
+.pc-corker-half {
+  stroke: var(--swatch-border);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 3;
+}
+
+/* Not checked for intersections: grey with a hatch, its own frame and word, never an empty load. */
+.pc-unchecked-fill {
+  fill: var(--pc-area);
+}
+
+.pc-unchecked-hatch {
+  stroke: var(--text-muted);
+}
+
+.pc-unchecked-frame {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.pc-unchecked-text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
 .pc-marker line {
   stroke: var(--accent);
   stroke-width: 1.5;
@@ -2781,8 +2852,16 @@ details.zoom-notes {
   .pc-calm-guide,
   .pc-axis,
   .pc-tick,
+  .pc-corker-line,
+  .pc-corker-half,
+  .pc-unchecked-frame,
   .pc-strip-frame {
     stroke: CanvasText;
+  }
+
+  .pc-unchecked-text {
+    fill: CanvasText;
+    stroke: Canvas;
   }
 
   .pc-narrowest path,
@@ -3078,8 +3157,54 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
-.ride-mode-settings > summary {
+.ride-mode-settings > summary,
+.ride-report > summary {
   min-height: 44px;
+}
+
+/* Report to DC 311 (lib/report311.ts): the note field and the actions at 44px, the link drawn as a button. */
+.ride-report-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.ride-report-note input {
+  min-height: 44px;
+  font: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ride-report-text {
+  overflow-wrap: anywhere;
+}
+
+.ride-report-label {
+  font-weight: 700;
+}
+
+.ride-report-actions button,
+.ride-report-actions .action-link {
+  min-height: 44px;
+  padding: 8px 14px;
+  box-sizing: border-box;
+}
+
+.ride-report-actions .action-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  text-decoration: underline;
+}
+
+.ride-report-actions .action-link.secondary {
+  background: transparent;
+  color: var(--accent);
 }
 
 .ride-toggle {
