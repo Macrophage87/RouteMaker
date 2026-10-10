@@ -1577,8 +1577,10 @@ not an oversight:
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per
 metre over the same edge with no tier, as a multiple of the edge's time cost:
-Valhalla 3.5.1's bicycle edge cost is `time * factor`, with `factor = 1 +
-grade + accommodation * roadway_stress` (sif/bicyclecost.cc), so the stress
+Valhalla's bicycle edge cost (3.5.1 and 3.6.3) is `time * factor`, with
+`factor = 1 + grade + accommodation * roadway_stress` (sif/bicyclecost.cc;
+3.6.3 then multiplies by a per-request linear-feature factor, 1 unless a
+request sends `linear_cost_factors`, which RouteMaker does not), so the stress
 level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
 LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
 accommodation factor. LTS 4 and up add the graph's top practical speed (140,
@@ -1735,7 +1737,7 @@ it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
-Valhalla 3.5.1's bicycle costing prices a node through its stop impact and turn
+Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a node through its stop impact and turn
 type, a few seconds. Measured on the live standard router (2026-10-01):
 `/trace_attributes` over routes along Wisconsin Avenue, Pennsylvania Avenue SE,
 K Street, Rhode Island Avenue, Georgia Avenue and Rockville Pike and across
@@ -1760,7 +1762,10 @@ of the owner's item 166. Against it the literature review's costs are 30 to 100
 seconds of riding. The tiles do carry stop, yield and signal flags
 (`/locate`'s `edge.stop_sign`, `yield_sign`, `traffic_signal` and the node's own
 `traffic_signal`, matched to a traced edge by `edge.id`); `/trace_attributes`
-does not return them and `/expansion` is not enabled. The router's cost for a
+did not return them under 3.5.1 and `/expansion` is not enabled. (From 3.6.0
+`/trace_attributes` returns `node.traffic_signal` and `edge.traffic_signal`,
+valhalla/valhalla#5121 and #5385, but still no stop or yield flags; the
+junction model keeps reading `/locate`.) The router's cost for a
 metre of quiet residential street, from the same traces, is 2.2 times its time
 (median; 1.8 to 2.9 at `use_roads` 0 to 1).
 
@@ -3681,7 +3686,7 @@ answer on the source tags pinned.
 
 ## Lua
 
-The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it
+The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 and 3.6.3) requires it
 (`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
 `graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
 under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
@@ -5151,7 +5156,7 @@ Two narrower readings keep access where it was:
   bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
   a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
 
-Valhalla 3.5.1 prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+Valhalla (3.5.1 and 3.6.3) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
 and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before

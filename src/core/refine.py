@@ -1,6 +1,6 @@
 """A search over the router's own routes: the calm detour and crossing avoidance.
 
-Why a search and not a cost. Valhalla 3.5.1's bicycle costing prices a road by
+Why a search and not a cost. Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a road by
 `use_roads`, which runs 0 to 1 and no further, and at 0 an LTS 3 way is already
 at its ceiling (about 5 to 13 times its time). It has no hook that knows which
 road a rider crosses or how they turn (`routemaker.intersections`, "Why this is
