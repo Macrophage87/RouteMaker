@@ -588,7 +588,9 @@ for _, class in ipairs(classes) do
   -- mode on it, and an untagged `use_sidepath` would have opened it again.
   for label, extra in pairs({ bare = {}, ["access=yes"] = { access = "yes" },
                               ["foot=designated"] = { foot = "designated" },
-                              ["impassable=yes"] = { impassable = "yes" } }) do
+                              ["impassable=yes"] = { impassable = "yes" },
+                              -- From 3.6.0 upstream closes it too (valhalla#5023).
+                              ["smoothness=impassable"] = { smoothness = "impassable" } }) do
     local plain = { highway = class }
     for k, v in pairs(extra) do plain[k] = v end
     check("the penalty leaves highway=" .. class .. " (" .. label .. ") as its class leaves it",
@@ -811,6 +813,85 @@ check("and car access too", marked4_out.auto_forward == plain4_out.auto_forward)
 check("and bicycle access both ways", marked4_out.bike_forward == "true" and marked4_out.bike_backward == "true")
 local _, neutral4 = transform_way({ highway = "secondary", ["rm:stress_tier"] = "4", ["rm:facility_neutral"] = "yes" })
 check("the no-trail variant: none", neutral4.average_speed == nil, tostring(neutral4.average_speed))
+
+-- ---------------------------------------------------------------------------
+-- Valhalla 3.6 (valhalla/valhalla#5560, #5802, #5023): access lists, `vehicle`
+-- and `smoothness=impassable`, through the real transform.
+-- ---------------------------------------------------------------------------
+
+local function bike_of(tags)
+  local filter, out = transform_way(tags)
+  if filter ~= 0 or out == nil then return "dropped" end
+  return tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward)
+end
+
+-- Upstream alone reads a list part by part and lets a grant win; the remap
+-- narrows it first, so a list that contradicts itself is closed.
+for _, case in ipairs({
+  { highway = "footway", bicycle = "no;yes" },
+  { highway = "footway", bicycle = "yes;no" },
+  { highway = "cycleway", bicycle = "no;designated" },
+  { highway = "residential", access = "no;destination" },
+  { highway = "residential", vehicle = "no;yes" },
+}) do
+  local label = {}
+  for k, v in pairs(case) do label[#label + 1] = k .. "=" .. v end
+  table.sort(label)
+  local result = bike_of(case)
+  check("an access list that says no is closed: " .. table.concat(label, " "),
+    result == "dropped" or result == "false/false", result)
+end
+check("a list of grants alone stays open",
+  bike_of({ highway = "footway", bicycle = "yes;designated" }) == "true/true",
+  bike_of({ highway = "footway", bicycle = "yes;designated" }))
+check("a private list is destination-only, not a plain grant", (function()
+  local _, out = transform_way({ highway = "residential", access = "private;yes" })
+  return out ~= nil and out.private == "true"
+end)())
+local narrowed = { highway = "footway", bicycle = "no;yes" }
+remap.narrow_access_lists(narrowed)
+check("the narrowing rewrites the tag in place", narrowed.bicycle == "no", narrowed.bicycle)
+
+-- `vehicle` now speaks for bicycles.
+check("vehicle=no closes a residential street to bicycles",
+  bike_of({ highway = "residential", vehicle = "no" }) ~= "true/true",
+  bike_of({ highway = "residential", vehicle = "no" }))
+check("vehicle=agricultural now closes it too",
+  bike_of({ highway = "residential", vehicle = "agricultural" }) ~= "true/true",
+  bike_of({ highway = "residential", vehicle = "agricultural" }))
+check("vehicle=yes opens a footway (a bicycle is a vehicle)",
+  bike_of({ highway = "footway", vehicle = "yes" }) == "true/true",
+  bike_of({ highway = "footway", vehicle = "yes" }))
+for _, class in ipairs({ "motorway", "motorway_link" }) do
+  check("but not a " .. class .. ": its vehicle grant is not a bicycle grant",
+    bike_of({ highway = class, vehicle = "yes" }) ~= "true/true",
+    bike_of({ highway = class, vehicle = "yes" }))
+  check("a " .. class .. " the mapper opens to bicycles stays open",
+    bike_of({ highway = class, vehicle = "yes", bicycle = "yes" }) == "true/true",
+    bike_of({ highway = class, vehicle = "yes", bicycle = "yes" }))
+end
+
+-- smoothness=impassable: closed by upstream, and no write of the remap's
+-- reopens it - not the stress penalty, a real alley's charge, the facility
+-- class or a bridge's legality row.
+for label, derived in pairs({
+  ["tier 4"] = { ["rm:stress_tier"] = "4" },
+  ["a closed road"] = { ["rm:facility"] = "path" },
+  ["a legal bridge"] = { ["rm:bridge_bicycle"] = "yes" },
+}) do
+  local tags = { highway = "residential", smoothness = "impassable" }
+  for k, v in pairs(derived) do tags[k] = v end
+  check("smoothness=impassable stays closed with " .. label,
+    bike_of(tags) ~= "true/true", bike_of(tags))
+end
+local alley = { highway = "service", service = "alley", smoothness = "impassable", ["rm:stress_tier"] = "2" }
+check("an impassable alley stays closed", bike_of(alley) ~= "true/true", bike_of(alley))
+local impassable_path = { highway = "residential", impassable = "yes", ["rm:facility"] = "path" }
+check("so does impassable=yes called a closed road",
+  bike_of(impassable_path) ~= "true/true", bike_of(impassable_path))
+check("a mapper's own bicycle=yes on it is upstream's to honour",
+  bike_of({ highway = "residential", smoothness = "impassable", bicycle = "yes" }) == "true/true",
+  bike_of({ highway = "residential", smoothness = "impassable", bicycle = "yes" }))
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

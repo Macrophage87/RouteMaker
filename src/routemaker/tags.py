@@ -131,6 +131,37 @@ def parse_width_m(value: str | None) -> float | None:
     return float(match.group(1)) if match else None
 
 
+# An access list (`bicycle=no;yes`, `access=private;no`) is read as its most
+# restrictive part. Valhalla 3.6.1 began reading such lists part by part and
+# letting any part that grants access win (valhalla/valhalla#5560), and this
+# project reads unclear access as closed, so the tag transform narrows them
+# before anything reads them (`narrow_access_lists` in lua/routemaker_remap.lua,
+# held to this function by tests/test_lua_remap.py). The same rule: `no` if any
+# part is `no`, else the first part that is not a plain grant, else the list.
+ACCESS_LIST_KEYS = ("access", "vehicle", "bicycle", "bicycle:forward", "bicycle:backward")
+PERMISSIVE_ACCESS = frozenset({"yes", "permissive", "designated", "official", "public", "allowed"})
+
+
+def most_restrictive(value: str | None) -> str | None:
+    """An access value with any `;` list reduced to its most restrictive part."""
+    if value is None or ";" not in value:
+        return value
+    parts = [part.strip() for part in value.split(";")]
+    if "no" in parts:
+        return "no"
+    return next((part for part in parts if part and part not in PERMISSIVE_ACCESS), value)
+
+
+def narrow_access_lists(tags: Mapping[str, str]) -> dict[str, str]:
+    """A copy of `tags` with every access list narrowed, as the transform does."""
+    narrowed = dict(tags)
+    for key in ACCESS_LIST_KEYS:
+        value = narrowed.get(key)
+        if value is not None:
+            narrowed[key] = most_restrictive(value)
+    return narrowed
+
+
 # `oneway` values that make a way one-way. Exactly these: `oneway=no` is a
 # mapper stating the street is two-way, and `reversible` and `alternating` are
 # streets whose direction changes, where both sides are in use over a day.

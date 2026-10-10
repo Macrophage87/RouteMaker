@@ -100,7 +100,7 @@ def test_the_vendored_upstream_is_pinned_and_present() -> None:
     """
     vendored = REPO / "lua" / "vendor" / "graph_upstream.lua"
     assert vendored.is_file()
-    assert (REPO / "lua" / "vendor" / "VERSION").read_text().strip() == "3.5.1"
+    assert (REPO / "lua" / "vendor" / "VERSION").read_text().strip() == "3.6.3"
     source = vendored.read_text()
     # The contract the wrapper depends on: globals, and no module return. If a
     # future re-vendor changes this, the wrapper's global capture breaks and this
@@ -117,8 +117,9 @@ def test_every_key_the_remap_writes_is_one_valhalla_reads() -> None:
     Valhalla's tile schema is fixed and a key it does not read is dropped in
     silence - no error, no effect - which is why believing the list is not good
     enough. `bicycle:forward` and `bicycle:backward` are in it;
-    `bicycle:forward:conditional` is not, and upstream's graph.lua carries a bare
-    `TODO access:conditional` where it would be.
+    `bicycle:forward:conditional` is not: the Lua transform reads no
+    conditional key (the C++ parser reads `bicycle:conditional` and, from 3.6.0,
+    `access:conditional` itself).
     """
     supported = {
         line.strip()
@@ -923,3 +924,96 @@ def test_routing_direction_follows_the_district_s_record(case) -> None:
         assert _bike_access(inject(variant, graph(variant), 7)) == others, (case, variant.value)
     assert _bike_access(inject(Variant.NO_TRAIL, graph(Variant.NO_TRAIL), 7)) == no_trail, case
     assert _bike_access(osm) != others or _bike_access(osm) != no_trail, "the control"
+
+
+# Access lists (valhalla/valhalla#5560): the transform narrows them and the
+# Python models read them the same way, so the two halves must agree value for
+# value.
+ACCESS_LIST_CASES = [
+    "yes",
+    "no;yes",
+    "yes;no",
+    " yes ; no ",
+    "private;no",
+    "private;yes",
+    "yes;private",
+    "agricultural;forestry",
+    "destination;delivery",
+    "yes;designated",
+    "dismount;yes",
+    ";",
+    "yes;",
+]
+
+
+def test_the_access_list_rule_is_the_same_in_python_and_lua() -> None:
+    from routemaker import tags as osm_tags
+
+    lines = "\n".join(
+        f"io.write(tostring(M.most_restrictive({_lua_string(value)})), '\\n')"
+        for value in ACCESS_LIST_CASES
+    )
+    result = _lua_driver(
+        'package.path = "lua/?.lua;" .. package.path\n'
+        'local M = require("routemaker_remap")\n' + lines
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split("\n")[:-1] == [
+        osm_tags.most_restrictive(value) for value in ACCESS_LIST_CASES
+    ]
+    assert tuple(osm_tags.ACCESS_LIST_KEYS) == (
+        "access",
+        "vehicle",
+        "bicycle",
+        "bicycle:forward",
+        "bicycle:backward",
+    )
+
+
+def _lua_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+UPSTREAM_OPEN_CASES = [
+    {"bicycle": "no;yes"},
+    {"bicycle": "yes;designated"},
+    {"vehicle": "yes"},
+    {"vehicle": "no"},
+    {"vehicle": "agricultural"},
+    {"vehicle": "private"},
+    {"vehicle": "no;yes"},
+    {"vehicle": "yes", "bicycle": "no"},
+    {"access": "no", "vehicle": "yes"},
+    {"access": "no;yes"},
+    {"smoothness": "impassable"},
+    {"smoothness": "impassable", "bicycle": "yes"},
+    {"impassable": "yes"},
+    # `sac_scale=hiking` alone is left out: upstream keeps a footway closed
+    # there in 3.5.1 and 3.6.3 alike while the model calls it open, a
+    # difference that predates the upgrade and only ever closes a closed way.
+    {"sac_scale": "hiking", "vehicle": "no"},
+    {"sac_scale": "mountain_hiking", "vehicle": "yes"},
+]
+
+
+@pytest.mark.parametrize("highway", ["path", "footway", "pedestrian", "bridleway"])
+def test_the_trail_rules_model_of_upstream_agrees_with_the_real_transform(highway) -> None:
+    """`trailaccess.upstream_open` decides which ways the trail rules may close,
+    so it has to read 3.6's `vehicle`, list and smoothness rules as the shipped
+    transform does: a way it wrongly calls closed is a way those rules skip."""
+    from routemaker import trailaccess
+
+    cases = [{"highway": highway, **extra} for extra in UPSTREAM_OPEN_CASES]
+    calls = "\n".join(
+        "do local kv, n = {}, 0\n"
+        + "".join(f"kv[{_lua_string(k)}] = {_lua_string(v)}; n = n + 1\n" for k, v in case.items())
+        + "local filter, out = ways_proc(kv, n)\n"
+        + "io.write((filter == 0 and out and out.bike_forward == 'true') and 'open' or 'closed', "
+        + "'\\n') end"
+        for case in cases
+    )
+    result = _lua_driver('dofile("lua/graph.lua")\n' + calls)
+    assert result.returncode == 0, result.stderr
+    upstream = result.stdout.split("\n")[:-1]
+    model = ["open" if trailaccess.upstream_open(case) else "closed" for case in cases]
+    assert [(c, m) for c, m, u in zip(cases, model, upstream, strict=True) if m != u] == []

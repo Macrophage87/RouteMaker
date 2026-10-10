@@ -306,7 +306,7 @@ def write_config(tmp_path: Path) -> tuple[Path, dict]:
 def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -> None:
     """`mjolnir.admin` and `mjolnir.timezone` are retargeted into the dated
     build directory with every other tile path, and only these commands ever
-    write there. Without them 3.5.1 warns and carries on
+    write there. Without them Valhalla (3.5.1 and 3.6.3) warns and carries on
     (src/mjolnir/graphbuilder.cc:431-444), so the graph has no timezone and
     every `date_time` request - which PLAN:82 builds the request design on -
     evaluates its conditional restrictions against nothing.
@@ -431,7 +431,7 @@ def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_p
 def test_a_failed_timezone_build_leaves_no_database_behind(tmp_path) -> None:
     """`>` truncates before the script runs, so a redirect straight onto the
     configured path would leave an empty file exactly where the build config
-    says the database is - which 3.5.1 opens, finds unusable, and carries on
+    says the database is - which Valhalla (3.5.1 and 3.6.3) opens, finds unusable, and carries on
     from."""
     config_path, config = write_config(tmp_path)
     timezone_db = Path(config["mjolnir"]["timezone"])
@@ -496,7 +496,7 @@ def _unusable_output(tmp_path: Path, kind: str) -> str:
 def test_a_timezone_script_that_exits_0_over_unusable_output_is_not_promoted(
     tmp_path, kind
 ) -> None:
-    """The 3.5.1 script's `error_exit` exits only when GEOS is 3.9, so on any
+    """The 3.5.1 and 3.6.3 script's `error_exit` exits only when GEOS is 3.9, so on any
     other version a failed download or import runs on to `cat` whatever is
     there and exits 0. The exit status alone let `&& mv` put an empty or broken
     file where the build config names the database, and the build validation

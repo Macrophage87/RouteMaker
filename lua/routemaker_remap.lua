@@ -129,6 +129,53 @@ function M.access_is_unrestricted(tags)
   return true
 end
 
+-- Whether a way's own tags say it cannot be travelled at all. Upstream closes
+-- every vehicle mode on both (`impassable=yes`, and from 3.6.0
+-- `smoothness=impassable`, valhalla/valhalla#5023) by turning the class
+-- default off, and then still reads any bicycle tag over that default - so a
+-- write here that grants access (`use_sidepath`, `cycleway=track`, a bridge's
+-- `bicycle=yes`) would open the way again. A mapper's own `bicycle=yes` on
+-- such a way is theirs, and upstream honours it; this file adds none.
+function M.physically_closed(tags)
+  return tags.impassable == "yes" or tags.smoothness == "impassable"
+end
+
+-- How an access list reads here: a value with `;` in it is reduced to its most
+-- restrictive part before anything else sees it.
+--
+-- From 3.6.1 (valhalla/valhalla#5560) upstream reads `bicycle=no;yes`,
+-- `access=private;no` and the like part by part and lets any part that grants
+-- access win, so a list that contradicts itself became a way a bicycle may
+-- ride. 3.5.1 read the whole string, found it in no table, and left the way
+-- to its class. This project reads unclear access as closed, so the list
+-- becomes `no` if any part is `no`, and otherwise its first part that is not
+-- a plain grant (`private;yes` is `private`, `agricultural;forestry` is
+-- `agricultural`). A list of grants alone (`yes;designated`) is left as it is:
+-- every reading of it is open.
+M.ACCESS_LIST_KEYS = { "access", "vehicle", "bicycle", "bicycle:forward", "bicycle:backward" }
+
+function M.most_restrictive(value)
+  if type(value) ~= "string" or not value:find(";", 1, true) then return value end
+  local first_limit
+  for part in value:gmatch("[^;]+") do
+    part = part:match("^%s*(.-)%s*$")
+    if part == "no" then return "no" end
+    if part ~= "" and first_limit == nil and not M.PERMISSIVE_ACCESS[part] then
+      first_limit = part
+    end
+  end
+  return first_limit or value
+end
+
+--- Reduce every access list on an element to its most restrictive part, in place.
+function M.narrow_access_lists(kv)
+  for _, key in ipairs(M.ACCESS_LIST_KEYS) do
+    local value = kv[key]
+    local narrowed = M.most_restrictive(value)
+    if narrowed ~= value then kv[key] = narrowed end
+  end
+end
+
 -- The four key forms a cycleway tag arrives in, and the same list Python's
 -- `tags.CYCLEWAY_KEYS` holds. `cycleway` and `cycleway:both` speak for both
 -- sides of the road, `cycleway:left` and `cycleway:right` for one side each.
@@ -191,6 +238,14 @@ M.WAY_ACCESS_KEYS = { "access", "vehicle" }
 -- `stress.MOTOR_ONLY` makes.
 M.MOTOR_ONLY_HIGHWAY = { motorway = true, motorway_link = true }
 
+-- The `vehicle` values upstream's table reads as a grant (its `vehicle` table
+-- is its `motor_vehicle` table, lua/vendor/graph_upstream.lua).
+M.VEHICLE_GRANTS = {
+  yes = true, private = true, permissive = true, delivery = true, designated = true,
+  destination = true, customers = true, official = true, public = true,
+  restricted = true, allowed = true, permit = true, residents = true,
+}
+
 --- Whether the fixture's `roadway_bicycle_legal: true` may be written onto this way.
 --
 -- The write is a *widening* one, so it needs the guard the cycleway write has,
@@ -225,6 +280,9 @@ M.MOTOR_ONLY_HIGHWAY = { motorway = true, motorway_link = true }
 -- already bars it costs nothing.
 function M.bridge_may_be_granted(tags)
   if M.MOTOR_ONLY_HIGHWAY[tags.highway] then return false end
+  -- A legality row says whether the law lets a bicycle on; it says nothing
+  -- about a deck the mapper calls impassable.
+  if M.physically_closed(tags) then return false end
 
   -- `electric_bicycle` is deliberately *not* read here, and this file used to
   -- read it.
@@ -364,6 +422,21 @@ function M.remap_way(tags, derived)
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
   end
 
+  -- A motorway's `vehicle` grant is not a bicycle grant here. From 3.6.2
+  -- upstream reads `vehicle` for bicycles (valhalla/valhalla#5802), so a
+  -- motorway or ramp tagged `vehicle=yes` (or any grant in its table) with no
+  -- bicycle tag became a way a bicycle may ride. Under OSM's hierarchy a
+  -- bicycle is a vehicle, but a mapper who means bicycles on an interstate
+  -- says `bicycle=yes`, and that is left to speak for itself. Only narrows.
+  if
+    M.MOTOR_ONLY_HIGHWAY[tags.highway]
+    and tags.bicycle == nil
+    and tags.vehicle ~= nil
+    and M.VEHICLE_GRANTS[tags.vehicle]
+  then
+    out.bicycle = "no"
+  end
+
   -- Bridge legality is per roadway or sidepath way, from the crossings fixture
   -- rather than from the midpoint heuristic.
   --
@@ -454,7 +527,7 @@ function M.remap_way(tags, derived)
   -- stress"). With the penalty above alone the two tiers add the same, so a
   -- slider move could swap a tier-3 street for a shorter tier-4 one.
   --
-  -- Valhalla 3.5.1's bicycle costing has no per-tier weight; what it prices
+  -- Valhalla's bicycle costing (3.5.1 and 3.6.3) has no per-tier weight; what it prices
   -- per edge is fixed by the edge (sif/bicyclecost.cc): the roadway stress
   -- grows with the lane count (`0.05 * road_factor` a lane) and is multiplied
   -- by a speed penalty that rises with the edge's speed, and both are then
@@ -562,7 +635,7 @@ end
 
 -- A paved way's mountain-bike rating comes off before the tile build.
 --
--- Valhalla 3.5.1's PBF parser reads `mtb:scale` and `mtb:scale:imba` as the
+-- Valhalla's PBF parser (3.5.1 and 3.6.3) reads `mtb:scale` and `mtb:scale:imba` as the
 -- edge's surface: `mtb:scale=0` prices it as dirt, 2 and up as the roughest
 -- class, whatever its `surface` says. So the paved Rock Creek Trail in
 -- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; way
@@ -607,7 +680,7 @@ end
 
 -- The surface the graph is handed where Valhalla would price a paved one rough.
 --
--- Valhalla 3.5.1's parser reads `surface=wood` and `boardwalk` as `compacted`,
+-- Valhalla's parser (3.5.1 and 3.6.3) reads `surface=wood` and `boardwalk` as `compacted`,
 -- the gravel class, and `brick` / `bricks` as `paved_rough`, the cobblestone
 -- class (tests/test_tile_build_access.py, which reads the tile). OWNER-DECISIONS
 -- 440 counts all of them paved and only cobblestone rough, so they reach the
@@ -655,7 +728,7 @@ end
 
 -- Mountain-bike ratings reopen a closed way, in Valhalla's C++ and not its Lua.
 --
--- Valhalla 3.5.1's PBF parser reads `mtb:scale`, `mtb:scale:imba`,
+-- Valhalla's PBF parser (3.5.1 and 3.6.3) reads `mtb:scale`, `mtb:scale:imba`,
 -- `mtb:scale:uphill` and `mtb:description` itself, after the Lua transform has
 -- run, and any of them, whatever its value, `0` included, sets bicycle access
 -- on the way, in each direction a one-way leaves to bicycles (a one-way's reverse
@@ -730,11 +803,17 @@ end
 
 -- Directional conditional access, for the parkway reversal.
 --
--- Valhalla reads `bicycle:forward` and `bicycle:backward` - both are in the
--- checked-in supported-key list - and does not read any `*:conditional` key at
--- all. Its own graph.lua carries a bare `-- TODO access:conditional`. So a road
--- signed against bicycles except at certain hours arrives in the graph as simply
--- barred, in both directions, at every hour of the week.
+-- Valhalla's Lua transform reads `bicycle:forward` and `bicycle:backward` -
+-- both are in the checked-in supported-key list - and no `*:conditional` key
+-- (3.5.1's graph.lua carried a bare `-- TODO access:conditional`). So, as far
+-- as the static tags go, a road signed against bicycles except at certain
+-- hours arrives in the graph as simply barred, in both directions, at every
+-- hour of the week. (Corrected 2026-10-10, re-checked at 3.6.3: the C++ parser
+-- does read `bicycle:conditional` - in 3.5.1 too - and from 3.6.0
+-- `access:conditional`, as timed restrictions a request's `date_time` is
+-- checked against (src/mjolnir/pbfgraphparser.cc:2586-2665 at 3.6.3,
+-- valhalla/valhalla#5048). This file was written believing otherwise; what
+-- that means for the static resolution below is FOLLOWUP-CONDITIONAL-ACCESS.)
 --
 -- The static resolution is the *least* restrictive value across the base tag and
 -- the conditional branches, never the most. A tile build cannot represent time,
@@ -1051,7 +1130,7 @@ function M.may_penalise(tags, bicycle)
       bicycle == nil
       and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
       and M.access_is_unrestricted(tags)
-      and tags.impassable ~= "yes"
+      and not M.physically_closed(tags)
     )
     or false
 end
@@ -1084,7 +1163,7 @@ end
 -- The class is computed once, in Python (`routemaker.facility`), written onto
 -- the segment table, and handed here as `rm:facility`. What this does with it
 -- is choose, for each class, the cycle-lane state Valhalla's bicycle costing
--- prices it at (sif/bicyclecost.cc, 3.5.1; `u` is the request's use_roads):
+-- prices it at (sif/bicyclecost.cc, 3.5.1 and 3.6.3; `u` is the request's use_roads):
 --
 --   highway=cycleway, any class: as upstream, `0.8u`       (no pedestrians)
 --   off-road footpath or path:  segregated, `0.1 + 0.9u`   (upstream: 0.2 + u)
@@ -1189,7 +1268,10 @@ function M.apply_facility(tags, derived, out)
     -- side is spoken for by anything else, as the tier-1 write it replaces was.
     if
       M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
-      and (M.PENALISABLE_BICYCLE[tags.bicycle] or (tags.bicycle == nil and M.access_is_unrestricted(tags)))
+      and (
+        M.PENALISABLE_BICYCLE[tags.bicycle]
+        or (tags.bicycle == nil and M.access_is_unrestricted(tags) and not M.physically_closed(tags))
+      )
     then
       local spoken = false
       for _, key in ipairs(M.CYCLEWAY_KEYS) do
