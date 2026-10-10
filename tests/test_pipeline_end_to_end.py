@@ -1425,7 +1425,7 @@ def test_the_violation_prefix_is_searched_on_the_streams_the_lua_writes_to(
     workspace, states
 ) -> None:
     """The remap writes its violations with `io.stderr:write`, while Valhalla's
-    own lines go to stdout under `mjolnir.logging.type: std_out`. The build log
+    own lines go to stdout under the top-level `logging.type: std_out`. The build log
     has to be both streams or the check reads a log the violation is not in."""
     from pipeline.run import VIOLATION_LOG_PREFIX, assert_no_rule_violations
     from pipeline.tiles import CommandOutput

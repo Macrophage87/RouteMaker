@@ -583,7 +583,7 @@ function M.remap_way(tags, derived)
   -- stress"). With the penalty above alone the two tiers add the same, so a
   -- slider move could swap a tier-3 street for a shorter tier-4 one.
   --
-  -- Valhalla's bicycle costing (3.5.1 and 3.6.3) has no per-tier weight; what it prices
+  -- Valhalla's bicycle costing (3.5.1 to 3.9.1) has no per-tier weight; what it prices
   -- per edge is fixed by the edge (sif/bicyclecost.cc): the roadway stress
   -- grows with the lane count (`0.05 * road_factor` a lane) and is multiplied
   -- by a speed penalty that rises with the edge's speed, and both are then
@@ -691,7 +691,7 @@ end
 
 -- A paved way's mountain-bike rating comes off before the tile build.
 --
--- Valhalla's PBF parser (3.5.1 and 3.6.3) reads `mtb:scale` and `mtb:scale:imba` as the
+-- Valhalla's PBF parser (3.5.1 to 3.9.1) reads `mtb:scale` and `mtb:scale:imba` as the
 -- edge's surface: `mtb:scale=0` prices it as dirt, 2 and up as the roughest
 -- class, whatever its `surface` says. So the paved Rock Creek Trail in
 -- Montgomery County (`highway=cycleway`, `surface=paved`, `mtb:scale=0`; way
@@ -736,7 +736,7 @@ end
 
 -- The surface the graph is handed where Valhalla would price a paved one rough.
 --
--- Valhalla's parser (3.5.1 and 3.6.3) reads `surface=wood` and `boardwalk` as `compacted`,
+-- Valhalla's parser (3.5.1 to 3.9.1) reads `surface=wood` and `boardwalk` as `compacted`,
 -- the gravel class, and `brick` / `bricks` as `paved_rough`, the cobblestone
 -- class (tests/test_tile_build_access.py, which reads the tile). OWNER-DECISIONS
 -- 440 counts all of them paved and only cobblestone rough, so they reach the
@@ -784,7 +784,7 @@ end
 
 -- Mountain-bike ratings reopen a closed way, in Valhalla's C++ and not its Lua.
 --
--- Valhalla's PBF parser (3.5.1 and 3.6.3) reads `mtb:scale`, `mtb:scale:imba`,
+-- Valhalla's PBF parser (3.5.1 to 3.9.1) reads `mtb:scale`, `mtb:scale:imba`,
 -- `mtb:scale:uphill` and `mtb:description` itself, after the Lua transform has
 -- run, and any of them, whatever its value, `0` included, sets bicycle access
 -- on the way, in each direction a one-way leaves to bicycles (a one-way's reverse
@@ -1219,7 +1219,7 @@ end
 -- The class is computed once, in Python (`routemaker.facility`), written onto
 -- the segment table, and handed here as `rm:facility`. What this does with it
 -- is choose, for each class, the cycle-lane state Valhalla's bicycle costing
--- prices it at (sif/bicyclecost.cc, 3.5.1 and 3.6.3; `u` is the request's use_roads):
+-- prices it at (sif/bicyclecost.cc, 3.5.1 to 3.9.1; `u` is the request's use_roads):
 --
 --   highway=cycleway, any class: as upstream, `0.8u`       (no pedestrians)
 --   off-road footpath or path:  segregated, `0.1 + 0.9u`   (upstream: 0.2 + u)

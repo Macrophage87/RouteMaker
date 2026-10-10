@@ -303,7 +303,7 @@ The postgis image is pinned by digest in `compose.beta.yaml` (the build home run
 a pull by digest fetches exactly that image and does **not** move the shared `postgis/postgis:16-3.4` tag that
 another stack on the host may use. Check first which images other stacks run:
 `docker ps --format '{{.Image}}' | grep -E 'postgis|photon|valhalla'`. The photon and valhalla tags are fixed
-release versions (`2.4.0`, `3.6.3`); if another stack uses the same tag, the pull fetches the same release.
+release versions (`2.4.0`, `3.9.1`); if another stack uses the same tag, the pull fetches the same release.
 
 The build needs network access (pip) and a few minutes. Images land in Docker's storage,
 Docker's root from step 1, which may be the root disk and not `/data` (the four images are about 3.7 GB).

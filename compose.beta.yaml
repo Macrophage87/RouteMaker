@@ -369,7 +369,7 @@ services:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
     volumes:
       - type: bind

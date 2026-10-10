@@ -796,7 +796,7 @@ class FakeBinaries:
         self.log = log
         self.hgt_side = hgt_side
         # What the transform wrote to stderr during the parse. Valhalla's own
-        # lines go to stdout under `mjolnir.logging.type: std_out`; the remap's
+        # lines go to stdout under the top-level `logging.type: std_out`; the remap's
         # refusals are `io.stderr:write` from inside the Lua.
         self.violations = violations
         # How each database build ends: "built" leaves a SQLite file with a row

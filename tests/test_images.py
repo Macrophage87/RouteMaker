@@ -50,7 +50,7 @@ EXTERNAL_IMAGES = {
     "docker.io/library/caddy:2.8-alpine",
     "docker.io/postgis/postgis:16-3.4",
     "docker.io/rtuszik/photon-docker:2.4.0",
-    "ghcr.io/valhalla/valhalla:3.6.3",
+    "ghcr.io/valhalla/valhalla:3.9.1",
 }
 
 # Images compose names for components that have no source in this repository, so

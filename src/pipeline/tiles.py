@@ -191,7 +191,7 @@ def tile_build_commands(
     Four commands, not two, and the two additions are the ones nothing ran.
     `mjolnir.admin` and `mjolnir.timezone` are in TILE_PATH_KEYS, so they are
     retargeted into this dated build directory along with every other tile path
-    - and only these commands ever put a file there. Valhalla (3.5.1 and 3.6.3) does not refuse a
+    - and only these commands ever put a file there. Valhalla (3.5.1 to 3.9.1) does not refuse a
     build without them, it warns and carries on
     (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3, for both
     databases, and src/mjolnir/graphenhancer.cc:1293-1296 at 3.5.1 again for the admin one), so the
@@ -227,7 +227,7 @@ def tile_build_commands(
     cannot be the thing that captures it, since the runner decodes as text and
     this is a SQLite file. It is also written to run in a scratch directory: it
     begins `rm -rf dist` and `rm -f ./timezones-with-oceans-1970.shapefile.zip` (the
-    3.6.3 name; 3.5.1's had no `-1970`) and
+    name from 3.6.0 on; 3.5.1's had no `-1970`) and
     unzips into the working directory (:21-22, :28), so it is given the build
     directory as its cwd rather than whatever the rebuild happens to be in. The
     redirect goes to a `.part` name that is moved into place only on success,
@@ -235,7 +235,7 @@ def tile_build_commands(
     otherwise leave an empty file where the build config says the database is.
 
     And the move waits on the `.part` being a timezone database, not only on the
-    script's exit status. The 3.5.1 and 3.6.3 scripts' `error_exit` decides whether to
+    script's exit status. The 3.5.1 to 3.9.1 scripts' `error_exit` decides whether to
     exit from `pkg-config geos --modversion | grep -cvF 3.9`, and it exits only
     when that count is 0: when GEOS is 3.9, or when there is no pkg-config to
     ask. Measured in ghcr.io/valhalla/valhalla:3.5.1 with the network cut off:
@@ -502,7 +502,7 @@ class CommandOutput(NamedTuple):
     def log(self) -> str:
         """Both streams, for the callers that want the whole record of a run.
 
-        A tile build's log is genuinely both: `mjolnir.logging.type` is
+        A tile build's log is genuinely both: the top-level `logging.type` is
         `std_out`, so Valhalla's own lines - "Using LUA script:" among them -
         come back on stdout, while the transform's `io.stderr:write` violations
         come back on stderr.
@@ -599,7 +599,8 @@ def trace_attributes(
     the 3.5.1 source and documentation, re-read at 3.6.3; the first real
     rebuild is what confirms the attribute names. (A 3.6.3 `trace_attributes`
     over a Baltimore extract, with the pyvalhalla 3.6.3 binaries, answered with
-    the edge attributes `core.routing` asks for: reports/valhalla-3.6/README.md.)
+    the edge attributes `core.routing` asks for: reports/valhalla-3.6/README.md.
+    The same held at 3.9.1: reports/valhalla-3.9/README.md.)
     """
     output = run(["valhalla_service", str(config_path), "trace_attributes", json.dumps(request)])
     start = output.stdout.find("{")
@@ -802,9 +803,17 @@ def closure_readback(probes: Sequence[ClosureProbe], response: list) -> ClosureR
     found = 0
     open_ways: list[int] = []
     for probe, answer in zip(probes, response, strict=True):
+        # From 3.7.0 a locate also lists the edges a heading, side or layer
+        # filter set aside, as `filtered_edges` (valhalla/valhalla#5987). This
+        # request sends none of those, so the list is empty today; read it
+        # anyway, so a filter added later cannot hide a probed way's edges and
+        # pass the gate on a probe it never read.
+        candidates = ((answer or {}).get("edges") or []) + (
+            (answer or {}).get("filtered_edges") or []
+        )
         edges = [
             edge
-            for edge in ((answer or {}).get("edges") or [])
+            for edge in candidates
             if (edge.get("edge_info") or {}).get("way_id") == probe.way_id
         ]
         if not edges:

@@ -17,14 +17,14 @@
 # it rather than letting the two drift.
 #
 # Base distro: the upstream image's runner stage is `FROM ubuntu:24.04`
-# (github.com/valhalla/valhalla, docker/Dockerfile at tag 3.6.3; it was the
+# (github.com/valhalla/valhalla, docker/Dockerfile at tags 3.6.3 and 3.9.1; it was the
 # root Dockerfile at 3.5.1, with the same base), so these are noble
 # package names, not Debian ones. Each was checked against packages.ubuntu.com,
 # which is reachable from the environment this was written in.
 #
 # NOT BUILT. See docs/DEPLOYMENT.md.
 
-ARG VALHALLA_IMAGE=ghcr.io/valhalla/valhalla:3.6.3
+ARG VALHALLA_IMAGE=ghcr.io/valhalla/valhalla:3.9.1
 
 
 # --- wheels -------------------------------------------------------------------
@@ -95,7 +95,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                              spatialite_tool and spatialite. It checks for
 #                              spatialite and unzip by name and exits if either
 #                              is missing - and NOT for spatialite_tool, which
-#                              it calls one line later (3.5.1 and 3.6.3
+#                              it calls one line later (3.5.1 to 3.9.1
 #                              scripts/valhalla_build_timezones: the `which`
 #                              guards, then `spatialite_tool -i -shp ...`), so a
 #                              missing spatialite_tool is a timezone build that
@@ -130,7 +130,7 @@ RUN set -eux; \
 #
 # LuaJIT is not on this list and does not need to be: Valhalla links the Lua
 # tag transform against libluajit-5.1-2, which the upstream runner stage
-# installs (its apt line, verified in the 3.5.1 and 3.6.3 Dockerfiles), and calls it in
+# installs (its apt line, verified in the 3.5.1 to 3.9.1 Dockerfiles), and calls it in
 # process. The standalone `luajit` interpreter is in upstream's
 # scripts/install-linux-deps.sh, which runs in the builder stage only, so the
 # CLI is absent from the runner - which matters for tests/lua/ on a developer

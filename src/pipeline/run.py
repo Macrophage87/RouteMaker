@@ -772,7 +772,7 @@ def assert_no_rule_violations(build_log: str, where: str) -> None:
 
     Read off the build log, which is both streams of `valhalla_build_tiles`: the
     Lua writes to `io.stderr` while Valhalla's own lines go to stdout under
-    `mjolnir.logging.type: std_out`.
+    the top-level `logging.type: std_out`.
     """
     offending = [line for line in build_log.splitlines() if VIOLATION_LOG_PREFIX in line]
     if not offending:
@@ -825,7 +825,7 @@ def assert_admin_and_timezone_databases_were_built(
     """The other half of SF3: the commands ran, and they left something usable.
 
     `mjolnir.admin` and `mjolnir.timezone` are retargeted into the dated build
-    directory, and Valhalla (3.5.1 and 3.6.3) does not fail a build that cannot
+    directory, and Valhalla (3.5.1 to 3.9.1) does not fail a build that cannot
     find either - it logs "Admin db not found. Not saving admin information."
     and "Time zone db not found. Not saving time zone information." and carries
     on (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3). The
@@ -2865,10 +2865,11 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
 # data: one rebuild lost its weekend graph on one attempt and its offroad graph
 # on the next, from the same inputs, after the other graphs had built.
 #
-# The pinned image is 3.6.3 now, which carries that fix (`Sqlite3::~Sqlite3`
+# The pinned image is 3.9.1 now, which carries that fix (`Sqlite3::~Sqlite3`
 # takes a process-wide mutex around the cleanup, src/mjolnir/sqlite3.cc:78-91
-# at 3.6.3). The retry stays: it costs nothing when no build aborts, and the
-# first 3.6.3 rebuilds are what show the race is gone on this host.
+# at 3.6.3, byte-identical at 3.9.1). The retry stays: it costs nothing when no
+# build aborts, and the first rebuilds with the fix are what show the race is
+# gone on this host.
 #
 # So one abort of that one command is run again, from the start (a build from
 # the initialize stage purges the tile level directories it is writing into,

@@ -333,7 +333,7 @@ Runs as uid 10001, non-root.
 
 ### `docker/pipeline.Dockerfile` — rebuild
 
-`FROM ghcr.io/valhalla/valhalla:3.6.3`, the same image and tag the five serving
+`FROM ghcr.io/valhalla/valhalla:3.9.1`, the same image and tag the five serving
 containers run. The rebuild needs `valhalla_build_admins`,
 `valhalla_build_timezones`, `valhalla_build_tiles`, `valhalla_build_extract`
 (`pipeline/tiles.py`) and `valhalla_service` (the one-shot `trace_attributes`
@@ -344,7 +344,7 @@ after promotion, not as a build failure. `tests/test_images.py` reads the tag ou
 of `compose.yaml` and holds the `FROM` to it.
 
 The upstream image's runner stage is `FROM ubuntu:24.04`
-(github.com/valhalla/valhalla, `docker/Dockerfile` at tag 3.6.3), so these are noble
+(github.com/valhalla/valhalla, `docker/Dockerfile` at tag 3.9.1, as at 3.6.3), so these are noble
 package names:
 
 - **`python3-venv`, `python3-pip`** — the upstream runner carries
@@ -374,7 +374,7 @@ package names:
 
 **LuaJIT is not installed and does not need to be.** Valhalla links the Lua tag
 transform against `libluajit-5.1-2`, which the upstream image's *runner* stage
-installs (its own `apt install` line in the 3.6.3 Dockerfile, as in 3.5.1), and calls it in
+installs (its own `apt install` line in the 3.9.1 Dockerfile, as in 3.5.1 and 3.6.3), and calls it in
 process. The standalone `luajit` interpreter appears only in upstream's
 `scripts/install-linux-deps.sh`, which runs in the **builder** stage, so the CLI
 is absent from the runner — which matters for running `tests/lua/` on a

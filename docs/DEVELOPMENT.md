@@ -1577,9 +1577,9 @@ not an oversight:
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per
 metre over the same edge with no tier, as a multiple of the edge's time cost:
-Valhalla's bicycle edge cost (3.5.1 and 3.6.3) is `time * factor`, with
+Valhalla's bicycle edge cost (3.5.1 to 3.9.1) is `time * factor`, with
 `factor = 1 + grade + accommodation * roadway_stress` (sif/bicyclecost.cc;
-3.6.3 then multiplies by a per-request linear-feature factor, 1 unless a
+from 3.6.0 it then multiplies by a per-request linear-feature factor, 1 unless a
 request sends `linear_cost_factors`, which RouteMaker does not), so the stress
 level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
 LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
@@ -1737,7 +1737,7 @@ it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
-Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a node through its stop impact and turn
+Valhalla's bicycle costing (3.5.1 to 3.9.1) prices a node through its stop impact and turn
 type, a few seconds. Measured on the live standard router (2026-10-01):
 `/trace_attributes` over routes along Wisconsin Avenue, Pennsylvania Avenue SE,
 K Street, Rhode Island Avenue, Georgia Avenue and Rockville Pike and across
@@ -3686,7 +3686,7 @@ answer on the source tags pinned.
 
 ## Lua
 
-The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 and 3.6.3) requires it
+The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 to 3.9.1) requires it
 (`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
 `graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
 under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
@@ -5156,7 +5156,7 @@ Two narrower readings keep access where it was:
   bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
   a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
 
-Valhalla (3.5.1 and 3.6.3) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+Valhalla (3.5.1 to 3.9.1) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
 and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before
