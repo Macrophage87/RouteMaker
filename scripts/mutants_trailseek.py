@@ -836,6 +836,28 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     (
+        "240A: LTS 2 starts a trail seek",
+        RF,
+        '    return {tier: w for tier, w in exposure.weights.items() if tier != "2"}',
+        "    return exposure.weights",
+        REFINE,
+    ),
+    # --- FOLLOWUP-KIDS-PRESET: OWNER-DECISIONS 240 (B) ---
+    (
+        "240B: kids weigh LTS 2 at the quarter",
+        PR,
+        "KIDS_LTS2_WEIGHT = 0.5\n",
+        "KIDS_LTS2_WEIGHT = 0.25\n",
+        PRESET_TESTS + REFINE,
+    ),
+    (
+        "240B: kids take Trailmaxxing's weights",
+        PR,
+        "EXPOSURE_KIDS = replace(EXPOSURE_STRESS_AVERSE, lts2=KIDS_LTS2_WEIGHT)",
+        "EXPOSURE_KIDS = EXPOSURE_NOT_IN_CONTROL",
+        PRESET_TESTS + REFINE,
+    ),
+    (
         "250: the carrying choice is ignored",
         PR,
         "    if preset.carrying_exposure and chosen in preset.carrying_exposure:",
@@ -980,7 +1002,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "250: the seek's corridors weigh at 1, 2, 3",
         RF,
-        "    busy, traced_m = route_spans(incumbent, weights=ctx.exposure.weights)",
+        "    busy, traced_m = route_spans(incumbent, weights=seek_weights(ctx.exposure))",
         "    busy, traced_m = route_spans(incumbent)",
         REFINE,
     ),

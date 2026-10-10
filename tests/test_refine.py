@@ -1617,6 +1617,29 @@ class TestTrailSeek:
         asks = [r for r in world.requests if asks_through(r)]
         assert info["seek"]["limited"] == "time" and len(asks) == 1
 
+    def test_lts2_never_starts_a_seek_on_the_rides_that_weigh_it(self, monkeypatch) -> None:
+        """FOLLOWUP-LTS2-WEIGHT review: the seek replaces LTS 3 and worse only. A route
+        whose only stress is LTS 2 gets no corridor and no router call, though LTS 2
+        counts in the plan's exposure."""
+        spans: list = []
+        real = trailseek.find_corridors
+
+        def spy(*args, **kw):
+            spans.append(list(args[4]))
+            return real(*args, **kw)
+
+        monkeypatch.setattr(trailseek, "find_corridors", spy)
+        ctx = self.seek_context()
+        ctx.exposure = presets.EXPOSURE_NOT_IN_CONTROL
+        quiet = analysis("o", "1" * 10 + "2" * 20 + "1" * 10, cost_s=4000.0)
+        calm = analysis("t", "1" * 45, cost_s=3000.0, shift=100)
+        world, shape, _info = self.run(
+            monkeypatch, {"o": quiet, "t": calm}, [trip_of("t", 4.5)], ctx
+        )
+        assert world.requests == [] and shape == "o"
+        assert all(not found for found in spans), spans
+        assert refine.seek_weights(ctx.exposure) == {"3": 1.0, "4": 8.0, "5": 16.0}
+
     # --- review r1 -------------------------------------------------------------
 
     def test_a_ride_on_the_roadway_only_graph_does_not_seek(self, monkeypatch) -> None:
@@ -2576,7 +2599,7 @@ class TestStressAverseWeights:
             ("kids", None),
         ):
             exposure = presets.exposure_for(name, carrying)
-            assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}
+            assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}, name
             assert exposure.hold_lts4, name
 
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
@@ -2728,6 +2751,27 @@ class TestLts2Weight:
         assert not refine.worth_it(shorter, longest, ctx)
         read.lts2_weight = 0.0
         assert refine.stress_weight_m(read, ctx) == pytest.approx(100.0)
+
+    def test_at_a_half_riding_with_kids_ranks_and_prices_lts2_twice_as_high(self) -> None:
+        """Item 240 (B): on Riding with kids a metre of LTS 2 counts half a metre of LTS 3.
+        200 m more LTS 2 is 100 m there, past the second level's 50 m step, but only 50 m
+        at the quarter, which is not past it."""
+        weight = presets.exposure_for("kids").lts2
+        assert weight == 0.5
+        ctx = context(maxcalm=True)
+        quiet = lts2_reading("q", "3" + "1" * 9, weight)
+        lts2 = lts2_reading("l", "3" + "22" + "1" * 7, weight)
+        assert refine.calmer(quiet, lts2, ctx)
+        quiet.lts2_weight = lts2.lts2_weight = presets.LTS2_WEIGHT
+        assert not refine.calmer(quiet, lts2, ctx)
+        # The worth rule: 800 m of LTS 2 saved is 400 m of LTS 3, so it buys 5 x 400 =
+        # 2,000 m more riding, where the quarter bought 1,000 m.
+        shorter = lts2_reading("s", "2" * 8 + "1" * 2, weight)
+        longer = lts2_reading("l", "1" * 10 + "1" * 15, weight)
+        assert refine.stress_saved_m(shorter, longer, ctx) == pytest.approx(400.0)
+        assert refine.worth_it(shorter, longer, ctx)
+        shorter.lts2_weight = longer.lts2_weight = presets.LTS2_WEIGHT
+        assert not refine.worth_it(shorter, longer, ctx)
 
     def test_lts2_is_never_a_search_target(self) -> None:
         a = lts2_reading("a", "1" * 10 + "2" * 40 + "1" * 10, 0.25)

@@ -333,7 +333,7 @@ class Analysis:
     avoid_m: float = 0.0
     # Metres of LTS 2, and what one counts in metres of LTS 3 on this plan's ride
     # (`presets.Exposure.lts2`, FOLLOWUP-LTS2-WEIGHT: a quarter on Trailmaxxing and
-    # Cargo with passengers, nothing elsewhere).
+    # Cargo with passengers, a half on Riding with kids, nothing elsewhere).
     lts2_m: float = 0.0
     lts2_weight: float = 0.0
     # The route's effort-equivalent distance, metres (`routemaker.effort`,
@@ -462,8 +462,8 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     metres of LTS 3: its LTS 3, LTS 4 and Avoid metres at WORTH_WEIGHTS, plus its red
     junctions' cost at the LTS 4 weight and its orange junctions' cost at the LTS 3
     weight, and on a ride that weighs LTS 2 (FOLLOWUP-LTS2-WEIGHT) its LTS 2 metres at
-    that share of the LTS 3 weight: a quarter, so a mile of LTS 2 saved buys a quarter
-    of what a mile of LTS 3 does."""
+    that share of the LTS 3 weight: a quarter (a half on Riding with kids), so a mile
+    of LTS 2 saved buys a quarter (a half) of what a mile of LTS 3 does."""
     w = WORTH_WEIGHTS
     lts4_only = read.lts4_m - read.avoid_m
     return (
@@ -1050,6 +1050,14 @@ def route_spans(
     return busy, (traced or None)
 
 
+def seek_weights(exposure: presets.Exposure) -> dict[str, float]:
+    """The busy road the trail seek looks to replace (`_seek_corridors`): the plan's
+    exposure weights for LTS 3 and worse only. LTS 2's weight (FOLLOWUP-LTS2-WEIGHT) is
+    left out, so a stretch of LTS 2 never starts a trail seek or its router calls; the
+    seek's guards still read the whole exposure, LTS 2 included."""
+    return {tier: w for tier, w in exposure.weights.items() if tier != "2"}
+
+
 def exposure_spans(analysis: Analysis) -> tuple[Spans, float | None]:
     """The route's busy stretches as (from, to, weight) in traced metres, and
     its traced length (None for a route with no pieces)."""
@@ -1349,7 +1357,7 @@ def _seek_leg(
         return None
     route = shape or [tuple(start)]
     segments = trailseek.in_band(segments, start, end, route, band)
-    busy, traced_m = route_spans(incumbent, weights=ctx.exposure.weights)
+    busy, traced_m = route_spans(incumbent, weights=seek_weights(ctx.exposure))
     try:
         corridors = trailseek.find_corridors(
             segments,

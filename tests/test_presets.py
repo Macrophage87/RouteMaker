@@ -529,12 +529,14 @@ class TestRidingWithKids:
         assert (exposure.lts3, exposure.lts4, exposure.avoid) == (1.0, 8.0, 16.0)
         assert exposure.hold_lts4
 
-    def test_lts2_is_allowed_but_costly(self) -> None:
-        """Costlier than on Trailmaxxing and Cargo with passengers (item 240 (A)'s quarter),
-        and still cheaper than LTS 3, so it is allowed: never a search target."""
-        lts2 = presets.exposure_for("kids").lts2
-        assert presets.LTS2_WEIGHT < lts2 < presets.exposure_for("kids").lts3
-        assert lts2 == presets.KIDS_LTS2_WEIGHT
+    def test_lts2_counts_half_a_metre_of_lts3(self) -> None:
+        """Item 240 (B), "LTS 2 allowed but costly": a metre of LTS 2 counts half a metre
+        of LTS 3, twice Trailmaxxing's and Cargo with passengers' quarter (240 (A)), and
+        the weights the search reads say so."""
+        exposure = presets.exposure_for("kids")
+        assert exposure.lts2 == 0.5
+        assert exposure.weights == {"2": 0.5, "3": 1.0, "4": 8.0, "5": 16.0}
+        assert presets.exposure_for("trailmaxxing").weights["2"] == 0.25
 
     def test_it_plans_slower(self) -> None:
         """Slower than every other ride type that sets a pace but Mass Ride's parade, and

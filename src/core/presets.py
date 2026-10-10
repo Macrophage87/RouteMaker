@@ -521,8 +521,8 @@ class BikeProfile:
 #   LTS 3) in the second figure (`EXPOSURE_KIDS`). The default ceiling (1.6 times the
 #   router's own route) and the rider's target distance apply as on any ride at the top.
 #   Not planned leg by leg (`long_calm`): rides with children are short.
-# - Speed: KIDS_PLANNING_SPEED_KMH, 10 km/h (6.2 mph), a child of about six to ten on
-#   their own bike, against Hybrid's 18 km/h (11.2 mph) and Mass Ride's parade 6 mph.
+# - Speed: KIDS_PLANNING_SPEED_KMH, 6.2 mph (10 km/h), a child of about six to ten on
+#   their own bike, against Hybrid's 11.2 mph (18 km/h) and Mass Ride's parade 6 mph.
 # - Hills: KIDS_HILLS, -80 on the slider (`use_hills` 0.2), gentler than Cargo Bike's -60
 #   and short of Mass Ride's -95; a descent past 3% costs (`BRAKE_GRADES`).
 # - Living streets fully preferred (1.0, as Trailmaxxing); Hybrid; Valhalla's own turn,

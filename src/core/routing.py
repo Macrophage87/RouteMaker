@@ -2514,7 +2514,6 @@ def plan(
                 use_roads=presets.use_roads_for(stress_dial),
                 rate=presets.calm_rate_for(stress_dial),
                 weights=(exposure.lts3, exposure.lts4, exposure.avoid),
-                lts2=exposure.lts2,
                 maxcalm=maxcalm,
                 target=target_m is not None,
                 no_trail=variant == Variant.NO_TRAIL.value,

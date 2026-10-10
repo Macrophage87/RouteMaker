@@ -79,15 +79,24 @@ shown as quiet-street distance at the preset's planning speed
 | Slider at 85, standard / stress-averse weights | 1 | 3.74-7.42 | 16.78-20.59 / 20.29-24.10 | 17.36-21.17 / 24.97-28.78 | as the preset |
 | Slider at 90, standard / stress-averse | 1 | 4.98-8.66 | 19.26-23.07 / 30.20-34.01 | 21.08-24.89 / 44.79-48.60 | as the preset |
 | Slider at 95, standard / stress-averse | 1 | 7.61-11.28 | 24.50-28.31 / 51.19-54.99 | 28.95-32.76 / 86.76-90.57 | as the preset |
-| Trailmaxxing (100), no target | 1 | 6 | 11, and LTS 4 always ranks first | 16 | 2.8 mi [4.5 km] in Valhalla's candidates |
-| Trailmaxxing (100), past a target | 1 | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
+| Trailmaxxing (100), no target | 1 (LTS 2: 2.25) | 6 | 11, and LTS 4 always ranks first | 16 | 2.8 mi [4.5 km] in Valhalla's candidates |
+| Trailmaxxing (100), past a target | 1 (LTS 2: 1.625) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
+| Riding with kids (100), no target | 1 (LTS 2: 3.5) | 6 | 11, and LTS 4 always ranks first | 16 | 1.4 mi [2.3 km] in Valhalla's candidates |
+| Riding with kids (100), past a target | 1 (LTS 2: 2.25) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
 
 Notes:
 
 - The stress-averse weights (1/8/16) count in the score only above 80. At 80 (Cargo with
-  passengers) and at 100 (Trailmaxxing) they reach only the Traffic-wins guard,
+  passengers, Bikeshare) and at 100 (Trailmaxxing, Riding with kids) they reach only the Traffic-wins guard,
   `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:445-451`).
-- The tier adds nothing at LTS 1 or LTS 2, in any layer: no rule separates them. The
+- The tier adds nothing at LTS 1 or LTS 2, in any layer, except on the rides that weigh
+  LTS 2 (OWNER-DECISIONS 240, `presets.Exposure.lts2`): there a meter of LTS 2 counts as
+  a quarter of a meter of LTS 3 on Trailmaxxing and Cargo with passengers, and half on
+  Riding with kids, in exposure, the strict order's second key and the worth rule
+  (`refine.Analysis.second_m`, `refine.stress_weight_m`). Hence the LTS 2 figures in
+  the table: `1 + 5 x 0.25`, `1 + 5 x 0.5`, and 2.5 in place of 5 past a target. LTS 2
+  never reaches a router request, and the rolling chart still draws it at 1. Elsewhere
+  no rule separates LTS 1 and LTS 2. The
   facility class still changes the cost. A traffic-free path costs `0.1 + 0.9u` of its
   time with no roadway term (`lua/routemaker_remap.lua:1240-1245`), a factor of about
   1.19 at Default, against about 2.2 for a quiet street (`QUIET_COST_FACTOR`). So a path

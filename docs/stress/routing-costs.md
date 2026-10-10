@@ -81,20 +81,22 @@ columns.
 `10 x (e^(3t) - 1) / (e^3 - 1)` with `t = (s - 80)/20`. A rider may move the slider on
 every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py:543`).
 
-## 3. Each preset's values (`presets.py:479-636`)
+## 3. Each preset's values (`presets.py:588-778`)
 
-| Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid) | LTS 4 hold | Bike type, planning speed | Calm search runs |
+| Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid; LTS 2 where set) | LTS 4 hold | Bike type, planning speed | Calm search runs |
 |---|---|---|---|---|---|---|---|---|---|
 | Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
-| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
+| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
 | Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
 | Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
 | Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else one crossing round |
 | Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
 | Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
 | Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
-| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
+| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
 | E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, one crossing round |
+| Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, one crossing round |
+| Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes one crossing-only round
@@ -103,7 +105,13 @@ rounds (`REFINE_MAX_ROUNDS`, `:88`). The search does not run for Mass Ride, fewe
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
-(`:358-365`, `:607-608`).
+(`:386-394`, `:719`).
+
+LTS 2 (OWNER-DECISIONS 240): Trailmaxxing and Cargo with passengers weigh a meter of LTS 2
+as a quarter of a meter of LTS 3 (`LTS2_WEIGHT`), and Riding with kids as half
+(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at 0. The
+weight enters exposure and the strict order's second key, never a router request:
+LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_weights`).
 
 ## 4. RouteMaker's ranking
 

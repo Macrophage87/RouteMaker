@@ -4153,21 +4153,23 @@ is not in control of the ride is stress-averse.
   LTS 2 weight, since 240 (A) does not name it.
 - Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
   weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
-  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the trail seek's
-  busy spans weigh it the same way. Cargo with passengers starts at 80, where the calm rate
-  is 0, so there the weight only applies once the rider moves the slider above 80.
+  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
+  weigh it the same way. Cargo with passengers starts at 80, where the calm rate is 0, so
+  there the weight only applies once the rider moves the slider above 80.
 - At the top (100, maxcalm) the weight is in the second figure of the ranking:
   `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
-  with the same LTS 4 and red junctions, 200 m (656 ft) more LTS 2 is worth one 50 m tie
-  step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
+  with the same LTS 4 and red junctions, 656 ft (200 m) more LTS 2 is worth one 164 ft
+  (50 m) tie step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
   1 mi (1.6 km) of LTS 2 saved can buy 1.25 mi (2 km) of extra riding with no target, a
   quarter of what a mile of LTS 3 buys. LTS 4 still ranks first whatever the LTS 2.
-- LTS 2 is never a search target: `calm_targets` still excludes only LTS 3 and worse, so no
-  new router calls are made. The routing graph does not grade LTS 2 (240 (C) stays with
+- LTS 2 never starts a search of its own, so it adds no router calls: `calm_targets` still
+  excludes only LTS 3 and worse, and the trail seek is handed the busy spans of LTS 3 and
+  worse only (`refine.seek_weights`), so a stretch of LTS 2 never starts a seek. The routing
+  graph does not grade LTS 2 (240 (C) stays with
   FOLLOWUP-DECIMAL-STRESS in the backlog), so nothing is rebuilt.
-- The rolling stress chart (`routemaker.calm.Pricing.lts2`, `calm.lts2_extra`) prices LTS 2
-  the same way: `+ rate x 0.25` above 80 and `+ 5 x 0.25` (10 x with a target) at the top,
-  on top of the road's own cost.
+- The rolling stress chart is unchanged: it shows traffic stress, not the ranking's LTS 2
+  preference, so LTS 2 is priced by the road's own cost alone and an all-quiet route still
+  reads about 1 (461d) on these rides too.
 - Not measured on the live routers in this change (no router here). The 12 trips and the
   owner's route are the place to measure it, as item 250 was.
 - Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
@@ -4196,7 +4198,9 @@ stress page's cost table.
 | Hills slider start | -80 (`use_hills` 0.2) | "gentler hills": more hill-averse than Cargo Bike (-60), short of Mass Ride (-95) |
 | Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
-| Bicycle type, turns, gates, surface | Hybrid; Valhalla's 5 s a turn, 30 s a gate; surface 0.25 | as Default |
+| Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
+| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
 least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is

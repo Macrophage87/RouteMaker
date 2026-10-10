@@ -102,7 +102,7 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   const regions = [...page.matchAll(/<div [^>]*role="region"[^>]*>/g)].map((m) => m[0]);
   assert.deepEqual(regions, ['<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">']);
   assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
-  assert.match(text, /Their level adds nothing at LTS 1 or 2\. A quiet street counts as 1\./);
+  assert.match(text, /Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets \(LTS 2\) count a little extra\. A quiet street counts as 1\./);
   assert.match(text, /Traffic-free paths and protected bike lanes count for less, and painted bike lanes a little less \(except on Mass Ride\)/);
   assert.doesNotMatch(text, /always count as about 1/);
   // The LTS 4 hold is one combined figure against the router's first route (the spec re-check's R2).
