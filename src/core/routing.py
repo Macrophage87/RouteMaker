@@ -2181,6 +2181,8 @@ def plan(
         target_m=target_m,
         # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
         alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435).
+        rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
     )
     if past:

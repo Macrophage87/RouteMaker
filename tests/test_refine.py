@@ -783,6 +783,198 @@ class TestWideSearch:
         assert world.requests == [] and info["wide"] == {"asked": 0, "taken": False}
 
 
+class AlternatesWorld(World):
+    """A World whose router gives alternatives where they are asked for: `alternates`
+    is what the ask with `alternates` gets after its first trip (trips, or an
+    exception for the whole ask)."""
+
+    def __init__(self, monkeypatch, analyses: dict, routes: list, alternates) -> None:
+        super().__init__(monkeypatch, analyses, routes)
+        self.alternates = alternates
+
+    def call(self, variant, endpoint, payload, deadline):
+        if "alternates" not in payload:
+            return super().call(variant, endpoint, payload, deadline)
+        self.requests.append(payload)
+        if isinstance(self.alternates, Exception):
+            raise self.alternates
+        first, *others = self.alternates
+        return {"trip": first, "alternates": [{"trip": t} for t in others]}
+
+
+class TestRouterAlternates:
+    """OWNER-DECISIONS 435: "Yes, rank alternatives by our own stress measures". The calm
+    search also asks for the router's own alternatives and ranks them with its first
+    route and the detours, by the same rule and the same guards."""
+
+    BUSY = "1" * 10 + "3" * 20 + "1" * 10
+
+    def ctx(self, rate=10.0, stops=0, **kwargs) -> refine.Context:
+        ctx = context(rate=rate, **kwargs)
+        ctx.request = {k: v for k, v in ctx.request.items() if k != "alternates"}
+        ctx.request["locations"] = [
+            {"lon": BASE[0], "lat": BASE[1]},
+            *({"lon": BASE[0] + 0.01 * (i + 1), "lat": BASE[1]} for i in range(stops)),
+            {"lon": BASE[0] + 0.04, "lat": BASE[1]},
+        ]
+        ctx.rank_alternates = True
+        return ctx
+
+    def asks(self, world) -> list[dict]:
+        return [r for r in world.requests if "alternates" in r]
+
+    def test_off_unless_the_plan_asks(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")], [])
+        ctx = self.ctx()
+        ctx.rank_alternates = False
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert self.asks(world) == [] and "alternates" not in info
+
+    def test_asked_once_for_the_services_most_with_no_exclusions(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")] * 2, [trip_of("o", 4.0)]
+        )
+        _kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        (ask,) = self.asks(world)
+        assert ask["alternates"] == refine.ROUTER_ALTERNATES == 3
+        assert "exclude_locations" not in ask
+        assert world.requests[0] is ask, "before the exclusion rounds"
+        # The router's first route again is not an alternative.
+        assert info["alternates"] == {"given": 0, "ranked": 0, "taken": False}
+
+    def test_a_calmer_alternative_is_taken_and_the_rounds_start_from_it(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        # Calmer than the first route, with a little LTS 3 of its own elsewhere.
+        alt = analysis("a", "1" * 30 + "3" * 5 + "1" * 5, cost_s=4100.0, shift=200)
+        world = AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "a": alt},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("a", 4.0)],
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert kept["legs"][0]["shape"] == "a"
+        assert info["alternates"] == {"given": 1, "ranked": 1, "taken": True}
+        # The first round excludes the alternative's busy stretch, not the first route's.
+        lons = [lon for lon, _lat in world.excluded(1)]
+        assert lons and all(lon >= BASE[0] + 200 * 100 * 1e-5 - 1e-9 for lon in lons)
+        assert info["exposure_before_m"] == orig.exposure_m
+        assert info["exposure_after_m"] == alt.exposure_m
+
+    def test_the_slider_sets_the_trade_against_distance(self, monkeypatch) -> None:
+        """The same rule as every candidate's (`better`): below the top of the slider the
+        rate prices the LTS 3 an alternative avoids against what it adds."""
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        # 2,000 m of LTS 3 avoided for 2,000 s more of the router's cost.
+        alt = analysis("a", "1" * 60, cost_s=6000.0, shift=200)
+
+        def kept_at(rate):
+            AlternatesWorld(
+                monkeypatch,
+                {"o": orig, "a": alt},
+                [routing.RouterRefused(400, 442, "")] * 2,
+                [trip_of("o", 4.0), trip_of("a", 6.0)],
+            )
+            return refine.refine(trip_of("o", 4.0), self.ctx(rate=rate))[0]["legs"][0]["shape"]
+
+        # 2,000 m x QUIET_COST (0.5) x rate against 2,000 s: taken above a rate of 2.
+        assert kept_at(1.5) == "o"
+        assert kept_at(2.5) == "a"
+
+    def test_a_busier_alternative_is_never_taken(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        # Cheaper for the router, but LTS 4 in place of LTS 3: Traffic wins.
+        busy = analysis("b", "1" * 10 + "4" * 20 + "1" * 10, cost_s=100.0, shift=200)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "b": busy},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("b", 4.0)],
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx(rate=0.585))
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False}
+
+    def test_one_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        unread = analysis("u", "1" * 40, cost_s=100.0, shift=200, events=None)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "u": unread},
+            [routing.RouterRefused(400, 442, "")] * 2,
+            [trip_of("o", 4.0), trip_of("u", 4.0)],
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert kept["legs"][0]["shape"] == "o" and info["alternates"]["ranked"] == 0
+
+    def test_one_past_the_ceiling_is_not_even_read(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(
+            monkeypatch,
+            {"o": orig},
+            [routing.RouterRefused(400, 442, "")] * 10,
+            [trip_of("o", 4.0), trip_of("far", 9.0)],
+        )
+        _kept, info = refine.refine(trip_of("o", 4.0), self.ctx(maxcalm=True, ceiling_m=6000.0))
+        assert info["alternates"] == {"given": 1, "ranked": 0, "taken": False}
+        assert self.asks(world)
+
+    def test_at_the_top_they_join_the_routes_offered(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        alt = analysis("a", self.BUSY, cost_s=4100.0, shift=200)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "a": alt},
+            [routing.RouterRefused(400, 442, "")] * 10,
+            [trip_of("o", 4.0), trip_of("a", 4.0)],
+        )
+        ctx = self.ctx(maxcalm=True, ceiling_m=8000.0)
+        ctx.options = []
+        refine.refine(trip_of("o", 4.0), ctx)
+        assert [t["legs"][0]["shape"] for t, _r in ctx.options] == ["o", "a"]
+
+    def test_not_asked_on_a_plan_with_stops(self, monkeypatch) -> None:
+        """Valhalla gives alternatives between two locations only."""
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(monkeypatch, {"o": orig}, [routing.RouterRefused(400, 442, "")], [])
+        _kept, info = refine.refine(trip_of("o", 4.0), self.ctx(stops=1))
+        assert self.asks(world) == [] and "alternates" not in info
+
+    def test_not_asked_without_the_time(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        world = AlternatesWorld(monkeypatch, {"o": orig}, [], [])
+        ctx = self.ctx()
+        ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 35)
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert world.requests == [] and "alternates" not in info
+
+    def test_a_refusal_leaves_the_search_to_its_rounds(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY, cost_s=4000.0)
+        calm = analysis("c", "1" * 50, cost_s=4100.0, shift=200)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig, "c": calm},
+            [trip_of("c", 5.0)] * 3,
+            routing.RouterRefused(400, 442, "no path"),
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert kept["legs"][0]["shape"] == "c" and info["rounds"] >= 1
+        assert info["alternates"]["given"] == 0
+
+    def test_a_router_that_stops_answering_says_time(self, monkeypatch) -> None:
+        orig = analysis("o", self.BUSY)
+        AlternatesWorld(
+            monkeypatch,
+            {"o": orig},
+            [routing.RouterUnavailable("down")] * 3,
+            routing.RouterUnavailable("down"),
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), self.ctx())
+        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "time"
+
+
 class SeekWorld(World):
     """A World that also records each route request's deadline."""
 

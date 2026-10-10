@@ -2003,6 +2003,35 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
+**The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
+alternatives by our own stress measures"; found comparing a planned route with a
+ridden one: the search only rerouted around the router's first route and never
+looked at the router's own alternatives). Wherever the calm search runs (above
+80, `Context.rank_alternates`), before its first round it asks the router once for
+the same route with `alternates` 3 (`refine.ROUTER_ALTERNATES`, the service's
+`max_alternates`), reads each alternative (its trace, stress and junctions) and
+ranks it with the first route by the rule every candidate meets (`refine.better`:
+below the top of the slider the score above, so the slider's rate sets how much
+distance a metre of LTS 3 avoided is worth; at the top the stress order and the
+worth of the extra miles) and the same guards (not busier than the first route, the
+LTS 4 hold, junctions read, within the ceiling). The rounds then start from
+whichever ranks first, so their exclusions are that route's busy stretches; the
+Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
+of the slider every alternative that passes the guards also joins the routes the
+rider is offered (`candidates`). `calm_search.alternates` says how many the router
+gave (`given`, the first route again not counted), how many passed the guards
+(`ranked`) and whether one was taken (`taken`); it is absent where none were asked
+for: a plan with stops or a loop (Valhalla gives alternatives between two
+locations only), a long calm plan's legs (each has only its share of the time,
+and alternatives roughly double a long leg's route; "Time, alternates and
+limits" below), or too little time left for a round. The ask is one more `/route`
+(with alternatives: on the live router a warm 12 km route went from 0.2 s to 1 to
+2 s with them, the climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative, inside the search's own budget. Not measured on the live router from
+this branch (it was built where the router cannot be reached); the detour
+acceptance rule decision 435 asks to revisit is a proposal to the owner and is
+unchanged here.
+
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
 round) as the exclusions, one round, at every position but Mass Ride's: the new
@@ -2044,8 +2073,7 @@ the host took 4 to 17 s, and the first plan after a process starts a few seconds
 more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
-`max_alternates` 3 (the search does not use alternates; Valhalla's alternates
-are near-optimal in its own cost, which is not where a calmer route is) and
+`max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
 - starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
