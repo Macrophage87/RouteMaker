@@ -488,7 +488,7 @@ export function ElevationChart({
         {calm ? (
           <>
             <li className="pc-legend-strip">
-              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); 1 is all quiet streets
+              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); 1 is a typical quiet street
             </li>
             {CALM_BANDS.map((band) => {
               const cls = spanClass({ tier: band.tier, facility: "none" });

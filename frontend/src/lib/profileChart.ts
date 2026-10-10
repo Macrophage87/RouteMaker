@@ -1081,8 +1081,9 @@ export function placeCrossings(crossings: readonly ProfileCrossing[], x: (m: num
 /**
  * 460.12: "A chart of rolling traffic stress makes more sense than a strip. That way, spikes show up."
  * The line is calm miles per actual mile (461d) over the mile around each point (461e), from the API's
- * `profile.calm` (routemaker.calm): 1 is all quiet-street riding, a path counts below it, and each
- * junction's own cost is counted in every window that holds it. The vertical scale is logarithmic, from
+ * `profile.calm` (routemaker.calm): each road at its own routing cost over a quiet metre's, so 1 is a
+ * typical quiet street and a path counts below it, and each junction's own cost is counted in every
+ * window that holds it. The vertical scale is logarithmic, from
  * `CALM_FLOOR`, so a mile at 1.4 and a spike at 14 both read; the bands' guides are drawn at the API's
  * half-step midpoints (`calm.bands`), where the words change.
  */
@@ -1267,7 +1268,8 @@ export function windowWords(calm: ProfileCalm): string {
 /**
  * The chart summary's rolling-stress sentences: the route's total in calm miles (461d: "The route summary
  * can also give the route total in calm miles"; calm km in brackets), the average, the most stressful
- * mile and what is in it, whether junctions were counted, and that the figure is an estimate.
+ * mile and what is in it, and whether junctions were counted. Whether it is an estimate is said by the
+ * key and the source line (`calmSource`).
  */
 export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[] {
   const out: string[] = [];
@@ -1275,7 +1277,7 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
   if (rated > 0) {
     const average = calm.total_calm_m / rated;
     out.push(
-      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; 1 is all quiet streets.`,
+      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; 1 is a typical quiet street.`,
     );
   }
   const peak = calmPeak(profile, calm);
@@ -1293,11 +1295,15 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
   return out;
 }
 
-/** The source line under the chart: what the figure is made from, and that it is an estimate while it is one. */
+/**
+ * The source line under the chart: what the figure is made from. Each road is priced by its own routing
+ * cost (docs/stress/stress-number.md section 4); where the router gave no road details for some stretch,
+ * that stretch took its stress level's figure and the line says the whole is an estimate.
+ */
 export function calmSource(calm: ProfileCalm): string {
-  return `Rolling stress: ${calm.estimate ? "an estimate of " : ""}what the routing charges for each stretch and junction, as quiet-street miles, over the mile around each point${
-    calm.estimate ? "; each stretch is priced by its stress level, not yet by its own speed and lanes" : ""
-  } (stress ratings: RouteMaker, from OpenStreetMap).`;
+  return calm.estimate
+    ? "Rolling stress: an estimate of what the routing charges for each road and junction, as quiet-street miles, over the mile around each point; some roads are priced by their stress level, as the router did not give their speed and lanes (stress ratings: RouteMaker, from OpenStreetMap)."
+    : "Rolling stress: what the routing charges for each road, by its own speed, lanes and bike lane, and for each junction, as quiet-street miles, over the mile around each point (stress ratings: RouteMaker, from OpenStreetMap).";
 }
 
 /** Calm miles, km in brackets: "7.4 calm mi (11.9 calm km)". */
