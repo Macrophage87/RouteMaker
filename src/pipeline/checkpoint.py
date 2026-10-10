@@ -364,8 +364,8 @@ def tree_digest(root: Path | str, hasher: Hasher | None = None) -> str:
 
 
 def overrides_digest(rows: Iterable[Mapping]) -> str:
-    """One digest over every approved override row: id, kind, way, value, reason and
-    approval time, ordered by id.
+    """One digest over every approved override row: id, kind, way, value, reason,
+    approval time and the row superseding it, ordered by id.
 
     Not a count and a largest id: an edited `value`, or one row unapproved while
     another is approved, keeps both of those the same and changes the map.

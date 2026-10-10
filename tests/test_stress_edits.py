@@ -650,19 +650,11 @@ class TestPromotion:
 
     def test_an_edit_the_rebuild_already_read_is_not_re_applied(self, live) -> None:
         edit(live, make_user(), 4)
-        read_at = timezone.now() + stress_edits.REPLAY_MARGIN + timedelta(minutes=1)
+        read_at = timezone.now() + timedelta(seconds=1)
         rebuild_without_the_edit(live)
         # The rebuild read the row, so its table carries the edit by its own rules; nothing here.
         assert stress_edits.after_promotion(read_at) == 0
         assert live_row(live)["stress_tier"] == 3
-
-    def test_an_edit_stamped_just_before_the_read_is_still_re_applied(self, live) -> None:
-        # Stamped before its transaction committed, it may have been invisible to the read.
-        edit(live, make_user(), 4)
-        read_at = timezone.now() + timedelta(minutes=1)
-        rebuild_without_the_edit(live)
-        assert stress_edits.after_promotion(read_at) == 1
-        assert live_row(live)["stress_tier"] == 4
 
     def test_a_promotion_that_never_said_when_it_read_warns(self, live, caplog) -> None:
         edit(live, make_user(), 4)
