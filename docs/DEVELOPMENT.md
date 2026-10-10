@@ -5326,6 +5326,69 @@ Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
+## The rolling stress chart (OWNER-DECISIONS 460.12, 461, 461a-e, 469b)
+
+460.12: "A chart of rolling traffic stress makes more sense than a strip. That way, spikes
+show up." On every ride type but Mass Ride the route chart's stress strip is replaced by a
+line of **calm miles per actual mile** (461d) over the mile around each point (461e),
+junctions included. The definition is docs/stress/stress-number.md section 4 (on
+`wip/stress-docs` until it merges); this is what was built.
+
+**The score** (`routemaker.calm`, called from `core.routing.route_profile` with a
+`calm.Pricing` made in `plan` from the slider position, the preset's exposure weights, the
+target, the graph and `refine.quiet_cost_per_m`):
+
+- Each stress section (`stress_spans`) counts its length times its multiplier `M`, a quiet
+  street's metre being 1. At LTS 3 and up, `M = 1 + added / 2.2 + rate x w(L)`: `added` is
+  the middle of the five modelled road types' range for the slider's `use_roads` (the
+  "Graded stress" table above; linear between its columns), 2.2 is
+  `refine.QUIET_COST_FACTOR`, and the calm-rate term is the score's above 80. Avoid is LTS
+  4 per metre plus its 1,800 s entry charge, as quiet metres at the ride's speed, where the
+  route enters it. On the no-trail graph LTS 4 costs what LTS 3 does (no grading). At the
+  top of the slider the worth rule stands in: `1 + 5 x w` with no target, `1 + 2.5 x w`
+  with one (1 / 2 / 3). At LTS 1-2 the facility class sets it: a path `(1.1 + 0.9u) / 2.2`,
+  a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
+  `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
+- Every junction the model charges for, flagged or not, adds its own cost as calm miles
+  (`cost_ft / 5,280`, without the preset's intersection weight: 469b(5), "keep it"), at its
+  point. They are counted once in every window that holds them, so a crossing raises the
+  mile around it.
+- The window is `calm.WINDOW_M` (1 mi, one setting), centred and cut at the route's ends.
+  An unrated section counts in neither the calm miles nor the miles; a window with nothing
+  rated has no value.
+- **It is an estimate** (`estimate: true`): the tier's figure is the middle of its range
+  over road types, not the road's own speed and lanes. docs/stress/stress-number.md lists
+  the exact routes (Valhalla's per-node cost from the trace, or restating Valhalla's
+  formula from the segment's speed and lanes); neither is built. Its words say so.
+
+**The contract.** `profile.calm` (`core.api.ProfileCalmOut`, null on a Mass Ride or where
+it failed; a failure costs only the score): `ratio` (one per `profile.m`), `steps` (each
+section's own multiplier and tier), `points` (junctions and Avoid entries, with a flagged
+junction's marker), `total_calm_m`, `rated_m`, `junctions_counted` (false where the
+junctions were not read), `bands` (the 2.5 and 3.5 half-step midpoints at this position,
+461a: 2.67 and 9.34 at Default), `window_m` and `estimate`.
+
+**The chart** (`ElevationChart.tsx`; the decisions in `lib/profileChart.ts`, "The rolling
+stress chart"): a log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
+value, so 1.4 and a spike at 14 both read; the area filled in the map's LTS 2, 3 and 4
+colours with the stress bar's patterns, cut where the line crosses a guide; dotted guides
+at the two band edges, labelled "LTS 3 2.7" and "LTS 4 9.3" in the text colour beside a
+swatch; a quiet line at 1; a faint dashed step line of each section's own figure, so a
+short busy stretch is seen at its true level; Avoid stretches as the magenta "A" blocks;
+and the flagged junctions' triangle and diamond above the track. The scrub's sentence adds
+"Rolling stress 1.4 calm miles per mile (LTS 1 to 2 level)" ("with Avoid in this mile"
+where the window holds some). The summary gives the route's total in calm miles with calm
+km in brackets, the average, the most stressful mile and the flagged junctions in it,
+whether junctions were counted, and that it is an estimate. "Climbs and rolling stress as
+tables" adds a table of the value every half mile (a mile past 10 mi, two past 40, five
+past 80) with what it reads as. An older answer with no `calm` keeps the strip.
+
+Not done: Mass Ride keeps its riders chart (its routing charges no junction cost; the
+question in stress-number.md stays open); half steps arrive with the half-step editor
+(the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
+change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
+the model's own `cost_ft`.
+
 ## Accessibility mode (OWNER-DECISIONS 455, 455a)
 
 `frontend/src/lib/accessMode.ts`. Off by default; with it on, Map tools (below) is on the

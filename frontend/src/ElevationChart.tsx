@@ -5,8 +5,12 @@
  *
  * - Every ride type but Mass Ride: distance across (miles, kilometres in brackets), elevation up
  *   (feet, metres in brackets), the 5% to 8% and 8%-or-more grades picked out in amber (dotted, and
- *   hatched, so colour is not the only cue), and a rolling stress strip under it in the map's styles
- *   (a traffic-free path and an unpaved stretch as the map draws them).
+ *   hatched, so colour is not the only cue), and under it the rolling stress chart (460.12, 461d,
+ *   461e): calm miles per actual mile over the mile around each point, junctions included, on a log
+ *   scale, the area filled in the map's tier colours and the stress bar's patterns between guides at
+ *   the half-step midpoints, a faint step line of each stretch's own figure, Avoid stretches in the
+ *   magenta, and the flagged junctions' markers. Where the API sends no score (an older answer), the
+ *   rolling stress strip of 322 in the map's styles stands in.
  * - Mass Ride: in place of the strip, a filled area of the grade-adjusted riders a minute in the
  *   spectral band colours (each also with a pattern), dotted guides at 60, 120 and 200, its own
  *   axis, the narrowest point marked with a caret and its figure (147), the stretches marked Avoid
@@ -29,6 +33,7 @@ import {
   AVOID_FRAME,
   AVOID_INK,
   AVOID_MIN_WIDTH,
+  CALM_BANDS,
   CHART_TYPE,
   FLOW_BANDS,
   FLOW_GUIDES,
@@ -40,6 +45,14 @@ import {
   axisLength,
   bottleneckMark,
   bottleneckRows,
+  calmAvoid,
+  calmFigure,
+  calmLine,
+  calmRows,
+  calmScale,
+  calmShapes,
+  calmStepLine,
+  calmTop,
   chartKind,
   climbRows,
   crossingCaption,
@@ -63,6 +76,7 @@ import {
   stripKey,
   stripSections,
   summaryText,
+  usableCalm,
   type ChartKind,
   type Plot,
   type StripSection,
@@ -76,6 +90,7 @@ const RIGHT = WIDTH - 8;
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
   stress: { height: 152, elevTop: 10, elevBottom: 98, stripTop: 108, stripBottom: 120, axisY: 140 },
+  calm: { height: 202, elevTop: 10, elevBottom: 84, markerY: 95, calmTop: 106, calmBottom: 166, axisY: 188 },
   mass: { height: 212, elevTop: 12, elevBottom: 66, markerY: 79, flowTop: 94, flowBottom: 150, labelY: 163, axisY: 204 },
 } as const;
 
@@ -117,7 +132,8 @@ export function ElevationChart({
   }, [active, reading.m, route, total]);
   useEffect(() => () => heard.current?.(null), []);
 
-  const layout = LAYOUT[kind];
+  const calm = useMemo(() => (kind === "stress" ? usableCalm(profile) : null), [kind, profile]);
+  const layout = calm ? LAYOUT.calm : LAYOUT[kind];
   const range = useMemo(() => elevationRange(profile), [profile]);
   const elevTop = layout.elevTop;
   const elevBottom = layout.elevBottom;
@@ -135,7 +151,15 @@ export function ElevationChart({
   const bands = useMemo(() => gradeBandShapes(profile, plot), [profile, plot]);
   const flow = useMemo(() => (flowY ? flowShapes(profile, x, flowY, flowY(0)) : []), [profile, x, flowY]);
   const flowEdge = useMemo(() => (flowY ? flowLine(profile, x, flowY) : ""), [profile, x, flowY]);
-  const sections = useMemo(() => (kind === "stress" ? stripSections(route.stress_spans, total) : []), [kind, route.stress_spans, total]);
+  const sections = useMemo(() => (kind === "stress" && !calm ? stripSections(route.stress_spans, total) : []), [kind, calm, route.stress_spans, total]);
+  const calmLayout = calm ? LAYOUT.calm : null;
+  const calmMax = useMemo(() => (calm ? calmTop(calm) : 1), [calm]);
+  const calmY = useMemo(() => (calmLayout ? calmScale(calmMax, calmLayout.calmBottom, calmLayout.calmTop) : null), [calmLayout, calmMax]);
+  const calmArea = useMemo(() => (calm && calmY && calmLayout ? calmShapes(profile, calm, x, calmY, calmLayout.calmBottom) : []), [profile, calm, x, calmY, calmLayout]);
+  const calmEdge = useMemo(() => (calm && calmY ? calmLine(profile, calm, x, calmY) : ""), [profile, calm, x, calmY]);
+  const calmSteps = useMemo(() => (calm && calmY ? calmStepLine(calm, x, calmY, total) : ""), [calm, x, calmY, total]);
+  const calmAvoids = useMemo(() => (calm ? calmAvoid(calm, total) : []), [calm, total]);
+  const calmMarks = calm ? calm.points.filter((p) => p.kind === "junction" && p.severity !== null && p.m <= total) : [];
   const placed = useMemo(() => (mass ? placeCrossings(profile.crossings ?? [], x, LEFT, RIGHT) : []), [mass, profile.crossings, x]);
   const narrowest = useMemo(() => (flowY ? bottleneckMark(profile, x, flowY, LEFT, RIGHT) : null), [profile, x, flowY]);
   const avoid = mass ? (profile.avoid ?? []) : [];
@@ -158,7 +182,7 @@ export function ElevationChart({
   const elevAtMarker = reading.elevationM;
   const ridersAtMarker = reading.riders;
   const present = stripKey(sections);
-  const tableName = kind === "mass" ? "Climbs, bottlenecks and intersections as tables" : "Climbs as a table";
+  const tableName = kind === "mass" ? "Climbs, bottlenecks and intersections as tables" : calm ? "Climbs and rolling stress as tables" : "Climbs as a table";
   const prompt = "Move along the chart, or use the arrow keys, to read the route at a point.";
   const keys =
     kind === "mass"
@@ -213,7 +237,7 @@ export function ElevationChart({
         className="pc-plot"
         role="slider"
         tabIndex={0}
-        aria-label={kind === "mass" ? "Elevation and riders per minute along the route" : "Elevation and stress along the route"}
+        aria-label={kind === "mass" ? "Elevation and riders per minute along the route" : calm ? "Elevation and rolling stress along the route" : "Elevation and stress along the route"}
         aria-orientation="horizontal"
         aria-valuemin={0}
         aria-valuemax={Math.round(total)}
@@ -263,7 +287,73 @@ export function ElevationChart({
           ))}
           <path className="pc-line" d={line} fill="none" />
 
-          {kind === "stress" && (
+          {calm && calmY && calmLayout && (
+            <g>
+              <text className="pc-axis-text" x={2} y={calmLayout.calmTop + 4}>
+                {calmMax}
+              </text>
+              <text className="pc-axis-text" x={2} y={(calmLayout.calmTop + calmLayout.calmBottom) / 2 - 8}>
+                calm mi
+              </text>
+              <text className="pc-axis-text" x={2} y={(calmLayout.calmTop + calmLayout.calmBottom) / 2 + 3}>
+                per mi
+              </text>
+              <text className="pc-axis-text" x={2} y={Math.min(calmY(1) + 4, calmLayout.calmBottom)}>
+                1
+              </text>
+              <line className="pc-axis" x1={LEFT} y1={calmLayout.calmBottom} x2={RIGHT} y2={calmLayout.calmBottom} />
+              <line className="pc-calm-one" x1={LEFT} y1={calmY(1)} x2={RIGHT} y2={calmY(1)} />
+              {calmArea.map((shape, i) => {
+                const cls = spanClass({ tier: shape.band.tier, facility: "none" });
+                return (
+                  <g key={i}>
+                    <path d={shape.d} fill={cls.color} fillOpacity={0.9} />
+                    <path d={shape.d} fill={`url(#${uid}-t${shape.band.tier})`} />
+                  </g>
+                );
+              })}
+              <path className="pc-calm-steps" d={calmSteps} fill="none" />
+              {calmAvoids.map((r, i) => {
+                const real = Math.max(x(r.to_m) - x(r.from_m), 0);
+                const w = Math.max(real, AVOID_MIN_WIDTH);
+                const x0 = Math.min(Math.max(x(r.from_m) - (w - real) / 2, LEFT), RIGHT - w);
+                const h = 12;
+                const y0 = calmLayout.calmBottom - h;
+                return (
+                  <g key={`calm-avoid-${i}`} className="pc-avoid">
+                    <rect x={x0} y={y0} width={w} height={h} fill={AVOID_FILL} />
+                    <rect x={x0} y={y0} width={w} height={h} fill={`url(#${uid}-avoid)`} />
+                    <rect className="pc-avoid-frame" x={x0 - 0.5} y={y0 - 0.5} width={w + 1} height={h + 1} fill="none" stroke={AVOID_FRAME} strokeWidth="1" />
+                    <rect className="pc-avoid-inner" x={x0 + 0.5} y={y0 + 0.5} width={Math.max(w - 1, 0)} height={h - 1} fill="none" stroke={AVOID_INK} strokeWidth="1" />
+                    <text className="pc-avoid-text" x={x0 + w / 2} y={y0 + 10} textAnchor="middle">
+                      {avoidLabel(w)}
+                    </text>
+                  </g>
+                );
+              })}
+              <path className="pc-calm-line" d={calmEdge} fill="none" />
+              {calm.bands.slice(0, 2).map((at, i) => {
+                if (at >= calmMax) return null;
+                const label = `LTS ${i + 3} ${calmFigure(at)}`;
+                const textW = label.length * 6.2;
+                const cls = spanClass({ tier: i + 3, facility: "none" });
+                return (
+                  <g key={i}>
+                    <line className="pc-calm-guide" x1={LEFT} y1={calmY(at)} x2={RIGHT} y2={calmY(at)} />
+                    <rect className="pc-guide-swatch" x={RIGHT - textW - 11} y={calmY(at) - 8} width={8} height={5} fill={cls.color} />
+                    <text x={RIGHT} y={calmY(at) - 2} className="pc-guide-text" textAnchor="end">
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+              {calmMarks.map((p, i) => (
+                <CrossingMarker key={i} severity={p.severity} x={x(p.m)} y={calmLayout.markerY} />
+              ))}
+            </g>
+          )}
+
+          {kind === "stress" && !calm && (
             <g>
               {sections.map((s, i) => (
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
@@ -363,8 +453,9 @@ export function ElevationChart({
           {/* The scrub marker: a line through every track, and a ring on the line it reads. */}
           {active !== null && (
             <g className="pc-marker">
-              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={mass ? mass.flowBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
+              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={mass ? mass.flowBottom : calmLayout ? calmLayout.calmBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
               {elevAtMarker !== null && <circle cx={markerX} cy={plot.y(elevAtMarker)} r="3.5" />}
+              {calmY && reading.calm !== null && <circle cx={markerX} cy={calmY(reading.calm)} r="3.5" />}
               {mass && flowY && ridersAtMarker !== null && <circle cx={markerX} cy={flowY(ridersAtMarker)} r="3.5" />}
             </g>
           )}
@@ -386,7 +477,55 @@ export function ElevationChart({
             {band.label}
           </li>
         ))}
-        {kind === "stress" ? (
+        {calm ? (
+          <>
+            <li className="pc-legend-strip">Under the elevation: rolling stress, calm miles per mile over the mile around each point (1 is all quiet streets)</li>
+            {CALM_BANDS.map((band) => {
+              const cls = spanClass({ tier: band.tier, facility: "none" });
+              return (
+                <li key={band.index}>
+                  <svg width="14" height="10" aria-hidden="true">
+                    <rect width="14" height="10" fill={cls.color} />
+                    <rect width="14" height="10" fill={`url(#${uid}-t${band.tier})`} />
+                  </svg>
+                  {band.label}
+                </li>
+              );
+            })}
+            <li>
+              <svg width="14" height="10" aria-hidden="true">
+                <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
+              </svg>
+              Dashed line: each stretch on its own
+            </li>
+            {calmAvoids.length > 0 && (
+              <li>
+                <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
+                  <rect width="14" height="10" fill={AVOID_FILL} />
+                  <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
+                  <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
+                </svg>
+                Avoid (A where narrow)
+              </li>
+            )}
+            {calmMarks.some((p) => p.severity === "orange") && (
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 2.5 22.5 20.5H1.5Z" fill={SEVERITY_COLOURS.orange.fill} stroke={SEVERITY_COLOURS.orange.stroke} strokeWidth="2" />
+                </svg>
+                Higher stress junction (triangle)
+              </li>
+            )}
+            {calmMarks.some((p) => p.severity === "red") && (
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 1.5 22.5 12 12 22.5 1.5 12Z" fill={SEVERITY_COLOURS.red.fill} stroke={SEVERITY_COLOURS.red.stroke} strokeWidth="2" />
+                </svg>
+                Very high stress junction (diamond)
+              </li>
+            )}
+          </>
+        ) : kind === "stress" ? (
           <li className="pc-legend-strip">Strip under the elevation: traffic stress along the route</li>
         ) : (
           FLOW_BANDS.map((band) => (
@@ -440,7 +579,7 @@ export function ElevationChart({
           </>
         )}
       </ul>
-      {kind === "stress" && present.length > 0 && (
+      {kind === "stress" && !calm && present.length > 0 && (
         <ul className="pc-tiers" aria-label="Stress on the strip">
           {present.map((s) => {
             const cls = spanClass(s);
@@ -460,11 +599,13 @@ export function ElevationChart({
       <p className="hint pc-source">
         {kind === "mass"
           ? "Elevation: USGS 3DEP. Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked)."
-          : "Elevation: USGS 3DEP."}
+          : calm
+            ? "Elevation: USGS 3DEP. Rolling stress: what the routing charges for each stretch and junction, as quiet-street miles (OpenStreetMap; the stress ratings are RouteMaker's)."
+            : "Elevation: USGS 3DEP."}
       </p>
       <details className="pc-table-fold">
         <summary>{tableName}</summary>
-        <Tables profile={profile} kind={kind} spans={route.stress_spans} />
+        <Tables profile={profile} kind={kind} spans={route.stress_spans} total={total} />
       </details>
     </div>
   );
@@ -529,8 +670,10 @@ function CrossingMarker({ severity, x, y }: { severity: "orange" | "red" | null;
 }
 
 /** The climbs, and on a Mass Ride the bottlenecks and the intersections, as tables: the picture's text alternative. */
-function Tables({ profile, kind, spans }: { profile: RouteProfile; kind: ChartKind; spans: RouteResponse["stress_spans"] }) {
+function Tables({ profile, kind, spans, total }: { profile: RouteProfile; kind: ChartKind; spans: RouteResponse["stress_spans"]; total: number }) {
   const rows = climbRows(profile, kind, spans);
+  const calm = kind === "stress" ? usableCalm(profile) : null;
+  const calmTable = calm ? calmRows(profile, calm, total) : [];
   const bottlenecks = kind === "mass" ? bottleneckRows(profile) : [];
   const crossings = kind === "mass" ? crossingRows(profile) : [];
   const checked = profile.crossings !== null && profile.crossings !== undefined;
@@ -563,6 +706,29 @@ function Tables({ profile, kind, spans }: { profile: RouteProfile; kind: ChartKi
                   <td>{row.maximum}</td>
                   <td>{row.stress}</td>
                   {kind === "mass" && <td>{row.capacity}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {calm && (
+        <div className="pc-table-wrap">
+          <table className="pc-table">
+            <caption>Rolling stress, calm miles per mile over the mile around each point</caption>
+            <thead>
+              <tr>
+                <th scope="col">At</th>
+                <th scope="col">Calm miles per mile</th>
+                <th scope="col">Reads as</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calmTable.map((row, i) => (
+                <tr key={i}>
+                  <th scope="row">{row.at}</th>
+                  <td>{row.value}</td>
+                  <td>{row.reads}</td>
                 </tr>
               ))}
             </tbody>

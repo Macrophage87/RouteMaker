@@ -28,7 +28,7 @@ from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
 from core import presets, routing
-from routemaker import flow
+from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -323,6 +323,39 @@ class TestAnswer:
         assert profile["grade_pct"][1] == pytest.approx((30.0 - 10.0) / 90 * 100, abs=0.1)
         assert profile["riders_per_min"] is None
         assert profile["flow"] is None and profile["crossings"] is None
+
+    def test_off_a_mass_ride_the_profile_has_the_rolling_stress_score(
+        self, client, segments, router
+    ) -> None:
+        """OWNER-DECISIONS 460.12, 461d: calm miles per mile at each sample, priced at the
+        ride's own slider position (here Default: the bands are the half-step midpoints
+        2.67 and 9.34), and a Mass Ride has none (it keeps its riders chart)."""
+        router(standard_router())
+        profile = post(client, good_body()).json()["profile"]
+        score = profile["calm"]
+        assert len(score["ratio"]) == len(profile["m"])
+        assert all(r is not None and r > 0 for r in score["ratio"])
+        assert score["window_m"] == round(calm.WINDOW_M)
+        assert score["bands"] == pytest.approx([2.67, 9.34], abs=0.02)
+        assert score["junctions_counted"] is True and score["estimate"] is True
+        assert score["rated_m"] > 0 and score["total_calm_m"] > 0
+        mass = post(client, good_body("mass-ride")).json()["profile"]
+        assert mass["calm"] is None
+
+    def test_the_rolling_score_follows_the_slider(self, client, segments, router) -> None:
+        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16),
+        so the bands are 3.5 and 8.5."""
+        router(standard_router())
+        profile = post(client, {**good_body(), "stress": 100}).json()["profile"]
+        assert profile["calm"]["bands"] == [3.5, 8.5]
+
+    def test_junctions_not_read_are_not_counted_in_the_score(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        router(standard_router())
+        monkeypatch.setattr(routing, "_events", lambda *_args: None)
+        score = post(client, good_body()).json()["profile"]["calm"]
+        assert score["junctions_counted"] is False and score["points"] == []
 
     def test_a_route_with_no_elevation_has_a_null_profile(self, client, segments, router) -> None:
         answers = standard_router()
