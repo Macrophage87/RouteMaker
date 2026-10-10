@@ -18,7 +18,8 @@ not in the graph"). So the two things the owner asked for on 2026-10-01 -
   is kept if it scores better. Exclusions accumulate, so each round can clear
 what the last one found. Before the rounds the router's own alternatives are
 read and ranked with its first route the same way (OWNER-DECISIONS 435,
-`_router_alternates`), and the rounds start from whichever ranks first. The score is the router's own cost for the route
+`_router_alternates`), and the rounds start from whichever ranks first.
+The score is the router's own cost for the route
 (its time with the stress, hill, turn and gate prices of the request) plus an
 extra price, in the router's cost seconds, for what the router cannot see:
 
