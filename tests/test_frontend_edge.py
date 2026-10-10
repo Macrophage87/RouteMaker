@@ -34,6 +34,7 @@ INDEX = b"<!doctype html><title>RouteMaker</title><div id=root></div>"
 # Long enough that Caddy's encoder (minimum 512 bytes) compresses it.
 SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
+STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 STATIC = b"body{}"
 
 
@@ -71,6 +72,8 @@ def edge(tmp_path_factory):
     (frontend / "favicon.svg").write_bytes(b"<svg/>")
     (frontend / "assets" / "index-abc123.js").write_bytes(SCRIPT)
     (frontend / "licenses.txt").write_bytes(LICENCES)
+    (frontend / "about").mkdir()
+    (frontend / "about" / "stress.html").write_bytes(STRESS_PAGE)
     static = root / "static"
     (static / "admin").mkdir(parents=True)
     (static / "admin" / "base.css").write_bytes(STATIC)
@@ -136,6 +139,43 @@ def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
     status, headers, body = get(edge, "/licenses.txt")
     assert (status, body) == (200, LICENCES)
     assert "no-cache" in headers.get("Cache-Control", ""), headers
+
+
+class _Unfollowed(urllib.request.HTTPRedirectHandler):
+    """A redirect handed back as it came, so its status and Location are what is checked."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def unfollowed(base: str, path: str) -> tuple[int, dict[str, str]]:
+    try:
+        with urllib.request.build_opener(_Unfollowed).open(base + path, timeout=5) as response:
+            return response.status, dict(response.headers)
+    except urllib.error.HTTPError as answered:
+        return answered.code, dict(answered.headers)
+
+
+def test_the_stress_page_is_served_with_the_apps_policy_and_its_short_paths_redirect(edge) -> None:
+    """OWNER-DECISIONS 461: the rider-facing page on how ratings work, linked from
+    the legend and the road panel, is a file of the app's, not the API's."""
+    status, headers, body = get(edge, "/about/stress.html")
+    assert (status, body) == (200, STRESS_PAGE), (status, headers)
+    assert headers.get("Content-Type", "").startswith("text/html"), headers
+    assert "no-cache" in headers.get("Cache-Control", ""), headers
+    assert "default-src 'self'" in headers.get("Content-Security-Policy", ""), headers
+    # A 302, as the preset links (a browser keeps a 301 for good), to exactly the page;
+    # Caddy's `path` matcher ignores case, and so does the beta's nginx (`~*`).
+    for short in ("/about/stress", "/about/stress/", "/About/Stress"):
+        status, headers = unfollowed(edge, short)
+        assert (status, headers.get("Location")) == (302, "/about/stress.html"), (short, headers)
+        # Followed, it ends at the page, not at the API (502).
+        status, _, body = get(edge, short)
+        assert (status, body) == (200, STRESS_PAGE), short
+    # Its neighbours are not the page's: they still reach the API.
+    for near in ("/about", "/about/", "/about/stressx", "/about/stress.html/"):
+        status, _, _ = get(edge, near)
+        assert status == 502, (near, status)
 
 
 def test_the_app_carries_its_content_security_policy(edge) -> None:

@@ -16,7 +16,7 @@ import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
-import { planToOpen, rememberPlanForSignIn } from "./lib/signIn.ts";
+import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, neutralPaletteSearch } from "./stressStyle.js";
@@ -181,15 +181,7 @@ type Status =
   | { kind: "error"; error: RouteError }
   | { kind: "confirm"; error: RouteError };
 
-function session(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
+const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
 
 const NARROW = "(max-width: 720px)";
 
@@ -484,6 +476,18 @@ export function App() {
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // The browser's Back button can restore this page from its back/forward cache with no new load,
+  // so `planToOpen` never reads the plan kept for the stress page or the sign-in link. That Back
+  // undid the trip the copy was kept for: drop it, so it cannot bring back a plan the rider
+  // clears next (the correctness re-check's C8).
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) forgetPlan(tabSession());
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
   // Route whenever the plan changes.
@@ -1964,7 +1968,7 @@ export function App() {
                 <p className="hint">
                   Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
                   reopens it. Saving routes and peer review are coming for riders who{" "}
-                  <a href="/auth/login" onClick={() => rememberPlanForSignIn(session(), window.location.hash, linkNote !== "")}>
+                  <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
                     sign in with Discord
                   </a>
                   ; your current plan is kept across the sign-in.

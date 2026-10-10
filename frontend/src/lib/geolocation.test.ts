@@ -598,7 +598,7 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.ok(start > 0 && end > start, "the useMyLocation body is found");
   assert.doesNotMatch(app.slice(start, end), LEAKS);
   // The whole of App, not only that body (A28, A29): no log, send or other channel anywhere in it.
-  // Storage is the one term left out: session() is the sign-in round trip's, on purpose (signIn.ts).
+  // Storage is the one term left out: tabSession() is the sign-in round trip's, on purpose (signIn.ts).
   assert.doesNotMatch(app, new RegExp(LEAKS.source.replace("Storage|", "")));
   assert.doesNotMatch(app, /watchPosition/);
   // Two look-up paths, both through the one gate: Use my location, and the nearest-place search from
@@ -629,7 +629,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|rememberPlanForSignIn\(session\(\), window\.location\.hash, linkNote !== ""\)/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;

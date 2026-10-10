@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
+import { PLAN_KEY, forgetPlan, isPlainClick, planToOpen, rememberPlan, rememberPlanForPage } from "./signIn.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
+  STRESS_PAGE,
+  STRESS_PAGE_TEXT,
   MTB_LEGEND,
   MtbTrailSwatch,
   ROADWAY_LANES,
@@ -373,3 +376,72 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
   assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
 });
 
+
+test("the legend links to the page on how ratings work, in the same tab, its name its visible words (461)", () => {
+  const html = legendHtml();
+  const link = html.match(/<p class="hint stress-page-link"><a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a><\/p>/);
+  assert.ok(link, html.slice(0, 400));
+  assert.equal(link[1], STRESS_PAGE);
+  assert.equal(link[2], "", "no target or other attribute: it opens in the same tab");
+  assert.equal(link[3], STRESS_PAGE_TEXT, "plain visible words, no hidden span (the accessibility review's N8)");
+  assert.equal(STRESS_PAGE_TEXT, "How stress ratings work");
+  assert.ok(html.indexOf("stress-page-link") > html.indexOf("lts-means"), "after the line that says what LTS is");
+});
+
+test("following the stress page link keeps the plan for the page's Back to the map (the accessibility review's SF1)", () => {
+  const source = readFileSync(new URL("./stressLegend.ts", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("export function StressPageLink"), source.indexOf("/** The unpaved mark's line"));
+  assert.match(body, /h\("a", \{ href: STRESS_PAGE, onClick: \(e\) => isPlainClick\(e\) && rememberPlanForPage\(tabSession\(\), window\.location\.hash\) \}, STRESS_PAGE_TEXT\)/);
+  // The page's own links go to a bare "/": the plan comes back from this tab's storage, once.
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  const plan = "#v=1&p=-77.03,38.9;-77.0,38.91&preset=default";
+  rememberPlanForPage(storage, plan);
+  assert.equal(planToOpen(storage, ""), plan);
+  assert.equal(planToOpen(storage, ""), "", "read once");
+  rememberPlanForPage(storage, "");
+  assert.equal(planToOpen(storage, ""), "", "an empty planner keeps nothing");
+  // A plan cleared after one was kept drops the kept one (the correctness re-check's C8).
+  rememberPlanForPage(storage, plan);
+  rememberPlanForPage(storage, "#v=1");
+  assert.equal(store.has(PLAN_KEY), false, "a plan with no points removes the kept plan");
+  rememberPlan(storage, plan);
+  forgetPlan(storage);
+  assert.equal(store.has(PLAN_KEY), false, "forgetPlan (a bfcache restore) removes it");
+  forgetPlan(null);
+  forgetPlan({ getItem: () => null, setItem: () => {}, removeItem: () => { throw new Error("refused"); } });
+  const page = readFileSync(new URL("../../public/about/stress.html", import.meta.url), "utf8");
+  assert.deepEqual(
+    [...page.matchAll(/<a [^>]*>Back to the map<\/a>/g)].map((m) => m[0]),
+    ['<a class="back" href="/">Back to the map</a>', '<a href="/">Back to the map</a>'],
+    "both go to a bare /, where planToOpen reads the kept plan",
+  );
+});
+
+test("a modified or non-primary click keeps no plan (the accessibility re-check's note)", () => {
+  const plain = { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
+  assert.equal(isPlainClick(plain), true);
+  for (const change of [{ button: 1 }, { button: 2 }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+    assert.equal(isPlainClick({ ...plain, ...change }), false, JSON.stringify(change));
+  }
+  const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(source, /window\.addEventListener\("pageshow", onShow\)/);
+  assert.match(source, /if \(e\.persisted\) forgetPlan\(tabSession\(\)\);/);
+  assert.doesNotMatch(source, /function session\(\)/, "one session helper, tabSession");
+});
+
+test("the road panel shows the same link at the end of Details and sources (correctness C4, mutation T1)", () => {
+  const panel = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
+  assert.match(panel, /import \{ StressPageLink \} from "\.\/lib\/stressLegend\.ts";/);
+  const open = panel.indexOf('className="road-info-details"');
+  const close = panel.indexOf("</details>", open);
+  assert.ok(open > 0 && close > open, "the Details and sources disclosure");
+  const inside = panel.slice(open, close);
+  assert.equal((inside.match(/<StressPageLink\b/g) ?? []).length, 1);
+  assert.match(inside, /<StressPageLink className="road-info-how" \/>\s*$/, "its last item");
+  assert.equal((panel.match(/<StressPageLink\b/g) ?? []).length, 1, "once in the panel");
+});

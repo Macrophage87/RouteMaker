@@ -890,7 +890,7 @@ test("the Settings sheet (384): a Display group with the High contrast switch, t
   assert.ok(sheet.indexOf("settings-display-heading") < sheet.indexOf("settings-signin-heading"));
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
-  assert.match(sheet, /rememberPlanForSignIn\(session\(\), window\.location\.hash, linkNote !== ""\)/);
+  assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
   // Both copies read the one module state, so a flip in either shows in both; their ids differ.
   const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));

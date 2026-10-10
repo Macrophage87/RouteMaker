@@ -1724,6 +1724,9 @@ link is opened.
 
 ## Intersection costs, the calm search and the detour warning
 
+The whole traffic-stress model (classification, overrides, costs per preset, the stress
+number, drawing) is documented in [docs/stress/](stress/README.md).
+
 FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02 after the round-1 and
 round-2 reviews; OWNER-DECISIONS 133-136, 138, 163-169, 171, 172, 185-188,
 194-196; the crossing
