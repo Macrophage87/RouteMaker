@@ -1725,6 +1725,47 @@ a JSON list defaulting to empty; nothing else changed). It follows the Avoid jun
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
+## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
+
+A signed-in rider whom the **Suggestion settings** allow sees **Mark a hazard** in the road panel on a Mass
+Ride. They choose **Caution** or **Warning** and give a reason of up to 500 characters. Both levels stay
+routable. Avoid is still the Change LTS level that removes a stretch, and an Avoid road shows only Avoid.
+Only the road (way id) is kept: the clicked point is snapped as a suggestion's is, refused past 98 ft
+(30 m), and never stored. A way that is Avoid along only part of its length is judged by the piece the
+rider opened. The Avoid piece takes no report and names no hazard, while its routable pieces can.
+
+**Reviewing.** Reports wait in the planner's **Mass Ride hazard reports**, under the suggestions,
+with the same three actions: **Approve now**, **Delete**, and **Send to Discord** (a poll to copy into the server; it names the
+road, the level and the reason, never the rider). To take an approved hazard off the map, use the Django
+admin's **Mass hazards** page, select it, and run **Take the selected approved hazards off the Mass Ride
+map**. The row is kept with status `removed`. Every action is an `audit_log` entry (`mass_hazard_*`).
+
+An approved hazard is on the map now, as the approval's message says. The server's layer changes at
+once, and the reviewing admin's map reads it again past the browser's cache. Another browser that read
+the layer in the last minute keeps its copy for that minute at most. A road has one approved hazard at a
+time: a newer approval replaces the older one. A partial unique constraint
+(`mass_hazard_one_approved_per_road`) also enforces this, so if two admins approve on one road at the
+same moment, the second gets a 409 and its report stays waiting.
+
+**The layer is the API's, not the tiles'.** `GET /api/mass-hazards` returns the approved hazards as
+GeoJSON (public, `max-age=60`, an ETag and 304, its own address budget of 60 a minute,
+`mass-hazards`). The stress and Mass Ride tiles, their ETags and the tile cache are unchanged, so an
+approval needs no tile eviction or rebuild. A hazard on a way that later becomes Avoid drops out of the
+layer and the route answer by itself. If the table cannot be read, the layer is empty and routing goes on.
+
+**Security.** `POST /api/mass-hazards` has the suggestions' checks: a session of an account the setting
+allows (401 / 403, audited), CSRF, same-site, and the shared 10 writes an hour per account (with
+suggestions). A rider may have one open report per road (a partial unique constraint) and 20 open in all.
+The review endpoints (`GET /api/mass-hazards/open`, `POST /api/mass-hazards/{id}/approve|delete|discord`)
+need an active instance admin and share the suggestions' 200 review actions an hour. The reporter's
+account is on the `mass_hazard` row for the admin only, and the table is left out of the beta's data
+shipment (`scripts/beta/ship-data.sh`).
+
+**The migration** is `core/migrations/0017_mass_hazard.py`, which adds one new table and changes
+nothing else. It follows `0016_stress_suggestions`. The junction suggestions also use the number 0017,
+so whichever branch merges second renumbers its migration (and its `dependencies`) to keep the chain
+linear.
+
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An Avoid rating is for a junction that is "just way too problematic", and only from the

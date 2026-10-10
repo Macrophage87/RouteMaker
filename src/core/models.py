@@ -1495,3 +1495,81 @@ class AvoidJunction(models.Model):
 
     def __str__(self) -> str:
         return f"Avoid-rated junction: {self.name}"
+
+
+class MassHazard(models.Model):
+    """A rider-marked hazard on a road piece, for the Mass Ride map only (FOLLOWUP-MASSRIDE-MAP
+    part 3; OWNER-DECISIONS 325, 326, 327).
+
+    "Some stretches can be marked as a caution or warning where we've had problems. They go
+    along side like a trail or pbl. ... These hazards will be marked by riders and will be for
+    this mode only." (325). Two severity levels chosen by the reporter, with a reason (326:
+    "Severity only"): Caution and Warning. Both stay routable; Avoid is a stress rating, not a
+    hazard, and a road marked Avoid shows only "Avoid".
+
+    A report is never shown by itself: an instance admin approves it now, deletes it, or sends
+    it to Discord (a ready-to-paste poll, `core.suggestion_post.build_hazard`) and decides
+    later - the rider suggestions' three actions (`core.mass_hazards`). Once approved it is
+    drawn as a side rail on the Mass Ride map and named in the road panel, the legend and a
+    Mass Ride's description. An approval replaces an earlier approved hazard on the same way
+    (`removed`), and an instance admin can take one off the map in the Django admin.
+
+    Stored by OSM way id only. The rider's position is checked (within 98 ft (30 m) of the
+    road) and never kept; the reporter's account is kept for the admin only and is never in
+    the post, the map layer or anything a rider reads. The list starts empty.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for review"
+        SENT = "sent_to_discord", "Sent to Discord"
+        APPROVED = "approved", "Approved: on the Mass Ride map"
+        DELETED = "deleted", "Deleted"
+        REMOVED = "removed", "Taken off the map"
+
+    class Level(models.TextChoices):
+        CAUTION = "caution", "Caution"
+        WARNING = "warning", "Warning"
+
+    created_at = models.DateTimeField(default=timezone.now)
+    reporter = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reporter_user_id = models.BigIntegerField(null=True, blank=True)
+    osm_way_id = models.BigIntegerField()
+    road_name = models.TextField(blank=True)
+    level = models.CharField(max_length=16, choices=Level.choices)
+    reason = models.TextField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "mass_hazard"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "osm_way_id"], name="mass_hazard_status_way")]
+        # One open report per rider per road piece, held by the database (the count in
+        # core.mass_hazards locks nothing against a second send at once).
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reporter", "osm_way_id"],
+                condition=models.Q(status__in=["pending", "sent_to_discord"]),
+                name="mass_hazard_one_open_per_road",
+            ),
+            # One approved hazard per road piece: a piece has one level at a time, and two
+            # approvals at once cannot both land (core.mass_hazards.approve).
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(status="approved"),
+                name="mass_hazard_one_approved_per_road",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(level__in=["caution", "warning"]),
+                name="mass_hazard_level_known",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"way {self.osm_way_id}: {self.get_level_display()}, {self.get_status_display()}"

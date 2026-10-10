@@ -10,6 +10,7 @@ import { MASS_AVOID, MASS_BANDS } from "../massStyle.js";
 import type { RouteResponse } from "./api.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "./dcBoundary.ts";
 import { formatDistance } from "./format.ts";
+import { HazardLegend } from "./massHazards.ts";
 import { ROUTE_CASING_WIDTH, routeCasing, routeClasses, routeMarkDash, routeMarkWidth, type RouteClass, type RouteClassKey } from "./routeColours.ts";
 import {
   AVOID_LEGEND_TEXT,
@@ -108,7 +109,8 @@ export function MassZoomNotes({ zoom, shown }: { zoom: number | null; shown: boo
 
 /**
  * The legend the Mass Ride map has in place of the stress legend: the four bands, lowest
- * first, then Avoid. Federal land, stops and groups keep their own sections (324).
+ * first, then Avoid, then the rider-marked hazards' two rails (FOLLOWUP-MASSRIDE-MAP part 3,
+ * lib/massHazards.ts). Federal land, stops and groups keep their own sections (324).
  */
 export function MassLegend(): ReactElement {
   return h(
@@ -121,6 +123,7 @@ export function MassLegend(): ReactElement {
       ...MASS_BANDS.map((band: Band, i: number) => row(band.key, h(BandSwatch, { band }), bandLegendText(i))),
       row("avoid", h(AvoidSwatch), AVOID_LEGEND_TEXT),
     ),
+    h(HazardLegend),
     h("p", { className: "hint capacity-source" }, CAPACITY_SOURCE),
     // DC only for now (OWNER-DECISIONS 418), in words, with the boundary's source.
     h("p", { className: "hint mass-dc-only" }, MASS_DC_ONLY),

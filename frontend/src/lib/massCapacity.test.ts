@@ -135,8 +135,11 @@ test("the legend lists the four bands in order, then Avoid, each with its words"
   assert.ok(at.every((i) => i > 0), JSON.stringify(at));
   assert.deepEqual(at, [...at].sort((a, b) => a - b));
   assert.ok(html.includes(`aria-label="${CAPACITY_LEGEND_TITLE}"`), "the list is named for a screen reader");
-  // Every swatch is a hidden picture; the words carry the meaning.
-  assert.equal((html.match(/<svg[^>]*aria-hidden="true"/g) ?? []).length, 5);
+  // Every swatch is a hidden picture; the words carry the meaning: four bands, Avoid, and the
+  // rider-marked hazards' Caution and Warning rails (FOLLOWUP-MASSRIDE-MAP part 3), after Avoid.
+  assert.equal((html.match(/<svg[^>]*aria-hidden="true"/g) ?? []).length, 7);
+  assert.ok(html.indexOf("Caution: riders have had problems here") > html.indexOf(AVOID_LEGEND_TEXT));
+  assert.ok(html.indexOf("Warning: riders have had serious problems here") > html.indexOf("Caution: riders"));
   // The bands' own stroke widths, and the dashes of the two lower ones.
   for (const band of MASS_BANDS) assert.ok(html.includes(`stroke="${band.color}"`), band.key);
   assert.ok(html.includes('stroke-dasharray="6 4"') && html.includes('stroke-dasharray="14 4"'));

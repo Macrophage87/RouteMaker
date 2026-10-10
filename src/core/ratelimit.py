@@ -165,6 +165,10 @@ SUGGEST_WRITES = Limit(scope="stress-suggest", requests=10, window_s=3600)
 # An instance admin's review of the suggestions (approve, delete, send to Discord): their own
 # count, larger than the editor's 60, so reviewing a backlog never blocks editing.
 SUGGEST_REVIEW_WRITES = Limit(scope="stress-suggest-review", requests=200, window_s=3600)
+# The approved Mass Ride hazards (GET /api/mass-hazards, core.mass_hazards): the front end
+# asks once when the Mass Ride map opens and again after an admin's approval (it does not
+# poll), usually a 304; 60 a minute is PLAN's figure for unauthenticated paths.
+MASS_HAZARDS = Limit(scope="mass-hazards", requests=60, window_s=60)
 
 
 def _normalise(candidate: str) -> str | None:

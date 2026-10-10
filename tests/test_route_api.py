@@ -67,6 +67,9 @@ CONTRACT_KEYS = {
     "intersections",
     # Additive, OWNER-DECISIONS items 233 and 234: a Mass Ride's groups of signalized crossings.
     "intersection_groups",
+    # Additive, FOLLOWUP-MASSRIDE-MAP part 3 (OWNER-DECISIONS 325-327): approved rider-marked
+    # hazards along a Mass Ride; null on other ride types.
+    "mass_hazards",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
