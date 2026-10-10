@@ -72,6 +72,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("road_speed_mph"),
             row.get("road_lanes"),
             row.get("road_oneway"),
+            row.get("road_default_speed_mph"),
+            row.get("road_urban"),
             *_adjustment_columns(row["stress"]),
             _attr_sources_json(row["stress"]),
             row.get("trail_name"),
@@ -92,7 +94,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -117,6 +119,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         road_speed_mph,
                         road_lanes,
                         road_oneway,
+                        road_default_speed_mph,
+                        road_urban,
                         *adjustment,
                         attr_sources,
                         trail_name,
@@ -153,6 +157,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     road_speed_mph,
                     road_lanes,
                     road_oneway,
+                    road_default_speed_mph,
+                    road_urban,
                     *adjustment,
                     attr_sources,
                     trail_name,
@@ -172,6 +178,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      sinuosity, is_trail_class, is_unpaved, is_rough, lit, facility,
                      car_free_when, map_class, separate_bikeway,
                      mtb_only, walk_bike, road_speed_mph, road_lanes, road_oneway,
+                     road_default_speed_mph, road_urban,
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,

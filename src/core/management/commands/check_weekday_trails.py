@@ -48,6 +48,7 @@ TRIPS = {
 }
 STRESS_AVERSE = ("default", "cargo", "ebike", "trailmaxxing")
 REPORTED = ("group-ride", "fast", "mass-ride")
+# Night is left out on purpose: it routes on the same standard graph.
 WHENS = ("weekday_rush", "weekday_offpeak")
 MAX_ROAD_M = 100.0  # 330 ft
 NEAR_M = 60.0  # 200 ft

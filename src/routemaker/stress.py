@@ -221,6 +221,40 @@ MD_VA_URBAN_DEFAULT_MPH = {
     "primary": 35.0,
     "primary_link": 35.0,
 }
+# The statutory defaults themselves, which the junction model prices an
+# unposted road at (OWNER-DECISIONS 469, 469a). The classifier above reads
+# MDOT's imputation by class inside urban areas and its own rural table; whether
+# it should read these instead is the owner's call, so only junction cost does.
+# Maryland, Transportation 21-801.1 (MDOT SHA,
+# https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295): business
+# district 30; residential undivided 30, divided 35; other undivided 50, divided
+# 55. Virginia, Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300 (VDOT,
+# https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/): 25 in
+# business and residence districts, 55 elsewhere, 35 on a highway that is not
+# surface treated. A business or residence district is read as inside an urban
+# area, and divided as a carriageway of a divided road (`routemaker.divided`).
+MD_STATUTORY_URBAN_MPH = (30.0, 35.0)  # (undivided, divided)
+MD_STATUTORY_OTHER_MPH = (50.0, 55.0)
+VA_STATUTORY_URBAN_MPH = 25.0
+VA_STATUTORY_OTHER_MPH = 55.0
+VA_STATUTORY_UNPAVED_MPH = 35.0
+
+
+def statutory_default_mph(
+    tags: dict[str, str], zone: str | None, urban: bool, divided: bool
+) -> float | None:
+    """The speed limit the law sets where none is posted, or None where the
+    state is not known."""
+    if zone == "DC":
+        return DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
+    if zone == "MD":
+        return (MD_STATUTORY_URBAN_MPH if urban else MD_STATUTORY_OTHER_MPH)[divided]
+    if zone == "VA":
+        district = VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
+        return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
+    return None
+
+
 # The keys a mapper records the legal basis of a limit in (OSM's
 # `maxspeed:type`, and its older `source:maxspeed`), as `US-DC:urban` and the
 # like: where one names the District it is read as the District's default, as
@@ -453,6 +487,12 @@ class StressResult:
     # of 2b0cf00, blocker 1).
     oneway: bool | None = None
     graph_oneway: bool | None = None
+    # Where nothing was posted, the jurisdiction's statutory default
+    # (`statutory_default_mph`), or the speed the classifier assumed where the
+    # state is not known. None where a speed was read.
+    # Never said to a rider; the junction model prices an unposted road at it
+    # (OWNER-DECISIONS 469: "use each jurisdiction's statutory default").
+    default_speed_mph: float | None = None
     # The tier the classifier gave on the agency's own count, where the street's
     # median (`pipeline.aadt_smoothing`) lowered it; None everywhere else, and
     # dropped by anything that sets the tier afresh (an override row, a named
@@ -1146,6 +1186,11 @@ def _classify(
         lanes=None if "lanes" in assumed else lanes,
         oneway=oneway,
         graph_oneway=is_oneway(tags),
+        default_speed_mph=(
+            (statutory_default_mph(tags, zone, urban, divided) or speed_mph)
+            if "maxspeed" in assumed
+            else None
+        ),
     )
 
 

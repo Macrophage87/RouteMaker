@@ -78,6 +78,8 @@ test("the Ride line follows the sliders, the ride time, the loop and gravel; and
   assert.equal(whenShort("weekday_rush"), "weekday rush");
   assert.equal(whenShort("weekday_offpeak"), "weekday off-hours");
   assert.equal(whenShort(null), "now");
+  // AM and PM keep their capitals, which a screen reader says as letters.
+  assert.equal(whenShort("night"), "night, 9 PM to 7 AM");
 });
 
 test("every slider position has words, and Mass Ride's locked slider says what it is", () => {

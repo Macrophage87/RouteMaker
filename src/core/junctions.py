@@ -59,7 +59,12 @@ from dataclasses import dataclass, field, replace
 from django.conf import settings
 from django.db import connection
 
-from pipeline.schema import ROAD_TRAIT_COLUMNS, UNSMOOTHED_TIER_COLUMN, validate_schema_name
+from pipeline.schema import (
+    ROAD_COST_COLUMNS,
+    ROAD_TRAIT_COLUMNS,
+    UNSMOOTHED_TIER_COLUMN,
+    validate_schema_name,
+)
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Control,
@@ -114,11 +119,13 @@ TRAIL_USES = (
 AT_START, AT_END = 0.001, 0.999
 
 _ROADS_BY_WAY = """
-SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway
+SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway,
+       seg.default_speed, seg.urban
 FROM unnest(%s::int[], %s::bigint[], %s::float8[], %s::float8[]) AS j(idx, way, lon, lat)
 CROSS JOIN LATERAL (
     SELECT {tier} AS tier, s.volume_aadt AS aadt, {speed} AS speed,
-           {lanes} AS lanes, {oneway} AS oneway
+           {lanes} AS lanes, {oneway} AS oneway,
+           {default_speed} AS default_speed, {urban} AS urban
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = j.way
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
@@ -127,6 +134,7 @@ CROSS JOIN LATERAL (
 """
 
 _has_trait_columns_seen = False
+_has_cost_columns_seen = False
 _has_unsmoothed_tier_seen = False
 
 
@@ -146,6 +154,24 @@ def has_trait_columns(schema: str) -> bool:
         )
         _has_trait_columns_seen = cursor.fetchone()[0] == len(ROAD_TRAIT_COLUMNS)
     return _has_trait_columns_seen
+
+
+def has_cost_columns(schema: str) -> bool:
+    """Whether the live segment table has `road_default_speed_mph` and
+    `road_urban` yet (the first rebuild after OWNER-DECISIONS 469). Until then
+    the junction model falls back as `routemaker.intersections` says.
+    Remembered once seen."""
+    global _has_cost_columns_seen
+    if _has_cost_columns_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = ANY(%s)",
+            [schema, list(ROAD_COST_COLUMNS)],
+        )
+        _has_cost_columns_seen = cursor.fetchone()[0] == len(ROAD_COST_COLUMNS)
+    return _has_cost_columns_seen
 
 
 def has_unsmoothed_tier(schema: str) -> bool:
@@ -762,6 +788,7 @@ def roads_by_way(
         return {}
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     traits = has_trait_columns(schema)
+    costs = has_cost_columns(schema)
     # The crossed road's tier before same-street AADT smoothing lowered its
     # link, where it did: the count bunched at the intersection is charged
     # here, and only here (OWNER-DECISIONS 303: "we don't want to double
@@ -781,19 +808,23 @@ def roads_by_way(
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",
+        default_speed="s.road_default_speed_mph" if costs else "NULL::smallint",
+        urban="s.road_urban" if costs else "NULL::boolean",
     )
     arrays = [list(column) for column in zip(*wanted_ways, strict=True)]
     params = [*arrays, *([when] if with_facility else [])]
     found: dict[tuple[int, int], Road] = {}
     with connection.cursor() as cursor:
         cursor.execute(query, params)
-        for idx, way_id, tier, aadt, speed, lanes, oneway in cursor.fetchall():
+        for idx, way_id, tier, aadt, speed, lanes, oneway, default, urban in cursor.fetchall():
             found[(idx, way_id)] = Road(
                 tier=int(tier) if tier is not None else None,
                 speed_mph=float(speed) if speed is not None else None,
                 lanes=int(lanes) if lanes is not None else None,
                 oneway=oneway,
                 aadt=int(aadt) if aadt is not None else None,
+                default_speed_mph=float(default) if default is not None else None,
+                urban=urban,
             )
     return found
 
@@ -907,7 +938,7 @@ def events_of(
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
     built = build_junctions(raws, nodes, roads)
-    events = assess_route(built, group)
+    events = assess_route(built, group, when=when)
     if not group:
         return events
     return with_majors(built, events)

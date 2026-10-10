@@ -55,8 +55,9 @@ def reading(lts4=0.0, lts3=0.0, red=(), orange=(), effort=None, length=10_000.0)
 
 class TestTheFigures:
     def test_red_and_orange_junctions_are_told_apart_by_their_cost(self) -> None:
-        a = reading(red=[3000.0, 2100.0], orange=[1000.0, 1500.0])
-        assert a.red_m == pytest.approx(5100.0 / FT)
+        # Red is from 2,900 ft since 468 (it was 2,000): 2,100 became 3,000.
+        a = reading(red=[3000.0, 3000.0], orange=[1000.0, 1500.0])
+        assert a.red_m == pytest.approx(6000.0 / FT)
         assert a.orange_m == pytest.approx(2500.0 / FT)
 
     def test_the_top_figure_is_lts4_and_avoid_plus_the_red_cost(self) -> None:
@@ -553,7 +554,7 @@ class TestTheHoldOnTheTopFigure:
 
     def test_a_red_junction_gained_counts_against_it(self) -> None:
         ctx = self.held(held_reading(100.0))
-        assert refine.more_lts4(held_reading(100.0, red=[2500.0]), ctx.first_lts4, ctx)
+        assert refine.more_lts4(held_reading(100.0, red=[3500.0]), ctx.first_lts4, ctx)
 
     def test_an_orange_junction_does_not_count_in_it(self) -> None:
         ctx = self.held(held_reading(100.0))
@@ -570,7 +571,7 @@ class TestTheHoldOnTheTopFigure:
 
     def test_each_legs_red_junctions_count_in_that_leg(self) -> None:
         a = held_reading(0.0)
-        a.events = [event(150.0, 3000.0), event(850.0, 2400.0), event(300.0, 1000.0)]
+        a.events = [event(150.0, 3000.0), event(850.0, 3200.0), event(300.0, 1000.0)]
         a.pieces = [
             routing.Piece(1, BASE[0], BASE[1], 500.0),
             routing.Piece(1, BASE[0], BASE[1], 500.0),
@@ -578,7 +579,7 @@ class TestTheHoldOnTheTopFigure:
         a.classes = [("1", "none"), ("1", "none")]
         a.via_m = [500.0]
         legs = refine.top_by_leg(a)
-        assert legs[0] == pytest.approx(3000.0 / FT) and legs[1] == pytest.approx(2400.0 / FT)
+        assert legs[0] == pytest.approx(3000.0 / FT) and legs[1] == pytest.approx(3200.0 / FT)
 
     def test_a_junction_at_the_very_end_belongs_to_the_last_leg(self) -> None:
         a = held_reading(0.0)

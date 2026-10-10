@@ -1407,9 +1407,10 @@ class TestTheTieStepOnEveryPreset:
         assert not got.remove and got.needed_m == 50.0
 
     def test_an_orange_junction_counts_at_the_second_level(self) -> None:
-        # 700 ft of junction cost (an orange junction is 600 ft or more) is 213 m.
-        got = verdict(read(turns=2), read(orange=[700.0]), CTX)
-        assert not got.remove and got.avoided_m == pytest.approx(700.0 * FT)
+        # 900 ft of junction cost (an orange junction is 800 ft or more since 468; 700 ft
+        # was one at 600) is 274 m.
+        got = verdict(read(turns=2), read(orange=[900.0]), CTX)
+        assert not got.remove and got.avoided_m == pytest.approx(900.0 * FT)
 
     def test_the_guards_still_hold(self) -> None:
         for ctx in (TOP, CTX):

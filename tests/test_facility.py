@@ -127,7 +127,7 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         # Evening rush only: not every rush instant, so not rush.
         ("no @ (Mo-Fr 16:00-19:00)", set()),
         ("no @ (Mo-Fr 07:00-10:00,16:00-19:00)", {"weekday_rush"}),
-        ("no @ (Mo-Su 00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak"}),
+        ("no @ (Mo-Su 00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak", "night"}),
         # Morning rush only: the evening instant is open (R21).
         ("no @ (Mo-Fr 07:00-10:00)", set()),
         # An interval's end is outside it: 08:00 and 17:30 are the rush
@@ -148,7 +148,13 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         # noon are not.
         ("no @ (06:00-10:15,14:45-19:15)", {"weekday_rush"}),
         ("no @ (08:00-20:00)", {"weekend", "weekday_rush"}),
-        ("no @ (00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak"}),
+        ("no @ (00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak", "night"}),
+        # Closed to cars overnight only: car-free at night alone (OWNER-DECISIONS 469c).
+        ("no @ (22:00-06:00)", {"night"}),
+        # Night is every night: weekday nights alone are not it.
+        ("no @ (Mo-Fr 22:00-06:00)", set()),
+        # Off-peak's evening instant is 20:30, before night begins at 21:00.
+        ("no @ (Mo-Fr 07:00-21:00)", {"weekday_rush", "weekday_offpeak"}),
         # One unreadable branch makes the value unreadable, in either order
         # and whatever the readable one covers (correctness review, round 3, R19).
         ("no @ (Sa-Su); no @ (sunset-sunrise)", set()),
@@ -198,7 +204,12 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 9, 28, 7, 0, tzinfo=ridetime.ZONE), "weekday_rush"),  # Monday
         (datetime(2026, 9, 28, 9, 59, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2026, 9, 28, 10, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
-        (datetime(2026, 9, 28, 6, 59, tzinfo=ridetime.ZONE), "weekday_offpeak"),
+        # Night is 21:00 to 07:00 on any day (OWNER-DECISIONS 469c).
+        (datetime(2026, 9, 28, 6, 59, tzinfo=ridetime.ZONE), "night"),
+        (datetime(2026, 9, 28, 20, 59, tzinfo=ridetime.ZONE), "weekday_offpeak"),
+        (datetime(2026, 9, 28, 21, 0, tzinfo=ridetime.ZONE), "night"),
+        (datetime(2026, 9, 26, 23, 0, tzinfo=ridetime.ZONE), "night"),  # Saturday night
+        (datetime(2026, 9, 26, 7, 0, tzinfo=ridetime.ZONE), "weekend"),
         (datetime(2026, 9, 28, 16, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2026, 9, 28, 19, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         # Labor Day 2026 is Monday 7 September; Thanksgiving is 26 November.
@@ -230,13 +241,14 @@ def test_when_at(moment, when):
     [
         # 12:30 UTC on Tuesday 29 September is 08:30 in Washington (R9).
         (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush"),
-        # 02:00 UTC on Saturday 3 October is 22:00 on Friday there.
-        (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "weekday_offpeak"),
-        # 03:30 UTC on Monday 28 September is still Sunday evening.
-        (datetime(2026, 9, 28, 3, 30, tzinfo=UTC), "weekend"),
+        # 02:00 UTC on Saturday 3 October is 22:00 on Friday there: night.
+        (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "night"),
+        # 00:30 UTC on Monday 28 September is still Sunday evening, 20:30.
+        (datetime(2026, 9, 28, 0, 30, tzinfo=UTC), "weekend"),
         # And in winter, five hours behind: 13:30 UTC on 12 January is 08:30.
         (datetime(2027, 1, 12, 13, 30, tzinfo=UTC), "weekday_rush"),
-        (datetime(2027, 1, 12, 11, 30, tzinfo=UTC), "weekday_offpeak"),
+        (datetime(2027, 1, 12, 11, 30, tzinfo=UTC), "night"),  # 06:30
+        (datetime(2027, 1, 12, 15, 30, tzinfo=UTC), "weekday_offpeak"),  # 10:30
     ],
 )
 def test_when_at_reads_a_utc_moment_in_the_regions_time(moment, when):

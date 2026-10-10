@@ -652,7 +652,7 @@ export const STRESS_TILE_LAYER = "stress";
  * ride times the road draws exactly as an off-road path, tier 1, and in any
  * other with its own stress, and a zoomed-out tile's road is not drawn then.
  * A road closed for good is a path in the tiles already. `when` is the ride
- * time the map follows: "weekend", "weekday_rush" or "weekday_offpeak".
+ * time the map follows: "weekend", "weekday_rush", "weekday_offpeak" or "night".
  */
 const carFreeNow = (when) => [
   "in",

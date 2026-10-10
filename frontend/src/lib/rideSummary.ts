@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, fitTarget, stressMax, trailsOffLocked, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, fitTarget, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { presetLabel, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -35,10 +35,11 @@ export function hillsShort(hills: number): string {
   return "seeks hills";
 }
 
-/** The ride time: "now" for "when I'm planning", else the option's own words, lower case. */
+/** The ride time: "now" for "when I'm planning", else the option's own words, first letter lowered. */
 export function whenShort(when: Dials["when"]): string {
   if (when === null) return "now";
-  return WHENS.find((option) => option.id === when)?.label.toLowerCase() ?? "now";
+  const label = WHENS.find((option) => option.id === when)?.label;
+  return label ? whenInSentence(label) : "now";
 }
 
 /** The ride type as the summary names it: "Default", "Custom (based on Default)", with its load and assist. */

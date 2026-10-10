@@ -118,7 +118,9 @@ test("it says where it differs from the literature, and links the full list", ()
   assert.equal(h2s.filter((h) => /^Sources/.test(h)).length, 1, h2s.join(" | "));
   assert.doesNotMatch(page, /<code>docs\/stress\/literature\.md<\/code>/);
   assert.match(text, /We add an Avoid level/);
-  assert.match(text, /the planned rush-hour change/);
+  // The rush-hour change is built (OWNER-DECISIONS 468a, 469c-469e), so it is no longer "planned".
+  assert.match(text, /We also chose the size of the rush-hour change ourselves, because the one study behind it is small\./);
+  assert.doesNotMatch(text, /planned rush-hour|planned crossing costs/);
 });
 
 test("the sources list: one list under Sources, one item for each source, plain text titles", () => {
@@ -148,10 +150,15 @@ test("the Census credit names the dataset (docs/SOURCES.md: TIGER/Line 2024, 202
 
 test("US units first, metric in brackets", () => {
   assert.match(text, /1 mile \[1\.6 km\]/);
-  assert.match(text, /1,200 feet \[370 m\]/);
+  // Junction costs are in calm miles first, then [km; ft] (OWNER-DECISIONS 467; option C, 468).
+  assert.match(text, /0\.30 calm miles \[0\.49 km; 1,600 ft\]/);
   assert.doesNotMatch(text, /\b\d+ (m|km)\b(?![^[]*\])/, "a metric figure outside brackets");
   // And every US figure has its metric (the accessibility review's N6): "20 mph" alone fails.
-  const figures = [...text.matchAll(/\b\d[\d,.]*(?: to \d[\d,.]*)? (?:extra )?(?:mph|feet|miles?)\b(.{0,2})/g)];
+  // Junction costs in calm miles count too (a rate, "calm miles per mile", has no metric).
+  const figures = [
+    ...text.matchAll(/\b\d[\d,.]*(?: to \d[\d,.]*)? (?:extra )?(?:mph|feet|miles?)\b(.{0,2})/g),
+    ...text.matchAll(/\b\d[\d,.]*(?: to \d[\d,.]*)? calm miles\b(?! per)(.{0,2})/g),
+  ];
   assert.ok(figures.length >= 8, String(figures.length));
   for (const m of figures) assert.equal(m[1], " [", `metric missing after "${m[0]}"`);
 });
@@ -177,14 +184,17 @@ test("the sources are credited in text", () => {
   }
 });
 
-// The crossing-cost time bands were decided (OWNER-DECISIONS 469c-469e) but are not built, so the page
-// gives them as planned, not as an unconfirmed idea.
+// Half steps are not built, so the page gives them as planned. The crossing costs and their time
+// bands (OWNER-DECISIONS 467, 468, 468a, 469c-469e) are built, so they are described under Junction
+// warnings in the present tense and are no longer in the planned section.
 test("what is not built is marked planned", () => {
-  assert.match(page, /<h2 id="planned">Half steps and crossing costs \(planned\)<\/h2>/);
+  assert.match(page, /<h2 id="planned">Half steps \(planned\)<\/h2>/);
   assert.match(text, /Planned, not built yet\./);
   assert.match(page, /<h3>Half steps<\/h3>/);
-  assert.match(page, /<h3>Crossing costs<\/h3>/);
-  assert.match(text, /Crossings will also cost a little more at weekday rush hours, and less at night and on weekend days\. These are planned, and the numbers are not final\./);
+  assert.doesNotMatch(page, /<h3>Crossing costs<\/h3>/);
+  const junctions = page.match(/<h2 id="junctions">[\s\S]*?<\/section>/)?.[0].replace(/\s+/g, " ") ?? "";
+  assert.match(junctions, /count for more at weekday rush hours \(7 to 10 AM and 4 to 7 PM\), a little less on weekend days, and less again at night \(9 PM to 7 AM, every day\)/);
+  assert.doesNotMatch(junctions, /[Pp]lanned|will cost/);
   assert.doesNotMatch(text, /proposed but not yet confirmed|proposed rush-hour/);
   assert.doesNotMatch(text, /Its details are still to be confirmed|single setting/);
 });

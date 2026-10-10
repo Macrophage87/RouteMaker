@@ -405,6 +405,18 @@ once and remembers the answer, as `core.routing` does for the facility columns,
 so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
+**Statutory speeds and the night ride time (OWNER-DECISIONS 469-469e).** No
+restart and no router rebuild. The segment table gains `road_default_speed_mph`
+and `road_urban` with the next rebuild; until then an unposted LTS 4 road is
+priced at 45 mph and every night junction at x0.85. A request without `when`
+between 9 PM and 7 AM is now `night`, which routes on the standard graph on
+every day, so weekend-router load falls and standard-router load rises in those
+hours. The next rebuild adds `night` to `car_free_when` and moves the off-peak
+sample instant from 21:00 to 20:30, so a few ways' off-peak car-free status may
+change: compare the counts with the previous build after the promotion. Until
+that rebuild, a night ride treats timed closures as open to cars. Rolling the
+images back to before this change makes a saved `when: "night"` a 422.
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
@@ -3535,8 +3547,12 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
 Each process remembers, for its life, that the live segment table has the
-facility, adjustment and road-trait columns (`routing._has_facility_columns`,
-`_has_adjustment_columns`, `junctions.has_trait_columns` cache a True). Rolled
+facility, adjustment, road-trait and junction-cost columns
+(`routing._has_facility_columns`, `_has_adjustment_columns`,
+`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
+cache a True). Rolled back past the junction-cost columns
+(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
+intersection: the logs say "the intersection events could not be read". Rolled
 back to a build from before those columns (20260927 and earlier), every route
 query still names `seg.car_free_when` and `facility`, nothing catches the
 database error, and every route answers 500 until the processes start again.
