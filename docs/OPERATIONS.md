@@ -2809,6 +2809,14 @@ why a ride past 93 mi (150 km) of straight line is ordered by straight line with
 many times over. Its time and memory on a real router have not been measured; measure one 25-point
 matrix at about 90 mi (145 km) before relying on it near that line.
 
+The nearest water, restroom or Metro search (`POST /api/nearest`, `core.nearest`) asks the same
+`sources_to_targets`, one row of at most 10 places, and needs the same one restart; until then it
+answers by straight line (`by` is `straight_line`, the page says so) and the api logs "the <variant>
+router gave no distances to the nearest places" at WARNING, with no points. It has the same slot,
+time limits and per-client 60 requests a minute as Best order and `/route` (one budget: a search and
+the route a Ride here then plans count twice), and a place over 93 mi (150 km) away is measured in a
+straight line without asking the router.
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
