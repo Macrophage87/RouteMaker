@@ -254,7 +254,7 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
-## The Mass Ride flow model (pending: FOLLOWUP-FLOW-CALIBRATION)
+## The Mass Ride flow model (literature checked; video check pending: FOLLOWUP-FLOW-CALIBRATION)
 
 - Credit: on the chart's source line, "Riders per minute: estimated from road widths (in
   DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC
@@ -281,10 +281,110 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item
   175). The grade factors (the climb's 12 per unit of grade above 1%, the 150 m
   set-in, the descent's 5 per unit past 4%, the 30% and 60% floors) are not from a
-  measurement.
-- Status: accepted as the working model (OWNER-DECISIONS 394); sources pending
-  FOLLOWUP-FLOW-CALIBRATION, which checks the constants against the literature and the
-  owner's DC event videos and records the sources here.
+  measurement; the climb factor agrees with Parkin and Rotheram (2010) up to about 6%
+  (below), and no source was found for the descent.
+- Status: accepted as the working model (OWNER-DECISIONS 394). FOLLOWUP-FLOW-CALIBRATION's
+  literature half is done (below, and [FLOW-CALIBRATION.md](FLOW-CALIBRATION.md) for
+  each constant, its range and the recommendation); no constant was changed. The
+  owner's DC event videos, the other half, are pending.
+
+### The Mass Ride flow model: literature checked
+
+Read for FLOW-CALIBRATION.md (2026-10-10). Bicycle traffic, not mass rides: no rigorous
+study of a Critical Mass or Bike Party ride was found. Figures are as published; the
+per-foot conversions are on FLOW-CALIBRATION.md.
+
+- Guo, N., Jiang, R., Wong, S. C., Hao, Q.-Y., Xue, S.-Q. and Hu, M.-B. (2021).
+  "Bicycle flow dynamics on wide roads: Experiments and simulation." *Transportation
+  Research Part C* 125, 103012. https://doi.org/10.1016/j.trc.2021.103012 (preprint read:
+  https://arxiv.org/abs/1904.06084). 100 riders on a 10 ft (3 m) wide ring track. "The
+  flow rate then becomes almost constant until the density reaches 0.50 bicycles/m²";
+  free flow below 0.17/m²; "The density in the jam is around ρ1 =0.8 bicycles/m²";
+  the moving ("go") flow inside the stop-and-go waves of its densest run "~0.55
+  bicycles/s/m" (the paper gives no single plateau figure); "The maximum speed of a bicycle is around 15
+  km/h." Used for: density, pace and the level figure.
+- Guo, N., Wong, W., Jiang, R., Wong, S. C., Hao, Q.-Y. and Wu, C.-Y. (2024). "Bicycle
+  Flow Dynamics of Cyclist Loading and Unloading Processes at Bottlenecks."
+  *Transportation Science* 58(2), 340-354. https://doi.org/10.1287/trsc.2023.0193 (read:
+  https://hub.hku.hk/bitstream/10722/342964/1/content.pdf). An exit width of 4.9 ft
+  (1.5 m) on a 10 ft (3 m) track, 80 riders; capacity "approximately 1.15 cyclists/s" unloading
+  and "approximately 1.3 cyclists/s" loading; critical densities "approximately 0.125"
+  and "0.2 cyclists/m2"; congested speed "approximately 0.8 m/s"; "a common desired
+  speed of about 3.8 m/s". Used for: compression, density, pace.
+- Wierbos, M. J., Knoop, V. L., Hänseler, F. S. and Hoogendoorn, S. P. (2019).
+  "Capacity, Capacity Drop, and Relation of Capacity to the Path Width in Bicycle
+  Traffic." *Transportation Research Record* 2673(5), 693-702.
+  https://doi.org/10.1177/0361198119840347. Delft, 34 riders, bottlenecks 1.6 to 4.9 ft
+  (0.50 to 1.50 m). "The reported capacity values show a large range between 2,600 and 8,100 bicycles
+  per hour"; "For an additional meter of path width ... the capacity increases by 1.11
+  cyc/s"; "the flow rate drops 0.45 cyc/s when the cycling conditions change from free
+  flow to congested." Used for: the level figure's range, compression.
+- Kaths, H., Roosta, A., Fischer, J., Kathmann, T. and Pušica, A. (2025). "Mapping
+  Bicycle Traffic Flow Across the Width of a Bicycle Path to Inform Facility Design."
+  *Transportation Research Record*. https://doi.org/10.1177/03611981251353715. Its Table 1
+  lists capacities per metre of width: experiments ~4,500 (Navin), ~3,600 (Zhang et al.),
+  ~2,000 (Wierbos, 1 m path; Kaths' source for this is Wierbos' 2021 PhD thesis, not
+  read), ~1,800 (Guo et al.); field 1,500 (Greibe and Buch), 1,531
+  (Hoogendoorn and Daamen). Density "built first on the right-hand side"; "Only very low
+  densities occurred on the far left-hand sublane." Used for: the level figure's range
+  (Navin, Zhang and Hoogendoorn and Daamen are cited from this table only; their papers
+  were not read), utilisation.
+- Buch, T. S. and Greibe, P. (2014). *Bredde af cykelstier: Analyse af adfærd og
+  kapacitet* (Width of cycle tracks: analysis of behaviour and capacity). Trafitec, for
+  the Danish Cykelpuljen.
+  https://trafitec.dk/wp-content/uploads/2023/05/183-Bredde-af-cykelstier-Analyse-af-adfaerd-og-kapacitet-Baggrundsrapport.pdf.
+  Eight Copenhagen one-way tracks, 5.7 to 9.4 ft (1.73 to 2.85 m). "Kapaciteten for en 2,0 meter bred sti
+  (ekskl. kantsten) er ca. 3.000 cykler pr. time" (about 3,000 an hour on a 6.6 ft (2.0 m) track);
+  mean speed 13.5 mph (21.7 km/h); second rider abreast with the front wheel 4.3 to 6.1 ft (1.30 to 1.85 m) from the kerb; a third
+  abreast "Kun i få tilfælde og kun på de fire bredeste stier" (only in a few cases, and
+  only on the four widest tracks). Used for: the level figure, utilisation, pace.
+- Seriani, S., Fernández, R. and Hermosilla, E. (2015). "Experimental study for
+  estimating capacity of cycle lanes." *Transportation Research Procedia* 8, 192-203.
+  https://doi.org/10.1016/j.trpro.2015.06.054. Saturation flow 2,070 bicycles/h on a 3.3 ft (1.0 m)
+  and 4,657 on a 6.6 ft (2.0 m) cycle track (Santiago), 4,320 on 3.3 ft (London, Tavistock Square);
+  "the saturation flow grows almost linearly with the width." Used for: the level figure.
+- Yuan, Y., Goñi-Ros, B., Poppe, M., Daamen, W. and Hoogendoorn, S. P. (2019). "Analysis
+  of Bicycle Headway Distribution, Saturation Flow and Capacity at a Signalized
+  Intersection using Empirical Trajectory Data." *Transportation Research Record*
+  2673(6), 10-21. https://doi.org/10.1177/0361198119839976. Amsterdam, a 6.6 ft (2 m) path:
+  saturation flow 4,376 to 4,626 cyc./h. Used for: the level figure, compression at signals.
+- Federal Highway Administration (1998). *Capacity Analysis of Pedestrian and Bicycle
+  Facilities: Recommended Procedures for the "Bicycles" Chapter of the Highway Capacity
+  Manual.* FHWA-RD-98-108.
+  https://www.fhwa.dot.gov/publications/research/safety/pedbike/98108/chapter2.cfm and
+  chapter3.cfm. "A "lane" for bicycles ... is considered to be approximately 1.0 m (3.3
+  ft)"; lanes up to 1.8 m (6 ft) "will operate with two effective lanes"; "a saturation
+  flow rate of 2,000 bicycles/h of green be used as an average value"; "The ideal
+  saturation flow rate may be as high as 2,600 bicycles/h of green"; path speeds "a mean
+  of 18 km/h (11.2 mi/h)". Used for: the level figure, utilisation, pace.
+- Parkin, J. and Rotheram, J. (2010). "Design speeds and acceleration characteristics of
+  bicycle traffic for use in planning, design and appraisal." *Transport Policy* 17(5),
+  335-341. Read: https://uwe-repository.worktribe.com/OutputFile/987474. "on the flat, the
+  mean speed of cyclists is 6.01 m/s (21.6 kph)"; "for every additional 1% of uphill
+  gradient, the mean speed is reduced by 0.4002 m/s"; downhill "increased by 0.2379 m/s".
+  Used for: the climb and descent factors.
+- Attalla, S., Robertson, R. and Kodsi, S. (2015). "Cyclist's Choice of Speed, Radius and
+  Lateral Acceleration While Negotiating a Curve: A Closed Course Pilot Study." *Accident
+  Reconstruction Journal*, 19-21.
+  https://jsheld.com/uploads/Cyclists-Choice-of-Speed-Radius-and-Lateral-Acceleration-While-Negotiating-a-Curve.pdf.
+  42 riders, each riding alone. Speed in the turns 6.6 mph (10.6 km/h), radius 12.8 ft (3.9 m), lateral acceleration 0.23 g. Used for: pace
+  at turns (a small pilot).
+- National Association of City Transportation Officials. *Urban Street Design Guide*,
+  "Lane Width."
+  https://nacto.org/publication/urban-street-design-guide/street-design-elements/lane-width/.
+  "Lane widths of 10 feet are appropriate in urban areas"; "Lanes greater than 11 feet
+  should not be used"; "Parking lane widths of 7–9 feet are generally recommended." Used
+  for: the lane, parking and wide-lane width rules (OWNER-DECISIONS 404, 407).
+- National Cooperative Highway Research Program (2014). *Recommended Bicycle Lane Widths
+  for Various Roadway Characteristics.* NCHRP Report 766. National Academies Press.
+  https://doi.org/10.17226/22350 (read: the report PDF as NACTO hosts it,
+  https://nacto.org/wp-content/uploads/Part-III-Section-2-Citation-19_-NCHRP-766-1.pdf).
+  Summary, p. 3, design guidance item 5: "the open door zone width of parked vehicles
+  extends approximately 11 ft from the curb", "assuming the 95th-percentile parked
+  vehicle displacement and an open door width of 45 in". Summary, p. 2, design guidance
+  item 3: "In most situations where a bicycle lane is adjacent to on-street parking, the
+  suggested width for the parking lane is 8 ft". Used for: the door zone and
+  parking width (OWNER-DECISIONS 404 (1), 407 (1) and (2)).
 
 ## Used inside the project only (no credit)
 

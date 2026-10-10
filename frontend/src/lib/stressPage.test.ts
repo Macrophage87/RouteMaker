@@ -199,7 +199,10 @@ test("the stress chart is described as built, not planned", () => {
   assert.match(chart, /calm miles per mile/);
   assert.match(chart, /1 mile \[1\.6 km\]|mile \[1\.6 km\]/, "US units first, metric in brackets");
   assert.match(chart, /except Mass Ride/);
-  assert.match(chart, /an estimate/);
+  // Each road at its own routing cost (stress-number.md section 4): the page says so, and calls the
+  // figure an estimate only where a road's details were missing.
+  assert.match(chart, /by its own speed, lanes and bike lane/);
+  assert.doesNotMatch(chart, /For now the figure is an estimate|not yet by its own speed/);
   assert.doesNotMatch(text, /stress chart \(planned\)|A stress number and a rolling stress chart/);
 });
 

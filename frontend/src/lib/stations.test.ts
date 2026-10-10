@@ -199,7 +199,7 @@ test("each station is a real button named as it is read, with aria-pressed for t
 test("the lists are in the Bikeshare panel only and a choice is forgotten with its point", () => {
   assert.match(app, /preset === "bikeshare" && <NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/);
   assert.match(app, /activePins\(preset, points, stationPins\)/);
-  assert.match(app, /withStations\(withWeight\(dials, weight\), stationChoice\)/);
+  assert.match(app, /withStations\(withWeight\(routeDials, weight\), stationChoice\)/);
   assert.doesNotMatch(app, /encodePlan\([^)]*stationPins/, "never in the link");
 });
 
