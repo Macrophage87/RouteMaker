@@ -607,8 +607,9 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
-- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
-  own, for every ride type (the owner: "I want people to know where the trails
+- **Mountain-bike trails (452a, 454).** Drawn, while the "Mountain-bike
+  trails" map layer is on (454, below), in a not-for-routes look of their
+  own (the owner: "I want people to know where the trails
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
@@ -623,8 +624,10 @@ alone. Shape comes first and colour second:
   base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
   `routableMtb` is the switch a future MTB mode turns on: the class moves back
   into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
-  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
-  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  `isRoad` leaves `mtb` out; the routable stress layers stay hidden there, but
+  `mtb-trail` follows its own switch and keeps its filter without `massHides`
+  (nearly every trail row carries a capacity), and the Mass Ride legend gets
+  its row too (`MtbTrailLegend`). The tiles' `rough` is a rough surface, not this class. The
   legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
   `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
   the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
@@ -632,6 +635,18 @@ alone. Shape comes first and colour second:
   `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
   nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
   ride the class on the off-road graph, and their route draws over the dots.
+  Since 454 the line is an optional map layer, off until the rider turns it on:
+  the "Mountain-bike trails" switch under "Trails and terrain" in the Map
+  layers sheet (`lib/mtbTrailsSwitch.ts`; `stressStyle.js` `mtbTrailsOn`,
+  `setMtbTrails`, kept per browser under `routemaker.mtbTrails`, "on" or
+  "off"). `overlayLayerShown` shows `mtb-trail` by that switch alone, with the
+  stress map on or off and in every ride type, Mass Ride too; MapView sets the
+  visibility again in place when it changes. The legend row shows only while
+  the layer is on. The road panel answers from the segment table, so it still
+  describes a mountain-bike trail with the layer off; its Bike access line
+  says the dotted line is drawn "when the Mountain-bike trails map layer is
+  on". docs/MTB-TOPO-PLAN.md has the
+  rest of the mountain-bike and topo work.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -2006,6 +2021,51 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
+**The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
+alternatives by our own stress measures"; found comparing a planned route with a
+ridden one: the search only rerouted around the router's first route and never
+looked at the router's own alternatives). Wherever the calm search runs (above
+80, `Context.rank_alternates`), before its first round it asks the router once for
+the same route with `alternates` 3 (`refine.ROUTER_ALTERNATES`, the service's
+`max_alternates`), reads each alternative (its trace, stress and junctions) and
+ranks it with the first route by the rule every candidate meets (`refine.better`:
+below the top of the slider the score above, so the slider's rate sets how much
+distance a metre of LTS 3 avoided is worth; at the top the stress order and the
+worth of the extra miles) and the same guards (not busier than the first route, the
+LTS 4 hold, junctions read, within the ceiling). The rounds then start from
+whichever ranks first, so their exclusions are that route's busy stretches; the
+Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
+of the slider every alternative that passes the guards also joins the routes the
+rider is offered (`candidates`).
+
+Where the plan already asked for them with the same request (the hills slider's
+avoid half, `Context.router_trips`) those are ranked and none is asked again, and
+where that ask timed out none is asked at all; a route the target fitting
+(`_fit_target`, `_past_target`) asked for again with another costing gets the
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (6 s,
+a round's least and a second) before the search's own end, so at least one round is always
+left (the rounds were the whole calm search before 435), and the ask is not
+started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
+router's ask is held to its own `WEEKEND_TIMEOUT_S`.
+
+`calm_search.alternates` (`api.AlternatesOut`) says how many routes the router gave
+other than the one the search starts from (`given`: where the hills slider chose
+one of the router's alternatives, the router's first route is one of them), how
+many passed the guards (`ranked`), whether one was taken (`taken`), and `limited`,
+`time` where the ask or a reading ran out of its time (the search's own `limited`
+is unaffected: its rounds still run). It is null where none were asked for: a plan
+with stops or a loop (Valhalla gives alternatives between two locations only), a
+long calm plan's legs (each has only its share of the time, and alternatives
+roughly double a long leg's route; "Time, alternates and limits" below), or too
+little time left. The ask is one more `/route` (with alternatives: on the live
+router a warm 7.5 mi [12 km] route went from 0.2 s to 1 to 2 s with them, the
+climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative. Not measured on the live router from this branch (it was built where
+the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
+run after deploy). The detour acceptance rule decision 435 asks to revisit is
+unchanged here, pending the owner's answer to the proposal sent with this change
+(PLAN.md, 435, records it).
+
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
 round) as the exclusions, one round, at every position but Mass Ride's: the new
@@ -2047,8 +2107,7 @@ the host took 4 to 17 s, and the first plan after a process starts a few seconds
 more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
-`max_alternates` 3 (the search does not use alternates; Valhalla's alternates
-are near-optimal in its own cost, which is not where a calmer route is) and
+`max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
 - starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
