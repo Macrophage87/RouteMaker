@@ -504,10 +504,10 @@ services:
   # a single thor worker would serialise it.
   valhalla-standard:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
-    # immediately. (Still so at 3.6.3, docker/Dockerfile. Its sibling
+    # immediately. (Still so at 3.9.1, docker/Dockerfile. Its sibling
     # ghcr.io/valhalla/valhalla-scripted does have an ENTRYPOINT, which would
     # take `valhalla_service` below as its own command: not a drop-in.) With `restart: unless-stopped` that is a container that
     # restarts forever while answering nothing, which is what an env var named
@@ -538,7 +538,7 @@ services:
 
   valhalla-no-trail:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -570,7 +570,7 @@ services:
 
   valhalla-ebike:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -621,7 +621,7 @@ services:
   # siblings; measured resident on a DC box graph, see docs/OPERATIONS.md.
   valhalla-weekend:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -671,7 +671,7 @@ services:
   valhalla-offroad:
     <<: [*restart, *logging]
     profiles: ["offroad"]
-    image: ghcr.io/valhalla/valhalla:3.6.3
+    image: ghcr.io/valhalla/valhalla:3.9.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that

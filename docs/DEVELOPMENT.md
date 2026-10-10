@@ -1577,9 +1577,9 @@ not an oversight:
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per
 metre over the same edge with no tier, as a multiple of the edge's time cost:
-Valhalla's bicycle edge cost (3.5.1 and 3.6.3) is `time * factor`, with
+Valhalla's bicycle edge cost (3.5.1 to 3.9.1) is `time * factor`, with
 `factor = 1 + grade + accommodation * roadway_stress` (sif/bicyclecost.cc;
-3.6.3 then multiplies by a per-request linear-feature factor, 1 unless a
+from 3.6.0 it then multiplies by a per-request linear-feature factor, 1 unless a
 request sends `linear_cost_factors`, which RouteMaker does not), so the stress
 level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
 LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
@@ -1740,7 +1740,7 @@ it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
-Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a node through its stop impact and turn
+Valhalla's bicycle costing (3.5.1 to 3.9.1) prices a node through its stop impact and turn
 type, a few seconds. Measured on the live standard router (2026-10-01):
 `/trace_attributes` over routes along Wisconsin Avenue, Pennsylvania Avenue SE,
 K Street, Rhode Island Avenue, Georgia Avenue and Rockville Pike and across
@@ -3538,14 +3538,18 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
 
 - **gunicorn** logs the path without the query (`%(U)s`, docker/api-entrypoint.sh), with the
   duration (`%(D)s`): that is where a slow route now shows.
-- **Valhalla** (401): loki's and thor's `logging.long_request` is `NEVER_LONG_MS`, 3,600,000 ms,
-  far past httpd's 30 s timeout, so their slow-request warning, which can carry the request,
-  never fires. The cost is that Valhalla's own slow-request warnings are gone for every route;
-  route timing comes from the app's side: the time of the whole plan request, not of each router call
-  (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's Caddy keeps no access log). The routers read
-  the config only at start, so a deploy needs a restart. On the live stack:
-  `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend` (restart, not `up -d`).
-  tests/test_valhalla_config.py pins it on all four configs.
+- **Valhalla** (401): no Valhalla release RouteMaker has run, 3.5.1 to 3.9.1, reads a
+  `long_request` key. Only upstream's config generator and test configs name it, so there is no
+  slow-request log that could carry a request's locations. The `long_request` overrides set under
+  401 (`NEVER_LONG_MS`) never did anything, and the 3.9.1 upgrade dropped them
+  (reports/valhalla-3.9/README.md). The routers' own per-request lines are the `400::` and `500::`
+  error lines, which carry the error text and a request id, not the request. From 3.7.0 every
+  Valhalla program reads only the top-level `logging` section, which
+  scripts/build_valhalla_configs.py sets to std_out with colour off;
+  tests/test_valhalla_config.py::test_every_program_logs_plainly_to_stdout pins that and that no
+  per-module section is left. Route timing comes from the app's side: the time of the whole plan
+  request, not of each router call (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's
+  Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
   `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
@@ -3782,7 +3786,7 @@ answer on the source tags pinned.
 
 ## Lua
 
-The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 and 3.6.3) requires it
+The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 to 3.9.1) requires it
 (`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
 `graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
 under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
@@ -4014,7 +4018,8 @@ Tests: `lib/sidebar.test.ts`.
 
 Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) were on
 their own branch, wip/privacy-logs (OWNER-DECISIONS 401), which the rebuild bundle has merged; there the
-fifth (off-road) router carries the same `long_request` (31fd734). A "Use my location" button sits beside the search box (`.place-search-row`, in
+fifth (off-road) router carries the same `long_request` (31fd734). (Later found to be read by no
+Valhalla release, and dropped in the 3.9.1 upgrade: see "Logs and the rider's position".) A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -4071,8 +4076,8 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
     location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
     sheet's sign-in sentence and two test pins changed (the comment at the switch).
   - Server logs are not this branch's: with wip/privacy-logs (PLAN 401), which merges first, the location
-    in a reverse look-up's or a search's query stays out of the beta nginx logs and Valhalla's slow-request
-    log is off. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+    in a reverse look-up's or a search's query stays out of the beta nginx logs. (Valhalla turned out to have no
+    slow-request log to switch off; see "Logs and the rider's position".) Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
     viewed, as any map pan does.
 - **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
   button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).
@@ -5253,7 +5258,7 @@ Two narrower readings keep access where it was:
   bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
   a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
 
-Valhalla (3.5.1 and 3.6.3) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+Valhalla (3.5.1 to 3.9.1) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
 and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before

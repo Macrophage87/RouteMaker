@@ -161,7 +161,9 @@ function nodes_proc(kv, nokeys)
     apply(kv, changes)
   end
   strip_namespace(kv)
-  return up_nodes(kv, nokeys)
+  local filter, out = up_nodes(kv, nokeys)
+  remap.keep_barrier_type(out)
+  return filter, out
 end
 
 function rels_proc(kv, nokeys)

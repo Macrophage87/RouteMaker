@@ -494,8 +494,28 @@ def test_the_router_takes_as_many_exclusions_as_the_calm_search_sends(config: di
     assert config["service_limits"]["max_exclude_locations"] >= refine.MAX_EXCLUDES
 
 
-def test_no_request_is_slow_enough_to_be_logged_with_its_locations(config: dict) -> None:
-    """long_request far past the httpd timeout: the slow-request warning never fires (395)."""
-    timeout_ms = config["httpd"]["service"]["timeout_seconds"] * 1000
-    for service in ("loki", "thor"):
-        assert config[service]["logging"]["long_request"] > 100 * timeout_ms, service
+def test_every_program_logs_plainly_to_stdout(config: dict) -> None:
+    """From 3.7.0 every Valhalla program reads only the top-level `logging`
+    (valhalla/valhalla#5976). Colour off, so no ANSI escapes reach the build log
+    the pipeline reads; no module-level section left to suggest otherwise. No
+    Valhalla source reads a `long_request`, so no slow request is ever logged
+    with its locations (OWNER-DECISIONS 395)."""
+    assert config["logging"]["type"] == "std_out"
+    assert config["logging"]["color"] is False
+    for module in ("mjolnir", "loki", "thor", "odin", "meili"):
+        assert "logging" not in config.get(module, {}), module
+
+
+def test_no_request_can_lift_an_access_restriction() -> None:
+    """From 3.8.0 a request's `linear_cost_factors` can carry
+    `ignore_access_restrictions`, which skips timed and mode restrictions on the
+    edges it names (valhalla/valhalla#5942). RouteMaker builds every request
+    itself and sends none; this holds that, so a closure stays a closure."""
+    src = Path(__file__).resolve().parents[1] / "src"
+    offenders = [
+        str(path.relative_to(src))
+        for path in src.rglob("*.py")
+        if "linear_cost_factors" in path.read_text()
+        or "ignore_access_restrictions" in path.read_text()
+    ]
+    assert offenders == []

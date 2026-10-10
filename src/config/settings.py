@@ -323,8 +323,8 @@ REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024*
 # builds). Valhalla 3.5.1 can abort a multi-threaded build with "double free or
 # corruption" (valhalla/valhalla#5005, fixed in 3.6.0); fewer threads is fewer
 # chances of it and less memory, at the cost of a slower build. 1 avoids the race
-# entirely. The pinned image is 3.6.3, which has the fix; the default stays 2
-# until a 3.6.3 rebuild on the host has been measured at more (memory is the
+# entirely. The pinned image is 3.9.1, which has the fix; the default stays 2
+# until a rebuild on the host has been measured at more (memory is the
 # other reason it is low). See docs/OPERATIONS.md, "Tile build threads".
 # Empty or unset is the default, 2: compose hands the rebuild service an empty value
 # when .env does not set one. Anything else must be a whole number of at least 1,
