@@ -6529,7 +6529,7 @@ dropped (no signal at the start, or a base map that is not served). Where they a
   (`/basemap/fonts/*`, `/sprites/*`: `private, max-age=86400`) and which answers MapLibre's own
   requests with no network.
 
-What is kept is for one ride: a ride never outlives the page (no service worker yet). End ride clears
+What is kept is for one ride: a ride never outlives the page (the service worker keeps the app, never a ride). End ride clears
 it (`clearCorridor`, from RideMode's unmount), the next ride's first `keepCorridor` (`first`) clears
 before it fetches, and a time stamp in localStorage (`routemaker.corridor`, a time and never a place)
 lets the next page load clear whatever an earlier page kept (`sweepCorridor`; a page that never rode
@@ -6574,3 +6574,94 @@ network emulated offline (`Network.emulateNetworkConditions`; the mock serves no
 its ranges are not shown there), that End ride clears the bucket and empties the IndexedDB store, and the report's words, links,
 radios, note field and 44 px targets, on a desktop and (with an Android user agent) a phone. The ride
 on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, are the owner's.
+
+## The installable app (WEB-NAV P1-P4; OWNER-DECISIONS 434, 465, 465a, 465b)
+
+**Manifest and icons (P1).** `frontend/public/manifest.webmanifest` names the app RouteMaker, opens `/`
+standalone (Q8, 465) with scope `/`, and lists four icons: 192 and 512 px, `any` and `maskable`.
+The icons, and the 180 px `apple-touch-icon.png`, are drawn from `frontend/public/favicon.svg` (Q10,
+465b) by `python3 scripts/make_app_icons.py`, which renders the SVG with Chromium's headless shell
+(full Chrome's `--headless=new` crops the bottom of a small window) and is run again only when the
+favicon changes; the PNGs are committed. The maskable icons draw the glyph at 60 % on full-bleed blue,
+so a launcher's circle or squircle cuts nothing. `index.html` links the manifest with
+`crossorigin="use-credentials"` (so the beta's password is sent with it), carries the light and dark
+theme colours and the Apple tags.
+
+**The service worker (P2).** Hand-written, no Workbox: `frontend/src/sw/swCore.mjs` is both the worker
+and a module the tests import. The Vite plugin `swPlugin.mjs` (`appWorker()` in `vite.config.ts`)
+writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (the module with its
+`export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
+Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
+falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first;
+the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from
+the kept routes' bucket first. Everything else is not intercepted at all (no `respondWith`):
+`/api/*`, `/auth/*`, `/tiles/*`, the base map archive, the admin, every other navigation and every
+non-GET. Nothing private is cached. Matches use `ignoreVary` (a module script's request carries Origin
+and the precache's did not, so an edge that varies on Origin, as `vite preview` does, missed every one).
+
+A new worker precaches only when the edge's `index.html` carries its own build id (`precache`), so a
+deploy caught half published fails the install and the browser retries on the next load. It then
+waits; `lib/appWorker.ts` (registered only in a production build in a secure context, with
+`updateViaCache: 'none'`, checked again at most hourly when the page comes back to the front) shows
+"A new version of RouteMaker is ready" with Reload at the top of the planner (`AppStatusBar` in
+`InstallableApp.tsx`), said once through App's live region and held during a ride. Only Reload sends
+`SKIP_WAITING`; activate deletes older builds' caches (never the kept routes'). The kill switch,
+`swKill.mjs`, deletes the worker's own caches, unregisters, and reloads only the pages it controls (no
+loop); the owner copies it over `sw.js` on disk (OPERATIONS, "The app's service worker").
+
+**Routes kept for offline (P3).** "Keep for offline" under a route's figures, in the installed app
+(465a) and in a browser tab (the owner's choice of 2026-10-10; `keepOffered` with its one switch
+`KEEP_IN_BROWSER_TAB` in `lib/offlineRoutes.ts`;
+`keepForOffline` in App, `lib/offlineKeep.ts`) saves the plan, its API answer and its title first (IndexedDB
+`routemaker-offline`, store `routes`), then walks the corridor with N5's `prefetchCorridor` (same
+pacing and caps) into its own store: base map ranges in the store `ranges`, stress tiles, glyphs and the
+sprite in the Cache Storage bucket `routemaker-offline-v1` (`lib/offlineRouteStore.ts`). It asks
+`navigator.storage.persist()` at that press. At most `MAX_KEPT` (10) routes of the rider's; the last
+ride is one more, replaced by the next. A route is kept under `keptPlanKey`: the plan the route on
+screen answers (set with the answer, so a keep during a re-plan in flight files it under its own plan),
+without Mass Ride's ride size, which the planner never gets; the scheduler's offline lookup, the last
+ride and Settings' Open use the same key (Open keeps the ride size set now). The record names each
+tile and range before it is written (`progressSaver` writes the record every 2 s and at the end), and
+keeping a plan again starts from what its record named (`keptRecord`). Tiles are shared between routes,
+so the Web Locks lock `routemaker-kept` orders every tab: a keep and a hand-on hold it shared for their
+whole run, the final record write included; Remove's freeing, the last ride's replacement and
+`sweepKept` (what no record names, after a Remove and 20 s after load) take it exclusive and work out
+what to free only once they hold it. Remove deletes the record at once and frees later; Remove of the
+route being kept stops that keep and waits for it first (and that keep's press stays quiet). Whatever
+decides what to free reads the list strictly (`listKeptOrThrow`): iOS drops the IndexedDB connection
+after the app is in the background, and a read that fails frees nothing (a keep then fails) rather than
+reading as "no routes". Without Web Locks this page's keeps wait for a freeing asked for before them,
+freeings take turns and wait for the keeps before them, and the sweep is skipped (`keptLocks`; `offlineKeep.test.ts` runs each order with an
+in-memory store and a fake lock manager). Start ride stops a keep still fetching, and the last ride's
+freeing waits for its final write.
+In the installed app (465a) the last ride's route is kept automatically: at End ride, RideMode's
+`clearCorridor(lastRideAdopter())` hands the ride's own corridor over, so nothing is fetched twice. End
+ride stops keeping at once and runs the hand-on inside the clears' chain, so a quick Start ride waits for
+it and is never stopped by the old ride's clear. The hand-on is bound to its ride's record (the savedAt
+taken at Start ride) and adopts nothing into a next ride's record that got there first.
+Reading back: `CorridorSource` takes a read-only `fallback` (the kept ranges), consulted only when the
+network fails; `corridorStress.kept` reads the ride's copy and then the kept routes'. When a plan
+request fails with a network error, App's scheduler answers from the kept route with a notice that it
+may be out of date (`offlineRouteNotice`); a planner error is shown as usual. Settings lists them
+(`KeptRoutes`) with Open and Remove; Remove frees only the tiles and ranges no other kept route uses
+(`orphans`); a failed Remove says so. With nothing kept the store is never opened (`anyKept`, a count
+in localStorage): a failed base map range waiting on a first IndexedDB open kept MapLibre's style from
+loading. Nothing kept holds a position (a unit test checks).
+
+**Install offer (P4).** `watchInstall(window)` in `main.tsx` holds `beforeinstallprompt` before the
+first render and hears `appinstalled`. `InstallOffer` (Settings, and short in More tips) shows "Install
+RouteMaker", the iOS line "Press Share, then Add to Home Screen." (any iOS browser has it), or a
+note that it is installed when running standalone. Never a pop-up. After the browser's dialog the
+outcome stays as a note and the focus goes to the heading (Settings) or the note (More tips).
+
+**Accessibility.** Real buttons, 44 px tall, whose names include the route (visually hidden text);
+offline, back online (not said during a ride), the new version, kept, removed and the install outcome
+said politely once; after a Remove the focus goes to the next row's Remove, else the heading
+(`focusAfterRemove`). Forced-colours styles for every new part.
+
+**Tests.** `node --test frontend/src/sw/swCore.test.mjs` (the rule table row by row, precache's build
+check, activate, the kill switch, the generated scripts run in `vm`); `npm test` (node's test runner)
+for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback and End ride's hand-on
+order (`corridorStore.test.ts`); the browser suite's installable-app
+group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
+debugging port), with offline emulated on the page and the worker's target,.
