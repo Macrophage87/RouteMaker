@@ -4,7 +4,9 @@
 // scripts/a11y/run.sh, which starts Vite and an offline Chromium; prints one
 // line per check and exits non-zero if any fails.
 //
-//   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
+//   node scripts/a11y/check.mjs [--port 5173] [--cdp 9222] [--shots DIR]
+//
+// --port is Vite's, --cdp the Chromium debugging port (a browser of your own on a free port).
 import { mkdirSync } from "node:fs";
 import { RIDE_COORDS, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
@@ -22,7 +24,7 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
-const b = await connect();
+const b = await connect(Number(arg("--cdp", "9222")));
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
@@ -1952,8 +1954,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const slider = await p.eval(`(() => { const r = document.querySelector('${levelSlider}'); return { type: r?.type, min: r?.min, max: r?.max, step: r?.step,
     out: document.querySelector('${EDITOR} output')?.textContent }; })()`);
   const sliderAx = await axNode(p, levelSlider);
-  check("stress editor: the level is a native range control 1 to 5 in whole steps, named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
-    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "1" && sliderAx?.name === "Traffic stress level" &&
+  check("stress editor: the level is a native range control 1 to 5 by half steps (441i), named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
+    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "0.5" && sliderAx?.name === "Traffic stress level" &&
       sliderAx?.valuetext === "3, For experienced cyclists" && slider.out === "3, For experienced cyclists", JSON.stringify({ slider, sliderAx }));
   await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
   await p.key("End", "End", 35);
@@ -1962,9 +1964,11 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const atHome = (await axNode(p, levelSlider))?.valuetext;
   await p.key("End", "End", 35);
   await p.key("ArrowLeft", "ArrowLeft", 37);
+  const atHalf = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   const atFour = (await axNode(p, levelSlider))?.valuetext;
-  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; then one back, 4)",
-    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atFour }));
+  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; back a half, 4.5, A very high-stress road; then 4)",
+    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atHalf === "4.5, A very high-stress road" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atHalf, atFour }));
 
   // Tab visits every control in order and stays in the dialog.
   await p.eval(`document.querySelector('${EDITOR} h3').focus(); true`);
@@ -2042,6 +2046,40 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const cancel = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'), focus: document.activeElement?.textContent ?? '' })`);
   check("stress editor: Escape and Cancel close the editor and not the panel, and the focus goes back to the Change LTS button",
     esc.open && !esc.editor && esc.focus === "Change LTS" && esc.tag === "BUTTON" && cancel.open && !cancel.editor && cancel.focus === "Change LTS", JSON.stringify({ esc, cancel }));
+  await p.close();
+}
+{
+  // A half step (441i, 441l): one arrow from 3 is 3.5, saved as 3.5, said and shown in its own words.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  const half = (await axNode(p, levelSlider))?.valuetext;
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast merges at the ramp");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed to /.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const post = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 3.5')", 8000);
+  const line = await p.eval("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent ?? ''");
+  check("stress editor: one arrow from 3 is read as 3.5, Stressful even for experienced cyclists; Save sends 3.5, the status region says LTS 3.5 in its words, and the panel shows LTS 3.5",
+    half === "3.5, Stressful even for experienced cyclists" && post?.body.step === 3.5 && /^Changed to LTS 3\.5, stressful even for experienced cyclists\./.test(said) && /LTS 3\.5/.test(line),
+    JSON.stringify({ half, step: post?.body.step, said, line }));
+
+  // 458b: the outlined half-step dashes keep 3:1 from their dash and their line, in the page's own style.
+  const outlines = await p.eval(`(async () => { const s = await import('/src/stressStyle.js'); const out = [];
+    for (const palette of Object.keys(s.PALETTES)) { const tiers = s.tiersFor(palette);
+      for (let t = 1; t <= 4; t++) { const h = s.halfStep(t, tiers); if (!h.outline) continue;
+        out.push({ palette, step: h.step, dash: +s.contrastRatio(h.outline, h.color).toFixed(2), line: +s.contrastRatio(h.outline, h.line).toFixed(2) }); } }
+    return out; })()`);
+  check("stress editor: the half-step dashes too close to their line (two-tone 3.5, colour-blind 4.5) carry an outline at least 3:1 from both the dash and the line (458b)",
+    Array.isArray(outlines) && outlines.length >= 2 && outlines.some((o) => o.palette === "twotone" && o.step === 3.5) && outlines.some((o) => o.palette === "cvd" && o.step === 4.5) &&
+      outlines.every((o) => o.dash >= 3 && o.line >= 3), JSON.stringify(outlines));
   await p.close();
 }
 {
@@ -2424,7 +2462,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 412;
+const EXPECTED = 414;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

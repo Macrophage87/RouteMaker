@@ -66,10 +66,12 @@ Other rules:
 - Mountain-bike trails draw in their own not-for-routes look from z14 (`MTB_TRAIL`,
   `:880-905`; OWNER-DECISIONS 452a, 454).
 
-## Half steps (441r-441v, 458-458b, 460.1) **planned**
+## Half steps (441r-441v, 458-458b, 460.1) **built**
 
-Built with the half-step editor. Tiles keep `tier` an integer, so a half step is the
-lower tier plus a half flag (HALF-STEP-EDITOR-plan section 9).
+Tiles keep `tier` an integer, so a half step is the lower tier plus `half: true`
+(`core/stress_tiles.py`, ETag letter `h`). Drawn by `halfStepLayers` in
+`frontend/src/stressStyle.js`: one dash layer and one outline layer per lower level
+(1-4), over every tier line.
 
 - **Below zoom 15**, a half step draws exactly as its lower level (460.1: "The level
   below makes more sense"). 1.5 looks like LTS 1.
@@ -83,7 +85,10 @@ lower tier plus a half flag (HALF-STEP-EDITOR-plan section 9).
 - **Low-contrast dashes get a thin outline** on the dash only (458b): default palette
   3.5 (LTS 4's orange on LTS 3's yellow, about 1.5:1) and CVD 4.5 (Avoid's blue-black on
   LTS 4's dark red, about 1.6:1). The outline is at least 3:1 against both the dash and
-  the line, checked in the browser a11y suite when built.
+  the line (`HALF_OUTLINES`: `#1c1917` and `#ffffff`), checked in
+  `frontend/src/halfSteps.test.ts` and in the browser a11y suite (section 22). The
+  outline is a layer under the dash, a pixel wider each side, with the dash pattern
+  scaled to its own width; the other half steps' outline layers are transparent.
 - Drawing rules use the lower level (461a), so painted-lane hiding follows the lower
   level: a 3.5 road shows its lane, and a 4.5 road hides it.
 - The road panel always shows the exact step and its words (441k-441l).

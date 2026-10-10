@@ -2984,6 +2984,7 @@ def build_handlers(
                 is_trail_class=trail,
                 stress_tier=int(stress.tier),
                 map_class=way_map_class,
+                stress_half=writers._half(stress),
             )
             # Why a bicycle may not use it, or why an override reopened it, for the map's
             # road panel (OWNER-DECISIONS 441a); the router says whether it may.

@@ -4,9 +4,11 @@
  * what the editor asks the API, the words it says, and what it checks before it asks.
  * StressEditor.tsx draws it.
  *
- * Phase 1 is whole steps, 1 to 5 (5 is Avoid). The words are the API's (`steps` in the editor's
- * starting state, core/segment_info.TIER_WORDS), so the panel, the editor and the map's legend
- * cannot disagree. Nothing here carries a name or an id of a person: the page learns three yes/no
+ * Steps run 1 to 5 by halves (441i: "Have a slider from LTS 1-5. We can put half steps as well"):
+ * 1.5, 2.5, 3.5 and 4.5 are half steps, 5 is Avoid and 4.5 is never Avoid (441k). The words are
+ * the API's (`steps` in the editor's starting state, core/segment_info.STEP_WORDS, 441l), so the
+ * panel, the editor and the map's legend cannot disagree. A live table built before half steps
+ * cannot hold one (`half_steps` false): the slider then moves in whole steps. Nothing here carries a name or an id of a person: the page learns three yes/no
  * flags (`/api/me`), a CSRF token it reads from its own cookie, and an OSM way id.
  *
  * Screen-reader first: every state change is a sentence (`savedSaid`, `undoneSaid`), the slider's
@@ -63,6 +65,8 @@ export interface EditorState {
   note_max: number;
   recent_edit: RecentEdit | null;
   pieces: number;
+  /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
+  half_steps?: boolean;
 }
 
 export interface EditedWay {
@@ -126,20 +130,40 @@ export const DISPLAY_OPTIONS: ReadonlyArray<{ value: DisplayWhere; text: string 
   { value: "map", text: "Also when someone clicks the road on the map" },
 ];
 export const UNDO_MINUTES = 30;
+/** The slider's help, by whether half steps are offered. */
+export function sliderHelp(halfSteps: boolean): string {
+  return halfSteps
+    ? "1 is the calmest, 5 is Avoid. The arrow keys move half a step; Home goes to 1 and End to 5."
+    : "1 is the calmest, 5 is Avoid. Use the arrow keys to change the level; Home goes to 1 and End to 5.";
+}
+export const HALF_STEP_HELP =
+  "Half steps (1.5, 2.5, 3.5, 4.5) look like the level below on the map, with a dash of the next level's colour from street level. Routes count them halfway between the two levels.";
+export const HALF_STEPS_LATER = "Half steps arrive with the next data update.";
+
+/** The slider's step: half a level where the data can hold it, else a whole level. */
+export function sliderStep(state: Pick<EditorState, "half_steps"> | null): number {
+  return state?.half_steps === true ? 0.5 : 1;
+}
+
+/** A step as written: "3" or "3.5". */
+export function stepLabel(step: number): string {
+  return Number.isInteger(step) ? String(step) : step.toFixed(1);
+}
 export const AFTER_REBUILD =
   "The map shows it now; routes fully use it after the next weekly data update.";
 
 /** The slider's value as it is read out: "3, For experienced cyclists". */
 export function stepValueText(step: number, steps: readonly EditorStep[]): string {
   const words = steps.find((s) => s.value === step)?.words;
-  return words ? `${step}, ${words}` : String(step);
+  return words ? `${stepLabel(step)}, ${words}` : stepLabel(step);
 }
 
 /** A level in a sentence: "LTS 3, for experienced cyclists" or "Avoid". */
 export function levelPhrase(step: number, steps: readonly EditorStep[]): string {
   const words = steps.find((s) => s.value === step)?.words ?? "";
   if (step === 5) return "Avoid";
-  return words ? `LTS ${step}, ${words[0].toLowerCase()}${words.slice(1)}` : `LTS ${step}`;
+  const level = `LTS ${stepLabel(step)}`;
+  return words ? `${level}, ${words[0].toLowerCase()}${words.slice(1)}` : level;
 }
 
 /** Where the road's level now comes from, said once above the slider. */

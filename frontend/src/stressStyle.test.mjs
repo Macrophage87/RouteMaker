@@ -11,6 +11,7 @@ import {
   mtbTrailLayers,
   stressOverlayLayers,
   unpavedLayers,
+  halfStepLayers,
   unknownSurfaceLayers,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -233,6 +234,7 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const casings = stressCasingLayers("s").map((l) => l.id);
   const rails = facilityLayers("s").map((l) => l.id);
   const marks = unpavedLayers("s").map((l) => l.id);
+  const halves = halfStepLayers("s").map((l) => l.id);
   const gaps = gapLayers("s").map((l) => l.id);
   const unknown = unknownSurfaceLayers("s").map((l) => l.id);
   assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
@@ -242,7 +244,10 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
   assert.deepEqual(mtb, ["mtb-trail"], "the mountain-bike trails' not-for-routes line (OWNER-DECISIONS 452a)");
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...mass].sort(), "each layer once");
+  // A half step's outline under its dash, both over every tier line (458).
+  for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
+  assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
   // The not-for-routes line under everything, so every routable line draws over it.
   assert.equal(ids[0], "mtb-trail");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");

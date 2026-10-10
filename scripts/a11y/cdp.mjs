@@ -664,8 +664,12 @@ export const RIDE_COORDS = coords;
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
 
-/** The step words (core/segment_info.py TIER_WORDS; OWNER-DECISIONS 441l). */
-export const STEP_WORDS = { 1: "Comfortable for everyone", 2: "Fine for adults", 3: "For experienced cyclists", 4: "High stress: busy, fast traffic", 5: "Avoid" };
+/** The step words, half steps too (core/segment_info.py STEP_WORDS; OWNER-DECISIONS 441i, 441l). */
+export const STEP_WORDS = {
+  1: "Comfortable for everyone", 1.5: "Probably comfortable for older children", 2: "Fine for adults", 2.5: "Fine for most confident adults",
+  3: "For experienced cyclists", 3.5: "Stressful even for experienced cyclists", 4: "High stress: busy, fast traffic", 4.5: "A very high-stress road", 5: "Avoid",
+};
+const STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
 /** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */
 export function editorState(road) {
@@ -679,7 +683,8 @@ export function editorState(road) {
       when: road.edit ? new Date().toISOString() : null, by: road.edit ? "you" : null,
     },
     expected: `tok-${road.generation}`,
-    steps: [1, 2, 3, 4, 5].map((value) => ({ value, words: STEP_WORDS[value] })),
+    steps: STEPS.map((value) => ({ value, words: STEP_WORDS[value] })),
+    half_steps: true,
     categories: [
       { id: "speed", label: "speed" }, { id: "road_conditions", label: "road conditions" }, { id: "driver_behaviour", label: "driver behaviour" },
       { id: "intersection", label: "an intersection" }, { id: "sightlines", label: "sightlines" },
@@ -696,7 +701,8 @@ export function editorState(road) {
 export function segmentInfoAt(tier) {
   if (tier === 3) return S_SEGMENT_INFO;
   const info = JSON.parse(JSON.stringify(S_SEGMENT_INFO));
-  info.tier = tier;
+  info.tier = Math.floor(tier);
+  info.step = tier;
   info.summary.find((r) => r.id === "stress").value = tier === 5 ? "Avoid" : `LTS ${tier} \u00b7 ${STEP_WORDS[tier]}`;
   info.sections.find((x) => x.id === "stress").rows[0] = { label: "Level", value: tier === 5 ? "Avoid" : `LTS ${tier}: ${STEP_WORDS[tier]}`, source: "Owner override" };
   return info;

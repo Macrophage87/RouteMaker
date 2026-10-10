@@ -49,6 +49,8 @@ export interface SegmentInfo {
   /** The compact lines; absent from an older API, when the details open instead. */
   summary?: SummaryRow[];
   tier: number | null;
+  /** The exact step, half steps included (1.5 ... 4.5); absent from an older API. `tier` is its whole level. */
+  step?: number | null;
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;

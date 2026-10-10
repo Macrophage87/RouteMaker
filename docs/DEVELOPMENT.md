@@ -5702,8 +5702,10 @@ otherwise), a drawn way winning over a hidden one (a mapped sidewalk) up to 15 m
 Its name and kind come from the standard router's `/locate` at the spot on the way, as the
 route's street names do, matched by OSM way id; the bicycle costing's edges say whether the
 graph lets a bicycle on, and the pedestrian then auto costing name a way it does not. Then:
-the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", whole tiers;
-441i-l's half steps are a later release) and `stress_rule` in plain words (`rule_words`:
+the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", and the
+half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children", 2.5 "Fine
+for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
+high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
 "35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
 (posted 55 mph)"), an override's tier before it and its category, its note only where the
 row's display is `map` (a `route_only` note is never shown on a click); the lanes, "each

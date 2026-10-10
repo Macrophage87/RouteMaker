@@ -31,7 +31,7 @@ a path for the facility class, and then the car-free rule makes it LTS 1
 
 | Key | Meaning |
 |---|---|
-| `tier` | Integer 1-5 (`:119`, `:155-159`). It may be below the classifier's: a down-adjustment ("down adjust a road if this is the better route among similar routes"). Half steps are **planned** (the editor stores the lower level plus a flag; HALF-STEP-EDITOR-plan section 4.1). |
+| `tier` | Integer 1-5 (`:119`, `:155-159`). It may be below the classifier's: a down-adjustment ("down adjust a road if this is the better route among similar routes"). A half step is `"half": true` beside the lower tier (1.5-4.5; never above 5, so not with tier 5); **built** (HALF-STEP-EDITOR-plan section 4.1). A floor (`at_least`) with a half compares the full step: a 3.5 floor raises a 3 road to 3.5 and leaves a 4 road alone. |
 | `at_least` | Optional. `true` makes the row a **floor**: the way gets max(its tier at that point, `tier`), where its tier at that point is the classifier's after the curated lanes, the corridors and any earlier row for the way (`:436-443`). A way already at or above it keeps its own tier, its rule and no adjustment, and the row is not counted as applied (`:113-118`, `:438-444`; OWNER-DECISIONS 445a-c). |
 | `adjustment_id` | Lower-case words joined by hyphens, at most 64 characters (`:121-122`), shared by every way of one stretch and stable across rebuilds. |
 | `category` | `speed`, `road_conditions`, `driver_behaviour`, `intersection`, `sightlines`, `better_among_alternatives`, `other` (`src/routemaker/stress.py:326-334`). |

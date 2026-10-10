@@ -2,9 +2,10 @@
  * The road panel's stress editor (OWNER-DECISIONS 441g, 441h, 441i, 460; lib/stressEditor.ts): an
  * instance admin's "Change LTS", in the same dialog as the panel, replacing its action row.
  *
- * - A native range control for the level, 1 to 5 in whole steps (half steps are a later phase).
- *   Its value is read as its words ("3, For experienced cyclists"), shown beside it in an
- *   `<output>`, and moves with the arrow keys, Home and End: no pointer needed. The panel itself is
+ * - A native range control for the level, 1 to 5 by halves (441i; whole steps where the road data
+ *   cannot hold a half step yet). Its value is read as its words ("3.5, Stressful even for
+ *   experienced cyclists"), shown beside it in an `<output>`, and moves with the arrow keys, Home
+ *   and End: no pointer needed. The panel itself is
  *   reached from the keyboard (I on the map, or Map tools in accessibility mode).
  * - "Only raise it", a category, a required private reason (never shown to riders) and an optional
  *   public note, each a labelled native control.
@@ -19,6 +20,8 @@ import {
   DISPLAY_LABEL,
   DISPLAY_OPTIONS,
   EDITOR_HEADING,
+  HALF_STEP_HELP,
+  HALF_STEPS_LATER,
   LEVEL_LABEL,
   NOTE_HELP,
   NOTE_LABEL,
@@ -33,6 +36,8 @@ import {
   formProblem,
   saveEdit,
   savedSaid,
+  sliderHelp,
+  sliderStep,
   stepValueText,
   undoEdit,
   undoneSaid,
@@ -212,7 +217,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
                 type="range"
                 min={1}
                 max={5}
-                step={1}
+                step={sliderStep(state)}
                 value={step}
                 aria-valuetext={stepWords}
                 aria-describedby={id("ticks")}
@@ -224,7 +229,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
               </output>
             </div>
             <p id={id("ticks")} className="hint stress-editor-ticks">
-              1 is the calmest, 5 is Avoid. Use the arrow keys to change the level; Home goes to 1 and End to 5.
+              {sliderHelp(state.half_steps === true)} {state.half_steps === true ? HALF_STEP_HELP : HALF_STEPS_LATER}
             </p>
           </div>
           <div className="stress-editor-field stress-editor-check">

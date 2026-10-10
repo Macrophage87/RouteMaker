@@ -59,7 +59,7 @@ OWNER = "Owner override"
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
 NEXT_UPDATE = "Available after the next data update"
 
-# The step words (OWNER-DECISIONS 441i-l: whole tiers only in this release).
+# The step words (OWNER-DECISIONS 441i-441l; 441j: "5 is just avoid").
 TIER_WORDS = {
     1: "Comfortable for everyone",
     2: "Fine for adults",
@@ -67,6 +67,38 @@ TIER_WORDS = {
     4: "High stress: busy, fast traffic",
     5: "Avoid",
 }
+# The half steps' words (441i, 441l), keyed by their lower level: 1.5 is 1 plus a half.
+HALF_WORDS = {
+    1: "Probably comfortable for older children",
+    2: "Fine for most confident adults",
+    3: "Stressful even for experienced cyclists",
+    4: "A very high-stress road",
+}
+# Every step, 1 to 5 by halves, with its words: the editor's slider and the panel.
+STEP_WORDS: dict[float, str] = dict(
+    sorted(
+        [(float(t), w) for t, w in TIER_WORDS.items()]
+        + [(t + 0.5, w) for t, w in HALF_WORDS.items()]
+    )
+)
+
+
+def step_value(tier: int, half: bool = False) -> float | int:
+    """The level as a number: an int for a whole step (3), a float for a half (3.5)."""
+    return int(tier) + 0.5 if half and int(tier) < 5 else int(tier)
+
+
+def step_label(step: float) -> str:
+    """'3' or '3.5'."""
+    return f"{step:g}"
+
+
+def words_for(tier: int, half: bool = False) -> str:
+    """A step's words; a half step's own (441l)."""
+    if half and int(tier) in HALF_WORDS:
+        return HALF_WORDS[int(tier)]
+    return TIER_WORDS.get(int(tier), "")
+
 
 # Who published a traffic count (`segment.volume_source`), in the words
 # docs/SOURCES.md credits them by.
@@ -196,6 +228,7 @@ OPTIONAL_COLUMNS = (
     "bike_access_reason",
     "mtb_only",
     "trail_bridge",
+    "stress_half",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -473,9 +506,9 @@ ADJUSTMENT_CATEGORIES = {
 }
 
 
-def tier_text(tier: int) -> str:
-    words = TIER_WORDS.get(tier, "")
-    return words if tier == 5 else f"LTS {tier}: {words}"
+def tier_text(tier: int, half: bool = False) -> str:
+    words = words_for(tier, half)
+    return words if tier == 5 else f"LTS {step_label(step_value(tier, half))}: {words}"
 
 
 def _row(label: str, value: str, source: str | None) -> dict:
@@ -484,12 +517,13 @@ def _row(label: str, value: str, source: str | None) -> dict:
 
 def stress_rows(row: dict) -> list[dict]:
     tier = int(row["stress_tier"])
+    half = row.get("stress_half") is True
     adjusted = row.get("stress_adjustment_id") is not None or str(
         row.get("stress_rule", "")
     ).startswith(("override:", "named corridor:"))
     source = OWNER if adjusted else CLASSIFIER
     rows = [
-        _row("Level", tier_text(tier), source),
+        _row("Level", tier_text(tier, half), source),
         _row("Why", rule_words(row["stress_rule"]), source),
     ]
     computed = row.get("stress_computed_tier")
@@ -741,10 +775,10 @@ MTB_SUMMARY = "Mountain-bike trail, not used for routes (Gravel and Mountain Goa
 _LANE_PARTS = frozenset({"single lane", "urban multilane", "multilane"})
 
 
-def stress_short(tier: int) -> str:
+def stress_short(tier: int, half: bool = False) -> str:
     """'LTS 3 · For experienced cyclists', or 'Avoid'."""
-    words = TIER_WORDS.get(tier, "")
-    return words if tier == 5 else f"LTS {tier} · {words}"
+    words = words_for(tier, half)
+    return words if tier == 5 else f"LTS {step_label(step_value(tier, half))} · {words}"
 
 
 def why_short(rule: str) -> str | None:
@@ -765,7 +799,8 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     tier = int(row["stress_tier"])
     path = bool(row.get("is_trail_class"))
     assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
-    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier)}]
+    half = row.get("stress_half") is True
+    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier, half)}]
 
     def add(id_: str, label: str, value: str) -> None:
         rows.append({"id": id_, "label": label, "value": value})
@@ -858,6 +893,9 @@ def describe(row: dict, router: dict) -> dict:
         "found": True,
         "title": title,
         "tier": int(row["stress_tier"]),
+        # The exact step (441k: "The panel always shows the exact step and its words"): the
+        # tier, or the tier and a half. `tier` stays the whole level the map colours by.
+        "step": step_value(int(row["stress_tier"]), row.get("stress_half") is True),
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),

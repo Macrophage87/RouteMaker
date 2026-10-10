@@ -129,10 +129,19 @@ def facility_factor(facility: str | None, use_roads: float) -> float:
     return 1.0
 
 
-def multiplier(tier: int | None, facility: str | None, pricing: Pricing) -> float | None:
-    """Calm metres a metre of this stretch counts for; None where it is not rated."""
+def multiplier(
+    tier: int | None, facility: str | None, pricing: Pricing, half: bool = False
+) -> float | None:
+    """Calm metres a metre of this stretch counts for; None where it is not rated.
+
+    A half step (`half`, 1.5 to 4.5) counts the arithmetic midpoint of its two levels'
+    multipliers (OWNER-DECISIONS 461a; docs/stress/stress-number.md section 3)."""
     if tier is None:
         return None
+    if half and 1 <= tier <= 4:
+        low = multiplier(tier, facility, pricing)
+        high = multiplier(tier + 1, facility, pricing)
+        return (low + high) / 2 if low is not None and high is not None else low
     if tier <= 2:
         return 1.0 if pricing.no_trail else facility_factor(facility, pricing.use_roads)
     level = min(tier, 5)
@@ -208,7 +217,7 @@ def steps_of(spans: Sequence[dict], pricing: Pricing) -> list[Step]:
         if hi <= lo:
             continue
         tier = span.get("tier")
-        ratio = multiplier(tier, span.get("facility"), pricing)
+        ratio = multiplier(tier, span.get("facility"), pricing, span.get("half") is True)
         if out and out[-1].to_m == lo and out[-1].ratio == ratio and out[-1].tier == tier:
             out[-1] = Step(out[-1].from_m, hi, ratio, tier)
         else:

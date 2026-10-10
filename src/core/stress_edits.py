@@ -1,6 +1,7 @@
 """The road panel's "Change LTS": an instance admin's change of a road's traffic stress.
 
-OWNER-DECISIONS 441g, 441h, 460 (HALF-STEP-EDITOR-plan.md, phase 1: whole steps 1 to 5).
+OWNER-DECISIONS 441g, 441h, 441i-441l, 460, 461a (HALF-STEP-EDITOR-plan.md: phase 1, whole
+steps 1 to 5; phase 2, half steps 1.5 to 4.5, stored as the lower level plus `stress_half`).
 
 An instance admin's change applies at once. `apply` does all of this in ONE transaction:
 
@@ -52,8 +53,10 @@ from .models import AuditLogEntry, LiveEditGeneration, Override, StressEdit
 
 logger = logging.getLogger(__name__)
 
-# Phase 1 is whole steps. (Half steps are phase 2 and widen this and the value rules.)
-STEPS = (1, 2, 3, 4, 5)
+# Every step, 1 to 5 by halves (441i: "Have a slider from LTS 1-5. We can put half steps as
+# well"). 5 is Avoid; 4.5 is never Avoid (441k). A half step is stored as the lower level plus
+# the `stress_half` flag (the override value's `half`), so every integer reader keeps working.
+STEPS = (1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5)
 # OWNER-DECISIONS 460.8-11: "30-min Undo + full history". The history is the StressEdit
 # table; the Undo button and the endpoint stop answering after this long, and a later
 # reversal is a new change.
@@ -67,6 +70,10 @@ FLOOR_MET_RULE = "classifier (an owner override's floor was already met)"
 
 TIER_COLUMN = "stress_tier"
 RULE_COLUMN = "stress_rule"
+# A half step (pipeline.schema.STRESS_HALF_COLUMN). A live table built before it has no such
+# column: whole steps still work there, and a half step is refused until the column exists
+# (the next rebuild, or `manage.py add_stress_half_column`).
+HALF_COLUMN = "stress_half"
 ADJUSTMENT_COLUMNS = (
     "stress_adjustment_id",
     "stress_computed_tier",
@@ -75,7 +82,7 @@ ADJUSTMENT_COLUMNS = (
     "stress_adjustment_note",
     "stress_adjustment_display",
 )
-EDIT_COLUMNS = (TIER_COLUMN, RULE_COLUMN, *ADJUSTMENT_COLUMNS)
+EDIT_COLUMNS = (TIER_COLUMN, RULE_COLUMN, HALF_COLUMN, *ADJUSTMENT_COLUMNS)
 
 # pg_advisory_xact_lock key: one lock per way, so two edits of one road never interleave.
 _LOCK_BASE = 0x5354_0000_0000_0000
@@ -121,6 +128,12 @@ class Spec:
     reason: str
     public_note: str | None = None
     display: str = "route_only"
+    # Half a level above `tier` (1.5 to 4.5).
+    half: bool = False
+
+    @property
+    def step(self) -> float:
+        return self.tier + (0.5 if self.half else 0.0)
 
     def value(self, adjustment_id: str) -> dict:
         """The override row's value (`pipeline.overrides.stress_value_problem` holds the rules)."""
@@ -139,13 +152,25 @@ class Spec:
             value["public_note"] = self.public_note
         if self.at_least:
             value["at_least"] = True
+        if self.half:
+            value["half"] = True
         return value
+
+
+def split_step(step) -> tuple[int, bool]:
+    """A slider value (1, 1.5, ... 5) as (the lower level, whether it is a half step)."""
+    if isinstance(step, bool) or not isinstance(step, int | float):
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
+    if float(step) not in STEPS:
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
+    tier = int(step)
+    return tier, float(step) != tier
 
 
 def validate(spec: Spec) -> None:
     """Refuse a spec the value rules would refuse, naming the field."""
-    if spec.tier not in STEPS:
-        raise Invalid("The level is a whole step from 1 to 5.", "step")
+    if spec.tier not in (1, 2, 3, 4, 5) or (spec.half and spec.tier >= 5):
+        raise Invalid("The level is a step from 1 to 5, by halves.", "step")
     if spec.category not in ADJUSTMENT_CATEGORIES:
         raise Invalid("Choose the reason's category from the list.", "category")
     if spec.display not in ADJUSTMENT_DISPLAYS:
@@ -274,10 +299,17 @@ def classifier_tier(row: dict) -> int | None:
     return int(computed) if computed is not None else None
 
 
+def current_step(row: dict) -> float | int:
+    """The road's level as it stands: its tier, and a half where the row says so."""
+    return segment_info.step_value(int(row[TIER_COLUMN]), row.get(HALF_COLUMN) is True)
+
+
 def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> dict:
     """What `row` holds once `spec` is applied (the rebuild's `apply_stress`, in place)."""
     state: dict = {}
-    if spec.at_least and base is not None and base >= spec.tier:
+    if HALF_COLUMN in row:
+        state[HALF_COLUMN] = False
+    if spec.at_least and base is not None and base >= spec.step:
         # A floor the way already meets: the classifier's tier stands and so does its rule,
         # where the row still has it.
         state[TIER_COLUMN] = base
@@ -287,13 +319,15 @@ def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> di
                 state[column] = None
         return state
     state[TIER_COLUMN] = spec.tier
+    if HALF_COLUMN in row:
+        state[HALF_COLUMN] = spec.half
     state[RULE_COLUMN] = f"override: stress adjustment {adjustment_id}"
     shown = bool(spec.public_note)
     if base is None:
         direction = None
-    elif spec.tier > base:
+    elif spec.step > base:
         direction = "up"
-    elif spec.tier < base:
+    elif spec.step < base:
         direction = "down"
     else:
         direction = "same"
@@ -317,7 +351,10 @@ def token_for(rows: dict, live: Override | None) -> str:
     material = json.dumps(
         [
             live.pk if live else 0,
-            [[k, r.get(TIER_COLUMN), r.get(RULE_COLUMN)] for k, r in rows.items()],
+            [
+                [k, r.get(TIER_COLUMN), r.get(RULE_COLUMN), r.get(HALF_COLUMN) is True]
+                for k, r in rows.items()
+            ],
         ],
         sort_keys=True,
     )
@@ -350,8 +387,8 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
     first = next(iter(rows.values()))
     base = classifier_tier(first)
     current: dict = {
-        "step": int(first[TIER_COLUMN]),
-        "words": segment_info.TIER_WORDS.get(int(first[TIER_COLUMN]), ""),
+        "step": current_step(first),
+        "words": segment_info.words_for(int(first[TIER_COLUMN]), first.get(HALF_COLUMN) is True),
         "source": "classifier",
         "at_least": False,
         "category": None,
@@ -404,7 +441,12 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
         "can_raise_only": base is not None,
         "current": current,
         "expected": token_for(rows, live),
-        "steps": [{"value": s, "words": segment_info.TIER_WORDS[s]} for s in STEPS],
+        "steps": [
+            {"value": segment_info.step_value(int(s), s != int(s)), "words": w}
+            for s, w in segment_info.STEP_WORDS.items()
+        ],
+        # Whether the live table can hold a half step yet (HALF_COLUMN).
+        "half_steps": HALF_COLUMN in columns,
         "categories": [
             {"id": k, "label": v} for k, v in segment_info.ADJUSTMENT_CATEGORIES.items()
         ],
@@ -432,8 +474,9 @@ def _actor_fields(actor) -> dict:
 def _summary(before: dict, after: dict) -> str:
     parts = []
     for key in after:
-        was = (before.get(key) or {}).get(TIER_COLUMN)
-        now = after[key].get(TIER_COLUMN)
+        was_row = before.get(key) or {}
+        was = current_step(was_row) if was_row.get(TIER_COLUMN) is not None else None
+        now = current_step(after[key]) if after[key].get(TIER_COLUMN) is not None else None
         parts.append(f"{key}: LTS {was} -> {now}")
     return "; ".join(parts[:8])[:1500]
 
@@ -490,6 +533,12 @@ def apply(
             oid = live_oid(schema)
             if oid is None or not columns:
                 raise NotFound("There is no road data to change yet.")
+            if spec.half and HALF_COLUMN not in columns:
+                raise Invalid(
+                    "Half steps arrive with the next data update. Choose a whole step for now.",
+                    "step",
+                    "half_unavailable",
+                )
             rows = read_rows(schema, columns, way_ids, lock=True)
             if not {int(k.split(":")[0]) for k in rows} >= set(way_ids):
                 raise NotFound("That road is not in the data.")
@@ -548,7 +597,7 @@ def apply(
                 ways.append(
                     {
                         "osm_way_id": way,
-                        "step": int(now_rows[keys[0]][TIER_COLUMN]),
+                        "step": current_step(now_rows[keys[0]]),
                         "changed": changed,
                     }
                 )
@@ -688,7 +737,7 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
     ways = [
         {
             "osm_way_id": w,
-            "step": int(next(r[TIER_COLUMN] for k, r in now_rows.items() if k.startswith(f"{w}:"))),
+            "step": current_step(next(r for k, r in now_rows.items() if k.startswith(f"{w}:"))),
             "changed": True,
         }
         for w in way_ids

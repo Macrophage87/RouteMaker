@@ -152,6 +152,18 @@ export const PALETTES = {
   },
 };
 
+/**
+ * The outline on a half step's dash where the dash is too close to its line (458b), by palette and the
+ * half step's lower level: the default palette's 3.5 (LTS 4's orange dash on LTS 3's yellow, about
+ * 1.5:1) gets a near-black outline, and the colour-blind palette's 4.5 (Avoid's blue-black dash on LTS
+ * 4's dark red, about 1.6:1) a white one. Each is at least 3:1 from both the dash and the line
+ * (halfSteps.test.ts; HALF_OUTLINE_MIN_CONTRAST). See `halfStepLayers`.
+ */
+export const HALF_OUTLINES = {
+  twotone: { 3: "#1c1917" },
+  cvd: { 4: "#ffffff" },
+};
+
 /** The palette the map uses unless the address or the accessibility switch asks for another. */
 export const DEFAULT_PALETTE = "twotone";
 
@@ -287,6 +299,8 @@ export function tiersFor(palette, strong = false) {
       unpavedColor: unpaved.color,
       unpavedCasing,
       unpavedGap: unpaved.gap ?? unpavedCasing,
+      // The outline on the half step above this level's dash, where it needs one (458b).
+      halfOutline: HALF_OUTLINES[palette]?.[shape.tier] ?? null,
       ...(strong
         ? { width: shape.width + STRONG_WIDTH_EXTRA, casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
@@ -950,6 +964,13 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
     if (hasRingLayer(tier.tier)) filters[`stress-ring-${tier.tier}`] = [...filter, ["!=", ["get", "unpaved"], true]];
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
+    if (tier.tier < 5) {
+      // A half step's dash (441r-441v, 458): the feature's own tier is this one (not a road closed to cars
+      // now, which draws as a path at 1) and it carries the half.
+      const half = [...filter, ["==", ["get", "tier"], tier.tier], isHalfStep];
+      filters[`stress-half-outline-${tier.tier}`] = half;
+      filters[`stress-half-${tier.tier}`] = half;
+    }
   }
   for (const facility of FACILITIES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", facilityAt(when), facility.facility]];
@@ -1156,6 +1177,101 @@ export function ringLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = cur
         "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       },
     }));
+}
+
+/**
+ * HALF STEPS (OWNER-DECISIONS 441i-441v, 458, 458a, 458b, 460.1). The tiles carry a half step as its
+ * lower `tier` plus `half: true` (core/stress_tiles.py), so below HALF_STEP_MIN_ZOOM a half step draws
+ * exactly as its lower level (460.1: "The level below makes more sense"; 1.5 looks like LTS 1). From
+ * HALF_STEP_MIN_ZOOM it keeps the lower level's whole look - base colour, casing, width and its own
+ * pattern (441v) - and over it goes a dash in the NEXT level's base colour (441u: "Basically the dash
+ * would be the next one up's base color"), Option A of the mock-up (458), sparse blocks:
+ *
+ * - 1.5, 2.5, 3.5: HALF_STEP_DASH [1.5, 4.5] at the lower level's full line width, in the base colour of
+ *   LTS 2, 3 or 4 (1.5's is LTS 2's green #57a06c on the default palette and blue on the colour-blind
+ *   one, 458a);
+ * - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width in Avoid's base colour (441s). It is never
+ *   drawn as Avoid (441k).
+ *
+ * Two dashes are too close to their line (458b, "yes add them"): the default palette's 3.5 (LTS 4's
+ * orange on LTS 3's yellow, about 1.5:1) and the colour-blind palette's 4.5 (Avoid's blue-black on LTS
+ * 4's dark red, about 1.6:1). Each gets a thin outline on the dash only (HALF_OUTLINES):
+ * a pixel each side, drawn under the dash with the same pattern scaled to its own width, in a colour at
+ * least 3:1 from both the dash and the line (HALF_OUTLINE_MIN_CONTRAST; halfSteps.test.ts and the
+ * browser a11y suite hold it). Every other half step's outline layer is drawn transparent, so a palette
+ * flip needs no new layer. Colour is not the only cue: the dash's shape is one no whole level uses, and
+ * the road panel says the exact step in words (441k).
+ *
+ * Not drawn where the line itself is faint or hidden (a busy road beside a separate bikeway, an alley):
+ * the dash follows the line's own `byZoom` opacity, at nothing where the line is faint.
+ */
+export const HALF_STEP_MIN_ZOOM = 15;
+export const HALF_STEP_DASH = [1.5, 4.5];
+/** 4.5's dash: Avoid's own dash-dot (441s), never Avoid's look (441k). */
+export const HALF_STEP_TOP_DASH = [5, 1, 0.5, 1];
+export const HALF_OUTLINE_PX = 1;
+export const HALF_OUTLINE_MIN_CONTRAST = 3;
+const isHalfStep = ["==", ["get", "half"], true];
+
+/** The half step above `tier` (1-4): its dash colour, pattern and width, and its outline (or null). */
+export function halfStep(tier, tiers = currentTiers()) {
+  const lower = tiers.find((t) => t.tier === tier);
+  const upper = tiers.find((t) => t.tier === tier + 1);
+  if (!lower || !upper || tier >= 5) return null;
+  const dash = tier === 4 ? HALF_STEP_TOP_DASH : HALF_STEP_DASH;
+  return {
+    tier,
+    step: tier + 0.5,
+    color: upper.color,
+    line: lower.color,
+    width: lower.width,
+    dash,
+    outline: lower.halfOutline ?? null,
+  };
+}
+
+/** A dash pattern in a wider line's units, so its blocks fall where the narrower line's do. */
+export function scaledDash(dash, width, wider) {
+  return dash.map((part) => Math.round(((part * width) / wider) * 1000) / 1000);
+}
+
+export function halfStepLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  const layers = [];
+  for (const tier of tiers.filter((t) => t.tier < 5)) {
+    const half = halfStep(tier.tier, tiers);
+    const busy = tier.tier >= BUSY_MIN_TIER;
+    const outlineWidth = half.width + 2 * HALF_OUTLINE_PX;
+    layers.push({
+      id: `stress-half-outline-${tier.tier}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: HALF_STEP_MIN_ZOOM,
+      filter: filters[`stress-half-outline-${tier.tier}`],
+      paint: {
+        "line-color": half.outline ?? "rgba(0, 0, 0, 0)",
+        "line-width": outlineWidth,
+        "line-opacity": byZoom(1, 0, busy),
+        "line-dasharray": scaledDash(half.dash, half.width, outlineWidth),
+      },
+    });
+    layers.push({
+      id: `stress-half-${tier.tier}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: HALF_STEP_MIN_ZOOM,
+      filter: filters[`stress-half-${tier.tier}`],
+      paint: {
+        "line-color": half.color,
+        "line-width": half.width,
+        "line-opacity": byZoom(1, 0, busy),
+        "line-dasharray": half.dash,
+      },
+    });
+  }
+  return layers;
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
@@ -1423,6 +1539,8 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
+    // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
+    ...halfStepLayers(sourceId, when, tiers),
     // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn
     // only in that mode, where every layer above is hidden (lib/mapGlue.ts; OWNER-DECISIONS 417a).
     ...massLayers(MASS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()),

@@ -20,13 +20,13 @@ window of about a mile).
 | Tier | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5 | 5 |
 |---|---|---|---|---|---|---|---|---|---|
 | Stress number | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5 | 5 (Avoid) |
-| Status | built | planned | built | planned | built | planned | built | planned | built |
+| Status | built | built | built | built | built | built | built | built | built |
 
 Today the value is `segment.stress_tier` (1-5). A road closed to cars at the time of the
 ride counts as 1 (`src/core/routing.py:382`). A piece no segment rated is `unknown` and
-has no number. Half steps arrive with the half-step editor (441i-441l; HALF-STEP-EDITOR-plan).
-They are stored as the lower tier plus a half flag, so every integer reader keeps
-working. The number is ordinal, as LTS is. Harvey, Fang & Rodriguez (MTI 19-20) warn
+has no number. Half steps come from the stress editor (441i-441l; section 3). They are
+stored as the lower tier plus a half flag (`segment.stress_half`, the override value's
+`"half": true`, the tiles' `half`), so every integer reader keeps working. The number is ordinal, as LTS is. Harvey, Fang & Rodriguez (MTI 19-20) warn
 that averaging LTS levels assumes a spacing the scale was not designed with. That is
 why the per-preset **cost multiplier** below, and not the level itself, is what gets
 summed or averaged.
@@ -104,7 +104,7 @@ Notes:
   (`refine.py:214-219`). Mass Ride's routing charges none (the calm search does not run
   on it).
 
-## 3. Half steps: midpoints (461a) **planned**
+## 3. Half steps: midpoints (461a) **built**
 
 461a supersedes 460.2's geometric mean. A half step's cost multiplier and each of its
 rule effects is the **arithmetic midpoint** of its two levels' values under today's
@@ -127,9 +127,11 @@ there. Under the worth rule it is the midpoint of 11 and 16. 4.5 is never Avoid
 (441k), so it does not get Avoid's Valhalla entry charge. A request carries one
 `alley_penalty` value, charged each time a route enters a tier-5 way (only those carry
 the alley mark), so a half-way price cannot be sent for 4.5 alone. The midpoint
-rule would give RouteMaker's own ranking half the charge (900 s). **Owner to
-confirm**; the default proposed here is none in Valhalla and 900 s in RouteMaker's
-ranking.
+rule would give RouteMaker's own ranking half the charge (900 s). **Default taken
+(2026-10-10, owner to confirm):** no entry charge for 4.5 in Valhalla. RouteMaker's own
+ranking has no entry charge of its own to halve (the tier-5 charge is Valhalla's, inside
+`summary.cost`), so 4.5 pays none there either; its per-meter worth weight is the
+midpoint, `lts45_m` in `refine.Analysis` (section "Rule effects").
 
 What Valhalla can carry is decided at a rebuild, and only approximately:
 
@@ -137,8 +139,18 @@ What Valhalla can carry is decided at a rebuild, and only approximately:
 - 3.5 needs `use_sidepath` plus intermediate speed and lane tags.
 - 4.5 is priced as LTS 4 until a costing fork.
 
-All three are HALF-STEP-EDITOR-plan section 7.2, phase 3. RouteMaker's own ranking can
-use the midpoints exactly (phase 2).
+All three are HALF-STEP-EDITOR-plan section 7.2, phase 3. RouteMaker's own ranking
+uses the midpoints exactly (phase 2, built: `core.refine` `half_metres`,
+`half_weight`, `half_exposure_m`, `cautious_tier`; `routemaker.calm.multiplier`;
+`routemaker.intersections.Road.level`).
+
+**Where it is built (phase 2).** The road panel shows the exact step and its words; the
+tiles carry `half`; the route's stress sections split at a half step (`stress_spans`
+gives `"half": true`); the ranking, the LTS 4 hold, the strict order, the junction
+costs (`core.junctions` reads `stress_half`, and leaves it off where smoothing raised the
+tier or the road is car-free now), the Mass Ride junction icons, the rolling chart and
+the z12-13 ride layer's calm runs (`trail_routes.is_calm_candidate`,
+`calm_roads.junctions_sql`, at the next rebuild) all follow the table above.
 
 ### Rule effects
 

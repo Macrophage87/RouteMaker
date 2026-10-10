@@ -38,7 +38,7 @@ as `calm_run_m`. A way in two runs keeps the longer. On the 2026-10-03 build the
 region's calm roads came to 1,642 mi [2,643 km], nearly all rural
 (docs/OPERATIONS.md, "The ride layer (z12-13)").
 
-Half steps (**planned**, 461a): a 2.5 road is not a calm-run member (on/off, cautious),
+Half steps (**built**, 461a): a 2.5 road is not a calm-run member (on/off, cautious),
 and a crossed or joined 2.5 road breaks a run ([stress-number.md](stress-number.md),
 section 3).
 

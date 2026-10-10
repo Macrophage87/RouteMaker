@@ -841,9 +841,9 @@ class TestStateEndpoint:
         state = r.json()
         assert state["classifier_step"] == 3 and state["can_raise_only"] is True
         assert state["current"]["source"] == "classifier" and state["current"]["step"] == 3
-        assert [s["value"] for s in state["steps"]] == [1, 2, 3, 4, 5]
-        assert state["steps"][1]["words"] == "Fine for adults"
-        assert state["steps"][4]["words"] == "Avoid"
+        assert [s["value"] for s in state["steps"]] == [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+        assert state["steps"][2]["words"] == "Fine for adults"
+        assert state["steps"][8]["words"] == "Avoid"
         assert {c["id"] for c in state["categories"]} >= {"speed", "other"}
         assert state["expected"] and state["reason_max"] == 500 and state["note_max"] == 200
 
@@ -916,7 +916,7 @@ class TestCreateEndpoint:
     @pytest.mark.parametrize(
         ("change", "field"),
         [
-            ({"step": 2.5}, "step"),
+            ({"step": 2.25}, "step"),
             ({"step": "3"}, "step"),
             ({"step": True}, "step"),
             ({"step": 6}, "step"),

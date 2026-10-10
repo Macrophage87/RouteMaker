@@ -56,7 +56,14 @@ from django.http import HttpResponse, JsonResponse
 from ninja import Field, NinjaAPI, Query, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
@@ -2259,6 +2266,12 @@ class SegmentInfoOut(Schema):
         description="The way's name, 'Unnamed road' or 'Unnamed path', or 'No road here'."
     )
     tier: int | None = Field(default=None, description="Traffic stress, 1-4, or 5 for Avoid.")
+    step: float | None = Field(
+        default=None,
+        description=(
+            "The exact step, half steps included (1, 1.5, ... 4.5, 5); `tier` is its whole level."
+        ),
+    )
     open: bool | None = Field(
         default=None, description="Whether a bicycle may use it; null when not known."
     )
@@ -2458,7 +2471,7 @@ def me(request, response: HttpResponse):
 
 
 class StepOut(Schema):
-    value: int
+    value: float = Field(description="1 to 5 by halves (1.5 is a half step; 5 is Avoid).")
     words: str
 
 
@@ -2468,7 +2481,7 @@ class CategoryOut(Schema):
 
 
 class CurrentOut(Schema):
-    step: int
+    step: float = Field(description="The road's level now, half steps included.")
     words: str
     source: Literal["classifier", "file", "admin", "panel"]
     at_least: bool
@@ -2503,6 +2516,10 @@ class EditorStateOut(Schema):
     note_max: int
     recent_edit: RecentEditOut | None = None
     pieces: int
+    half_steps: bool = Field(
+        default=True,
+        description="False until the live table can hold a half step (the next data update).",
+    )
 
 
 @api.get(
@@ -2543,7 +2560,9 @@ class StressEditIn(Schema):
     osm_way_ids: list[StrictInt] = Field(
         min_length=1, max_length=1, description="The road piece to change (one, for now)."
     )
-    step: StrictInt = Field(description="The level, 1 to 5 (5 is Avoid).")
+    step: StrictFloat = Field(
+        description="The level, 1 to 5 by halves (1.5, 2.5, 3.5, 4.5 are half steps; 5 is Avoid)."
+    )
     at_least: StrictBool = Field(
         default=False, description="Only raise it: keep the current level where it is higher."
     )
@@ -2560,7 +2579,7 @@ class StressEditIn(Schema):
 
 class EditedWayOut(Schema):
     osm_way_id: int
-    step: int
+    step: float
     changed: bool = Field(
         description="False where the road already had this level (or met the floor)."
     )
@@ -2625,8 +2644,13 @@ STRESS_WRITE = (
 def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
     from . import stress_edits
 
+    try:
+        tier, half = stress_edits.split_step(body.step)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
     spec = stress_edits.Spec(
-        tier=body.step,
+        tier=tier,
+        half=half,
         at_least=body.at_least,
         category=body.category,
         reason=body.reason,

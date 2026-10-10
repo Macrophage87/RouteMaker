@@ -737,6 +737,9 @@ def test_the_gap_and_the_turns_are_named_constants() -> None:
         ({"stress_tier": 5}, False),
         ({"stress_tier": 1, "is_trail_class": True}, False),
         ({"stress_tier": 2, "is_trail_class": True}, False),
+        # Half steps (461a): 1.5 is calm; 2.5 takes the cautious side and is not.
+        ({"stress_tier": 1, "stress_half": True}, True),
+        ({"stress_tier": 2, "stress_half": True}, False),
     ],
 )
 def test_which_ways_can_be_in_the_ride_layer(kwargs, candidate) -> None:
@@ -890,6 +893,19 @@ class TestCalmRoads:
         got = calm_runs(staging)
         assert got[1] == pytest.approx(1000, abs=5), "the longer side of the crossing"
         assert got[9] is None, "the busy road is not a candidate"
+
+    def test_a_2_5_road_crossing_breaks_the_run_and_a_1_5_does_not(self, segment_schemas):
+        # Half steps (461a): an on/off rule takes the cautious side, so a 2.5 road is busy here.
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (500, 0), (1000, 0), (1500, 0))
+        road(staging, 8, "Ash Lane", (1000, -200), (1000, 0), (1000, 200), tier=1, calm=None)
+        road(staging, 9, "Elm Lane", (500, -200), (500, 0), (500, 200), tier=2, calm=None)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {staging}.segment SET stress_half = true WHERE osm_way_id IN (8, 9)"
+            )
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging)[1] == pytest.approx(1000, abs=5)
 
     def test_joining_a_busy_road_ends_the_run_whatever_the_name(self, segment_schemas):
         _live, staging = segment_schemas

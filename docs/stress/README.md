@@ -36,8 +36,8 @@ route, under the elevation.
 | [classification.md](classification.md) | How a way gets its tier: inputs, rule order, AADT smoothing, curated files, closures (access) against stress |
 | [overrides.md](overrides.md) | Stress and access override rows, `at_least` floors, `retire` lists, the loader, the owner's sign-off rule, re-matching by fingerprint |
 | [routing-costs.md](routing-costs.md) | Valhalla's graph tags and request knobs, the slider, each preset's values, RouteMaker's ranking (calm search, LTS 4 hold, strict order, worth rule), the junction model |
-| [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (planned), and the rolling stress chart as built |
-| [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (planned), the Mass Ride map |
+| [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (built), and the rolling stress chart as built |
+| [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (built), the Mass Ride map |
 | [intersections.md](intersections.md) | The junction cost model as built (which roads count, crossing, left, merge and slip costs, caps, orange and red), and the planned revision (467, 468, 468a) |
 | [literature.md](literature.md) | The research consulted, what RouteMaker took from each source, and where and why it differs |
 | [layers.md](layers.md) | The z12-13 ride layer (calm roads, long paths), Mass Ride capacity, and how stress feeds them |
@@ -57,7 +57,7 @@ Owner decisions are cited by number (OWNER-DECISIONS, kept outside the repositor
 | **Avoid** | Tier 5. Not a Furth level. The road is legal for a bicycle and best avoided: an expressway posted 50 mph or more (`legal_but_avoid`, `stress.py:670-681`), an owner override, or a named corridor. It stays routable and pays an entry charge. |
 | **Closed** | Bicycles may not use the way (OSM access, military and secured areas, singletrack and similar rules). This is access, not stress. When it is unclear whether bikes are allowed, the rules err closed, and the owner reopens a way with evidence through an access override. |
 | **Stress number** | The tier as a number, 1-5, with half steps once they exist (461). See [stress-number.md](stress-number.md). |
-| **Half step** | 1.5, 2.5, 3.5 or 4.5: a level between two whole tiers (441i-441l). **Planned**, built with the half-step editor. 461a: its cost and rule effects are the arithmetic midpoint of its two levels' values. 4.5 is never Avoid (441k). |
+| **Half step** | 1.5, 2.5, 3.5 or 4.5: a level between two whole tiers (441i-441l). **Built** with the stress editor: stored as the lower tier plus a half flag. 461a: its cost and rule effects are the arithmetic midpoint of its two levels' values. 4.5 is never Avoid (441k). |
 | **Cost multiplier** | How many meters of quiet street one meter at a level costs under a preset's weights, counting the tier's added cost only (461). See [stress-number.md](stress-number.md). |
 | **Floor** | An override row with `"at_least": true`. It raises a way to the row's tier and never lowers it (`src/pipeline/overrides.py:113-118`, `:438-444`). Also the classifier's own arterial and collector floors (`stress.py:1080-1098`). |
 | **Retire list** | The `retire` entries of an override file. They are rows a later decision withdraws, and the loader deletes them before it writes the file's rows. |

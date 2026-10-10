@@ -1564,8 +1564,25 @@ reason is never in `live.segment`, the tiles, a route answer or a public panel; 
 surfaces still say "Owner override" and name nobody. `GET /api/me` answers three yes/no flags
 and nothing else.
 
-**Not in this phase:** half steps, suggestions from other riders, and a named stretch longer
-than one road piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 2 to 5). "Only raise it" is
+**Half steps (phase 2; 441i-441l, 461a).** The slider moves by halves (1, 1.5, ... 5; never
+above 5). A half step is stored as the lower tier plus a flag: the override value's
+`"half": true` and the live table's `stress_half` column (boolean, default false, never true
+at tier 5). A table built before this release has no `stress_half` column: the editor then
+offers whole steps only (its help says half steps arrive with the next data update) and the
+API refuses a half step (400, `half_unavailable`). Either rebuild, or add the column to the live
+table in place (dry run first; it takes a brief lock, 10 s at most, and does nothing when the
+column is there):
+
+```sh
+docker compose exec -T api python manage.py add_stress_half_column             # dry: says what it would do
+docker compose exec -T api python manage.py add_stress_half_column --confirm
+```
+
+The tile ETag gains the letter `h` once the column is there, so browsers fetch the tiles again.
+Valhalla's own costs follow a half step only after a rebuild (phase 3).
+
+**Not in this phase:** suggestions from other riders, and a named stretch longer than one road
+piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 4 and 5). "Only raise it" is
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
