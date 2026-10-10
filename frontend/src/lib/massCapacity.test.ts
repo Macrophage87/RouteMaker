@@ -345,7 +345,7 @@ test("the app wires the mode: the map's capacity layers, the legend and the pane
   assert.match(app, /massArea=\{isMassRide\(preset\)\}/);
   assert.match(app, /watchForCapacity\(map, \(\) => setCapacityTiles\(true\)\)/);
   assert.match(app, /const massMap = isMassRide\(preset\) && capacityTiles;/);
-  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
+  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
   // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
   assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
   assert.match(app, /const segments = capacity \? \[\] : stressSegments\(route\.stress_m\);/);

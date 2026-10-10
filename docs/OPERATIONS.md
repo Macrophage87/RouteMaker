@@ -420,6 +420,16 @@ Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
 every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
+router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
+7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
+search's measurements) and reads each (a trace and its `/locate`s): up to about 30
+calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (6 s)
+before the search's own 14 s, so a round is always left, and a plan whose hills
+slider already asked for them reuses them. Not yet measured from the live router:
+after the deploy that carries it, compare plan times at 100 with the figures below,
+and count the answers whose `calm_search.alternates.limited` is `time` (the log says
+"did not answer the calm search's ask for alternatives").
 Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
 re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
 2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the
@@ -629,6 +639,18 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   or separated bike lane past a channel leaving on the right (the right hook).
 - An unnamed divided road's two carriageways are counted as two roads (half the
   second added), not once with the refuge credit.
+
+**The rolling stress chart** (OWNER-DECISIONS 460.12; docs/DEVELOPMENT.md "The rolling
+stress chart"). The route answer's `profile.calm` is worked out from the sections and
+junctions the answer already reads: no router call, no database read, no migration and no
+router restart; it ships with the API image and the front end, in either order (an older
+front end ignores it, and the new one draws the old stress strip where it is missing). A
+WARNING "the rolling stress score could not be built" means one answer went out with
+`calm: null`: its chart fell back to the strip and the route itself is unaffected. It adds
+at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus the
+sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
+compresses only tiles and the front end), so a long ride with candidates grows by tens of
+KB. `calm.estimate` is true while each stretch is priced by its tier.
 
 ## The stress tiles
 
@@ -921,10 +943,11 @@ applies to that fallback only.
 **What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
 `mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
 "Zoom in to see busy roads and every street. This is the where-to-ride view: connected
-paths and trails and long calm roads. Busy roads, mountain-bike trails and short
-paths show from zoom 14."; and the standing hint, which gives the two runs in feet
-and miles (kilometres in brackets), says the busy roads, mountain-bike trails, shorter
-paths, the other streets and the junction warnings on the map show from zoom 14,
+paths and trails and long calm roads. Busy roads and short paths show from zoom
+14."; and the standing hint, which gives the two runs in feet and miles (kilometres
+in brackets), says the busy roads, shorter paths, the other streets and the junction
+warnings on the map show from zoom 14, and mountain-bike trails too when their layer
+is on (OWNER-DECISIONS 454),
 and that a planned route shows its own busy stretches and junction warnings at every
 zoom. On a table without the column the text is ahead of the tiles until the rebuild.
 
@@ -1598,6 +1621,14 @@ reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
 race, not bad data: the same inputs build on the next try, and which graph it
 hits is luck.
 
+**The pinned image is 3.6.3 now (2026-10-10), which has that fix**: 3.6.3 takes
+a process-wide lock around the cleanup (`Sqlite3::~Sqlite3`,
+src/mjolnir/sqlite3.cc:78-91 at 3.6.3). Both guards below stay until 3.6.3
+rebuilds on this host have shown no abort; the default stays 2 for memory as
+much as for the race. Once a few rebuilds are clean, 4 (the measured 4.5 h row
+below) is the setting to try. A `retry 1 of 1` line under 3.6.3 is no longer
+the known race: keep the log and report it.
+
 Two things keep it from failing a rebuild:
 
 - **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
@@ -1797,6 +1828,17 @@ above. Sources, licence text verbatim, retrieval times and digests are in
 `fixtures/datasets/README.md`, "Federal land". The file is a hashed asset under
 `/assets/`, served and compressed with the rest of the front end and fetched
 only when a Mass Ride is open; no edge, compose or deploy change.
+
+The water and restrooms layer (`frontend/src/lib/waterRestrooms.ts`) is
+OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
+`frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
+by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
+not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
+federal-land file and fetched when the layer is on, which it is by default; no
+edge, compose or deploy change. A release that first carries it adds to its
+checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
+compressed, and is named by the published front end's script.
 
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
@@ -2620,7 +2662,7 @@ writes nothing.
 
 Singletrack (OWNER-DECISIONS 90, 91, 111) is closed to bicycles on every graph,
 and so is OSM's own `bicycle=no`. Until the rebuild after 2026-10-03 neither
-held on a way with a mountain-bike rating: Valhalla 3.5.1's C++ parser reads
+held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 and 3.6.3) reads
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
@@ -2742,6 +2784,38 @@ What the strip changes besides access, so it is not mistaken for a fault:
   `bicycle:backward=no` as well as `bicycle=no`, so no directional grant
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
+
+## Best order needs the routers restarted once (OWNER-DECISIONS 449)
+
+"Best order" (`POST /api/stop-order`, `core.stoporder`) asks each router for a riding-time matrix,
+Valhalla's `sources_to_targets`, which the routers serve only once their config lists it in
+`loki.actions` (`valhalla/valhalla-*.json`, from `scripts/build_valhalla_configs.py`). The configs
+are read when a router starts, so after deploying the release that adds it, restart the routers once,
+as after a rebuild (below); the beta's CD restarts them itself when a `loki` key changes. Until then
+nothing fails: each press orders the stops by straight-line distance, the answer's `by` is
+`straight_line`, the page says the router's riding times were not available, and the api logs "the
+<variant> router gave no riding-time matrix" at WARNING (the variant and the router's error only,
+never the points).
+
+What one press costs: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`
+of 2,500), bounded on the api by `MATRIX_TIMEOUT_S` (20 s; 15 s on a weekend or off-road router) inside
+a 25 s budget, plus at most a few seconds of ordering in the worker (about a quarter of a second up to
+13 stops; new local-search starts stop after 3 s). It takes a routing slot and counts toward the
+per-client 60 requests a minute like a route, and the route the page asks for after a reorder counts
+again, so heavy reordering can meet a 429 sooner. As with `/route`, a matrix the api gave up on keeps
+running on the router until it finishes: the slot bounds the api's workers, not the router's. That is
+why a ride past 93 mi (150 km) of straight line is ordered by straight line without asking the router
+(`LONG_SPAN_M`, the route API's long-ride line): a matrix over that span is the long ride's search
+many times over. Its time and memory on a real router have not been measured; measure one 25-point
+matrix at about 90 mi (145 km) before relying on it near that line.
+
+The nearest water, restroom or Metro search (`POST /api/nearest`, `core.nearest`) asks the same
+`sources_to_targets`, one row of at most 10 places, and needs the same one restart; until then it
+answers by straight line (`by` is `straight_line`, the page says so) and the api logs "the <variant>
+router gave no distances to the nearest places" at WARNING, with no points. It has the same slot,
+time limits and per-client 60 requests a minute as Best order and `/route` (one budget: a search and
+the route a Ride here then plans count twice), and a place over 93 mi (150 km) away is measured in a
+straight line without asking the router.
 
 ## After a rebuild: restart the routers
 
@@ -3534,11 +3608,15 @@ answer's `moved_points` says so.
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
 tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
-trail in no routable layer but in its own not-for-routes look, for every ride type: a thin
+trail in no routable layer but in its own not-for-routes look: a thin
 mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
 superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
-`MTB_TRAILS_ROUTABLE`); the legend has a row "Mountain-bike trail: not used for routes" and
-the road panel says the same. `rough` draws as any unpaved trail does. Routing closes the class
+`MTB_TRAILS_ROUTABLE`). Since 454 it draws only while the Map layers sheet's
+"Mountain-bike trails" switch is on (off by default, kept per browser under
+`routemaker.mtbTrails`), in every ride type; the legend has a row "Mountain-bike trail: not
+used for routes" while it is on, and the road panel says the same whatever the switch.
+After the deploy that ships 454, riders who saw the dotted trails see none until they turn
+the layer on (Map layers, "Trails and terrain"). `rough` draws as any unpaved trail does. Routing closes the class
 for every preset but Gravel and Mountain Goat. The segment
 table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 (core 0010) is state-only.
@@ -3975,8 +4053,9 @@ yet and that is an older build's value (it may well say 4): wait and run it agai
 not conclude anything from it.
 
 A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
-the 3.5.1 race hit one graph and the retry is building it again: nothing needs doing during
-the run. Note it in the report; "Tile build threads" says when to move to
+a tile build aborted and the retry is building it again: nothing needs doing during
+the run. Under 3.5.1 that was the known race; the pinned 3.6.3 fixes it, so an abort now is something new. Keep the
+rebuild's log and note the line in the report. "Tile build threads" says when to move to
 `REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
 line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
 the retry aborted too: set 1 before the next rebuild.
