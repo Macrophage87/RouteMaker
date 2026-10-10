@@ -392,7 +392,9 @@ for (let i = 0; i <= 40; i++) coords.push([-77.04 + i * 0.00075, 38.91 - i * 0.0
  * The route chart's profile (core.api.ProfileOut; OWNER-DECISIONS 322, 323, 328, 333) for a route of `distance`
  * metres: a gentle rise, a climb from 1,800 m to 2,100 m (6%, with a 9% pitch in its last 90 m), a plateau, then a 4% descent. With `mass`, the riders
  * a minute (a pinch at the start, 90 on the climb, none on a stretch marked Avoid from 3,540 m to 4,140 m, 190 elsewhere) and seven major
- * intersections (OWNER-DECISIONS 396: each crosses or joins a road of LTS 3 or higher, or is flagged).
+ * intersections (OWNER-DECISIONS 396: each crosses or joins a road of LTS 3 or higher, or is flagged; 13th Street
+ * one-way, so it takes one corker). The level figure is a 22 ft (6.7 m) road's everywhere but the Avoid stretch, so a
+ * 500-rider group is about 1,560 ft (474 m) long (PLAN's worked example).
  */
 const profileFor = (distance, mass = false) => {
   const n = Math.floor(distance / 30) + 1;
@@ -401,7 +403,7 @@ const profileFor = (distance, mass = false) => {
   const grade = (d) => (d < 1800 ? 0.2 : d <= 2010 ? 6 : d <= 2100 ? 9 : d < 3200 ? 0 : d <= 3500 ? -4 : 0);
   const avoid = (d) => d >= 3540 && d <= 4140;
   const riders = (d) => (avoid(d) ? null : d < 200 ? 55 : d >= 1800 && d <= 2100 ? 90 : 190);
-  const crossing = (at, street, severity, control, tier, corkers, kind = "flagged") => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, kind, corkers_needed: corkers });
+  const crossing = (at, street, severity, control, tier, corkers, kind = "flagged", oneway = null) => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, kind, corkers_needed: corkers, oneway });
   return {
     interval_m: 30,
     m,
@@ -409,7 +411,8 @@ const profileFor = (distance, mass = false) => {
     grade_pct: m.map(grade),
     climbs: [{ from_m: 1800, to_m: 2100, gain_m: 20.7, avg_grade_pct: 6.9, max_grade_pct: 9, tier: 2, ...(mass ? { capacity_drop_pct: 53, min_riders_per_min: 90 } : {}) }],
     riders_per_min: mass ? m.map(riders) : null,
-    flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190 } : null,
+    level_riders_per_min: mass ? m.map((d) => (avoid(d) ? null : 198)) : null,
+    flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190, cruise_pace_ms: 3.1293, default_level_riders_per_min: 197.98 } : null,
     avoid: mass ? [{ from_m: 3540, to_m: 4140 }] : null,
     unchecked: mass ? [] : null,
     crossings: mass
@@ -418,7 +421,7 @@ const profileFor = (distance, mass = false) => {
           crossing(1700, "17th Street Northwest", "orange", "signal", 3, true),
           crossing(2100, "15th Street Northwest", "red", "signal", 4, true),
           crossing(2500, "14th Street Northwest", "orange", "signal", 3, true),
-          crossing(2900, "13th Street Northwest", "orange", "signal", 3, true),
+          crossing(2900, "13th Street Northwest", "orange", "signal", 3, true, "flagged", true),
           crossing(3300, "Pierce Street", null, "cross_stop", 3, true, "crossing"),
           crossing(4000, "9th Street Northwest", "red", "none", 4, true),
         ]

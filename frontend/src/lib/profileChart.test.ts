@@ -116,7 +116,7 @@ test("a ride type other than Mass Ride has the stress chart, a Mass Ride the rid
   assert.equal(chartKind({ preset: "default" }), "stress");
   assert.equal(chartKind({ preset: "mass-ride" }), "mass");
   assert.equal(foldName("stress"), "Elevation and stress");
-  assert.equal(foldName("mass"), "Elevation and riders per minute");
+  assert.equal(foldName("mass"), "Riders per minute, corker load and elevation");
 });
 
 test("a profile is used only when two samples have a height", () => {

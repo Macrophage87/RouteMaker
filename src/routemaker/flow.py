@@ -83,6 +83,16 @@ DENSITY_PER_M2 = 0.37
 UTILISATION = 0.7
 PACE_MS = 1.9
 
+# The group at cruise (PLAN "The main control: Anticipated ride size", items 128, 139): the
+# same flow over more road at the 6-8 mph cruise, so a group of N riders is
+# N / (flow a second) x CRUISE_PACE_MS long. 7 mph, the middle of the cruise and the
+# worked example's pace: 500 riders on a 22 ft (6.7 m) road are about 474 m long.
+CRUISE_PACE_MS = 7 * 0.44704
+# The road a group's length is read on where no width is known along a route (outside
+# DC, an untraced leg, a stretch marked Avoid with nothing known beside it): the worked
+# example's two 11 ft lanes.
+GROUP_DEFAULT_WIDTH_M = 2 * LANE_WIDTH_M
+
 # The grade adjustment (OWNER-DECISIONS 328(b)).
 FREE_CLIMB_GRADE = 0.01
 CLIMB_SLOWING = 12.0
@@ -152,6 +162,14 @@ def usable_width_m(
 def level_riders_per_min(width_m: float) -> float:
     """What a stretch of this width carries on the level, riders a minute."""
     return 60.0 * DENSITY_PER_M2 * UTILISATION * width_m * PACE_MS
+
+
+def group_length_m(riders: float, width_m: float) -> float:
+    """How long a group of `riders` is at cruise on a road of this width, metres: riders
+    over the cruising density times the effective width, which is the riders over the
+    flow a second times the cruising pace (PLAN, item 128). The front end reads the same
+    figure from `level_riders_per_min` and `CRUISE_PACE_MS`, which the profile sends."""
+    return riders / (level_riders_per_min(width_m) / 60.0) * CRUISE_PACE_MS
 
 
 def speed_ratio(grade: float, climbed_m: float) -> float:
