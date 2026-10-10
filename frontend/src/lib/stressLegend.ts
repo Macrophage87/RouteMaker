@@ -30,6 +30,7 @@ import {
 } from "../stressStyle.js";
 import { useHighStressLanes, useMtbTrails, useStressStyle } from "../useStressStyle.ts";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
+import { isPlainClick, rememberPlanForPage, tabSession } from "./signIn.ts";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
@@ -172,6 +173,30 @@ export function StressZoomNotes({
 
 /** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2). */
 export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 (heavy traffic); Avoid is legal but best avoided.";
+
+/**
+ * The rider-facing page on how the ratings work (OWNER-DECISIONS 461: "Something that can be
+ * linked to on the website"), a static page in public/ served at this path by both edges
+ * (Caddyfile, deploy/beta/nginx-routemaker.conf.template). Opens in the same tab.
+ */
+export const STRESS_PAGE = "/about/stress.html";
+/**
+ * The link's words, visible and its whole accessible name: no hidden part, which iOS VoiceOver
+ * can read as a second swipe stop (the accessibility review's N8).
+ */
+export const STRESS_PAGE_TEXT = "How stress ratings work";
+
+/**
+ * The link to STRESS_PAGE, as the legend and the road panel show it. Following it keeps the
+ * plan for the page's "Back to the map" links, which go to a bare "/" (`rememberPlanForPage`).
+ */
+export function StressPageLink({ className }: { className?: string }): ReactElement {
+  return h(
+    "p",
+    { className: `hint stress-page-link${className ? ` ${className}` : ""}` },
+    h("a", { href: STRESS_PAGE, onClick: (e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash) }, STRESS_PAGE_TEXT),
+  );
+}
 
 /** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
 export const UNPAVED_LEGEND =
@@ -338,6 +363,7 @@ export function StressLegend({
     Fragment,
     null,
     h("p", { className: "hint lts-means" }, LTS_MEANS),
+    h(StressPageLink, null),
     h(
       "ul",
       { className: "legend", "aria-label": "Traffic stress legend" },

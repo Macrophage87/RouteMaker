@@ -51,20 +51,23 @@ list is an alert.</p>
 
 <h2>Wedged jobs</h2>
 {% if wedged_jobs %}
-<p>Each of these has been running for longer than the budget its task enforces
-on itself, which means nothing enforced it: a worker killed mid-job leaves its
-row <code>doing</code> for ever, because the process that would have finished it
-is gone. Everything on this list is an alert: once the worker that held the job
-is gone, <code>manage.py unwedge_job &lt;id&gt;</code> puts it back on the
-queue.</p>
+<p>Each of these is <code>doing</code> with no worker left to finish it (its
+worker row is gone, or has sent no heartbeat for over {{ stalled_worker_timeout_s|floatformat:0 }} seconds), or has been
+running for longer than the budget its task enforces on itself, which means
+nothing enforced it: a worker killed mid-job leaves its row <code>doing</code>
+for ever, because the process that would have finished it is gone. Everything on
+this list is an alert: once the worker that held the job is gone,
+<code>manage.py unwedge_job &lt;id&gt;</code> puts it back on the queue (a
+rebuild then resumes from its checkpoints).</p>
 <table>
-  <thead><tr><th>Job</th><th>Task</th><th>Queue</th><th>Running for</th><th>Budget</th><th>Started</th></tr></thead>
+  <thead><tr><th>Job</th><th>Task</th><th>Queue</th><th>Worker</th><th>Running for</th><th>Budget</th><th>Started</th></tr></thead>
   <tbody>
   {% for entry in wedged_jobs %}
     <tr class="wedged-job">
       <th scope="row">{{ entry.id }}</th>
       <td>{{ entry.task }}</td>
       <td>{{ entry.queue }}</td>
+      <td>{% if entry.worker_gone %}gone (no heartbeat){% else %}alive{% endif %}</td>
       <td>{{ entry.age_s|floatformat:0 }} s</td>
       <td>{{ entry.budget_s|floatformat:0 }} s</td>
       <td>{{ entry.started_at }}</td>
@@ -73,7 +76,7 @@ queue.</p>
   </tbody>
 </table>
 {% else %}
-<p id="no-wedged-jobs">No job has outlived the budget of the task it is running.</p>
+<p id="no-wedged-jobs">No job has outlived the budget of the task it is running, and every running job's worker is still sending heartbeats.</p>
 {% endif %}
 
 <h2>Free space</h2>

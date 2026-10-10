@@ -419,6 +419,8 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     "REBUILD_MIN_FREE_BYTES": ("rebuild",),
     # Threads per valhalla_build_tiles run, read at BUILD_TILES alone.
     "REBUILD_TILE_CONCURRENCY": ("rebuild",),
+    # Whether the rebuild keeps and resumes checkpoints (OWNER-DECISIONS 459).
+    "REBUILD_CHECKPOINTS": ("rebuild",),
     # The weekly rebuild's pause (OWNER-DECISIONS 355), read by the rebuild task alone.
     "WEEKLY_REBUILD_PAUSED": ("rebuild",),
     # The source extract the rebuild downloads, merges and clips for itself

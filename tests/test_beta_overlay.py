@@ -868,6 +868,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
         "= /index.html",
         "= /favicon.svg",
         "= /licenses.txt",
+        "= /about/stress.html",
         "^~ /assets/",
         "^~ /static/",
         "^~ /basemap/",
@@ -890,6 +891,27 @@ def test_the_content_security_policy_is_the_caddyfiles_verbatim() -> None:
     assert (
         f'add_header Content-Security-Policy "{caddy_csp}" always;' in dict(locations(full))["= /"]
     )
+
+
+def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_them() -> None:
+    """OWNER-DECISIONS 461; the mutation review's T3: the page's location carries the
+    app's CSP verbatim and no-cache from the app's own root, and the short paths redirect
+    with the Caddyfile's status, as case-insensitively as Caddy's `path` matcher."""
+    full = stage("full")
+    by_path = dict(locations(full))
+    page = by_path["= /about/stress.html"]
+    caddy_csp = re.search(r'header Content-Security-Policy "([^"]+)"', CADDYFILE).group(1)
+    assert f'add_header Content-Security-Policy "{caddy_csp}" always;' in page
+    assert 'add_header Cache-Control "no-cache" always;' in page
+    root = re.findall(r"^\s*root (\S+);", by_path["= /"], re.M)
+    assert root and re.findall(r"^\s*root (\S+);", page, re.M) == root
+    caddy = re.search(r"^\s*redir @stress-page (\S+) (\d{3})$", CADDYFILE, re.M)
+    assert caddy and re.search(
+        r"^\s*@stress-page path /about/stress /about/stress/$", CADDYFILE, re.M
+    )
+    target, status = caddy.groups()
+    assert target == "/about/stress.html"
+    assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
 
 
 def test_the_basemap_is_same_origin_only_with_the_caddyfiles_three_paths() -> None:

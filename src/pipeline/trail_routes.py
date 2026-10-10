@@ -297,7 +297,7 @@ WHERE s.id = runs.id
 # road gets the length of its calm run (`pipeline.calm_roads`: continuous LTS 1 and 2
 # road, ended at every junction with a road at LTS 3 or above); a road with no name
 # stays 0: it has no run. A path's run is at least 1 m, as a road's is
-# (`calm_roads.runs_of`): 0 is "not derived" to VALIDATE, and a lone named trail
+# (`calm_roads.runs_of`): 0 is "not derived" to VALIDATE_SEGMENTS, and a lone named trail
 # piece under half a metre rounds to 0. `trail_run_m` rounds the same way and is left
 # as it is: nothing reads its 0 as "not derived" (its readers compare it with floors
 # of hundreds of metres, and the tiles carry it as it is).
@@ -554,7 +554,7 @@ def derive_roadside(schema: str) -> int:
 
 
 class LongTrailSummary(NamedTuple):
-    """What VALIDATE reads of the long-trail columns before a promotion."""
+    """What VALIDATE_SEGMENTS reads of the long-trail columns before a promotion."""
 
     # Rows on a long walking or long bicycle route (trail_route >= 2).
     on_long_route: int
@@ -590,7 +590,7 @@ def long_trail_summary(schema: str, sentinel_ways, run_floor_m: int) -> LongTrai
 
 
 class CalmRunSummary(NamedTuple):
-    """What VALIDATE reads of the calm-run column before a promotion."""
+    """What VALIDATE_SEGMENTS reads of the calm-run column before a promotion."""
 
     # Path rows (is_trail_class) in a run of at least the ride layer's path bar.
     path_rows: int

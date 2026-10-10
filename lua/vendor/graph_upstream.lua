@@ -778,8 +778,8 @@ function normalize_speed(speed)
       num = round(num * 1.609344)
     end
 
-    --if num > 150kph or num < 10kph....toss
-    if num > 150 or num < 10 then
+    --toss unusably low speeds
+    if num < 10 then
       return nil
     end
   end
@@ -923,9 +923,13 @@ function filter_tags_generic(kv)
     return 1
   end
 
-  --toss actual areas
+  --toss actual areas, but keep pedestrian areas 
   if kv["area"] == "yes" then
+    if kv["highway"] == "pedestrian" then
+      kv["pedestrian_area"] = "true"
+    else 
     return 1
+    end
   end
 
   --figure out what basic type of road it is
@@ -1284,6 +1288,9 @@ function filter_tags_generic(kv)
     kv["roundabout"] = "true"
   else
     kv["roundabout"] = "false"
+  end
+  if kv["junction"] == "intersection" then
+    kv["tagged_internal_intersection"] = "true"
   end
   kv["oneway"] = oneway_norm
   if oneway_norm == "true" then
@@ -1757,6 +1764,8 @@ function filter_tags_generic(kv)
   if kv["maxspeed"] == "none" then
     --- special case unlimited speed limit (german autobahn)
     kv["max_speed"] = "unlimited"
+  elseif kv["maxspeed"] == "walk" then
+    kv["max_speed"] = 5
   else
     kv["max_speed"] = normalize_speed(kv["maxspeed"])
   end
@@ -2034,21 +2043,6 @@ function filter_tags_generic(kv)
 end
 
 function nodes_proc (kv, nokeys)
-
-  if kv["iso:3166_2"] then
-    i, j = string.find(kv["iso:3166_2"], '-', 1, true)
-    if i == 3 then
-      if string.len(kv["iso:3166_2"]) == 6 or string.len(kv["iso:3166_2"]) == 5 then
-        kv["state_iso_code"] = string.sub(kv["iso:3166_2"], 4)
-      end
-    elseif string.find(kv["iso:3166_2"], '-', 1, true) == nil then
-      if string.len(kv["iso:3166_2"]) == 2 or  string.len(kv["iso:3166_2"]) == 3 then
-        kv["state_iso_code"] = kv["iso:3166_2"]
-      elseif string.len(kv["iso:3166_2"]) == 4 or  string.len(kv["iso:3166_2"]) == 5 then
-        kv["state_iso_code"] = string.sub(kv["iso:3166_2"], 3)
-      end
-    end
-  end
 
   --normalize a few tags that we care about
   local initial_access = any_in(access, kv["access"])
@@ -2471,6 +2465,10 @@ function rels_proc (kv, nokeys)
        kv["restriction"] = nil
        return 0, kv
      end
+  end
+
+  if (kv["type"] == "multipolygon" and kv["highway"] == "pedestrian" and kv["area"] == "yes") then
+    return 0, kv
   end
 
   return 1, kv

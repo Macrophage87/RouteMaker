@@ -25,7 +25,7 @@ from test_route_api import (
     trace_answer,
 )
 
-from core import presets, routing
+from core import presets, refine, routing
 from routemaker import ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -767,6 +767,53 @@ def test_a_mass_ride_counts_bike_lanes_as_none(client, facility_segments, router
     assert mass["protected"] == 0
 
 
+@db
+def test_a_trails_off_ride_keeps_its_bike_lanes_in_the_breakdown(client, facility_segments, router):
+    """The lanes-as-none relabel is Mass Ride's (it takes the roadway), not the
+    no-trail graph's: a Default ride with "Keep to roads, not trails" on still
+    rides way 202's painted lane, and its breakdown says so (the trails-off
+    correctness review, 3)."""
+    router(standard_router())
+    ordinary = post(client, {**good_body("default"), "when": "weekday_rush"}).json()["facility_m"]
+    router(standard_router())
+    body = post(client, {**good_body("default"), "when": "weekday_rush", "trails_off": True}).json()
+    assert body["variant"] == "no-trail"
+    assert ordinary["lane"] > 0
+    assert body["facility_m"]["lane"] == pytest.approx(ordinary["lane"])
+    assert "lane" in [s["facility"] for s in body["stress_spans"]]
+
+
+class _NoAnalyses(dict):
+    def get(self, *a, **k):
+        return None
+
+
+class _ContextWithoutAnalyses(refine.Context):
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.analyses = _NoAnalyses()
+
+
+@db
+def test_a_trails_off_ride_keeps_its_bike_lanes_when_the_breakdown_is_classified_again(
+    client, facility_segments, router, monkeypatch
+):
+    """The same when the refine analysis is not reused and the breakdown is
+    classified from the trace (routing's fallback): lanes stay lanes on a
+    roads-only ride and are none only on Mass Ride (the trails-off mutation review)."""
+    monkeypatch.setattr(refine, "Context", _ContextWithoutAnalyses)
+    router(standard_router())
+    ordinary = post(client, {**good_body("default"), "when": "weekday_rush"}).json()["facility_m"]
+    router(standard_router())
+    body = post(client, {**good_body("default"), "when": "weekday_rush", "trails_off": True}).json()
+    assert body["variant"] == "no-trail"
+    assert ordinary["lane"] > 0
+    assert body["facility_m"]["lane"] == pytest.approx(ordinary["lane"])
+    router(standard_router())
+    mass = post(client, {**good_body("mass-ride"), "when": "weekday_rush"}).json()["facility_m"]
+    assert mass["lane"] == 0
+
+
 # --- The avoid half: sustained climbs and descents (the owner, 2026-09-28) ----
 
 
@@ -1503,6 +1550,86 @@ class TestAvoidGravel:
     def test_only_a_boolean(self, client, facility_segments, router):
         fake = router(standard_router())
         assert post(client, {**good_body(), "avoid_gravel": "yes"}).status_code == 400
+        assert fake.calls == []
+
+
+@db
+class TestTrailsOff:
+    """OWNER-DECISIONS 463 (and the 2026-09-26 "Every type, roadways ok"): the
+    "Keep to roads, not trails" switch (463b) plans on the no-trail graph, on
+    every ride type, e-bike rides included with no lock (463a)."""
+
+    def test_off_by_default_and_echoed(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, good_body("default")).json()
+        assert body["dials"]["trails_off"] is False
+        assert body["variant"] != "no-trail"
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS[body["variant"]])
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "default",
+            "trailmaxxing",
+            "group-ride",
+            "fast",
+            "cargo",
+            "ebike",
+            "gravel",
+            "mountain-goat",
+        ],
+    )
+    def test_on_it_routes_on_the_no_trail_graph(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "trails_off": True}).json()
+        assert body["variant"] == "no-trail"
+        assert body["dials"]["trails_off"] is True
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["no-trail"])
+
+    def test_mass_ride_is_always_trails_off_whatever_is_sent(
+        self, client, facility_segments, router
+    ):
+        router(standard_router())
+        for sent in ({}, {"trails_off": False}, {"trails_off": True}):
+            body = post(client, {**good_body("mass-ride"), **sent}).json()
+            assert body["variant"] == "no-trail"
+            assert body["dials"]["trails_off"] is True
+
+    def test_on_a_weekend_it_still_takes_the_no_trail_graph(
+        self, client, facility_segments, router
+    ):
+        router(standard_router())
+        body = post(client, {**good_body("default"), "trails_off": True, "when": "weekend"}).json()
+        assert body["variant"] == "no-trail"
+
+    def test_electric_assist_with_trails_off_keeps_its_pace_on_the_no_trail_graph(
+        self, client, facility_segments, router
+    ):
+        """463a: "Most ebikes are allowed on multiuse trails" - no lock, and
+        the no-trail graph, not the e-bike graph."""
+        fake = router(standard_router())
+        body = post(client, {**good_body("cargo"), "trails_off": True, "assist": True}).json()
+        assert body["variant"] == "no-trail"
+        assert body["dials"]["assist"] is True
+        assert body["dials"]["trails_off"] is True
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["no-trail"])
+
+    def test_the_e_bike_ride_type_with_trails_off_is_not_locked(
+        self, client, facility_segments, router
+    ):
+        """463a: the E-bike ride type's own graph is the e-bike graph; with
+        the switch on it takes the no-trail graph, and the switch is honoured."""
+        router(standard_router())
+        off = post(client, good_body("ebike")).json()
+        assert off["variant"] == "ebike"
+        assert off["dials"]["trails_off"] is False
+        on = post(client, {**good_body("ebike"), "trails_off": True}).json()
+        assert on["variant"] == "no-trail"
+        assert on["dials"]["trails_off"] is True
+
+    def test_only_a_boolean(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body(), "trails_off": "yes"}).status_code == 400
         assert fake.calls == []
 
 

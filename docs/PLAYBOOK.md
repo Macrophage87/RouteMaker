@@ -63,6 +63,11 @@ pointing at a directory on a disk with room.
   can do that: `docker run --rm -v "$DATA_ROOT:$DATA_ROOT" -v "$PWD:/app" -w /app
   debian:bookworm-slim sh scripts/prepare_data_root.sh --env-file .env`.
 
+To have the stack running locally without the checklist, `scripts/local-up.sh` does the setup in
+§3 to §5 in one command (not the checks, and not the Discord credentials), in the local posture,
+and starts it again on every later run: see
+[Running it on this computer](../README.md#running-it-on-this-computer) in the README.
+
 ## 1. The host
 
 ```sh

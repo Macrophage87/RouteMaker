@@ -69,6 +69,19 @@ test("the export carries the sliders the route was planned with, and says them",
   );
 });
 
+test("a roads-only route says so and carries it in the file, but not on Mass Ride, which always is", () => {
+  const dials = { stress: 70, hills: 0, when: "weekend" as const, carrying: null, trails_off: true };
+  const out = exportOf({ ...ROUTE, preset: "default", dials }, []);
+  assert.equal(out.dials?.trailsOff, true);
+  assert.match(out.rideText, /; roads only, no trails\.$/);
+  const off = exportOf({ ...ROUTE, preset: "default", dials: { ...dials, trails_off: false } }, []);
+  assert.equal(off.dials?.trailsOff, undefined);
+  assert.doesNotMatch(off.rideText, /roads only/);
+  const mass = exportOf({ ...ROUTE, preset: "mass-ride", dials: { ...dials, stress: 0 } }, []);
+  assert.equal(mass.dials?.trailsOff, undefined);
+  assert.doesNotMatch(mass.rideText, /roads only/);
+});
+
 test("the fidelity notice warns exactly when either share is under the threshold", () => {
   const ok = fidelityNotice({ trackCovered: 0.97, routeOnTrack: 0.95, lengthRatio: 1 });
   assert.equal(ok.warn, false);

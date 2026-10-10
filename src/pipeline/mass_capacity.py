@@ -1,4 +1,4 @@
-"""The Mass Ride capacity column: what VALIDATE reads back before a promotion.
+"""The Mass Ride capacity column: what VALIDATE_SEGMENTS reads back before a promotion.
 
 `segment.mass_usable_width_m` (metres; `routemaker.flow` makes riders a minute of it) is
 written by the segment writer from
@@ -47,7 +47,7 @@ MEDIAN_RANGE_RPM = (60, 200)
 
 
 class CapacitySummary(NamedTuple):
-    """What VALIDATE reads of the capacity column."""
+    """What VALIDATE_SEGMENTS reads of the capacity column."""
 
     road_rows: int
     road_with: int

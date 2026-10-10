@@ -44,7 +44,7 @@ def test_failure_stops_before_later_stages() -> None:
         raise ValueError("reference route did not reproduce")
 
     handlers = {
-        Stage.VALIDATE: boom,
+        Stage.VALIDATE_TILES: boom,
         Stage.SWAP: lambda: ran.append(Stage.SWAP),
         Stage.RECONCILE: lambda: ran.append(Stage.RECONCILE),
     }
@@ -73,9 +73,23 @@ def test_reference_data_loads_before_anything_consumes_it() -> None:
 def test_validation_precedes_the_swap() -> None:
     """Everything before the swap writes only to staging and a dated tile
     directory, so it is safe to abandon. Validating after the swap would not be."""
-    assert Stage.VALIDATE in PRE_SWAP_STAGES
+    assert Stage.VALIDATE_SEGMENTS in PRE_SWAP_STAGES
+    assert Stage.VALIDATE_TILES in PRE_SWAP_STAGES
     assert Stage.SWAP not in PRE_SWAP_STAGES
-    assert list(Stage).index(Stage.VALIDATE) == list(Stage).index(Stage.SWAP) - 1
+    assert list(Stage).index(Stage.VALIDATE_TILES) == list(Stage).index(Stage.SWAP) - 1
+
+
+def test_segments_are_written_and_checked_before_the_tiles_are_built() -> None:
+    """The checkpoint design's stage order (owner decision 459): nothing about the
+    segments reads a tile, so a segment failure must cost the 2.5 hours up to
+    INJECT_TAGS and not those plus the whole tile stage; and the checks that read a
+    graph come after the graphs exist."""
+    order = list(Stage)
+    assert order.index(Stage.INJECT_TAGS) < order.index(Stage.WRITE_SEGMENTS)
+    assert order.index(Stage.WRITE_SEGMENTS) < order.index(Stage.VALIDATE_SEGMENTS)
+    assert order.index(Stage.VALIDATE_SEGMENTS) < order.index(Stage.BUILD_TILES)
+    assert order.index(Stage.BUILD_TILES) < order.index(Stage.VALIDATE_TILES)
+    assert not hasattr(Stage, "VALIDATE"), "the old combined stage is gone"
 
 
 def test_border_nodes_are_inserted_before_tiles_are_built() -> None:

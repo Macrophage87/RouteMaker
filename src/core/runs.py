@@ -594,7 +594,8 @@ WEDGED_JOB_REMEDY = (
 
 
 def wedged_jobs(now=None) -> list[dict]:
-    """Jobs still `doing` long past the budget of the task they are running.
+    """Jobs still `doing` long past the budget of the task they are running, or
+    whose worker is gone.
 
     The gap this closes is the one a killed rebuild fell into. Both surfaces
     read `status="failed"`, and a worker that dies mid-job never writes that
@@ -609,15 +610,25 @@ def wedged_jobs(now=None) -> list[dict]:
     `started_at` column to read; `scheduled_at` is the fallback and is null for
     anything deferred immediately, and a job with neither is left alone rather
     than reported on a timestamp that was guessed.
+
+    And a job whose worker is gone is wedged at once, whatever its age: no
+    worker row, or one silent for longer than `STALLED_WORKER_TIMEOUT_S`. That
+    is the test `unwedge_job` applies before it requeues, so the page and the
+    command agree, and a rebuild killed at hour three is on the page at hour
+    three - which, with checkpoints, is hours of work an early requeue keeps -
+    rather than at hour eight (or 23, with the longest budget).
     """
     from django.db.models import Max
     from procrastinate.contrib.django.models import ProcrastinateJob
+
+    from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
 
     now = now or timezone.now()
     budgets = job_budgets()
     wedged = []
     running = (
         ProcrastinateJob.objects.filter(status="doing")
+        .select_related("worker")
         .annotate(last_event_at=Max("procrastinateevent__at"))
         .order_by("id")
     )
@@ -627,7 +638,13 @@ def wedged_jobs(now=None) -> list[dict]:
             continue
         budget = budgets.get(job.task_name, DEFAULT_JOB_BUDGET_S)
         age = (now - started).total_seconds()
-        if age >= budget:
+        worker = job.worker
+        worker_gone = (
+            worker is None
+            or worker.last_heartbeat is None
+            or (now - worker.last_heartbeat).total_seconds() > STALLED_WORKER_TIMEOUT_S
+        )
+        if age >= budget or worker_gone:
             wedged.append(
                 {
                     "id": job.id,
@@ -636,6 +653,9 @@ def wedged_jobs(now=None) -> list[dict]:
                     "budget_s": budget,
                     "age_s": age,
                     "started_at": started,
+                    # Why it is on the list: "worker gone" is the stronger of the
+                    # two, and the one `unwedge_job` will act on straight away.
+                    "worker_gone": worker_gone,
                     # Carried on the row rather than composed by each surface,
                     # so the page and the command cannot end up naming
                     # different remedies - and so that a report of a wedged job

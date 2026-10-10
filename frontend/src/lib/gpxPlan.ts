@@ -123,6 +123,8 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   if (fields.assist === "1") dials.assist = true;
   // A loop the rider chose (OWNER-DECISIONS 374): without it the last stop would open as the end.
   if (fields.loop === "1") dials.loop = true;
+  // "Keep to roads, not trails" (OWNER-DECISIONS 463): without it the plan would reopen on trails.
+  if (fields.trailsoff === "1") dials.trailsOff = true;
   return { preset: id, dials };
 }
 

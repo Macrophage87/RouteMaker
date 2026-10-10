@@ -239,6 +239,9 @@ class TestTheLongCalmPlan:
         assert not long_calm_for("trailmaxxing", [US, [-77.0, 38.95]], 100, False)
         assert not long_calm_for("trailmaxxing", [US, PENN], 100, True), "a long ride has its own"
         assert not long_calm_for("trailmaxxing", [US], 100, False)
+        # Not with trails off: its leg-by-leg search is for trails (the trails-off
+        # correctness review, 7).
+        assert not long_calm_for("trailmaxxing", [US, PENN], 100, False, trails_off=True)
 
     def test_the_span_that_makes_it_long_is_the_searchs_working_span(self) -> None:
         assert refine_span() == 30_000
@@ -305,6 +308,46 @@ class TestTheLongCalmPlan:
             lambda *a, **k: (_ for _ in ()).throw(routing.NoRoute("stop", no_path=True)),
         )
         post(client, {"points": [US, PENN], "preset": "trailmaxxing", "stress": 100, "loop": True})
+        assert ratelimit.LONG_ROUTING_IN_FLIGHT not in taken
+
+    def test_a_roads_only_ride_has_the_ordinary_budget(self, monkeypatch) -> None:
+        """routing.plan passes trails_off to long_calm_for (the trails-off mutation review)."""
+        seen = []
+
+        def first(variant, request, deadline):
+            seen.append(deadline)
+            raise routing.RouterUnavailable("stop")
+
+        monkeypatch.setattr(routing, "_route", first)
+        started = routing.clock()
+        with pytest.raises(routing.RouterUnavailable):
+            routing.plan(
+                [US, PENN],
+                "trailmaxxing",
+                started=started,
+                dials=routing.Dials(stress=100, when="weekday_offpeak", trails_off=True),
+            )
+        assert seen[0].at == pytest.approx(
+            started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, abs=0.5
+        )
+        assert seen[0].per_call_s == routing.ROUTER_TIMEOUT_S
+
+    def test_a_roads_only_ride_does_not_take_the_long_slot(self, client, monkeypatch) -> None:
+        """The API's slot choice passes trails_off too, so the slot and the budget agree."""
+        taken = []
+        real = ratelimit.acquire
+        monkeypatch.setattr(
+            ratelimit, "acquire", lambda r, limit: (taken.append(limit), real(r, limit))[1]
+        )
+        monkeypatch.setattr(
+            routing,
+            "plan",
+            lambda *a, **k: (_ for _ in ()).throw(routing.NoRoute("stop", no_path=True)),
+        )
+        post(
+            client,
+            {"points": [US, PENN], "preset": "trailmaxxing", "stress": 100, "trails_off": True},
+        )
         assert ratelimit.LONG_ROUTING_IN_FLIGHT not in taken
 
     def test_the_budget_is_the_long_rides_and_under_gunicorns_timeout(self) -> None:

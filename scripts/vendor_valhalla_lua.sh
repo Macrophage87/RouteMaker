@@ -5,7 +5,7 @@
 # produces are a function of this repository and not of whichever image tag
 # happened to be pulled.
 set -eu
-PINNED="$(cat "$(dirname "$0")/../lua/vendor/VERSION" 2>/dev/null || echo 3.6.3)"
+PINNED="$(cat "$(dirname "$0")/../lua/vendor/VERSION" 2>/dev/null || echo 3.9.1)"
 VERSION="${1:-$PINNED}"
 DEST="$(dirname "$0")/../lua/vendor"
 mkdir -p "$DEST"

@@ -955,5 +955,21 @@ check("a mapper's own bicycle=yes on it is upstream's to honour",
   bike_of({ highway = "residential", smoothness = "impassable", bicycle = "yes" }) == "true/true",
   bike_of({ highway = "residential", smoothness = "impassable", bicycle = "yes" }))
 
+-- From 3.7.0 the parser types an `amenity=parking` node as parking, which can
+-- overwrite a gate or a bollard type and drop its gate cost. The tag comes off
+-- a barrier; a plain parking node keeps it.
+local parking_gate = transform_node({ barrier = "gate", amenity = "parking" })
+check("a gate that is also tagged amenity=parking stays a gate",
+  parking_gate.gate == "true" and parking_gate.amenity == nil, parking_gate.amenity)
+local parking_bollard = transform_node({ barrier = "bollard", amenity = "parking" })
+check("so does a bollard",
+  parking_bollard.bollard == "true" and parking_bollard.amenity == nil, parking_bollard.amenity)
+local parking_barrier = transform_node({ barrier = "cycle_barrier", motor_vehicle = "no", amenity = "parking" })
+check("and a cycle barrier the remap makes a gate",
+  parking_barrier.gate == "true" and parking_barrier.amenity == nil, parking_barrier.amenity)
+local parking_only = transform_node({ amenity = "parking" })
+check("a parking node with no barrier keeps its tag",
+  parking_only.amenity == "parking", parking_only.amenity)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

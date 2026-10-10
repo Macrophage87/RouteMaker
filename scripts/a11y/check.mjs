@@ -814,6 +814,42 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 16b. Keep to roads, not trails (OWNER-DECISIONS 463, 463b): one switch on every ride type ----
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const sw = await axNode(p, ".trails-off input");
+  check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
+  const how = await p.eval("(() => { const d = document.querySelector('.trails-off details.how'); const s = d?.querySelector('summary'); const hidden = s?.querySelector('.visually-hidden'); return d ? { summary: s.textContent, shown: s.textContent.replace(hidden?.textContent ?? '', ''), open: d.open, said: /Chain Bridge/.test(d.textContent), tall: Math.round(s.getBoundingClientRect().height) } : null; })()");
+  check("roads only: what is left out is under a closed \"How this works\" (read \": keep to roads\"), not in the description", how?.summary === "How this works: keep to roads" && how.shown === "How this works" && how.open === false && how.said === true && !/Chain Bridge/.test(sw?.description ?? ""), JSON.stringify(how));
+  // The a11y review's SF1: `details.how summary` (24 px) used to beat `.panel summary` (44 px) here.
+  check("roads only: its \"How this works\" is a 44 px target (the owner's 44 px rule)", how?.tall >= 44, `${how?.tall} px`);
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const on = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '' })");
+  check("roads only: Space turns it on, plans once, keeps the focus, and puts it in the link and the Ride line", on.checked && on.focus && p.routeRequests - before === 1 && /trailsoff=1/.test(await p.eval("location.hash")) && /roads only/.test(on.line), JSON.stringify({ ...on, plans: p.routeRequests - before }));
+  const middle = p.routeRequests;
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const off = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '', hash: location.hash })");
+  check("roads only: Space again turns it off, plans once, and takes it out of the link and the Ride line", !off.checked && off.focus && p.routeRequests - middle === 1 && !/trailsoff/.test(off.hash) && !/roads only/.test(off.line), JSON.stringify({ ...off, plans: p.routeRequests - middle }));
+  await p.close();
+}
+{
+  // Mass Ride always keeps to roads: checked from a link that does not say so, in the Tab order, unchangeable.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  const sw = await axNode(p, ".trails-off input");
+  // `disabled` is the accessibility tree's, what screen readers announce ("unavailable", "dimmed"): the a11y review's SF2.
+  check("roads only: on Mass Ride it is checked and unavailable to AT, and its description says a mass ride always keeps to roads", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === true && sw?.disabled === true && /^A mass ride always keeps to roads\./.test(sw?.description ?? ""), JSON.stringify(sw));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1000);
+  const after = await p.eval("(() => { const i = document.querySelector('.trails-off input'); return { checked: i.checked, attr: i.getAttribute('aria-disabled'), disabled: i.disabled, focus: document.activeElement === i }; })()");
+  check("roads only: on Mass Ride it keeps the focus, and Space neither unchecks it nor plans", after.checked && after.attr === "true" && !after.disabled && after.focus && p.routeRequests === before && !/trailsoff/.test(await p.eval("location.hash")), JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  await p.close();
+}
 // ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 {
@@ -1577,6 +1613,15 @@ async function saidInDialog(p, text) {
   check("road panel: Details and sources is a native disclosure, closed at first, and says so",
     brief.detailsOpen === false && brief.summaryFirst === "SUMMARY" && brief.summaryText === "Details and sources" && sumAx?.expanded === false,
     JSON.stringify({ ...brief, lines: undefined, sumAx }));
+  // Its last item is the link to the page on how ratings work (461; correctness C4, mutation T1).
+  const how = await p.eval(`(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (!det) return null;
+    det.open = true; const a = det.querySelector('.stress-page-link a'); if (!a) return { found: false };
+    return { found: true, href: a.getAttribute('href'), target: a.getAttribute('target'), last: det.lastElementChild === a.parentElement, shown: a.getBoundingClientRect().height > 0 }; })()`);
+  const howAx = await axNode(p, "dialog.road-info details.road-info-details .stress-page-link a");
+  await p.eval("(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (det) det.open = false; return true; })()");
+  check("road panel: Details and sources ends with the link to how stress ratings work, in the same tab, named by its visible words",
+    how?.found && how.href === "/about/stress.html" && how.target === null && how.last && how.shown && howAx?.role === "link" && howAx?.name === "How stress ratings work",
+    JSON.stringify({ how, howAx }));
   check("road panel: each part is a section named by its own heading, the figures terms with the source in words, the stress in words",
     body.sections.length >= 6 && body.sections.every((x) => x.heading && x.tag === "H3") &&
       /Level = LTS 3: For experienced cyclistsSource: RouteMaker classifier/.test(rows) && /Speed limit = 30 mph \(48 km\/h\), postedSource: DC Roadway Block/.test(rows) &&
@@ -1860,6 +1905,77 @@ async function saidInDialog(p, text) {
   check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
+// The page on how traffic-stress ratings work (OWNER-DECISIONS 461): a static page in public/, read
+// by screen reader users among the rest, and linked from the legend in the same tab.
+{
+  const p = await open();
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  await p.waitFor("!!document.querySelector('[aria-label=\"Traffic stress legend\"]')", 15000);
+  const link = await p.eval(`(() => { const a = document.querySelector('.stress-page-link a'); if (!a) return null;
+    return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="legend-heading"]') }; })()`);
+  const ax = await axNode(p, ".stress-page-link a");
+  check("stress page: the legend links to it in the same tab, named by its visible words",
+    link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How stress ratings work",
+    JSON.stringify({ link, ax }));
+  // Following it and then the page's own "Back to the map" (a bare "/") brings the route back
+  // (the accessibility review's SF1): the link keeps the plan in this tab's sessionStorage.
+  const before = await p.eval("location.hash");
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("document.querySelector('a.back')?.click(); true");
+  const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
+  check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
+    /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
+  // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
+  // cleared afterwards does not come back on reload (the correctness re-check's C8).
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("history.back(); true");
+  const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
+  await p.eval("history.replaceState(null, '', '/'); location.reload(); true");
+  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-canvas')", 40000);
+  const cleared = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
+  check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
+    onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
+  await p.close();
+}
+{
+  const p = await newPage(b, { width: 320, height: 800 });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/about/stress.html` });
+  await p.waitFor("document.readyState === 'complete' && !!document.querySelector('h1')", 20000);
+  const fit = await p.eval(`(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
+    font: parseFloat(getComputedStyle(document.body).fontSize),
+    tables: [...document.querySelectorAll('.table-wrap')].map((w) => ({ focusable: w.tabIndex === 0, named: !!w.getAttribute('aria-label') })) }))()`);
+  check("stress page at 320 px: nothing spills sideways, the text is 16 px or more, and a wide table scrolls in a named, focusable region",
+    fit.scroll <= fit.width && fit.font >= 16 && fit.tables.length > 0 && fit.tables.every((t) => t.focusable && t.named), JSON.stringify(fit));
+  const shape = await p.eval(`(() => { const levels = [...document.querySelectorAll('h1, h2, h3, h4')].map((h) => Number(h.tagName[1]));
+    const ordered = levels.every((l, i) => i === 0 || l <= levels[i - 1] + 1);
+    const items = [...document.querySelectorAll('.levels li')];
+    return { h1: levels.filter((l) => l === 1).length, first: levels[0], ordered,
+      landmarks: ['header', 'nav', 'main', 'footer'].every((t) => !!document.querySelector(t)),
+      swatches: items.length === 5 && items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true' && /^(LTS [1-4]: \\S|Avoid)/.test(li.querySelector('strong')?.textContent ?? '')),
+      lang: document.documentElement.lang }; })()`);
+  check("stress page: one h1, headings in order, its landmarks, and every swatch hidden beside its level in words",
+    shape.h1 === 1 && shape.first === 1 && shape.ordered && shape.landmarks && shape.swatches && shape.lang === "en", JSON.stringify(shape));
+  // The accessibility re-check of r4: a link off the site opens in the same tab and is named
+  // in words, so a screen reader neither lands in a new tab unwarned nor spells out a URL.
+  const away = await p.eval(`[...document.querySelectorAll('a[href^="http"]')].map((a) => ({
+    href: a.href, target: a.getAttribute('target'), name: a.textContent.replace(/\\s+/g, ' ').trim() }))`);
+  check("stress page: its one link off the site opens in the same tab and is named in words, not by a bare URL",
+    away.length === 1 && away.every((a) => a.target === null && a.name.length > 0 && !/https?:|www\.|github\.com|\.md\b/i.test(a.name)), JSON.stringify(away));
+  await p.tab();
+  await sleep(100);
+  const skip = await p.eval(`(() => { const a = document.activeElement; const r = a?.getBoundingClientRect();
+    return { skip: a?.classList.contains('skip'), visible: !!r && r.left >= 0 && r.width > 0 }; })()`);
+  await p.key("Enter", "Enter", 13);
+  await sleep(100);
+  const landed = await p.eval("location.hash");
+  check("stress page: the first Tab stop is a skip link that shows and goes to the content", skip.skip && skip.visible && landed === "#main", JSON.stringify({ skip, landed }));
+  await p.shot(`${SHOTS}/stress-page_320.png`);
+  await p.close();
+}
 // ---- Ride mode (WEB-NAV-plan.md section 11): a simulated GPS stepped along a mocked route ----
 {
   const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -1991,7 +2107,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 342;
+const EXPECTED = 358;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
