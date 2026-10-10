@@ -98,9 +98,9 @@ export function FederalLegend(): ReactElement {
 export const FEDERAL_POINTS_HEADING = "Your points on federal land:";
 export const FEDERAL_POINTS_NONE = "None of your points is on federal land.";
 
-/** "Stop 2 – The Mall (National Park Service)". */
+/** "Stop 2 – The Mall (National Park Service)"; "Stop 2 – next to The Mall (...)" within 20 m of its edge. */
 export function federalPointText(point: FederalPoint, name: string): string {
-  return `${name} – ${point.name} (${point.manager})`;
+  return `${name} – ${point.near ? "next to " : ""}${point.name} (${point.manager})`;
 }
 
 /**

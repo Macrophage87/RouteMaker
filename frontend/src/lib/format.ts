@@ -51,12 +51,21 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
 }
 
 /**
- * A stretch of the route, as the API's description words one (src/routemaker/describe.py):
- * "1.1 to 1.8 mi (1.7 to 2.9 km)", miles to a tenth and kilometres to a tenth in brackets.
+ * A stretch of the route, as the API's description words one (src/routemaker/describe.py
+ * range_words): "1.1 to 1.8 mi (1.7 to 2.9 km)", miles to a tenth and kilometres to a tenth in
+ * brackets; a short one in feet.
  */
 export function formatMileRange(fromM: number, toM: number): string {
   const mi = (m: number) => (m / METRES_PER_MILE).toFixed(1);
   const km = (m: number) => (m / 1000).toFixed(1);
+  // Under a tenth of a mile, or both ends the same tenth: where it starts and how long, in feet
+  // ("1.2 mi (1.9 km), for 300 ft (91 m)"), as describe.py range_words says it.
+  if (toM - fromM < FEET_BELOW_M || mi(fromM) === mi(toM)) {
+    const length = toM - fromM;
+    const feet = length * FEET_PER_METRE;
+    const ft = feet >= 100 ? Math.round(feet / 10) * 10 : Math.round(feet);
+    return `${mi(fromM)} mi (${km(fromM)} km), for ${ft} ft (${Math.round(length)} m)`;
+  }
   return `${mi(fromM)} to ${mi(toM)} mi (${km(fromM)} to ${km(toM)} km)`;
 }
 

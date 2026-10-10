@@ -179,6 +179,14 @@ export function RoadInfoDialog({ request, massRide, station, federal = null, onC
     }
   }, [editing]);
 
+  // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
+  // is said again with the area, so a screen reader hears it without reading on.
+  useEffect(() => {
+    if (!request || state.kind === "loading") return;
+    setSaid([infoSaid(state), federalSaid].filter(Boolean).join(" "));
+    // Only a change of the area's words: the answer's own arrival sets `said` above.
+  }, [federalSaid]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
     const dialog = dialogRef.current;

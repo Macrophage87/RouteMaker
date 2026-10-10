@@ -72,7 +72,7 @@ import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, FederalLandFor, type FederalStatus } from "./lib/federalLegend.ts";
-import { federalAreaAt, federalLines, federalNotes, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
+import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import {
   CAPACITY_FOLD_TITLE,
@@ -1250,9 +1250,10 @@ export function App() {
     [waterOn, waterData, waterPrefs, shown],
   );
   // A Mass Ride's federal-land lines for the description and the GPX file (item 239; lib/federalStops.ts):
-  // the stops on federal land and the parkway stretches, from the route as planned.
+  // the stops on federal land and the parkway stretches, from the route as planned, or one line saying
+  // federal land could not be checked while the data is loading or unavailable.
   const federalRoute = useMemo(
-    () => (shown ? federalLines(federalNotes(shown, routedPoints, federalData)) : []),
+    () => (shown ? federalRouteLines(shown, routedPoints, federalData) : []),
     [shown, routedPoints, federalData],
   );
   // Named in the plan as the list says it, as a place picked from search is.

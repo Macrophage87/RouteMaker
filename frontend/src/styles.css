@@ -1012,7 +1012,6 @@ button.secondary {
   font-size: 10px;
 }
 
-/* A finger is wider than the marker: the pressable area is not. */
 /* A Mass Ride point on federal land (item 239): a square "!" badge at the marker's corner, a shape
    and not only a colour; its name and title say the warning in words. */
 .pin-federal::before {
@@ -1031,6 +1030,7 @@ button.secondary {
   pointer-events: none;
 }
 
+/* A finger is wider than the marker: the pressable area is not. */
 .pin-via::after {
   content: "";
   position: absolute;

@@ -890,10 +890,15 @@ in the map, the points list, the route description and the road panel. All of it
   test run in the browser, with a bounding box per area cached so a point is tested
   against only the few areas near it. The cost: the description lines are worded in
   `federalStops.ts`, not `describe.py`, so they are placed before the API's entries
-  rather than among them, and they come only once the file has loaded (a failed load
-  already says "Federal land shading is unavailable for now").
-* **Stops** (239 (b)). `federalAreaAt` gives a point's most specific area
-  (FEDERAL_KINDS order) with its agency; `stopWarning` says "End is inside U.S.
+  rather than among them, and they come only once the file has loaded. Until then, or
+  if it cannot be had, a Mass Ride's description, copied text, cue sheet and GPX
+  description carry one line instead, "Federal land could not be checked for this
+  route." (`FEDERAL_UNCHECKED`, `federalRouteLines`).
+* **Stops** (239 (b)). `federalAreaAt` (`federalLand.ts`, which `federalPoints` uses
+  too) gives a point's most specific area (FEDERAL_KINDS order) with its agency; failing
+  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 20 m (66 ft),
+  marked `near` and said "next to" (238: "err on the side of flagging", for a stop on a
+  simplified boundary). `stopWarning` says "End is inside U.S.
   Capitol grounds, managed by Architect of the Capitol – federal land: check permit
   requirements for gathering here." Where the data names no agency (Military Bases)
   the kind is said instead ("Fort Leslie J. McNair (Military installation)"), never an
@@ -905,9 +910,14 @@ in the map, the points list, the route description and the road panel. All of it
 * **Parkways** (239 (d)). `PARKWAYS` lists the five the owner named. A description
   stretch is on one when its OpenStreetMap street name matches it ("Rock Creek and
   Potomac Parkway Northwest", "Rock Creek Parkway", "Clara Barton Parkway", ...), or
-  when it is an unnamed or parkway-named road stretch (not a path: Rock Creek's trail
-  is inside the parkway's polygon too) with two of its quarter points inside the NPS
-  layer's polygon of that parkway (only those inside the District are in that layer).
+  when it is an unnamed or parkway-named road stretch with two of its quarter points
+  inside the NPS layer's polygon of that parkway (only those inside the District are in
+  that layer). Unnamed means the API's own words, `describe.py` `UNNAMED_ROAD` ("unnamed
+  road") and `UNTRACED_STREET` ("this part of the route"), which `federalStops.ts` repeats
+  and `tests/test_describe.py` holds equal. A path is never a federal road, by name or by
+  polygon: a stretch with `facility` "path" or the street "unnamed path" is skipped
+  (Rock Creek's trail is inside the parkway's polygon, and a "Suitland Parkway Trail"
+  matches the parkway's name).
   Stretches on one parkway less than `PARKWAY_JOIN_M` (160 m) apart are one run, said
   as "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park
   Service parkway – federal road: check permit requirements for riding it as a group."
@@ -928,14 +938,18 @@ in the map, the points list, the route description and the road panel. All of it
     parkway runs) is listed under its heading before the steps in Directions, and is in
     the copied text, the downloaded cue sheet and the GPX file's description
     (`descriptionText`, `gpxDescriptionText`, `exportOf`). Nothing is said when there is
-    nothing to say.
+    nothing to say. The GPX description keeps the lines where the API gave no entries,
+    and counts them when it chooses the full text or the overview (`GPX_FULL_MAX_CHARS`).
   - *The road panel:* the keyboard's and screen reader's way to ask what a shaded area
     is. "Road info at map center" (I on the map) and a right-click or long press, on a
     Mass Ride, show "Federal land: Inside ... – federal land: check permit requirements
     for gathering here." with the caveat, whether or not a road is found, and the
-    dialog's status sentence ends with it.
+    dialog's status sentence ends with it, said again if the data comes after the road's
+    answer.
 * **Units.** The run's range goes through `format.ts` `formatMileRange` (miles first,
-  kilometres in brackets), as every unit does.
+  kilometres in brackets), as every unit does; under a tenth of a mile, or with both ends
+  the same tenth, it says where it starts and its length in feet, as `describe.py`
+  `range_words` does.
 
 Tests: `lib/federalStops.test.ts` (the area and its words, the rows and markers only on
 a Mass Ride with the data, the five parkways by name and nothing else, runs joined and

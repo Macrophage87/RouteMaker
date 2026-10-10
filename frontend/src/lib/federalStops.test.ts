@@ -6,17 +6,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { parseFederalLand, type FederalData } from "./federalLand.ts";
+import { federalPoints, parseFederalLand, type FederalData } from "./federalLand.ts";
 import {
   FEDERAL_ADVICE,
   FEDERAL_DESCRIPTION_HEADING,
   FEDERAL_ROAD_WARNING,
   FEDERAL_STOP_WARNING,
+  FEDERAL_UNCHECKED,
   PARKWAYS,
+  UNNAMED_PATH,
+  UNNAMED_ROAD,
+  UNTRACED_STREET,
   areaWords,
   federalAreaAt,
   federalLines,
   federalNotes,
+  federalRouteLines,
   parkwayByName,
   parkwayRuns,
   parkwayWarning,
@@ -29,7 +34,7 @@ import { descriptionText, gpxDescriptionText } from "./routeDescription.ts";
 import { PointsList } from "./pointsList.ts";
 import { markerDeps } from "./mapGlue.ts";
 import { formatMileRange } from "./format.ts";
-import { FEDERAL_BADGE, FEDERAL_HELP } from "./federalLegend.ts";
+import { FEDERAL_BADGE, FEDERAL_HELP, federalPointText } from "./federalLegend.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -142,19 +147,94 @@ test("parkway runs: by name, joined across a short gap, and in route order", () 
   );
 });
 
-test("parkway runs by the NPS layer: an unnamed road in its polygon is, a path or a city street there is not (239 (c))", () => {
+test("parkway runs by the NPS layer: an unnamed road or untraced part in its polygon is, a path or a city street there is not (239 (c))", () => {
   const route = { geometry: { type: "LineString" as const, coordinates: LINE }, distance_m: LINE_M };
   // 0.05 to 0.07 degrees is about 1,112 to 3,336 m along.
   const inside = [1300, 3100] as const;
-  assert.deepEqual(
-    parkwayRuns([entry(...inside, null)], route, AREAS).map((r) => r.parkway.name),
-    ["Suitland Pkwy"],
-  );
+  // The API's own words for a stretch with no name (describe.py _street_words); never null.
+  assert.equal(UNNAMED_ROAD, "unnamed road");
+  assert.equal(UNTRACED_STREET, "this part of the route");
+  assert.equal(UNNAMED_PATH, "unnamed path");
+  for (const street of [UNNAMED_ROAD, UNTRACED_STREET, null]) {
+    assert.deepEqual(parkwayRuns([entry(...inside, street)], route, AREAS).map((r) => r.parkway.name), ["Suitland Pkwy"], String(street));
+  }
   assert.deepEqual(parkwayRuns([entry(...inside, "Suitland Pkwy SE ramp")], route, AREAS).map((r) => r.parkway.name), ["Suitland Pkwy"]);
-  assert.deepEqual(parkwayRuns([entry(...inside, null, { facility: "path" })], route, AREAS), [], "the trail beside it");
+  assert.deepEqual(parkwayRuns([entry(...inside, UNNAMED_PATH)], route, AREAS), [], "an unnamed path");
+  assert.deepEqual(parkwayRuns([entry(...inside, UNNAMED_ROAD, { facility: "path" })], route, AREAS), [], "the trail beside it");
   assert.deepEqual(parkwayRuns([entry(...inside, "Firth Sterling Avenue Southeast")], route, AREAS), [], "a city street through it");
-  assert.deepEqual(parkwayRuns([entry(0, 900, null)], route, AREAS), [], "outside the polygon");
-  assert.deepEqual(parkwayRuns([entry(...inside, null)], route, null), [], "no data: names only");
+  assert.deepEqual(parkwayRuns([entry(0, 900, UNNAMED_ROAD)], route, AREAS), [], "outside the polygon");
+  assert.deepEqual(parkwayRuns([entry(...inside, UNNAMED_ROAD)], route, null), [], "no data: names only");
+});
+
+test("parkway runs from an entry worded exactly as the API words an unnamed road stretch", () => {
+  const route = { geometry: { type: "LineString" as const, coordinates: LINE }, distance_m: LINE_M };
+  // As src/routemaker/describe.py answers it (core.api DescriptionEntryOut): street "unnamed road".
+  const api: DescriptionEntry = {
+    kind: "stretch",
+    from_m: 1300,
+    to_m: 3100,
+    from_mi: 0.81,
+    to_mi: 1.93,
+    street: "unnamed road",
+    tier: 3,
+    facility: null,
+    turn: { movement: "right", onto: "unnamed road", control: null, severity: null },
+    surface: null,
+    text_lanes_hidden: null,
+    text: "0.8 to 1.9 mi (1.3 to 3.1 km): Right onto unnamed road, busy road (LTS 3).",
+  };
+  assert.deepEqual(parkwayRuns([api], route, AREAS).map((r) => [r.parkway.name, r.from_m, r.to_m]), [["Suitland Pkwy", 1300, 3100]]);
+});
+
+test("a path named for a parkway is not a federal road (Suitland Parkway Trail)", () => {
+  const route = { geometry: { type: "LineString" as const, coordinates: LINE }, distance_m: LINE_M };
+  assert.deepEqual(parkwayRuns([entry(1300, 3100, "Suitland Parkway Trail", { facility: "path" })], route, AREAS), []);
+  assert.deepEqual(parkwayRuns([entry(0, 900, "Rock Creek and Potomac Parkway Trail", { facility: "path" })], route, null), []);
+  // The road itself still is.
+  assert.equal(parkwayRuns([entry(0, 900, "Suitland Parkway Southeast")], route, null).length, 1);
+});
+
+test("err on the side of flagging (238): a point within 20 m (66 ft) of an area's edge is next to it; farther is not", () => {
+  // Fort Somewhere is 0.020 to 0.022 degrees each way; 0.00015 degrees is about 17 m, 0.00025 about 28 m.
+  const right = federalAreaAt([0.02215, 0.021], AREAS);
+  assert.deepEqual(right, { name: "Fort Somewhere", kind: "military", agency: null, near: true });
+  assert.equal(federalAreaAt([0.021, 0.02215], AREAS)?.near, true, "past the top edge");
+  assert.equal(federalAreaAt([0.022, 0.021], AREAS)?.name, "Fort Somewhere", "on the right edge itself");
+  assert.equal(federalAreaAt([0.02225, 0.021], AREAS), null, "just outside the 20 m");
+  assert.equal(federalAreaAt([0.021, 0.02225], AREAS), null, "just above the 20 m");
+  // Inside one area beats next to a more specific one.
+  assert.equal(federalAreaAt([0.00305, 0.002], AREAS)?.name, "Big Reservation");
+  assert.equal(stopWarning("Stop 1", right!), "Stop 1 is next to Fort Somewhere (Military installation) – federal land: check permit requirements for gathering here.");
+  assert.equal(stopWarningShort(right!), "Next to Fort Somewhere (Military installation) – federal land: check permit requirements for gathering here.");
+  // The Map layers list says it too, through the same lookup.
+  const [found] = federalPoints([[0.02215, 0.021]], AREAS);
+  assert.deepEqual(found, { index: 0, name: "Fort Somewhere", manager: "Military installation", near: true });
+  assert.equal(federalPointText(found, "Start"), "Start – next to Fort Somewhere (Military installation)");
+});
+
+test("while the data is loading or unavailable a Mass Ride says federal land could not be checked; another ride type says nothing", () => {
+  const route = massRoute([entry(0, 1000, "K Street")]);
+  assert.equal(FEDERAL_UNCHECKED, "Federal land could not be checked for this route.");
+  assert.deepEqual(federalRouteLines(route, [[0.002, 0.002]], null), [FEDERAL_UNCHECKED]);
+  assert.deepEqual(federalRouteLines({ ...route, preset: "default" } as RouteResponse, [[0.002, 0.002]], null), []);
+  assert.deepEqual(federalRouteLines(route, [[0.5, 0.5]], AREAS), [], "checked, nothing to say");
+  assert.equal(federalRouteLines(route, [[0.002, 0.002]], AREAS)[0], FEDERAL_DESCRIPTION_HEADING);
+  // In the text, the cue sheet and the GPX description.
+  assert.match(descriptionText(route, "full", [FEDERAL_UNCHECKED]), /\nFederal land could not be checked for this route\.\n1\. /);
+  assert.match(gpxDescriptionText(route, [FEDERAL_UNCHECKED]), /^Route description:\nFederal land could not be checked for this route\.\n1\. /);
+});
+
+test("the GPX description keeps the federal lines with no entries, and counts them towards the full text's limit", () => {
+  const lines = [FEDERAL_DESCRIPTION_HEADING, "End is inside X – federal land: check permit requirements for gathering here."];
+  assert.equal(gpxDescriptionText({ description: null }, lines), ["Route description:", ...lines].join("\n"));
+  assert.equal(gpxDescriptionText({ description: null }), "");
+  // A full text just under the limit alone, over it with the lines: the overview is chosen.
+  const long = Array.from({ length: 30 }, (_, i) => entry(i * 100, i * 100 + 100, `Street ${i}`, { text: `${"x".repeat(120)} ${i}.` }));
+  const short = long.slice(0, 3);
+  const route = { description: long, description_overview: short };
+  assert.match(gpxDescriptionText(route), /^Route description, full detail:/);
+  const many = Array.from({ length: 20 }, () => "y".repeat(60));
+  assert.match(gpxDescriptionText(route, many), /^Route description, overview:/);
 });
 
 test("a point along the line, for the stretch's quarter points", () => {
@@ -163,6 +243,12 @@ test("a point along the line, for the stretch's quarter points", () => {
   assert.ok(Math.abs(middle[0] - 0.06) < 1e-6 && middle[1] === 0, String(middle));
   assert.deepEqual(pointAlong(LINE, LINE_M * 2), [0.08, 0], "past the end: the end");
   assert.equal(pointAlong([], 10), null);
+});
+
+test("a short run, or one whose ends round to the same tenth, is said in feet, as describe.py range_words does", () => {
+  assert.equal(formatMileRange(1931, 2022), "1.2 mi (1.9 km), for 300 ft (91 m)");
+  assert.equal(formatMileRange(1000, 1020), "0.6 mi (1.0 km), for 66 ft (20 m)");
+  assert.equal(formatMileRange(3380, 5520), "2.1 to 3.4 mi (3.4 to 5.5 km)");
 });
 
 test("the parkway warning: miles first with kilometres in brackets, named and called a federal road", () => {
@@ -255,6 +341,12 @@ test("the map's markers say the warning in their name and title and wear the bad
   assert.match(css, /\.point-federal::before \{\s+content: "!";/);
 });
 
+test("the road panel says the area again when the federal data comes after the road's answer", () => {
+  const dialog = source("../RoadInfoDialog.tsx");
+  assert.match(dialog, /if \(!request \|\| state\.kind === "loading"\) return;\s+setSaid\(\[infoSaid\(state\), federalSaid\]\.filter\(Boolean\)\.join\(" "\)\);/);
+  assert.match(dialog, /\}, \[federalSaid\]\);/);
+});
+
 test("the road panel names the federal area at the spot, on a Mass Ride (the keyboard's way, I at the map's center)", () => {
   const app = source("../App.tsx");
   assert.match(app, /federal=\{roadInfo && federalShown\(preset, true\) \? federalAreaAt\(roadInfo\.point, federalData\) : null\}/);
@@ -270,7 +362,9 @@ test("the description component lists the lines under their heading, and copies 
   assert.match(component, /<ul aria-labelledby=\{`\$\{listId\}-federal`\}>/);
   assert.equal((component.match(/\{federalBlock\(/g) ?? []).length, 2, "in the fold and the old section");
   const app = source("../App.tsx");
-  assert.match(app, /federalLines\(federalNotes\(shown, routedPoints, federalData\)\)/);
+  assert.match(app, /federalRouteLines\(shown, routedPoints, federalData\)/);
+  // One line alone ("could not be checked") is a paragraph, not a heading over an empty list.
+  assert.match(component, /federal\.length === 1 \? \(\s*\/\/[^\n]*\n\s*<p className="federal-route federal-unchecked" hidden=\{hidden\}>/);
   assert.match(app, /<GpxPanel[\s\S]*?federal=\{federalRoute\}/);
 });
 

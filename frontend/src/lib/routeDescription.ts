@@ -197,9 +197,11 @@ export const GPX_FULL_MAX_CHARS = 4000;
  */
 export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans">>, federal: readonly string[] = []): string {
   const full = descriptionEntries(route, "full");
-  if (full === null) return "";
+  // The federal-land lines (item 239) are said even where the API gave no entries.
+  if (full === null) return federal.length > 0 ? ["Route description:", ...federal].join("\n") : "";
   const lines = entryLines;
-  const fullText = lines(full).join("\n");
+  // The federal lines go in whichever view is chosen, so they count towards the limit.
+  const fullText = [...federal, ...lines(full)].join("\n");
   const useFull = !hasOverview(route) || fullText.length <= GPX_FULL_MAX_CHARS;
   const entries = useFull ? full : (descriptionEntries(route, "overview") ?? full);
   const label = hasOverview(route) ? (useFull ? "Route description, full detail:" : "Route description, overview:") : "Route description:";

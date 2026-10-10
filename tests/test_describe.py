@@ -1121,6 +1121,27 @@ class TestFrontEndAgrees:
             entry = d.describe([road("Kenilworth Ave", int(tier), 900, facility="lane")])[0]
             assert entry["text"].replace(words, "") == entry["text_lanes_hidden"]
 
+    def test_the_unnamed_street_words_are_the_federal_checks(self):
+        """FOLLOWUP-FEDERAL-LAYER, item 239 (d): frontend/src/lib/federalStops.ts reads these
+        street words as unnamed when it looks for a parkway by the NPS layer, so they must be
+        the words this module gives a stretch with no name."""
+        import re
+
+        source = self.source("lib", "federalStops.ts")
+        for name, value in (
+            ("UNNAMED_ROAD", d.UNNAMED_ROAD),
+            ("UNTRACED_STREET", d.UNTRACED_STREET),
+            ("UNNAMED_PATH", d.UNNAMED_PATH),
+        ):
+            match = re.search(rf'export const {name} = "([^"]*)";', source)
+            assert match, f"federalStops.ts declares {name}"
+            assert match.group(1) == value
+        # What describe actually puts in `street`.
+        assert d.describe([road("", 2, 500)])[0]["street"] == d.UNNAMED_ROAD
+        assert d.describe([road("", 1, 500, use="cycleway")])[0]["street"] == d.UNNAMED_PATH
+        untraced = d.describe([road("A", 1, 500), 800.0, road("C", 1, 500)])[2]
+        assert untraced["street"] == d.UNTRACED_STREET
+
     def test_the_tiers_are_the_front_ends(self):
         import re
 

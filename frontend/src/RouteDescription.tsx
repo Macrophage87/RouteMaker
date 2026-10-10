@@ -139,7 +139,12 @@ export function RouteDescription({
   // Named in the list's own words, before the steps (item 239): a reader who cannot point at the map's
   // shading hears which stops are on federal land and which stretches are on a parkway.
   const federalBlock = (hidden: boolean) =>
-    federal.length > 0 ? (
+    federal.length === 1 ? (
+      // One line alone: "Federal land could not be checked for this route."
+      <p className="federal-route federal-unchecked" hidden={hidden}>
+        {federal[0]}
+      </p>
+    ) : federal.length > 1 ? (
       <div className="federal-route" hidden={hidden}>
         <p className="federal-route-heading" id={`${listId}-federal`}>
           {federal[0]}

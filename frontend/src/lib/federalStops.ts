@@ -20,7 +20,7 @@
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatMileRange } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { FEDERAL_KINDS, FEDERAL_STYLE, inFederalArea, type FederalData, type FederalFeature, type FederalKind } from "./federalLand.ts";
+import { FEDERAL_STYLE, federalAreaAt, inFeature, type FederalArea, type FederalData } from "./federalLand.ts";
 import { pointName } from "./summary.ts";
 
 /** The owner's words for a stop on federal land (item 239 (b)). */
@@ -31,70 +31,35 @@ export const FEDERAL_ROAD_WARNING = "federal road: check permit requirements for
 export const FEDERAL_ADVICE = "Information, not legal advice: federal ownership is not police jurisdiction.";
 /** The description's heading line for the federal notes. */
 export const FEDERAL_DESCRIPTION_HEADING = `Federal land on this route. ${FEDERAL_ADVICE}`;
+/** A Mass Ride's one line while the overlay's data is loading or could not be had. */
+export const FEDERAL_UNCHECKED = "Federal land could not be checked for this route.";
 
-/** An area a point is in: the most specific kind first (FEDERAL_KINDS order). */
-export interface FederalArea {
-  name: string;
-  kind: FederalKind;
-  agency: string | null;
-}
+// The area code is federalLand.ts's; these re-exports keep one place to import from.
+export { FEDERAL_EDGE_M, federalAreaAt, type FederalArea } from "./federalLand.ts";
 
-type Box = [number, number, number, number];
-const boxes = new WeakMap<FederalFeature, Box>();
-
-/** A feature's bounding box, worked out once: most areas are far from any one point. */
-function boxOf(feature: FederalFeature): Box {
-  const cached = boxes.get(feature);
-  if (cached) return cached;
-  const box: Box = [Infinity, Infinity, -Infinity, -Infinity];
-  const walk = (value: unknown): void => {
-    if (!Array.isArray(value)) return;
-    if (typeof value[0] === "number" && typeof value[1] === "number") {
-      box[0] = Math.min(box[0], value[0]);
-      box[1] = Math.min(box[1], value[1]);
-      box[2] = Math.max(box[2], value[0]);
-      box[3] = Math.max(box[3], value[1]);
-      return;
-    }
-    for (const item of value) walk(item);
-  };
-  walk(feature.geometry.coordinates);
-  boxes.set(feature, box);
-  return box;
-}
-
-const inBox = ([x, y]: readonly [number, number], [w, s, e, n]: Box) => x >= w && x <= e && y >= s && y <= n;
-
-/** Whether `point` is inside `feature`. */
-export function inFeature(point: readonly [number, number], feature: FederalFeature): boolean {
-  return inBox(point, boxOf(feature)) && inFederalArea(point, feature.geometry);
-}
-
-/** The most specific federal area `point` is in, or null (none, or no data yet). */
-export function federalAreaAt(point: readonly [number, number], data: FederalData | null): FederalArea | null {
-  if (!data) return null;
-  let best: FederalFeature | null = null;
-  for (const feature of data.features) {
-    if (!inFeature(point, feature)) continue;
-    if (!best || FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(best.properties.kind)) best = feature;
-  }
-  if (!best) return null;
-  return { name: best.properties.name, kind: best.properties.kind, agency: best.properties.agency ?? null };
-}
+/**
+ * The street words the API gives a stretch with no name (src/routemaker/describe.py
+ * UNNAMED_ROAD, UNTRACED_STREET, UNNAMED_PATH; tests/test_describe.py TestFrontEndAgrees
+ * holds them equal). An unnamed road or an untraced part may be a parkway by the NPS layer;
+ * an unnamed path never is.
+ */
+export const UNNAMED_ROAD = "unnamed road";
+export const UNTRACED_STREET = "this part of the route";
+export const UNNAMED_PATH = "unnamed path";
 
 /** "U.S. Capitol grounds, managed by Architect of the Capitol"; the kind where no agency is known. */
 export function areaWords(area: FederalArea): string {
   return area.agency ? `${area.name}, managed by ${area.agency}` : `${area.name} (${FEDERAL_STYLE[area.kind].label})`;
 }
 
-/** A stop's warning without its name, for its own row and marker: "Inside ... – federal land: ...". */
+/** A stop's warning without its name, for its own row and marker: "Inside ... – federal land: ..." ("Next to" within 20 m of an edge). */
 export function stopWarningShort(area: FederalArea): string {
-  return `Inside ${areaWords(area)} – ${FEDERAL_STOP_WARNING}.`;
+  return `${area.near ? "Next to" : "Inside"} ${areaWords(area)} – ${FEDERAL_STOP_WARNING}.`;
 }
 
 /** "End is inside U.S. Capitol grounds, managed by ... – federal land: check permit requirements for gathering here." */
 export function stopWarning(name: string, area: FederalArea): string {
-  return `${name} is inside ${areaWords(area)} – ${FEDERAL_STOP_WARNING}.`;
+  return `${name} is ${area.near ? "next to" : "inside"} ${areaWords(area)} – ${FEDERAL_STOP_WARNING}.`;
 }
 
 /** Each point's area, or null: the stop list's rows and the map's markers. Empty unless it is a Mass Ride with the data in. */
@@ -163,8 +128,9 @@ export function pointAlong(line: readonly LonLat[], metres: number): LonLat | nu
  * trails beside a parkway (Rock Creek's) are in its polygon too.
  */
 function parkwayByArea(entry: DescriptionEntry, route: Pick<RouteResponse, "geometry" | "distance_m">, data: FederalData | null): Parkway | null {
-  if (!data || entry.facility === "path") return null;
-  if (entry.street && !PARKWAY_WORD.test(entry.street)) return null;
+  if (!data || entry.facility === "path" || entry.street === UNNAMED_PATH) return null;
+  const unnamed = !entry.street || entry.street === UNNAMED_ROAD || entry.street === UNTRACED_STREET;
+  if (!unnamed && !PARKWAY_WORD.test(entry.street!)) return null;
   const line = route.geometry?.coordinates ?? [];
   if (line.length < 2 || !(entry.to_m > entry.from_m)) return null;
   let length = 0;
@@ -197,7 +163,8 @@ export function parkwayRuns(
 ): ParkwayRun[] {
   const runs: ParkwayRun[] = [];
   for (const entry of entries) {
-    if (entry.kind !== "stretch") continue;
+    // A path is never a federal road, even one named for a parkway ("Suitland Parkway Trail").
+    if (entry.kind !== "stretch" || entry.facility === "path" || entry.street === UNNAMED_PATH) continue;
     const parkway = parkwayByName(entry.street) ?? parkwayByArea(entry, route, data);
     if (!parkway) continue;
     const last = runs[runs.length - 1];
@@ -236,6 +203,21 @@ export function federalNotes(
   const entries = Array.isArray(route.description) ? route.description : [];
   const parkways = parkwayRuns(entries, route, data).map(parkwayWarning);
   return { stops, parkways };
+}
+
+/**
+ * A Mass Ride's description lines, from the route, its points and the overlay's data: the
+ * notes (federalLines), or FEDERAL_UNCHECKED alone while the data is loading or could not be
+ * had. None on every other ride type.
+ */
+export function federalRouteLines(
+  route: Pick<RouteResponse, "preset" | "geometry" | "distance_m" | "description">,
+  points: readonly LonLat[],
+  data: FederalData | null,
+): string[] {
+  if (route.preset !== "mass-ride") return [];
+  if (!data) return [FEDERAL_UNCHECKED];
+  return federalLines(federalNotes(route, points, data));
 }
 
 /** The notes as the description's lines: the heading line, the stops, then the parkways; none when there is nothing to say. */
