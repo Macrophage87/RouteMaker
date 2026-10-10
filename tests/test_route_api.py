@@ -330,26 +330,26 @@ class TestAnswer:
         self, client, segments, router
     ) -> None:
         """OWNER-DECISIONS 460.12, 461d: calm miles per mile at each sample, priced at the
-        ride's own slider position (here Default: the bands are the half-step midpoints
-        2.67 and 9.34), and a Mass Ride has none (it keeps its riders chart)."""
+        ride's own slider position (here Default: the bands, read from representative roads, are
+        2.01 and 11.26), and a Mass Ride has none (it keeps its riders chart)."""
         router(standard_router())
         profile = post(client, good_body()).json()["profile"]
         score = profile["calm"]
         assert len(score["ratio"]) == len(profile["m"])
         assert all(r is not None and r > 0 for r in score["ratio"])
         assert score["window_m"] == round(calm.WINDOW_M)
-        assert score["bands"] == pytest.approx([2.67, 9.34], abs=0.02)
+        assert score["bands"] == pytest.approx([2.01, 11.26], abs=0.02)
         assert score["junctions_counted"] is True and score["estimate"] is True
         assert score["rated_m"] > 0 and score["total_calm_m"] >= score["rated_m"] * 0.5
         mass = post(client, good_body("mass-ride")).json()["profile"]
         assert mass["calm"] is None
 
     def test_the_rolling_score_follows_the_slider(self, client, segments, router) -> None:
-        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16),
-        so the bands are 3.5 and 8.5."""
+        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16)
+        and the busiest calm road its own cost, so the bands are 3.6 and 8.5."""
         router(standard_router())
         profile = post(client, {**good_body(), "stress": 100}).json()["profile"]
-        assert profile["calm"]["bands"] == [3.5, 8.5]
+        assert profile["calm"]["bands"] == [3.6, 8.5]
         # Test strength review, survivor 1: priced at the dial, not the preset's start.
         group = calm.Pricing(use_roads=presets.use_roads_for(40))
         at40 = post(client, {**good_body(), "stress": 40}).json()["profile"]["calm"]
