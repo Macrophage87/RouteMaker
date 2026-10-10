@@ -135,7 +135,7 @@ import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
-import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
@@ -251,7 +251,10 @@ export function App() {
   useEffect(() => {
     if (!waterOn || waterRequested.current) return;
     waterRequested.current = true;
+    setWaterStatus("loading");
     void loadWaterRestrooms(waterRestroomsUrl).then((data) => {
+      // A failed load is tried again the next time the layer is switched on.
+      if (!data) waterRequested.current = false;
       setWaterData(data);
       setWaterStatus(data ? "ready" : "unavailable");
     });
@@ -1013,7 +1016,12 @@ export function App() {
         : null,
     [waterOn, waterData, waterPrefs, shown],
   );
-  const addWaterStop = (item: WaterAlong) => placeSpot("via", [item.point.lon, item.point.lat]);
+  // Named in the plan as the list says it, as a place picked from search is.
+  const addWaterStop = (item: WaterAlong) => {
+    const point: LonLat = [item.point.lon, item.point.lat];
+    namer.remember(point, waterTitle(item.point));
+    placeSpot("via", point);
+  };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
   const lineEdit = useMemo<LineEdit | null>(() => {

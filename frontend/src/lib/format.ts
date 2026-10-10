@@ -77,6 +77,15 @@ export function formatRadius(metres: number): string {
 }
 
 /**
+ * A set distance in whole feet, metres in brackets, whatever its size: "1,000 ft (305 m)". For a figure
+ * chosen in feet (the water list's reach), which formatDistance would say as "0.2 mi (0.3 km)".
+ */
+export function formatFeet(metres: number): string {
+  const feet = Math.round(metres * FEET_PER_METRE);
+  return `${feet.toLocaleString("en-US")} ft (${Math.round(metres)} m)`;
+}
+
+/**
  * A place on a chart's distance axis, miles first, kilometres in brackets, short enough to label a tick:
  * "0 mi (0 km)", "4 mi (6.4 km)", "26 mi (42 km)" (the route chart, OWNER-DECISIONS 322).
  */

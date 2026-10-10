@@ -22,7 +22,7 @@
  * against a stand-in (the real map needs WebGL), like railLayer.ts and
  * federalLand.ts.
  */
-import { formatDistance } from "./format.ts";
+import { formatDistance, formatFeet } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
@@ -158,7 +158,7 @@ export const WATER_LABEL: Record<WaterSource, string> = {
 };
 export const TOILET_LABEL: Record<ToiletType, string> = {
   f: "Flush restroom",
-  b: "Portable or pit toilet",
+  b: "Portable, pit or composting toilet",
   u: "Restroom, type not mapped",
 };
 
@@ -190,6 +190,11 @@ export function waterTitle(p: WaterPoint): string {
   return p.name ? `${waterKindLabel(p)}, ${p.name}` : waterKindLabel(p);
 }
 
+/** What the map's card says: the kind, the name, the details and the caution (waterInteraction.ts draws it). */
+export function waterCard(p: WaterPoint): { kind: string; name: string | null; details: string[]; caution: string } {
+  return { kind: waterKindLabel(p), name: p.name ?? null, details: waterDetails(p), caution: WATER_CAUTION };
+}
+
 /** The standing caution: OSM is volunteers' mapping, and taps get shut off. */
 export const WATER_CAUTION = "From OpenStreetMap: check it is working before you count on it.";
 
@@ -197,6 +202,8 @@ export const WATER_CAUTION = "From OpenStreetMap: check it is working before you
 
 /** How far off the route a point is still "along" it: 1,000 ft (305 m), a short detour each way. */
 export const ALONG_ROUTE_M = 304.8;
+/** The same, in words: "1,000 ft (305 m)" (formatDistance would round it to a tenth of a mile). */
+export const ALONG_ROUTE_TEXT = formatFeet(ALONG_ROUTE_M);
 
 export interface WaterAlong {
   point: WaterPoint;
@@ -338,7 +345,8 @@ export function waterIcon(icon: WaterIcon, pixelRatio = 2, cssSize = WATER_ICON_
     const top = size * 0.02;
     const cy = size * 0.64;
     const r = size * 0.34;
-    const slash = 1.1 * pixelRatio;
+    // Wide enough to read at the smallest size drawn (0.7 at zoom 12): about 3 px across.
+    const slash = 2.2 * pixelRatio;
     return rasterise(size, pixelRatio, (x, y): Rgb | null => {
       if (!inDrop(x, y, c, top, cy, r)) return null;
       if (!inDrop(x, y, c, top + edge * 1.8, cy, r - edge)) return white;
@@ -406,6 +414,16 @@ export function waterFilter(prefs: WaterPrefs): unknown[] {
   return ["any", toilet, water];
 }
 
+/**
+ * The icon-image for the switches: each point's own icon, except that with basic toilets hidden a basic
+ * toilet that also has drinking water (so is still shown, for its water) is drawn as its water.
+ */
+export function waterIconImage(prefs: WaterPrefs): unknown[] {
+  const own = ["concat", "water-restrooms-", ["get", "icon"]];
+  if (prefs.basic) return own;
+  return ["case", ["all", ["==", ["get", "t"], "b"], ["has", "w"]], ["concat", "water-restrooms-w-", ["get", "w"]], own];
+}
+
 export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = WATER_SOURCE_ID): Record<string, unknown> {
   return {
     id: WATER_LAYER,
@@ -414,7 +432,7 @@ export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = W
     minzoom: WATER_MIN_ZOOM,
     filter: waterFilter(prefs),
     layout: {
-      "icon-image": ["concat", "water-restrooms-", ["get", "icon"]],
+      "icon-image": waterIconImage(prefs),
       "icon-size": ["interpolate", ["linear"], ["zoom"], WATER_MIN_ZOOM, 0.7, 15, 1, 18, 1.2],
       "icon-allow-overlap": true,
       // The base map's labels still place around them.
@@ -433,7 +451,7 @@ export interface WaterMap {
   getLayer(id: string): unknown;
   hasImage(id: string): boolean;
   addImage(id: string, image: Omit<Raster, "pixelRatio">, options: { pixelRatio: number }): void;
-  setLayoutProperty(id: string, name: string, value: string): void;
+  setLayoutProperty(id: string, name: string, value: unknown): void;
   setFilter(id: string, filter: unknown): void;
 }
 
@@ -465,4 +483,5 @@ export function setWaterPrefs(map: WaterMap, prefs: WaterPrefs): void {
   if (!map.getLayer(WATER_LAYER)) return;
   map.setLayoutProperty(WATER_LAYER, "visibility", prefs.on ? "visible" : "none");
   map.setFilter(WATER_LAYER, waterFilter(prefs));
+  map.setLayoutProperty(WATER_LAYER, "icon-image", waterIconImage(prefs));
 }
