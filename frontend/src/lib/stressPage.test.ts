@@ -129,7 +129,7 @@ test("the sources list: one list under Sources, one item for each source, plain 
   const items = [...section.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/\s+/g, " "));
   for (const source of [
     /^The method: Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 \(2012\)\.$/,
-    /^Its later versions: Peter Furth, Level of Traffic Stress criteria, version 2\.0 \(2017\) and version 2\.2 \(2022\)\.$/,
+    /^Later versions of the method: Peter Furth, Level of Traffic Stress criteria, version 2\.0 \(2017\) and version 2\.2 \(2022\)\.$/,
     /Oregon Department of Transportation, Analysis Procedures Manual, version 2, chapter 14\./,
     /Montgomery County Planning Department, Bicycle Master Plan, Appendix D/,
     /^Route choice in Portland: Broach, Dill and Gliebe, "Where do cyclists ride\?/,

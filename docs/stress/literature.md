@@ -111,9 +111,9 @@ Transportation Research Part A. A GPS study of how riders trade distance against
 traffic. Turns, signals, stops and unsignalized movements across busy roads each made a
 route feel longer, by a share of a mile for each one. Each unsignalized movement straight
 across, or left across, a road carrying 20,000 or more vehicles a day was worth 32-62% of
-a mile, about 0.32 to 0.62 mi [0.51 to 1.00 km] of extra riding each time. Bike lanes made up for traffic but added little on
-their own, and paths made a route feel 16-26% shorter. Half of the trips were less than
-10% longer than the shortest route.
+a mile, about 0.32 to 0.62 mi [0.51 to 1.00 km] of extra riding each time. Bike lanes
+made up for traffic but added little on their own, and paths made a route feel 16-26%
+shorter. Half of the trips were less than 10% longer than the shortest route.
 - **Taken:** the size of the crossing costs (our 0.57 calm mi [0.91 km] for an LTS 4
   crossing sits inside the 0.32 to 0.62 mi range), the signal and stop costs, and the idea
   that a stretch of path counts for less than the same length of quiet street.

@@ -30,9 +30,8 @@ calm mi [3 m; 10 ft] (`NEIGHBOURHOOD_STOP_FT`, `:75`, used at `:438-441`), but s
 junction makes no event (`assess`, `:556`), and a route's junction cost is the sum of its
 events (`penalty_m`, `:917-919`). So it is never charged to a route and never drawn. This
 rests on the owner's account that DC law lets a bicycle roll through a stop sign when it
-is safe. Tier 5 (Avoid) is
-priced the same as tier 4: every table gives tier 5 the tier 4 value (`:56`, `:60`,
-`:142`).
+is safe. Tier 5 (Avoid) is priced the same as tier 4: every table gives tier 5 the tier 4
+value (`:56`, `:60`, `:142`).
 
 ## 3. Crossing a busy road, from the stopped side
 
@@ -172,9 +171,9 @@ repository), and the owner's answers so far. None of it is the model described a
   - Answers adopted from the report's suggestions, since the owner raised no objection:
     orange from 0.15 calm mi [0.24 km] and red from 0.55 calm mi [0.89 km], with red still
     the avoidance trigger; a left off an unsignalized LTS 4 road costs as much as crossing
-    it from a stop; a rural LTS 4 road with no mapped speed is read as 45 mph [72 km/h] for
-    the junction cost only, and that speed is never shown; and a signalized crossing of a
-    big LTS 4 road costs 0.11 calm mi [0.18 km].
+    it from a stop; a rural Maryland LTS 4 road with no mapped speed is read as 45 mph
+    [72 km/h] for the junction cost only, and that speed is never shown; and a signalized
+    crossing of a big LTS 4 road costs 0.11 calm mi [0.18 km].
   - Before this is merged: an API debug field that lists every junction, and a new run of
     the 116-route sample with every junction counted, shown to the owner.
 - **Decision 468a**: a time-of-day factor on busy-road junction costs, from the ride's
