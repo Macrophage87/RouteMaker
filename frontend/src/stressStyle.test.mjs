@@ -9,6 +9,7 @@ import {
   gapLayers,
   ringLayers,
   mtbTrailLayers,
+  mtbLabelLayers,
   stressOverlayLayers,
   unpavedLayers,
   unknownSurfaceLayers,
@@ -246,9 +247,12 @@ test("the overlay is added casings first: every casing under every tier", () => 
     ["mtb-trail", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
     "the unrated mountain-bike trails' not-for-routes dots (OWNER-DECISIONS 452a), then each level's casing, then its line (456)",
   );
-  // The whole mountain-bike layer under every routable line.
+  // The whole mountain-bike layer under every routable line, and its names (2026-10-10) over them, under the Mass Ride's.
   assert.deepEqual(ids.slice(0, mtb.length), mtb);
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  const names = mtbLabelLayers("s").map((l) => l.id);
+  assert.deepEqual(names, ["mtb-trail-label"]);
+  assert.deepEqual(ids.slice(-mass.length - 1, -mass.length), names);
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...names, ...mass].sort(), "each layer once");
   // The not-for-routes line under everything, so every routable line draws over it.
   assert.equal(ids[0], "mtb-trail");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");

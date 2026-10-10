@@ -23,6 +23,8 @@ import {
   mtbLevelCasingLayerId,
   mtbLevelLayerId,
   mtbLevelPaint,
+  MTB_LABEL_LAYER_ID,
+  mtbLabelColor,
   unpavedLayers,
   UNPAVED_DASH,
   accessibilityOn,
@@ -191,6 +193,10 @@ export function setStressPalette(
     const paint = mtbLevelPaint(level);
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
     if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
+  }
+  // The trail names (2026-10-10): an unrated trail's grey follows the dots' with the accessibility switch.
+  if (map.getLayer(MTB_LABEL_LAYER_ID)) {
+    map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
   }
 }
 

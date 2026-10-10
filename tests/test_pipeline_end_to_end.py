@@ -662,7 +662,13 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
     draws it; every graph still closes it."""
     from pipeline.extract import read_ways
 
-    tags = {"highway": "path", "bicycle": "yes", "surface": "dirt", "mtb:scale": "5"}
+    tags = {
+        "highway": "path",
+        "bicycle": "yes",
+        "surface": "dirt",
+        "mtb:scale": "5",
+        "ref": "Loop 3",
+    }
     context, stored = run_dials_extract(tmp_path, singletrack_tags=tags)
     assert context.singletracks == context.drawn_singletracks == {SINGLETRACK_ID}
     for variant in Variant:
@@ -671,13 +677,13 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
             assert found[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
     with connection.cursor() as cursor:
         cursor.execute(
-            f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route "
+            f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route, mtb_name "
             f"FROM {context.staging_schema}.segment WHERE osm_way_id = %s",
             [SINGLETRACK_ID],
         )
         rows = cursor.fetchall()
-    # S5 is level 4 (S4-S6).
-    assert rows == [("road", True, 4, "none", 0)]
+    # S5 is level 4 (S4-S6); no `name`, so its `ref` names it (2026-10-10).
+    assert rows == [("road", True, 4, "none", 0, "Loop 3")]
 
 
 def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild(

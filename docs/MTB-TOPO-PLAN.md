@@ -102,6 +102,15 @@ slices (2-6) wait for bikeshare.
      accessibility switch). Contrast against the base map, lowest surface (scrub): green 3.00:1
      (just at the bar), blue 3.36:1, black 10.24:1, red 3.29:1; each at least 5:1 from the casing.
      The green is the one to darken if the owner wants more margin.
+   - Trail names: the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available." Built
+     on the same branch as a later commit: `segment.mtb_name` (core migration 0014) from the OSM
+     `name`, else `ref`, else `mtb:name`, on the mountain-bike-only ways; tile property `name`
+     (left out when none), ETag letter `n`; labels along the line on the mountain-bike layer only,
+     from zoom 15, in the line's colour on a white halo (each 4.5:1 or more), thinned by MapLibre's
+     collision; the road panel's Bikes line names the trail ("Mountain-bike trail, level 2 (blue):
+     Rosaryville Trail, not used for routes"); the rebuild log counts the named ways.
+   - Default picked: names come from the way's own tags only, not from a route relation's name, so
+     a way is never labelled with the name of a long route it merely shares.
    - Default picked: the switch's description names the levels ("From zoom 14: levels 1 to 4 by
      colour and pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use
      unrated ones."), since rated singletrack is closed for Gravel and Mountain Goat too.

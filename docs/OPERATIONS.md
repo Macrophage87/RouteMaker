@@ -4211,9 +4211,29 @@ off-road graph opens; rated singletrack is closed on every graph), and the Ridin
 mtb:scale:imba)"). The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
+**Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
+migration 0014, state-only, after 0013) on the mountain-bike-only ways from
+`routemaker.singletrack.mtb_name`: the OSM `name`, else `ref`, else `mtb:name`, trimmed. It is a
+column of its own, not `trail_name`, which chains the long trails' named runs and which a
+mountain-bike way must never join (378). The stress tiles carry it as `name` (left out when null)
+where the live table has the column, with ETag letter `n`: with every optional column the tag now
+reads `+kcfrmwdnoesbtl-v8"`, fourteen letters, 39 characters (47 with the longest edit
+generation), inside the cache's 64; `FORMAT_VERSION` stays 8 for the same reason as `d`. The
+level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.mtb_name_counts`).
+The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
+layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
+on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
+collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels. The text is in the line's own
+colour, each 4.5:1 or more against the halo (green 5.13:1, blue 5.75:1, black 17.49:1, red 5.62:1,
+the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
+not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
+Rosaryville Trail, not used for routes", and the panel's title and Name row fall back to it where
+the router has no name. No name, no label and no name in the words.
+
 **Deploy order.** The front end and api may ship before the rebuild: on today's table there is no
-`mtb_level`, so the layer draws the grey dots and the panel names no level. After the rebuild,
-check a z14 tile's ETag carries `d` and the log line has counts for each level.
+`mtb_level` or `mtb_name`, so the layer draws the grey dots, labels nothing, and the panel names no
+level or name. After the rebuild, check a z14 tile's ETag carries `d` and `n` and the log line has
+counts for each level and the named ways.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 

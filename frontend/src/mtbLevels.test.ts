@@ -9,7 +9,11 @@ import * as spec from "@maplibre/maplibre-gl-style-spec";
 import { baseSurfaces } from "./testSupport/baseSurfaces.ts";
 import {
   FACILITIES,
+  MTB_LABEL,
+  MTB_LABEL_LAYER_ID,
+  MTB_LABEL_MIN_ZOOM,
   MTB_LAYER_IDS,
+  MTB_LINE_LAYER_IDS,
   MTB_LEVEL,
   MTB_LEVELS,
   MTB_MIN_ZOOM,
@@ -22,6 +26,8 @@ import {
   isMtbLayerId,
   mtbLevelCasingLayerId,
   mtbLevelLayerId,
+  mtbLabelColor,
+  mtbLabelLayers,
   mtbLevelPaint,
   mtbTrailLayers,
   setAccessibility,
@@ -87,9 +93,9 @@ test("the layer: the unrated dots, then each level's casing, then its line, unde
     try {
       setAccessibility(strong, { remember: false });
       const layers = mtbTrailLayers("stress") as Layer[];
-      assert.deepEqual(layers.map((l) => l.id), MTB_LAYER_IDS);
+      assert.deepEqual(layers.map((l) => l.id), MTB_LINE_LAYER_IDS);
       const all = (stressOverlayLayers("stress") as Layer[]).map((l) => l.id);
-      assert.deepEqual(all.slice(0, MTB_LAYER_IDS.length), MTB_LAYER_IDS, "every routable line draws over them");
+      assert.deepEqual(all.slice(0, MTB_LINE_LAYER_IDS.length), MTB_LINE_LAYER_IDS, "every routable line draws over them");
       for (const shape of MTB_LEVELS as Shape[]) {
         const casing = layers.find((l) => l.id === mtbLevelCasingLayerId(shape.level))!;
         const line = layers.find((l) => l.id === mtbLevelLayerId(shape.level))!;
@@ -146,4 +152,69 @@ test("a level follows the ride time like the dots, and a future MTB mode (`routa
   assert.equal(draws(weekend[id], id, { mtb: true, mtb_level: 2, car_free_only: ["weekend"] }), true);
   const routable = stressFilters("weekday_offpeak", false, false, true) as Record<string, unknown>;
   for (const layer of MTB_LAYER_IDS) assert.equal(draws(routable[layer], layer, { mtb: true, mtb_level: 2, tier: 1 }), false, layer);
+});
+
+// ---- the trail names (the owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names are
+// added in if they are available.") ----------------------------------------------------------------------
+
+type Symbol = { id: string; type: string; minzoom?: number; filter: unknown; layout: Record<string, unknown>; paint: Record<string, unknown> };
+
+/** The label colour MapLibre picks for a feature (the `match` on `mtb_level`). */
+function labelColour(expression: unknown, properties: Record<string, unknown>): string {
+  const compiled = spec.expression.createExpression(expression as never, spec.latest.paint_symbol["text-color"] as never, "layers[0].paint.text-color" as never);
+  assert.equal(compiled.result, "success");
+  const colour = (compiled.value as { evaluate: (g: unknown, f: unknown) => { toString(): string } }).evaluate({ zoom: 15 }, { properties, type: 2 });
+  // The `match` hands back its output as written: a hex string.
+  return String(colour).toLowerCase();
+}
+
+test("the names are drawn along the line on the mountain-bike layer only, from zoom 15, haloed, and thinned by collision", () => {
+  const [label] = mtbLabelLayers("stress") as Symbol[];
+  assert.equal(label.id, MTB_LABEL_LAYER_ID);
+  assert.equal(label.type, "symbol");
+  assert.equal(label.minzoom, MTB_LABEL_MIN_ZOOM);
+  assert.equal(MTB_LABEL_MIN_ZOOM, 15);
+  assert.equal(label.layout["symbol-placement"], "line");
+  assert.deepEqual(label.layout["text-field"], ["get", "name"]);
+  assert.deepEqual(label.layout["text-font"], ["Noto Sans Medium"], "a face the base map's glyphs carry (lib/railLayer.ts LABEL_FONT)");
+  // Collision on (MapLibre's default), with room around each label and between repeats.
+  assert.ok(!("text-allow-overlap" in label.layout) && !("text-ignore-placement" in label.layout));
+  assert.ok((label.layout["text-padding"] as number) >= 4 && (label.layout["symbol-spacing"] as number) >= 250);
+  assert.equal(label.paint["text-halo-color"], "#ffffff");
+  assert.ok((label.paint["text-halo-width"] as number) >= 1);
+  assert.ok(isMtbLayerId(MTB_LABEL_LAYER_ID), "it follows the layer's switch");
+  assert.ok(MTB_LAYER_IDS.includes(MTB_LABEL_LAYER_ID));
+  const errors = spec.validateStyleMin({ version: 8, sources: { stress: { type: "vector", tiles: ["https://x/{z}/{x}/{y}"] } }, glyphs: "https://x/{fontstack}/{range}.pbf", layers: [label] } as never);
+  assert.deepEqual(errors, []);
+});
+
+test("only named mountain-bike trails are labelled, rated or not, in every ride time and mode", () => {
+  for (const mass of [false, true]) {
+    for (const when of WHENS) {
+      const filter = (stressFilters(when, false, mass) as Record<string, unknown>)[MTB_LABEL_LAYER_ID];
+      const trail = { tier: 1, trail: true, mtb: true, rpm: 80 };
+      assert.equal(draws(filter, MTB_LABEL_LAYER_ID, { ...trail, name: "Rosaryville Trail" }), true);
+      assert.equal(draws(filter, MTB_LABEL_LAYER_ID, { ...trail, name: "Loop 3", mtb_level: 3 }), true);
+      assert.equal(draws(filter, MTB_LABEL_LAYER_ID, trail), false, "no name, no label");
+      assert.equal(draws(filter, MTB_LABEL_LAYER_ID, { tier: 1, trail: true, name: "Rock Creek Trail" }), false, "not a mountain-bike trail");
+    }
+  }
+  const routable = stressFilters("weekday_offpeak", false, false, true) as Record<string, unknown>;
+  assert.equal(draws(routable[MTB_LABEL_LAYER_ID], MTB_LABEL_LAYER_ID, { mtb: true, name: "X" }), false);
+});
+
+test("a name is in its line's colour, each 4.5:1 or more against the white halo, darker grey with the accessibility switch", () => {
+  for (const strong of [false, true]) {
+    const expression = mtbLabelColor(strong);
+    for (const shape of MTB_LEVELS as Shape[]) {
+      const colour = labelColour(expression, { mtb_level: shape.level });
+      assert.equal(colour, shape.color);
+      assert.ok(contrastRatio(colour, MTB_LABEL.halo) >= 4.5, `level ${shape.level} ${contrastRatio(colour, MTB_LABEL.halo).toFixed(2)}:1`);
+    }
+    const unrated = labelColour(expression, {});
+    assert.equal(unrated, strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color);
+    assert.ok(contrastRatio(unrated, MTB_LABEL.halo) >= 4.5);
+  }
+  const [label] = mtbLabelLayers("stress", "weekday_offpeak", false) as Symbol[];
+  assert.deepEqual(label.paint["text-color"], mtbLabelColor(false));
 });

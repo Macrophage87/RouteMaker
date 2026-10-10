@@ -441,6 +441,10 @@ MTB_ONLY_COLUMN = "mtb_only"
 # (`routemaker.singletrack.mtb_level`; OWNER-DECISIONS 456, 456a-c). Carried in a stress
 # tile as `mtb_level` where the live table has the column (`core.stress_tiles`).
 MTB_LEVEL_COLUMN = "mtb_level"
+# And its name (`routemaker.singletrack.mtb_name`; the owner, 2026-10-10), carried as
+# `name`. A column of its own, not `trail_name`: that one chains the long trails' runs,
+# which a mountain-bike way must never join (OWNER-DECISIONS 378).
+MTB_NAME_COLUMN = "mtb_name"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -548,6 +552,11 @@ CREATE TABLE {schema}.segment (
     -- on one rated 0 (a gravel trail, 456b) or unrated, and on every row of a table
     -- built before the column existed. The tiles carry it as `mtb_level`.
     mtb_level       smallint    CHECK (mtb_level BETWEEN 1 AND 4),
+    -- The name of a mountain-bike-only way (`routemaker.singletrack.mtb_name`: `name`,
+    -- else `ref`, else `mtb:name`; the owner, 2026-10-10), which the mountain-bike layer
+    -- labels it with and the road panel says. Null on every other way and where none is
+    -- mapped. Not `trail_name`, which chains the long trails' runs (378).
+    mtb_name        text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

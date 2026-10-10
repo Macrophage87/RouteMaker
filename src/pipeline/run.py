@@ -3027,6 +3027,11 @@ def build_handlers(
                         mtb_level=singletrack.mtb_level(way.tags)
                         if way.osm_id in context.mtb_only
                         else None,
+                        # And its name, for the layer's label and the road panel (the
+                        # owner, 2026-10-10).
+                        mtb_name=singletrack.mtb_name(way.tags)
+                        if way.osm_id in context.mtb_only
+                        else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
@@ -3064,12 +3069,15 @@ def build_handlers(
         trail_routes.derive_calm_runs(context.staging_schema)
         trail_routes.derive_roadside(context.staging_schema)
         levels = trail_routes.mtb_level_counts(context.staging_schema)
+        named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)
         logger.info(
-            "mountain-bike levels (ways, mi, mi drawn): %s",
+            "mountain-bike levels (ways, mi, mi drawn): %s; %d of %d mountain-bike ways named",
             {
                 level: (ways, round(mi, 1), round(drawn, 1))
                 for level, (ways, mi, drawn) in levels.items()
             },
+            named,
+            mountain_bike_ways,
         )
 
     def staging_checks() -> None:

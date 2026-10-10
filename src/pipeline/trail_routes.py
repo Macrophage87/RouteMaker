@@ -37,6 +37,8 @@ from .schema import (
     CALM_RUN_COLUMN,
     METRES_PER_MILE,
     MTB_LEVEL_COLUMN,
+    MTB_NAME_COLUMN,
+    MTB_ONLY_COLUMN,
     PAVED_ROUTE_MIN,
     ROADSIDE_COLUMN,
     ROADSIDE_FRACTION,
@@ -577,6 +579,22 @@ def mtb_level_counts(schema: str) -> dict[int, tuple[int, float, float]]:
         int(level): (int(ways), float(m) / METRES_PER_MILE, float(drawn) / METRES_PER_MILE)
         for level, ways, m, drawn in rows
     }
+
+
+def mtb_name_counts(schema: str) -> tuple[int, int]:
+    """(named, all) mountain-bike-only ways in the staging schema: how many the layer can
+    label (`mtb_name`; the owner, 2026-10-10)."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT count(DISTINCT osm_way_id) FILTER (WHERE {MTB_NAME_COLUMN} IS NOT NULL),
+                       count(DISTINCT osm_way_id)
+                FROM {schema}.segment WHERE {MTB_ONLY_COLUMN}"""
+        )
+        named, total = cursor.fetchone()
+    return int(named), int(total)
 
 
 class LongTrailSummary(NamedTuple):

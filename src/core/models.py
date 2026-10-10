@@ -70,6 +70,8 @@ class Segment(models.Model):
     # The difficulty level of a mountain-bike-only way, 1 to 4, or null (OWNER-DECISIONS
     # 456, 456a-c; `routemaker.singletrack.mtb_level`). Arrives with a rebuild, as above.
     mtb_level = models.SmallIntegerField(null=True)
+    # Its name, for the map's label and the road panel (the owner, 2026-10-10).
+    mtb_name = models.TextField(null=True)
 
     class Meta:
         managed = False  # DDL comes from the pipeline; see Operations in the plan.

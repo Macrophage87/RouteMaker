@@ -104,6 +104,7 @@ from pipeline.schema import (
     MASS_WIDTH_COLUMN,
     MOTOR_ONLY_RULE,
     MTB_LEVEL_COLUMN,
+    MTB_NAME_COLUMN,
     MTB_ONLY_COLUMN,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
@@ -321,6 +322,12 @@ OPTIONAL_PROPERTIES = {
     # of an unrated trail (drawn as the grey dots) and of every other way. Rated singletrack
     # is drawn (`map_class` road) only where nothing but its rating closes it.
     "mtb_level": MTB_LEVEL_COLUMN,
+    # The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added
+    # in if they are available." An `mtb` trail's name (`name`, else `ref`, else `mtb:name`;
+    # `routemaker.singletrack.mtb_name`), which the mountain-bike layer labels it with; left
+    # out where none is mapped and on every other way (the column is written on the
+    # mountain-bike-only ways alone).
+    "name": MTB_NAME_COLUMN,
     # OWNER-DECISIONS 403: a trail beside a road, which the map draws as a paved path
     # where no surface is mapped (not 376 A's surface-unknown dashes). True or left out.
     "roadside": ROADSIDE_COLUMN,
@@ -583,6 +590,8 @@ ETAG_LETTERS = {
     MASS_WIDTH_COLUMN: "w",
     # `d` for difficulty: `m` is the map class's and `l` the trail run's.
     MTB_LEVEL_COLUMN: "d",
+    # `n` for the mountain-bike trail's name.
+    MTB_NAME_COLUMN: "n",
 }
 
 
@@ -594,14 +603,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, thirteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and thirteen letters, `-v8"`, 38 characters), in the order of the
+    # key with all of them (a `+` and one letter each, fourteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and fourteen letters, `-v8"`, 39 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 46 characters, inside the cache's 64.
+    # digits makes the longest tag 47 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

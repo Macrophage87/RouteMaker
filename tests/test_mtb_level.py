@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from routemaker.singletrack import MTB_LEVELS, mtb_level, scale_grade
+from routemaker.singletrack import MTB_LEVELS, mtb_level, mtb_name, scale_grade
 
 
 @pytest.mark.parametrize(
@@ -85,3 +85,29 @@ def test_the_level_is_the_higher_rating(tags, level) -> None:
 )
 def test_no_level_for_zero_unrated_or_off_the_scale(tags) -> None:
     assert mtb_level({"highway": "path", **tags}) is None
+
+
+# ---- the trail's name (the owner, 2026-10-10: "Also, for mountain bikes, try to make sure
+# trail names are added in if they are available.") ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tags", "name"),
+    [
+        ({"name": "Rosaryville Trail"}, "Rosaryville Trail"),
+        ({"name": "Rosaryville Trail", "ref": "RT", "mtb:name": "Rosie"}, "Rosaryville Trail"),
+        # Falls back to `ref`, then `mtb:name`.
+        ({"ref": "Loop 3", "mtb:name": "Hard Way"}, "Loop 3"),
+        ({"mtb:name": "Hard Way"}, "Hard Way"),
+        # Blank values do not count, and the name is trimmed.
+        ({"name": "  ", "ref": "", "mtb:name": " Hard Way "}, "Hard Way"),
+        ({"name": " Fairland Loop "}, "Fairland Loop"),
+    ],
+)
+def test_the_name_is_name_then_ref_then_mtb_name(tags, name) -> None:
+    assert mtb_name({"highway": "path", **tags}) == name
+
+
+@pytest.mark.parametrize("tags", [{}, {"name": ""}, {"name": " ", "ref": " "}, {"alt_name": "X"}])
+def test_no_name_when_none_is_mapped(tags) -> None:
+    assert mtb_name({"highway": "path", **tags}) is None

@@ -937,8 +937,26 @@ export const MTB_LEVEL = { width: 2, strongWidth: 3, casing: "#ffffff", casingPx
 export const mtbLevelLayerId = (level) => `mtb-level-${level}`;
 export const mtbLevelCasingLayerId = (level) => `mtb-level-casing-${level}`;
 
-/** Every layer of the mountain-bike trail map layer (454): the unrated dots and each level's casing and line. */
-export const MTB_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)), ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level))];
+/** The mountain-bike trail layer's lines (454, 456): the unrated dots and each level's casing and line, bottom first. */
+export const MTB_LINE_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)), ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level))];
+
+/**
+ * THE MOUNTAIN-BIKE TRAIL NAMES. The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names
+ * are added in if they are available." The tiles carry an `mtb` trail's name as `name` (core/stress_tiles.py, from
+ * `segment.mtb_name`: the OSM `name`, else `ref`, else `mtb:name`; left out where none is mapped). The label layer
+ * draws it along the line, from MTB_LABEL_MIN_ZOOM, over every routable line, on this map layer only (it follows
+ * the layer's switch with the lines). MapLibre's collision drops a label that would overlap another, and
+ * `text-padding` and `symbol-spacing` thin them further. The text is the line's own colour - its level's, or the
+ * unrated dots' grey - on a white halo: each is 4.5:1 or more against the halo (green 5.13:1, blue 5.75:1, black
+ * 17.49:1, red 5.62:1, grey 6.05:1; mtbLevels.test.ts), where the base map's path-label grey is not (3.5:1). The
+ * name is text a screen reader cannot reach on the canvas; the road panel says it in words (core/segment_info.py).
+ */
+export const MTB_LABEL_LAYER_ID = "mtb-trail-label";
+export const MTB_LABEL_MIN_ZOOM = 15;
+export const MTB_LABEL = { font: "Noto Sans Medium", size: 12, halo: "#ffffff", haloWidth: 1.5, padding: 8, spacing: 300, maxAngle: 30 };
+
+/** Every layer of the mountain-bike trail map layer (454): its lines, then its names. */
+export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_LABEL_LAYER_ID];
 
 /** Whether a layer id is one of the mountain-bike trail layer's (MTB_LAYER_IDS). */
 export function isMtbLayerId(id) {
@@ -954,6 +972,35 @@ export function mtbLevelPaint(level, strong = accessibilityOn()) {
     line: { "line-color": shape.color, "line-width": width, "line-dasharray": shape.dash },
     casing: { "line-color": MTB_LEVEL.casing, "line-width": casingWidth },
   };
+}
+
+/** The names' text colour: the level's colour, or the unrated dots' grey (darker with the accessibility switch). */
+export function mtbLabelColor(strong = accessibilityOn()) {
+  return ["match", ["get", "mtb_level"], ...MTB_LEVELS.flatMap((l) => [l.level, l.color]), strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color];
+}
+
+/** The names' layer (2026-10-10): along each named mountain-bike trail, from zoom 15, thinned by collision. */
+export function mtbLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  return [
+    {
+      id: MTB_LABEL_LAYER_ID,
+      type: "symbol",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: MTB_LABEL_MIN_ZOOM,
+      filter: stressFilters(when)[MTB_LABEL_LAYER_ID],
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": MTB_LABEL.spacing,
+        "text-field": ["get", "name"],
+        "text-font": [MTB_LABEL.font],
+        "text-size": MTB_LABEL.size,
+        "text-max-angle": MTB_LABEL.maxAngle,
+        "text-padding": MTB_LABEL.padding,
+      },
+      paint: { "text-color": mtbLabelColor(strong), "text-halo-color": MTB_LABEL.halo, "text-halo-width": MTB_LABEL.haloWidth },
+    },
+  ];
 }
 
 /**
@@ -998,6 +1045,8 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     filters[mtbLevelCasingLayerId(level)] = filter;
     filters[mtbLevelLayerId(level)] = filter;
   }
+  // The names (2026-10-10): every mountain-bike trail with one, rated or not.
+  filters[MTB_LABEL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["has", "name"], ...off];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1481,6 +1530,8 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
+    // The mountain-bike trails' names (2026-10-10), over every routable line, so a route does not hide them.
+    ...mtbLabelLayers(sourceId, when),
     // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn
     // only in that mode, where every layer above is hidden (lib/mapGlue.ts; OWNER-DECISIONS 417a).
     ...massLayers(MASS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()),

@@ -200,6 +200,7 @@ OPTIONAL_COLUMNS = (
     "mtb_only",
     "trail_bridge",
     "mtb_level",
+    "mtb_name",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -775,7 +776,12 @@ def mtb_summary(row: dict) -> str:
     Gravel and Mountain Goat (the off-road graph) do route on it, unless it is rated
     singletrack, which every graph closes."""
     level = mtb_level_words(row.get("mtb_level"))
-    head = f"Mountain-bike trail, {level}," if level else "Mountain-bike trail,"
+    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
+    # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
+    # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
+    # Trail, not used for routes".
+    name = (row.get("mtb_name") or "").strip()
+    head = f"{head}: {name}," if name else f"{head},"
     if row.get("bike_access_reason") == "singletrack":
         return f"{head} not used for routes"
     return f"{head} not used for routes (Gravel and Mountain Goat may use it)"
@@ -878,7 +884,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
-    name = router.get("name") or row.get("trail_name")
+    # A mountain-bike trail's own name (`mtb_name`: name, ref or mtb:name) where the router
+    # and the long-trail name have none (the owner, 2026-10-10).
+    name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
     title = name or ("Unnamed path" if path or router.get("use") in PATH_USES else "Unnamed road")

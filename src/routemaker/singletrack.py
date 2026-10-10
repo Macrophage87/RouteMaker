@@ -109,3 +109,21 @@ def mtb_level(tags: dict[str, str]) -> int | None:
     ]
     hardest = max(grades, default=0)
     return min(hardest, MTB_LEVELS[-1]) if hardest >= 1 else None
+
+
+# The tags a mountain-bike trail's name is read from, first found wins (the owner,
+# 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added in if they
+# are available."): the way's own name, then its reference, then the name mountain bikers
+# give it where that differs.
+NAME_KEYS = ("name", "ref", "mtb:name")
+
+
+def mtb_name(tags: dict[str, str]) -> str | None:
+    """The name the map labels a mountain-bike trail with: `name`, else `ref`, else
+    `mtb:name`, trimmed; None when none of them has one. The rebuild writes it on the
+    mountain-bike-only ways (`segment.mtb_name`), as it does the level."""
+    for key in NAME_KEYS:
+        value = (tags.get(key) or "").strip()
+        if value:
+            return value
+    return None

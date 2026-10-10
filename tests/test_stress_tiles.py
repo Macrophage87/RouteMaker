@@ -126,6 +126,8 @@ def segment_schemas(segment_schemas):
             cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN roadside")
             # And from before the mountain-bike level (456), which TestMtbLevel adds.
             cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN mtb_level")
+            # And from before the mountain-bike trail's name (2026-10-10), which TestMtbName adds.
+            cursor.execute(f"ALTER TABLE {name}.segment DROP COLUMN mtb_name")
     return segment_schemas
 
 
@@ -1911,6 +1913,61 @@ class TestMtbLevel:
     def test_the_longest_etag_fits_the_cache_key(self) -> None:
         every = frozenset(stress_tiles.ETAG_LETTERS)
         assert len(stress_tiles.etag_for(4_294_967_295, every, 999_999)) <= 64
+
+
+@db
+class TestMtbName:
+    """A mountain-bike trail carries its name as `name` (the owner, 2026-10-10: "Also, for
+    mountain bikes, try to make sure trail names are added in if they are available."),
+    left out where none is mapped, only from a table with the column, which the ETag names
+    (`n`). The name's fallbacks (`ref`, `mtb:name`) are the rebuild's (tests/test_mtb_level.py)."""
+
+    @pytest.fixture
+    def named(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN mtb_name text")
+        return live
+
+    @staticmethod
+    def put(schema, way, name, i, mtb=True) -> None:
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0015 + i * 0.0003
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, is_unpaved, mtb_only, mtb_name, facility) VALUES "
+                "(%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, "
+                "true, %s, %s, 'none')",
+                [way, lon, lat, lon + 0.002, lat, mtb, name],
+            )
+
+    def test_the_name_is_carried_and_a_null_is_left_out(self, client, named) -> None:
+        self.put(named, 3600, "Rosaryville Trail", 0)
+        self.put(named, 3601, None, 1)
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        names = sorted(str(f.properties.get("name")) for f in layer.features)
+        assert names == ["None", "Rosaryville Trail"], names
+
+    def test_the_etag_names_the_column(self, client, named) -> None:
+        self.put(named, 3602, "Fairland Loop", 0)
+        etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+        assert "+cfrmwnosbtl-v8" in etag, etag
+        assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
+        assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
+        assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
+
+    def test_a_table_without_the_column_carries_no_name(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, mtb_only, facility) VALUES (3603, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'x', true, true, 'none')",
+                [lon, lat, lon + 0.002, lat],
+            )
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        assert layer.features and all("name" not in f.properties for f in layer.features)
 
 
 @db

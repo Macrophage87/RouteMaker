@@ -175,10 +175,11 @@ test("the not-for-routes line and each level's casing and line are the layers th
   assert.equal(MTB_TRAIL_LAYER_ID, "mtb-trail");
   assert.deepEqual(
     mtbTrailLayers().map((l: { id: string }) => l.id),
-    MTB_LAYER_IDS,
+    MTB_LAYER_IDS.slice(0, -1),
   );
   assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
-  assert.equal(MTB_LAYER_IDS.length, 9, "the dots, then four casings and four lines (456)");
+  assert.equal(MTB_LAYER_IDS.length, 10, "the dots, four casings and four lines (456), and the names (2026-10-10)");
+  assert.equal(MTB_LAYER_IDS.at(-1), "mtb-trail-label");
 });
 
 test("the trails show by their own switch alone: with the stress map on or off, in every ride type, Mass Ride too", () => {

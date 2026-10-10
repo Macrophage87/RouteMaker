@@ -448,6 +448,39 @@ class TestAnswer:
             " (Gravel and Mountain Goat may use it)"
         )
 
+    def test_a_named_trail_is_named_on_the_bikes_line_and_as_the_title(
+        self, client, segment_schemas, router
+    ) -> None:
+        """The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names are
+        added in if they are available." The name the router has not got is the table's."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            127,
+            [SPOT, east(SPOT, 50)],
+            is_trail_class=True,
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=2,
+            mtb_name="Rosaryville Trail",
+        )
+        router.answers = {"bicycle": [], "pedestrian": [edge(127, use="path")]}
+        body = get(client).json()
+        assert summary(body)[-1] == (
+            "Bikes: Mountain-bike trail, level 2 (blue): Rosaryville Trail, not used for routes"
+        )
+        assert body["title"] == "Rosaryville Trail"
+        assert section(body, "road")["Name"]["value"] == "Rosaryville Trail"
+
+    def test_a_named_unrated_trail(self) -> None:
+        row = {"bike_access_reason": "mtb", "mtb_only": True, "mtb_name": "Loop 3"}
+        assert segment_info.mtb_summary(row) == (
+            "Mountain-bike trail: Loop 3, not used for routes (Gravel and Mountain Goat may use it)"
+        )
+        assert segment_info.mtb_summary({**row, "mtb_name": "  "}) == (
+            "Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+        )
+
     def test_an_unrated_trail_has_no_difficulty_row(self, client, segment_schemas, router):
         live, _ = segment_schemas
         insert(live, 126, [SPOT, east(SPOT, 50)], is_trail_class=True, mtb_only=True)
