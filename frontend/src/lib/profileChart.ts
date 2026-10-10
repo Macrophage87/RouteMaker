@@ -1650,9 +1650,14 @@ export function corkerReading(profile: RouteProfile, load: CorkerLoad | null, me
   const step = corkerAt(load, m);
   const tail = tailAt(load.road, m);
   const gap = uncheckedWithin(load, tail, m) ? " Part of the group's stretch was not checked for intersections." : "";
-  const held = step.corkers === 0 ? heldWords(step) : `${heldWords(step)} at once`;
-  return `${mileWord(m)}: ${held} (${groupWords(load.riders, m - tail)}).${gap}${crossingClause(profile, m)}`;
+  // Only the flagged junctions found (crossings_complete: false): the count at a point may be low too.
+  const held = step.corkers === 0 ? (load.partial ? "no corkers held at the junctions found" : heldWords(step)) : `${load.partial ? "at least " : ""}${heldWords(step)} at once`;
+  const partial = load.partial ? `; ${PARTIAL_READING}` : "";
+  return `${mileWord(m)}: ${held} (${groupWords(load.riders, m - tail)}${partial}).${gap}${crossingClause(profile, m)}`;
 }
+
+/** The partial list's caveat in a corker reading and the chart's key. */
+export const PARTIAL_READING = "only flagged junctions were found";
 
 /** Why the count may be low, as a clause. */
 function lowReason(load: Pick<CorkerLoad, "partial" | "unchecked">): string {
@@ -1675,7 +1680,14 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
   sentences.push(`At ${load.riders.toLocaleString("en-US")} riders the group is about ${formatGroupLength(load.road.typicalLengthM)} long at cruise, on this route's typical width.`);
   const peak = load.peak;
   if (!peak) {
-    sentences.push(corkersMayBeLow(load) ? `None of the junctions found needs corkers, but ${lowReason(load)}, so some may.` : "No junction needs corkers, so no corkers are needed.");
+    // Never "none along the whole route" where some of it was not looked at (the review's summary finding).
+    sentences.push(
+      load.partial
+        ? `None of the junctions found needs corkers, but ${lowReason(load)}, so some may.`
+        : load.unchecked.length > 0
+          ? "No junction needing corkers was found where the route was checked."
+          : "No junction needs corkers, so no corkers are needed.",
+    );
   } else {
     const from = miles(peak.from_m);
     const to = miles(peak.to_m);
@@ -1702,11 +1714,15 @@ export function elevationReading(profile: RouteProfile, metres: number): string 
   return `${mileWord(profile.m[index])}: ${parts.join(", ")}.`;
 }
 
+/** The riders chart's sentence for a stretch that could not be traced. */
+export const UNTRACED_WIDTH = "Part of the route could not be traced, so its width is not known.";
+
 /** Each of a Mass Ride's three charts' summaries, said before its picture. */
 export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null): Record<MassChartKey, string> {
   const riders = ridersSentences(route, profile);
   return {
-    riders: (riders.length > 0 ? riders : ["Riders per minute are not known for this route."]).join(" "),
+    // The riders chart's own summary keeps the untraced stretch, said in summaryText with the intersections.
+    riders: [...(riders.length > 0 ? riders : ["Riders per minute are not known for this route."]), ...((profile.unchecked ?? []).length > 0 ? [UNTRACED_WIDTH] : [])].join(" "),
     corkers: corkerSentences(profile, load).join(" "),
     elevation: elevationSentences(route, profile).join(" "),
   };

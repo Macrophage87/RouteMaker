@@ -331,6 +331,11 @@ test("each chart's summary and reading is its own part; together they are the ol
   assert.doesNotMatch(s.elevation, /riders|corker/);
   assert.match(s.riders, /riders per minute/);
   assert.match(s.corkers, /^1 major intersection, 1 needing corkers\. /);
+  // The one-chart summary is the wording before the three charts, word for word (captured from b85e617).
+  assert.equal(
+    summaryText(r, profile, "mass"),
+    "Over 3.0 mi (4.8 km), elevation runs from 98 ft (30 m) to 114 ft (35 m). The route is close to level. 1 sustained climb, listed in the table. Narrowest with the hills: about 190 riders per minute (good), at mile 0.0, marked on the chart. Typical with the hills: about 190 riders per minute. 1 major intersection, 1 needing corkers.",
+  );
   assert.equal(summaryText(r, profile, "mass"), [s.elevation, s.riders, "1 major intersection, 1 needing corkers."].join(" "));
   const read = massReadings(r, profile, load, 1020);
   assert.equal(read.riders, readingAt(r, profile, 1020, "mass").text);
@@ -375,4 +380,34 @@ test("the ride size slider: its name carries the unit, its value text says rider
   assert.equal(rideSizeView(2000).words, "2,000 riders");
   assert.ok(panelView("mass-ride", fitDials("mass-ride", {})).rideSize);
   assert.equal(panelView("default", fitDials("default", {})).rideSize, null);
+});
+
+test("the one-chart summary with an Avoid stretch, a partial list and an untraced stretch is unchanged too (captured from b85e617)", () => {
+  const profile = profileWith([junction(1000, false)], { unchecked: [{ from_m: 3000, to_m: 3500 }], avoid: [{ from_m: 4000, to_m: 4200 }], crossings_complete: false });
+  assert.equal(
+    summaryText(route(), profile, "mass"),
+    "Over 3.0 mi (4.8 km), elevation runs from 98 ft (30 m) to 114 ft (35 m). The route is close to level. No sustained climbs. Narrowest with the hills: about 190 riders per minute (good), at mile 0.0, marked on the chart. Typical with the hills: about 190 riders per minute. One stretch is marked Avoid, no capacity given, from mile 2.5. Only the higher or very high stress junctions were found, so the list may be incomplete: 1 found, none needing corkers. Part of the route could not be traced, so its width and intersections are not known.",
+  );
+  // The riders chart's own summary keeps the untraced stretch's width.
+  assert.match(massSummaries(route(), profile, corkerLoad(profile, 3 * MILE, 500)).riders, /Part of the route could not be traced, so its width is not known\.$/);
+  assert.doesNotMatch(massSummaries(route(), profileWith([]), null).riders, /could not be traced/);
+});
+
+test("unchecked stretches and no junction needing corkers: never none along the whole route, but none found where it was checked", () => {
+  const profile = profileWith([junction(1000, false)], { unchecked: [{ from_m: 3000, to_m: 3500 }] });
+  const load = corkerLoad(profile, 3 * MILE, 500);
+  assert.ok(load && load.peak === null && corkersMayBeLow(load));
+  const words = corkerSentences(profile, load).join(" ");
+  assert.match(words, /No junction needing corkers was found where the route was checked\./);
+  assert.doesNotMatch(words, /whole route|no corkers are needed/);
+  assert.equal(corkerFigure(route(), profile, 500)?.text, "None found for 500 riders (may be low: part of the route was not checked for intersections)");
+});
+
+test("a partial list: the reading says the count may be low at every point, as well as the summary and the headline", () => {
+  const profile = profileWith([junction(1000, true, "14th Street"), junction(1400, true, "15th Street")], { crossings_complete: false });
+  const load = corkerLoad(profile, 3 * MILE, 500);
+  assert.match(corkerReading(profile, load, 1200), /^Mile 0\.7: at least 2 corkers holding 1 junction at once \(500 riders, group about 1,560 ft \(475 m\) long; only flagged junctions were found\)\./);
+  assert.match(corkerReading(profile, load, 300), /^Mile 0\.2: no corkers held at the junctions found \(500 riders, group about 1,560 ft \(475 m\) long; only flagged junctions were found\)\./);
+  const firm = profileWith([junction(1000)]);
+  assert.doesNotMatch(corkerReading(firm, corkerLoad(firm, 3 * MILE, 500), 1200), /flagged|at least/);
 });

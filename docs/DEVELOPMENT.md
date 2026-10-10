@@ -5575,17 +5575,25 @@ summary before the picture, a slider (`aria-label` "Riders per minute along the 
 an `aria-hidden` readout, and its own key (`aria-label` "Riders per minute key" ...). The
 three sliders share one position (and one key hint, which also says so): Tab from one to
 the next carries on at the same mile, and moving any of them moves the map's marker and the
-other two charts' markers. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
+other two charts' markers. Tab between them keeps the position (the blur looks at
+`relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
 about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
 1.3, corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
 riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
 not checked for intersections." where it was not, and "intersections not checked, so the
-corkers needed are not known" with no crossings); elevation, "Mile 1.2: elevation 341 ft (104 m), grade 6%."
-The summaries split the old one: riders (narrowest and typical figures, outside DC, Avoid),
+corkers needed are not known" with no crossings; where only the flagged junctions were
+found, every reading says so too: "Mile 1.2: at least 2 corkers holding 1 junction at once
+(500 riders, group about 1,560 ft (475 m) long; only flagged junctions were found)", and the
+key adds "Only flagged junctions were found, so the load may be low"); elevation, "Mile 1.2: elevation 341 ft (104 m), grade 6%."
+The summaries split the old one: riders (narrowest and typical figures, outside DC, Avoid,
+and "Part of the route could not be traced, so its width is not known." where it was not),
 corker load (the intersections and how many need corkers, the group's length at the ride
 size, the most held at once, where, and how many more places reach it, the ride's corkers,
-and how they are counted), elevation (range, steepest, climbs);
-`summaryText(.., "mass")` is unchanged. The intersections table gains a "Corkers held at
+and how they are counted; with no junction needing corkers it says "No junction needing
+corkers was found where the route was checked." wherever part was not checked, never that
+none are needed), elevation (range, steepest, climbs); `summaryText(.., "mass")` is
+unchanged, pinned word for word in the tests. The key names the dotted line ("Dotted line:
+2 corkers at once, half the chart's height"). The intersections table gains a "Corkers held at
 once when the head reaches it" column ("4 at 2 junctions", or "None"). Colour is never the only cue: the load is
 one series with its line, the ticks are shapes at places, the unchecked block has a hatch,
 frame and word; in forced colours the step line, ticks, half line and the unchecked frame
@@ -5622,12 +5630,18 @@ load's summary, its area, ticks, side figures, key and shared axis, and Tab on t
 load's and the elevation's sliders at the same mile with their value texts; and three for
 the ride size: the slider's name, value text and range, the route's corkers figure, and ten
 steps to 1,000 riders redrawing the load and the figure, carried in the link, with no new
-plan; EXPECTED 381). The three charts' math is in `lib/corkerLoad.test.ts` (the group's
+plan; and two for the corker load not known: crossings `null` (the plot's words, no area, the
+key, summary and value text, no corker figure) and an unchecked stretch (the hatched NOT
+CHECKED block, its key, and "At least about 8"); EXPECTED 422 after the release merge).
+`node scripts/a11y/check.mjs --port <vite> --cdp <chromium>` (or `A11Y_CDP_PORT`) runs it
+against a Vite and a Chromium of your own; Chromium's port defaults to 9222. The three charts' math is in `lib/corkerLoad.test.ts` (the group's
 length and the worked example, the width at each point, an unknown width and an older
 answer, the sliding window, close junctions adding up, the ends, a group longer than the
 route, one-way junctions, junctions needing none, the headline and its rounding, may be low,
-no intersections, not checked, unchecked stretches, the readings and summaries, the shapes,
-the table's column, and the ride size's range, plan link and slider);
+no intersections, not checked, unchecked stretches with no corkers, the partial caveat in
+the reading, the readings and summaries, the one-chart summary as a literal, the riders
+summary's untraced width, the shapes, the table's column, and the ride size's range, plan
+link and slider);
 `tests/test_profile_flow.py` checks the group length's worked example, the level figure and
 pace the API sends, and a major's `oneway`. `scripts/a11y/cdp.mjs` mocks a profile on every
 route and riders, the level figure (22 ft), an Avoid stretch and crossings (13th Street

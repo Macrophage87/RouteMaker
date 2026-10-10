@@ -149,7 +149,11 @@ export function MassRideCharts({
         setFocused(key);
         setAt((v) => v ?? 0);
       }}
-      onBlur={() => {
+      onBlur={(event) => {
+        // Tab on to another of the three sliders keeps the position, so the map's marker neither
+        // flickers off nor pans again (the review's Tab finding); the next one's focus takes over.
+        const next = event.relatedTarget;
+        if (next instanceof Element && next.classList.contains("pc-plot") && event.currentTarget.closest(".elevation-chart")?.contains(next)) return;
         setFocused(null);
         setHover(null);
       }}
@@ -463,6 +467,13 @@ function corkerChart({
         </svg>
         Corkers held at once with the group's head at each point ({rideSizeWords(load.riders)})
       </li>
+      <li>
+        <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">
+          <path d="M0 5H14" className="pc-corker-half" />
+        </svg>
+        Dotted line: {corkerTop(load) / 2} corkers at once, half the chart's height
+      </li>
+      {load.partial && <li>Only flagged junctions were found, so the load may be low</li>}
       <li>
         <svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true">
           <path d="M7 0V10" className="pc-tick pc-corker-tick" />

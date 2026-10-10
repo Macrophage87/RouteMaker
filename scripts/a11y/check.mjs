@@ -4,7 +4,9 @@
 // scripts/a11y/run.sh, which starts Vite and an offline Chromium; prints one
 // line per check and exits non-zero if any fails.
 //
-//   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
+//   node scripts/a11y/check.mjs [--port 5173] [--cdp 9222] [--shots DIR]
+//
+// --port is Vite's; --cdp (or A11Y_CDP_PORT) is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
 import { RIDE_COORDS, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
@@ -22,7 +24,8 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
-const b = await connect();
+const CDP_PORT = Number(arg("--cdp", process.env.A11Y_CDP_PORT ?? "9222"));
+const b = await connect(CDP_PORT);
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
@@ -1386,6 +1389,31 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 {
+  // The corker load where intersections were not checked at all (crossings: null): no load is drawn and nothing says 0.
+  const unchecked = JSON.parse(JSON.stringify(S_MASS));
+  unchecked.profile.crossings = null;
+  unchecked.profile.crossings_complete = null;
+  unchecked.intersections = [];
+  const p = await open({ route: unchecked, hash: hashFor("mass-ride", 0), junctions: false });
+  const none = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { plot: c?.querySelector('.pc-corker-none')?.textContent, area: !!c?.querySelector('.pc-corker-area'), legend: [...(c?.querySelectorAll('.pc-legend li') ?? [])].map((x) => x.textContent), summary: c?.querySelector('.pc-summary')?.textContent, figure: !!document.querySelector('.capacity-corkers') }; })()`);
+  const noneAx = await axNode(p, ".pc-chart-corkers .pc-plot");
+  check("mass chart, intersections not checked: the corker plot says so, draws no load, its summary, key and slider say the corkers are not known, and the route's figures give no corker count",
+    none.plot === "Intersections not checked" && !none.area && JSON.stringify(none.legend) === JSON.stringify(["Intersections were not checked, so there is no corker load to draw"]) && none.summary === "Major intersections were not checked for this route, so the corkers needed are not known." && !none.figure && noneAx?.valuetext === "Mile 0.0: intersections not checked, so the corkers needed are not known.",
+    JSON.stringify({ none, valuetext: noneAx?.valuetext }));
+  await p.close();
+}
+{
+  // A stretch not checked for intersections: the NOT CHECKED block on the corker load, in the key, and the count "at least".
+  const gap = JSON.parse(JSON.stringify(S_MASS));
+  gap.profile.unchecked = [{ from_m: 2600, to_m: 3800 }];
+  const p = await open({ route: gap, hash: hashFor("mass-ride", 0), junctions: false });
+  const block = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { blocks: [...c.querySelectorAll('.pc-unchecked .pc-unchecked-text')].map((x) => x.textContent), hatch: !!c.querySelector('.pc-unchecked rect[fill^="url(#"]'), legend: [...c.querySelectorAll('.pc-legend li')].map((x) => x.textContent), summary: c.querySelector('.pc-summary')?.textContent ?? '', figure: document.querySelector('.capacity-corkers')?.textContent ?? '' }; })()`);
+  check("mass chart, a stretch not checked: a hatched NOT CHECKED block on the corker load, named in the key, and the ride's corkers given as at least, with the reason",
+    JSON.stringify(block.blocks) === JSON.stringify(["NOT CHECKED"]) && block.hatch && block.legend.includes("Hatched grey: not checked for intersections (? where narrow)") && block.summary.includes("At least about 8 corkers for the ride") && block.figure === "CorkersAt least about 8 for 500 riders (may be low: part of the route was not checked for intersections)",
+    JSON.stringify(block));
+  await p.close();
+}
+{
   // Forced colours (a11y S6): the chart and its key both keep their colours, so they still match; the words follow the system's text colour.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false, forced: true });
   const forced = await p.eval(`(() => { const probe = document.createElement('span'); probe.style.color = 'CanvasText'; document.body.append(probe); const text = getComputedStyle(probe).color; probe.style.color = 'Canvas'; document.body.append(probe); const canvas = getComputedStyle(probe).color; probe.remove(); const svg = document.querySelector('.pc-svg'); const keys = [...document.querySelectorAll('.pc-legend svg')]; return { text, svg: getComputedStyle(svg).forcedColorAdjust, keys: keys.map((k) => getComputedStyle(k).forcedColorAdjust), border: keys.map((k) => getComputedStyle(k).borderTopStyle), axis: getComputedStyle(document.querySelector('.pc-axis-text')).fill, line: getComputedStyle(document.querySelector('.pc-line')).stroke, dot: getComputedStyle(document.querySelector('.pc-dot')).fill, frame: getComputedStyle(document.querySelector('.pc-avoid-frame')).stroke, inner: getComputedStyle(document.querySelector('.pc-avoid-inner')).stroke, canvas }; })()`);
@@ -2470,7 +2498,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 420;
+const EXPECTED = 422;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
