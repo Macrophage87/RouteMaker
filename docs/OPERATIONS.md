@@ -1585,6 +1585,12 @@ the approved rows at request time (`core.avoid_junctions.approved`).
      The planner counts a route as passing it within 49 ft (15 m) of that point
      (`MATCH_RADIUS_M`), so a point off to one side of a wide junction can miss a route that
      turns through it, and one placed on the next junction's corner can catch the wrong one.
+     **Never place it above or below another way**: within 49 ft (15 m) of a bridge, an
+     overpass, an underpass or a tunnel, the router's exclusion takes out the other level's
+     edges too and the match counts a route on the other level as passing. Move the point
+     along the junction's own roads until no other level is within 49 ft (15 m), or leave that
+     junction unrated. The form cannot warn of this: the segment table has no bridge or tunnel
+     flag for roads.
    - **Reason**: a few plain words, e.g. "no gap in fast traffic". Riders see it, in the
      notice, the list, the description and the marker's spoken name.
    - **Evidence**: what the rating rests on (rider reports, a visit, crash records). Not shown
@@ -1597,21 +1603,37 @@ the approved rows at request time (`core.avoid_junctions.approved`).
    on the form.
 
 **Withdrawing one**: tick it and run **Withdraw the selected Avoid junctions**. The row stays
-(with its count) and stops routing at the next plan. Deleting it is audited too.
+(with its count) and stops routing at the next plan; who approved it is cleared (the audit log
+keeps both the approval and the withdrawal, with their actors). Deleting it is audited too.
+
+**Editing an approved row changes routing at once**: a new point, name or reason is read by the
+next plan, with no second approval. The edit is audited (`change` on `avoidjunction`, with the
+fields changed). To move a rating with review, withdraw it, edit it, and approve it again.
 
 **What changes for riders.** A plan whose route passes an approved Avoid junction is charged 30
 minutes (1,800 cost seconds) for each pass, the same as entering an Avoid road (308): the calm
 search scores it and excludes the junction in its first rounds, and every plan then asks the
 router once more for the way round (`exclude_locations` at the junction, a 49 ft (15 m) radius).
-Where the way round is cheaper than the route plus 30 minutes, it becomes the route; on Mass
-Ride and Group Ride it always does where it exists (307). Otherwise the route keeps the junction,
-the panel leads with "This route goes through an Avoid-rated junction: <name>, <reason>.
-Riding through it is a really bad idea. Please reconsider your route." (announced first), and the way round is offered beside it, however much longer (335). The
-marker is the skull and crossbones on a dark disc, larger than the other junction markers; its
-spoken name is "Avoid-rated junction", the reason and the same plea (309). Clicking it, or opening
-the road panel on it, shows "Avoid this intersection. <name> is rated as dangerous for bikes:
-<reason>. Riding through it is a really bad idea. Please reconsider your route." at the top of the panel. The owner, 2026-10-10 15:08 UTC: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider." It has no row in the map's legend: the owner, 2026-10-10 15:03 UTC, "For avoid markers in
-intersection. No need to put it in legend. You'll only see this if you really try to force things."
+
+- Where the search did not run a round, and the way round is cheaper than the route plus 30
+  minutes, it becomes the route.
+- On Mass Ride and Group Ride it becomes the route where it adds no LTS 4 and is at most 1 mi
+  (1.6 km) or 25% of the route longer, whichever is more (307; this limit is a default the owner
+  has yet to confirm).
+- A loop keeps its route; the way round is offered.
+- When the way round becomes the route, the "routes to choose from" are not offered.
+
+Otherwise the route keeps the junction, the panel leads with "This route goes through an
+Avoid-rated junction: <name>, <reason>. Riding through it is a really bad idea. Please
+reconsider your route." (announced first), and the way round is offered beside it, however much
+longer (335). A route chosen from "routes to choose from" shows its own notice, or none where it
+avoids the junction. The marker is the skull and crossbones on a dark disc, larger than the
+other junction markers, reachable by Tab; its spoken name is "Avoid-rated junction", the reason
+and the same plea (309). Clicking it, pressing Enter on it, or opening the road panel within 82
+ft (25 m) of it shows "Avoid this intersection. <name> is rated as dangerous for bikes: <reason>.
+Riding through it is a really bad idea. Please reconsider your route." at the top of the panel.
+The owner, 2026-10-10 15:08 UTC: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider." It has no row in the map's legend: the owner, 2026-10-10
+15:03 UTC, "For avoid markers in intersection. No need to put it in legend. You'll only see this if you really try to force things."
 
 **Keeping both rare (335).** The list page leads with the counts: how many junctions are
 approved, how many await approval, and how many times plans passed through an approved one in
@@ -1620,9 +1642,11 @@ counted when its answer (after the way round was tried) still passes the junctio
 and the date are kept, never the route, the request or the rider.
 
 **Load.** With the list empty (as shipped) a plan makes one small query and no extra router
-call. A plan through an Avoid junction makes one extra `/route` call (and, where the way round
-is offered, its trace), inside the plan's budget; with under 4 s left it is not asked, and the
-answer says so (`avoid_search.alternate` "time").
+call. A plan through an Avoid junction makes 1 + legs router calls inside the plan's budget: one
+`/route` for the way round, then a `/trace_attributes` for each of its legs where it is answered
+(swapped in or offered), and on Mass Ride and Group Ride a trace for each leg of the route where
+not already remembered. With under 4 s left the way round is not asked, and the answer says so
+(`avoid_search.alternate` "time").
 
 **Migration.** The table is `avoid_junction`, created by `core/migrations/0015_avoid_junction.py`.
 
