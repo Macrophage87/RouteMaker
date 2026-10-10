@@ -195,6 +195,7 @@ OPTIONAL_COLUMNS = (
     "mass_usable_width_m",
     "bike_access_reason",
     "mtb_only",
+    "trail_bridge",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -617,9 +618,19 @@ def surface_words(row: dict) -> str:
         if row.get("is_trail_class") and row.get("roadside"):
             return "Not mapped; probably paved (a side path beside a road)"
         return "Not mapped"
-    if unpaved:
-        return "Unpaved, rough" if rough else "Unpaved"
-    return "Paved, rough" if rough else "Paved"
+    words = (
+        ("Unpaved, rough" if rough else "Unpaved")
+        if unpaved
+        else ("Paved, rough" if rough else "Paved")
+    )
+    # A short bridge the map draws in its trail's surface, not its deck's
+    # (`core.stress_tiles.BRIDGE_UNPAVED`): the words say the deck, and why the line differs.
+    bridge = row.get("trail_bridge")
+    if bridge == 2 and not unpaved:
+        return f"{words} (a bridge deck; the map draws it as part of the unpaved trail)"
+    if bridge == 1 and unpaved:
+        return f"{words} (a bridge deck; the map draws it as part of the paved trail)"
+    return words
 
 
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:

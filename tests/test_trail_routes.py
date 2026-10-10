@@ -62,7 +62,7 @@ def write_extract(path) -> None:
         writer.add_node(
             osmium.osm.mutable.Node(id=node_id, location=(-77.0 + node_id / 100, 38.9), version=1)
         )
-    for way_id in range(1, 9):
+    for way_id in range(1, 14):
         writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=[1, 2], version=1))
     relations = [
         (
@@ -91,6 +91,19 @@ def write_extract(path) -> None:
             {"type": "route", "route": "bicycle", "network": "ncn", "name": "National"},
             [("w", 8, "")],
         ),
+        # The C&O towpath: on USBR 50 (ncn) and in a mountain-bike route too.
+        (
+            {"type": "route", "route": "bicycle", "network": "ncn", "name": "USBR 50"},
+            [("w", 9, "")],
+        ),
+        ({"type": "route", "route": "mtb", "name": "Towpath Loop"}, [("w", 9, "")]),
+        # An international route counts; a regional one does not.
+        ({"type": "route", "route": "bicycle", "network": "icn"}, [("w", 10, "")]),
+        ({"type": "route", "route": "bicycle", "network": "rcn"}, [("w", 11, "")]),
+        # A national route that is a mountain-bike route as well: still national.
+        ({"type": "route", "route": "bicycle;mtb", "network": "ncn"}, [("w", 12, "")]),
+        # A walking route mistagged with a bicycle network: not a national bicycle route.
+        ({"type": "route", "route": "hiking", "network": "ncn"}, [("w", 13, "")]),
     ]
     for relation_id, (tags, members) in enumerate(relations, start=1):
         writer.add_relation(
@@ -105,11 +118,40 @@ def test_the_extracts_route_relations_are_read_by_member_way(tmp_path) -> None:
     # The highest level wins on a way in two; a node member, a local walking
     # route, a mountain-bike route and a relation that is not a route give nothing.
     routes = trail_routes.read_routes(path)
-    assert routes.levels == {1: 1, 2: 3, 3: 2, 8: 3}
-    assert routes.mountain_bike == {5, 7}, "the ways in an mtb route, whatever its network"
+    assert routes.levels == {1: 1, 2: 3, 3: 2, 8: 3, 9: 3, 10: 3, 11: 3}
+    assert routes.mountain_bike == {5, 7, 9, 12}, "the ways in an mtb route, whatever its network"
     # The long routes' names, the highest level's; a local route names nothing
     # (377), so way 1 has none.
-    assert routes.names == {2: "Alpha Route", 3: "Beta Walk", 8: "National"}
+    assert routes.names == {2: "Alpha Route", 3: "Beta Walk", 8: "National", 9: "USBR 50"}
+    # The ways on a national or international bicycle route; not a regional one (11), not
+    # a `type=network` relation (6), not a walking route on a bicycle network (13).
+    assert routes.national == {2, 8, 9, 10, 12}
+
+
+@pytest.mark.parametrize(
+    ("in_mtb_route", "tags", "national", "mountain_bike"),
+    [
+        (True, {"highway": "path"}, False, True),
+        (False, {"highway": "path", "mtb": "designated"}, False, True),
+        (False, {"highway": "path", "mtb:type": "xc"}, False, True),
+        (False, {"highway": "path", "surface": "dirt"}, False, False),
+        # On a national bicycle route no marker makes it one: the C&O towpath east of
+        # Seneca Creek, OSM way 68565884 (the owner, 2026-10-09).
+        (True, {"highway": "path", "surface": "dirt"}, True, False),
+        (False, {"highway": "path", "mtb": "designated"}, True, False),
+        (False, {"highway": "path", "surface": "dirt"}, True, False),
+    ],
+)
+def test_a_way_on_a_national_route_is_not_a_mountain_bike_trail(
+    in_mtb_route, tags, national, mountain_bike
+) -> None:
+    assert trail_routes.is_mountain_bike(in_mtb_route, tags, national) is mountain_bike
+
+
+def test_the_national_networks_are_the_no_bike_paths_exemption() -> None:
+    from routemaker.trailaccess import KEEPING_NETWORKS
+
+    assert trail_routes.NATIONAL_BICYCLE_NETWORKS == KEEPING_NETWORKS == {"ncn", "icn"}
 
 
 def test_a_way_is_named_by_its_osm_name() -> None:

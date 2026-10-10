@@ -2724,6 +2724,101 @@ details.zoom-notes {
   display: none;
 }
 
+/* Public water and restrooms (lib/waterLegend.ts, waterInteraction.ts). The
+   swatch is the map's own icon; the popup shares the rail cards' look. */
+.water-legend li {
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+}
+
+.water-swatch {
+  display: block;
+}
+
+.water-along ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.water-along li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.water-along li > span {
+  flex: 1 1 14em;
+}
+
+.water-along .water-add {
+  min-height: 44px;
+}
+
+.water-popup {
+  max-width: 240px;
+}
+
+.water-popup p {
+  margin: 4px 0 0;
+}
+
+.water-popup .water-kind {
+  display: block;
+  padding-right: 16px;
+}
+
+.water-popup .water-caution {
+  color: var(--text-muted);
+}
+
+.water-kinds {
+  border: 0;
+  margin: 0 0 0 20px;
+  padding: 0;
+}
+
+.water-kinds legend {
+  padding: 0;
+  color: var(--text-muted);
+}
+
+/* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
+.nearest fieldset.nearest-from {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest .nearest-kinds button,
+.ride-detour .nearest-kinds button,
+.ride-detour > summary,
+.nearest-list button {
+  min-height: 44px;
+}
+
+.nearest-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nearest-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.nearest-list li > span:first-child {
+  flex: 1 1 14em;
+}
+
 /*
  * Ride mode (WEB-NAV-plan.md; RideMode.tsx). The planner is hidden; a cue card sits at the top of the
  * map and the ride's buttons at the bottom, each on the page's own background so its text keeps the

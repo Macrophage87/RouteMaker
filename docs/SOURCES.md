@@ -23,7 +23,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Credit: `© OpenStreetMap contributors`
 - What it is used for: every route, its roads, paths and facilities, the stress
   tiers' road attributes, the base map, place names and place search, the MARC Penn
-  Line stations and the Metro elevators DC does not list.
+  Line stations and the Metro elevators DC does not list, and the public drinking water and
+  restrooms layer.
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -31,7 +32,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Open Database License 1.0 (<https://opendatacommons.org/licenses/odbl/1-0/>);
   credit form per <https://www.openstreetmap.org/copyright>.
 - Retrieved: weekly; the extract's date is the rebuild's (`check_operations`).
-- Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures).
+- Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures);
+  `frontend/src/amenity-data/README.md` (public drinking water and restrooms, the Water and
+  restrooms layer, by `scripts/build_water_restrooms.py`).
 - Also: **the District of Columbia's boundary** on the Mass Ride map (OWNER-DECISIONS 418,
   418a: the grey outside DC, the capacity tiles' clip, the route's "outside DC" notice). It is the
   extract's `boundary=administrative`, `admin_level=4`, `ISO3166-2=US-DC` relation, joined into rings

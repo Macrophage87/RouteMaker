@@ -139,6 +139,21 @@ import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
+import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
+import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import {
+  findingSaid,
+  requestNearest,
+  searchNearest,
+  NEAREST_STALE,
+  STILL_SEARCHING,
+  type Found,
+  type Nearby,
+  type NearestFrom,
+  type NearestKind,
+} from "./lib/nearest.ts";
+import { NearestFinder } from "./lib/nearestFinder.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -243,6 +258,34 @@ export function App() {
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   const [federalData, setFederalData] = useState<FederalData | null>(null);
+  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type, its
+  // switches kept on this device; the data is fetched the first time it is shown.
+  const [waterPrefs, setWaterPrefsState] = useState<WaterPrefs>(() => readWaterPrefs());
+  const changeWaterPrefs = (next: WaterPrefs) => {
+    setWaterPrefsState(next);
+    saveWaterPrefs(next);
+  };
+  const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
+  const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
+  // One load at a time, shared by the layer and the nearest-water search (which loads it with the layer
+  // off too); a load that failed is forgotten, so the next asks again.
+  const waterLoad = useRef<Promise<WaterPoint[] | null> | null>(null);
+  const ensureWater = useCallback(() => {
+    if (!waterLoad.current) {
+      setWaterStatus("loading");
+      waterLoad.current = loadWaterRestrooms(waterRestroomsUrl).then((data) => {
+        if (!data) waterLoad.current = null;
+        setWaterData(data);
+        setWaterStatus(data ? "ready" : "unavailable");
+        return data;
+      });
+    }
+    return waterLoad.current;
+  }, []);
+  const waterOn = waterPrefs.on;
+  useEffect(() => {
+    if (waterOn) void ensureWater();
+  }, [waterOn, ensureWater]);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -768,6 +811,108 @@ export function App() {
     announce(placed.said);
   }, [commit, announce, loopVias]);
 
+  // Find the nearest water, restroom or Metro station (lib/nearest.ts; owner, 2026-10-10): from the
+  // rider's location, the map's center or the plan's start, the three nearest by bike on this ride's
+  // own settings. A pick is an edit like any other: Ride here plans from there to it (one edit, so
+  // Undo puts the plan back), Add as stop puts it into the plan. The location look-up is this
+  // search's own; its fix is kept only as Use my location's is (in memory, in `here`).
+  const nearestFromOptions: NearestFrom[] = [
+    ...(locateReady.available ? (["location"] as const) : []),
+    "centre",
+    ...(points.length > 0 ? (["start"] as const) : []),
+  ];
+  const [nearestFromChosen, setNearestFrom] = useState<NearestFrom>(locateReady.available ? "location" : "centre");
+  const nearestFrom = nearestFromOptions.includes(nearestFromChosen) ? nearestFromChosen : nearestFromOptions[0];
+  const [nearestBusy, setNearestBusy] = useState(false);
+  const nearestBusyRef = useRef(false);
+  const [nearestStatus, setNearestStatus] = useState("");
+  const [nearestList, setNearestList] = useState<Found | null>(null);
+  // The status line is cleared and set again a moment later, so the same words twice are said twice
+  // (as the Points notice is); with the planner out of sight it is said through the app's region.
+  const nearestTimer = useRef<number | undefined>(undefined);
+  const sayNearest = (text: string) => {
+    window.clearTimeout(nearestTimer.current);
+    setNearestStatus("");
+    nearestTimer.current = window.setTimeout(() => setNearestStatus(text), 150);
+    if (!plannerShownNow.current) announce(text);
+  };
+  // A list is for the ride and the spot it was found for: a new ride type or slider (other distances),
+  // a new "Search from", or a start that moved under a "start" search put it away.
+  // Not the loop: Ride here turns it off in its own edit, and the list stays for a second pick. A search
+  // under way when one changes is thrown away when it answers (the epoch).
+  const nearestKey = JSON.stringify([preset, { ...dials, loop: false }, nearestFrom]);
+  const nearestEpoch = useRef(0);
+  useEffect(() => {
+    nearestEpoch.current += 1;
+    setNearestList(null);
+  }, [nearestKey]);
+  useEffect(() => {
+    if (nearestList?.from === "start" && String(points[0]) !== String(nearestList.origin)) setNearestList(null);
+  }, [points, nearestList]);
+  const findNearest = async (kind: NearestKind) => {
+    if (nearestBusyRef.current) {
+      sayNearest(STILL_SEARCHING);
+      return;
+    }
+    nearestBusyRef.current = true;
+    setNearestBusy(true);
+    setNearestList(null);
+    sayNearest(findingSaid(kind));
+    const ride = rideRef.current;
+    const epoch = nearestEpoch.current;
+    try {
+      const outcome = await searchNearest({
+        kind,
+        from: nearestFrom,
+        locate: async () => {
+          // Use my location's gate: one look-up at a time, whichever asked.
+          const press = gate.begin();
+          if (press === null) return "busy";
+          setLocating(true);
+          const result = await locate(geoEnv);
+          gate.finish(press);
+          setLocating(false);
+          return result;
+        },
+        start: () => pointsRef.current[0] ?? null,
+        centre: () => {
+          const centre = mapRef.current?.getCenter();
+          return centre ? [centre.lng, centre.lat] : null;
+        },
+        inside: insideCoverage,
+        water: ensureWater,
+        stations: RAIL_STATIONS,
+        request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
+      });
+      if (outcome.fix) setHere(outcome.fix);
+      if (outcome.found && epoch !== nearestEpoch.current) {
+        sayNearest(NEAREST_STALE);
+        return;
+      }
+      if (outcome.found) setNearestList(outcome.found);
+      sayNearest(outcome.said);
+    } finally {
+      nearestBusyRef.current = false;
+      setNearestBusy(false);
+    }
+  };
+  const rideToNearest = (item: Nearby) => {
+    if (!nearestList) return;
+    const { origin, from } = nearestList;
+    const had = pointsRef.current.length > 0;
+    namer.remember(item.place.point, item.place.title);
+    const ride = rideRef.current;
+    // To a place and no further: a loop the rider had on is turned off, in the same edit.
+    commit([origin, item.place.point], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    if (from === "location") setFromHere((prior) => [...prior, origin]);
+    setNotice(null);
+    announce(`Planning a route to ${item.place.title}.${had ? " Undo puts your plan back." : ""}`);
+  };
+  const addNearestStop = (item: Nearby) => {
+    namer.remember(item.place.point, item.place.title);
+    placeSpot("via", item.place.point);
+  };
+
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
@@ -1066,6 +1211,20 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // The layer in words: the points along the route shown, in riding order.
+  const waterAlong = useMemo(
+    () =>
+      waterOn && waterData && shown
+        ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
+        : null,
+    [waterOn, waterData, waterPrefs, shown],
+  );
+  // Named in the plan as the list says it, as a place picked from search is.
+  const addWaterStop = (item: WaterAlong) => {
+    const point: LonLat = [item.point.lon, item.point.lat];
+    namer.remember(point, waterTitle(item.point));
+    placeSpot("via", point);
+  };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
   const lineEdit = useMemo<LineEdit | null>(() => {
@@ -1240,6 +1399,18 @@ export function App() {
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
+      <NearestFinder
+        from={nearestFrom}
+        fromOptions={nearestFromOptions}
+        onFrom={setNearestFrom}
+        onFind={(kind) => void findNearest(kind)}
+        busy={nearestBusy}
+        status={nearestStatus}
+        list={nearestList}
+        canAddStop={points.length >= 2}
+        onRide={rideToNearest}
+        onAddStop={addNearestStop}
+      />
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
           zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
@@ -1380,6 +1551,9 @@ export function App() {
           ride={{ onStart: startRide, startRef: startRideRef }}
         />
       )}
+      {shown && waterOn && waterStatus === "ready" && (
+        <WaterAlongList items={waterAlong} onAddStop={addWaterStop} headingId="water-along-planner-heading" level="h3" />
+      )}
       {shown && rideAsk && (
         <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
           onKeyDown={(event) => {
@@ -1512,6 +1686,8 @@ export function App() {
         rail={rail}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
+        water={waterData}
+        waterPrefs={waterPrefs}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1586,6 +1762,7 @@ export function App() {
           onBig={setBigText}
           onView={setRideView}
           onEnd={endRide}
+          water={ensureWater}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
@@ -1643,7 +1820,7 @@ export function App() {
               headingRef={layersHeadingRef}
             >
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
-                  (Mass Ride's alone), rail stations; trails and terrain (454); then the full legend. */}
+                  (Mass Ride's alone), water and restrooms, rail stations; trails and terrain (454); then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
@@ -1683,6 +1860,14 @@ export function App() {
                 points={federalData ? federalPoints(points, federalData) : null}
                 pointCount={points.length}
                 nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
+              />
+
+              <WaterSection
+                prefs={waterPrefs}
+                onChange={changeWaterPrefs}
+                status={waterStatus}
+                items={waterAlong}
+                onAddStop={addWaterStop}
               />
 
               {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
