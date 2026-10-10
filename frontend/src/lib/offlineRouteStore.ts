@@ -66,6 +66,7 @@ export async function listKept<A = unknown>(): Promise<KeptRoute<A>[]> {
 
 export async function putKept(route: KeptRoute): Promise<void> {
   await run("routes", "readwrite", (s) => s.put(route));
+  await recount();
 }
 
 export async function getKept<A = unknown>(id: string): Promise<KeptRoute<A> | undefined> {
@@ -78,6 +79,16 @@ export async function getKept<A = unknown>(id: string): Promise<KeptRoute<A> | u
 
 export async function deleteKept(id: string): Promise<void> {
   await run("routes", "readwrite", (s) => s.delete(id));
+  await recount();
+}
+
+/** The count anyKept reads, after a route is kept or removed. */
+async function recount(): Promise<void> {
+  try {
+    writeCount(await run<number>("routes", "readonly", (s) => s.count()));
+  } catch {
+    // Left as it was: listKept counts again.
+  }
 }
 
 function writeCount(n: number): void {
@@ -103,6 +114,9 @@ export function anyKept(): boolean {
 /** The kept ranges, for the archive's source when the network fails (corridor.ts CorridorSource `fallback`). */
 export const keptRanges: Pick<RangeStore, "get"> = {
   async get(key: string): Promise<KeptRange | undefined> {
+    // With nothing kept, the database is not opened: a first open takes about a second, and a base map
+    // refusal held back that long keeps MapLibre's style from loading (DEVELOPMENT, N5).
+    if (!anyKept()) return undefined;
     return run<KeptRange | undefined>("ranges", "readonly", (s) => s.get(key) as IDBRequest<KeptRange | undefined>);
   },
 };
@@ -131,7 +145,7 @@ export async function deleteRanges(keys: readonly string[]): Promise<void> {
 /** A kept stress tile, for the stress protocol when the network fails. */
 export async function keptTile(url: string): Promise<ArrayBuffer | null> {
   try {
-    if (typeof caches === "undefined") return null;
+    if (typeof caches === "undefined" || !anyKept()) return null;
     const hit = await (await caches.open(OFFLINE_BUCKET)).match(url);
     return hit ? await hit.arrayBuffer() : null;
   } catch {
