@@ -81,7 +81,8 @@ OVERRIDES: dict = {
     "loki": {
         # trace_attributes is what the stats block comes from; without it every
         # route reports nothing. sources_to_targets is the riding-time matrix
-        # "Best order" orders a ride's stops by (OWNER-DECISIONS 449, core.stoporder).
+        # "Best order" orders a ride's stops by past ten stops, or when the legs'
+        # costs fail (OWNER-DECISIONS 449, core.stoporder).
         "actions": [
             "route",
             "trace_route",

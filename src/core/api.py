@@ -1459,11 +1459,13 @@ class StopOrderOut(Schema):
         )
     )
     changed: bool = Field(description="Whether `order` differs from the order sent.")
-    by: Literal["riding_time", "straight_line"] | None = Field(
+    by: Literal["route_cost", "riding_time", "straight_line"] | None = Field(
         description=(
-            "What chose the order: the router's riding times on the ride's own graph and"
-            " settings, straight-line distance when the router gave none, or null when there"
-            " was nothing to choose (fewer than two stops)."
+            "What chose the order: the router's cost on the ride's own graph and settings,"
+            " riding time with stress and hills priced in, as any route is chosen (up to 10"
+            " stops); its riding times alone (more stops, or when it gave no leg costs);"
+            " straight-line distance when the router gave neither; or null when there was"
+            " nothing to choose (fewer than two stops)."
         )
     )
     exact: bool = Field(
@@ -1484,7 +1486,7 @@ class StopOrderOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The order of a ride's stops that rides least (OWNER-DECISIONS 449)",
+    summary="The order of a ride's stops that rides best (OWNER-DECISIONS 449)",
     by_alias=True,
 )
 @decorate_view(
