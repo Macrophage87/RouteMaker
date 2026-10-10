@@ -176,6 +176,15 @@ def _nearest(snapshot: gbfs.Snapshot, around: LonLat) -> list[tuple[float, gbfs.
     )
 
 
+def _by_distance(snapshot: gbfs.Snapshot, around: LonLat) -> list[tuple[float, gbfs.Station]]:
+    """Every station, nearest first: the station lists have no distance cap (the owner,
+    2026-10-10: "no distance cap, always show the top 3")."""
+    return sorted(
+        ((_distance(around, [s.lon, s.lat]), s) for s in snapshot.stations),
+        key=lambda t: (t[0], t[1].name),
+    )
+
+
 def _can_start(pick: Pick, bike: str, snapshot: gbfs.Snapshot) -> bool:
     if snapshot.status is None:
         return True  # unknown: the nearest are used and the plan says so
@@ -346,14 +355,14 @@ def nearby_stations(point: LonLat, action: str, snapshot: gbfs.Snapshot) -> list
 
     pickup: installed, renting, reporting in the last 30 minutes, and at least 3/4 full.
     dropoff: installed, returning, reporting in the last 30 minutes, and at most 1/4 full.
-    Out to `SEARCH_RADIUS_M` in a straight line. With no availability feed there is nothing
-    to list (the caller says availability is unknown)."""
+    No distance cap: the three that fit, however far (the owner, 2026-10-10). With no
+    availability feed there is nothing to list (the caller says availability is unknown)."""
     if action not in ACTIONS:
         raise ValueError(f"not an action: {action}")
     if snapshot.status is None:
         return []
     found: list[NearbyStation] = []
-    for distance, station in _nearest(snapshot, point):
+    for distance, station in _by_distance(snapshot, point):
         status = snapshot.status.get(station.station_id)
         if status is None or snapshot.reporting_stale(status):
             continue

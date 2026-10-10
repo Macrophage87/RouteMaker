@@ -40,12 +40,13 @@ function station(over: Partial<NearbyStation> = {}): NearbyStation {
   };
 }
 
-test("a station reads as its name, the percentage full and the distance, miles first (466a)", () => {
-  assert.equal(stationLabel(station()), "Columbus Circle / Union Station, 82% full, 0.2 mi (320 m)");
+test("a station reads as its name, the percentage full, its e-bikes and the distance, miles first (466a)", () => {
+  assert.equal(stationLabel(station()), "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m)");
   assert.equal(
-    stationLabel(station({ name: "20th & O St NW", percent_full: 24.6, distance_m: 1500 })),
-    "20th & O St NW, 25% full, 0.9 mi (1.5 km)",
+    stationLabel(station({ name: "20th & O St NW", percent_full: 24.6, ebikes: 1, distance_m: 1500 })),
+    "20th & O St NW, 25% full, 1 e-bike, 0.9 mi (1.5 km)",
   );
+  assert.equal(stationLabel(station({ ebikes: 0 })), "Columbus Circle / Union Station, 82% full, no e-bikes, 0.2 mi (320 m)");
 });
 
 test("distances: feet under a tenth of a mile, then miles to a tenth with metres in brackets", () => {

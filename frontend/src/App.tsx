@@ -2111,14 +2111,15 @@ function RouteSummary({
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   const junctions = route.intersections == null ? null : junctionItems(route).length;
-  // Start ride is offered with the directions too (plan Q1).
-  const rideable = route.distance_m <= RIDE_MAX_M;
+  const bikeshare = bikeshareOf(route);
+  // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
+  // is only the ride between the docks, so the walk to the first dock would read as off route.
+  const rideable = !bikeshare && route.distance_m <= RIDE_MAX_M;
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
     </button>
   ) : null;
-  const bikeshare = bikeshareOf(route);
   return (
     <div className="summary">
       {bikeshare && <BikeshareSummary plan={bikeshare} onEnding={onEnding} />}
@@ -2200,10 +2201,9 @@ function RouteSummary({
           </button>
           <p className="hint">Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.</p>
         </div>
-      ) : (
+      ) : bikeshare ? null : (
         <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
       )}
-      {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
       <FacilityBreakdown route={route} part="notices" />
       {profile && (
         <Fold

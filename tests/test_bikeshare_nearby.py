@@ -274,9 +274,11 @@ def test_with_no_availability_feed_nothing_is_listed() -> None:
     assert bikeshare.nearby_stations(ORIGIN, bikeshare.PICKUP, snap) == []
 
 
-def test_stations_beyond_the_search_radius_are_not_listed() -> None:
-    snap = street(dock("Far", 3500, 9, 1))
-    assert bikeshare.nearby_stations(ORIGIN, bikeshare.PICKUP, snap) == []
+def test_there_is_no_distance_cap_the_three_that_fit_are_listed_however_far() -> None:
+    """The owner, 2026-10-10: "no distance cap, always show the top 3"."""
+    snap = street(dock("Near", 100, 9, 1), dock("Far", 3500, 9, 1), dock("Farther", 9000, 9, 1))
+    found = bikeshare.nearby_stations(ORIGIN, bikeshare.PICKUP, snap)
+    assert names(found) == ["Near", "Far", "Farther"]
 
 
 def test_a_listed_station_carries_its_distance_and_counts() -> None:

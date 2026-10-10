@@ -5899,7 +5899,7 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   full, silent for 30 minutes) the answer is 422 `no_bikeshare` saying why, never a silent swap.
 - Front end: `NearbyStations.tsx` under the points while the ride type is Bikeshare, a pick-up list
   once a start is placed and a drop-off list once an end is. Each station is a real `<button>` named
-  exactly as it is read, "Station name, 82% full, 0.2 mi (320 m)" (`lib/stations.ts` `stationLabel`, US
+  exactly as it is read, "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)" (`lib/stations.ts` `stationLabel`, US
   units first, metric in brackets), with `aria-pressed` for the chosen one (also marked in text, not by
   colour alone) and a polite status line (loading, how many, none, an error). Pressing the chosen
   station again hands the choice back. A chosen station is session state in `App` (`stationPins`),

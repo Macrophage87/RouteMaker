@@ -2,7 +2,7 @@
  * The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466, 466a).
  *
  * Under the points, once a start (and then an end) is placed: three stations by distance, each a
- * real button named exactly as it is read, "Station name, 82% full, 0.2 mi (320 m)", with
+ * real button named exactly as it is read, "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)", with
  * aria-pressed for the one chosen. Choosing one makes the plan use it; pressing it again hands the
  * choice back. A list, not a ranking: the rider decides. The list is read from the operator's
  * live feed by the API when a point is placed or moved, and kept nowhere.

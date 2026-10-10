@@ -41,9 +41,14 @@ export interface NearbyStationsAnswer {
 /** "0.2 mi (320 m)": the one formatter of units is lib/format.ts. */
 export const stationDistance = formatStationDistance;
 
-/** What a screen reader hears for one station, and what its button says: "Station name, 82% full, 0.2 mi (320 m)". */
-export function stationLabel(station: Pick<NearbyStation, "name" | "percent_full" | "distance_m">): string {
-  return `${station.name}, ${Math.round(station.percent_full)}% full, ${stationDistance(station.distance_m)}`;
+/** "2 e-bikes", "1 e-bike", "no e-bikes" (the owner, 2026-10-10: e-bike counts in the station list). */
+export function ebikeCount(ebikes: number): string {
+  return ebikes === 0 ? "no e-bikes" : ebikes === 1 ? "1 e-bike" : `${ebikes} e-bikes`;
+}
+
+/** What a screen reader hears for one station, and what its button says: "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)". */
+export function stationLabel(station: Pick<NearbyStation, "name" | "percent_full" | "ebikes" | "distance_m">): string {
+  return `${station.name}, ${Math.round(station.percent_full)}% full, ${ebikeCount(station.ebikes)}, ${stationDistance(station.distance_m)}`;
 }
 
 /** The section's heading. */

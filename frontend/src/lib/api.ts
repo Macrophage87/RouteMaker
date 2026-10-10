@@ -768,9 +768,10 @@ export async function requestRoute(
         preset,
         // A Mass Ride keeps Make it a loop for the next ride type but has no
         // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
-        // routing.loop_wanted ignores it there too.
+        // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
+        // its API refuses one, so a loop kept from another ride type is not sent.
         ...(options.dials
-          ? dialFields(preset === "mass-ride" ? { ...options.dials, loop: false } : options.dials)
+          ? dialFields(preset === "mass-ride" || preset === "bikeshare" ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),
