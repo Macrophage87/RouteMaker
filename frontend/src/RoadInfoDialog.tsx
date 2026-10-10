@@ -98,6 +98,12 @@ interface Props {
 const FOCUSABLE =
   "button:not([disabled]), [href], summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
+/** Whether an element is shown and so can take the focus (`checkVisibility` sees a closed fold). */
+function isShown(el: HTMLElement): boolean {
+  const check = (el as HTMLElement & { checkVisibility?: () => boolean }).checkVisibility;
+  return typeof check === "function" ? check.call(el) : el.getClientRects().length > 0;
+}
+
 /** The stop after (or before) `from` in page order among `items`, wrapping round at the ends. */
 function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean): HTMLElement {
   if (backwards) {
@@ -261,7 +267,10 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, feder
     }
     if (event.key !== "Tab" || !dialogRef.current) return;
     // One stop a radio group (the named stretch's What to change), as the browser's Tab order has it.
-    const items = tabStops(Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)) as (HTMLElement & TabCandidate)[]);
+    // Only what is shown: a link inside a closed fold (`details`, hidden by content-visibility, which
+    // still lays out a box) takes no focus, so a stop on it would leave the focus where it was.
+    const shown = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el === document.activeElement || isShown(el));
+    const items = tabStops(shown as (HTMLElement & TabCandidate)[]);
     let active = document.activeElement as HTMLElement | null;
     const radio = active as (HTMLElement & TabCandidate) | null;
     if (radio?.type === "radio" && radio.name && !items.includes(radio)) {
