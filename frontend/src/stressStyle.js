@@ -921,12 +921,14 @@ export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong 
  * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
  * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
  * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
- * that carry a capacity (massStyle.js, massHides).
+ * that carry a capacity (massStyle.js, massHides), but `mtb-trail`, which is a layer of its own (454).
  */
 export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
   const filters = stressFiltersOf(when, showHighLanes, routableMtb);
   if (!mass) return filters;
-  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, ["all", filter, massHides]]));
+  // The mountain-bike trails' line keeps its own filter: their layer shows in every ride type (454), and nearly
+  // every trail row carries a capacity (`rpm`, a path's default width), so `massHides` would draw none of them.
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, id === MTB_TRAIL_LAYER_ID ? filter : ["all", filter, massHides]]));
 }
 
 function stressFiltersOf(when, showHighLanes, routableMtb) {

@@ -16,10 +16,10 @@ import { MTB_MIN_ZOOM } from "../stressStyle.js";
 export const MTB_TRAILS_LABEL = "Mountain-bike trails";
 
 /** Read on every focus, so kept short (under 150 characters), in plain words. */
-export const MTB_TRAILS_HINT = `Natural-surface trails for mountain bikes, a thin grey dotted line from zoom ${MTB_MIN_ZOOM}. Not used for routes; Gravel and Mountain Goat may use them.`;
+export const MTB_TRAILS_HINT = `Trails for mountain bikes, drawn as a thin grey dotted line from zoom ${MTB_MIN_ZOOM}. Not used for routes; Gravel and Mountain Goat may use them.`;
 
 /** The description while the stress map, which carries the trails, is unavailable. */
-export const MTB_TRAILS_NO_MAP_HINT = "Mountain-bike trails show with the stress map, which is unavailable for now.";
+export const MTB_TRAILS_NO_MAP_HINT = "Mountain-bike trails need data from the stress map, which is unavailable for now.";
 
 export function MtbTrailsSwitch({
   on,

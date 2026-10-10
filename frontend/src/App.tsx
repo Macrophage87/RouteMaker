@@ -76,7 +76,7 @@ import {
 } from "./lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats, MassLegend, MassZoomNotes } from "./lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY, outsideDcNote } from "./lib/dcBoundary.ts";
-import { StressLegend } from "./lib/stressLegend.ts";
+import { MtbTrailLegend, StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -1487,7 +1487,7 @@ export function App() {
               headingRef={layersHeadingRef}
             >
               {/* In 312's order: traffic stress, high-stress lanes, high contrast, federal land
-                  (Mass Ride's alone), rail stations; then the full legend. */}
+                  (Mass Ride's alone), rail stations; trails and terrain (454); then the full legend. */}
               <section aria-labelledby="layers-heading">
                 <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
                 {stress === "available" && (
@@ -1550,6 +1550,8 @@ export function App() {
                     <>
                       <MassLegend />
                       <MassZoomNotes zoom={zoom} shown={stressVisible} />
+                      {/* 454: the mountain-bike trails' layer shows in Mass Ride too, so its row does. */}
+                      <MtbTrailLegend />
                     </>
                   ) : (
                     <>

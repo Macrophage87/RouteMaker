@@ -296,6 +296,22 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
   );
 
 /**
+ * The mountain-bike trails' row on its own, for the Mass Ride map, whose legend is the capacity one
+ * (lib/massLegend.ts): their layer shows in every ride type (454), so its words are there too, while
+ * it is on. Null while it is off, or once the trails are routable.
+ */
+export function MtbTrailLegend(): ReactElement | null {
+  useStressStyle();
+  const on = useMtbTrails();
+  if (!MTB_LEGEND || !on) return null;
+  return h(
+    "ul",
+    { className: "legend", "aria-label": "Mountain-bike trail legend" },
+    row("mtb", h(MtbTrailSwatch, { strong: accessibilityOn() }), MTB_LEGEND.short, MTB_LEGEND.label, "mtb-trail"),
+  );
+}
+
+/**
  * The panel's stress legend: the tiers, the unpaved mark, what the zoom leaves out,
  * and the bike facilities the map has drawn (`facilities`). Drawn from the tiers in
  * use and legendWidths, so it cannot differ from the map from zoom 12; below it the

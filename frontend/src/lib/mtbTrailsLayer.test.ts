@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   MTB_MIN_ZOOM,
   MTB_TRAILS_STORAGE_KEY,
@@ -18,11 +19,13 @@ import {
   setMassRide,
   setMtbTrails,
   storedMtbTrails,
+  stressFilters,
   stressOverlayLayers,
   subscribeMtbTrails,
 } from "../stressStyle.js";
 import { massLayerIds } from "../massStyle.js";
-import { overlayLayerShown, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import { addStressOverlay, overlayLayerShown, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import { MTB_LEGEND, MtbTrailLegend } from "./stressLegend.ts";
 import { STRESS_SOURCE_ID } from "./mapStyle.ts";
 import { MTB_TRAILS_HINT, MTB_TRAILS_LABEL, MTB_TRAILS_NO_MAP_HINT, MtbTrailsSwitch } from "./mtbTrailsSwitch.ts";
 
@@ -103,7 +106,68 @@ test("turning it on or off tells each subscriber once, saves the choice, and a s
   }
 });
 
+let loads = 0;
+/** A fresh copy of stressStyle.js, evaluated as a page load would with this localStorage. */
+async function loadedWith(storage: unknown): Promise<{ mtbTrailsOn(): boolean }> {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+  try {
+    loads += 1;
+    return (await import(`../stressStyle.js?mtb=${loads}`)) as { mtbTrailsOn(): boolean };
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "localStorage", saved);
+    else delete (globalThis as Record<string, unknown>).localStorage;
+  }
+}
+
+test("on load: off with nothing stored, 'off' or a stray value; on only when 'on' was stored", async () => {
+  assert.equal((await loadedWith(memoryStorage())).mtbTrailsOn(), false);
+  assert.equal((await loadedWith(memoryStorage({ [MTB_TRAILS_STORAGE_KEY]: "off" }))).mtbTrailsOn(), false);
+  assert.equal((await loadedWith(memoryStorage({ [MTB_TRAILS_STORAGE_KEY]: "garbage" }))).mtbTrailsOn(), false);
+  assert.equal((await loadedWith(memoryStorage({ [MTB_TRAILS_STORAGE_KEY]: "on" }))).mtbTrailsOn(), true);
+  assert.equal((await loadedWith(undefined)).mtbTrailsOn(), false, "no storage at all");
+});
+
 // ---- the map ----------------------------------------------------------------
+
+test("in Mass Ride the trails' line still draws a trail that carries a capacity: only the other layers take `massHides`", () => {
+  const draws = (filter: unknown, properties: Record<string, unknown>) =>
+    spec.featureFilter(filter as never, "layers[mtb-trail].filter").filter({ zoom: 14 } as never, { type: 2, properties, geometry: [] } as never);
+  for (const when of ["weekday_offpeak", "weekday_rush", "weekend"]) {
+    const filters = stressFilters(when, false, true);
+    assert.equal(draws(filters[MTB_TRAIL_LAYER_ID], { mtb: true, trail: true, tier: 1, rpm: 80 }), true, when);
+    assert.equal(draws(filters[MTB_TRAIL_LAYER_ID], { mtb: true, trail: true, tier: 1 }), true, when);
+    assert.deepEqual(filters[MTB_TRAIL_LAYER_ID], stressFilters(when, false, false)[MTB_TRAIL_LAYER_ID], "the same filter in both modes");
+    // A routable layer still drops a feature with a capacity in Mass Ride.
+    assert.equal(draws(filters["stress-1"], { tier: 1, rpm: 80 }), false, when);
+  }
+});
+
+test("the overlay is added with the trails' layer as the switch says, whatever the stress switch", () => {
+  try {
+    for (const mtb of [false, true]) {
+      setMtbTrails(mtb, { remember: false });
+      for (const visible of [true, false]) {
+        const added: Array<{ id: string; layout?: { visibility?: string } }> = [];
+        const map = {
+          getSource: () => undefined,
+          addSource: () => {},
+          getStyle: () => ({ layers: [] }),
+          addLayer: (layer: { id: string; layout?: { visibility?: string } }) => void added.push(layer),
+          getLayer: () => undefined,
+          setLayoutProperty: () => {},
+          setFilter: () => {},
+          setPaintProperty: () => {},
+        } as unknown as OverlayMap;
+        addStressOverlay(map, "https://example.test", visible);
+        const layer = added.find((l) => l.id === MTB_TRAIL_LAYER_ID);
+        assert.equal(layer?.layout?.visibility, mtb ? "visible" : "none", `mtb ${mtb}, stress ${visible}`);
+      }
+    }
+  } finally {
+    setMtbTrails(false, { remember: false });
+  }
+});
 
 test("the not-for-routes line is the layer the switch names", () => {
   assert.equal(MTB_TRAIL_LAYER_ID, "mtb-trail");
@@ -201,4 +265,21 @@ test("pressing the switch asks for the opposite state", () => {
     button?.props?.onClick?.();
   }
   assert.deepEqual(got, [true, false]);
+});
+
+// ---- the Mass Ride legend ---------------------------------------------------
+
+test("the Mass Ride legend names the trails' line while the layer is on, and nothing while it is off", () => {
+  assert.equal(renderToStaticMarkup(createElement(MtbTrailLegend)), "");
+  setMtbTrails(true, { remember: false });
+  try {
+    const html = renderToStaticMarkup(createElement(MtbTrailLegend));
+    assert.match(html, /^<ul class="legend" aria-label="Mountain-bike trail legend"><li class="mtb-trail"><svg [^>]*aria-hidden="true"/);
+    const text = html.replace(/<svg[\s\S]*?<\/svg>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    assert.equal(text, `${MTB_LEGEND!.short} ${MTB_LEGEND!.label}`);
+  } finally {
+    setMtbTrails(false, { remember: false });
+  }
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>/);
 });

@@ -921,10 +921,11 @@ applies to that fallback only.
 **What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
 `mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
 "Zoom in to see busy roads and every street. This is the where-to-ride view: connected
-paths and trails and long calm roads. Busy roads, mountain-bike trails and short
-paths show from zoom 14."; and the standing hint, which gives the two runs in feet
-and miles (kilometres in brackets), says the busy roads, mountain-bike trails, shorter
-paths, the other streets and the junction warnings on the map show from zoom 14,
+paths and trails and long calm roads. Busy roads and short paths show from zoom
+14."; and the standing hint, which gives the two runs in feet and miles (kilometres
+in brackets), says the busy roads, shorter paths, the other streets and the junction
+warnings on the map show from zoom 14, and mountain-bike trails too when their layer
+is on (OWNER-DECISIONS 454),
 and that a planned route shows its own busy stretches and junction warnings at every
 zoom. On a table without the column the text is ahead of the tiles until the rebuild.
 
@@ -3558,11 +3559,15 @@ answer's `moved_points` says so.
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
 tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
-trail in no routable layer but in its own not-for-routes look, for every ride type: a thin
+trail in no routable layer but in its own not-for-routes look: a thin
 mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
 superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
-`MTB_TRAILS_ROUTABLE`); the legend has a row "Mountain-bike trail: not used for routes" and
-the road panel says the same. `rough` draws as any unpaved trail does. Routing closes the class
+`MTB_TRAILS_ROUTABLE`). Since 454 it draws only while the Map layers sheet's
+"Mountain-bike trails" switch is on (off by default, kept per browser under
+`routemaker.mtbTrails`), in every ride type; the legend has a row "Mountain-bike trail: not
+used for routes" while it is on, and the road panel says the same whatever the switch.
+After the deploy that ships 454, riders who saw the dotted trails see none until they turn
+the layer on (Map layers, "Trails and terrain"). `rough` draws as any unpaved trail does. Routing closes the class
 for every preset but Gravel and Mountain Goat. The segment
 table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 (core 0010) is state-only.
