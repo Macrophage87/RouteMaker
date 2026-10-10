@@ -1757,6 +1757,7 @@ export function App() {
           onBig={setBigText}
           onView={setRideView}
           onEnd={endRide}
+          water={ensureWater}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}

@@ -5693,5 +5693,11 @@ start moves under a search from the start. The location look-up goes
 through Use my location's gate, so there is one look-up at a time (a press during the other's says
 so); the fix stays in memory as that
 button's does, and the position leaves the device only in the search's own request, as a route's
-points do (`geolocation.test.ts` pins both look-up paths). Not built yet: offering water and
-restrooms as detours while navigating, which waits for browser navigation (WEB-NAV).
+points do (`geolocation.test.ts` pins both look-up paths). While riding, Ride mode's "Water or restroom" fold (`RideMode.tsx`) runs the same
+`searchNearest` from the ride's own fix (`rideLocate`; no new look-up), water and restrooms only
+(`DETOUR_KINDS`), on the ride's preset and dials without the loop. Its answer is said through the
+rider's outputs as Where am I? is (`announcer.answer`, and the polite region with neither chosen).
+Detour here re-plans through `replan(here, via)`: `replanPoints` gives here, the stops not yet passed
+and the end, and `detourPoints` puts the place second, so the new route cues it as a stop. It goes
+through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
+way is said and left alone.

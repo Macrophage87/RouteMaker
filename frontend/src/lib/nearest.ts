@@ -237,6 +237,31 @@ export const LOCATION_BUSY = "Your location is already being found; try again in
 export const STILL_SEARCHING = "Still searching.";
 export const NEAREST_STALE = "The ride or where to search from changed during the search; search again.";
 
+// --- While riding (Ride mode, RideMode.tsx) ---
+
+/** What Ride mode offers as a detour: water and restrooms (the owner: "If navigating, water sources and restrooms can be detours"). */
+export const DETOUR_KINDS: readonly NearestKind[] = ["water", "restroom"];
+export const DETOUR_SUMMARY = "Water or restroom";
+export const DETOUR_HELP =
+  "Detour here re-plans the ride from where you are through that place and on along the rest of the ride.";
+export const NO_FIX_YET = "Your position is not known yet; wait for GPS and try again.";
+
+/**
+ * The ride's position as a look-up's answer, for searchNearest: the last good fix, else the last fix;
+ * none yet is "unavailable". No new look-up: Ride mode's one watch already has it.
+ */
+export function rideLocate(fix: { point: LonLat; accuracyM: number } | null | undefined): LocateResult {
+  return fix ? { ok: true, fix: { point: fix.point, accuracyM: fix.accuracyM } } : { ok: false, reason: "unavailable" };
+}
+
+/**
+ * A re-plan's points with the detour put first: from here, to the place, then on through what was left.
+ * `replanned` is navigate.replanPoints's answer, which starts at the rider.
+ */
+export function detourPoints(replanned: readonly LonLat[], place: LonLat): LonLat[] {
+  return [replanned[0], place, ...replanned.slice(1)];
+}
+
 /** What a search needs from the page; each is a function so a test runs the search with stand-ins. */
 export interface SearchDeps {
   kind: NearestKind;

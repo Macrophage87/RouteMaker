@@ -1,5 +1,6 @@
 /** The nearest water, restroom or Metro station (owner, 2026-10-10): the finder's logic, words and panel. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -14,7 +15,10 @@ import {
   metroPlaces,
   nearbyText,
   nearestInStraightLine,
+  DETOUR_KINDS,
   LOCATION_BUSY,
+  detourPoints,
+  rideLocate,
   WATER_NOT_LOADED,
   rankNearest,
   requestNearest,
@@ -318,4 +322,38 @@ test("no water file, no places, or a refusal is said, and nothing is listed", as
   const refused = await searchNearest(deps({ request: async () => ({ ok: false, message: "Too many requests." }) }));
   assert.equal(refused.said, "The search failed. Too many requests.");
   assert.equal(refused.found, undefined);
+});
+
+// --- While riding: water and restrooms as detours (RideMode.tsx) ---
+
+test("riding: the ride's own fix is the search's position, and none yet is said, not looked up", async () => {
+  assert.deepEqual(rideLocate({ point: HERE, accuracyM: 12 }), { ok: true, fix: { point: HERE, accuracyM: 12 } });
+  assert.deepEqual(rideLocate(null), { ok: false, reason: "unavailable" });
+  const d = deps({ locate: async () => rideLocate({ point: HERE, accuracyM: 12 }), kind: "restroom" });
+  const outcome = await searchNearest(d);
+  assert.deepEqual(d.asked[0].from, HERE);
+  assert.equal(outcome.found?.kind, "restroom");
+});
+
+test("riding: only water and restrooms are offered as detours", () => {
+  assert.deepEqual([...DETOUR_KINDS], ["water", "restroom"]);
+});
+
+test("a detour goes from here to the place, then on through the stops left and the end", () => {
+  const here: LonLat = [-77.05, 38.9];
+  const stop: LonLat = [-77.0, 38.92];
+  const end: LonLat = [-76.98, 38.95];
+  const fountain: LonLat = [-77.04, 38.905];
+  assert.deepEqual(detourPoints([here, stop, end], fountain), [here, fountain, stop, end]);
+  assert.deepEqual(detourPoints([here, end], fountain), [here, fountain, end]);
+});
+
+test("Ride mode wires the detour: the ride's fix, the ride's settings without the loop, and a re-plan through the place", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const points = via \? detourPoints\(left, via\) : left;/);
+  assert.match(ride, /locate: async \(\) => rideLocate\(fix\)/);
+  assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dials, loop: false \}\)/);
+  assert.match(ride, /void replan\(here, item\.place\.point\);/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /water=\{ensureWater\}/);
 });
