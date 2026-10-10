@@ -833,6 +833,11 @@ for _, case in ipairs({
   { highway = "cycleway", bicycle = "no;designated" },
   { highway = "residential", access = "no;destination" },
   { highway = "residential", vehicle = "no;yes" },
+  -- No `no` in them: the first part that is not a plain grant decides.
+  { highway = "residential", access = "private;no" },
+  { highway = "footway", bicycle = "private;no" },
+  { highway = "residential", access = "agricultural;yes" },
+  { highway = "residential", access = "no", cycleway = "no;lane" },
 }) do
   local label = {}
   for k, v in pairs(case) do label[#label + 1] = k .. "=" .. v end
@@ -844,10 +849,29 @@ end
 check("a list of grants alone stays open",
   bike_of({ highway = "footway", bicycle = "yes;designated" }) == "true/true",
   bike_of({ highway = "footway", bicycle = "yes;designated" }))
-check("a private list is destination-only, not a plain grant", (function()
-  local _, out = transform_way({ highway = "residential", access = "private;yes" })
-  return out ~= nil and out.private == "true"
-end)())
+-- Each direction's list too: upstream reads the bicycle:* and the vehicle:*
+-- fallback part by part.
+for _, case in ipairs({
+  { key = "bicycle:forward", side = "bike_forward" },
+  { key = "bicycle:backward", side = "bike_backward" },
+  { key = "vehicle:forward", side = "bike_forward" },
+  { key = "vehicle:backward", side = "bike_backward" },
+}) do
+  local _, out = transform_way({ highway = "residential", [case.key] = "no;yes" })
+  check(case.key .. "=no;yes closes that direction", out ~= nil and out[case.side] == "false",
+    out and tostring(out[case.side]))
+end
+-- A node's access list is narrowed as a way's is.
+for _, tags in ipairs({
+  { barrier = "gate", access = "no;yes" },
+  { barrier = "bollard", access = "no;yes" },
+  { barrier = "gate", bicycle = "no;yes" },
+}) do
+  local out = transform_node(tags)
+  check("a node's list that says no bars bicycles: " .. tags.barrier .. " "
+      .. (tags.access and "access" or "bicycle"),
+    not bike_allowed(out), tostring(out.access_mask))
+end
 local narrowed = { highway = "footway", bicycle = "no;yes" }
 remap.narrow_access_lists(narrowed)
 check("the narrowing rewrites the tag in place", narrowed.bicycle == "no", narrowed.bicycle)
@@ -863,13 +887,51 @@ check("vehicle=yes opens a footway (a bicycle is a vehicle)",
   bike_of({ highway = "footway", vehicle = "yes" }) == "true/true",
   bike_of({ highway = "footway", vehicle = "yes" }))
 for _, class in ipairs({ "motorway", "motorway_link" }) do
-  check("but not a " .. class .. ": its vehicle grant is not a bicycle grant",
-    bike_of({ highway = class, vehicle = "yes" }) ~= "true/true",
-    bike_of({ highway = class, vehicle = "yes" }))
+  for _, grant in ipairs({ "yes", "designated", "permissive", "destination", "yes;designated" }) do
+    check("but not a " .. class .. ": vehicle=" .. grant .. " is not a bicycle grant",
+      bike_of({ highway = class, vehicle = grant }) ~= "true/true",
+      bike_of({ highway = class, vehicle = grant }))
+  end
   check("a " .. class .. " the mapper opens to bicycles stays open",
     bike_of({ highway = class, vehicle = "yes", bicycle = "yes" }) == "true/true",
     bike_of({ highway = class, vehicle = "yes", bicycle = "yes" }))
 end
+
+-- A restricted vehicle grant opens nothing the class or access closed.
+for _, case in ipairs({
+  { highway = "residential", access = "no", vehicle = "delivery" },
+  { highway = "residential", access = "no", vehicle = "restricted" },
+  { highway = "footway", vehicle = "permit" },
+  { highway = "footway", vehicle = "private" },
+  { highway = "pedestrian", vehicle = "residents" },
+}) do
+  check("a restricted vehicle grant keeps a closed way closed: " .. case.highway .. " "
+      .. tostring(case.access) .. " " .. case.vehicle,
+    bike_of(case) ~= "true/true", bike_of(case))
+end
+check("but on a road open by its class it reads as upstream reads it",
+  bike_of({ highway = "residential", vehicle = "private" }) == "true/true",
+  bike_of({ highway = "residential", vehicle = "private" }))
+check("and a public vehicle grant on access=no stands",
+  bike_of({ highway = "residential", access = "no", vehicle = "yes" }) == "true/true",
+  bike_of({ highway = "residential", access = "no", vehicle = "yes" }))
+check("a cycleway tag speaks before vehicle and is not overwritten", (function()
+  local changes = remap.remap_way({ highway = "footway", vehicle = "private", cycleway = "track" }, {})
+  return changes.bicycle == nil
+end)())
+
+-- smoothness as a surface (3.6.0, #4949) is not taken until the owner says.
+check("smoothness comes off a way with no surface",
+  remap.remap_way({ highway = "residential", smoothness = "intermediate" }, {}).smoothness == remap.REMOVE)
+check("but not off one whose surface says",
+  remap.remap_way({ highway = "residential", smoothness = "bad", surface = "asphalt" }, {}).smoothness == nil)
+check("nor off one whose tracktype says",
+  remap.remap_way({ highway = "track", smoothness = "bad", tracktype = "grade2" }, {}).smoothness == nil)
+check("and smoothness=impassable stays, to close the way",
+  remap.remap_way({ highway = "residential", smoothness = "impassable" }, {}).smoothness == nil)
+local _, smooth_out = transform_way({ highway = "path", smoothness = "horrible" })
+check("so upstream never sees it", smooth_out ~= nil and smooth_out.smoothness == nil,
+  smooth_out and tostring(smooth_out.smoothness))
 
 -- smoothness=impassable: closed by upstream, and no write of the remap's
 -- reopens it - not the stress penalty, a real alley's charge, the facility

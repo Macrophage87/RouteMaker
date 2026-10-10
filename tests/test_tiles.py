@@ -307,9 +307,9 @@ def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -
     """`mjolnir.admin` and `mjolnir.timezone` are retargeted into the dated
     build directory with every other tile path, and only these commands ever
     write there. Without them Valhalla (3.5.1 and 3.6.3) warns and carries on
-    (src/mjolnir/graphbuilder.cc:431-444), so the graph has no timezone and
-    every `date_time` request - which PLAN:82 builds the request design on -
-    evaluates its conditional restrictions against nothing.
+    (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3), so the
+    graph has no timezone and every `date_time` request - which PLAN:82 builds
+    the request design on - evaluates its conditional restrictions against nothing.
     """
     config_path, config = write_config(tmp_path)
     commands = tiles.tile_build_commands(

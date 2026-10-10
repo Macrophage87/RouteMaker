@@ -73,3 +73,28 @@ def test_anything_else_from_the_server_side_is_an_outage(router, status, body) -
     url = router(status, body)
     with pytest.raises(routing.RouterUnavailable):
         routing._transport(url, {}, 5)
+
+
+def test_a_body_cut_off_mid_read_is_still_an_outage(router) -> None:
+    """A dying router can close the connection inside the error body; that must
+    surface as the router being unavailable, not as a raw exception."""
+
+    class Cut(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.send_response(502)
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.write(b'{"error_code": ')
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Cut)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(routing.RouterUnavailable):
+            routing._transport(f"http://127.0.0.1:{server.server_port}/route", {}, 5)
+    finally:
+        server.shutdown()
+        server.server_close()

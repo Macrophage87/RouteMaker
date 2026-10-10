@@ -193,8 +193,8 @@ def tile_build_commands(
     retargeted into this dated build directory along with every other tile path
     - and only these commands ever put a file there. Valhalla (3.5.1 and 3.6.3) does not refuse a
     build without them, it warns and carries on
-    (src/mjolnir/graphbuilder.cc:431-444 for both databases, and
-    src/mjolnir/graphenhancer.cc:1293-1296 again for the admin one), so the
+    (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3, for both
+    databases, and src/mjolnir/graphenhancer.cc:1293-1296 at 3.5.1 again for the admin one), so the
     graph comes out with no timezone at all and every `date_time.type: 3`
     request - which PLAN:82 builds the whole request design on - evaluates its
     conditional restrictions against nothing. PLAN:13 commits to running both.

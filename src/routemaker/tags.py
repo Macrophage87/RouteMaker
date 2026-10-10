@@ -136,9 +136,20 @@ def parse_width_m(value: str | None) -> float | None:
 # letting any part that grants access win (valhalla/valhalla#5560), and this
 # project reads unclear access as closed, so the tag transform narrows them
 # before anything reads them (`narrow_access_lists` in lua/routemaker_remap.lua,
+# the same keys: every one upstream reads part by part for a bicycle,
 # held to this function by tests/test_lua_remap.py). The same rule: `no` if any
 # part is `no`, else the first part that is not a plain grant, else the list.
-ACCESS_LIST_KEYS = ("access", "vehicle", "bicycle", "bicycle:forward", "bicycle:backward")
+ACCESS_LIST_KEYS = (
+    "access",
+    "vehicle",
+    "vehicle:forward",
+    "vehicle:backward",
+    "bicycle",
+    "bicycle:forward",
+    "bicycle:backward",
+    "bicycle_road",
+    "cycleway",
+)
 PERMISSIVE_ACCESS = frozenset({"yes", "permissive", "designated", "official", "public", "allowed"})
 
 

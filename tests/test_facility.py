@@ -398,6 +398,25 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "path", "access": "private", "foot": "yes"}, "barred"),
         ({"highway": "cycleway", "access": "no", "bicycle": "designated"}, "road"),
         ({"highway": "footway", "access": "private", "bicycle": "private"}, "hidden"),
+        # Mapped as impassable: Valhalla closes it to every vehicle (3.6.0,
+        # valhalla/valhalla#5023), unless a bicycle tag reopens it.
+        ({"highway": "residential", "smoothness": "impassable"}, "barred"),
+        ({"highway": "residential", "impassable": "yes"}, "barred"),
+        ({"highway": "residential", "smoothness": "impassable", "bicycle": "yes"}, "road"),
+        ({"highway": "path", "smoothness": "impassable"}, "barred"),
+        ({"highway": "path", "smoothness": "impassable", "bicycle": "yes"}, "road"),
+        ({"highway": "residential", "smoothness": "bad"}, "road"),
+        # A bicycle is a vehicle: a public `vehicle` grant opens a footway
+        # (Valhalla 3.6.2, valhalla/valhalla#5802); a restricted one does not.
+        ({"highway": "footway", "vehicle": "yes"}, "road"),
+        ({"highway": "footway", "vehicle": "yes;designated"}, "road"),
+        ({"highway": "footway", "vehicle": "delivery"}, "barred"),
+        ({"highway": "path", "vehicle": "delivery"}, "road"),
+        ({"highway": "cycleway", "vehicle": "destination"}, "road"),
+        ({"highway": "path", "access": "no", "foot": "yes", "vehicle": "delivery"}, "barred"),
+        # Access lists are narrowed to their most restrictive part.
+        ({"highway": "path", "bicycle": "no;yes"}, "barred"),
+        ({"highway": "footway", "bicycle": "yes;designated"}, "road"),
     ],
 )
 def test_the_map_class_of_a_way(tags, drawn_as) -> None:
@@ -778,3 +797,24 @@ def test_a_signed_bicycle_road_stays_on_the_map() -> None:
     # A crosswalk signed so is still a crosswalk.
     crossing = {"highway": "footway", "footway": "crossing", "bicycle_road": "yes"}
     assert facility_rules.map_class(crossing).value == "hidden"
+
+
+@pytest.mark.parametrize(
+    ("tags", "reason"),
+    [
+        ({"highway": "residential", "smoothness": "impassable"}, "impassable"),
+        ({"highway": "track", "impassable": "yes"}, "impassable"),
+        ({"highway": "residential", "smoothness": "impassable", "bicycle": "yes"}, None),
+        ({"highway": "residential", "smoothness": "impassable", "access": "private"}, "private"),
+        ({"highway": "residential", "smoothness": "very_bad"}, None),
+    ],
+)
+def test_the_panel_says_a_way_is_mapped_as_impassable(tags, reason) -> None:
+    assert facility_rules.bike_access_reason(tags) == reason
+
+
+def test_the_map_s_vehicle_tables_are_the_trail_models() -> None:
+    from routemaker import trailaccess
+
+    grants = {k for k, v in trailaccess.UPSTREAM_VEHICLE_ACCESS.items() if v}
+    assert facility_rules.VEHICLE_GRANTS == grants

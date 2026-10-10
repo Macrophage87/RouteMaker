@@ -4007,8 +4007,9 @@ yet and that is an older build's value (it may well say 4): wait and run it agai
 not conclude anything from it.
 
 A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
-a tile build aborted (under 3.5.1, the known race) and the retry is building it again: nothing needs doing during
-the run. Under the pinned 3.6.3 the known race is fixed, so keep that log for the report. Note it in the report; "Tile build threads" says when to move to
+a tile build aborted and the retry is building it again: nothing needs doing during
+the run. Under 3.5.1 that was the known race; the pinned 3.6.3 fixes it, so an abort now is something new. Keep the
+rebuild's log and note the line in the report. "Tile build threads" says when to move to
 `REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
 line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
 the retry aborted too: set 1 before the next rebuild.

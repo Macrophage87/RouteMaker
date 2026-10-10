@@ -943,6 +943,8 @@ ACCESS_LIST_CASES = [
     "dismount;yes",
     ";",
     "yes;",
+    "yes; ",
+    "yes; ;private",
 ]
 
 
@@ -961,27 +963,72 @@ def test_the_access_list_rule_is_the_same_in_python_and_lua() -> None:
     assert result.stdout.split("\n")[:-1] == [
         osm_tags.most_restrictive(value) for value in ACCESS_LIST_CASES
     ]
-    assert tuple(osm_tags.ACCESS_LIST_KEYS) == (
-        "access",
-        "vehicle",
-        "bicycle",
-        "bicycle:forward",
-        "bicycle:backward",
+    keys = _lua_driver(
+        'package.path = "lua/?.lua;" .. package.path\n'
+        'local M = require("routemaker_remap")\n'
+        'for _, key in ipairs(M.ACCESS_LIST_KEYS) do io.write(key, "\\n") end'
     )
+    assert keys.returncode == 0, keys.stderr
+    assert keys.stdout.split("\n")[:-1] == list(osm_tags.ACCESS_LIST_KEYS)
 
 
 def _lua_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+VEHICLE_VALUES = {
+    "yes",
+    "private",
+    "no",
+    "permissive",
+    "agricultural",
+    "delivery",
+    "designated",
+    "discouraged",
+    "forestry",
+    "destination",
+    "customers",
+    "official",
+    "public",
+    "restricted",
+    "allowed",
+    "permit",
+    "residents",
+}
+
+
+def test_the_vehicle_tables_are_upstreams() -> None:
+    """The remap's VEHICLE_GRANTS, the Python model's UPSTREAM_VEHICLE_ACCESS
+    and the vendored `motor_vehicle` table (which upstream's `vehicle` is) agree."""
+    from routemaker import trailaccess
+
+    result = _lua_driver(
+        'package.path = "lua/?.lua;lua/vendor/?.lua;" .. package.path\n'
+        'require("graph_upstream")\n'
+        'local M = require("routemaker_remap")\n'
+        'for k, v in pairs(vehicle) do io.write("u ", k, " ", v, "\\n") end\n'
+        'for k in pairs(M.VEHICLE_GRANTS) do io.write("g ", k, "\\n") end'
+    )
+    assert result.returncode == 0, result.stderr
+    rows = [line.split() for line in result.stdout.splitlines()]
+    upstream = {row[1]: row[2] == "true" for row in rows if row[0] == "u"}
+    grants = {row[1] for row in rows if row[0] == "g"}
+    assert upstream == trailaccess.UPSTREAM_VEHICLE_ACCESS
+    assert grants == {value for value, opens in upstream.items() if opens}
+    assert set(upstream) == VEHICLE_VALUES
+
+
 UPSTREAM_OPEN_CASES = [
     {"bicycle": "no;yes"},
     {"bicycle": "yes;designated"},
-    {"vehicle": "yes"},
-    {"vehicle": "no"},
-    {"vehicle": "agricultural"},
-    {"vehicle": "private"},
+    *({"vehicle": value} for value in sorted(VEHICLE_VALUES)),
+    *({"access": "no", "vehicle": value} for value in sorted(VEHICLE_VALUES)),
     {"vehicle": "no;yes"},
+    {"vehicle": "yes;designated"},
+    {"vehicle": "private;yes"},
+    {"access": "no", "sac_scale": "hiking"},
+    {"smoothness": "impassable", "sac_scale": "hiking"},
+    {"vehicle": "private", "sac_scale": "mountain_hiking"},
     {"vehicle": "yes", "bicycle": "no"},
     {"access": "no", "vehicle": "yes"},
     {"access": "no;yes"},

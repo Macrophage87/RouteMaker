@@ -215,14 +215,18 @@ def _scale(tags: dict[str, str]) -> int | None:
 
 
 def upstream_open(tags: dict[str, str]) -> bool:
-    """Whether Valhalla's transform leaves a candidate way open to bicycles,
-    from the tags alone, after the remap narrows access lists
-    (`tags.narrow_access_lists`): highway default (path open; footway,
-    pedestrian, bridleway closed), the bicycle table, then `vehicle` (3.6.2,
-    valhalla/valhalla#5802: a bicycle is a vehicle, so `vehicle=yes` opens a
-    footway and `vehicle=agricultural` closes a path), then access, then
-    sac_scale (hiking grants, any other value closes), then impassability
-    (`smoothness=impassable` closes from 3.6.0, valhalla/valhalla#5023)."""
+    """Whether the shipped transform (upstream's, with this project's remap)
+    leaves a candidate way open to bicycles, from the tags alone. Access lists
+    are narrowed first (`tags.narrow_access_lists`). Then: the bicycle table;
+    then `vehicle`, which upstream reads for bicycles from 3.6.2
+    (valhalla/valhalla#5802) - a public grant (`yes`, `designated`, ...) opens
+    the way, a restricted one (`private`, `delivery`, ...) only where the class
+    and `access` leave it open (the remap's `vehicle_reopens_for_bicycle`
+    closes the rest), and `no`, `agricultural`, `forestry` or `discouraged`
+    close it; then access; then impassability (`smoothness=impassable` closes
+    from 3.6.0, valhalla/valhalla#5023); then sac_scale (hiking grants, any
+    other value closes); then the class default (path open; footway,
+    pedestrian, bridleway closed)."""
     highway = tags.get("highway")
     if highway not in CANDIDATE_HIGHWAY:
         return False
@@ -233,15 +237,21 @@ def upstream_open(tags: dict[str, str]) -> bool:
         # upstream reads part by part (valhalla/valhalla#5560).
         return any(part.strip() in UPSTREAM_BICYCLE_OPEN for part in bicycle.split(";"))
     vehicle = tags.get("vehicle")
-    if vehicle in UPSTREAM_VEHICLE_ACCESS:
-        return UPSTREAM_VEHICLE_ACCESS[vehicle]
+    if vehicle is not None:
+        parts = [part.strip() for part in vehicle.split(";")]
+        if any(UPSTREAM_VEHICLE_ACCESS.get(part) for part in parts):
+            if all(part in osm_tags.PERMISSIVE_ACCESS for part in parts):
+                return True
+            return highway == "path" and tags.get("access") not in UPSTREAM_ACCESS_CLOSED
+        if UPSTREAM_VEHICLE_ACCESS.get(vehicle) is False:
+            return False
     if tags.get("access") in UPSTREAM_ACCESS_CLOSED:
+        return False
+    if tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable":
         return False
     sac_scale = tags.get("sac_scale")
     if sac_scale is not None:
         return sac_scale == "hiking"
-    if tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable":
-        return False
     return highway == "path"
 
 

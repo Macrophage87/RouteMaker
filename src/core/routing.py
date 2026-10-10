@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import bisect
 import dataclasses
+import http.client
 import itertools
 import json
 import logging
@@ -203,7 +204,8 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
     except urllib.error.HTTPError as error:
         try:
             body = json.loads(error.read() or b"{}")
-        except ValueError:
+        except (OSError, http.client.HTTPException, ValueError):
+            # Unreadable, cut off or not JSON: the status alone decides.
             body = {}
         if not isinstance(body, dict):
             body = {}

@@ -333,7 +333,7 @@ Runs as uid 10001, non-root.
 
 ### `docker/pipeline.Dockerfile` — rebuild
 
-`FROM ghcr.io/valhalla/valhalla:3.6.3`, the same image and tag the three serving
+`FROM ghcr.io/valhalla/valhalla:3.6.3`, the same image and tag the five serving
 containers run. The rebuild needs `valhalla_build_admins`,
 `valhalla_build_timezones`, `valhalla_build_tiles`, `valhalla_build_extract`
 (`pipeline/tiles.py`) and `valhalla_service` (the one-shot `trace_attributes`

@@ -129,6 +129,10 @@ function M.access_is_unrestricted(tags)
   return true
 end
 
+-- Whether the router keeps pricing ways as 3.5.1 did, ignoring `smoothness`
+-- as a surface (see its use in `remap_way`).
+M.SMOOTHNESS_SURFACE_IGNORED = true
+
 -- Whether a way's own tags say it cannot be travelled at all. Upstream closes
 -- every vehicle mode on both (`impassable=yes`, and from 3.6.0
 -- `smoothness=impassable`, valhalla/valhalla#5023) by turning the class
@@ -141,7 +145,9 @@ function M.physically_closed(tags)
 end
 
 -- How an access list reads here: a value with `;` in it is reduced to its most
--- restrictive part before anything else sees it.
+-- restrictive part before anything else sees it. The keys are every one
+-- upstream reads part by part for a bicycle (`any_in`, and the directional
+-- `vehicle:*` fallback), `cycleway` and `bicycle_road` among them.
 --
 -- From 3.6.1 (valhalla/valhalla#5560) upstream reads `bicycle=no;yes`,
 -- `access=private;no` and the like part by part and lets any part that grants
@@ -152,7 +158,10 @@ end
 -- a plain grant (`private;yes` is `private`, `agricultural;forestry` is
 -- `agricultural`). A list of grants alone (`yes;designated`) is left as it is:
 -- every reading of it is open.
-M.ACCESS_LIST_KEYS = { "access", "vehicle", "bicycle", "bicycle:forward", "bicycle:backward" }
+M.ACCESS_LIST_KEYS = {
+  "access", "vehicle", "vehicle:forward", "vehicle:backward",
+  "bicycle", "bicycle:forward", "bicycle:backward", "bicycle_road", "cycleway",
+}
 
 function M.most_restrictive(value)
   if type(value) ~= "string" or not value:find(";", 1, true) then return value end
@@ -245,6 +254,38 @@ M.VEHICLE_GRANTS = {
   destination = true, customers = true, official = true, public = true,
   restricted = true, allowed = true, permit = true, residents = true,
 }
+
+-- The `access` values upstream's table reads as false (see PERMISSIVE_ACCESS).
+M.ACCESS_CLOSES = {
+  no = true, agricultural = true, forestry = true, discouraged = true,
+  emergency = true, psv = true,
+}
+
+-- The keys upstream reads for a bicycle before it falls back to `vehicle`.
+M.BICYCLE_SPECIFIC_KEYS = {
+  "bicycle", "bicycle:forward", "bicycle:backward", "cycleway", "bicycle_road", "cyclestreet",
+}
+
+--- Whether upstream would open this way to a bicycle on its `vehicle` tag
+-- alone where this project keeps it closed (see the call in `remap_way`).
+-- Read after `narrow_access_lists`, so a list still standing is grants alone.
+function M.vehicle_reopens_for_bicycle(tags)
+  local vehicle = tags.vehicle
+  if vehicle == nil then return false end
+  for _, key in ipairs(M.BICYCLE_SPECIFIC_KEYS) do
+    if tags[key] ~= nil then return false end
+  end
+  local granted, public = false, true
+  for part in vehicle:gmatch("[^;]+") do
+    part = part:match("^%s*(.-)%s*$")
+    if M.VEHICLE_GRANTS[part] then granted = true end
+    if not M.PERMISSIVE_ACCESS[part] then public = false end
+  end
+  if not granted then return false end
+  if M.MOTOR_ONLY_HIGHWAY[tags.highway] then return true end
+  if public then return false end
+  return not M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway] or M.ACCESS_CLOSES[tags.access] == true
+end
 
 --- Whether the fixture's `roadway_bicycle_legal: true` may be written onto this way.
 --
@@ -411,6 +452,20 @@ function M.remap_way(tags, derived)
   -- value, so the split finds nothing to copy there.
   M.split_both(tags, out)
 
+  -- From 3.6.0 upstream's parser prices `smoothness` as a surface where no
+  -- `surface` or `tracktype` tag says (valhalla/valhalla#4949): excellent and
+  -- good as paved_smooth, intermediate as paved_rough (the cobblestone class),
+  -- bad as compacted, very_bad as dirt, horrible as gravel, very_horrible as
+  -- path. 3.5.1 ignored it, and OWNER-DECISIONS 440 counts only cobblestone as
+  -- paved but rough. Until the owner decides to take it
+  -- (FOLLOWUP-SMOOTHNESS-SURFACE), the tag comes off such a way so it is priced
+  -- as before. `impassable` stays: it closes the way (M.physically_closed).
+  if M.SMOOTHNESS_SURFACE_IGNORED and tags.smoothness ~= nil and tags.smoothness ~= "impassable"
+    and tags.surface == nil and tags.tracktype == nil
+  then
+    out.smoothness = M.REMOVE
+  end
+
   -- A hard surface Valhalla would price rough reaches the graph as paved
   -- (OWNER-DECISIONS 440, `M.GRAPH_SURFACE`).
   local graph_surface = M.GRAPH_SURFACE[tags.surface or ""]
@@ -422,18 +477,19 @@ function M.remap_way(tags, derived)
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
   end
 
-  -- A motorway's `vehicle` grant is not a bicycle grant here. From 3.6.2
-  -- upstream reads `vehicle` for bicycles (valhalla/valhalla#5802), so a
-  -- motorway or ramp tagged `vehicle=yes` (or any grant in its table) with no
-  -- bicycle tag became a way a bicycle may ride. Under OSM's hierarchy a
-  -- bicycle is a vehicle, but a mapper who means bicycles on an interstate
-  -- says `bicycle=yes`, and that is left to speak for itself. Only narrows.
-  if
-    M.MOTOR_ONLY_HIGHWAY[tags.highway]
-    and tags.bicycle == nil
-    and tags.vehicle ~= nil
-    and M.VEHICLE_GRANTS[tags.vehicle]
-  then
+  -- A `vehicle` grant opens no more to a bicycle than it did under 3.5.1.
+  -- From 3.6.2 upstream reads `vehicle` for bicycles when nothing bicycle-
+  -- specific speaks (valhalla/valhalla#5802), and its table counts
+  -- `private`, `delivery`, `destination`, `customers`, `restricted`, `permit`
+  -- and `residents` as grants. So `access=no` + `vehicle=delivery`, a footway
+  -- tagged `vehicle=permit` and a motorway tagged `vehicle=yes` all became
+  -- ways a bicycle may ride. Under OSM's hierarchy a bicycle is a vehicle, so a
+  -- public grant (`yes`, `designated`, ...) on a trail-class way is taken as
+  -- meant; a restricted one is unclear, and is closed wherever the class or
+  -- `access` would have closed the way. A motorway is closed on any grant: a
+  -- mapper who means bicycles on an interstate says `bicycle=yes`, which is
+  -- left to speak for itself. Only narrows.
+  if M.vehicle_reopens_for_bicycle(tags) then
     out.bicycle = "no"
   end
 
