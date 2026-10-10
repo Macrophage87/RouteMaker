@@ -872,7 +872,9 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     root = re.findall(r"^\s*root (\S+);", by_path["= /"], re.M)
     assert root and re.findall(r"^\s*root (\S+);", page, re.M) == root
     caddy = re.search(r"^\s*redir @stress-page (\S+) (\d{3})$", CADDYFILE, re.M)
-    assert caddy and re.search(r"^\s*@stress-page path /about/stress /about/stress/$", CADDYFILE, re.M)
+    assert caddy and re.search(
+        r"^\s*@stress-page path /about/stress /about/stress/$", CADDYFILE, re.M
+    )
     target, status = caddy.groups()
     assert target == "/about/stress.html"
     assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
