@@ -256,7 +256,7 @@ server {
     }
 
     # --- preset links (Caddyfile @preset-*) ----------------------------------------
-    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|gravel|fast|cargo|ebike|bikeshare)/?$ {
+    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|gravel|fast|cargo|ebike|bikeshare|kids)/?$ {
         return 302 "/#preset=$1";
     }
 

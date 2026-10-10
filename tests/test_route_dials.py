@@ -1437,8 +1437,9 @@ class TestTheHillsChoiceUsesThePlansExposure:
     def test_the_plan_passes_its_exposure_to_both(self, monkeypatch):
         seen = []
         monkeypatch.setattr(routing, "calmer_or_own", lambda *a, **k: seen.append(("own", a)) or 0)
-        assert presets.exposure_for("trailmaxxing") is AVERSE
-        assert presets.exposure_for("cargo", presets.CARRYING_PEOPLE) is AVERSE
+        weighed = presets.EXPOSURE_NOT_IN_CONTROL
+        assert presets.exposure_for("trailmaxxing") is weighed
+        assert presets.exposure_for("cargo", presets.CARRYING_PEOPLE) is weighed
         assert presets.exposure_for("default") is presets.EXPOSURE_STANDARD
 
 

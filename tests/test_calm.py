@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import pytest
 
@@ -82,6 +82,17 @@ class TestMultiplier:
         assert [calm.multiplier(t, None, top) for t in (3, 4, 5)] == [6.0, 11.0, 16.0]
         within = calm.Pricing(use_roads=0.0, maxcalm=True, target=True)
         assert [calm.multiplier(t, None, within) for t in (3, 4, 5)] == [11.0, 21.0, 31.0]
+
+    def test_lts_2_stays_a_quiet_street_on_the_rides_that_weigh_it(self) -> None:
+        """FOLLOWUP-LTS2-WEIGHT review: the chart shows traffic stress, not the ranking's
+        LTS 2 preference, so an all-quiet route still reads about 1 (461d) on Trailmaxxing,
+        Cargo with passengers and Riding with kids: the chart's pricing has no LTS 2 term."""
+        assert "lts2" not in {f.name for f in fields(calm.Pricing)}
+        for pricing in (
+            calm.Pricing(use_roads=0.0, maxcalm=True),
+            calm.Pricing(use_roads=0.0, rate=presets.calm_rate_for(90), weights=(1.0, 8.0, 16.0)),
+        ):
+            assert calm.multiplier(2, "none", pricing) == calm.multiplier(1, "none", pricing) == 1.0
 
     def test_the_worth_figures_are_refines_own(self) -> None:
         assert calm.WORTH_DEFAULT == refine.WORTH_DEFAULT

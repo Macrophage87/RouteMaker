@@ -4255,6 +4255,112 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
+
+The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
+calm-search score, about a quarter of LTS 3, on"
+"Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no rebuild."
+Item 241's rationale applies: a rider who
+is not in control of the ride is stress-averse.
+
+- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+  `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
+  0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
+  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
+  LTS 2 weight, since 240 (A) does not name it.
+- Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
+  weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
+  quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
+  weigh it the same way.
+- At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
+  weight would never price a route where Cargo with passengers starts (review, blocking).
+  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
+  quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
+  `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
+  costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
+  slider does not move, the calm search does not turn on, and the router's requests are
+  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
+  kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
+  with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3
+  adds nothing.
+  If the owner prefers the weight to wait until the rider moves the slider above 80, the
+  term is one commit to drop.
+- At the top (100, maxcalm) the weight is in the second figure of the ranking:
+  `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
+  with the same LTS 4 and red junctions, 656 ft (200 m) more LTS 2 is worth one 164 ft
+  (50 m) tie step. The worth rule counts the same figure (`stress_weight_m`, `_second_weight_m`), so
+  1 mi (1.6 km) of LTS 2 saved can buy 1.25 mi (2 km) of extra riding with no target, a
+  quarter of what a mile of LTS 3 buys. LTS 4 still ranks first whatever the LTS 2.
+- LTS 2 never starts a search of its own, so it adds no router calls: `calm_targets` still
+  excludes only LTS 3 and worse, and the trail seek is handed the busy spans of LTS 3 and
+  worse only (`refine.seek_weights`), so a stretch of LTS 2 never starts a seek. The routing
+  graph does not grade LTS 2 (240 (C) stays with
+  FOLLOWUP-DECIMAL-STRESS in the backlog), so nothing is rebuilt.
+- The rolling stress chart is unchanged: it shows traffic stress, not the ranking's LTS 2
+  preference, so LTS 2 is priced by the road's own cost alone and an all-quiet route still
+  reads about 1 (461d) on these rides too.
+- Not measured on the live routers in this change (no router here). The 12 trips and the
+  owner's route are the place to measure it, as item 250 was.
+- Tests: `tests/test_refine.py::TestLts2Weight`, `tests/test_calm.py`; mutants `240A: ...` in
+  `scripts/mutants_trailseek.py`.
+
+### Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B))
+
+The owner, 2026-10-03, item 240 (B): "a 'Riding with kids' preset for children on their own
+bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower
+planning speeds and gentler hills. It builds on (A)."
+
+The ride type id is `kids` (links `/#preset=kids`, the short path `/kids`), the label
+"Riding with kids". It is defined like every other preset: `core.presets` (`KIDS`,
+`EXPOSURE_KIDS`, the `_preset("kids", ...)` row, `BRAKE_GRADES`), `frontend/src/lib/presets.ts`
+(the card's label and sentence), `frontend/src/lib/dials.ts` (`STARTS`, held equal to the API by
+`tests/test_presets.py`), the Caddyfile and the beta nginx template's preset redirects, and the
+stress page's cost table.
+
+**Developer defaults, for the owner to confirm.** The owner gave no numbers for these:
+
+| What | Default | Why |
+|---|---|---|
+| Traffic slider start | 100 (the top) | "LTS 3+ avoided hard": the least stressful route, LTS 4, Avoid and red junctions ranked first, with the LTS 4 hold, as Trailmaxxing |
+| LTS 2 weight | 0.5 of LTS 3 (`KIDS_LTS2_WEIGHT`) | "LTS 2 allowed but costly": twice 240 (A)'s quarter; a metre of LTS 3 still counts two of LTS 2 |
+| Planning speed | 6.2 mph (10 km/h) | a child of about six to ten on their own bike; Hybrid's own is 11.2 mph (18 km/h), Cargo Bike 8.7 mph (14 km/h), Mass Ride 6 mph (9.7 km/h) |
+| Hills slider start | -80 (`use_hills` 0.2) | "gentler hills": more hill-averse than Cargo Bike (-60), short of Mass Ride (-95) |
+| Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
+| Living streets | 1.0 (fully preferred) | as Trailmaxxing |
+| Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
+| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
+
+At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
+least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
+not planned leg by leg (`long_calm` stays Trailmaxxing's alone). The rider and bike weight
+keeps the model's 198 lb (90 kg) default; a child's lighter total is the rider's to set.
+
+**No rebuild.** It rides the existing graphs: the standard graph and its weekend twin, or
+the no-trail graph with "Keep to roads, not trails". No new Valhalla graph or variant was
+needed, because everything that makes it a kids' ride is a per-request costing option or
+the planner's search; LTS 2 is graded only in the search, not in the graph (240 (C),
+FOLLOWUP-DECIMAL-STRESS, backlog). Bike access is the graph's as for every ride: a way
+whose bicycle access is unclear stays closed.
+
+**Load.** Like Trailmaxxing it starts at 100, so every plan runs the calm search (about 20
+router calls; docs/OPERATIONS.md).
+
+**Screen readers.** The card is a toggle button in the ride-type dialog named by its label
+and sentence; choosing it moves the sliders (their values are said in words), the Ride
+line's spoken summary says "Riding with kids, calmest, avoids hills", and the link carries
+it. `scripts/a11y/check.mjs` section 25 covers the dialog, the keyboard, the request, the
+sliders, the target distance, a shared link and 320 px (`EXPECTED` 423); the mocked answer
+is `S_KIDS` in `scripts/a11y/cdp.mjs`.
+
+Tests: `tests/test_presets.py::TestRidingWithKids` and the tables there,
+`tests/test_refine.py`, `tests/test_route_description.py`, `tests/test_preset_links.py`,
+`tests/test_beta_overlay.py`, every test parametrised over the presets, and
+`frontend/src/lib/presets.test.ts`, `dials.test.ts`, `dialsPanel.test.ts`, `stressPage.test.ts`.
+
 ## The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)
 
 What shipped, and where to look. The server side and the measurements are in

@@ -120,7 +120,7 @@ class Pricing:
     junction_weight: float = 1.0
 
 
-def _added(use_roads: float) -> tuple[float, float]:
+def added_cost(use_roads: float) -> tuple[float, float]:
     """LTS 3's and LTS 4's added cost per metre at a `use_roads`, linear between the
     modelled positions."""
     u = min(max(use_roads, 0.0), 1.0)
@@ -153,7 +153,7 @@ def multiplier(tier: int | None, facility: str | None, pricing: Pricing) -> floa
     if pricing.maxcalm:
         worth = WORTH_UP_TO_TARGET if pricing.target else WORTH_DEFAULT
         return 1.0 + worth * WORTH_WEIGHTS[level]
-    lts3, lts4 = _added(pricing.use_roads)
+    lts3, lts4 = added_cost(pricing.use_roads)
     added = lts3 if level == 3 or pricing.no_trail else lts4
     weight = pricing.weights[level - 3]
     return 1.0 + added / QUIET_FACTOR + pricing.rate * weight

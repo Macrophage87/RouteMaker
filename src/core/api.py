@@ -798,8 +798,8 @@ class CalmSearchOut(Schema):
     lts4_before_m: float | None = Field(
         default=None,
         description=(
-            "Trailmaxxing and Cargo with passengers only (OWNER-DECISIONS 250): metres of"
-            " LTS 4 and Avoid on the router's own route, which the search never exceeds."
+            "Rides with the LTS 4 hold only (OWNER-DECISIONS 250): metres of LTS 4 and"
+            " Avoid on the router's own route, which the search never exceeds."
         ),
     )
     lts4_after_m: float | None = Field(

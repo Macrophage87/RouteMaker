@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import copy
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -336,6 +336,19 @@ def target_ceiling_m(target_m: float) -> float:
 # with more LTS 4 and Avoid metres than the router's own first route, leg by leg
 # and for the whole trip (`hold_lts4`), whatever trail it gains. Every other ride
 # keeps 1, 2 and 3 and no such hold.
+#
+# LTS 2 (FOLLOWUP-LTS2-WEIGHT, OWNER-DECISIONS 240 (A), owner 2026-10-03: "A and B sound
+# good"): "a small LTS 2 weight in the calm-search score, about a quarter of LTS 3, on"
+# "Cargo-carrying-people and at the top of the slider (Trailmaxxing). Planner only; no
+# rebuild." Item 241's rationale applies: "even adults wouldn't enjoy more stressful roads
+# if they aren't in control of the ride." So on Trailmaxxing and on Cargo with passengers
+# a metre of LTS 2 counts LTS2_WEIGHT (a quarter) of a metre of LTS 3: in the score below
+# the top of the slider (`core.refine.Analysis.exposure_m`), and at the top in the second
+# figure of the ranking and in the stress the worth rule counts (`Analysis.second_m`). It
+# is never a search target (the search excludes LTS 3 and worse only), and the routing
+# graph does not grade LTS 2 (item 240 (C), FOLLOWUP-DECIMAL-STRESS, stays in the
+# backlog), so no graph is rebuilt. Every other ride, Bikeshare included, keeps LTS 2 at
+# nothing.
 @dataclass(frozen=True)
 class Exposure:
     lts3: float = 1.0
@@ -344,15 +357,30 @@ class Exposure:
     # Refuse a candidate with more LTS 4 and Avoid metres than the router's first
     # route (each leg's, and the whole trip's).
     hold_lts4: bool = False
+    # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT).
+    lts2: float = 0.0
 
     @property
     def weights(self) -> dict[str, float]:
         """By tier, as the segment classes name them."""
-        return {"3": self.lts3, "4": self.lts4, "5": self.avoid}
+        return {"2": self.lts2, "3": self.lts3, "4": self.lts4, "5": self.avoid}
 
+
+# OWNER-DECISIONS 240 (A): "about a quarter of LTS 3".
+LTS2_WEIGHT = 0.25
 
 EXPOSURE_STANDARD = Exposure()
 EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)
+# The rides whose rider is not in control of the ride, or wants the calmest route
+# (Trailmaxxing, Cargo with passengers; items 240 (A) and 241): item 250's weights and
+# hold, and LTS 2 at a quarter of LTS 3.
+EXPOSURE_NOT_IN_CONTROL = replace(EXPOSURE_STRESS_AVERSE, lts2=LTS2_WEIGHT)
+# Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B)): "LTS 1 strongly preferred, LTS 2
+# allowed but costly, LTS 3+ avoided hard". Item 250's weights and hold, and LTS 2 at
+# KIDS_LTS2_WEIGHT, twice item 240 (A)'s quarter. A developer default for the owner to
+# confirm: a metre of LTS 3 still counts two of LTS 2, and LTS 4 and Avoid rank first.
+KIDS_LTS2_WEIGHT = 0.5
+EXPOSURE_KIDS = replace(EXPOSURE_STRESS_AVERSE, lts2=KIDS_LTS2_WEIGHT)
 
 
 def exposure_for(preset_name: str, carrying: str | None = None) -> Exposure:
@@ -433,6 +461,9 @@ BRAKE_GRADES = MappingProxyType(
         # A share bike is heavy (a classic about 45 lb) and its rider is often new to
         # it: a brake-riding descent starts early, on both bikes.
         "bikeshare": 0.04,
+        # A child brakes with small hands on a small bike: the cargo bike's 3%. The
+        # implementation's proposal, not the owner's table (FOLLOWUP-KIDS-PRESET).
+        "kids": 0.03,
         # Riders who choose these want the descent.
         "mountain-goat": None,
         "fast": None,
@@ -477,6 +508,31 @@ class BikeProfile:
     assist: bool
     system_weight_kg: int
 
+
+# Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B), owner 2026-10-03: "A and
+# B sound good"): "a 'Riding with kids' preset for children on their own bikes. LTS 1
+# strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower planning speeds
+# and gentler hills. It builds on (A)." The owner named no numbers, so the figures here are
+# developer defaults, for the owner to confirm:
+#
+# - Traffic: the top of the stress slider (STRESS_MAX), the least stressful route as
+#   Trailmaxxing plans it (LTS 4, Avoid and red junctions first, then LTS 3 and orange
+#   junctions, then distance), with the LTS 4 hold, and LTS 2 at KIDS_LTS2_WEIGHT (half of
+#   LTS 3) in the second figure (`EXPOSURE_KIDS`). The default ceiling (1.6 times the
+#   router's own route) and the rider's target distance apply as on any ride at the top.
+#   Not planned leg by leg (`long_calm`): rides with children are short.
+# - Speed: KIDS_PLANNING_SPEED_KMH, 6.2 mph (10 km/h), a child of about six to ten on
+#   their own bike, against Hybrid's 11.2 mph (18 km/h) and Mass Ride's parade 6 mph.
+# - Hills: KIDS_HILLS, -80 on the slider (`use_hills` 0.2), gentler than Cargo Bike's -60
+#   and short of Mass Ride's -95; a descent past 3% costs (`BRAKE_GRADES`).
+# - Living streets fully preferred (1.0, as Trailmaxxing); Hybrid; Valhalla's own turn,
+#   gate and surface figures. The rider may still move every slider.
+#
+# It rides the existing graphs (the standard graph and its weekend twin, or the no-trail
+# graph with trails off), so it needs no new Valhalla graph or variant and no rebuild.
+KIDS = "kids"
+KIDS_PLANNING_SPEED_KMH = 10.0
+KIDS_HILLS = -80
 
 BIKESHARE_BIKES = MappingProxyType(
     {
@@ -561,8 +617,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # rider's target distance, however long the trip; no bonus for trail.
                 long_calm=True,
                 # Item 250: LTS 4 eight times LTS 3, Avoid sixteen, and never more
-                # LTS 4 than the router's own route for a little more trail.
-                exposure=EXPOSURE_STRESS_AVERSE,
+                # LTS 4 than the router's own route for a little more trail; item
+                # 240 (A): LTS 2 a quarter of LTS 3.
+                exposure=EXPOSURE_NOT_IN_CONTROL,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
@@ -657,8 +714,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 stress=CARGO_CARRYING_STRESS[CARRYING_CARGO],
                 hills=CARGO_HILLS,
                 carrying=CARGO_CARRYING_STRESS,
-                # Item 250 for Cargo with passengers; carrying cargo keeps 1, 2, 3.
-                carrying_exposure={CARRYING_PEOPLE: EXPOSURE_STRESS_AVERSE},
+                # Items 250 and 240 (A) for Cargo with passengers; carrying cargo
+                # keeps 1, 2, 3 and LTS 2 at nothing.
+                carrying_exposure={CARRYING_PEOPLE: EXPOSURE_NOT_IN_CONTROL},
                 assist_speed_kmh=CARGO_ASSIST_PLANNING_SPEED_KMH,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
@@ -699,6 +757,21 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_cost=CARGO_GATE_COST_S,
                 gate_penalty=CARGO_GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                KIDS,
+                Variant.STANDARD,
+                # Item 240 (B): see "Riding with kids" above.
+                stress=STRESS_MAX,
+                hills=KIDS_HILLS,
+                exposure=EXPOSURE_KIDS,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
+                use_living_streets=1.0,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                cycling_speed=KIDS_PLANNING_SPEED_KMH,
             ),
         )
     }
