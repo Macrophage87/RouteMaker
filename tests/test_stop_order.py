@@ -179,6 +179,51 @@ def along_the_line(points) -> list[list[float]]:
     return [[abs(a[0] - b[0]) * 10_000 for b in points] for a in points]
 
 
+NO_PATH = routing.RouterRefused(400, 442, "no path")
+
+
+def MatrixOnly(answers: dict) -> FakeRouter:
+    """A router that refuses every /route (a pair it cannot join), so the matrix orders."""
+    return FakeRouter({"route": NO_PATH, **answers})
+
+
+class LegRouter(FakeRouter):
+    """A router whose /route answers each leg from matrices over `points`: `cost`,
+    `times` (s) and `km`, read in the direction ridden. A leg into the start's
+    place, in a loop, is the finish (the last row and column)."""
+
+    def __init__(self, points, cost, times=None, km=None, matrix=None) -> None:
+        super().__init__({"sources_to_targets": matrix} if matrix else {})
+        self.points = [tuple(p) for p in points]
+        self.cost, self.times, self.km = cost, times or cost, km or cost
+
+    def _index(self, location: dict, arriving: bool) -> int:
+        at = (location["lon"], location["lat"])
+        if arriving and at == self.points[0]:
+            return len(self.points) - 1
+        return self.points.index(at)
+
+    def __call__(self, url: str, payload: dict, timeout: float) -> dict:
+        if not url.endswith("/route"):
+            return super().__call__(url, payload, timeout)
+        self.calls.append((url, payload))
+        locations = payload["locations"]
+        legs = []
+        for a, b in zip(locations, locations[1:], strict=False):
+            i, j = self._index(a, False), self._index(b, True)
+            summary = {"cost": self.cost[i][j], "time": self.times[i][j], "length": self.km[i][j]}
+            legs.append({"summary": summary})
+        return {"trip": {"legs": legs, "summary": {}}}
+
+    def pairs(self) -> list[tuple[int, int]]:
+        asked = []
+        for url, payload in self.calls:
+            if url.endswith("/route"):
+                ids = [self._index(loc, k > 0) for k, loc in enumerate(payload["locations"])]
+                asked.extend(zip(ids, ids[1:], strict=False))
+        return asked
+
+
 @pytest.fixture
 def router(monkeypatch):
     def install(fake: FakeRouter) -> FakeRouter:
@@ -194,8 +239,142 @@ def post(client, body):
 
 @pytest.mark.django_db
 class TestEndpoint:
-    def test_the_stops_come_back_in_the_order_that_rides_least(self, client, router) -> None:
-        fake = router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
+    def test_the_order_is_by_the_routers_cost_as_any_route_is(self, client, router) -> None:
+        # The quickest order starts by the busy way from the start to the middle stop;
+        # the router prices that way's stress in, and the order the cost picks avoids it.
+        times = along_the_line(POINTS)
+        cost = [row[:] for row in times]
+        cost[0][2] = 5_000.0
+        km = [[t / 1000 for t in row] for row in times]
+        fake = router(LegRouter(POINTS, cost, times, km))
+        body = post(client, {"points": POINTS, "preset": "default"}).json()
+        by_time = min(
+            ([0, *m, 4] for m in itertools.permutations([1, 2, 3])),
+            key=lambda o: solver.total(times, o),
+        )
+        assert by_time == [0, 2, 1, 3, 4]
+        assert body["by"] == "route_cost" and body["exact"] is True
+        assert body["order"] == [0, 1, 2, 3, 4] and body["changed"] is False
+        assert body["before_s"] == body["after_s"] == 600
+        assert body["before_m"] == body["after_m"] == 600
+        assert "sources_to_targets" not in fake.endpoints()
+
+    def test_a_new_order_reports_its_riding_time_and_length(self, client, router) -> None:
+        times = along_the_line(POINTS)
+        km = [[float(10 * i + j) for j in range(5)] for i in range(5)]  # asymmetric
+        router(LegRouter(POINTS, times, times, km))
+        body = post(client, {"points": POINTS, "preset": "default"}).json()
+        assert body["by"] == "route_cost" and body["order"] == [0, 2, 1, 3, 4]
+        assert body["before_s"] == 600 and body["after_s"] == 400
+        assert body["after_m"] == (2 + 21 + 13 + 34) * 1000
+        assert body["before_m"] == (1 + 12 + 23 + 34) * 1000
+
+    def test_the_legs_are_a_plans_requests_and_every_pair_is_asked_once(
+        self, client, router
+    ) -> None:
+        fake = router(LegRouter(POINTS, along_the_line(POINTS)))
+        body = {"points": POINTS, "preset": "cargo", "stress": 85, "hills": -40, "assist": True}
+        assert post(client, body).json()["by"] == "route_cost"
+        pairs = fake.pairs()
+        stops = [1, 2, 3]
+        wanted = (
+            {(0, s) for s in stops}
+            | {(s, 4) for s in stops}
+            | {(s, t) for s in stops for t in stops if s != t}
+        )
+        assert sorted(pairs) == sorted(wanted), "each pair an order may ride, once"
+        for url, payload in fake.calls:
+            assert url == f"{routing.settings.VALHALLA_UPSTREAMS['ebike']}/route"
+            assert payload["costing"] == "bicycle"
+            assert payload["costing_options"] == presets.costing(
+                "cargo", 85, -40, assist=True, avoid_gravel=False
+            )
+            assert {loc["type"] for loc in payload["locations"]} == {"break"}
+            assert payload["date_time"]["type"] == 3
+            assert payload["directions_type"] == "none"
+
+    def test_a_loops_legs_end_at_its_start(self, client, router) -> None:
+        points = [[-77.05, 38.90], [-77.04, 38.91], [-77.04, 38.90], [-77.05, 38.91]]
+        request = [*points, points[0]]
+        fake = router(LegRouter(request, straight(request)))
+        body = post(client, {"points": points, "preset": "default", "loop": True}).json()
+        assert body["by"] == "route_cost" and body["order"] in ([0, 2, 1, 3], [0, 3, 1, 2])
+        assert (3, 4) in fake.pairs() and (0, 4) not in fake.pairs()
+
+    def test_past_ten_stops_the_matrix_orders_them(self, client, router) -> None:
+        points = [[-77.05 + 0.002 * i, 38.90 + 0.001 * (i % 3)] for i in range(13)]
+        fake = router(LegRouter(points, straight(points), matrix=matrix_answer(straight(points))))
+        body = post(client, {"points": points, "preset": "default"}).json()
+        assert stoporder.COST_MAX_STOPS == 10
+        assert body["by"] == "riding_time"
+        assert fake.endpoints() == ["sources_to_targets"]
+
+    def test_ten_stops_are_still_by_the_routers_cost(self, client, router) -> None:
+        points = [[-77.05 + 0.002 * i, 38.90 + 0.001 * (i % 3)] for i in range(12)]
+        fake = router(LegRouter(points, straight(points)))
+        assert post(client, {"points": points, "preset": "default"}).json()["by"] == "route_cost"
+        assert len(fake.pairs()) == 10 * 11
+        assert all(len(p["locations"]) <= stoporder.ROUTE_MAX_LOCATIONS for _, p in fake.calls)
+
+    def test_legs_without_a_cost_leave_the_order_to_the_matrix(self, client, router) -> None:
+        class NoCost(LegRouter):
+            def __call__(self, url, payload, timeout):
+                answer = super().__call__(url, payload, timeout)
+                for leg in (answer.get("trip") or {}).get("legs", []):
+                    leg["summary"].pop("cost")
+                return answer
+
+        times = along_the_line(POINTS)
+        router(NoCost(POINTS, times, matrix=matrix_answer(times)))
+        assert post(client, {"points": POINTS, "preset": "default"}).json()["by"] == "riding_time"
+
+    def test_legs_past_their_time_leave_the_order_to_the_matrix(
+        self, client, router, monkeypatch
+    ) -> None:
+        times = along_the_line(POINTS)
+        fake = router(LegRouter(POINTS, times, matrix=matrix_answer(times)))
+        times_asked = []
+
+        def clock() -> float:
+            # The request starts at 0; every later look at the clock is past the legs' time.
+            times_asked.append(None)
+            return 0.0 if len(times_asked) == 1 else stoporder.COST_BUDGET_S + 1.0
+
+        monkeypatch.setattr(routing, "clock", clock)
+        body = post(client, {"points": POINTS, "preset": "default"}).json()
+        assert body["by"] == "riding_time"
+        assert fake.endpoints()[-1] == "sources_to_targets"
+
+    def test_a_weekend_router_down_for_the_legs_leaves_them_to_the_standard_graph(
+        self, client, router, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: True)
+        down = set()
+        monkeypatch.setattr(routing, "_twin_down", lambda variant: variant in down)
+
+        def mark(variant, ok):
+            (down.discard if ok else down.add)(variant)
+
+        monkeypatch.setattr(routing, "_mark_twin", mark)
+
+        class WeekendHung(LegRouter):
+            def __call__(self, url, payload, timeout):
+                if url.startswith(routing.settings.VALHALLA_UPSTREAMS["weekend"]):
+                    self.calls.append((url, payload))
+                    raise routing.RouterUnavailable("hung")
+                return super().__call__(url, payload, timeout)
+
+        fake = router(WeekendHung(POINTS, along_the_line(POINTS)))
+        body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
+        assert body["by"] == "route_cost" and body["order"] == [0, 2, 1, 3, 4]
+        weekend = [
+            u for u, _ in fake.calls if u.startswith(routing.settings.VALHALLA_UPSTREAMS["weekend"])
+        ]
+        assert len(weekend) == 1, "asked once, then the standard graph answers the rest"
+        assert down == {"weekend"}
+
+    def test_without_leg_costs_the_matrixs_riding_times_order_them(self, client, router) -> None:
+        fake = router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
         response = post(client, {"points": POINTS, "preset": "default"})
         assert response.status_code == 200
         body = response.json()
@@ -203,10 +382,11 @@ class TestEndpoint:
         assert body["changed"] is True and body["by"] == "riding_time" and body["exact"] is True
         assert body["before_s"] == 600 and body["after_s"] == 400
         assert body["before_m"] == 600_000 and body["after_m"] == 400_000
-        assert fake.endpoints() == ["sources_to_targets"]
+        # The legs were asked first, and the first refusal ended them.
+        assert fake.endpoints() == ["route", "sources_to_targets"]
 
     def test_the_matrix_is_asked_with_the_rides_own_graph_and_costing(self, client, router) -> None:
-        fake = router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
+        fake = router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
         body = {
             "points": POINTS,
             "preset": "cargo",
@@ -217,7 +397,7 @@ class TestEndpoint:
             "when": "weekday_offpeak",
         }
         assert post(client, body).status_code == 200
-        url, payload = fake.calls[0]
+        url, payload = fake.calls[-1]
         assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["ebike"])
         assert payload["costing"] == "bicycle"
         assert payload["costing_options"] == presets.costing(
@@ -229,7 +409,7 @@ class TestEndpoint:
     def test_lengths_are_read_in_the_direction_ridden(self, client, router) -> None:
         times = along_the_line(POINTS)
         km = [[float(10 * i + j) for j in range(5)] for i in range(5)]  # asymmetric
-        router(FakeRouter({"sources_to_targets": matrix_answer(times, km)}))
+        router(MatrixOnly({"sources_to_targets": matrix_answer(times, km)}))
         body = post(client, {"points": POINTS, "preset": "default"}).json()
         assert body["order"] == [0, 2, 1, 3, 4]
         # 0->2, 2->1, 1->3, 3->4 against 0->1, 1->2, 2->3, 3->4, in metres.
@@ -246,7 +426,7 @@ class TestEndpoint:
             raise routing.RouterRefused(400, 442, "no path")
 
         monkeypatch.setattr(routing, "_route", no_route)
-        fake = router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
+        fake = router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
         for body in (
             {"preset": "default", "stress": 90, "hills": 30, "when": "weekday_rush"},
             {"preset": "cargo", "carrying": "people", "assist": True, "avoid_gravel": True},
@@ -275,11 +455,11 @@ class TestEndpoint:
         monkeypatch.setattr(routing, "_mark_twin", lambda variant, ok: marked.append((variant, ok)))
         matrix = matrix_answer(along_the_line(POINTS))
         fake = router(
-            FakeRouter({"sources_to_targets": [routing.RouterUnavailable("hung"), matrix]})
+            MatrixOnly({"sources_to_targets": [routing.RouterUnavailable("hung"), matrix]})
         )
         body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
         assert body["by"] == "riding_time" and body["order"] == [0, 2, 1, 3, 4]
-        urls = [url for url, _ in fake.calls]
+        urls = [url for url, _ in fake.calls if url.endswith("/sources_to_targets")]
         assert urls[0].startswith(routing.settings.VALHALLA_UPSTREAMS["weekend"])
         assert urls[1].startswith(routing.settings.VALHALLA_UPSTREAMS["standard"])
         assert marked == [("weekend", False)]
@@ -293,7 +473,7 @@ class TestEndpoint:
         monkeypatch.setattr(routing, "_mark_twin", lambda variant, ok: marked.append((variant, ok)))
         matrix = matrix_answer(along_the_line(POINTS))
         refusal = routing.RouterRefused(400, 171, "no suitable edges")
-        router(FakeRouter({"sources_to_targets": [refusal, matrix]}))
+        router(MatrixOnly({"sources_to_targets": [refusal, matrix]}))
         body = post(client, {"points": POINTS, "preset": "default", "when": "weekend"}).json()
         assert body["by"] == "riding_time"
         assert marked == [("weekend", False)]
@@ -316,7 +496,7 @@ class TestEndpoint:
 
     def test_an_order_already_best_is_unchanged(self, client, router) -> None:
         ordered = [POINTS[0], POINTS[2], POINTS[1], POINTS[3], POINTS[4]]
-        router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(ordered))}))
+        router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(ordered))}))
         body = post(client, {"points": ordered, "preset": "default"}).json()
         assert body["order"] == [0, 1, 2, 3, 4] and body["changed"] is False
         assert body["before_s"] == body["after_s"] == 400
@@ -326,25 +506,25 @@ class TestEndpoint:
         # is shorter. The last point given is a stop in a loop, so it may move.
         points = [[-77.05, 38.90], [-77.04, 38.91], [-77.04, 38.90], [-77.05, 38.91]]
         fake = router(
-            FakeRouter({"sources_to_targets": matrix_answer(straight([*points, points[0]]))})
+            MatrixOnly({"sources_to_targets": matrix_answer(straight([*points, points[0]]))})
         )
         body = post(client, {"points": points, "preset": "default", "loop": True}).json()
         assert body["changed"] is True
         # Round the edge, one way or the other; the finish (the start again) is not returned.
         assert body["order"] in ([0, 2, 1, 3], [0, 3, 1, 2])
         # The matrix carries the start again as the loop's finish.
-        assert fake.calls[0][1]["sources"][-1] == {"lon": -77.05, "lat": 38.90}
-        assert len(fake.calls[0][1]["sources"]) == 5
+        assert fake.calls[-1][1]["sources"][-1] == {"lon": -77.05, "lat": 38.90}
+        assert len(fake.calls[-1][1]["sources"]) == 5
 
     def test_the_same_points_without_the_loop_keep_their_end(self, client, router) -> None:
         points = [[-77.05, 38.90], [-77.04, 38.91], [-77.04, 38.90], [-77.05, 38.91]]
-        router(FakeRouter({"sources_to_targets": matrix_answer(straight(points))}))
+        router(MatrixOnly({"sources_to_targets": matrix_answer(straight(points))}))
         body = post(client, {"points": points, "preset": "default"}).json()
         assert body["order"][-1] == 3
 
     def test_without_the_routers_matrix_it_orders_by_straight_line(self, client, router) -> None:
         router(
-            FakeRouter({"sources_to_targets": routing.RouterRefused(400, 106, "Try any of: route")})
+            MatrixOnly({"sources_to_targets": routing.RouterRefused(400, 106, "Try any of: route")})
         )
         body = post(client, {"points": POINTS, "preset": "default"}).json()
         assert body["order"] == [0, 2, 1, 3, 4] and body["by"] == "straight_line"
@@ -352,19 +532,19 @@ class TestEndpoint:
         assert body["after_m"] < body["before_m"]
 
     def test_a_router_that_does_not_answer_falls_back_too(self, client, router) -> None:
-        router(FakeRouter({"sources_to_targets": routing.RouterUnavailable("down")}))
+        router(MatrixOnly({"sources_to_targets": routing.RouterUnavailable("down")}))
         body = post(client, {"points": POINTS, "preset": "default"}).json()
         assert body["by"] == "straight_line" and body["order"] == [0, 2, 1, 3, 4]
 
     def test_a_matrix_of_the_wrong_shape_falls_back(self, client, router) -> None:
-        router(FakeRouter({"sources_to_targets": {"sources_to_targets": [[]]}}))
+        router(MatrixOnly({"sources_to_targets": {"sources_to_targets": [[]]}}))
         body = post(client, {"points": POINTS, "preset": "default"}).json()
         assert body["by"] == "straight_line"
 
     def test_a_pair_the_router_cannot_join_is_not_ridden(self, client, router) -> None:
         times = along_the_line(POINTS)
         times[0][2] = None  # start to the middle stop cannot be ridden that way
-        router(FakeRouter({"sources_to_targets": matrix_answer(times, along_the_line(POINTS))}))
+        router(MatrixOnly({"sources_to_targets": matrix_answer(times, along_the_line(POINTS))}))
         body = post(client, {"points": POINTS, "preset": "default"}).json()
         assert body["order"][1] != 2
         assert body["after_s"] is not None
@@ -385,7 +565,7 @@ class TestEndpoint:
 
     def test_a_ride_that_ends_on_its_start_keeps_that_end(self, client, router) -> None:
         points = [*POINTS[:4], POINTS[0]]
-        router(FakeRouter({"sources_to_targets": matrix_answer(along_the_line(points))}))
+        router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(points))}))
         body = post(client, {"points": points, "preset": "default"}).json()
         assert body["order"][0] == 0 and body["order"][-1] == 4
 
@@ -403,7 +583,7 @@ class TestEndpoint:
         assert "outside the area" in response.json()["error"]
 
     def test_a_router_past_the_budget_leaves_the_straight_line_order(self, client, router):
-        router(FakeRouter({"sources_to_targets": routing.DeadlineExceeded("late")}))
+        router(MatrixOnly({"sources_to_targets": routing.DeadlineExceeded("late")}))
         response = post(client, {"points": POINTS, "preset": "default"})
         assert response.status_code == 200
         assert response.json()["by"] == "straight_line"
@@ -434,6 +614,32 @@ def test_free_stops_counts_the_points_that_may_move() -> None:
     assert stoporder.free_stops(POINTS, loop=True) == 4
     assert stoporder.free_stops([*POINTS[:3], POINTS[0]], loop=True) == 2
     assert stoporder.free_stops([], loop=False) == 0
+
+
+@pytest.mark.parametrize("n", range(4, 27))
+def test_the_chains_ride_every_pair_an_order_may_use_once(n) -> None:
+    pairs = []
+    for chain in stoporder._pairs_chains(n):
+        requests = stoporder._requests_of(chain)
+        assert all(2 <= len(r) <= stoporder.ROUTE_MAX_LOCATIONS for r in requests)
+        assert [i for r in requests for i in r[:-1]] + [requests[-1][-1]] == chain
+        for r in requests:
+            pairs.extend(zip(r, r[1:], strict=False))
+    stops = range(1, n - 1)
+    wanted = (
+        [(0, s) for s in stops]
+        + [(s, n - 1) for s in stops]
+        + [(s, t) for s in stops for t in stops if s != t]
+    )
+    assert sorted(pairs) == sorted(wanted)
+
+
+def test_a_request_holds_no_more_locations_than_the_routers_allow() -> None:
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "build_valhalla_configs.py"
+    text = path.read_text()
+    assert f'"max_locations": {stoporder.ROUTE_MAX_LOCATIONS},' in text
 
 
 def test_the_routers_serve_the_matrix() -> None:

@@ -2787,17 +2787,26 @@ What the strip changes besides access, so it is not mistaken for a fault:
 
 ## Best order needs the routers restarted once (OWNER-DECISIONS 449)
 
-"Best order" (`POST /api/stop-order`, `core.stoporder`) asks each router for a riding-time matrix,
-Valhalla's `sources_to_targets`, which the routers serve only once their config lists it in
+"Best order" (`POST /api/stop-order`, `core.stoporder`) orders up to ten stops by the router's cost
+from the legs of ordinary `/route` requests, which every router serves already. Past ten stops, or
+when those legs fail, it asks for a riding-time matrix, Valhalla's `sources_to_targets`, which the
+routers serve only once their config lists it in
 `loki.actions` (`valhalla/valhalla-*.json`, from `scripts/build_valhalla_configs.py`). The configs
 are read when a router starts, so after deploying the release that adds it, restart the routers once,
 as after a rebuild (below); the beta's CD restarts them itself when a `loki` key changes. Until then
-nothing fails: each press orders the stops by straight-line distance, the answer's `by` is
+nothing fails: a press that needs the matrix orders the stops by straight-line distance, the answer's `by` is
 `straight_line`, the page says the router's riding times were not available, and the api logs "the
 <variant> router gave no riding-time matrix" at WARNING (the variant and the router's error only,
 never the points).
 
-What one press costs: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`
+What one press costs, up to ten stops: k(k+1) route legs for k stops (12 at three stops, 42 at six,
+110 at ten), asked as one chained request through the stop-to-stop pairs (split at 50 locations)
+and one start-stop-end request for each other stop, one after another inside 12 s (`COST_BUDGET_S`),
+each request bounded like a route's call; a request is about as heavy as a plan through the same
+legs. The legs are logged at WARNING as "the <variant> router gave no leg costs" when they fail.
+They have not been measured on a real router: measure a ten-stop press on a ride of about 30 mi
+(50 km) before relying on it, and lower `COST_MAX_STOPS` if it runs near 12 s. Past ten stops, or
+when the legs fail: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`
 of 2,500), bounded on the api by `MATRIX_TIMEOUT_S` (20 s; 15 s on a weekend or off-road router) inside
 a 25 s budget, plus at most a few seconds of ordering in the worker (about a quarter of a second up to
 13 stops; new local-search starts stop after 3 s). It takes a routing slot and counts toward the

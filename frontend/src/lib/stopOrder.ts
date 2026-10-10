@@ -3,7 +3,8 @@
  * order that rides least. The API (POST /api/stop-order, core.stoporder) gets the
  * ride as a route request would send it and answers the new order; the page then
  * reorders its points as one edit, which Undo takes back, and the route is asked
- * for as after any edit. The start stays first and the end last; in a loop the
+ * for as after any edit. "Best" is what any route is best by (the owner, 2026-10-10):
+ * the router's cost, riding time with the ride's stress and hills priced in. The start stays first and the end last; in a loop the
  * rider chose (OWNER-DECISIONS 374) every point after the start is a stop and
  * may move. What changed is said in words, stop by stop.
  */
@@ -22,7 +23,7 @@ export const BEST_ORDER_LABEL = "Best order";
 export interface StopOrder {
   order: number[];
   changed: boolean;
-  by: "riding_time" | "straight_line" | null;
+  by: "route_cost" | "riding_time" | "straight_line" | null;
   exact: boolean;
   before_s: number | null;
   after_s: number | null;
@@ -108,20 +109,26 @@ function placeOf(point: LonLat, names: Names): string {
 function savings(answer: StopOrder): string {
   const parts: string[] = [];
   const { before_s, after_s, before_m, after_m } = answer;
-  if (answer.by === "riding_time" && before_s !== null && after_s !== null && before_s > after_s) {
+  const timed = answer.by !== "straight_line" && before_s !== null && after_s !== null;
+  if (timed && before_s > after_s) {
     parts.push(`about ${formatDuration(before_s - after_s)} less riding`);
+  } else if (timed && answer.by === "route_cost" && after_s > before_s) {
+    parts.push(`about ${formatDuration(after_s - before_s)} more riding`);
   }
   if (before_m !== null && after_m !== null && before_m !== after_m) {
     const diff = formatDistance(Math.abs(before_m - after_m));
     const way = after_m < before_m ? "shorter" : "longer";
     parts.push(answer.by === "straight_line" ? `${diff} ${way} in straight lines` : `${diff} ${way}`);
   }
-  if (parts.length === 0) return "";
+  // By the router's cost, an order no quicker is chosen for its calmer or flatter ways.
+  const calmer = answer.by === "route_cost" && !(timed && before_s > after_s);
+  if (parts.length === 0) return calmer ? " It is on calmer or flatter ways." : "";
   const text = parts.join(", ");
-  return ` ${text[0].toUpperCase()}${text.slice(1)}.`;
+  return ` ${text[0].toUpperCase()}${text.slice(1)}${calmer ? ", on calmer or flatter ways" : ""}.`;
 }
 
 const STRAIGHT_LINE_NOTE = " The router's riding times were not available, so this is by straight-line distance.";
+const RIDING_TIME_NOTE = " This is by riding time alone, without weighing traffic stress and hills as a route does.";
 
 /**
  * What is said after Best order: each stop that moved, in its new place, by name, with the
@@ -129,7 +136,7 @@ const STRAIGHT_LINE_NOTE = " The router's riding times were not available, so th
  * `points` are the points as they were before the reorder.
  */
 export function bestOrderSaid(points: readonly LonLat[], answer: StopOrder, names: Names, loop: boolean): string {
-  const note = answer.by === "straight_line" ? STRAIGHT_LINE_NOTE : "";
+  const note = answer.by === "straight_line" ? STRAIGHT_LINE_NOTE : answer.by === "riding_time" ? RIDING_TIME_NOTE : "";
   if (!answer.changed) return `The stops are already in the best order.${note}`;
   const n = points.length;
   const last = lastMoves(points, loop) ? n : n - 1;

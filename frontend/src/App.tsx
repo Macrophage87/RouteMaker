@@ -846,7 +846,7 @@ export function App() {
     commit(reversedPoints(current, loopVias));
     announce(reversedSaid(loopVias));
   };
-  // Best order (OWNER-DECISIONS 449): the stops in the order with the least riding time, as
+  // Best order (OWNER-DECISIONS 449): the stops in the order the router rates best, as
   // one edit Undo takes back. The answer is used only for the ride it was asked about
   // (stopOrder.applyAnswer). What came of it is the Points notice, a status, so it is seen
   // and said once; it is cleared once the points change again.
