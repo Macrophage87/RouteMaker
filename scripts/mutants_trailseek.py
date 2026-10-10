@@ -836,6 +836,20 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     (
+        "240A: no LTS 2 term at a calm rate of 0",
+        RF,
+        "        if ctx.rate == 0 and self.lts2_weight > 0:\n",
+        "        if False:\n",
+        REFINE,
+    ),
+    (
+        "240A: the LTS 2 term for a calm rate of 0 above 80 too",
+        RF,
+        "        if ctx.rate == 0 and self.lts2_weight > 0:\n",
+        "        if self.lts2_weight > 0:\n",
+        REFINE,
+    ),
+    (
         "240A: LTS 2 starts a trail seek",
         RF,
         '    return {tier: w for tier, w in exposure.weights.items() if tier != "2"}',

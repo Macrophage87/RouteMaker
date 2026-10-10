@@ -4154,8 +4154,19 @@ is not in control of the ride is stress-averse.
 - Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
   weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
   quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
-  weigh it the same way. Cargo with passengers starts at 80, where the calm rate is 0, so
-  there the weight only applies once the rider moves the slider above 80.
+  weigh it the same way.
+- At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
+  weight would never price a route where Cargo with passengers starts (review, blocking).
+  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
+  quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
+  `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
+  costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
+  slider does not move, the calm search does not turn on, and the router's requests are
+  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  If the owner prefers the weight to wait until the rider moves the slider above 80, the
+  term is one commit to drop.
 - At the top (100, maxcalm) the weight is in the second figure of the ranking:
   `Analysis.second_m` is LTS 3 + orange junctions + 0.25 x LTS 2, so between two routes
   with the same LTS 4 and red junctions, 656 ft (200 m) more LTS 2 is worth one 164 ft

@@ -14,6 +14,7 @@ import tempfile
 import pytest
 
 from core import presets, refine, routing, trailseek
+from routemaker import calm
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
 
@@ -2716,6 +2717,69 @@ class TestLts2Weight:
         calm = weighed(lts2_reading("c", "1" * 10, 0.25), NOT_IN_CONTROL)
         busy = weighed(lts2_reading("b", "2" * 10, 0.25), NOT_IN_CONTROL)
         assert busy.score(ctx) - calm.score(ctx) == pytest.approx(QUIET_COST * 4.0 * 0.25 * 1000.0)
+
+    @staticmethod
+    def at_80(name: str, carrying: str | None = None) -> refine.Context:
+        """A plan's context at 80 on the slider, where the calm rate is 0, with the
+        preset's own costing and exposure, as `routing.plan` builds it."""
+        ctx = context(rate=presets.calm_rate_for(80))
+        ctx.costing = presets.costing(name, 80)
+        ctx.quiet_cost = refine.quiet_cost_per_m(ctx.costing)
+        ctx.exposure = presets.exposure_for(name, carrying)
+        return ctx
+
+    def routes_at_80(self, ctx: refine.Context) -> tuple[refine.Analysis, refine.Analysis]:
+        """Two routes of the same length: one all quiet, one with 2 km of LTS 2 that
+        the router prices 100 s cheaper."""
+        w = ctx.exposure.lts2
+        quiet = lts2_reading("q", "1" * 40, w)
+        lts2 = lts2_reading("l", "2" * 20 + "1" * 20, w)
+        lts2.cost_s = quiet.cost_s - 100.0
+        return quiet, lts2
+
+    def test_at_80_cargo_with_passengers_prefers_the_route_with_less_lts2(self) -> None:
+        """FOLLOWUP-LTS2-WEIGHT review (blocking): Cargo with passengers starts at 80, where
+        the calm rate is 0, so the weight never priced a route. The score now charges a
+        metre of LTS 2 a quarter of what a metre of LTS 3 adds to the router's cost there,
+        about 4 quiet metres, so about 1."""
+        ctx = self.at_80("cargo", presets.CARRYING_PEOPLE)
+        assert ctx.rate == 0.0
+        assert ctx.costing["bicycle"]["use_roads"] == 0.0
+        added = refine.lts3_added_m(ctx)
+        assert added == pytest.approx(calm.ADDED[0][1] / refine.QUIET_COST_FACTOR)
+        assert 3.5 < added < 4.5
+        quiet, lts2 = self.routes_at_80(ctx)
+        assert lts2.score(ctx) - quiet.score(ctx) == pytest.approx(
+            ctx.quiet_cost * 0.25 * added * 2000.0 - 100.0
+        )
+        assert refine.better(quiet, lts2, ctx)
+        assert not refine.better(lts2, quiet, ctx)
+
+    def test_at_80_default_bikeshare_and_cargo_with_cargo_are_unchanged(self) -> None:
+        """The term is only for the rides that weigh LTS 2: elsewhere the router's cheaper
+        route still wins, by its own cost alone."""
+        for name, carrying in (
+            ("default", None),
+            ("bikeshare", None),
+            ("cargo", presets.CARRYING_CARGO),
+        ):
+            ctx = self.at_80(name, carrying)
+            quiet, lts2 = self.routes_at_80(ctx)
+            assert lts2.score(ctx) == lts2.cost_s, name
+            assert quiet.score(ctx) == quiet.cost_s, name
+            assert refine.better(lts2, quiet, ctx), name
+            assert not refine.better(quiet, lts2, ctx), name
+
+    def test_above_80_the_calm_rate_prices_lts2_alone(self) -> None:
+        """Above 80 the LTS 2 metres are in the exposure at the calm rate; the term for a
+        rate of 0 is not added on top."""
+        ctx = self.at_80("cargo", presets.CARRYING_PEOPLE)
+        ctx.rate = presets.calm_rate_for(90)
+        quiet, lts2 = self.routes_at_80(ctx)
+        quiet, lts2 = weighed(quiet, ctx.exposure), weighed(lts2, ctx.exposure)
+        assert lts2.score(ctx) - quiet.score(ctx) == pytest.approx(
+            ctx.quiet_cost * ctx.rate * 0.25 * 2000.0 - 100.0
+        )
 
     def test_at_the_top_a_route_with_less_lts2_ranks_calmer_on_these_rides_alone(self) -> None:
         ctx = context(maxcalm=True)

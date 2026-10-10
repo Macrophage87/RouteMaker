@@ -109,7 +109,7 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   assert.match(text, /more LTS 4, Avoid and very high stress crossings, counted together, than the router's own first route/);
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
   // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words.
-  assert.match(text, /on Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also counts as a quarter of a mile of LTS 3/);
+  assert.match(text, /On Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also counts as a quarter of a mile of LTS 3, wherever the slider is, including where Cargo Bike with passengers starts it/);
   // FOLLOWUP-KIDS-PRESET (240 (B)): every place ride types are listed names it.
   assert.match(page, /<tr><th scope="row">Trailmaxxing, Riding with kids<\/th><td>6<\/td>/);
   assert.match(text, /Riding with kids counts a mile of LTS 2 as half a mile of LTS 3/);

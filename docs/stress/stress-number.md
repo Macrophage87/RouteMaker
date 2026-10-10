@@ -75,7 +75,7 @@ shown as quiet-street distance at the preset's planning speed
 | Default (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
 | E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 3.4 mi [5.5 km] |
 | Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
-| Cargo Bike, with passengers (80) | 1 | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
+| Cargo Bike, with passengers (80) | 1 (LTS 2: 1.54-2.46) | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
 | Slider at 85, standard / stress-averse weights | 1 | 3.74-7.42 | 16.78-20.59 / 20.29-24.10 | 17.36-21.17 / 24.97-28.78 | as the preset |
 | Slider at 90, standard / stress-averse | 1 | 4.98-8.66 | 19.26-23.07 / 30.20-34.01 | 21.08-24.89 / 44.79-48.60 | as the preset |
 | Slider at 95, standard / stress-averse | 1 | 7.61-11.28 | 24.50-28.31 / 51.19-54.99 | 28.95-32.76 / 86.76-90.57 | as the preset |
@@ -94,7 +94,10 @@ Notes:
   a quarter of a meter of LTS 3 on Trailmaxxing and Cargo with passengers, and half on
   Riding with kids, in exposure, the strict order's second key and the worth rule
   (`refine.Analysis.second_m`, `refine.stress_weight_m`). Hence the LTS 2 figures in
-  the table: `1 + 5 x 0.25`, `1 + 5 x 0.5`, and 2.5 in place of 5 past a target. LTS 2
+  the table: `1 + 5 x 0.25`, `1 + 5 x 0.5`, and 2.5 in place of 5 past a target. At 80
+  and below, where the calm rate is 0 (Cargo with passengers' start), the score adds a
+  quarter of LTS 3's added router cost per meter of LTS 2 instead (`refine.lts3_added_m`),
+  hence `1 + 0.25 x` the LTS 3 figure's added part on that row. LTS 2
   never reaches a router request, and the rolling chart still draws it at 1. Elsewhere
   no rule separates LTS 1 and LTS 2. The
   facility class still changes the cost. A traffic-free path costs `0.1 + 0.9u` of its

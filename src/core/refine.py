@@ -32,6 +32,12 @@ passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
 LTS 4 and Avoid metres than the router's first, leg by leg or whole; OWNER-DECISIONS
 250, `more_lts4`.)
 
+On a ride that weighs LTS 2 (OWNER-DECISIONS 240), LTS 2 metres join the exposure
+at that weight. Where the calm rate is 0 (80 on the slider and below, where Cargo
+with passengers starts), the score adds instead LTS 2 metres x the ride's weight x
+what a metre of LTS 3 adds in the router's own cost (`lts3_added_m`, about 4 quiet
+metres at 80), so the weight still picks among the routes the router returns.
+
 QUIET COST is what a metre of quiet-street riding costs the router at the
 request's speed (`quiet_cost_per_m`: 2.2 times its time, measured on the live
 router). The calm rate is `presets.calm_rate_for(stress)` (0 up to the old top
@@ -74,7 +80,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 
-from routemaker import effort, trace_junctions
+from routemaker import calm, effort, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
@@ -142,6 +148,8 @@ IMPROVEMENT_EPS_S = 10.0
 # time: a residential street with no lane, measured on the live standard router
 # at every `use_roads` (median 2.2, 1.8 to 2.9).
 QUIET_COST_FACTOR = 2.2
+# Valhalla's own `use_roads` where a request sets none.
+VALHALLA_DEFAULT_USE_ROADS = 0.5
 # PROPOSALS for the owner. A metre of climb is this many metres of riding on the
 # hills slider's avoid end; the intersection weight at the traffic tolerant end.
 CLIMB_EQUIVALENT_M = 12.0
@@ -345,6 +353,8 @@ class Analysis:
         """The router's cost plus the extra price (see the module docstring)."""
         penalty = model.penalty_m(self.events) if self.events else 0.0
         extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
+        if ctx.rate == 0 and self.lts2_weight > 0:
+            extra += self.lts2_weight * lts3_added_m(ctx) * self.lts2_m
         return self.cost_s + ctx.quiet_cost * extra
 
     @property
@@ -378,6 +388,20 @@ class Analysis:
         258-263): the top figure, the second figure, and the distance as the Hills
         slider blends it (`level3`)."""
         return (self.top_m, self.second_m, level3(self, ctx))
+
+
+def lts3_added_m(ctx: Context) -> float:
+    """What a metre of LTS 3 adds in the router's own cost at this request's `use_roads`,
+    in metres of quiet street: the graded-stress model's added cost (`calm.added_cost`,
+    the middle of the five road types) over a quiet metre's (`QUIET_COST_FACTOR`), about
+    4 at 80 on the slider. The score's LTS 2 term at a calm rate of 0 (FOLLOWUP-LTS2-WEIGHT
+    review: Cargo with passengers starts at 80, where the rate is 0, so the weight never
+    priced a route there) charges a metre of LTS 2 the ride's share of it, a quarter
+    (OWNER-DECISIONS 240 (A)): about 1 quiet metre at 80. The router's requests are
+    unchanged; only the choice among the routes it returns."""
+    options = ctx.costing.get("bicycle") or {}
+    lts3, _lts4 = calm.added_cost(options.get("use_roads", VALHALLA_DEFAULT_USE_ROADS))
+    return lts3 / QUIET_COST_FACTOR
 
 
 def level3(read: Analysis, ctx: Context) -> float:
