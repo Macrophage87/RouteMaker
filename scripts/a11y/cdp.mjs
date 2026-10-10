@@ -560,6 +560,14 @@ export const S_DEFAULT = (() => {
   r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
   return r;
 })();
+/** Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): the top of the traffic slider, hills toward avoid. */
+export const S_KIDS = (() => {
+  const r = copy();
+  r.preset = "kids";
+  r.dials = { stress: 100, hills: -80, when: "weekday", carrying: null };
+  r.calm_search = { rate: 10, rounds: 2, excluded: 3, limited: null };
+  return r;
+})();
 /**
  * A Mass Ride with a group of signalized crossings (OWNER-DECISIONS 233, 234): a lone
  * unsignalized left, four signalized crossings within a quarter mile of one another (one red),
@@ -615,6 +623,20 @@ export const S_MASS = (() => {
   const tail = [entry("junction", 4000, 4000, "At 2.5 mi (4.0 km): Cross 9th Street Northwest (LTS 4), no signal mapped (Very high stress junction).", { severity: "red" })];
   r.description = [...head, group(true), ...tail];
   r.description_overview = [head[0], head[2], group(false), ...tail];
+  return r;
+})();
+/**
+ * The Mass Ride with a stretch on the Rock Creek and Potomac Parkway (item 239 (d)), by its OpenStreetMap
+ * name. Its end (hashFor's -77.01, 38.89) is in the U.S. Capitol grounds, a stop on federal land (239 (b)).
+ */
+export const S_MASS_FEDERAL = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS));
+  const parkway = entry("stretch", 3000, 3600, "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Parkway Northwest, busy road (LTS 3).", {
+    tier: 3,
+    street: "Rock Creek and Potomac Parkway Northwest",
+  });
+  r.description = [...r.description.slice(0, -1), parkway, ...r.description.slice(-1)];
+  r.description_overview = [...r.description_overview.slice(0, -1), parkway, ...r.description_overview.slice(-1)];
   return r;
 })();
 /**

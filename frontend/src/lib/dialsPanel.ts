@@ -215,7 +215,7 @@ export function calmNote(stress: number, _preset?: PresetId): string | undefined
 export const CALM_HOW =
   "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and " +
   "higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the " +
-  `same as a trail. It goes no further than ${TARGET_CEILING_RATIO} times your target distance, or ${DEFAULT_CEILING_RATIO} ` +
+  `same as a trail, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets (LTS 2) count a little extra. It goes no further than ${TARGET_CEILING_RATIO} times your target distance, or ${DEFAULT_CEILING_RATIO} ` +
   "times the usual route when no target is set.";
 
 export const MASS_RIDE_HILLS_NOTE =

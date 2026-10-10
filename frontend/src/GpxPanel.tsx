@@ -26,6 +26,8 @@ interface Props {
   /** Replace the plan's points with a closer fit to the opened track. */
   onRefine: (points: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
+  /** A Mass Ride's federal-land lines, for the file's description (lib/federalStops.ts, item 239). */
+  federal?: readonly string[];
 }
 
 /** Fitting an imported track: the points last set for it, and the rounds so far. */
@@ -53,8 +55,8 @@ function bounds(line: readonly LonLat[]): [number, number, number, number] {
  * Download the route shown as a GPX file, built here from it (gpx.ts). Shared by this panel's
  * Download GPX and the sidebar's pinned one (App.tsx, OWNER-DECISIONS 312).
  */
-export function downloadGpx(route: RouteResponse, routedPoints: LonLat[], loop: boolean): void {
-  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop))], { type: "application/gpx+xml" });
+export function downloadGpx(route: RouteResponse, routedPoints: LonLat[], loop: boolean, federal: readonly string[] = []): void {
+  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop, federal))], { type: "application/gpx+xml" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -73,7 +75,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, loop = false } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, loop = false, federal = [] } = props;
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
@@ -150,7 +152,7 @@ export function GpxPanel(props: Props) {
   };
 
   const download = () => {
-    if (route) downloadGpx(route, routedPoints, loop);
+    if (route) downloadGpx(route, routedPoints, loop, federal);
   };
 
   return (

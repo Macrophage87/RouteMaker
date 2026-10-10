@@ -312,10 +312,18 @@ export function setStressVisibility(map: OverlayMap, visible: boolean): void {
  * The markers effect's dependencies: the points, the counter App bumps to
  * put a dragged marker back without changing the points (a drag outside the
  * area), and the loop toggle, which renames them (OWNER-DECISIONS 374).
- * Without the counter a put-back marker stays where it was dropped.
+ * Without the counter a put-back marker stays where it was dropped. `federal`
+ * is a Mass Ride's per-point federal-land warnings (lib/federalStops.ts, item
+ * 239), which change a marker's name and badge; passed as an array, it is
+ * compared by its words, so a new array saying the same keeps the markers.
  */
-export function markerDeps<P>(points: readonly P[], markerReset: number, loop?: boolean): readonly unknown[] {
-  return [points, markerReset, loop === true];
+export function markerDeps<P>(
+  points: readonly P[],
+  markerReset: number,
+  loop?: boolean,
+  federal?: ReadonlyArray<string | null>,
+): readonly unknown[] {
+  return [points, markerReset, loop === true, (federal ?? []).map((w) => w ?? "").join("\n")];
 }
 
 /** What is under the pointer, as MapView finds it. */

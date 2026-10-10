@@ -717,7 +717,13 @@ class TestWhatIsSentToTheRouter:
         base = settings.VALHALLA_UPSTREAMS[presets.variant_for_ride(name, routing.default_when())]
         preset = presets.PRESETS[name]
         middle = presets.costing(name, presets.stress_start(name), 0)
-        if preset.hills < 0:
+        if preset.hills < 0 and presets.maxcalm_for(preset.stress):
+            # Riding with kids (FOLLOWUP-KIDS-PRESET): the avoid half's trip at the hills
+            # middle, and then the top of the slider's asks, as Trailmaxxing's below.
+            assert fake.endpoints()[:2] == ["route", "route"]
+            assert fake.calls[1][1]["costing_options"] == middle
+            assert set(fake.endpoints()[2:]) == {"trace_attributes", "route"}
+        elif preset.hills < 0:
             # The avoid half asks for the same trip at the hills middle and
             # traces both, so a busier route gives way to the calmer one (the
             # owner, 2026-09-28: "Traffic wins").

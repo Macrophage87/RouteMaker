@@ -70,6 +70,8 @@
 	redir @preset-ebike /#preset=ebike 302
 	@preset-bikeshare path /bikeshare /bikeshare/
 	redir @preset-bikeshare /#preset=bikeshare 302
+	@preset-kids path /kids /kids/
+	redir @preset-kids /#preset=kids 302
 
 	# Django's collected assets, from the volume `collectstatic` writes and this
 	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL

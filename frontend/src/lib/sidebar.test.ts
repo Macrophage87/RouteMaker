@@ -299,11 +299,15 @@ test("a Mass Ride loads the federal-land data whatever the shading switch says, 
   assert.match(map, /\}, \[props\.federalVisible, props\.federalWanted\]\);/);
 });
 
-test("Mass Ride's points on federal land are listed in the planner too, with their own heading id", () => {
-  const points = app.slice(app.indexOf("const federalPlanner"), app.indexOf("const routeSection"));
-  assert.match(points, /federalShown\(preset, true\) && \(/);
-  assert.match(points, /<FederalPointsList[\s\S]*headingId="federal-points-planner-heading"/);
+test("Mass Ride's points on federal land: a warning on each row and marker, and the planner says when none is (item 239)", () => {
+  const points = app.slice(app.indexOf("const federalAreas"), app.indexOf("const routeSection"));
+  assert.match(points, /pointAreas\(points, federalData, federalShown\(preset, true\)\)/);
+  assert.match(points, /area \? stopWarningShort\(area\) : null/);
+  assert.match(points, /federalAreas\.every\(\(area\) => area === null\) && \(\s*<p className="hint federal-points">\{FEDERAL_POINTS_NONE\}<\/p>/);
   assert.match(points, /\{federalPlanner\}/);
+  assert.match(points, /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
+  assert.match(app, /pointWarnings=\{riding \? undefined : pointWarnings\}/);
+  // The Map layers sheet keeps its own list.
   const html = renderToStaticMarkup(
     createElement(FederalPointsList, {
       found: [{ index: 0, name: "National Mall", manager: "NPS" }] as never,
@@ -396,7 +400,7 @@ test("the route's folds: Elevation and stress, Stress and facilities, Directions
   const order = [
     "title={foldName(chartKind(route))}",
     "<Fold title={ROUTE_FOLDS.facilities.title}",
-    "<RouteDescription route={route} fold rideAction={rideAction} />",
+    "<RouteDescription route={route} fold rideAction={rideAction} federal={federal} />",
     "foldTitle(ROUTE_FOLDS.junctions.title, junctions)",
     "foldTitle(ROUTE_FOLDS.choices.title, pickerCount)",
   ].map(at);
@@ -495,7 +499,7 @@ test("GPX and Copy link are pinned under the scrolling part, outside it", () => 
   const scrollEnd = app.indexOf("</div>\n\n          {/* Pinned under");
   const pinned = app.indexOf('<div className="route-actions">');
   assert.ok(scrollEnd > 0 && pinned > scrollEnd, "outside .panel-scroll");
-  assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop\)\}>\s*Download GPX/);
+  assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop, federalRoute\)\}>\s*Download GPX/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
