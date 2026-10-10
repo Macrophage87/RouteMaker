@@ -1869,7 +1869,11 @@ A **failed** attempt's run row ends with what it kept and what the next attempt 
 `Checkpoints: graphs reused: none; built: standard, no-trail; 3 written by this attempt; the
 next attempt of job 8408 (a retry, or an unwedge_job requeue) resumes build 20261009T080000Z
 if its inputs are unchanged ...`, or `no classification checkpoint is kept, so a retry starts
-fresh`.
+fresh`. A failure that
+is not retried (an abandoned job: validation, a timeout at its retry cap, a failure after
+the swap) says `this failure is final, so the job is not retried and nothing resumes it`
+instead: a failed job cannot be requeued, and the next new job starts fresh and removes the
+kept build.
 
 Time saved on the 2026-10-08/09 pattern: a crash in the last graph used to cost 4.3 to 7.5
 hours (everything again); it now costs the checks (2 to 5 minutes), the offroad graph (about
@@ -1925,7 +1929,16 @@ pre-draw runs. Do it only when a promotion is wanted anyway. Steps:
 
 1. **Pick the window.** At `REBUILD_TILE_CONCURRENCY=1` a whole rebuild is up to about
    8.3 hours and the kill and resume add about 1 to 1.5 hours (the killed graph again, and
-   VALIDATE_TILES), so start between **07:30 and 21:30 UTC** ("The rebuild's own budget").
+   VALIDATE_TILES), so start between **07:30 and about 21:00 UTC** ("The rebuild's own
+   budget"): after the 07:00 nightly backup has finished, and early enough that the swap
+   does not land in the next 07:00 to 07:30 backup window (a swap there undoes itself and the
+   job retries, which is safe but spends an attempt and leaves a red run row). Allow for the
+   minutes you take between the kill and the start. **Do not start on a Tuesday before
+   08:00 UTC**, and not on a Monday late enough to still be running then: the weekly rebuild
+   is scheduled for Tuesday 08:00 UTC (`WEEKLY_REBUILD_CRON`), and a tick that arrives while
+   the trial is running queues behind it on the single-slot rebuild queue and runs a
+   second full rebuild, and promotion, as soon as the trial finishes. Either start after
+   08:00 UTC on a Tuesday, or set `WEEKLY_REBUILD_PAUSED` before you start (never between the attempts).
 2. **Change nothing between the attempts.** No new image, no `.env` change, no override
    approved, no `up -d`: any of them changes the fingerprint and the resume becomes a fresh
    start, which is not what is under test.
@@ -1942,9 +1955,17 @@ pre-draw runs. Do it only when a promotion is wanted anyway. Steps:
    when `/data/tiles/weekend/<B>/routemaker-graph.json` exists and `/data/tiles/offroad/<B>/`
    exists **without** one.
 6. **Record the evidence before the kill**, for each of standard, no-trail, ebike and
-   weekend: `sha256sum` and `stat -c %Y` of `/data/tiles/<variant>/<B>/tiles.tar`, and the
-   `outputs["tiles.tar"].sha256` in that directory's `routemaker-graph.json` (they must
-   already agree).
+   weekend: the `sha256sum` and `stat -c %Y` of `/data/tiles/<variant>/<B>/tiles.tar`, and
+   the `outputs["tiles.tar"].sha256` in that directory's `routemaker-graph.json` (they must
+   already agree). Paste this, with `<B>` replaced by the build id, and keep the output; the
+   paths exist only inside the `rebuild` container:
+
+   ```sh
+   docker compose exec -T -e B=<B> rebuild sh -c 'for v in standard no-trail ebike weekend; do d=/data/tiles/$v/$B; echo "$v tar=$(sha256sum $d/tiles.tar | cut -d" " -f1) mtime=$(stat -c %Y $d/tiles.tar) manifest=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[\"outputs\"][\"tiles.tar\"][\"sha256\"])" $d/routemaker-graph.json)"; done' </dev/null
+   ```
+
+   Each line's `tar=` and `manifest=` values must be equal. The same command after the
+   resume (step 10) must print the same `tar=` and `mtime=` values.
 7. **Kill it, only during BUILD_TILES**, never once VALIDATE_TILES or SWAP has started:
    `docker compose kill rebuild`.
 8. **Wait at least 30 seconds**, so the killed worker's heartbeat is stale; `unwedge_job`
@@ -1961,10 +1982,10 @@ pre-draw runs. Do it only when a promotion is wanted anyway. Steps:
 
 10. **Check the resume.** The log says `resumed job <id> build <B>`, `reusing the standard
     graph` (and the other three), `rebuilding the offroad graph ... no valid manifest` and
-    `removed the partial or stale offroad graph`. For each reused graph, `sha256sum` of
-    `tiles.tar` still equals its manifest's and the step 6 value, and its mtime is still
-    before the kill. (Comparing with `current` after the swap proves nothing: it points at
-    the same directory.) The run row says `Checkpoints: resumed job ...; graphs reused:
+    `removed the partial or stale offroad graph`. For each reused graph, the step 6 command
+    prints the same `tar=` and `mtime=` as before the kill, and `tar=` still equals its
+    `manifest=` (the mtime is still before the kill). (Comparing with `current` after the
+    swap proves nothing: it points at the same directory.) The run row says `Checkpoints: resumed job ...; graphs reused:
     standard, no-trail, ebike, weekend; built: offroad`. Note the run's `hash_seconds`.
 
 **Abort line:** if the log says `not resuming the classification checkpoint`, the trial has

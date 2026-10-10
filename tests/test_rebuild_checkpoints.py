@@ -1840,4 +1840,4 @@ def test_new_validation_numbers_that_cannot_be_recorded_do_not_fail_the_resume(
     assert second.error is None, second.error
     assert second.context.resumed and second.context.revalidate_staging
     assert not second.context.checkpoints
-    assert built(second.binaries) == ["offroad"]
+    assert Stage.VALIDATE_TILES in second.report.completed
