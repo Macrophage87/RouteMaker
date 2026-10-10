@@ -5690,9 +5690,12 @@ section (a heading each, the figures a description list with the source in words
 way's OSM id and distance, and the credit; then the bottom action row (441m), links drawn
 as buttons: "Street View" (its privacy note its description) and "Edit in OSM"
 (`https://www.openstreetmap.org/edit?way=ID`, hidden without a way id, its note "Needs an
-OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is the editing
-release's: `RoadInfoDialog`'s `changeLtsAction` prop draws it third in the row, and nothing
-passes it yet. A polite status region inside the dialog (always rendered, empty until the
+OpenStreetMap account; don't copy from Google Street View"). "Change LTS" is an instance
+admin's third button in the row (StressEditor.tsx; docs/OPERATIONS.md, "Change LTS"); a rider
+the suggestion setting allows gets "Suggest a change" there instead (SuggestChange.tsx,
+`core.suggestions`; the admin reviews in the Settings sheet, SuggestionReview.tsx, and "Send to
+Discord" builds the copy-paste poll in `core.suggestion_post`; docs/OPERATIONS.md, "Rider
+suggestions"). A polite status region inside the dialog (always rendered, empty until the
 answer comes) says one short sentence ("Connecticut Avenue Northwest: LTS 3, for experienced
 cyclists." and on a closed way "Bikes not allowed here."); the page's own region would be
 silent, since the modal makes everything outside it inert. On a phone it is a sheet from

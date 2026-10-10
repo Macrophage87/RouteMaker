@@ -70,6 +70,24 @@ function numberOrUndefined(value: string | null): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** The zoom a spot link (`#at=lon,lat`) opens at: street level, where half steps show. */
+export const AT_ZOOM = 16;
+
+/**
+ * A spot on the map to open at (`#at=lon,lat`), or null: the link a rider suggestion's Discord post
+ * carries (core/suggestions.py `map_url`; OWNER-DECISIONS 2026-10-10). Only a spot inside the covered
+ * area; anything else opens the map as usual.
+ */
+export function atFromHash(hash: string): LonLat | null {
+  const raw = new URLSearchParams(hash.replace(/^#/, "")).get("at");
+  if (!raw) return null;
+  const parts = raw.split(",");
+  if (parts.length !== 2) return null;
+  const point: LonLat = [Number(parts[0]), Number(parts[1])];
+  if (!Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !insideCoverage(point)) return null;
+  return point;
+}
+
 export function decodePlan(hash: string): Plan {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const points: LonLat[] = [];

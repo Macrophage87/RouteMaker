@@ -51,6 +51,8 @@ import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
+import { SuggestChange } from "./SuggestChange.tsx";
+import { SUGGEST_TEXT } from "./lib/suggestions.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
@@ -106,6 +108,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   // Who is asking (three yes/no flags, once per page) and whether the stress editor is open.
   const [me, setMe] = useState<Me>(NO_ME);
   const [editing, setEditing] = useState(false);
+  // A rider's "Suggest a change" form (OWNER-DECISIONS 441h; SuggestChange.tsx), open in place of the row.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestButton = useRef<HTMLButtonElement>(null);
+  const returnToSuggest = useRef(false);
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
   const changeButton = useRef<HTMLButtonElement>(null);
@@ -131,6 +137,7 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     setState({ kind: "loading" });
     setSaid("");
     setEditing(false);
+    setSuggesting(false);
     setReload(0);
     void fetchMe(window.location.origin).then(setMe);
     const controller = new AbortController();
@@ -168,6 +175,14 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     }
   }, [editing]);
 
+  // Back from the suggestion form: its button takes the focus.
+  useEffect(() => {
+    if (!suggesting && returnToSuggest.current) {
+      returnToSuggest.current = false;
+      suggestButton.current?.focus();
+    }
+  }, [suggesting]);
+
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -197,11 +212,17 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
     setEditing(false);
   };
 
+  const closeSuggest = () => {
+    returnToSuggest.current = true;
+    setSuggesting(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
       // Escape cancels the editor, not the whole panel.
       if (editing) closeEditor();
+      else if (suggesting) closeSuggest();
       else close();
       return;
     }
@@ -231,6 +252,10 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
   const osmEdit = ready ? osmEditUrl(ready) : null;
   const actions = spotActions(plan.count, plan.loop);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
+  // A rider the settings allow may suggest a level (an instance admin changes it instead).
+  const suggestWay =
+    ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
+  const suggestingNow = suggesting && suggestWay !== null;
 
   return (
     <dialog
@@ -403,7 +428,19 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
             />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && (
+        {request && suggestingNow && ready && suggestWay !== null && (
+          <div className="road-info-actions">
+            <SuggestChange
+              origin={window.location.origin}
+              wayId={suggestWay}
+              title={ready.title}
+              current={ready.step ?? ready.tier ?? 3}
+              point={request.point}
+              onClose={closeSuggest}
+            />
+          </div>
+        )}
+        {request && !(editing && editableWay !== null) && !suggestingNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -434,6 +471,13 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
                 <li>
                   <button type="button" className="road-info-button" ref={changeButton} onClick={() => setEditing(true)}>
                     {CHANGE_LTS_TEXT}
+                  </button>
+                </li>
+              )}
+              {suggestWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
+                    {SUGGEST_TEXT}
                   </button>
                 </li>
               )}

@@ -49,6 +49,8 @@ from .models import (
     RoleMapping,
     Session,
     StressEdit,
+    StressSuggestion,
+    SuggestionSettings,
     User,
     ValhallaUpstream,
     cancel_instance_admin_removal,
@@ -540,6 +542,83 @@ class StressEditAdmin(AuditedAdmin):
         if obj.actor_user_id is not None:
             return f"deleted user {obj.actor_user_id}"
         return "no actor"
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_module_permission(self, request) -> bool:
+        return self.has_view_permission(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(SuggestionSettings, site=site)
+class SuggestionSettingsAdmin(AuditedAdmin):
+    """Who may suggest a change to a road's traffic stress (460.4): nobody (the default),
+    anyone signed in, or members of a configured Discord server. One row; an instance
+    admin's only."""
+
+    list_display = ("who", "updated_at")
+    fields = ("who",)
+
+    def _admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._admin(request)
+
+    def has_add_permission(self, request) -> bool:
+        return self._admin(request) and not SuggestionSettings.objects.exists()
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def save_model(self, request, obj, form, change) -> None:
+        obj.pk = 1
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(StressSuggestion, site=site)
+class StressSuggestionAdmin(AuditedAdmin):
+    """Riders' suggestions and what became of each. Read-only: the review's three actions
+    (approve now, delete, send to Discord) are in the map's review panel, which applies an
+    approval through the editor's own path (core.suggestions)."""
+
+    list_display = ("created_at", "osm_way_id", "road_name", "tier", "half", "status")
+    list_filter = ("status",)
+    ordering = ("-created_at",)
+    exclude = ("suggester", "decided_by")
+    readonly_fields = (
+        "created_at",
+        "suggester_user_id",
+        "kind",
+        "osm_way_id",
+        "lat",
+        "lon",
+        "road_name",
+        "current_tier",
+        "current_half",
+        "tier",
+        "half",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+        "edit",
+    )
 
     def has_view_permission(self, request, obj=None) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))

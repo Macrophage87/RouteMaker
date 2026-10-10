@@ -133,7 +133,7 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false } = {}) {
   page.routeRequests = 0;
   // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
   page.routeBodies = [];
@@ -144,6 +144,10 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
   // the next write instead ({ status, body }).
   page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0 };
+  // Rider suggestions (core/suggestions.py): `suggester` makes this visitor a rider the settings allow;
+  // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
+  page.suggestRequests = [];
+  page.suggestionsOpen = [SUGGESTION_ITEM];
   page.editRequests = [];
   page.editFail = null;
   page.tileUrls = [];
@@ -198,8 +202,33 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       type = "application/json";
     } else if (url.pathname === "/api/me") {
       status = 200;
-      body = JSON.stringify({ signed_in: admin, can_change_lts: admin, can_suggest: false });
+      body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
       type = "application/json";
+    } else if (url.pathname.startsWith("/api/stress-suggestions")) {
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.suggestRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/stress-suggestions\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/stress-suggestions" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: "Thanks. Your suggestion was sent to the map's admins. Nothing changes on the map until one of them reviews it." });
+      } else if (url.pathname === "/api/stress-suggestions/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ suggestions: page.suggestionsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          page.suggestionsOpen = page.suggestionsOpen.map((x) => (x.id === id ? { ...x, status: "sent_to_discord" } : x));
+          body = JSON.stringify({ id, status: "sent_to_discord", post: DISCORD_POST, characters: DISCORD_POST.length, options: [] });
+        } else {
+          page.suggestionsOpen = page.suggestionsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is now LTS 2.5, fine for most confident adults. The map shows it now." : "Deleted.", generation: 1 });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
     } else if (admin && url.pathname.startsWith("/api/stress-edits")) {
       const road = page.editRoad;
       const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
@@ -670,6 +699,35 @@ export const STEP_WORDS = {
   3: "For experienced cyclists", 3.5: "Stressful even for experienced cyclists", 4: "High stress: busy, fast traffic", 4.5: "A very high-stress road", 5: "Avoid",
 };
 const STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+/** One rider suggestion waiting for review (core/suggestions.py summary). */
+export const SUGGESTION_ITEM = {
+  id: 41, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, current_step: 3, current_words: STEP_WORDS[3],
+  step: 2.5, words: STEP_WORDS[2.5], reason: "A protected lane opened this summer.", status: "pending",
+  created_at: "2026-10-10T14:00:00+00:00", sent_at: null,
+};
+/** The plain-English poll the Discord action answers (core/suggestion_post.py). */
+export const DISCORD_POST = [
+  "**How comfortable is biking on Oak Street, between Elm Street and Ash Avenue?**",
+  "A rider suggested it's calmer than we rate it.",
+  "",
+  "We currently show it as: OK for confident riders",
+  'The rider suggested: Between "Fine for most people, even nervous riders" and "OK for confident riders"',
+  "> A protected lane opened this summer.",
+  "",
+  "Where: Oak Street between Elm Street and Ash Avenue (near 38.90000, -77.03000)",
+  "Map: <http://127.0.0.1/#at=-77.03000,38.90000>",
+  "",
+  "Please weigh in by reacting with one letter:",
+  "\u{1F1E6} Fine for anyone, kids included",
+  "\u{1F1E7} Fine for most people, even nervous riders",
+  "\u{1F1E8} OK for confident riders",
+  "\u{1F1E9} Only for very experienced riders",
+  "\u{1F1EA} Avoid it",
+  "\u{1F1EB} Not sure",
+  "",
+  "Votes help set how the road is shown on the bike map.",
+].join("\n");
 
 /** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */
 export function editorState(road) {

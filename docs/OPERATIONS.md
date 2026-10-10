@@ -1586,8 +1586,84 @@ half-step way and the graph's Lua transform prices it between its two levels
 section 3). Until the next rebuild after this release, the router prices a half step as its lower
 level; the map, the road panel and RouteMaker's own ranking use the half step at once.
 
-**Not in this phase:** suggestions from other riders, and a named stretch longer than one road
-piece (`docs/` plan: HALF-STEP-EDITOR-plan.md phases 4 and 5). "Only raise it" is
+**Not in this phase:** a named stretch longer than one road piece (`docs/` plan:
+HALF-STEP-EDITOR-plan.md phase 5).
+
+## Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; HALF-STEP-EDITOR phase 4)
+
+A signed-in rider the settings allow sees **Suggest a change** in the road panel (in place of
+Change LTS, which stays an instance admin's): a level from 1 to 5 by halves and a required reason
+(500 characters at most). Nothing changes on the map until an instance admin reviews it. The owner's
+words, 2026-10-10 (UTC):
+
+- 13:57: "So there's one of three options: I know that that road probably should be
+  rescheduled, so I'll make it happen immediately; that request seems absurd, so I delete
+  it; or I don't know enough about the road or the area, so I'll let the community decide."
+- 13:59: "I meant discord itself." (The third action sends the suggestion to Discord; no
+  voting inside RouteMaker.)
+- 14:00: "If it's too much to send directly, then provide something I can copy paste as a
+  post to discord."
+- 14:01: "I like the fallback because I can also poll one of several bike groups I'm a part
+  of." (The copy is the action that is always there; direct posting is optional.)
+- 14:08: "Not everyone is familiar with that scale, so give a plain english request." (The
+  poll's question and options are plain US English, never an LTS number alone.)
+
+**Who may suggest** is the admin's **Suggestion settings** page: nobody (the default, until an
+instance admin opens it), anyone signed in, or members of a configured Discord server (a usable
+membership in a guild in standing). An instance admin is never offered it; they edit directly.
+
+**The review** is in the map's Settings sheet, **Rider suggestions**, for an instance admin only.
+Each waiting suggestion has the owner's three actions:
+
+1. **Approve now**: applied at once as the admin's own edit, by the editor's path
+   (`stress_edits.apply`: the override row, the live rows, the edit history, the tiles). Its
+   private reason is "Rider suggestion N, approved: " and the rider's reason. Undo it from the road
+   panel's editor within 30 minutes, as any edit.
+2. **Delete**.
+3. **Send to Discord**: shows a ready-to-paste poll with a **Copy post** button (it says "Copied")
+   and marks the suggestion as sent. It stays in the list to approve or delete after the community
+   has weighed in. Nothing is posted by RouteMaker itself: the copy works for any server or group,
+   and a direct webhook is not built (optional, the owner's 14:01).
+
+The poll (`core/suggestion_post.py`) is at most 2,000 characters (Discord's limit; the reason is
+shortened first), uses bold for the question and a quote for the reason and no other markdown,
+mentions nobody, pings no role, names no server or channel, and carries nothing about the rider. It
+asks in plain words, for example "**How comfortable is biking on Oak Street, between Elm Street and
+Ash Avenue?** A rider suggested it's calmer than we rate it.", then "We currently show it as: OK for
+confident riders" and "The rider suggested: Fine for most people, even nervous riders", the reason,
+the place in words (road, cross streets where the map data has them, and the spot) and a link to
+the spot on RouteMaker's map (`/#at=lon,lat`, which opens the map there at street level). The
+options are lettered reactions, each standing for one level, so the votes can be read back
+(`suggestion_post.tier_for_vote`):
+
+| Reaction | Option | Level |
+|---|---|---|
+| A | Fine for anyone, kids included | LTS 1 |
+| B | Fine for most people, even nervous riders | LTS 2 |
+| C | OK for confident riders | LTS 3 |
+| D | Only for very experienced riders | LTS 4 |
+| E | Avoid it | Avoid |
+| F | Not sure | none |
+
+A half step is said as the two it lies between ('Between "Fine for most people, even nervous
+riders" and "OK for confident riders"'). The same builder has a junction's wording ("Is crossing
+New York Avenue NE at Florida Avenue NE harder or easier than we show?", options Easy / Takes
+patience / Hard / Avoid crossing here / Not sure), for when junction suggestions arrive; the panel
+suggests road pieces only today.
+
+**Security.** `POST /api/stress-suggestions` needs a session of an account the setting allows
+(401 / 403, audited), a JSON body, the CSRF token, a same-site request, the address count (120 a
+minute) and 10 suggestions an hour per account; one waiting suggestion per road per rider and 20
+waiting in all. The review endpoints (`GET /api/stress-suggestions/open`, `POST
+/api/stress-suggestions/{id}/approve|delete|discord`) are the editor's: an active instance admin,
+CSRF, same-site, 60 writes an hour. Every action is an `audit_log` entry. All answer
+`Cache-Control: no-store`. The suggester's account is on the `stress_suggestion` row for the admin
+only; the table is left out of the beta's data shipment (`scripts/beta/ship-data.sh`).
+
+**The migration** is `core/migrations/0014_stress_suggestions.py` (two new tables, nothing
+changed). It depends on `0012_bikeshare_feed_cache`: `0013` is the MTB difficulty levels on another
+branch. **When both merge, re-point 0014 to depend on 0013 (or renumber it) so the chain stays
+linear.** `migrate` runs at `up`, as always. "Only raise it" is
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 

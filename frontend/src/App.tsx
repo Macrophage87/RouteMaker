@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { SuggestionReview } from "./SuggestionReview.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_HELP, ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
@@ -12,7 +13,7 @@ import { requestRoute, type RouteError, type RouteResponse, type RouteResult } f
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
-import { decodePlan, encodePlan } from "./lib/planHash.ts";
+import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -187,6 +188,8 @@ type Status =
   | { kind: "confirm"; error: RouteError };
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+// A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
+const OPEN_AT = atFromHash(window.location.hash);
 
 const NARROW = "(max-width: 720px)";
 
@@ -1686,6 +1689,7 @@ export function App() {
       <MapView
         points={riding ? NO_POINTS : points}
         loopVias={loopVias}
+        openAt={OPEN_AT}
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale}
         stressVisible={stressVisible && stress === "available"}
@@ -2010,6 +2014,13 @@ export function App() {
                   ; your current plan is kept across the sign-in.
                 </p>
               </section>
+              {/* An instance admin's review of rider suggestions (OWNER-DECISIONS 460.5); nothing for anyone else. */}
+              <SuggestionReview
+                onStressChanged={(generation) => {
+                  const map = mapRef.current;
+                  if (map) refreshStressTiles(map, window.location.origin, generation);
+                }}
+              />
             </SheetFrame>
           </div>
 

@@ -98,10 +98,12 @@ corrections"; `src/routemaker/agency_roads.py`, `withheld_blocks`, `resolve_with
 - The owner's acceptance of specific overrides **in chat is the sign-off**. An operator
   may then load them: dry run first, then `--confirm` as the instance admin, stopping on
   any mismatch.
-- The planned half-step editor keeps the rule. An instance admin's edit is that
-  admin's own act. A signed-in rider's suggestion goes to a separate table and is never
-  applied automatically: an admin approves, declines or (460.5) sends it to Discord for
-  discussion (HALF-STEP-EDITOR-plan sections 5.1-5.3). **Planned.**
+- The stress editor keeps the rule. An instance admin's edit is that admin's own act. A
+  signed-in rider's suggestion goes to a separate table (`stress_suggestion`) and is never
+  applied automatically: an admin approves it now (as their own edit), deletes it, or
+  (460.5) sends it to Discord as a copy-paste plain-English poll and decides later
+  (HALF-STEP-EDITOR-plan sections 5.1-5.3; the owner, 2026-10-10; docs/OPERATIONS.md,
+  "Rider suggestions"). **Built.**
 
 ## Re-matching by fingerprint (OWNER-DECISIONS 282)
 

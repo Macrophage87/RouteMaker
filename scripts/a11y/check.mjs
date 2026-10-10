@@ -31,10 +31,10 @@ const b = await connect(Number(arg("--cdp", "9222")));
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles, admin });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
@@ -2298,6 +2298,117 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 
+// ---- 22b. Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; the owner, 2026-10-10) ----
+const SUGGEST = "dialog.road-info .suggest-change";
+{
+  // A rider the settings allow: Suggest a change in the panel's row, in place of Change LTS.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change')", 8000);
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
+    const last = ul?.querySelector('li:last-child > *');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("suggestions: a rider the settings allow gets a Suggest a change button (not Change LTS) in the panel's bottom row, at least 44px tall",
+    opened && row.names.at(-1) === "Suggest a change" && !row.names.includes("Change LTS") && row.tag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Suggest a change').click(); true");
+  await p.waitFor(`!!document.querySelector('${SUGGEST} input[type=range]')`, 8000);
+  await sleep(100);
+  const slider = `${SUGGEST} input[type=range]`;
+  const form = await p.eval(`(() => { const e = document.querySelector('${SUGGEST}'); const h = e?.querySelector('h3'); const r = e?.querySelector('input[type=range]');
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, step: r?.step, rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons') }; })()`);
+  const ax = await axNode(p, slider);
+  await p.eval(`document.querySelector('${slider}').focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const half = (await axNode(p, slider))?.valuetext;
+  check("suggestions: it opens in the same dialog, its heading focused, an empty status region in the page, and a half-step level control named and read as its words (3, then 2.5, Fine for most confident adults)",
+    form.heading === "Suggest a traffic stress level" && form.focus && form.status === "" && form.step === "0.5" && form.rowGone &&
+      ax?.name === "The level you suggest" && ax?.valuetext === "3, For experienced cyclists" && half === "2.5, Fine for most confident adults", JSON.stringify({ form, ax, half }));
+
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`!!document.querySelector('${SUGGEST} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const t = document.querySelector('${SUGGEST} textarea'); return { alert: document.querySelector('${SUGGEST} [role=alert]')?.textContent ?? '', focus: document.activeElement === t, invalid: t?.getAttribute('aria-invalid') }; })()`);
+  check("suggestions: sending with no reason says so in an alert, moves the focus to the reason marked invalid, and sends nothing",
+    /why/i.test(empty.alert) && empty.focus && empty.invalid === "true" && !p.suggestRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.type("A protected lane opened this summer.");
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${SUGGEST} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.suggestRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${SUGGEST} [role=status]')?.textContent ?? ''`);
+  check("suggestions: Send posts the way, the spot, the level 2.5 and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/stress-suggestions" && sent.body.osm_way_id === 101 && sent.body.step === 2.5 && typeof sent.body.lat === "number" && typeof sent.body.lon === "number" &&
+      sent.body.reason === "A protected lane opened this summer." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.suggest-change'), focus: document.activeElement?.textContent ?? '' })");
+  check("suggestions: Escape closes the form, not the panel, and the focus goes back to Suggest a change", back.open && !back.form && back.focus === "Suggest a change", JSON.stringify(back));
+  await p.close();
+}
+{
+  // The instance admin's review, in the Settings sheet: the three actions, the poll to copy, "Copied".
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item h4')", 8000);
+  await p.eval(`(() => { const item = document.querySelector('.suggestion-item'); [...item.querySelectorAll('button')].forEach((b, i) => { b.id = '__sg' + i; }); return true; })()`);
+  const names = [];
+  for (const i of [0, 1, 2]) names.push(await axNode(p, `#__sg${i}`));
+  const heading = await p.eval("document.querySelector('.suggestion-item h4')?.textContent ?? ''");
+  const statusWords = await p.eval("document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? ''");
+  check("suggestions: the admin's list names each suggestion's road and both levels in words, says its status in words, and each of Approve now, Send to Discord and Delete is described by that heading",
+    heading === "Oak Street: from LTS 3 (For experienced cyclists) to LTS 2.5 (Fine for most confident adults)" && statusWords === "Waiting for review." &&
+      JSON.stringify(names.map((n) => n?.name)) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) && names.every((n) => n?.description === heading), JSON.stringify({ heading, statusWords, names }));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("document.getElementById('__sg1').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-post textarea')", 8000);
+  const post = await p.eval(`(() => { const t = document.querySelector('.suggestion-post textarea'); const l = document.querySelector('.suggestion-post label');
+    return { value: t?.value ?? '', readOnly: t?.readOnly, labelled: l?.htmlFor === t?.id, label: l?.textContent ?? '', said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '',
+      status: document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? '' }; })()`);
+  const sentReq = p.suggestRequests.find((r) => r.path === "/api/stress-suggestions/41/discord");
+  check("suggestions: Send to Discord shows the plain-English poll (no LTS number, no mention, at most 2,000 characters) in a labelled read-only box, says so, and marks the suggestion as sent in words",
+    sentReq?.headers["X-CSRFToken"] === "test-csrf-token" && post.readOnly && post.labelled && /^Post for Discord/.test(post.label) && post.value.length <= 2000 &&
+      !/LTS/.test(post.value) && !/@/.test(post.value) && /^\*\*How comfortable is biking on Oak Street/.test(post.value) && /marked as sent to Discord/.test(post.said) &&
+      /Sent to Discord/.test(post.status), JSON.stringify(post).slice(0, 600));
+
+  try {
+    await b.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  } catch {
+    // An older Chrome: the copy falls back to the selection method.
+  }
+  await p.eval("[...document.querySelectorAll('.suggestion-post button')].find((b) => b.textContent === 'Copy post').focus(); true");
+  await p.key("Enter", "Enter", 13);
+  await p.waitFor("/^Copied/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 4000);
+  const copied = await p.eval("document.querySelector('.suggestion-review [role=status]')?.textContent ?? ''");
+  const clip = await p.eval("navigator.clipboard.readText().catch(() => '')");
+  check("suggestions: Copy post works from the keyboard (Enter) and says Copied in the status region; the clipboard holds the post",
+    /^Copied\./.test(copied) && (clip === "" || clip.startsWith("**How comfortable")), JSON.stringify({ copied, clip: clip.slice(0, 60) }));
+
+  await p.eval("document.getElementById('__sg0').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  const approved = await p.eval("({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.suggestion-item').length })");
+  check("suggestions: Approve now says the road's new level in words in the status region and the suggestion leaves the list",
+    /^Approved\. Oak Street is now LTS 2\.5/.test(approved.said) && approved.left === 0 && p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/41/approve"), JSON.stringify(approved));
+  await p.close();
+}
+{
+  // Nobody else sees the review or the button.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await openSheet(p, "Settings");
+  await sleep(400);
+  const opened = await panelByKey(p);
+  await sleep(300);
+  const none = await p.eval("({ review: !!document.querySelector('.suggestion-review'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change') })");
+  check("suggestions: a visitor the settings do not allow sees no Suggest a change and no review, and the page asks the suggestion endpoints nothing",
+    opened && !none.review && !none.button && p.suggestRequests.length === 0, JSON.stringify({ opened, none, asked: p.suggestRequests.length }));
+  await p.close();
+}
+
 // ---- 23. Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 301) ----
 {
   const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
@@ -2462,7 +2573,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 414;
+const EXPECTED = 424;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

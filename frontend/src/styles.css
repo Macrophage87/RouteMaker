@@ -3286,3 +3286,65 @@ details.zoom-notes {
 .station-refresh {
   min-height: 44px;
 }
+
+/* An instance admin's review of rider suggestions (SuggestionReview.tsx; OWNER-DECISIONS 460.5). */
+.suggestion-review > button,
+.suggestion-post > button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.suggestion-review-said:empty {
+  display: none;
+}
+
+.suggestion-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.suggestion-item {
+  border-top: 1px solid var(--swatch-border);
+  padding: 10px 0;
+}
+
+.suggestion-item h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.suggestion-post {
+  margin-top: 10px;
+}
+
+.suggestion-post label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.suggestion-post textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}

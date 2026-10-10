@@ -9,6 +9,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
   BASEMAP_SOURCE_ID,
@@ -118,6 +119,8 @@ export interface Frame {
 
 interface Props {
   points: LonLat[];
+  /** A spot to open at, at street level (`#at=lon,lat`, lib/planHash.ts atFromHash); else the usual view. */
+  openAt?: LonLat | null;
   /** "Make it a loop" is on: the first point is the start and finish, the rest are stops (OWNER-DECISIONS 374). */
   loopVias?: boolean;
   route: RouteResponse | null;
@@ -375,8 +378,8 @@ export function MapView(props: Props) {
     const map = new maplibregl.Map({
       container: container.current,
       style: buildStyle(origin, basemapLayers) as maplibregl.StyleSpecification,
-      center: DC_CENTRE,
-      zoom: OPENING_ZOOM,
+      center: props.openAt ?? DC_CENTRE,
+      zoom: props.openAt ? AT_ZOOM : OPENING_ZOOM,
       minZoom: 7,
       maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
