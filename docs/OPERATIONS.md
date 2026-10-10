@@ -4689,3 +4689,26 @@ route chart width estimate).
   Montgomery Planning files. The 2026-10-03 clipped extract is kept as
   `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
   was made. The old api ignores an `offroad` row in `valhalla_upstream`.
+## Bikeshare feeds
+
+The api container makes outbound HTTPS requests to the bikeshare operator's official GBFS feeds
+(`gbfs.capitalbikeshare.com`, `gbfs.lyft.com`; `core.gbfs`) while anyone is planning a Bikeshare
+route or asking for the nearest stations: **one reading about every 60 s for the whole deployment**,
+not one per api worker. The workers share the latest reading through one row of the
+`bikeshare_feed_cache` table (`core.models.BikeshareFeedCache`), replaced in place at each refresh;
+the worker that finds it out of date and wins a PostgreSQL advisory lock reads the feeds, and the
+others use its row (or wait up to 6 s for it). Nothing is kept as history: no earlier reading, no
+counts over time, no row per station or reading; the table is excluded from the nightly dump and
+from the beta's data shipment, and refills itself. The requests carry nothing of the visitor. If
+the feeds do not answer, the last reading is served for two more minutes; after that Bikeshare
+plans answer 503 with `code: bikeshare_unavailable` when the station list is missing, and plan with
+"availability unknown" notes when only the availability feed is. A station that has not reported
+for 30 minutes counts as unavailable. The operator may end the data licence at will
+(OWNER-DECISIONS 300); removing the ride type is removing `bikeshare` from
+`core.presets.PRESETS`, the Caddyfile redirect and the front end's list, and the cache table can
+then be dropped. The full source reference (data, operator, licence, retrieval) is in
+docs/SOURCES.md, "Capital Bikeshare".
+
+`POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
+OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
+address, and reads the shared copy, never the feeds directly.

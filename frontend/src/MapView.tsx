@@ -65,6 +65,17 @@ import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import {
+  BIKESHARE_CREDIT,
+  WALK_CASING,
+  WALK_CASING_WIDTH,
+  WALK_COLOUR,
+  WALK_DASH,
+  WALK_LINE_WIDTH,
+  bikeshareOf,
+  dockMarkers,
+  walkFeatures,
+} from "./lib/bikeshare.ts";
+import {
   CARD_CLOSE_LABEL,
   cardName,
   cardTakesFocus,
@@ -201,6 +212,10 @@ const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+// Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
+// source's attribution, so the attribution control shows it exactly while a bikeshare plan's
+// layer is visible and never otherwise (OWNER-DECISIONS 301).
+const WALK_SOURCE = "bikeshare-walk";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 const TOUCH_HIT_PX = 18;
@@ -833,6 +848,22 @@ export function MapView(props: Props) {
         source: ACCURACY_SOURCE,
         paint: { "line-color": "#1d4ed8", "line-width": 1.5, "line-opacity": 0.6 },
       }, "route-casing");
+      map.addSource(WALK_SOURCE, { type: "geojson", data: walkFeatures(null), attribution: BIKESHARE_CREDIT });
+      map.addLayer({
+        id: "bikeshare-walk-casing",
+        type: "line",
+        source: WALK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_CASING, "line-width": WALK_CASING_WIDTH, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "bikeshare-walk",
+        type: "line",
+        source: WALK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
+      });
+      syncBikeshare(map, callbacks.current.route);
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -1011,6 +1042,26 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
+  // do nothing when pressed: each is an image with its whole text equivalent as its name, and
+  // the route panel lists the same steps.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    syncBikeshare(map, props.route);
+    const drawn = dockMarkers(bikeshareOf(props.route)).map((dock) => {
+      const element = document.createElement("div");
+      element.className = `dock-marker dock-${dock.role}`;
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", dock.label);
+      element.innerHTML = `${dockWheelSvg()}<span class="dock-badge" aria-hidden="true">${dock.badge}</span>`;
+      // A click on a marker is not a click on the map: it must not add a via point.
+      element.addEventListener("click", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([dock.lon, dock.lat]).addTo(map);
+    });
+    return () => drawn.forEach((marker) => marker.remove());
+  }, [props.route]);
 
   // The accessibility switch (or the system's request for more contrast):
   // the overlay's layers and the route's sections are painted again in place.
@@ -1325,6 +1376,29 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
   if (takeFocus) close?.focus();
   return card;
+}
+
+/** A wheel: a plain circle with spokes, no operator's mark. */
+function dockWheelSvg(): string {
+  return (
+    '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" focusable="false">' +
+    '<circle cx="13" cy="13" r="11" fill="#ffffff" stroke="#1f1f1f" stroke-width="2.5"/>' +
+    '<circle cx="13" cy="13" r="2" fill="#1f1f1f"/>' +
+    '<path d="M13 4v18M4 13h18M6.6 6.6l12.8 12.8M19.4 6.6L6.6 19.4" stroke="#1f1f1f" stroke-width="1.2" fill="none"/>' +
+    "</svg>"
+  );
+}
+
+/** The walk legs on the map, and the layers' visibility, which is what shows the source citation. */
+function syncBikeshare(map: MapLibreMap, route: RouteResponse | null): void {
+  const source = map.getSource(WALK_SOURCE) as GeoJSONSource | undefined;
+  if (!source) return;
+  const plan = bikeshareOf(route);
+  source.setData(walkFeatures(plan));
+  const visibility = plan ? "visible" : "none";
+  for (const id of ["bikeshare-walk-casing", "bikeshare-walk"]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+  }
 }
 
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */
