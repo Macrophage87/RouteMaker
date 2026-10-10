@@ -6,6 +6,16 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Plan bike routes around Washington, DC and Baltimore. No sign-in needed." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- The installable app (WEB-NAV-plan.md section 8; docs/DEVELOPMENT.md "The installable app").
+         use-credentials: the beta is behind HTTP basic auth, and a manifest is otherwise fetched
+         without the credentials. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1b1e24" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="RouteMaker" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>RouteMaker</title>
   </head>
   <body>
