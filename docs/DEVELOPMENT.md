@@ -5907,3 +5907,68 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+## Ride mode in dead spots and the 311 report (WEB-NAV N5-N7; OWNER-DECISIONS 369, 370, 465)
+
+**The map in dead spots (N5).** At Start ride, and again for each re-plan's new route, RideMode calls
+`keepCorridor(line)` (`lib/corridorStore.ts`), which fetches every tile within `CORRIDOR_M` (300 m,
+about 1,000 ft) of the line (`corridorTiles`, `corridorJobs` in `lib/corridor.ts`): the stress tiles at
+z14, 13 and 12 and the base map at z15 down to z12, deepest first and each in route order, leaving out
+any a previous route of the ride already kept. `prefetchCorridor` runs them one at a time,
+`STRESS_GAP_MS` (250 ms) after a stress tile and `BASE_GAP_MS` after a base map tile; a stress tile goes
+through `fetchTile` and so the protocol's page queue (two of the page's requests in flight, the API's
+per-client draw cap, `TILES_IN_FLIGHT`) and its 429/503 backoff. At most `MAX_JOBS` tiles a route and
+`MAX_BYTES` (40 MB) kept in all (`ByteBudget`); a kind failing `STOP_AFTER_FAILURES` times in a row is
+dropped (no signal at the start, or a base map that is not served). Where they are kept:
+
+* Stress tiles: the Cache Storage bucket `routemaker-corridor-v1`, keyed by the tile's URL (with the
+  `?rev=` of the current edit generation, so an admin's edit is a new key). The protocol's loader
+  (`loadTile` in `lib/stressProtocol.ts`, given `corridorStress` by App) reads it when the network
+  fails, or first when `navigator.onLine` is false, and offers it each tile the map loads during a ride.
+* The base map: `region.pmtiles` is read by HTTP range, and Cache Storage refuses 206 answers, so
+  MapView adds the protocol's archive itself (`basemapArchive`), a `PMTiles` over a `CorridorSource`
+  over the usual `FetchSource`. While keeping, it stores every range it reads (header, root and leaf
+  directories, tiles) in IndexedDB (`routemaker-corridor`, store `ranges`, keyed `offset:length`) with
+  the archive's ETag; a range asked for with that ETag is answered from the store first, the header
+  (asked with none) from the network first, and any kept range answers when the network fails. A new
+  ETag (the archive refreshed under the same name) empties the store. Outside a ride with nothing kept,
+  the store is never touched: a first IndexedDB open takes about a second, and a header refusal held
+  back that long kept MapLibre's style from loading in the browser suite.
+* Glyphs (the style's Latin stacks, `fontStacks`, ranges 0-255, 256-511 and 8192-8447) and the sprite:
+  fetched once into the browser's HTTP cache, which the edge lets keep them a day
+  (`/basemap/fonts/*`, `/sprites/*`: `private, max-age=86400`) and which answers MapLibre's own
+  requests with no network.
+
+End ride clears all three (`clearCorridor`, from RideMode's unmount); a time stamp in localStorage
+(`routemaker.corridor`, a time and never a place) lets the next page load clear a corridor over
+`KEEP_MS` (24 h) old (`sweepCorridor`). RideMode shows `corridorNote` under its controls; it is not
+said, since it changes nothing the rider must do. A re-plan still needs a signal.
+
+**The 311 report (N6).** "Report a problem to DC 311" (`Report311` in `RideMode.tsx`,
+`lib/report311.ts`), inside DC only (`inDc` on the rider's place on the line). DC's Text to 311 page
+(ouc.dc.gov/service/text-311, read 2026-10-10) gives the short code 32311 and the keywords POTHOLE,
+STREETLIGHT and TRASH that go straight to a request; it names none for a fallen tree, and anything else
+goes through MENU to "Other Service Requests", which sends the texter to 311 Online. So Pothole and
+Streetlight out, on a phone (`canText`: Android, iPhone, an iPad that says it is a Mac), are a Text to
+DC 311 link, `smsHref` (iOS reads `sms:32311&body=`, Android `sms:32311?body=`, RFC 5724); Something
+else, and every kind on a desktop (370), opens https://311.dc.gov/ in a new tab with Copy the report.
+`reportText` is the keyword, then "Location: <place>, Washington, DC.", then the rider's note (at most
+120 characters); it is shown as it will be sent, US units only, since it is the message itself.
+
+The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
+position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
+between two stretches and each flagged crossing (a junction entry names the street crossed), and the
+nearest to the rider's progress, behind or ahead, is the place ("near Q Street Northwest and R Street
+Northwest"), which may be the last junction passed, as the owner accepted. On a named trail (a path
+stretch with a name) with no junction within `TRAIL_MARKER_M` (a quarter mile), 465's trail marker:
+the trail, the distance along the line from its last junction behind (else its next ahead) and the
+compass direction from there ("on the Capital Crescent Trail, about 1.2 miles northwest of
+Massachusetts Avenue Northwest"). Where am I? says the same on such a trail. OSM's posted mile markers
+(`highway=milestone`) and the trail's own start are not in the route's data, so this is a distance
+from a junction rather than a mile number (PLAN.md, FOLLOWUP-WEB-NAV, for the owner to confirm).
+
+**Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
+`loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
+tiles along the mocked route are kept at z12-14 and cleared at End ride, and the report's words, links,
+radios, note field and 44 px targets, on a desktop and (with an Android user agent) a phone. The ride
+on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, are the owner's.

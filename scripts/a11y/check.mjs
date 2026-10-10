@@ -2200,6 +2200,57 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const where = await p.eval(regions);
   check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
 
+  // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
+  // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
+  // screen under the controls and not in a live region.
+  await p.waitFor("/saved for dead spots/.test(document.querySelector('.ride-corridor')?.textContent ?? '')", 30000);
+  const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname) }; })()");
+  check("ride: the stress tiles along the route are kept for dead spots (z12-14), and the note is on screen, not in a live region",
+    corridor.note === "The map along the route is saved for dead spots." && !corridor.live && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
+    JSON.stringify({ ...corridor, kept: corridor.kept.length }));
+
+  // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465): the place from the route's own
+  // street names (the turn from Q Street onto R Street just passed), the keyword first.
+  await p.eval("document.querySelector('.ride-report > summary').click(); true");
+  await sleep(300);
+  const report = await p.eval(`(() => {
+    const d = document.querySelector('.ride-report');
+    const links = [...d.querySelectorAll('.ride-report-actions a')];
+    return {
+      open: d.open, text: d.querySelector('.ride-report-text')?.textContent,
+      links: links.map((a) => ({ name: a.textContent, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
+      copy: [...d.querySelectorAll('.ride-report-actions button')].map((b) => b.textContent),
+      privacy: d.textContent.includes('The message goes to DC 311 from your own phone'),
+    };
+  })()`);
+  check("ride 311: the report names the place from the route's streets, keyword first; a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
+    report.open && report.text === "The report: POTHOLE Location: near Q Street Northwest and R Street Northwest, Washington, DC." && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
+    JSON.stringify(report));
+  const reportForm = await p.eval(`(() => {
+    const d = document.querySelector('.ride-report');
+    const fs = d.querySelector('fieldset');
+    const small = [...d.querySelectorAll('summary, label.radio, input[type=text], .ride-report-actions a, .ride-report-actions button')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
+    const note = d.querySelector('input[type=text]');
+    return { legend: fs?.querySelector('legend')?.textContent, radios: fs?.querySelectorAll('input[type=radio]').length, labelled: [...fs.querySelectorAll('input[type=radio]')].every((i) => i.closest('label')?.textContent.trim().length > 0), note: note?.closest('label')?.textContent.trim(), small, focus: document.activeElement?.id };
+  })()`);
+  check("ride 311: what it is is a named group of radios, the note a labelled field, and every control at least 44 px tall",
+    reportForm.legend === "What is it?" && reportForm.radios === 3 && reportForm.labelled && reportForm.note === "Note (optional)" && reportForm.small.length === 0, JSON.stringify(reportForm));
+  // On a phone (an Android browser), a streetlight is a text to 32311 with the same words; something else has no keyword, so DC 311 online.
+  const ua = await p.eval("navigator.userAgent");
+  await p.s("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36" });
+  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Streetlight out').querySelector('input').click(); true");
+  await sleep(300);
+  const sms = await p.eval("[...document.querySelectorAll('.ride-report-actions a')].map((a) => ({ name: a.textContent, href: a.getAttribute('href') }))");
+  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
+  await sleep(300);
+  const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
+  await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
+  check("ride 311: on a phone a streetlight is a Text to 311 link (sms:32311, Android's ?body=) with the same words; something else goes to DC 311 online",
+    sms.length === 1 && sms[0].name === "Text to DC 311 (32311)" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
+      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC.",
+    JSON.stringify({ sms, other }));
+  await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
+
   // A pan by hand stops following; Re-centre (the C key) follows again.
   const canvas = await p.eval("(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
   await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x, y: canvas.y, button: "left", clickCount: 1 });
@@ -2257,6 +2308,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
   check("ride: End ride shows the planner, puts the focus on Start ride and lets the screen lock go",
     !ended.ride && ended.planner === false && ended.focus === "Start ride" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  await sleep(500);
+  const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
+  check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
   await p.close();
 }
 
@@ -2424,7 +2478,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 412;
+const EXPECTED = 417;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
