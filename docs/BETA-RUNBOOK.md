@@ -976,7 +976,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |

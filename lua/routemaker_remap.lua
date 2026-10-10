@@ -761,6 +761,22 @@ function M.strip_paved_ratings(tags, out)
   return any
 end
 
+-- From 3.7.0 Valhalla's parser types a node tagged `amenity=parking` as a
+-- parking node (src/mjolnir/pbfgraphparser.cc:2186 at 3.9.1), in the same
+-- loop that types a gate or a bollard, so whichever of the tags it meets last
+-- wins. A gate typed as parking loses the gate cost and penalty the Cargo dial
+-- prices (including the cycle barriers `remap_node` rewrites to gates) and a
+-- private gate loses its private-access cost. A barrier is the more important
+-- thing to know about a node, so on one the parking tag comes off after
+-- upstream's transform. Node access is read separately and is unaffected.
+function M.keep_barrier_type(out)
+  if type(out) == "table" and out.amenity == "parking"
+    and (out.gate == "true" or out.bollard == "true")
+  then
+    out.amenity = nil
+  end
+end
+
 -- `rm:no_bicycle` closes both directions, whatever else the way says.
 --
 -- `bicycle=no` is not upstream's last word on a direction. Its transform reads

@@ -3535,14 +3535,18 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
 
 - **gunicorn** logs the path without the query (`%(U)s`, docker/api-entrypoint.sh), with the
   duration (`%(D)s`): that is where a slow route now shows.
-- **Valhalla** (401): loki's and thor's `logging.long_request` is `NEVER_LONG_MS`, 3,600,000 ms,
-  far past httpd's 30 s timeout, so their slow-request warning, which can carry the request,
-  never fires. The cost is that Valhalla's own slow-request warnings are gone for every route;
-  route timing comes from the app's side: the time of the whole plan request, not of each router call
-  (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's Caddy keeps no access log). The routers read
-  the config only at start, so a deploy needs a restart. On the live stack:
-  `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend` (restart, not `up -d`).
-  tests/test_valhalla_config.py pins it on all four configs.
+- **Valhalla** (401): no Valhalla release RouteMaker has run, 3.5.1 to 3.9.1, reads a
+  `long_request` key. Only upstream's config generator and test configs name it, so there is no
+  slow-request log that could carry a request's locations. The `long_request` overrides set under
+  401 (`NEVER_LONG_MS`) never did anything, and the 3.9.1 upgrade dropped them
+  (reports/valhalla-3.9/README.md). The routers' own per-request lines are the `400::` and `500::`
+  error lines, which carry the error text and a request id, not the request. From 3.7.0 every
+  Valhalla program reads only the top-level `logging` section, which
+  scripts/build_valhalla_configs.py sets to std_out with colour off;
+  tests/test_valhalla_config.py::test_every_program_logs_plainly_to_stdout pins that and that no
+  per-module section is left. Route timing comes from the app's side: the time of the whole plan
+  request, not of each router call (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's
+  Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
   `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
@@ -3918,7 +3922,8 @@ Tests: `lib/sidebar.test.ts`.
 
 Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) were on
 their own branch, wip/privacy-logs (OWNER-DECISIONS 401), which the rebuild bundle has merged; there the
-fifth (off-road) router carries the same `long_request` (31fd734). A "Use my location" button sits beside the search box (`.place-search-row`, in
+fifth (off-road) router carries the same `long_request` (31fd734). (Later found to be read by no
+Valhalla release, and dropped in the 3.9.1 upgrade: see "Logs and the rider's position".) A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -3975,8 +3980,8 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
     location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
     sheet's sign-in sentence and two test pins changed (the comment at the switch).
   - Server logs are not this branch's: with wip/privacy-logs (PLAN 401), which merges first, the location
-    in a reverse look-up's or a search's query stays out of the beta nginx logs and Valhalla's slow-request
-    log is off. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+    in a reverse look-up's or a search's query stays out of the beta nginx logs. (Valhalla turned out to have no
+    slow-request log to switch off; see "Logs and the rider's position".) Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
     viewed, as any map pan does.
 - **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
   button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).

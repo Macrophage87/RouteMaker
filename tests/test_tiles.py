@@ -379,7 +379,7 @@ def test_the_admin_database_is_built_once_and_copied(tmp_path) -> None:
 
 def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_path) -> None:
     """valhalla_build_timezones takes no arguments and `cat`s the finished
-    SQLite database to stdout (scripts/valhalla_build_timezones:38), so the
+    SQLite database to stdout (scripts/valhalla_build_timezones:44 at 3.9.1), so the
     redirect is the only thing that names its output. It also `rm -rf dist` and
     unzips into the working directory (:21-22, :28), so it is given one of its
     own.

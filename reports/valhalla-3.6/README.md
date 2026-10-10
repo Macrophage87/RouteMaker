@@ -3,6 +3,9 @@
 The backlog item "Valhalla 3.6" (OWNER-DECISIONS 459a and 459b: the cloud rebuild
 comes after checkpoints and Valhalla 3.6). Written 2026-10-10.
 
+**Superseded for the host steps** by reports/valhalla-3.9/README.md: the pin moved
+on to 3.9.1 the same day, and that report's steps cover both upgrades.
+
 ## What was chosen, and why
 
 - **3.6.3**, the last 3.6 release (2026-02-19). The backlog names 3.6. Newer tags

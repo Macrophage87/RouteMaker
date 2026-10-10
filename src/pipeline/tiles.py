@@ -222,7 +222,8 @@ def tile_build_commands(
 
     valhalla_build_timezones is a POSIX shell script, not a binary. It takes no
     arguments, writes its progress to stderr, and writes the finished SQLite
-    database to *stdout* (scripts/valhalla_build_timezones:38, `cat ${tz_file}`)
+    database to *stdout* (scripts/valhalla_build_timezones:44 at 3.9.1,
+    `cat "${tz_file}"`; :38 at 3.6.3)
     - so a redirect is the only way to name its output, and the command runner
     cannot be the thing that captures it, since the runner decodes as text and
     this is a SQLite file. It is also written to run in a scratch directory: it
