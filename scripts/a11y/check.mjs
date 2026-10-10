@@ -4,7 +4,11 @@
 // scripts/a11y/run.sh, which starts Vite and an offline Chromium; prints one
 // line per check and exits non-zero if any fails.
 //
-//   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
+//   node scripts/a11y/check.mjs [--port 5173] [--preview-port 4173] [--cdp 9222] [--shots DIR]
+//
+// --port is Vite's dev server; --preview-port is `vite preview` of a production build (the
+// installable app's checks: its service worker exists only in a build); --cdp is Chromium's
+// debugging port.
 import { mkdirSync } from "node:fs";
 import { RIDE_COORDS, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
@@ -13,6 +17,8 @@ const arg = (name, fallback) => {
   return i > 0 ? process.argv[i + 1] : fallback;
 };
 const PORT = Number(arg("--port", "5173"));
+const PREVIEW_PORT = Number(arg("--preview-port", "4173"));
+const CDP_PORT = Number(arg("--cdp", "9222"));
 const SHOTS = arg("--shots", "/tmp/a11y-shots");
 mkdirSync(SHOTS, { recursive: true });
 
@@ -22,21 +28,22 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
-const b = await connect();
+const b = await connect(CDP_PORT);
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, port = PORT, before = null } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles, admin });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
-  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
+  if (before) await before(p);
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${port}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
@@ -792,7 +799,7 @@ const federalFetched = (p) =>
   check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Ride mode and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads) === JSON.stringify(["Display", "Ride mode", "Signing in"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Ride mode, Routes kept for offline (and Install the app when offered) and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["Display", "Ride mode", "Routes kept for offline", "Signing in"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -2473,12 +2480,159 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.close();
 }
 
+// ---- The installable app (WEB-NAV-plan.md section 8 and section 11, "PWA section") ----
+// The install offer and its words, on Vite's dev server (no worker there: the offer does not need one).
+{
+  const p = await open({ ride: false, junctions: false });
+  // Chrome holds back its own prompt until it trusts the page; the suite plays the browser's event.
+  await p.eval(`(() => { window.__prompted = 0; const e = new Event("beforeinstallprompt", { cancelable: true });
+    e.prompt = async () => { window.__prompted += 1; }; e.userChoice = Promise.resolve({ outcome: "dismissed" });
+    window.dispatchEvent(e); return e.defaultPrevented; })()`);
+  await sleep(200);
+  await openSheet(p, "Settings");
+  const offer = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .install-offer'); const b = s?.querySelector('button.install-app'); const r = b?.getBoundingClientRect();
+    return { heading: s?.querySelector('h3')?.textContent, labelled: s?.getAttribute('aria-labelledby') === s?.querySelector('h3')?.id, name: b?.textContent, tag: b?.tagName, type: b?.type, h: r?.height ?? 0, why: s?.querySelector('.hint')?.textContent ?? '' }; })()`);
+  check("install: Settings offers \"Install RouteMaker\", a real button 44 px tall, in a section named by its heading \"Install the app\", with why in words",
+    offer.heading === "Install the app" && offer.labelled && offer.name === "Install RouteMaker" && offer.tag === "BUTTON" && offer.type === "button" && offer.h >= 44 && /own window/.test(offer.why), JSON.stringify(offer));
+  const ax = await axNode(p, "#sheet-settings button.install-app");
+  check("install: its accessible name and role are the button's own words", ax?.role === "button" && ax?.name === "Install RouteMaker", JSON.stringify(ax));
+  // Keyboard: Tab reaches it, Enter shows the browser's dialog; dismissed, the focus goes to the heading and the outcome is said.
+  await p.eval("document.querySelector('#sheet-settings .install-offer h3').focus(); true");
+  await p.tab();
+  const reached = await p.eval("document.activeElement?.classList.contains('install-app')");
+  await p.eval(`window.__said = []; new MutationObserver(() => { for (const r of document.querySelectorAll('[role=status]')) { const t = r.textContent.trim(); if (t && !window.__said.includes(t)) window.__said.push(t); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true }); true`);
+  await p.enter();
+  await sleep(500);
+  const after = await p.eval("({ prompted: window.__prompted, focus: document.activeElement?.textContent, gone: !document.querySelector('#sheet-settings button.install-app'), said: window.__said })");
+  check("install: Tab reaches the button and Enter opens the browser's own dialog, once", reached && after.prompted === 1, JSON.stringify({ reached, prompted: after.prompted }));
+  check("install: dismissed, the button is gone, the focus is on the section's heading and the outcome is said politely", after.gone && after.focus === "Install the app" && after.said.some((t) => t.startsWith("Not installed.")), JSON.stringify(after));
+  // More tips carries the same offer while the browser holds a prompt.
+  await p.eval(`(() => { const e = new Event("beforeinstallprompt", { cancelable: true }); e.prompt = async () => {}; e.userChoice = Promise.resolve({ outcome: "accepted" }); window.dispatchEvent(e); return true; })()`);
+  await sleep(200);
+  const tips = await p.eval("[...document.querySelectorAll('.tips-body button.install-app')].map((b) => b.textContent)");
+  check("install: More tips offers the same button", JSON.stringify(tips) === JSON.stringify(["Install RouteMaker"]), JSON.stringify(tips));
+  await p.eval("window.dispatchEvent(new Event('appinstalled')); true");
+  await sleep(200);
+  const installed = await p.eval("({ note: document.querySelector('#sheet-settings .install-offer .hint')?.textContent, buttons: document.querySelectorAll('button.install-app').length })");
+  check("install: appinstalled hides every offer and Settings says it is installed", installed.buttons === 0 && installed.note === "RouteMaker is installed on this device.", JSON.stringify(installed));
+  await p.close();
+}
+{
+  // iOS has no prompt: the one line, in Settings and More tips.
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1";
+  const p = await open({ ride: false, junctions: false, width: 375, height: 812, mobile: true, before: (q) => q.s("Emulation.setUserAgentOverride", { userAgent: iphone, platform: "iPhone" }) });
+  await openSheet(p, "Settings");
+  const ios = await p.eval("({ settings: document.querySelector('#sheet-settings .install-ios')?.textContent, tips: document.querySelector('.tips-body .install-ios')?.textContent, buttons: document.querySelectorAll('button.install-app').length, fit: (() => { const s = document.querySelector('#sheet-settings'); return s.scrollWidth <= s.clientWidth + 1; })() })");
+  check("install on an iPhone: the Share line in Settings and More tips, no button, nothing spilling sideways at 375 px",
+    /In Safari, press Share, then Add to Home Screen\.$/.test(ios.settings ?? "") && ios.tips === "To install RouteMaker: In Safari, press Share, then Add to Home Screen." && ios.buttons === 0 && ios.fit, JSON.stringify(ios));
+  await p.shot(`${SHOTS}/install_ios_375.png`);
+  await p.close();
+}
+
+// The service worker, the offline shell and a kept route, on `vite preview` of the production build.
+{
+  const p = await open({ port: PREVIEW_PORT, ride: false, junctions: false });
+  const controlled = await p.waitFor("!!navigator.serviceWorker.controller", 30000);
+  const worker = await p.eval(`(async () => { const r = await navigator.serviceWorker.getRegistration(); const keys = await caches.keys();
+    const build = document.querySelector('meta[name=routemaker-build]')?.content; const cache = keys.find((k) => k === 'routemaker-app-' + build);
+    const kept = cache ? (await (await caches.open(cache)).keys()).map((q) => new URL(q.url).pathname) : [];
+    const sw = await (await fetch('/sw.js')).text(); const listed = JSON.parse(/assets: (\\[[^\\]]*\\])/.exec(sw)[1]);
+    return { scope: r && new URL(r.scope).pathname, script: r?.active && new URL(r.active.scriptURL).pathname, build, cache: !!cache, shell: kept.includes('/index.html'), assets: listed.length, all: listed.every((a) => kept.includes(a)), keys }; })()`);
+  check("app worker: /sw.js registers at scope / and controls the page", controlled && worker.scope === "/" && worker.script === "/sw.js", JSON.stringify({ controlled, ...worker }));
+  check("app worker: its cache is the build's (named by index.html's build id) and holds the shell and every asset it lists", worker.cache && worker.shell && worker.assets > 3 && worker.all, JSON.stringify(worker));
+  const manifest = await p.eval(`(async () => { const l = document.querySelector('link[rel=manifest]'); const m = await (await fetch(l.href, { credentials: 'include' })).json();
+    const icons = await Promise.all(m.icons.map(async (i) => ({ ...i, ok: (await fetch(i.src)).ok })));
+    return { cross: l.getAttribute('crossorigin'), name: m.name, short: m.short_name, display: m.display, start: m.start_url, scope: m.scope, icons,
+      apple: (await fetch(document.querySelector('link[rel=apple-touch-icon]').href)).ok, themes: [...document.querySelectorAll('meta[name=theme-color]')].map((t) => t.media) }; })()`);
+  check("app manifest: RouteMaker, standalone (the phone's clock stays), start and scope /, fetched with credentials (the beta's password)",
+    manifest.cross === "use-credentials" && manifest.name === "RouteMaker" && manifest.short === "RouteMaker" && manifest.display === "standalone" && manifest.start === "/" && manifest.scope === "/", JSON.stringify(manifest));
+  check("app manifest: 192 and 512 px icons, plain and maskable, all served; the apple-touch-icon too; a theme colour for light and dark",
+    ["192x192 any", "512x512 any", "192x192 maskable", "512x512 maskable"].every((want) => manifest.icons.some((i) => `${i.sizes} ${i.purpose}` === want && i.ok)) && manifest.apple && manifest.themes.length === 2, JSON.stringify(manifest.icons));
+
+  // Sign-in passes the worker by: the edge's (here the mock's) answer, never the cached app.
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/auth/login` });
+  await sleep(1500);
+  const signIn = await p.eval("({ href: location.href, app: !!document.querySelector('#root'), build: !!document.querySelector('meta[name=routemaker-build]') })");
+  check("app worker: a navigation to /auth/login is not answered by the worker: it reaches the network (here the mock's empty 404), never the app's page", !signIn.app && !signIn.build, JSON.stringify(signIn));
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
+  await p.waitFor("!!document.querySelector('.summary')", 40000);
+  await sleep(800);
+
+  // Keep for offline: a real button under the route; what it did is said politely.
+  const keep = await p.eval("(() => { const b = document.querySelector('.route-actions .keep-offline'); const r = b?.getBoundingClientRect(); return { name: b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('#keep-offline-said')?.getAttribute('role') }; })()");
+  check("keep for offline: a real button under the route, 44 px tall, with a polite status line for what it did", keep.name === "Keep for offline" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
+  await p.eval("document.querySelector('.route-actions .keep-offline').focus(); true");
+  await p.enter();
+  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('#keep-offline-said')?.textContent ?? '')", 90000);
+  const keptSaid = await p.eval("document.querySelector('#keep-offline-said').textContent.trim()");
+  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Settings when there is no signal\.$/.test(keptSaid), keptSaid);
+  const stored = await p.eval(`(async () => { const keys = await caches.keys(); const tiles = keys.includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).map((q) => new URL(q.url).pathname) : [];
+    return { tiles: tiles.filter((t) => t.startsWith('/tiles/stress/')).length, positions: tiles.filter((t) => /lat=|lon=/.test(t)).length }; })()`);
+  check("keep for offline: the stress tiles along the route are kept in the kept routes' bucket, and no URL with a position", stored.tiles > 0 && stored.positions === 0, JSON.stringify(stored));
+
+  // Offline: the page and its worker lose the network; the page is opened again with no plan in its address.
+  p.offline = true;
+  await p.s("Network.enable");
+  await p.s("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const { targetInfos } = await b.send("Target.getTargets");
+  const workers = targetInfos.filter((t) => t.type === "service_worker" && t.browserContextId === p.contextId);
+  for (const w of workers) {
+    const { sessionId } = await b.send("Target.attachToTarget", { targetId: w.targetId, flatten: true });
+    await b.send("Network.enable", {}, sessionId).catch(() => {});
+    await b.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }, sessionId).catch(() => {});
+  }
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/` });
+  const shell = await p.waitFor("!!document.querySelector('#route-planner h1')", 20000);
+  await sleep(1500);
+  const off = await p.eval(`(() => ({ online: navigator.onLine, bar: document.querySelector('.app-status .app-offline')?.textContent,
+    said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
+  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
+  check("offline: the top of the planner says so, and it is said once, politely",
+    off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Settings\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
+
+  // Settings lists the kept route; Open (by keyboard) shows it with no signal, with the planner's notice.
+  await openSheet(p, "Settings");
+  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
+    return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
+      rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
+      note: s.querySelector(':scope > p.hint:last-child')?.textContent }; })()`);
+  const row = list.rows[0];
+  check("kept routes: Settings lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
+    list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
+  check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
+  check("kept routes: the list says they stay on this device and are never sent", /^Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? ""), list.note);
+  const openAx = await axNode(p, "#sheet-settings .kept-route button");
+  check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
+  await p.eval("document.querySelector('#sheet-settings .kept-route button').focus(); true");
+  await p.enter();
+  const shown = await p.waitFor("!!document.querySelector('.summary')", 20000);
+  await sleep(1200);
+  const opened = await p.eval("({ notice: document.querySelector('.notice')?.textContent, focus: document.activeElement?.tagName + ' ' + document.activeElement?.textContent, hash: location.hash, view: !document.querySelector('.planner-view').hidden })");
+  check("kept routes: Open by keyboard shows the kept route with no signal, back in the planner with the focus on its heading", shown && opened.view && opened.hash.includes("preset=default") && opened.focus === "H1 RouteMaker", JSON.stringify(opened));
+  check("kept routes: the planner's notice says it is the kept route and may be out of date", /^No signal: this is the route you kept on [A-Z][a-z]{2} \d+\. It may be out of date; plan again when you have a signal\.$/.test(opened.notice ?? ""), opened.notice);
+  await p.shot(`${SHOTS}/kept_offline.png`);
+
+  // Remove, by keyboard: said, and the focus goes to the heading when none is left.
+  await openSheet(p, "Settings");
+  await p.eval("document.querySelectorAll('#sheet-settings .kept-route button')[1].focus(); true");
+  await p.enter();
+  await p.waitFor("document.querySelectorAll('#sheet-settings .kept-route').length === 0", 10000);
+  await sleep(300);
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes .hint')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
+    removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
+  const freed = await p.eval("(async () => (await caches.keys()).includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).length : 0)()");
+  check("kept routes: what only that route used is deleted from the device", freed === 0, String(freed));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 417;
+const EXPECTED = 442;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

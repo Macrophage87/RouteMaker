@@ -41,8 +41,16 @@ for _ in $(seq 1 60); do
   docker exec "$name-vite" node -e 'fetch("http://127.0.0.1:5173/").then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' && break
   sleep 1
 done
+# The installable app's checks need a production build (its service worker exists only in one):
+# built in the copy and served by `vite preview` on 4173, beside the dev server.
+docker exec "$name-vite" node node_modules/vite/bin/vite.js build --logLevel warn >/dev/null
+docker exec -d "$name-vite" node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort
+for _ in $(seq 1 30); do
+  docker exec "$name-vite" node -e 'fetch("http://127.0.0.1:4173/sw.js").then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' && break
+  sleep 1
+done
 docker run -d --name "$name-chrome" --network "container:$name-vite" --shm-size 512m "$CHROME_IMAGE" \
   /ms-playwright/chromium-1208/chrome-linux64/chrome --headless=new --no-sandbox --disable-gpu \
   --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank >/dev/null
-docker exec "$name-vite" node /w/scripts/a11y/check.mjs --shots /shots
+docker exec "$name-vite" node /w/scripts/a11y/check.mjs --port 5173 --preview-port 4173 --cdp 9222 --shots /shots

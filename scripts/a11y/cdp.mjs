@@ -152,9 +152,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   await page.s("Fetch.enable", {
     patterns: [{ urlPattern: "*/api/*" }, { urlPattern: "*/tiles/*" }, { urlPattern: "*/basemap/*" }, { urlPattern: "*/auth/*" }],
   });
+  // `page.offline`: every mocked request fails as with no signal (the installable app's offline checks).
+  page.offline = false;
   page.listeners.add(async (msg) => {
     if (msg.method !== "Fetch.requestPaused") return;
     const { requestId, request } = msg.params;
+    if (page.offline) {
+      await page.s("Fetch.failRequest", { requestId, errorReason: "InternetDisconnected" }).catch(() => {});
+      return;
+    }
     const url = new URL(request.url);
     let status = 404;
     let body = "";
