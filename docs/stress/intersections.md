@@ -24,10 +24,13 @@ draws as a marker on the route.
 ## 2. Which roads count
 
 A junction costs something only if it involves a **busy road**, meaning tier 3 or
-higher (`BUSY_TIER = 3`, `:49`). Where two neighborhood streets (LTS 1 or 2) meet, a stop
-sign or an all-way stop costs 0.002 calm mi [3 m; 10 ft], and the junction is never drawn
-(`NEIGHBOURHOOD_STOP_FT`, `:75`, used at `:438-441`). This rests on the owner's account
-that DC law lets a bicycle roll through a stop sign when it is safe. Tier 5 (Avoid) is
+higher (`BUSY_TIER = 3`, `:49`). Where two neighborhood streets (LTS 1 or 2) meet,
+nothing is charged. `cost_of` gives a stop sign or an all-way stop there a token 0.002
+calm mi [3 m; 10 ft] (`NEIGHBOURHOOD_STOP_FT`, `:75`, used at `:438-441`), but such a
+junction makes no event (`assess`, `:556`), and a route's junction cost is the sum of its
+events (`penalty_m`, `:917-919`). So it is never charged to a route and never drawn. This
+rests on the owner's account that DC law lets a bicycle roll through a stop sign when it
+is safe. Tier 5 (Avoid) is
 priced the same as tier 4: every table gives tier 5 the tier 4 value (`:56`, `:60`,
 `:142`).
 
@@ -72,8 +75,10 @@ km].
 ## 5. Movements
 
 - **Onto a busy road** (`MOVEMENT_FACTOR_ONTO`, `:133`; applied at `:406-416`): the
-  stopped-side crossing cost times 1.5 for a left, 1.0 for straight on, and 0.1 for a
-  right. This applies when the rider comes from a quieter road. It also applies when the
+  crossing cost for the junction's own control, times 1.5 for a left, 1.0 for straight
+  on, and 0.1 for a right. The crossing cost is the one `crossing_ft` gives: the
+  stopped-side cost of section 3, or the signal, all-way stop or priority-side cost of
+  section 4. This applies when the rider comes from a quieter road. It also applies when the
   rider turns off one busy road onto a busier one, or turns with a stop sign on their own
   approach.
 - **A left off a busy road**, where the rider on the busy road turns across its oncoming
@@ -82,8 +87,9 @@ km].
   (`LEFT_ACROSS_ONCOMING_FT`, `:142`). It is multiplied by the same speed, lane and count
   factors, but not the rural one. A one-way road has no oncoming part, though the merge
   below still counts. At a signal the oncoming part is multiplied by 0.4 (`:143`).
-- **The merge before a left** (`merge_ft`, `:358-362`): 0.05 calm mi [0.08 km; 250 ft]
-  for each lane the rider must cross to reach the left-turn position. That is the road's
+- **The merge before a left** (`merge_ft`, `:358-362`), priced only as part of a left
+  off a busy road (`:374`): 0.05 calm mi [0.08 km; 250 ft] for each lane the rider must
+  cross to reach the left-turn position. That is the road's
   lanes in one direction, minus one (`:153`). Where the lane count is not known, the road
   is read as 1 lane (LTS 3) or 2 lanes (LTS 4 or Avoid) (`:157`). The merge on its own
   never costs more than 0.09 calm mi [0.15 km; 500 ft], anywhere (`:362`).

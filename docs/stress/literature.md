@@ -36,33 +36,40 @@ a crossing's score by about one level.
 [Furth's Level of Traffic Stress pages](https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/)
 and [the version 2.2 tables](https://bpb-us-e1.wpmucdn.com/sites.northeastern.edu/dist/e/618/files/2014/05/LTS-Tables-v2.2.pdf).
 These versions refine the tables: lanes per direction, volume bands, speed bands,
-bike-lane width including its buffer, the 15 ft [4.6 m] reach beside parked cars,
-one-way streets, and rural crossings (where a road at 45 mph [72 km/h] or more starts
-above the lowest level).
-- **Taken:** the base of the classifier, including the lane and buffer rules. The rural
-  idea became our rural crossing factor of 1.25.
+bike-lane width including its buffer, the 15 ft [4.6 m] reach beside parked cars, and
+one-way streets.
+- **Taken:** the base of the classifier, including the lane and buffer rules.
 - **Differs:** the owner's data corrections (speed limits, bike lanes, curated
-  corridors) and approved overrides are applied after the rule tables. Furth keeps LTS 1
-  and LTS 2 as different levels, but **RouteMaker's routing cost does not separate them
-  by level**. The level adds nothing at LTS 1 or LTS 2. Only the kind of facility
-  changes the cost there: a traffic-free path or a protected bike lane counts for less
-  than a quiet street ([stress-number.md](stress-number.md) section 2).
+  corridors) and approved overrides are applied after the rule tables.
+- **A gap, not a choice:** Furth keeps LTS 1 and LTS 2 as different levels, but today
+  RouteMaker's routing cost does not separate them by level. The level adds nothing at
+  LTS 1 or LTS 2; only the kind of facility changes the cost there (a traffic-free path
+  or a protected bike lane counts for less than a quiet street,
+  [stress-number.md](stress-number.md) section 2). This is not a deliberate difference.
+  Owner decision 240 plans to close it: a small LTS 2 weight in the calm search for Cargo
+  with passengers and Trailmaxxing, and a "Riding with kids" ride type (**planned**).
 
 ### Oregon DOT Analysis Procedures Manual, version 2, chapter 14
 [Analysis Procedures Manual, chapter 14](https://www.oregon.gov/odot/Planning/Documents/APMv2_Ch14.pdf).
 Oregon gives tables for unsignalized crossings by speed, lanes and volume. A median
 refuge lowers the level (a 10 ft [3 m] refuge is needed for LTS 1). Left turns made in
 traffic are scored by the lanes crossed, and any such left at 35 mph [56 km/h] or more is
-LTS 4. It also covers right-turn lanes, slip lanes and roundabouts.
+LTS 4. It also covers right-turn lanes, slip lanes and roundabouts. Its rural "R" tables
+rate a stop-controlled crossing of a road at 45 mph [72 km/h] or more above the lowest
+level even at low volume, because rural drivers do not expect bicycles.
 - **Taken:** the shape of the crossing costs; the values for a left across oncoming
-  traffic (LTS 3 for one lane, LTS 4 for more); a credit for a median refuge; the slip
-  lane rule; and charging for the lane changes before a left.
-- **Differs:** Oregon lowers a crossing with a refuge by a level. RouteMaker multiplies
-  the cost by 0.75 instead, an owner decision that keeps an unsignalized crossing of a
-  divided LTS 4 road red. Our cost for a left off an LTS 3 road, 0.11 calm mi [0.18 km],
-  is below our range for crossing an LTS 3 road from a stop, because the rider already
-  holds the lane. Oregon scores a two-stage left as two crossings; RouteMaker caps a left
-  at a signal at the price of a two-stage box turn. We have no roundabout rule yet.
+  traffic (LTS 3 for one lane, LTS 4 for more); the idea of a credit for a median refuge;
+  the slip lane rule; charging for the lane changes before a left; and the rural idea,
+  which became our rural crossing factor of 1.25.
+- **Differs:** Oregon lowers a crossing with a refuge by a whole level, which by our base
+  costs would be about x0.4. RouteMaker multiplies the cost by 0.75 instead, a milder
+  credit chosen by the owner (decision 196) so that an unsignalized crossing of a divided
+  LTS 4 road stays red. Oregon scores a two-stage left as two crossings; RouteMaker caps a
+  left at a signal at the price of a two-stage box turn. We have no roundabout rule yet.
+- **An open question:** our cost for a left off an LTS 3 road, 0.11 calm mi [0.18 km], is
+  below the range for crossing an LTS 3 road from a stop. The reasoning is that the rider
+  already holds a lane and crosses one oncoming lane, but the code marks this value as a
+  question for the owner (`intersections.py:139-141`), not a settled choice.
 
 ### Montgomery County Planning, Bicycle Master Plan, Appendix D (LTS 0 to 5)
 [Montgomery County Bicycle Master Plan, Appendix D](https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf).
@@ -101,21 +108,23 @@ at a junction: a signal 0, an all-way stop -1, a two-way stop -2, and no control
 ### Broach, Dill and Gliebe (2012), Portland
 ["Where do cyclists ride? A route choice model developed with revealed preference GPS data"](https://ppms.trec.pdx.edu/media/1307553839HIVYEAW.pdf),
 Transportation Research Part A. A GPS study of how riders trade distance against
-traffic. Turns, signals, stops and unsignalized crossings of busy roads each made a
-route feel longer by a share of a mile. Each crossing per mile of a road carrying 20,000
-or more vehicles a day made the route feel 32-62% longer, which is about 0.32 to 0.62 mi
-[0.51 to 1.00 km] for each crossing. Bike lanes made up for traffic but added little on
+traffic. Turns, signals, stops and unsignalized movements across busy roads each made a
+route feel longer, by a share of a mile for each one. Each unsignalized movement straight
+across, or left across, a road carrying 20,000 or more vehicles a day was worth 32-62% of
+a mile, about 0.32 to 0.62 mi [0.51 to 1.00 km] of extra riding each time. Bike lanes made up for traffic but added little on
 their own, and paths made a route feel 16-26% shorter. Half of the trips were less than
 10% longer than the shortest route.
 - **Taken:** the size of the crossing costs (our 0.57 calm mi [0.91 km] for an LTS 4
   crossing sits inside the 0.32 to 0.62 mi range), the signal and stop costs, and the idea
   that a stretch of path counts for less than the same length of quiet street.
-- **Differs:** Broach's figures are averages, mostly for riders going to work; riders on
-  other trips were more sensitive. **RouteMaker is stress-averse by default** (an owner
-  decision: most people should be sent on trails rather than faster LTS 3 and LTS 4
-  roads). So its LTS 3 and LTS 4 road costs are well above Broach's (at Default, 2.9-5.8
-  and 12.9-15.8 calm miles per mile), and its path discount is larger: a meter of path
-  counts as about 0.55 of a meter of quiet street, where Broach found 16-26% off.
+- **Differs:** Broach's figures describe the average choices of the Portland riders
+  studied. **RouteMaker is stress-averse by default** (owner decision 14: most people
+  should be sent on trails rather than faster LTS 3 and LTS 4 roads, and traffic-free
+  paths get a category of their own). So its LTS 3 and LTS 4 road costs are well above
+  Broach's (at Default, 2.9-5.8 and 12.9-15.8 calm miles per mile). Its path discount is
+  also deeper than Broach's. Broach found a path made a route feel 16-26% shorter, so a
+  meter of path counted as about 0.74 to 0.84 of a meter of quiet street. In RouteMaker a
+  meter of path counts as about 0.55. The 0.55 is RouteMaker's own figure, not Broach's.
 
 ### Zimmermann, Mai and Frejinger (2017), Eugene
 ["Bike route choice modeling using GPS data without choice sets of paths"](https://doi.org/10.1016/j.trc.2016.12.009),
