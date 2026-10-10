@@ -28,6 +28,7 @@ from typing import NamedTuple
 import osmium
 
 from routemaker.singletrack import SCALE_KEYS, grade, is_paved
+from routemaker.trailaccess import KEEPING_NETWORKS
 
 from . import calm_roads
 from .schema import (
@@ -122,6 +123,28 @@ def is_mountain_bike_way(tags: dict[str, str]) -> bool:
     return tags.get("mtb") == "designated" or bool(tags.get("mtb:type"))
 
 
+# A way on a national or international bicycle route is never a mountain-bike trail to the
+# map, whatever an mtb relation or tag also says of it: the owner, 2026-10-09, on the C&O
+# towpath (USBR 50) missing from z13 and below east of Seneca Creek while it drew at z14,
+# "On the localhost version, there seems to be breaks in the C&O canal towpath. However,
+# this isn't reflected in OSM." The way he tapped (OSM 68565884) is an open, unpaved,
+# traffic-free path; the only rule left that drops such a way from z10-13 and still draws
+# it at z14 is this one. The networks are the no-bike-paths rules' own exemption
+# (`routemaker.trailaccess.KEEPING_NETWORKS`, ncn and icn: the towpath, the Great
+# Allegheny Passage), so a regional route (the Cross County Trail's rough sections, rcn)
+# and the Patapsco Traverse (a walking route, OWNER-DECISIONS 378) are judged as before.
+NATIONAL_BICYCLE_NETWORKS = KEEPING_NETWORKS
+
+
+def is_mountain_bike(in_mtb_route: bool, tags: dict[str, str], national_route: bool) -> bool:
+    """Whether the map treats a way as a mountain-bike trail (never a long trail, never in
+    the ride layer): in a route=mtb relation or tagged as one (`is_mountain_bike_way`),
+    unless it is on a national or international bicycle route."""
+    if national_route:
+        return False
+    return in_mtb_route or is_mountain_bike_way(tags)
+
+
 def is_zoomed_out_trail(facility: str, is_trail_class: bool, car_free_when) -> bool:
     """Whether the zoomed-out map draws the way at all: the rows
     `pipeline.schema.trails_predicate` selects on a table with the facility and
@@ -165,6 +188,9 @@ class Routes(NamedTuple):
     # what a way with no name of its own is chained by (`way_name`). A local route's
     # name is not used, so a local route cannot keep a way through it (377).
     names: dict[int, str]
+    # Ways in a bicycle route at a national or international network
+    # (NATIONAL_BICYCLE_NETWORKS), which no mountain-bike marker takes off the map.
+    national: frozenset[int] = frozenset()
 
 
 class RouteMembers(osmium.SimpleHandler):
@@ -176,12 +202,18 @@ class RouteMembers(osmium.SimpleHandler):
         self.levels: dict[int, int] = {}
         self.mountain_bike: set[int] = set()
         self.names: dict[int, str] = {}
+        self.national: set[int] = set()
         self._name_levels: dict[int, int] = {}
 
     def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
         if r.tags.get("type") != "route":
             return
-        if "mtb" in route_routes(r.tags.get("route")):
+        routes = route_routes(r.tags.get("route"))
+        # Before the mountain-bike return: a `bicycle;mtb` relation on a national
+        # network is a national route too.
+        if "bicycle" in routes and r.tags.get("network") in NATIONAL_BICYCLE_NETWORKS:
+            self.national.update(m.ref for m in r.members if m.type == "w")
+        if "mtb" in routes:
             self.mountain_bike.update(m.ref for m in r.members if m.type == "w")
             return
         level = route_level(r.tags.get("route"), r.tags.get("network"))
@@ -201,10 +233,11 @@ class RouteMembers(osmium.SimpleHandler):
 
 
 def read_routes(path) -> Routes:
-    """The route levels and mountain-bike ways of the extract's route relations."""
+    """The route levels, mountain-bike ways and national-route ways of the extract's route
+    relations."""
     handler = RouteMembers()
     handler.apply_file(str(path))
-    return Routes(handler.levels, handler.mountain_bike, handler.names)
+    return Routes(handler.levels, handler.mountain_bike, handler.names, frozenset(handler.national))
 
 
 def is_bridge_way(tags: dict[str, str]) -> bool:
@@ -264,7 +297,7 @@ WHERE s.id = runs.id
 # road gets the length of its calm run (`pipeline.calm_roads`: continuous LTS 1 and 2
 # road, ended at every junction with a road at LTS 3 or above); a road with no name
 # stays 0: it has no run. A path's run is at least 1 m, as a road's is
-# (`calm_roads.runs_of`): 0 is "not derived" to VALIDATE, and a lone named trail
+# (`calm_roads.runs_of`): 0 is "not derived" to VALIDATE_SEGMENTS, and a lone named trail
 # piece under half a metre rounds to 0. `trail_run_m` rounds the same way and is left
 # as it is: nothing reads its 0 as "not derived" (its readers compare it with floors
 # of hundreds of metres, and the tiles carry it as it is).
@@ -521,7 +554,7 @@ def derive_roadside(schema: str) -> int:
 
 
 class LongTrailSummary(NamedTuple):
-    """What VALIDATE reads of the long-trail columns before a promotion."""
+    """What VALIDATE_SEGMENTS reads of the long-trail columns before a promotion."""
 
     # Rows on a long walking or long bicycle route (trail_route >= 2).
     on_long_route: int
@@ -557,7 +590,7 @@ def long_trail_summary(schema: str, sentinel_ways, run_floor_m: int) -> LongTrai
 
 
 class CalmRunSummary(NamedTuple):
-    """What VALIDATE reads of the calm-run column before a promotion."""
+    """What VALIDATE_SEGMENTS reads of the calm-run column before a promotion."""
 
     # Path rows (is_trail_class) in a run of at least the ride layer's path bar.
     path_rows: int

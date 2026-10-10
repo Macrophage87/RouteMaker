@@ -37,7 +37,8 @@ from routemaker import flow
 SNAP_RADIUS_M = 30.0
 # A drawn road or path this much further than a hidden way (a sidewalk mapped
 # beside it, a driveway) or a mountain-bike trail (drawn only as a thin dotted
-# line, not for routes: OWNER-DECISIONS 452a) is still the one meant: the rider
+# line, not for routes, and only while its map layer is on: OWNER-DECISIONS
+# 452a, 454) is still the one meant: the rider
 # clicked what the map shows as a way to ride.
 DRAWN_PREFERENCE_M = 15.0
 # Rows the nearest-neighbour scan reads before the distances are compared.
@@ -152,13 +153,15 @@ ACCESS_WORDS = {
     "motorway": (False, "Closed: a freeway"),
     "motorroad": (False, "Closed: a motor-vehicle-only road"),
     "private": (False, "Closed: private, or no public access"),
+    "impassable": (False, "Closed: mapped as impassable"),
     "cbd_sidewalk": (False, "Closed: a downtown sidewalk where riding is not allowed"),
     "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
     "singletrack": (False, "Closed: mountain-bike singletrack"),
     "mtb": (
         False,
         "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
-        " Mountain Goat ride types (drawn as a thin grey dotted line)",
+        " Mountain Goat ride types (drawn as a thin grey dotted line when the"
+        " Mountain-bike trails map layer is on)",
     ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
     "sac_scale": (False, "Closed: a rough hiking trail"),
@@ -192,6 +195,7 @@ OPTIONAL_COLUMNS = (
     "mass_usable_width_m",
     "bike_access_reason",
     "mtb_only",
+    "trail_bridge",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -614,9 +618,19 @@ def surface_words(row: dict) -> str:
         if row.get("is_trail_class") and row.get("roadside"):
             return "Not mapped; probably paved (a side path beside a road)"
         return "Not mapped"
-    if unpaved:
-        return "Unpaved, rough" if rough else "Unpaved"
-    return "Paved, rough" if rough else "Paved"
+    words = (
+        ("Unpaved, rough" if rough else "Unpaved")
+        if unpaved
+        else ("Paved, rough" if rough else "Paved")
+    )
+    # A short bridge the map draws in its trail's surface, not its deck's
+    # (`core.stress_tiles.BRIDGE_UNPAVED`): the words say the deck, and why the line differs.
+    bridge = row.get("trail_bridge")
+    if bridge == 2 and not unpaved:
+        return f"{words} (a bridge deck; the map draws it as part of the unpaved trail)"
+    if bridge == 1 and unpaved:
+        return f"{words} (a bridge deck; the map draws it as part of the paved trail)"
+    return words
 
 
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
@@ -703,6 +717,7 @@ ACCESS_SHORT = {
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",
+    "impassable": "mapped as impassable",
     "cbd_sidewalk": "downtown sidewalk",
     "zoo": "National Zoo path",
     "singletrack": "mountain-bike singletrack",

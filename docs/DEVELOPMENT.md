@@ -607,8 +607,9 @@ alone. Shape comes first and colour second:
   casing, drawn over the line. The mark is not drawn where the line is faint
   or on alleys. The legend has an Unpaved entry, which says an unpaved trail
   has no path edges. The tiles carry `unpaved` but no `is_rough`.
-- **Mountain-bike trails (452a).** Drawn in a not-for-routes look of their
-  own, for every ride type (the owner: "I want people to know where the trails
+- **Mountain-bike trails (452a, 454).** Drawn, while the "Mountain-bike
+  trails" map layer is on (454, below), in a not-for-routes look of their
+  own (the owner: "I want people to know where the trails
   are, but make them clear that it's not routing."; this supersedes 452's
   hiding and 290 (b)'s faint drawing). The stress tiles mark the class with
   `mtb` (true or left out; `segment.mtb_only`, written for
@@ -623,8 +624,10 @@ alone. Shape comes first and colour second:
   base map surface (mtbTrail.test.ts). `MTB_TRAILS_ROUTABLE` (false) /
   `routableMtb` is the switch a future MTB mode turns on: the class moves back
   into the routable layers and `mtb-trail` draws nothing. The Mass Ride layers'
-  `isRoad` leaves `mtb` out, and `mtb-trail` is hidden there with the other
-  stress layers. The tiles' `rough` is a rough surface, not this class. The
+  `isRoad` leaves `mtb` out; the routable stress layers stay hidden there, but
+  `mtb-trail` follows its own switch and keeps its filter without `massHides`
+  (nearly every trail row carries a capacity), and the Mass Ride legend gets
+  its row too (`MtbTrailLegend`). The tiles' `rough` is a rough surface, not this class. The
   legend has a row for it in the "Traffic stress legend" list (`MTB_LEGEND`,
   `MtbTrailSwatch`: the dots on the base map's earth colour, aria-hidden), and
   the road panel (`core.segment_info`, `is_mtb_trail`) says "Mountain-bike
@@ -632,6 +635,18 @@ alone. Shape comes first and colour second:
   `choose()`, prefers a normal drawn way within `DRAWN_PREFERENCE_M` to a
   nearer mountain-bike trail. Routing is unchanged: Gravel and Mountain Goat
   ride the class on the off-road graph, and their route draws over the dots.
+  Since 454 the line is an optional map layer, off until the rider turns it on:
+  the "Mountain-bike trails" switch under "Trails and terrain" in the Map
+  layers sheet (`lib/mtbTrailsSwitch.ts`; `stressStyle.js` `mtbTrailsOn`,
+  `setMtbTrails`, kept per browser under `routemaker.mtbTrails`, "on" or
+  "off"). `overlayLayerShown` shows `mtb-trail` by that switch alone, with the
+  stress map on or off and in every ride type, Mass Ride too; MapView sets the
+  visibility again in place when it changes. The legend row shows only while
+  the layer is on. The road panel answers from the segment table, so it still
+  describes a mountain-bike trail with the layer off; its Bike access line
+  says the dotted line is drawn "when the Mountain-bike trails map layer is
+  on". docs/MTB-TOPO-PLAN.md has the
+  rest of the mountain-bike and topo work.
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -952,7 +967,7 @@ order), and nothing asks for hazards.
   every segment of one value into one feature, are not split a feature per integer. ETag letter
   `w` (`r` is the rough surface's; the tag is `+kcfrmwoesbtl` on a full table). FORMAT_VERSION 7
   (the rebuild bundle).
-* **The VALIDATE sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
+* **The VALIDATE_SEGMENTS sentinel** (`pipeline.mass_capacity`, `pipeline.run.assert_mass_capacity`): at
   least 98% of the road rows and of the path rows carry a figure; no road row is under 44 or over
   1,181 riders a minute; and the median road lies in `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE`,
   60 to 200 since 404 (90 to 260 while a two-way street counted both directions; a model in the
@@ -1191,7 +1206,7 @@ before, at the preset's own starting positions:
 ```sh
 curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
     -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "cargo",
-         "carrying": "people", "stress": 90, "hills": -40, "when": "weekend"}'
+         "carrying": "people", "stress": 80, "hills": -40, "when": "weekend"}'
 ```
 
 - `stress`, integer 0-100, rescaled on 2026-10-01 (OWNER-DECISIONS 163 and 164;
@@ -1231,7 +1246,7 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   is car-free at weekday rush; supported since the round-1 mutation review).
   A condition it cannot read - a month range, `sunset` - closes nothing.
 - `carrying`: `cargo` or `people` ("Cargo with passengers", item 241), Cargo Bike only
-  (400 elsewhere); it sets the stress slider's start (90, Default's, or 100).
+  (400 elsewhere); it sets the stress slider's start (70, Default's, or 80).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
   routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
@@ -1562,8 +1577,10 @@ not an oversight:
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per
 metre over the same edge with no tier, as a multiple of the edge's time cost:
-Valhalla 3.5.1's bicycle edge cost is `time * factor`, with `factor = 1 +
-grade + accommodation * roadway_stress` (sif/bicyclecost.cc), so the stress
+Valhalla's bicycle edge cost (3.5.1 to 3.9.1) is `time * factor`, with
+`factor = 1 + grade + accommodation * roadway_stress` (sif/bicyclecost.cc;
+from 3.6.0 it then multiplies by a per-request linear-feature factor, 1 unless a
+request sends `linear_cost_factors`, which RouteMaker does not), so the stress
 level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
 LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
 accommodation factor. LTS 4 and up add the graph's top practical speed (140,
@@ -1573,7 +1590,10 @@ comes from its own speed, so no duration changes, and the speed limit and
 access stay OSM's. Not on the no-trail graph: Mass Ride is locked at 0.
 
 The stress levels, LTS 3 / LTS 4 (and the ratio), modelled from the costing
-code for representative roadways at each slider position:
+code for representative roadways at each slider position. (Positions in this
+table and the measurements below it are on the scale before the 2026-10-01
+rescale: the old position `q` is now `q * 7 / 9` up to 90, so the columns are
+about today's 0, 19, 39, 58, 70 and 80, and "5 to 100" is about today's 4 to 80.)
 
 | Roadway | 0 | 25 | 50 | 75 | 90 | 100 |
 |---|---|---|---|---|---|---|
@@ -1704,6 +1724,9 @@ link is opened.
 
 ## Intersection costs, the calm search and the detour warning
 
+The whole traffic-stress model (classification, overrides, costs per preset, the stress
+number, drawing) is documented in [docs/stress/](stress/README.md).
+
 FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02 after the round-1 and
 round-2 reviews; OWNER-DECISIONS 133-136, 138, 163-169, 171, 172, 185-188,
 194-196; the crossing
@@ -1717,7 +1740,7 @@ it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
-Valhalla 3.5.1's bicycle costing prices a node through its stop impact and turn
+Valhalla's bicycle costing (3.5.1 to 3.9.1) prices a node through its stop impact and turn
 type, a few seconds. Measured on the live standard router (2026-10-01):
 `/trace_attributes` over routes along Wisconsin Avenue, Pennsylvania Avenue SE,
 K Street, Rhode Island Avenue, Georgia Avenue and Rockville Pike and across
@@ -1742,7 +1765,10 @@ of the owner's item 166. Against it the literature review's costs are 30 to 100
 seconds of riding. The tiles do carry stop, yield and signal flags
 (`/locate`'s `edge.stop_sign`, `yield_sign`, `traffic_signal` and the node's own
 `traffic_signal`, matched to a traced edge by `edge.id`); `/trace_attributes`
-does not return them and `/expansion` is not enabled. The router's cost for a
+did not return them under 3.5.1 and `/expansion` is not enabled. (From 3.6.0
+`/trace_attributes` returns `node.traffic_signal` and `edge.traffic_signal`,
+valhalla/valhalla#5121 and #5385, but still no stop or yield flags; the
+junction model keeps reading `/locate`.) The router's cost for a
 metre of quiet residential street, from the same traces, is 2.2 times its time
 (median; 1.8 to 2.9 at `use_roads` 0 to 1).
 
@@ -1988,6 +2014,18 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
+**One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
+2026-10-10). Below the top of the slider a longer candidate must also be worth its
+miles, as at the top: the stress it saves (`refine.stress_weight_m`, metres of LTS 3
+with LTS 4, Avoid and the flagged junctions weighted as at the top) must be at least
+the metres it adds over `refine.worth_ratio`, which rises with the calm rate from 1
+just above 80 to 5 at 100 (`WORTH_DEFAULT`): about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+so at 90 a mile [1.6 km] of LTS 3 saved buys about 1.7 mi [2.8 km] of riding. The score
+still decides first. Crossing avoidance alone (80 and below, no calm rate) is
+unchanged. The proposal's worked case, 2.75 mi [4.4 km] more for 650 ft [198 m] less
+LTS 3 with more flagged crossings, is refused at every position, with a target or
+without.
+
 There is no cap on the detour. The search keeps the best-scoring candidate, and
 never one that is busier than the router's own route ("Traffic wins", OWNER-DECISIONS
 61, said of hill avoidance and carried here): a candidate with more than 2 per
@@ -2002,6 +2040,50 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 `no_route`, `untraceable` or, where it did not run, `span` (past 19 mi
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
+
+**The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
+alternatives by our own stress measures"; found comparing a planned route with a
+ridden one: the search only rerouted around the router's first route and never
+looked at the router's own alternatives). Wherever the calm search runs (above
+80, `Context.rank_alternates`), before its first round it asks the router once for
+the same route with `alternates` 3 (`refine.ROUTER_ALTERNATES`, the service's
+`max_alternates`), reads each alternative (its trace, stress and junctions) and
+ranks it with the first route by the rule every candidate meets (`refine.better`:
+below the top of the slider the score above, so the slider's rate sets how much
+distance a metre of LTS 3 avoided is worth; at the top the stress order and the
+worth of the extra miles) and the same guards (not busier than the first route, the
+LTS 4 hold, junctions read, within the ceiling). The rounds then start from
+whichever ranks first, so their exclusions are that route's busy stretches; the
+Traffic-wins guard and the LTS 4 hold stay the router's first route's. At the top
+of the slider every alternative that passes the guards also joins the routes the
+rider is offered (`candidates`).
+
+Where the plan already asked for them with the same request (the hills slider's
+avoid half, `Context.router_trips`) those are ranked and none is asked again, and
+where that ask timed out none is asked at all; a route the target fitting
+(`_fit_target`, `_past_target`) asked for again with another costing gets the
+search's own ask. The ask and the readings end `ALTERNATES_ROUND_RESERVE_S` (6 s,
+a round's least and a second) before the search's own end, so at least one round is always
+left (the rounds were the whole calm search before 435), and the ask is not
+started with less than `ALTERNATES_MIN_S` (1 s) left before that; the weekend
+router's ask is held to its own `WEEKEND_TIMEOUT_S`.
+
+`calm_search.alternates` (`api.AlternatesOut`) says how many routes the router gave
+other than the one the search starts from (`given`: where the hills slider chose
+one of the router's alternatives, the router's first route is one of them), how
+many passed the guards (`ranked`), whether one was taken (`taken`), and `limited`,
+`time` where the ask or a reading ran out of its time (the search's own `limited`
+is unaffected: its rounds still run). It is null where none were asked for: a plan
+with stops or a loop (Valhalla gives alternatives between two locations only), a
+long calm plan's legs (each has only its share of the time, and alternatives
+roughly double a long leg's route; "Time, alternates and limits" below), or too
+little time left. The ask is one more `/route` (with alternatives: on the live
+router a warm 7.5 mi [12 km] route went from 0.2 s to 1 to 2 s with them, the
+climb search's measurements at `routing.SEEK_MAX_SPAN_M`) and a reading of each
+alternative. Not measured on the live router from this branch (it was built where
+the router cannot be reached; docs/OPERATIONS.md, "Cost per plan", has the check to
+run after deploy). The detour acceptance rule decision 435 asks to revisit is
+the owner's "One rule" ("One rule for the extra miles", below).
 
 Crossing avoidance is the same search with the approaches to the worst junctions
 (the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
@@ -2044,8 +2126,7 @@ the host took 4 to 17 s, and the first plan after a process starts a few seconds
 more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
-`max_alternates` 3 (the search does not use alternates; Valhalla's alternates
-are near-optimal in its own cost, which is not where a calmer route is) and
+`max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
 - starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
@@ -2675,8 +2756,8 @@ corridor's detour (`refine.SEEK_RETRY_OVER`, `SEEK_RETRY_SLACK_M`), time allowin
 both answers are scored and guarded, and the second's `tried` row says
 `retry: "longer"`. So a leg is up to six routes.
 
-**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Group Ride
-with trails off at 100) is not seeked (`limited: "roadway_only"`).
+**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Mass Ride,
+or any ride with the "Keep to roads, not trails" switch on, at 100) is not seeked (`limited: "roadway_only"`).
 
 **Credit 0 against 0.5, one process.** Trailmaxxing at 100, the twelve trips, the
 harness's plan time (the second of two plans, the harness's own work excluded), two
@@ -3457,14 +3538,18 @@ near the map centre (`/api/geocode?...&lat=..&lon=..`). What keeps it out of the
 
 - **gunicorn** logs the path without the query (`%(U)s`, docker/api-entrypoint.sh), with the
   duration (`%(D)s`): that is where a slow route now shows.
-- **Valhalla** (401): loki's and thor's `logging.long_request` is `NEVER_LONG_MS`, 3,600,000 ms,
-  far past httpd's 30 s timeout, so their slow-request warning, which can carry the request,
-  never fires. The cost is that Valhalla's own slow-request warnings are gone for every route;
-  route timing comes from the app's side: the time of the whole plan request, not of each router call
-  (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's Caddy keeps no access log). The routers read
-  the config only at start, so a deploy needs a restart. On the live stack:
-  `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend` (restart, not `up -d`).
-  tests/test_valhalla_config.py pins it on all four configs.
+- **Valhalla** (401): no Valhalla release RouteMaker has run, 3.5.1 to 3.9.1, reads a
+  `long_request` key. Only upstream's config generator and test configs name it, so there is no
+  slow-request log that could carry a request's locations. The `long_request` overrides set under
+  401 (`NEVER_LONG_MS`) never did anything, and the 3.9.1 upgrade dropped them
+  (reports/valhalla-3.9/README.md). The routers' own per-request lines are the `400::` and `500::`
+  error lines, which carry the error text and a request id, not the request. From 3.7.0 every
+  Valhalla program reads only the top-level `logging` section, which
+  scripts/build_valhalla_configs.py sets to std_out with colour off;
+  tests/test_valhalla_config.py::test_every_program_logs_plainly_to_stdout pins that and that no
+  per-module section is left. Route timing comes from the app's side: the time of the whole plan
+  request, not of each router call (gunicorn's `%(D)s`; the beta's nginx `$request_time`; home's
+  Caddy keeps no access log).
 - **Beta nginx** (deploy/beta/nginx-routemaker.conf.template): the access log is
   `rmbeta_noquery`, the path only, with no query string, Referer, client address or tester name.
   `/api/reverse` and `/api/geocode` log errors at `crit` only, to their own file (a review addition,
@@ -3490,10 +3575,103 @@ for group rides or mass rides, many routing engines put people on this when it's
 not appropriate." and, for a Group Ride with trails on, "with trails on that's
 fine". So the closure is built into one graph. A ride chooses its graph through
 `core.presets.variant_for_ride`, which `routing.py` calls and which gives
-`Variant.NO_TRAIL` to Mass Ride (its preset's own variant). Any ride with trails
-off would take the same graph (`pipeline.variants.variant_for` maps the trails-off
-toggle to it; Group Ride's toggle is not offered yet). Group Ride with trails on
-is on the standard graph, which keeps contraflow.
+`Variant.NO_TRAIL` to Mass Ride (its preset's own variant) and to any ride whose
+request has `trails_off` (the "Keep to roads, not trails" switch, below). Group Ride with trails
+on is on the standard graph, which keeps contraflow.
+
+### Trails off (OWNER-DECISIONS 463, 463a, 463b)
+
+The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
+type (2026-09-26, "Every type, roadways ok"). Its label is "Keep to roads, not
+trails" (463b; checked is roads only); the link parameter and the API field keep
+the names `trailsoff` and `trails_off`. The request field is
+`trails_off` (`core.api.RouteIn`, a strict boolean, default false), carried as
+`Dials.trails_off` to `presets.variant_for_ride(name, when, assist, trails_off)`,
+which gives `Variant.NO_TRAIL` whatever else the ride asks. The answer's
+`dials.trails_off` says what was planned: true on Mass Ride whether or not it
+was sent, because Mass Ride is always trails off.
+
+What it means is what the no-trail graph leaves out (`pipeline.variants.inject`,
+`is_trail_class`): every way whose `highway` is `cycleway`, `footway`, `path`,
+`pedestrian`, `bridleway` or `steps`, whatever its bicycle tag, plus the roadways
+of the sidepath-only bridges (Chain Bridge, the George Mason span, the Wilson
+Bridge). It also gives no ride a one-way street against its traffic
+(`close_contraflow`) and no credit for painted or protected lanes
+(`facility_neutral`); the lanes tagged on a road stay in the graph as the road.
+The Key Bridge and Arlington Memorial Bridge roadways (`roadway_mass_ride_only`)
+are barred on the standard and e-bike graphs and open here, so any trails-off
+ride may use them. The switch's hint says this in plain words
+(`frontend/src/lib/dialsPanel.ts`, `TRAILS_OFF_HINT`, `TRAILS_OFF_HOW`).
+
+E-bike rides (463a). The owner, 2026-10-09: "Most ebikes are allowed on
+multiuse trails." So an e-bike ride with the switch on, the E-bike ride type or
+electric assist on Cargo Bike, plans on the no-trail graph like any other ride,
+with no lock, at its assist pace. It does not get the e-bike graph's one rule,
+`bicycle=no` on ways tagged `electric_bicycle=no`
+(`pipeline.variants.bars_electric_bicycle`); with the trails gone, that rule
+would matter only on a road that bars e-bikes. Counted on 2026-10-09: the
+clipped source extract (`source.osm.pbf`, 4,564,476 ways) has no way at all with
+`electric_bicycle=no`, so no road, and the e-bike and standard variant extracts
+of that build are byte for byte the same. The full three-state extract has 14,
+every one a `highway=path` trail in western Virginia, outside the coverage and
+trail class anyway. If a road inside the coverage is ever tagged so, carrying
+the bar into the no-trail graph is a tile change and a rebuild (a recorded
+follow-up, not built).
+
+Confirmed by the owner (OWNER-DECISIONS 463c): Gravel and Mountain Goat with
+trails off take the no-trail graph, not the off-road graph; a weekend ride takes
+it without a weekend twin, as Mass Ride does. The trail seek does not run (`limited: "roadway_only"`), as on Mass Ride.
+
+What differs from Mass Ride, which shares the graph (the correctness review of
+wip/trails-off):
+
+- `highway=track` is not trail class, so unpaved farm and forest roads stay on
+  the no-trail graph and a roads-only ride may use them; "How this works" says
+  so ("Unpaved farm and forest roads stay.").
+- The breakdown counts a painted or protected lane as a lane. Bike lanes are
+  "none" only on Mass Ride, which takes the roadway (`Context.lanes_as_roadway`,
+  `routing.classify(..., roadway_only=...)`, from the preset's own variant); the
+  graph's `facility_neutral` still gives the lanes no credit on every
+  trails-off ride.
+- No long calm plan (`routing.long_calm_for(..., trails_off=True)` is false):
+  Trailmaxxing at the top with trails off plans as the other ride types do at
+  the top, rather than spending the long ride's budget on a leg-by-leg search
+  for trails it has turned off.
+- Its no-route message names the switch ("With Keep to roads, not trails, this
+  ride routes only on roadways ..."); a Mass Ride's names Mass Ride, as before.
+
+`pipeline.variants.variant_for` and the `Variant` docstring still say the
+no-trail and e-bike variants are mutually exclusive and that Group Ride is the
+one ride with the toggle. They are stale after 463 and 463a (the route API asks
+`core.presets.variant_for_ride` and never calls `variant_for`), and are left as
+they are on this branch because `src/pipeline/variants.py` is a beta CD stop
+path (`scripts/beta/cd_logic.py`): a recorded follow-up for the next branch that
+changes that file anyway.
+
+The front end holds it as `Dials.trailsOff`, absent for off. It is in the link as
+`trailsoff=1` (written only when on; a link without it is trails on, so every
+older link opens as before, and Mass Ride is trails off whatever the link says),
+in the request as `trails_off: true`, in the Ride line as "roads only" (not on
+Mass Ride), in a GPX export's dials comment as `trailsoff=1` (read back on
+import, so the file reopens on roads only) and its description as "roads only,
+no trails" (neither on Mass Ride), and stays when the ride type changes, as
+Avoid gravel does. The
+control is a real checkbox with the label "Keep to roads, not trails",
+described by its hint ("No bike paths, trails or stairs. Can use the Key and
+Memorial Bridge roadways."; on Mass Ride it starts "A mass ride always keeps to
+roads."), with its own "How this works" (read "How this works: keep to roads");
+on Mass Ride it is checked and `aria-disabled` (in the Tab order, a press changes
+nothing), as "Make it a loop" is when the ride is a loop already. The browser
+check (`scripts/a11y/check.mjs`) covers it.
+
+**Deploying it.** API and front end only: no migration, no data rebuild, no
+tile, router or compose change, and no CD stop path (`src/pipeline/variants.py`
+is as on main). Roads-only rides move load onto `valhalla-no-trail`, which has
+the same limits and threads as the standard router; watch its latency and
+memory on the beta after release. Rollback: revert the API and the front end
+together (a new front end sending `trails_off` to an old API gets a 400 until
+the page reloads); `trailsoff=1` links and GPX files then plan with trails on,
+with no error shown.
 
 `pipeline.variants.inject` calls `close_contraflow` last on the no-trail
 variant, after the trail and sidepath drop. On a way that is one-way for motor
@@ -3608,7 +3786,7 @@ answer on the source tags pinned.
 
 ## Lua
 
-The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it
+The tag transform runs under LuaJIT, because Valhalla's build (3.5.1 to 3.9.1) requires it
 (`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
 `graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
 under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
@@ -3840,7 +4018,8 @@ Tests: `lib/sidebar.test.ts`.
 
 Front end only; the server-side log changes the review found (beta nginx, Valhalla's `long_request`) were on
 their own branch, wip/privacy-logs (OWNER-DECISIONS 401), which the rebuild bundle has merged; there the
-fifth (off-road) router carries the same `long_request` (31fd734). A "Use my location" button sits beside the search box (`.place-search-row`, in
+fifth (off-road) router carries the same `long_request` (31fd734). (Later found to be read by no
+Valhalla release, and dropped in the 3.9.1 upgrade: see "Logs and the rider's position".) A "Use my location" button sits beside the search box (`.place-search-row`, in
 `PlaceSearch.tsx`, 44 px each way), and "Your location" leads the search's list while the box is
 empty or starts to say "your/my/current location" (`locationMatches`). Enter with nothing highlighted
 never takes it (`pickTarget` in `lib/geocode.ts`: a look-up asks the browser's permission); an arrow
@@ -3897,8 +4076,8 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
     location"): `SKIP_SIGN_IN_PLAN_WITH_LOCATION` stays false. Flipping it would also need the Settings
     sheet's sign-in sentence and two test pins changed (the comment at the switch).
   - Server logs are not this branch's: with wip/privacy-logs (PLAN 401), which merges first, the location
-    in a reverse look-up's or a search's query stays out of the beta nginx logs and Valhalla's slow-request
-    log is off. Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
+    in a reverse look-up's or a search's query stays out of the beta nginx logs. (Valhalla turned out to have no
+    slow-request log to switch off; see "Logs and the rider's position".) Tile paths in the nginx and gunicorn logs (`/tiles/stress/{z}/{x}/{y}.pbf`) do show the area
     viewed, as any map pan does.
 - **Testing on a phone:** the local stack by LAN IP (`http://192.168.x.x`) is not a secure context, so the
   button is disabled there. Test on the beta, or over `localhost` (`adb reverse`, or a tunnel with TLS).
@@ -3969,11 +4148,11 @@ docs/OPERATIONS.md, "The ride layer (z12-13)".
   `RIDE_ROAD_RUN_MI`, `CALM_ROAD_MAX_TIER`, `CALM_PATH_GAP_M`; 403's `ROADSIDE_M`,
   `ROADSIDE_FRACTION`, `ROADSIDE_SAMPLE_M`),
   `ride_layer_predicate` and the partial index; `pipeline.trail_routes` holds
-  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE
+  `is_calm_candidate`, the two derive UPDATEs (`derive_calm_runs`) and the VALIDATE_SEGMENTS
   summary (`calm_run_summary`); `pipeline.run.assert_calm_runs` is the check, and the
   tests' autouse fixture (`tests/conftest.py`) blanks its sentinels and floors as it does the
   long trails'. `routemaker.stress.inferred_unpaved` is 376 C.
-- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE), `tests/test_stress.py`
+- **Tests.** `tests/test_trail_routes.py` (candidates, runs, VALIDATE_SEGMENTS), `tests/test_stress.py`
   (the track rule), `tests/test_stress_tiles.py` (`TestRideLayer`, which adds the column back:
   every other test of that file runs on a table without it, the fallback, so they hold
   today's z12-13 and each is one `DROP COLUMN` from the new one), and the front end's
@@ -4070,8 +4249,11 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   in the UI and the link (`targetmi`, miles to a tenth). The API takes whole metres from 1,000
   (0.6 mi) to 1,000,000 (620 mi).
 - **It is a target, not a maximum** (271): the planner aims at or under it, and up to it the extra
-  distance is free (the rider asked for it). Past it a longer route is taken only where the stress it
-  saves pays for the miles past the target at the stricter bar (`refine.WORTH_OVER_TARGET`, below),
+  distance costs half the default's price, 1 mi [1.6 km] of LTS 3 saved per 10 mi [16 km]
+  (`refine.WORTH_UP_TO_TARGET`; OWNER-DECISIONS 435, the owner's "One rule" of 2026-10-10: free
+  until then, so a route a little calmer could add any miles up to the target). Past it a longer
+  route is taken only where the stress it saves pays for the miles past the target at the stricter
+  bar (`refine.WORTH_OVER_TARGET`, below),
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
@@ -4206,11 +4388,13 @@ were not worth it:
   LTS 4 saving, against 287(1), which keeps LTS 4 first in the stress order. `choose_options` and the loop's way
   back use the same rule through `worth_it`.
 - **The charge** (`refine.distance_charge_m`), the stress the extra distance must save:
-  - no target: the metres added over `WORTH_DEFAULT` = **5** (1 mi of LTS 3 per 5 mi), measured as
-    the Hills slider weighs distance (`level3`), so a longer route that is less effort with Hills set
-    to avoid is not charged for it;
-  - with a target (271): nothing up to it, and the actual metres past it over `WORTH_OVER_TARGET` =
-    **2.5** (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
+  - no target: the metres added over the slider's `worth_ratio` (435, "One rule"): `WORTH_DEFAULT` =
+    **5** at the top (1 mi of LTS 3 per 5 mi), and below it about 1.2 at 85, 1.7 at 90 and 2.8 at 95,
+    measured as the Hills slider weighs distance (`level3`), so a longer route that is less effort
+    with Hills set to avoid is not charged for it;
+  - with a target (271): the actual metres up to it over `WORTH_UP_TO_TARGET` = **10** (1 mi of LTS 3
+    per 10 mi; 435, where 271 made them free), and those past it over `WORTH_OVER_TARGET` = **2.5**
+    (1 mi of LTS 3 per 2.5 mi past the target: stricter than the default);
   - a leg of a plan with stops is charged at the whole trip's length (`rest_m`), and a spliced trip
     is checked again as a whole (`seek.whole_trip: "not_worth"`).
 - **A long plan**: each leg's search keeps every option with no price on distance of its own
@@ -4328,6 +4512,75 @@ so are links (`loop=1`). A Mass Ride's link keeps `loop=1`, but its request leav
 (`api.requestRoute`; `routing.loop_wanted` ignores it there anyway).
 A loop implied by an end on the start, with the toggle off, keeps "Start"
 and "End". Mass Ride has no loop, and its hints do not mention the toggle.
+
+**Stops in any order (OWNER-DECISIONS 449).** "Best order" (`App.tsx`, in the point tools after
+Reverse; `lib/stopOrder.ts`; a one-press button, the owner's choice of 2026-10-10 over 449's switch)
+puts the stops in the order that is best as any route is best (the owner, 2026-10-10: "the same
+best as any other route. It's adjusted by both traffic stress and elevation"): least by the router's
+own cost: riding time (a climb counting through the router's grade-speed model) with the ride's
+stress penalties, and below the hills slider's middle its hills penalty, priced in. It is never shown on a Mass Ride, and the API
+refuses one (400). Otherwise it shows only with two or more stops to order (`stopsThatMove`): the points between the start and the end, or in a
+loop the rider chose every point after the start (a ride that already ends on its start keeps that
+end). On a shorter ride it could change nothing, so it is left out rather than shown disabled with a
+standing reason under every short ride's tools; More tips says when it appears (`editingTips`). If
+it leaves while it has the focus (an undo or a removal takes a stop away), the focus goes to Reverse
+beside it. A press sends the ride as a route request would (points, preset and dials; not the
+weight, which the order does not use) to `POST /api/stop-order`
+(`core.api.stop_order`, the route request's body, its rate and in-flight limits). While the order is
+found the button keeps its label and is `aria-disabled`, "Finding the best order for the stops." is
+said, and another press says "Still finding the best order." The answer is used only if the points,
+ride type and dials are still those it was asked for, and only if it fits them (`applyAnswer`,
+`fitsOrder`: every point once, the start first, the end last unless it is a stop). A new order is one
+`commit`, so Undo puts the old one back, and the route is asked for as after any edit; an order
+already best commits nothing. What came of it is the Points notice (a status, so it is seen and said
+once; cleared when the points change again): each stop that moved, by place name or coordinates, with
+its old number, how many stayed, and what it saves (`bestOrderSaid`; an order no quicker, chosen for
+its cost, says "but on calmer or flatter roads"; an order by riding time alone says why), for example "Stops put in the
+best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Market (was Stop 1). The
+other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter. Undo puts the old
+order back." An order already best, an answer by straight line, a refusal and a ride changed meanwhile
+each say so there.
+
+On the server, `core.stoporder.order` asks the ride's own router (the graph and costing `/route`
+would use, `presets.variant_for_ride` and `presets.costing`; a test plans the same bodies through
+both and compares) for the cost of the route between every pair of points an order may ride. Valhalla's
+matrix answers only times and distances, so up to ten stops (`COST_MAX_STOPS`; k stops are k(k+1)
+pairs, 110 at ten) the costs are the legs' `summary.cost` from ordinary `/route` requests with
+`break` locations and the plan's `date_time` (`_leg_costs`), chained so each pair is one leg once
+(`_pairs_chains`: an Euler walk through every stop-to-stop pair from the start to the end, and a
+start-stop-end chain for each other stop; a request holds at most 50 locations, the routers'
+`max_locations`, and 250 mi (400 km) of straight line between them in turn, under their
+`max_distance`), within 12 s (`COST_BUDGET_S`). Every cost comes from one graph: a weekend or
+off-road router that stops answering part way leaves the standard graph to answer every leg again,
+and one still silent when the 12 s end is not marked down (it had less than its own limit) but the
+matrix asks the standard graph. Past ten stops, or when the legs are refused (a
+pair the router cannot join refuses its whole request), out of time or carry no cost, the order is by
+the riding times of Valhalla's matrix (`sources_to_targets`, added to `loki.actions` by
+`scripts/build_valhalla_configs.py`) along the same least-cost ways, and the page says it did not
+weigh stress and hills. A weekend or
+off-road router is handled as `/route` handles it: at most 15 s, and one that does not answer or has
+no tiles leaves the standard graph to answer and is remembered as down.
+`routemaker.stoporder.best_order` chooses the order: exact (Held-Karp) up to 13 stops, about a quarter of a second; past
+that, local moves (or-opt and 2-opt) from the rider's order, the nearest-neighbour order and eight
+seeded shuffles, stopping new starts after 3 s, which is not proven best (`exact` false). Costs are
+read in the direction ridden (one-way streets, climbs); a pair the router cannot join is never chosen.
+The rider's order is kept unless the new one saves at least 1% (`MIN_SAVING_FRACTION`), so a
+reshuffle for nothing does not renumber the stops. The times are the router's own routes between the
+points, not the calm search's or the hills slider's choice, which run only when the route itself is
+planned (the hills slider's search among alternatives does not run on a ride with stops; the calm
+search does, leg by leg, so a planned route can differ from the legs ordered), and the matrix is
+asked without a `date_time`. Past 93 mi (150 km) of straight line (the
+route API's long-ride line) the router is not asked, and a ride past 124 mi (200 km), a loop's way
+back included, is refused as `/route` refuses it. A router out of time also leaves the straight-line order. A router that does not serve the matrix (one started
+before this change, or one that is down) is not an error: the order is chosen by straight-line
+distance and the answer's `by` says so, as the page then does. Whether the ride is a loop and ends on
+its start is read from the rider's points, as the page reads it; the router is asked about the
+points it would route (a Zoo point at the racks). The answer: `order` (indices into the points sent;
+a loop's return to the start is not in it), `changed`, `by` (`route_cost`, `riding_time`, `straight_line`, or null
+with fewer than two stops, when the router is not asked), `exact`, and `before_s`/`after_s`,
+`before_m`/`after_m` for the rider's order and the new one. Tests: tests/test_stop_order.py (the
+solver against brute force over every order, and the endpoint through a fake router) and
+frontend/src/lib/stopOrder.test.ts.
 
 ### The tables
 
@@ -4519,8 +4772,8 @@ from, below):
    contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
 
    The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
-   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
-   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance was free
+   within the target, 287(2), until 435 made it half price). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
    replacement is never the main road a few metres on and the case does not arise; and turns are not in
    the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
    own, outside 258 to 262.
@@ -4834,7 +5087,7 @@ the 22 ways it lifts. Direction on a hill is FOLLOWUP-GRADE-STRESS, not here.
 (`settings.REBUILD_SENTINEL_LTS4_STREET`, "CONNECTICUT AVE NW"), its segment rows by
 `attr_sources->'blocks'` (the classifier records up to 12 matched blocks a way), lengths by
 row (both carriageways of a divided stretch), a row's latitude at its middle, LTS 4 meaning
-tier 4 or Avoid. VALIDATE (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
+tier 4 or Avoid. VALIDATE_SEGMENTS (`pipeline.run.assert_reference_lts4_street`) refuses under 60%
 overall or under 95% north of 38.9126 N (R St NW). Skipped, with a warning, when no agency
 street layer is installed; refused when the layer has no block of that name; off with an
 empty street (the suite's toy extracts, `tests/conftest.py`). On the 2026-10-03 build: 49%
@@ -4929,7 +5182,7 @@ over every highway way and the `landuse=military` / `military=*` areas of the so
   `WHY_TAGGED_OPEN` and closed.
 - Closed ways are `rm:no_bicycle=military` (first in `trail_closures.ORDER`, on every graph);
   closed roads are left off the map. `military-closures.csv` lists every way with its share.
-- **VALIDATE** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
+- **VALIDATE_SEGMENTS** (`run.assert_military_closures`): the three JBAB sentinels, a floor per large
   installation (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`, by OSM name, or a tuple of names held
   as one sum where outlines overlap, as Bolling's old outline and JBAB do; empty in the test
   settings), and `through_networks`: an open network inside a base that meets the bicycle-open
@@ -4972,7 +5225,7 @@ by the military rule.
   ways. Every reason a secured way can be open today is in `THROUGH_EXCEPTIONS` (override,
   numbered route, the listed public roads, the Visitor Center ways, signed for bicycles),
   so this check cannot refuse a build yet; it guards an open reason added later.
-- **VALIDATE** (`run.assert_secured_closures`): the Rowley sentinel ways
+- **VALIDATE_SEGMENTS** (`run.assert_secured_closures`): the Rowley sentinel ways
   (`REBUILD_SENTINEL_SECURED_CLOSED_WAYS`, closed where the extract has them; a missing one
   is warned about) and a floor per compound (`REBUILD_SENTINEL_SECURED_MIN_CLOSED`, by its
   `SECURED_AREAS` name, or OSM's for Goddard), about three quarters of the 2026-10-03
@@ -5004,7 +5257,8 @@ stays hidden. Tests: `tests/test_facility.py`.
 ## Hard surfaces (OWNER-DECISIONS 440)
 
 `routemaker.surfaces` is the one definition of a paved surface. `is_paved` is the
-map's and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
+map's (but for a judged short bridge, drawn in its trail's surface: `core.stress_tiles.
+BRIDGE_UNPAVED`, docs/OPERATIONS.md "Short bridges") and the segment table's reading (`stress.is_unpaved`, `inferred_unpaved`) and the
 graph's (`lua/routemaker_remap.lua`, `M.PAVED_SURFACES` and `M.PAVED_PREFIXES`, kept
 equal by `tests/test_surfaces.py`): road paving and its `:` variants, wood and
 `boardwalk`, metal and `metal_grid`, brick, bricks, sett, tartan, rubber, cobblestone and
@@ -5023,7 +5277,7 @@ Two narrower readings keep access where it was:
   bridge or boardwalk that is a cycleway or `bicycle=designated`. A wooden footbridge on
   a hiking path keeps its `foot_designated`, `hiking_route` or `sac_scale` closure.
 
-Valhalla 3.5.1 prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
+Valhalla (3.5.1 to 3.9.1) prices `surface=wood` and `boardwalk` as `compacted`, the gravel class,
 and `brick` and `bricks` as `paved_rough`. The remap hands those four to the graph as
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before
@@ -5273,6 +5527,90 @@ Avoid, thinned names, sentence, I key and tables, and forced colours).
 `scripts/a11y/cdp.mjs` mocks a profile on every route and riders, an Avoid stretch and
 crossings on the Mass Ride.
 
+## The rolling stress chart (OWNER-DECISIONS 460.12, 461, 461a-e, 469b)
+
+460.12: "A chart of rolling traffic stress makes more sense than a strip. That way, spikes
+show up." On every ride type but Mass Ride the route chart's stress strip is replaced by a
+line of **calm miles per actual mile** (461d) over the mile around each point (461e),
+junctions included. The design is docs/stress/stress-number.md section 4 (on
+`wip/stress-docs` until it merges); this is what was built, and where it differs.
+
+**The score** (`routemaker.calm`, called from `core.routing.route_profile` with a
+`calm.Pricing` made in `plan` from the slider position, the preset's exposure weights, the
+target, the graph and `refine.quiet_cost_per_m`):
+
+- Each stress section (`stress_spans`) counts its length times its multiplier `M`, a quiet
+  street's metre being 1. At LTS 3 and up, `M = 1 + added / 2.2 + rate x w(L)`: `added` is
+  the middle of the five modelled road types' range for the slider's `use_roads` (the
+  "Graded stress" table above; linear between its columns), 2.2 is
+  `refine.QUIET_COST_FACTOR`, and the calm-rate term is the score's above 80. Avoid is LTS
+  4 per metre plus its 1,800 s entry charge, as quiet metres at the ride's speed, where the
+  route enters it. On the no-trail graph LTS 4 costs what LTS 3 does (no grading). At the
+  top of the slider the worth rule stands in: `1 + 5 x w` with no target, `1 + 10 x w`
+  with one (`refine.WORTH_UP_TO_TARGET`, 435 "One rule": the answer is fitted to the
+  target, so the price of the miles up to it stands) (1 / 2 / 3). At LTS 1-2 the facility class sets it: a path `(1.1 + 0.9u) / 2.2`,
+  a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
+  `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
+- Every junction the model charges for, flagged or not, adds what the ranking charges for
+  it, at its point: its cost (`cost_ft`) times `refine.intersection_weight` at the slider
+  position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
+  0.679 at 40, 1 from 70). At the top of the slider the worth rule's exchange stands in
+  (`refine.stress_weight_m`): a red junction 5 x 2 x its cost, an orange one 5 x 1, an
+  unflagged one nothing (2.5 in place of 5 with a target). This is not 469b(5)'s
+  `calm_mi`, which is the junction's own cost for the junction list on
+  `wip/isect-costs-c`; at 70 and above the two agree. Each is counted once in every
+  window that holds it, so a crossing raises the mile around it. A junction or Avoid
+  entry on an unrated stretch is not counted (it has no miles to be over).
+- The window is `calm.WINDOW_M` (1 mi, one setting), centred and cut at the route's ends.
+  An unrated section counts in neither the calm miles nor the miles; a window with nothing
+  rated has no value.
+- **It is an estimate** (`estimate: true`): the tier's figure is the middle of its range
+  over road types, not the road's own speed and lanes. docs/stress/stress-number.md lists
+  the exact routes (Valhalla's per-node cost from the trace, or restating Valhalla's
+  formula from the segment's speed and lanes); neither is built. Its words say so.
+
+**The contract.** `profile.calm` (`core.api.ProfileCalmOut`, null on a Mass Ride or where
+it failed; a failure costs only the score): `ratio` (one per `profile.m`), `steps` (each
+section's own multiplier and tier), `points` (junctions and Avoid entries, with a flagged
+junction's marker), `total_calm_m`, `rated_m`, `junctions_counted` (false where the
+junctions were not read), `bands` (the 2.5 and 3.5 half-step midpoints at this position,
+461a: 2.67 and 9.34 at Default), `window_m` and `estimate`. `points` lists only what the chart marks (the flagged junctions
+and the Avoid entries); the others count in `ratio` and the total. On a long route the
+highest window's sample is kept when the profile is thinned (`calm.peak_index`), so the
+most stressful mile survives.
+
+**Where it differs from the design** (stress-number.md section 4): each stretch is priced
+by its tier at the slider position, not by its own routing cost (an estimate, above; whether
+to allow that is the owner's question in the design, asked 2026-10-10); half steps are not
+read yet; Mass Ride has no score.
+
+**The chart** (`ElevationChart.tsx`; the decisions in `lib/profileChart.ts`, "The rolling
+stress chart"): a log scale from 0.5 to the next of 2, 5, 10, 20 ... above the highest
+value, so 1.4 and a spike at 14 both read; the area filled in the map's LTS 2, 3 and 4
+colours with the stress bar's patterns, cut where the line crosses a guide; dotted guides
+at the two band edges, labelled "LTS 3 from 2.7" and "LTS 4 from 9.3" in the text colour
+beside a swatch with the band's colour and pattern (only the LTS 4 guide where both edges
+are one, at 0 on the slider, where LTS 3 costs nothing extra); the side's figures 0.5, 1,
+2, 5, 10 ... to the top; a quiet line at 1; a dashed step line of each section's own
+figure, so a short busy stretch is seen at its true level (the step line and the guides are
+the text colour over a casing in the panel colour, so one is 3:1 from any band); Avoid stretches as the magenta "A" blocks;
+and the flagged junctions' triangle and diamond above the track. The key says it is a log scale and
+an estimate. The scrub's sentence adds "Mile around: 1.4 calm miles per mile, LTS 1 to 2
+level" (", Avoid nearby" where the window holds some) and "Next junction to watch: very
+high stress, mile 1.4", so the markers have words. The summary gives the route's total in
+calm miles with calm km in brackets, the average (calm km per km), the most stressful mile
+and the flagged junctions in it, and whether junctions were counted; the source line says
+it is an estimate. "Climbs and rolling stress as tables" adds a table of the value every
+half mile (a mile past 10 mi, two past 40, five past 80), what it reads as, and the flagged
+junctions since the row before. An older answer with no `calm`, or one whose score failed
+(`calm: null`), keeps the strip.
+
+Not done: Mass Ride keeps its riders chart (its routing charges no junction cost; the
+question in stress-number.md stays open); half steps arrive with the half-step editor
+(the score reads whole tiers); the panel's stress bar stays as it is. Junction costs
+change when `wip/isect-costs-c` (468, 469) merges, and the chart follows, since it reads
+the model's own `cost_ft`.
+
 ## Accessibility mode (OWNER-DECISIONS 455, 455a)
 
 `frontend/src/lib/accessMode.ts`. Off by default; with it on, Map tools (below) is on the
@@ -5448,3 +5786,39 @@ map and the canvas's name, Escape back to the map, the button and Close back to 
 help, the Mass Ride width and riders, a pan that opens nothing, and a held finger that
 opens it and adds no point). `scripts/a11y/cdp.mjs` mocks one road for
 /api/segment-info.
+
+## Find the nearest water, restroom or Metro
+
+The owner, 2026-10-10: "Have the option to route to the nearest public water source, restroom, or
+metro stop. Let people choose the three closest." A fold in the planner under the points
+(`lib/nearestFinder.ts`, written with createElement so `lib/nearest.test.ts` renders it): "Search
+from" (My location where the browser can share it, the default; the map's center; the plan's start
+once there is one), then Nearest water, Nearest restroom and Nearest Metro. The places are the map's
+own (`lib/nearest.ts`): the water layer's points (drinking water only; restrooms of every type, titled
+with their type; the file is loaded for the search even with the layer off),
+and Metrorail's stations at their bike entrance (`railStations.bikeEntrance`), MARC left out. The 8
+nearest in straight lines (`NEAREST_CANDIDATES`) go to `POST /api/nearest` with the ride's preset and
+dials (not the weight, loop or target), which answers each one's riding distance and time from
+Valhalla's `sources_to_targets` on the ride's own graph and costing (`stoporder.ride_graph`, shared
+with Best order), or straight lines when the router gives none. The 3 nearest by bike
+(`NEAREST_SHOWN`; one the router cannot reach is left out) are listed in words, US units first, each
+with Ride here (a new plan from the search's origin to it: one `commit`, so Undo puts the plan back;
+a loop is turned off in the same edit) and, for water and restrooms with a plan of two or more
+points, Add as stop (`placeSpot("via")`). One status line, always rendered, says what is happening
+and what was found, the nearest by name and distance; it is cleared and set again a moment later so a
+repeat is said again, and with the planner out of sight it is said through the app's region. The
+buttons are `aria-disabled` while a search runs. The search itself is `searchNearest` (plain, tested
+with stand-ins); App hands it the look-up, the map's center, the water file and the request. A list
+is put away when the ride type or a slider changes, when "Search from" changes, or when the plan's
+start moves under a search from the start. The location look-up goes
+through Use my location's gate, so there is one look-up at a time (a press during the other's says
+so); the fix stays in memory as that
+button's does, and the position leaves the device only in the search's own request, as a route's
+points do (`geolocation.test.ts` pins both look-up paths). While riding, Ride mode's "Water or restroom" fold (`RideMode.tsx`) runs the same
+`searchNearest` from the ride's own fix (`rideLocate`; no new look-up), water and restrooms only
+(`DETOUR_KINDS`), on the ride's preset and dials without the loop. Its answer is said through the
+rider's outputs as Where am I? is (`announcer.answer`, and the polite region with neither chosen).
+Detour here re-plans through `replan(here, via)`: `replanPoints` gives here, the stops not yet passed
+and the end, and `detourPoints` puts the place second, so the new route cues it as a stop. It goes
+through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
+way is said and left alone.

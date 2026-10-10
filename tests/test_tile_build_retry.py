@@ -4,7 +4,8 @@ Valhalla 3.5.1 can abort a multi-threaded tile build with "double free or
 corruption" (valhalla/valhalla#5005, fixed in 3.6.0): each build thread frees its
 spatialite connections on exit through a libxml2 call that is not thread-safe.
 It is a race, so the rebuild builds with fewer threads and runs an aborted
-`valhalla_build_tiles` once more before failing. See docs/OPERATIONS.md, "Tile
+`valhalla_build_tiles` once more before failing. The pinned 3.9.1 has the fix;
+both guards stay until rebuilds with it on the host have shown it. See docs/OPERATIONS.md, "Tile
 build threads".
 """
 
@@ -105,11 +106,47 @@ def test_an_ordinary_failure_is_not_retried() -> None:
     assert len(run.calls) == 1
 
 
-@pytest.mark.parametrize("returncode", [-signal.SIGSEGV, -signal.SIGKILL, 134])
+def segfaulted(command) -> CommandFailed:
+    return CommandFailed(
+        command,
+        -signal.SIGSEGV,
+        tiles.CommandOutput("Building 182 tiles with 1 threads...\n", ""),
+    )
+
+
+def test_a_segfaulted_tile_build_is_run_once_more_too(caplog) -> None:
+    """Job 8408 lost a graph to SIGSEGV, the same race seen as a crash instead of an
+    abort (OWNER-DECISIONS 459): one retry, for that command only, and the log names
+    the signal so an operator can tell which it was."""
+    run = Scripted(failures=1, error=segfaulted)
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        output = _run_tile_command(run, BUILD_TILES)
+    assert run.calls == [BUILD_TILES, BUILD_TILES]
+    assert output.log == "tiles built\n"
+    assert "SIGSEGV" in caplog.text and "retry 1 of 1" in caplog.text
+
+
+def test_a_second_segfault_fails_with_the_retry_in_the_message() -> None:
+    run = Scripted(failures=2, error=segfaulted)
+    with pytest.raises(CommandFailed) as caught:
+        _run_tile_command(run, BUILD_TILES)
+    assert len(run.calls) == 2, "one retry, not a loop"
+    assert caught.value.returncode == -signal.SIGSEGV
+    assert "valhalla_build_tiles exited -11 (after 1 retry): " in str(caught.value)
+
+
+def test_a_segfault_in_the_extract_is_not_retried() -> None:
+    run = Scripted(failures=1, error=segfaulted)
+    with pytest.raises(CommandFailed):
+        _run_tile_command(run, EXTRACT)
+    assert len(run.calls) == 1
+
+
+@pytest.mark.parametrize("returncode", [-signal.SIGKILL, -signal.SIGBUS, 139, 134])
 def test_other_signals_are_not_retried(returncode) -> None:
-    """SIGKILL is the OOM killer, which a rerun meets again; SIGSEGV is not the
-    known race. 134 is what a shell reports for SIGABRT, and nothing here runs
-    valhalla_build_tiles through a shell, so it is not read as one."""
+    """SIGKILL is the OOM killer, which a rerun meets again; SIGBUS is a bad mapping.
+    134 and 139 are what a shell reports for SIGABRT and SIGSEGV, and nothing here
+    runs valhalla_build_tiles through a shell, so they are not read as signals."""
 
     def killed(command):
         return CommandFailed(command, returncode, tiles.CommandOutput("", ""))

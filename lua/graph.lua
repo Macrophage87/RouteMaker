@@ -121,6 +121,9 @@ local function apply(kv, changes)
 end
 
 function ways_proc(kv, nokeys)
+  -- Before the remap, so that it and upstream both read the narrowed value
+  -- (remap.narrow_access_lists: an access list is its most restrictive part).
+  remap.narrow_access_lists(kv)
   apply(kv, remap.remap_way(kv, derived_from(kv)))
   strip_namespace(kv)
   local filter, out, polygon, extra = up_ways(kv, nokeys)
@@ -135,6 +138,7 @@ function ways_proc(kv, nokeys)
 end
 
 function nodes_proc(kv, nokeys)
+  remap.narrow_access_lists(kv)
   local changes = remap.remap_node(kv)
   -- The guard reads the *merged* tags - what the node would carry once the
   -- change set is applied - and not the change set alone, because a write that
@@ -157,7 +161,9 @@ function nodes_proc(kv, nokeys)
     apply(kv, changes)
   end
   strip_namespace(kv)
-  return up_nodes(kv, nokeys)
+  local filter, out = up_nodes(kv, nokeys)
+  remap.keep_barrier_type(out)
+  return filter, out
 end
 
 function rels_proc(kv, nokeys)

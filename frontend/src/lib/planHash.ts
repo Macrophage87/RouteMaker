@@ -49,6 +49,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.carrying) params.set("carrying", dials.carrying);
     if (dials.assist) params.set("assist", "1");
     if (dials.avoidGravel) params.set("avoidgravel", "1");
+    // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
+    if (dials.trailsOff) params.set("trailsoff", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
@@ -91,6 +93,7 @@ export function decodePlan(hash: string): Plan {
     carrying: isCarrying(carrying) ? carrying : null,
     assist: params.get("assist") === "1",
     avoidGravel: params.get("avoidgravel") === "1",
+    trailsOff: params.get("trailsoff") === "1",
   });
   return { points, preset, dials };
 }

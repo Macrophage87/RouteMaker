@@ -1,6 +1,6 @@
 """A search over the router's own routes: the calm detour and crossing avoidance.
 
-Why a search and not a cost. Valhalla 3.5.1's bicycle costing prices a road by
+Why a search and not a cost. Valhalla's bicycle costing (3.5.1 to 3.9.1) prices a road by
 `use_roads`, which runs 0 to 1 and no further, and at 0 an LTS 3 way is already
 at its ceiling (about 5 to 13 times its time). It has no hook that knows which
 road a rider crosses or how they turn (`routemaker.intersections`, "Why this is
@@ -16,7 +16,10 @@ not in the graph"). So the two things the owner asked for on 2026-10-01 -
   `exclude_locations`: the busy ways (or the approach to a bad crossing) of the
   best route so far are excluded, the router is asked again, and the new route
   is kept if it scores better. Exclusions accumulate, so each round can clear
-what the last one found. The score is the router's own cost for the route
+what the last one found. Before the rounds the router's own alternatives are
+read and ranked with its first route the same way (OWNER-DECISIONS 435,
+`_router_alternates`), and the rounds start from whichever ranks first.
+The score is the router's own cost for the route
 (its time with the stress, hill, turn and gate prices of the request) plus an
 extra price, in the router's cost seconds, for what the router cannot see:
 
@@ -55,7 +58,9 @@ the "second" (metres of LTS 3 plus the cost of each higher stress junction, 260)
 the hills preference (262), then distance (`MAXCALM_STEPS`, `better`). Extra distance
 has diminishing returns (268, `worth_it`): a longer candidate is taken only where the
 stress it saves pays for the miles it adds (`WORTH_DEFAULT`; past the rider's target
-the stricter `WORTH_OVER_TARGET`, and up to the target nothing). A candidate past the
+the stricter `WORTH_OVER_TARGET`, and up to the target `WORTH_UP_TO_TARGET`, half the
+default's price, OWNER-DECISIONS 435; below the top the same rule holds at `worth_ratio`,
+which rises with the slider). A candidate past the
 ceiling is never taken, and the router's own price for the route, and any credit for
 trail, do not come into it. A trip past the working span (`REFINE_MAX_SPAN_M`) is
 planned leg by leg (`refine_long`).
@@ -237,6 +242,9 @@ class Context:
     # more of, the slider over 100 at the top of the stress slider (298(3)), else 0.
     hills_weight: float = 0.0
     hills_seek_weight: float = 0.0
+    # Whether bike lanes count as "none" in the breakdown (`routing.classify`): on
+    # Mass Ride, which takes the roadway, not on every ride on the no-trail graph.
+    lanes_as_roadway: bool = False
     # The rider's total system weight in kilograms (item 264), which the effort
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
@@ -254,9 +262,10 @@ class Context:
     # The top of the slider (`presets.maxcalm_for`): candidates are ranked by
     # `better`, not by the score, and none longer than `ceiling_m` metres is taken
     # (None: no limit, as below the top). `target_m` is the rider's target distance
-    # (OWNER-DECISIONS 271; None: none set), up to which distance costs nothing and
-    # past which it must buy stress at WORTH_OVER_TARGET; with none, every extra metre
-    # must buy it at WORTH_DEFAULT (268). `worth_rule` off: no such price (a long
+    # (OWNER-DECISIONS 271; None: none set), up to which distance costs WORTH_UP_TO_TARGET
+    # (435, "One rule") and past which it must buy stress at WORTH_OVER_TARGET; with
+    # none, every extra metre must buy it at the slider's `worth_ratio` (268, 435:
+    # WORTH_DEFAULT at the top). `worth_rule` off: no such price (a long
     # plan's legs, whose options are priced for the whole trip, `choose_options`).
     maxcalm: bool = False
     ceiling_m: float | None = None
@@ -279,6 +288,15 @@ class Context:
     loop_overlap: float | None = None
     # How many routes the rider is offered at most, this one included (0: one).
     alternates: int = 0
+    # Whether the search also asks the router for its own alternative routes and
+    # ranks them with the rest (OWNER-DECISIONS 435, `_router_alternates`): set by the
+    # plan wherever the calm search runs (above the old top of the slider).
+    rank_alternates: bool = False
+    # The router's routes for this very request where the plan already asked for its
+    # alternatives (the hills slider's avoid half), its first route first, which the
+    # search ranks instead of asking again; an empty list where that ask timed out (so
+    # none is asked again); None: none asked yet.
+    router_trips: list | None = None
     # Where the search keeps every candidate it read that the hold and the guards
     # allow, as (trip, reading), for a long plan to choose among across its legs
     # (`refine_long`); None: not kept.
@@ -412,10 +430,18 @@ MAXCALM_STEPS = (15.0, 50.0, 50.0)
 # - WORTH_DEFAULT where the rider set no target: 5 metres added per metre saved;
 # - WORTH_OVER_TARGET for the metres past the rider's target distance (271: "may
 #   exceed it when that buys a meaningful stress cut"), a stricter bar: 2.5;
-# - up to the rider's target, distance costs nothing (they asked for it).
+# - up to the rider's target, WORTH_UP_TO_TARGET, half the default's price (435, "One
+#   rule"; free under 271 until then).
 # Tunable; docs/DEVELOPMENT.md, "Long calm trips", has the measurements.
 WORTH_DEFAULT = 5.0
 WORTH_OVER_TARGET = 2.5
+# One rule across the calm search (OWNER-DECISIONS 435, the owner's "One rule",
+# 2026-10-10): every longer route must buy its miles with calm, below the top of the
+# slider too, at a ratio that rises with the slider's calm rate from 1 just above the
+# old top to WORTH_DEFAULT at the top (`worth_ratio`: about 1.2 at 85, 1.7 at 90, 2.8
+# at 95); and under a target the miles up to it cost WORTH_UP_TO_TARGET metres per
+# metre of LTS 3 saved, half the default's price, where 271 made them free.
+WORTH_UP_TO_TARGET = 10.0
 # The level weights the stress saved is counted at: the standard 1, 2 and 3 for LTS 3,
 # LTS 4 and Avoid (`presets.EXPOSURE_STANDARD`), on every ride. Not the stress-averse
 # rides' 1, 8 and 16 (item 250), which the ranking does not need (it puts LTS 4 first
@@ -479,23 +505,35 @@ def distance_charge_m(
 ) -> float:
     """The stress (metres of LTS 3, `stress_weight_m`) a route must save to be
     `to_m` long rather than `from_m` (actual metres of the whole trip; 268, 271):
-    - with a target, nothing up to it and the actual metres past it over
-      WORTH_OVER_TARGET (the target is in actual miles, 262);
-    - with none, the metres added over WORTH_DEFAULT, as the Hills slider weighs
+    - with a target, the actual metres up to it over WORTH_UP_TO_TARGET (435, "One
+      rule") and those past it over WORTH_OVER_TARGET (the target is in actual
+      miles, 262);
+    - with none, the metres added over the slider's `worth_ratio`, as the Hills slider weighs
       them (`blended_m`, the difference in `level3`; `to_m - from_m` where it is
       not given), so a longer route that is less effort is not charged for it."""
     if ctx.target_m is None:
         added = to_m - from_m if blended_m is None else blended_m
-        return max(added, 0.0) / WORTH_DEFAULT
+        return max(added, 0.0) / worth_ratio(ctx)
     over = to_m - max(from_m, ctx.target_m)
-    return max(over, 0.0) / WORTH_OVER_TARGET
+    within = min(to_m, ctx.target_m) - from_m
+    return max(over, 0.0) / WORTH_OVER_TARGET + max(within, 0.0) / WORTH_UP_TO_TARGET
+
+
+def worth_ratio(ctx: Context) -> float:
+    """Metres a route may add for each metre of LTS 3 (`stress_weight_m`) it saves, where
+    the rider set no target (OWNER-DECISIONS 435, "One rule"): WORTH_DEFAULT at the top
+    of the slider, and below it 1 + (WORTH_DEFAULT - 1) x the calm rate over its top."""
+    if ctx.maxcalm:
+        return WORTH_DEFAULT
+    return 1.0 + (WORTH_DEFAULT - 1.0) * max(ctx.rate, 0.0) / presets.CALM_RATE_MAX
 
 
 def worth_it(shorter: Analysis, longer: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
     """Whether `longer` saves enough stress over `shorter` for the distance it adds
     (`distance_charge_m`). `rest_m` is the rest of the trip where the two are one leg
     of it (the target is the whole trip's). Always, where the rule is off."""
-    if not ctx.worth_rule:
+    if not ctx.worth_rule or (not ctx.maxcalm and ctx.rate <= 0):
+        # No calm search (crossing avoidance alone): no bar on distance but the score.
         return True
     charge = distance_charge_m(
         shorter.length_m + rest_m,
@@ -521,12 +559,17 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
     """Whether `read` is to replace `best`: below the top of the slider, by the
-    score (IMPROVEMENT_EPS_S); at the top, by `MAXCALM_STEPS` down `Analysis.key`
+    score (IMPROVEMENT_EPS_S), a longer route also worth its extra miles (`worth_it`,
+    435 "One rule"); at the top, by `MAXCALM_STEPS` down `Analysis.key`
     (`calmer`), with diminishing returns on the distance (`worth_it`): a longer
     route must be calmer and worth its extra miles, and a shorter one replaces a
     calmer longer one whose extra miles were not worth it. `rest_m`: see `worth_it`."""
     if not ctx.maxcalm:
-        return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S
+        # Below the top a longer route must also be worth its miles (OWNER-DECISIONS
+        # 435, "One rule"; `worth_ratio`), wherever the calm search runs.
+        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:
+            return False
+        return read.length_m <= best.length_m or worth_it(best, read, ctx, rest_m)
     if read.length_m > best.length_m:
         return calmer(read, best, ctx) and worth_it(best, read, ctx, rest_m)
     if calmer(read, best, ctx):
@@ -609,7 +652,7 @@ def analyse(
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
-    classes = routing.classify(pieces, ctx.when, ctx.roadway_only)
+    classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
     weights = ctx.exposure.weights
     result = Analysis(
@@ -710,7 +753,8 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
-    """The best of the original route and the routes found by excluding what is
+    """The best of the original route, the router's own alternatives (where
+    `Context.rank_alternates` asks for them) and the routes found by excluding what is
     worst about each in turn, and what the search did.
 
     The calm search goes down the tiers: the first round excludes the LTS 4 and
@@ -758,7 +802,8 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["top_m_before"] = round(best.top_m, 1)
     if ctx.exposure.hold_lts4:
         info["lts4_before_m"] = round(best.lts4_m, 1)
-    best, best_trip = _search(trip, best, first_exposure, stop_at, ctx, info)
+    best, best_trip = _router_alternates(trip, best, first_exposure, stop_at, ctx, info)
+    best, best_trip = _search(best_trip, best, first_exposure, stop_at, ctx, info)
     if ctx.wide:
         best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
     if ctx.seek:
@@ -777,6 +822,103 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
             pick_candidates(pool, ctx, ctx.first_lts4), ctx, ctx.first_lts4
         )
     return best_trip, info
+
+
+# The router's own alternative routes (OWNER-DECISIONS 435, "Yes, rank alternatives by
+# our own stress measures"): the calm search asks for them once, before its rounds,
+# and every one is read and ranked with the router's first route and the search's
+# detours by the same rule (`better`: the score below the top of the slider, the
+# stress order and the worth of the extra miles at it) and the same guards. The
+# rounds then start from whichever ranks first. Valhalla gives alternatives only
+# between two locations, and `max_alternates` is 3 (valhalla/valhalla-*.json).
+ROUTER_ALTERNATES = 3
+# The ask and its readings stop this long before the search's own end, so that at
+# least one exclusion round is always left the time to run (the rounds were the
+# whole calm search before 435): a round's least and a second over, so an ask that
+# times out at its own end still leaves one (re-check, correctness); and the ask is
+# not started with less than ALTERNATES_MIN_S left before that. Loops never ask:
+# their request has three locations or more.
+ALTERNATES_ROUND_RESERVE_S = REFINE_ROUND_MIN_S + 1.0
+ALTERNATES_MIN_S = 1.0
+
+
+def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
+    """The best of the router's first route and its alternatives, read and ranked as
+    every other candidate (see ROUTER_ALTERNATES), and its trip. The plan's own
+    alternatives are used where it already asked for them with this request
+    (`Context.router_trips`), and none are asked for again where that ask timed out.
+    `info["alternates"]` says how many routes other than this one the router gave,
+    how many could be read and passed the guards, whether one was taken, and
+    `limited` (`time`: the ask or a reading ran out of its time; null otherwise); it
+    is absent where they were not asked for (`Context.rank_alternates` off, a plan
+    with stops or a loop, or no time for it)."""
+    locations = ctx.request.get("locations") or []
+    if not ctx.rank_alternates or len(locations) != 2:
+        return best, trip
+    alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
+    given = ctx.router_trips
+    if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
+        return best, trip
+    found = {"given": 0, "ranked": 0, "taken": False, "limited": None}
+    info["alternates"] = found
+    if given == []:
+        # The plan's own ask for them timed out (`routing._route`): not asked again.
+        found["limited"] = "time"
+    if given is None:
+        request = {k: v for k, v in ctx.request.items() if k != "exclude_locations"}
+        request["alternates"] = ROUTER_ALTERNATES
+        limit = min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        if ctx.variant in routing.TWIN_VARIANTS:
+            limit = min(limit, routing.WEEKEND_TIMEOUT_S)
+        started = routing.clock()
+        try:
+            answer = routing._call(ctx.variant, "route", request, routing.Deadline(alt_stop, limit))
+        except routing.RouterRefused:
+            return best, trip
+        except (routing.DeadlineExceeded, routing.RouterUnavailable) as error:
+            logger.warning(
+                "the %s router did not answer the calm search's ask for alternatives in"
+                " %.1f s (%s); searching without them",
+                ctx.variant,
+                routing.clock() - started,
+                type(error).__name__,
+            )
+            found["limited"] = "time"
+            return best, trip
+        given = [answer.get("trip") or {}] + [
+            (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
+        ]
+    own = tuple(leg.get("shape", "") for leg in trip.get("legs") or [])
+    best_trip = trip
+    for candidate in given:
+        legs = candidate.get("legs") or []
+        # The route the search starts from is not an alternative to itself.
+        if not legs or tuple(leg.get("shape", "") for leg in legs) == own:
+            continue
+        found["given"] += 1
+        if too_long(_trip_m(candidate), ctx):
+            continue
+        if alt_stop - routing.clock() <= 0:
+            found["limited"] = "time"
+            break
+        try:
+            read = analyse(candidate, ctx, routing.Deadline(alt_stop, ctx.deadline.per_call_s))
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            found["limited"] = "time"
+            break
+        # The guards every candidate meets: not busier than the router's first route
+        # (Traffic wins), the LTS 4 hold, and junctions that could be read.
+        if read is None or read.events is None:
+            continue
+        if read.exposure_m > _allowance(first_exposure) or more_lts4(read, ctx.first_lts4, ctx):
+            continue
+        found["ranked"] += 1
+        if ctx.options is not None:
+            ctx.options.append((candidate, read))
+        if better(read, best, ctx):
+            best, best_trip = read, candidate
+            found["taken"] = True
+    return best, best_trip
 
 
 def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
@@ -962,7 +1104,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         "legs": 0,
     }
     if ctx.roadway_only:
-        # A ride on the no-trail graph (Group Ride with trails off): there are
+        # A ride on the no-trail graph (Mass Ride, or any ride with trails off): there are
         # no trails to seek, and through points would snap to the roads beside
         # them (review r1).
         seek["limited"] = "roadway_only"
@@ -1106,7 +1248,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["limited"] = seek["limited"] or "too_long"
             return best, best_trip
         # And the extra miles worth the stress they save (OWNER-DECISIONS 268, 271).
-        if ctx.maxcalm and read.length_m > best.length_m and not worth_it(best, read, ctx):
+        if read.length_m > best.length_m and not worth_it(best, read, ctx):
             seek["taken"] = False
             seek["whole_trip"] = "not_worth"
             seek["limited"] = seek["limited"] or "not_worth"
@@ -2131,6 +2273,10 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             worth_rule=False,
             options=[],
             alternates=0,
+            # Not on a long plan's legs: each has only its share of the time, and the
+            # router's alternatives roughly double a long leg's route
+            # (`routing.SEEK_MAX_SPAN_M`'s measurements).
+            rank_alternates=False,
             stop_at=now + share,
             search_budget_s=share * LONG_SEARCH_SHARE,
             seek_budget_s=share * (1 - LONG_SEARCH_SHARE),

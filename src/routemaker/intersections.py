@@ -8,7 +8,7 @@ high" - which the planner draws on the route (item 172, "put markers on
 intersections in a route, such as an orange marker for higher stress
 intersections and a red one for very high stress intersections").
 
-Why this is not in the graph. Valhalla 3.5.1's bicycle costing has no hook that
+Why this is not in the graph. Valhalla's bicycle costing (3.5.1 to 3.9.1) has no hook that
 knows which road is crossed or which way the rider turns. Measured on the live
 standard router (docs/DEVELOPMENT.md, "Intersection costs"): every node costs
 the rider 0 to 6 s of transition time whatever the crossed road is (3.7 s

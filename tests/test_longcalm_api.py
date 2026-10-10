@@ -203,7 +203,7 @@ class TestNoRouteWithinTheTarget:
         fake = FakeRouter(
             {
                 "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
-                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 6,
                 "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
             }
         )
@@ -239,6 +239,9 @@ class TestTheLongCalmPlan:
         assert not long_calm_for("trailmaxxing", [US, [-77.0, 38.95]], 100, False)
         assert not long_calm_for("trailmaxxing", [US, PENN], 100, True), "a long ride has its own"
         assert not long_calm_for("trailmaxxing", [US], 100, False)
+        # Not with trails off: its leg-by-leg search is for trails (the trails-off
+        # correctness review, 7).
+        assert not long_calm_for("trailmaxxing", [US, PENN], 100, False, trails_off=True)
 
     def test_the_span_that_makes_it_long_is_the_searchs_working_span(self) -> None:
         assert refine_span() == 30_000
@@ -305,6 +308,46 @@ class TestTheLongCalmPlan:
             lambda *a, **k: (_ for _ in ()).throw(routing.NoRoute("stop", no_path=True)),
         )
         post(client, {"points": [US, PENN], "preset": "trailmaxxing", "stress": 100, "loop": True})
+        assert ratelimit.LONG_ROUTING_IN_FLIGHT not in taken
+
+    def test_a_roads_only_ride_has_the_ordinary_budget(self, monkeypatch) -> None:
+        """routing.plan passes trails_off to long_calm_for (the trails-off mutation review)."""
+        seen = []
+
+        def first(variant, request, deadline):
+            seen.append(deadline)
+            raise routing.RouterUnavailable("stop")
+
+        monkeypatch.setattr(routing, "_route", first)
+        started = routing.clock()
+        with pytest.raises(routing.RouterUnavailable):
+            routing.plan(
+                [US, PENN],
+                "trailmaxxing",
+                started=started,
+                dials=routing.Dials(stress=100, when="weekday_offpeak", trails_off=True),
+            )
+        assert seen[0].at == pytest.approx(
+            started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, abs=0.5
+        )
+        assert seen[0].per_call_s == routing.ROUTER_TIMEOUT_S
+
+    def test_a_roads_only_ride_does_not_take_the_long_slot(self, client, monkeypatch) -> None:
+        """The API's slot choice passes trails_off too, so the slot and the budget agree."""
+        taken = []
+        real = ratelimit.acquire
+        monkeypatch.setattr(
+            ratelimit, "acquire", lambda r, limit: (taken.append(limit), real(r, limit))[1]
+        )
+        monkeypatch.setattr(
+            routing,
+            "plan",
+            lambda *a, **k: (_ for _ in ()).throw(routing.NoRoute("stop", no_path=True)),
+        )
+        post(
+            client,
+            {"points": [US, PENN], "preset": "trailmaxxing", "stress": 100, "trails_off": True},
+        )
         assert ratelimit.LONG_ROUTING_IN_FLIGHT not in taken
 
     def test_the_budget_is_the_long_rides_and_under_gunicorns_timeout(self) -> None:
@@ -860,9 +903,14 @@ class TestSeekingHillsAtTheTop:
         assert body["hills_seek"]["chosen"] == 0
 
     def test_no_climb_search_among_alternatives_is_asked(self, client, segments, router) -> None:
+        """The router's first route is asked without alternatives: no climb search picks
+        among them. The calm search alone asks for them, after the route is read, to rank
+        them by stress (OWNER-DECISIONS 435)."""
         fake = router(standard_router())
         post(client, top_body(hills=50))
-        assert all("alternates" not in p for _u, p in fake.calls)
+        routes = [p for url, p in fake.calls if url.endswith("/route")]
+        assert "alternates" not in routes[0]
+        assert [("alternates" in p) for p in routes[1:]].count(True) == 1
 
     def test_below_the_top_it_is_the_climb_search_as_before(self, client, segments, router) -> None:
         router(standard_router())
@@ -946,7 +994,7 @@ class TestOverTheTargetByChoice:
         fake = FakeRouter(
             {
                 "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
-                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 6,
                 "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
             }
         )

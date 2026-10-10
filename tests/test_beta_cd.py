@@ -132,7 +132,7 @@ def test_a_malformed_check_run_answer_is_pending_not_green() -> None:
 
 VALHALLA = {
     "mjolnir": {"max_cache_size": 100, "hierarchy": True, "tile_extract": "/data/x.tar"},
-    "loki": {"logging": {"long_request": 100}},
+    "logging": {"type": "std_out", "color": False},
     "service_limits": {"bicycle": {"max_distance": 500000}},
     "additional_data": {"elevation": "/data/elevation"},
 }
@@ -153,7 +153,7 @@ def _vjson(**changes) -> str:
     "changes, kind",
     [
         ({}, "none"),
-        ({"loki__logging__long_request": 3600000}, "runtime"),
+        ({"logging__color": True}, "runtime"),
         ({"service_limits__bicycle__max_distance": 1}, "runtime"),
         ({"mjolnir__max_cache_size": 200}, "runtime"),
         ({"mjolnir__hierarchy": False}, "build"),
@@ -263,7 +263,7 @@ def test_the_predraw_flag_is_off_for_anything_else() -> None:
 
 def test_the_offroad_router_config_never_restarts_the_beta_routers() -> None:
     path = "valhalla/valhalla-offroad.json"
-    runtime = _gate({path: (_vjson(), _vjson(loki__logging__long_request=1))})
+    runtime = _gate({path: (_vjson(), _vjson(logging__color=True))})
     assert runtime["verdict"] == "deploy" and not runtime["routers_restart"]
     build = _gate({path: (_vjson(), _vjson(mjolnir__hierarchy=False))})
     assert build["verdict"] == "stop"
@@ -271,7 +271,7 @@ def test_the_offroad_router_config_never_restarts_the_beta_routers() -> None:
 
 def test_valhalla_runtime_settings_restart_the_routers_and_build_settings_stop() -> None:
     path = "valhalla/valhalla-standard.json"
-    runtime = _gate({path: (_vjson(), _vjson(loki__logging__long_request=1))})
+    runtime = _gate({path: (_vjson(), _vjson(logging__color=True))})
     assert runtime["verdict"] == "deploy" and runtime["routers_restart"]
     build = _gate({path: (_vjson(), _vjson(mjolnir__hierarchy=False))})
     assert build["verdict"] == "stop" and not build["routers_restart"]
@@ -437,7 +437,7 @@ def test_the_gate_reads_git_history(tmp_path: Path) -> None:
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
     old = commit(repo, {"src/core/a.py": "x\n", "valhalla/valhalla-standard.json": _vjson()})
-    new = commit(repo, {"valhalla/valhalla-standard.json": _vjson(loki__logging__long_request=9)})
+    new = commit(repo, {"valhalla/valhalla-standard.json": _vjson(logging__color=True)})
     result = cd_logic.git_gate(str(repo), old, new)
     assert result["verdict"] == "deploy" and result["routers_restart"]
     newer = commit(repo, {"deploy/beta/401.html": "<p>x</p>\n"})
@@ -1116,9 +1116,7 @@ def _restarts(calls: str) -> list[str]:
 
 
 def test_a_valhalla_runtime_change_restarts_exactly_the_four_routers(beta: Beta) -> None:
-    beta.release(
-        "v0.2.0", {"valhalla/valhalla-standard.json": _vjson(loki__logging__long_request=1)}
-    )
+    beta.release("v0.2.0", {"valhalla/valhalla-standard.json": _vjson(logging__color=True)})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
@@ -1129,9 +1127,7 @@ def test_a_valhalla_runtime_change_restarts_exactly_the_four_routers(beta: Beta)
 
 
 def test_a_runtime_change_to_the_offroad_config_restarts_no_router(beta: Beta) -> None:
-    beta.release(
-        "v0.2.0", {"valhalla/valhalla-offroad.json": _vjson(loki__logging__long_request=1)}
-    )
+    beta.release("v0.2.0", {"valhalla/valhalla-offroad.json": _vjson(logging__color=True)})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
@@ -1144,7 +1140,7 @@ def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) ->
     beta.release(
         "v0.2.0",
         {
-            "valhalla/valhalla-standard.json": _vjson(loki__logging__long_request=1),
+            "valhalla/valhalla-standard.json": _vjson(logging__color=True),
             "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS,
         },
     )
@@ -1618,6 +1614,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
         "half an hour",
     ):
         assert needed in section7, needed
+    assert '"Back soon"' in tester[tester.index("8. Updates") :]
     assert "nightly" not in tester.lower() and "every night" not in tester.lower()
     runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
     by_hand = runbook[

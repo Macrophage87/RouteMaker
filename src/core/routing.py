@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import bisect
 import dataclasses
+import http.client
 import itertools
 import json
 import logging
@@ -74,7 +75,7 @@ from django.utils import timezone
 
 from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -156,7 +157,8 @@ class RouterUnavailable(Exception):
 
 
 class RouterRefused(Exception):
-    """The router answered 4xx; `code` is Valhalla's error_code if it gave one."""
+    """The router answered 4xx, or 500 with one of its catch-all codes;
+    `code` is Valhalla's error_code if it gave one."""
 
     def __init__(self, status: int, code: int | None, message: str) -> None:
         super().__init__(message)
@@ -184,6 +186,10 @@ class DeadlineExceeded(Exception):
     """The request's time budget ran out before the router had answered."""
 
 
+# Valhalla's catch-all error codes, one per service stage (src/exceptions.cc).
+UNKNOWN_ERROR_CODES = frozenset({199, 299, 499})
+
+
 def _transport(url: str, payload: dict, timeout: float) -> dict:
     """POST JSON, return JSON. The one place this module touches the network."""
     request = urllib.request.Request(
@@ -196,11 +202,22 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
-        if 400 <= error.code < 500:
-            try:
-                body = json.loads(error.read() or b"{}")
-            except ValueError:
-                body = {}
+        try:
+            body = json.loads(error.read() or b"{}")
+        except (OSError, http.client.HTTPException, ValueError):
+            # Unreadable, cut off or not JSON: the status alone decides.
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        # From 3.6.0 Valhalla answers its catch-all "Unknown" errors (199, 299,
+        # 499: an exception it did not classify while serving this request) with
+        # 500 rather than 400 (valhalla/valhalla#5359). That is still one
+        # request the router could not serve, not a router that is down, so it
+        # is a refusal as it was under 3.5.1: read as an outage it would mark a
+        # weekend or off-road router down for every rider over one bad request.
+        if 400 <= error.code < 500 or (
+            error.code == 500 and body.get("error_code") in UNKNOWN_ERROR_CODES
+        ):
             raise RouterRefused(
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error
@@ -394,7 +411,10 @@ def _has_facility_columns(schema: str) -> bool:
 # The facility classes a ride on the roadway does not use: a mass ride takes
 # the general lanes whatever the street marks for bicycles (the owner,
 # 2026-09-27: "Mass rides don't need to consider these. Even protected bike
-# lanes aren't used."), so on the no-trail variant their length is "none".
+# lanes aren't used."), so on a Mass Ride their length is "none". Only there:
+# a rider with "Keep to roads, not trails" on rides the lanes the road has, and
+# its breakdown says so (the trails-off correctness review, 3), though the
+# no-trail graph gives them no credit (`facility_neutral`).
 ROADWAY_ONLY_AS_NONE = frozenset({"protected", "lane"})
 
 
@@ -443,8 +463,9 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     """Each piece's stress key ("1".."5" or "unknown") and facility key
     ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
     for a ride at `when`, each a `PieceClass` that also carries the segment's
-    surface. With `roadway_only` (a ride on the no-trail variant), bicycle
-    lanes of either class are "none"; a road closed to cars is still a path."""
+    surface. With `roadway_only` (a ride that takes the roadway: Mass Ride,
+    not every ride on the no-trail variant), bicycle lanes of either class are
+    "none"; a road closed to cars is still a path."""
     if not pieces:
         return []
     # The schema name comes from settings and is validated the way every DDL
@@ -735,6 +756,9 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
+    # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
+    # (`presets.variant_for_ride`). Mass Ride is always on it.
+    trails_off: bool = False
     # The rider's "Target distance" (metres, OWNER-DECISIONS 271), for the top of the
     # stress slider only (`presets.maxcalm_for`): a soft goal with a hard ceiling
     # (`presets.target_ceiling_m`); None: no target, `presets.default_ceiling_m`.
@@ -1124,23 +1148,41 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
         return _call(variant, "route", plain, Deadline(deadline.at, limit)), True
 
 
+def plan_alternates(request: dict, trips: list, timed_out: bool, refitted: bool) -> list | None:
+    """The router's routes the calm search may rank as this request's alternatives
+    (OWNER-DECISIONS 435, `refine.Context.router_trips`): the plan's own where it asked
+    for them (the hills slider's avoid half) and the request was not asked again with
+    another costing since (`refitted`: the target fitting, `_fit_target` and
+    `_past_target`); an empty list where that ask timed out, so none is asked again;
+    None where the search must ask for itself."""
+    if "alternates" not in request or refitted:
+        return None
+    return [] if timed_out else trips
+
+
 def straight_span_m(points: list) -> float:
     """The sum of the straight-line distances between consecutive points."""
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
 
 
-def long_calm_for(preset_name: str, points: list, stress: int, long_ride: bool) -> bool:
+def long_calm_for(
+    preset_name: str, points: list, stress: int, long_ride: bool, trails_off: bool = False
+) -> bool:
     """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
     stress slider on a ride type that plans past the calm search's working span
     leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
     stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
     ride (past the confirm span, which has its own rules). The Hills slider seeking
     climbs does not change it: at the top of the stress slider seeking hills keeps
-    the stress order and the target (OWNER-DECISIONS 298(3))."""
+    the stress order and the target (OWNER-DECISIONS 298(3)). Not with trails off
+    ("Keep to roads, not trails"): the leg-by-leg search spends the long ride's
+    budget looking for trails, which that ride has turned off (the trails-off
+    correctness review, 7), so it plans as any other ride at the top does."""
     from . import refine
 
     return (
-        presets.PRESETS[preset_name].long_calm
+        not trails_off
+        and presets.PRESETS[preset_name].long_calm
         and presets.maxcalm_for(stress)
         and len(points) >= 2
         and not long_ride
@@ -1447,6 +1489,8 @@ def route_profile(
     flow_stretches: list[tuple] | Callable[[], list[tuple]] | None = None,
     majors: list | None = None,
     majors_complete: bool = True,
+    calm_pricing: calm.Pricing | Callable[[], calm.Pricing] | None = None,
+    events: list | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
     router's per-leg samples (`ELEVATION_INTERVAL_M`): where each sample is along the
@@ -1467,6 +1511,13 @@ def route_profile(
     The Avoid and untraced ranges are the stretches' own (`_stretch_ranges`), and on a
     Mass Ride the riders are read at the stretch boundaries and along legs without
     heights too (`_flow_samples`).
+
+    Off a Mass Ride (`calm_pricing` given) it also has the rolling stress score
+    (`routemaker.calm`, OWNER-DECISIONS 460.12, 461d, 461e): calm miles per mile over the
+    mile around each sample, from the sections (`spans`) and the junction `events` (None:
+    not read, so not counted, and the answer says so); the highest window's sample is kept
+    when a long route is thinned. `calm_pricing` may be a function that makes it. A
+    failure there costs only the score, sent as `calm: null`.
 
     The climbs (`climbs.runs`) are found once, and every figure is worked out on every
     sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
@@ -1521,6 +1572,16 @@ def route_profile(
             rows.append(row)
         heights = [h for _m, h in samples]
         keep = profile_rules.thin(heights, grade_at, riders)
+        pricing = None
+        if calm_pricing is not None:
+            try:
+                pricing = calm_pricing() if callable(calm_pricing) else calm_pricing
+                peak = calm.peak_index(spans, events, pricing, sample_m)
+                if peak is not None and peak not in keep:
+                    keep = sorted([*keep, peak])
+            except Exception:  # noqa: BLE001 - the chart is drawn without the score
+                logger.warning("the rolling stress score could not be built", exc_info=True)
+                pricing = None
         body: dict = {
             "interval_m": ELEVATION_INTERVAL_M,
             "m": [round(sample_m[i]) for i in keep],
@@ -1536,7 +1597,13 @@ def route_profile(
             "unchecked": None,
             "outside_dc": None,
             "crossings_complete": None,
+            "calm": None,
         }
+        if pricing is not None:
+            try:
+                body["calm"] = calm.score(spans, events, pricing, [sample_m[i] for i in keep])
+            except Exception:  # noqa: BLE001 - the chart is drawn without the score
+                logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
             body["riders_per_min"] = [_int_or_none(riders[i]) for i in keep]
             known = [(round(r), m) for m, r in zip(sample_m, riders, strict=True) if r is not None]
@@ -1999,7 +2066,9 @@ def plan(
     # for a long ride (2026-09-26). It is the same plan the ordinary budget
     # would cut short after its first legs, and no more than the router calls
     # a long ride makes (docs/OPERATIONS.md, "Long calm plans").
-    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride)
+    long_calm = not loop and long_calm_for(
+        preset_name, points, stress_dial, long_ride, trails_off=bool(dials.trails_off)
+    )
     if long_ride or long_calm:
         budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
     else:
@@ -2010,7 +2079,11 @@ def plan(
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, when, assist)
+    trails_off = bool(dials.trails_off)
+    variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
+    # Ride, whose own graph is no-trail), not on every trails-off ride.
+    lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
     costing = presets.costing(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
@@ -2162,6 +2235,7 @@ def plan(
         traces=traces,
         points=points,
         roadway_only=variant == Variant.NO_TRAIL.value,
+        lanes_as_roadway=lanes_as_roadway,
         with_facility=_has_facility_columns(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)),
         group=preset_name == "mass-ride",
         rate=presets.calm_rate_for(stress_dial),
@@ -2181,6 +2255,11 @@ def plan(
         target_m=target_m,
         # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
         alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
+        # the plan's own, where it asked for them with the request the search starts
+        # from (none again where that ask timed out), else asked for by the search.
+        rank_alternates=presets.calm_rate_for(stress_dial) > 0,
+        router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
     )
     if past:
@@ -2344,7 +2423,7 @@ def plan(
             classes = (
                 analysed.classes
                 if analysed is not None and len(analysed.pieces) == len(pieces)
-                else classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+                else classify(pieces, when, roadway_only=lanes_as_roadway)
             )
             traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
             for key, metres in traced_stress.items():
@@ -2394,6 +2473,19 @@ def plan(
             (lambda: _flow_stretches(leg_runs, pieces, classes, capacity)) if mass_ride else None,
             majors if mass_ride else None,
             majors_complete,
+            None
+            if mass_ride
+            else lambda: calm.Pricing(
+                use_roads=presets.use_roads_for(stress_dial),
+                rate=presets.calm_rate_for(stress_dial),
+                weights=(exposure.lts3, exposure.lts4, exposure.avoid),
+                maxcalm=maxcalm,
+                target=target_m is not None,
+                no_trail=variant == Variant.NO_TRAIL.value,
+                quiet_cost_s=refine_context.quiet_cost,
+                junction_weight=refine.intersection_weight(stress_dial),
+            ),
+            events,
         )
         profile_s = clock() - profiled_from
         described = describe_route(
@@ -2500,6 +2592,8 @@ def plan(
                 "carrying": presets.carrying_of(preset_name, dials.carrying),
                 "assist": assist,
                 "avoid_gravel": avoid_gravel,
+                # What was planned, not what was asked: Mass Ride is always trails-off.
+                "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,

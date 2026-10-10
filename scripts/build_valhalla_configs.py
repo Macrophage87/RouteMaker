@@ -47,22 +47,24 @@ TILE_ROOT = "/data/tiles/{variant}/current"
 # The elevation directory. Skadi reads it from the top-level additional_data
 # key and nowhere else: valhalla_build_tiles' elevation builder is constructed
 # from config.get_child("additional_data"), and there is no read of a
-# mjolnir.additional_data in 3.5.1. An earlier version of this file set both and
+# mjolnir.additional_data in 3.5.1 or 3.6.3. An earlier version of this file set both and
 # claimed both were needed, and its test asserted the one that is read by
 # nothing. Baking weighted_grade at build time is what this key is for:
 # without it, use_hills is inert on every preset that sets it and the Mass Ride
 # grade cap has no max_grade to read.
 ELEVATION_DIR = "/data/elevation"
 
-# loki's and thor's `logging.long_request` (ms): a request slower than this is
-# logged as a warning, and that warning can carry the request itself - its
-# locations, which may be the rider's own position ("Use my location",
-# OWNER-DECISIONS 395: never logged beyond the route request). Upstream's 100 and
-# 110 ms are passed by most bike routes. This is far past httpd's
-# timeout_seconds (30 s below), so no request ever reaches it.
-NEVER_LONG_MS = 3_600_000.0
-
 OVERRIDES: dict = {
+    # From 3.7.0 every program configures its logger from this one top-level
+    # section (valhalla/valhalla#5976; src/midgard/logging.cc, ConfigureFromPtree
+    # at 3.9.1) and reads no module's own `logging`. Upstream's default turns
+    # colour on, which would put ANSI escapes into the build log the pipeline
+    # reads ("Using LUA script:") and into the containers' logs. The module-level
+    # `logging` sections this file used to set are read by nothing now, and
+    # neither 3.6.3 nor 3.9.1 reads `long_request` at all: no Valhalla source
+    # file names it, so there is no slow-request log that could carry a rider's
+    # locations (OWNER-DECISIONS 395).
+    "logging": {"type": "std_out", "color": False},
     "mjolnir": {
         # The key that matters most. An unrecognised or misplaced Lua key makes
         # Valhalla fall back silently to its compiled-in transform, dropping
@@ -74,18 +76,23 @@ OVERRIDES: dict = {
         "hierarchy": True,
         "shortcuts": True,
         "concurrency": 4,
-        "logging": {"type": "std_out", "color": False},
     },
     "additional_data": {"elevation": ELEVATION_DIR},
     "loki": {
         # trace_attributes is what the stats block comes from; without it every
-        # route reports nothing.
-        "actions": ["route", "trace_route", "trace_attributes", "locate", "status"],
+        # route reports nothing. sources_to_targets is the riding-time matrix
+        # "Best order" orders a ride's stops by past ten stops, or when the legs'
+        # costs fail (OWNER-DECISIONS 449, core.stoporder).
+        "actions": [
+            "route",
+            "trace_route",
+            "trace_attributes",
+            "locate",
+            "status",
+            "sources_to_targets",
+        ],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
-        "logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS},
     },
-    "thor": {"logging": {"type": "std_out", "color": False, "long_request": NEVER_LONG_MS}},
-    "odin": {"logging": {"type": "std_out", "color": False}},
     "service_limits": {
         "bicycle": {
             "max_distance": 500000.0,

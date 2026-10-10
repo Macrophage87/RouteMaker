@@ -348,6 +348,20 @@ def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
     )
 
 
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+@pytest.mark.parametrize("when", ["weekend", "weekday_rush", "weekday_offpeak"])
+@pytest.mark.parametrize("assist", [False, True])
+def test_trails_off_is_the_no_trail_graph_on_every_ride_type(name, when, assist):
+    """OWNER-DECISIONS 463: offered on every type; off-road included, and e-bike rides
+    with no lock (463a: "Most ebikes are allowed on multiuse trails")."""
+    assert presets.variant_for_ride(name, when, assist, trails_off=True) == Variant.NO_TRAIL.value
+
+
+@pytest.mark.parametrize("assist", [False, True])
+def test_mass_ride_is_on_the_no_trail_graph_with_the_switch_off(assist):
+    assert presets.variant_for_ride("mass-ride", "weekend", assist, trails_off=False) == "no-trail"
+
+
 def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
     """Pinned, unlike the dials above: the owner approved these numbers as a
     table on 2026-09-28 ("Approve the table"), so a retuned value is a change

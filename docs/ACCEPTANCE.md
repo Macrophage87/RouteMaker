@@ -35,7 +35,7 @@ because every later item depends on the earlier ones. It writes a JSON and a Mar
 
 - **It does not run the reference routes through the routers.** PLAN.md:290's "reference-route
   tests against them" has no runner in the repository; the canary route per variant stands in, and
-  the rebuild's own VALIDATE stage (the transform loaded, no rule violations, the admin and timezone
+  the rebuild's own VALIDATE_TILES stage (the transform loaded, no rule violations, the admin and timezone
   databases, elevation and a derived tag read back from the tiles) is the rest of the evidence. The
   runner is a `handoff.md` §7 row.
 - **It does not sign in for you.** Discord's OAuth needs a browser and a real account; A3 tells you

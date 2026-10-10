@@ -323,7 +323,9 @@ REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024*
 # builds). Valhalla 3.5.1 can abort a multi-threaded build with "double free or
 # corruption" (valhalla/valhalla#5005, fixed in 3.6.0); fewer threads is fewer
 # chances of it and less memory, at the cost of a slower build. 1 avoids the race
-# entirely. See docs/OPERATIONS.md, "Tile build threads".
+# entirely. The pinned image is 3.9.1, which has the fix; the default stays 2
+# until a rebuild on the host has been measured at more (memory is the
+# other reason it is low). See docs/OPERATIONS.md, "Tile build threads".
 # Empty or unset is the default, 2: compose hands the rebuild service an empty value
 # when .env does not set one. Anything else must be a whole number of at least 1,
 # refused here so that the worker fails at start, not hours into a rebuild that
@@ -339,6 +341,65 @@ if (
     )
 REBUILD_TILE_CONCURRENCY = int(_tile_concurrency)
 del _tile_concurrency
+
+# How long one rebuild attempt may run, in seconds (docs/OPERATIONS.md, "The rebuild's
+# own budget"). Each attempt of a job gets this much, whether it is the first or a
+# retry that resumed from a checkpoint (OWNER-DECISIONS 459a, 459b). Empty or unset is
+# the default, 8 hours.
+#
+# The ceiling is the backup-window rule: a scheduled rebuild starts at 08:00 UTC
+# (config.procrastinate.WEEKLY_REBUILD_CRON) and the nightly backup is at 07:00 UTC, so
+# a budget that ends before the next 07:00 is at most 23 hours. The floor is a minute:
+# anything lower cannot run a stage.
+#
+# A value outside that is refused by the rebuild alone, not here. Every Django service
+# loads this file (the api and the maintenance worker read the budget to call a rebuild
+# wedged), and this is the knob an operator edits in the middle of a rebuild incident:
+# a typo must not take the site and the backups down with it. So a bad value is logged,
+# the default stands in, `REBUILD_TIMEOUT_INVALID` keeps what was given, the rebuild
+# task refuses to start with it (a failed run row naming the value, not retried), and
+# `check_operations` reports it.
+REBUILD_TIMEOUT_DEFAULT_S = 8 * 60 * 60
+REBUILD_TIMEOUT_MIN_S = 60
+REBUILD_TIMEOUT_MAX_S = 23 * 60 * 60
+REBUILD_TIMEOUT_RULE = (
+    f"a whole number of seconds between {REBUILD_TIMEOUT_MIN_S} and {REBUILD_TIMEOUT_MAX_S} "
+    "(23 hours: a scheduled 08:00 UTC rebuild has to end before the 07:00 UTC backup)"
+)
+_rebuild_timeout = os.environ.get("REBUILD_TIMEOUT_S", "").strip() or str(REBUILD_TIMEOUT_DEFAULT_S)
+if (
+    _rebuild_timeout.isascii()
+    and _rebuild_timeout.isdecimal()
+    and REBUILD_TIMEOUT_MIN_S <= int(_rebuild_timeout) <= REBUILD_TIMEOUT_MAX_S
+):
+    REBUILD_TIMEOUT_S = int(_rebuild_timeout)
+    REBUILD_TIMEOUT_INVALID: str | None = None
+else:
+    import logging as _logging
+
+    _logging.getLogger("config.settings").warning(
+        "REBUILD_TIMEOUT_S=%r is not %s; using the default, %d. The rebuild refuses to "
+        "start until it is fixed.",
+        _rebuild_timeout,
+        REBUILD_TIMEOUT_RULE,
+        REBUILD_TIMEOUT_DEFAULT_S,
+    )
+    REBUILD_TIMEOUT_S = REBUILD_TIMEOUT_DEFAULT_S
+    REBUILD_TIMEOUT_INVALID = _rebuild_timeout
+    del _logging
+del _rebuild_timeout
+
+# Whether a failed attempt's work is kept for the job's next attempt
+# (pipeline.checkpoint; OWNER-DECISIONS 459). On by default; REBUILD_CHECKPOINTS=0
+# turns it off, and every attempt then starts from the first stage. Empty or unset is
+# on. Anything but a plain on/off word is refused, so a typo does not silently decide.
+_checkpoints = os.environ.get("REBUILD_CHECKPOINTS", "").strip().lower() or "1"
+if _checkpoints not in {"1", "0", "true", "false", "yes", "no", "on", "off"}:
+    raise ImproperlyConfigured(
+        f"REBUILD_CHECKPOINTS must be 1 or 0 (on or off), not {_checkpoints!r}"
+    )
+REBUILD_CHECKPOINTS = _checkpoints in {"1", "true", "yes", "on"}
+del _checkpoints
 
 # OWNER-DECISIONS 355: "Pause until our rebuild". With this set to 1 or true the
 # scheduled Tuesday rebuild logs that it is paused and does nothing; a rebuild fired
@@ -374,7 +435,7 @@ REBUILD_SENTINEL_DERIVED_EDGE = ((-77.076431, 38.892187), (-77.076530, 38.893129
 # a copy of the standard one reads "none".
 REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341))
 # The long trails (OWNER-DECISIONS 375; `pipeline.run.assert_long_trails`): ways
-# VALIDATE reads back from the staging table, each of which must be on a long
+# VALIDATE_SEGMENTS reads back from the staging table, each of which must be on a long
 # bicycle route in a named run of 8 mi or more. Washington & Old Dominion Trail,
 # OSM way 8810729 (rcn), and the Chesapeake and Ohio Canal Trail, OSM way
 # 10595312 (ncn, USBR 50), both so in the 2026-10-03 extract (ZOOMED-TRAILS
@@ -395,7 +456,7 @@ REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 10595312)
 REBUILD_SENTINEL_CALM_STREET_WAYS = (5968951,)
 REBUILD_CALM_RUN_FLOORS = (15000, 1200)
 # The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
-# `pipeline.run.assert_mass_capacity`): VALIDATE reads it back, and the median road
+# `pipeline.run.assert_mass_capacity`): VALIDATE_SEGMENTS reads it back, and the median road
 # (riders a minute) must lie in this range - a ride has its own direction's lanes
 # (OWNER-DECISIONS 404), so a two-lane street or a one-way street is about 100, a DC
 # residential street of 8 ft lanes about 72 (docs/DEVELOPMENT.md, "The Mass Ride
@@ -410,7 +471,7 @@ REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (60, 200)
 # of the reviewed allowlist, which is empty until the owner has checked blocks
 # against current conditions; the streets named in the last setting never count.
 # The owner's reference LTS 4 road (OWNER-DECISIONS 408, 409; `pipeline.lts_sentinels`):
-# VALIDATE refuses a build where less than the first share of the street's segment rows
+# VALIDATE_SEGMENTS refuses a build where less than the first share of the street's segment rows
 # (found by the DC Roadway Block blocks of this ROUTENAME) is LTS 4 or Avoid, or less than
 # the second share north of the latitude (R St NW): "Most of Conn Ave is LTS4" and "I'd say
 # it's LTS4 north of R." The 2026-10-03 build gave 49% and 72% (R St to Calvert St was
@@ -420,7 +481,7 @@ REBUILD_SENTINEL_LTS4_STREET = "CONNECTICUT AVE NW"
 REBUILD_SENTINEL_LTS4_MIN_SHARE = 0.6
 REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.9126
 REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
-# Stretches the owner gave a tier (`pipeline.run.assert_owner_stretches`): VALIDATE refuses
+# Stretches the owner gave a tier (`pipeline.run.assert_owner_stretches`): VALIDATE_SEGMENTS refuses
 # a build where less than the share of a stretch's segment rows (found by the DC Roadway
 # Block blocks of the ROUTENAME, a row by the latitude of its middle) is at exactly the
 # tier. (ROUTENAME, south latitude, north latitude, tier, minimum share, decision.)
@@ -429,12 +490,12 @@ REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
 REBUILD_SENTINEL_STRETCHES = (
     ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
 )
-# Ways inside Joint Base Anacostia-Bolling that VALIDATE requires closed to bicycles
+# Ways inside Joint Base Anacostia-Bolling that VALIDATE_SEGMENTS requires closed to bicycles
 # (`pipeline.run.assert_military_closures`; the owner's report of a route through the
 # base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
 # in the 2026-10-03 extract. One the extract no longer has is warned about.
 REBUILD_SENTINEL_MILITARY_CLOSED_WAYS = (193043941, 97677540, 99419868)
-# The fewest ways VALIDATE accepts closed in each large installation (by its OSM name),
+# The fewest ways VALIDATE_SEGMENTS accepts closed in each large installation (by its OSM name),
 # about three quarters of the 2026-10-03 extract's count under OWNER-DECISIONS 437: an
 # outline lost or renamed upstream would otherwise reopen a whole base silently. A
 # tuple of names is one floor for their sum: nearly every way of the old Bolling Air
@@ -453,13 +514,13 @@ REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
     # 2026-10-06: "As is the CIA headquarters".
     "Central Intelligence Agency": 225,  # 303
 }
-# Ways inside the Secret Service's James J. Rowley Training Center that VALIDATE
+# Ways inside the Secret Service's James J. Rowley Training Center that VALIDATE_SEGMENTS
 # requires closed to bicycles (`pipeline.run.assert_secured_closures`; the owner's
 # report, 2026-10-06: "a secure secret service compound is also showing trails"): a
 # footway, a track and a service road with no access tag of their own, in the
 # 2026-10-03 extract. One the extract no longer has is warned about.
 REBUILD_SENTINEL_SECURED_CLOSED_WAYS = (902479602, 1276271654, 6084740)
-# The fewest ways VALIDATE accepts closed in each secured federal compound (by the
+# The fewest ways VALIDATE_SEGMENTS accepts closed in each secured federal compound (by the
 # name `restricted_areas.SECURED_AREAS` files it under, or OSM's for one the tag rule
 # finds), about three quarters of the 2026-10-03 extract's count: an outline deleted
 # or renumbered upstream would otherwise reopen a compound silently.

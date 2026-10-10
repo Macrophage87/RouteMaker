@@ -119,6 +119,28 @@ export interface RouteProfile {
   unchecked?: ProfileRange[] | null;
   /** Mass Ride only: the stretches outside DC, with no riders a minute (OWNER-DECISIONS 427). */
   outside_dc?: ProfileRange[] | null;
+  /** Every ride type but Mass Ride: the rolling stress score, calm miles per mile (OWNER-DECISIONS 460.12, 461d, 461e; core.api.ProfileCalmOut). */
+  calm?: ProfileCalm | null;
+}
+
+/** The rolling stress score (routemaker.calm): calm (quiet-street) miles per actual mile over the mile around each sample, junctions included. */
+export interface ProfileCalm {
+  /** The window's length, metres (about a mile, 461e). */
+  window_m: number;
+  /** At each of `profile.m`; null where the window holds nothing rated. */
+  ratio: (number | null)[];
+  /** Each stretch at its own multiplier: the faint step line. */
+  steps: { from_m: number; to_m: number; ratio: number | null; tier: number | null }[];
+  /** Calm metres counted at one place: a junction's own cost, or Avoid's entry charge. */
+  points: { m: number; calm_m: number; kind: "junction" | "avoid_entry"; severity: "orange" | "red" | null }[];
+  total_calm_m: number;
+  rated_m: number;
+  /** False where the junctions could not be read, so none are counted. */
+  junctions_counted: boolean;
+  /** Where the words change: LTS 1-2 below the first, LTS 3 to the second, LTS 4 above. */
+  bands: number[];
+  /** True while each tier's cost is the middle of its modelled range. */
+  estimate: boolean;
 }
 
 /**
@@ -371,6 +393,7 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
+    trails_off?: boolean;
     target_distance_m?: number | null;
     system_weight_kg?: number | null;
     loop?: boolean;

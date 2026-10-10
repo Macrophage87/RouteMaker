@@ -333,7 +333,7 @@ Runs as uid 10001, non-root.
 
 ### `docker/pipeline.Dockerfile` — rebuild
 
-`FROM ghcr.io/valhalla/valhalla:3.5.1`, the same image and tag the three serving
+`FROM ghcr.io/valhalla/valhalla:3.9.1`, the same image and tag the five serving
 containers run. The rebuild needs `valhalla_build_admins`,
 `valhalla_build_timezones`, `valhalla_build_tiles`, `valhalla_build_extract`
 (`pipeline/tiles.py`) and `valhalla_service` (the one-shot `trace_attributes`
@@ -344,7 +344,7 @@ after promotion, not as a build failure. `tests/test_images.py` reads the tag ou
 of `compose.yaml` and holds the `FROM` to it.
 
 The upstream image's runner stage is `FROM ubuntu:24.04`
-(github.com/valhalla/valhalla, Dockerfile at tag 3.5.1), so these are noble
+(github.com/valhalla/valhalla, `docker/Dockerfile` at tag 3.9.1, as at 3.6.3), so these are noble
 package names:
 
 - **`python3-venv`, `python3-pip`** — the upstream runner carries
@@ -352,8 +352,11 @@ package names:
   externally managed (PEP 668), so the project installs into `/opt/venv`, which
   goes first on `PATH` so `manage.py`'s `#!/usr/bin/env python3` resolves to it.
 - **`gdal-bin`** — `gdalwarp`, which `pipeline/elevation.py` shells out to for
-  every one-degree HGT tile in the coverage box. The upstream runner has
-  `libgdal34`, the shared library, and none of the binaries.
+  every one-degree HGT tile in the coverage box. The upstream runner has no
+  GDAL at all since 3.6.0, which replaced it with libgeotiff
+  ([valhalla/valhalla#5680](https://github.com/valhalla/valhalla/pull/5680);
+  3.5.1 had `libgdal34` and none of the binaries), so `gdal-bin` brings in the
+  whole GDAL stack.
 - **`osmium-tool`** — the `osmium` command line, for the source-extract stage
   (`osmium merge`, `osmium extract -s smart -S types=any`). This is a different
   thing from the `osmium` **Python** module in `docker/requirements.txt`, which
@@ -371,7 +374,7 @@ package names:
 
 **LuaJIT is not installed and does not need to be.** Valhalla links the Lua tag
 transform against `libluajit-5.1-2`, which the upstream image's *runner* stage
-installs (its own `apt install` line in the 3.5.1 Dockerfile), and calls it in
+installs (its own `apt install` line in the 3.9.1 Dockerfile, as in 3.5.1 and 3.6.3), and calls it in
 process. The standalone `luajit` interpreter appears only in upstream's
 `scripts/install-linux-deps.sh`, which runs in the **builder** stage, so the CLI
 is absent from the runner — which matters for running `tests/lua/` on a
@@ -1066,14 +1069,16 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
 dependency is pinned to an exact version in `package.json` too). The publish
 copies the hashed files under `assets/` first and replaces `index.html` last,
 by a rename, so a page loaded mid-deploy gets either the old app or the new
-one and never an `index.html` naming files that are not there yet. Older
+one and never an `index.html` naming files that are not there yet. The page
+on how stress ratings work, `about/stress.html`, is replaced by a rename too,
+so nobody reads it half written. Older
 hashed files are left behind: they are what a tab opened before the deploy
 still asks for, and they cost about 2 MB a release. `cp -n` leaves a hashed
 file that is already there alone rather than rewriting it under a reader
@@ -1105,12 +1110,19 @@ script afterwards repairs the ownership, and step 2 then succeeds.
 
 What the edge does with it (Caddyfile, `@frontend`):
 
-- `/`, `/index.html`, `/favicon.svg` and `/assets/*` are the app. The app's
+- `/`, `/index.html`, `/favicon.svg`, `/licenses.txt`, `/about/stress.html`
+  and `/assets/*` are the app. The app's
   paths are listed rather than the API's, so the Caddyfile never names the
   admin path, and every other path - `/api/*`, `/tiles/*`, `/auth/*`,
   `<DJANGO_ADMIN_PATH>`, `/healthz` - reaches the API exactly as before
   (`tests/test_frontend_edge.py` runs this against the real Caddy image). A
   client-side route the app grows later has to be added to that list.
+- `/about/stress.html` is the rider-facing page on how traffic-stress ratings
+  work (OWNER-DECISIONS 461; `frontend/public/about/stress.html`, developer
+  docs in `docs/stress/`), linked from the legend and the road panel and served
+  with the app's headers and `no-cache`; `/about/stress` and `/about/stress/`
+  redirect to it (302, as the preset links, so a browser keeps nothing for
+  good). The beta's nginx template serves it the same way.
 - `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
   is seen on the next load; the files under `assets/` are content-hashed and
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
@@ -1339,7 +1351,8 @@ front end" above):
 - `handle_path /basemap/*` → the PMTiles archive, glyphs and sprites, to this
   site's own pages only.
 - `handle @frontend` → the built single-page app at `/`, `/index.html`,
-  `/favicon.svg` and `/assets/*`, from `/srv/frontend`.
+  `/favicon.svg`, `/licenses.txt`, `/about/stress.html` and `/assets/*`, from
+  `/srv/frontend` (`/about/stress` and `/about/stress/` redirect to the page).
 - everything else → `reverse_proxy api:8000`, the port
   `docker/api-entrypoint.sh` binds gunicorn to.
 

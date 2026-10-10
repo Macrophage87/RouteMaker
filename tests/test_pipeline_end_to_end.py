@@ -49,6 +49,7 @@ from rebuild_fixtures import (
     NAMED_ROAD_ON_ID,
     NAMED_STREET_EAST_ID,
     NAMED_STREET_ID,
+    NATIONAL_MTB_ID,
     ONE_WAY_ID,
     OUTSIDE_ROAD_ID,
     PARALLEL_COUNT,
@@ -661,7 +662,7 @@ def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_
     source = install_source_extract(tmp_path, build_secured_extract)
     context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
 
-    assert Stage.VALIDATE in report.completed
+    assert Stage.VALIDATE_TILES in report.completed
     secured = {m.way_id: m for m in context.secured_ways}
     military = {m.way_id: m for m in context.military_ways}
     assert secured[SECURED_ROAD_ID].closed
@@ -732,7 +733,7 @@ def test_validate_reads_singletrack_back_from_every_graph_before_the_swap(
         source, tmp_path, binaries=binaries, urban=DIALS_IDS, skip=NOT_SWAPPED
     )
 
-    assert Stage.VALIDATE in report.completed
+    assert Stage.VALIDATE_TILES in report.completed
     reads = [c for c in binaries.commands("valhalla_service") if c[2] == "locate"]
     assert sorted(c[1] for c in reads) == sorted(str(p) for p in context.build_configs.values())
     for command in reads:
@@ -761,7 +762,7 @@ def test_a_graph_that_reopens_singletrack_is_not_swapped_in(
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, tmp_path, binaries=binaries, urban=DIALS_IDS)
 
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert f"way {SINGLETRACK_ID}" in str(caught.value.cause)
     assert not any((tmp_path / "tiles").glob("*/current")), "nothing was promoted"
 
@@ -1233,7 +1234,7 @@ def test_a_silent_lua_fallback_fails_the_build(workspace, states) -> None:
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=FakeBinaries(log="tiles built, 0 errors"))
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "built-in transform" in str(caught.value.cause)
 
 
@@ -1276,7 +1277,7 @@ def test_a_variant_that_fell_back_is_caught_even_when_another_logged_the_script(
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=PerVariantLog(logged_for="standard"), build_id="one")
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "built-in transform" in str(caught.value.cause)
     # And the message says which variant, since two of the three are fine.
     assert "no-trail" in str(caught.value.cause) or "ebike" in str(caught.value.cause)
@@ -1389,7 +1390,7 @@ def test_a_variant_built_without_elevation_is_caught_even_when_the_others_have_i
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=PerVariantGrade(zero_for="ebike"), build_id="flat")
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "elevation directory" in str(caught.value.cause)
 
     # The same fake with every variant reporting a grade passes, so the failure
@@ -1412,7 +1413,7 @@ def test_a_transform_rule_violation_in_the_parse_log_fails_the_build(workspace, 
     )
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=FakeBinaries(violations=violation), build_id="bad")
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "ROUTEMAKER-VIOLATION" in str(caught.value.cause)
     assert "never permitted" in str(caught.value.cause), "the offending line is quoted"
 
@@ -1425,7 +1426,7 @@ def test_the_violation_prefix_is_searched_on_the_streams_the_lua_writes_to(
     workspace, states
 ) -> None:
     """The remap writes its violations with `io.stderr:write`, while Valhalla's
-    own lines go to stdout under `mjolnir.logging.type: std_out`. The build log
+    own lines go to stdout under the top-level `logging.type: std_out`. The build log
     has to be both streams or the check reads a log the violation is not in."""
     from pipeline.run import VIOLATION_LOG_PREFIX, assert_no_rule_violations
     from pipeline.tiles import CommandOutput
@@ -1468,8 +1469,8 @@ def test_the_violation_report_says_and_more_only_when_there_is_more() -> None:
 def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states) -> None:
     """PLAN:13 commits to valhalla_build_admins and valhalla_build_timezones and
     nothing ran either. Both paths are retargeted into the dated build directory
-    with every other tile path, and 3.5.1 warns and carries on without them
-    (src/mjolnir/graphbuilder.cc:431-444), so the graph silently has no
+    with every other tile path, and Valhalla warns and carries on without them
+    (src/mjolnir/graphbuilder.cc:431-444 at 3.5.1, 479-500 at 3.6.3), so the graph silently has no
     timezone and `date_time.type: 3` evaluates nothing."""
     source, root = workspace
     # Distinct build ids: the dated directory is named to the second, so two
@@ -1477,7 +1478,7 @@ def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states
     # first's databases already sitting there.
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=FakeBinaries(admin="missing"), build_id="no-admin")
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "mjolnir.admin" in str(caught.value.cause)
 
     with pytest.raises(RebuildFailed) as caught:
@@ -1512,7 +1513,7 @@ def test_a_database_that_is_there_but_holds_nothing_fails_the_build(
     build_id = "-".join(f"{k}-{v}" for k, v in kwargs.items())
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=FakeBinaries(**kwargs), build_id=build_id)
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert named in str(caught.value.cause)
 
 
@@ -3264,7 +3265,7 @@ def test_validate_refuses_when_a_variant_produced_no_build_log(tmp_path) -> None
     }
 
     with pytest.raises(ValidationFailed) as caught:
-        handlers[Stage.VALIDATE]()
+        handlers[Stage.VALIDATE_TILES]()
 
     assert "not every variant produced a build log" in str(caught.value)
     assert "'no-trail', 'standard'" in str(caught.value), "it says which it has"
@@ -3293,7 +3294,7 @@ def test_validate_refuses_when_a_variant_has_no_build_config(workspace, states) 
     )
 
     with pytest.raises(ValidationFailed) as caught:
-        handlers[Stage.VALIDATE]()
+        handlers[Stage.VALIDATE_TILES]()
     # The guard's own words, not merely "a ValidationFailed came out". Skipped
     # rather than raised, the loop simply passes over the two variants it
     # cannot check and the elevation read-back below raises a few lines later,
@@ -3454,7 +3455,7 @@ def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, sta
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, binaries=FakeBinaries(weekend_cycle_lane="none"))
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_TILES
     assert "weekend graph" in str(caught.value.cause)
     assert "Sligo Creek" in str(caught.value.cause)
 
@@ -4410,6 +4411,12 @@ def test_the_rebuild_writes_the_long_trail_columns(
     assert (name, route) == (None, 0), "a mountain-bike trail never qualifies (378)"
     assert run is None and bridge == 0
 
+    # The same mountain-bike route over a trail on a national bicycle route: the national
+    # route keeps it, its level and its name (the C&O towpath, the owner, 2026-10-09).
+    name, route, run, bridge = rows[NATIONAL_MTB_ID]
+    assert (name, route) == ("Canal Trail", 3)
+    assert run == pytest.approx(865, rel=0.03)
+
     name, route, run, bridge = rows[REGIONAL_ROUTE_ID]
     assert (name, route) == ("Beta Route", 3), "the route's level, and its name"
     assert run == pytest.approx(13_800, rel=0.02)
@@ -4434,7 +4441,7 @@ def test_a_rebuild_that_loses_the_long_trails_is_refused(
     source = install_source_extract(tmp_path, build=build_long_trails_extract)
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, tmp_path)
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert f"sentinel way {ALPHA_WEST_ID}" in str(caught.value.cause)
 
 
@@ -4465,6 +4472,7 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     rows = ride_rows(settings.SEGMENT_SCHEMA_STAGING)
 
     assert rows[MOUNTAIN_BIKE_ID][3] is None, "a mountain-bike trail never has a calm run"
+    assert rows[NATIONAL_MTB_ID][3] == pytest.approx(865, rel=0.03), "one on a national route has"
     assert rows[REGIONAL_ROUTE_ID][3] >= 12_875
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
@@ -4519,7 +4527,7 @@ def test_a_rebuild_that_loses_the_capacity_is_refused(workspace, states, monkeyp
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root)
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "carry a capacity" in str(caught.value.cause)
 
 
@@ -4528,7 +4536,7 @@ def test_a_rebuild_whose_median_road_is_implausible_is_refused(workspace, states
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root)
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "units or constants" in str(caught.value.cause)
 
 
@@ -4609,7 +4617,7 @@ def test_a_rebuild_whose_reference_lts4_road_came_out_calmer_is_refused(
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, roadway=[reference_road_block(25)])
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "TEST ROAD" in str(caught.value.cause)
     assert "Most of Conn Ave is LTS4" in str(caught.value.cause)
 
@@ -4622,5 +4630,5 @@ def test_a_reference_street_the_roadway_block_does_not_have_is_refused(
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, roadway=[reference_road_block(30)])
-    assert caught.value.stage is Stage.VALIDATE
+    assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "no block named NOT A STREET NW" in str(caught.value.cause)

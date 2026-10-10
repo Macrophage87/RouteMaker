@@ -47,6 +47,7 @@ import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
+import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
@@ -379,6 +380,8 @@ export function RoadInfoDialog({ request, massRide, station, onClose, fallbackFo
               Data: {ready.attribution.join(", ")} and the sources above; traffic stress by RouteMaker's classifier and
               the owner's ratings.
             </p>
+            {/* OWNER-DECISIONS 461: the rider-facing page on how ratings work, in the same tab. */}
+            <StressPageLink className="road-info-how" />
           </details>
         )}
         {ready && (

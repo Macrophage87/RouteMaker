@@ -53,9 +53,17 @@ class Stage(Enum):
     APPLY_OVERRIDES = "apply_overrides"
     INSERT_BORDER_NODES = "insert_border_nodes"
     INJECT_TAGS = "inject_tags"
-    BUILD_TILES = "build_tiles"
+    # The segments are written, and the checks that need no graph are run, before
+    # the tiles: nothing in either reads a tile, and a failure here costs the work
+    # up to INJECT_TAGS (2.5 hours) instead of that plus the whole tile stage. The
+    # classification checkpoint is written when VALIDATE_SEGMENTS passes
+    # (`pipeline.checkpoint`; owner decision 459). The job-8023 calm-run failure
+    # surfaced after the tiles, in attempt 3; here it is in attempt 1.
     WRITE_SEGMENTS = "write_segments"
-    VALIDATE = "validate"
+    VALIDATE_SEGMENTS = "validate_segments"
+    BUILD_TILES = "build_tiles"
+    # The checks that read a built graph.
+    VALIDATE_TILES = "validate_tiles"
     SWAP = "swap"
     RECONCILE = "reconcile"
 

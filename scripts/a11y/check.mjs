@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { RIDE_COORDS, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -645,6 +645,45 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 12a. "Mountain-bike trails" (OWNER-DECISIONS 454): an optional map layer, off until turned on ----
+{
+  const p = await open();
+  await openSheet(p);
+  const id = "#mtb-trails-switch";
+  const before = await axNode(p, id);
+  check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
+  check("mtb layer: described in plain words: what it draws, from which zoom, and that it is not used for routes",
+    /^Trails for mountain bikes, drawn as a thin grey dotted line from zoom 14\. Not used for routes; Gravel and Mountain Goat may use them\.$/.test(before?.description ?? ""), before?.description ?? "");
+  const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
+  const at = (name) => headings.indexOf(name);
+  check("mtb layer: under its own heading, Trails and terrain, after Rail stations and before Legend",
+    at("Trails and terrain") > at("Rail stations") && at("Rail stations") > at("Traffic stress") && at("Legend") > at("Trails and terrain"), JSON.stringify(headings));
+  await p.eval(`document.querySelector('${id}').focus(); true`);
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space turns it on, it is remembered in this browser, and the focus stays on it",
+    (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on" && (await p.eval(`document.activeElement?.id === 'mtb-trails-switch'`)));
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("mtb layer: Space again turns it off", (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "false" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "off");
+  await p.close();
+}
+{
+  // Every ride type (454): a Mass Ride has the switch too, and with it on its legend names the line.
+  const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
+  await openSheet(p);
+  await sleep(1500);
+  const ax = await axNode(p, "#mtb-trails-switch");
+  check("mtb layer: a Mass Ride has the same switch", ax?.role === "switch" && ax?.name === "Mountain-bike trails", JSON.stringify(ax));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
+  const row = await p.eval("(() => { const e = document.querySelector('#sheet-layers .mass-legend') && document.querySelector('#sheet-layers [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
+  check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailNot used for routes"), JSON.stringify(row));
+  // Leave the browser as the later sections expect it: the layer off.
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
+  await p.close();
+}
+
 // ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318) ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
@@ -753,7 +792,7 @@ const federalFetched = (p) =>
   check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads) === JSON.stringify(["Display", "Signing in"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Ride mode and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads) === JSON.stringify(["Display", "Ride mode", "Signing in"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -775,6 +814,42 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 16b. Keep to roads, not trails (OWNER-DECISIONS 463, 463b): one switch on every ride type ----
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const sw = await axNode(p, ".trails-off input");
+  check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
+  const how = await p.eval("(() => { const d = document.querySelector('.trails-off details.how'); const s = d?.querySelector('summary'); const hidden = s?.querySelector('.visually-hidden'); return d ? { summary: s.textContent, shown: s.textContent.replace(hidden?.textContent ?? '', ''), open: d.open, said: /Chain Bridge/.test(d.textContent), tall: Math.round(s.getBoundingClientRect().height) } : null; })()");
+  check("roads only: what is left out is under a closed \"How this works\" (read \": keep to roads\"), not in the description", how?.summary === "How this works: keep to roads" && how.shown === "How this works" && how.open === false && how.said === true && !/Chain Bridge/.test(sw?.description ?? ""), JSON.stringify(how));
+  // The a11y review's SF1: `details.how summary` (24 px) used to beat `.panel summary` (44 px) here.
+  check("roads only: its \"How this works\" is a 44 px target (the owner's 44 px rule)", how?.tall >= 44, `${how?.tall} px`);
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const on = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '' })");
+  check("roads only: Space turns it on, plans once, keeps the focus, and puts it in the link and the Ride line", on.checked && on.focus && p.routeRequests - before === 1 && /trailsoff=1/.test(await p.eval("location.hash")) && /roads only/.test(on.line), JSON.stringify({ ...on, plans: p.routeRequests - before }));
+  const middle = p.routeRequests;
+  await p.key(" ", "Space", 32);
+  await sleep(1500);
+  const off = await p.eval("({ checked: document.querySelector('.trails-off input').checked, focus: document.activeElement === document.querySelector('.trails-off input'), line: document.querySelector('.ride-line-button')?.textContent ?? '', hash: location.hash })");
+  check("roads only: Space again turns it off, plans once, and takes it out of the link and the Ride line", !off.checked && off.focus && p.routeRequests - middle === 1 && !/trailsoff/.test(off.hash) && !/roads only/.test(off.line), JSON.stringify({ ...off, plans: p.routeRequests - middle }));
+  await p.close();
+}
+{
+  // Mass Ride always keeps to roads: checked from a link that does not say so, in the Tab order, unchangeable.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  const sw = await axNode(p, ".trails-off input");
+  // `disabled` is the accessibility tree's, what screen readers announce ("unavailable", "dimmed"): the a11y review's SF2.
+  check("roads only: on Mass Ride it is checked and unavailable to AT, and its description says a mass ride always keeps to roads", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === true && sw?.disabled === true && /^A mass ride always keeps to roads\./.test(sw?.description ?? ""), JSON.stringify(sw));
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.trails-off input').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(1000);
+  const after = await p.eval("(() => { const i = document.querySelector('.trails-off input'); return { checked: i.checked, attr: i.getAttribute('aria-disabled'), disabled: i.disabled, focus: document.activeElement === i }; })()");
+  check("roads only: on Mass Ride it keeps the focus, and Space neither unchecks it nor plans", after.checked && after.attr === "true" && !after.disabled && after.focus && p.routeRequests === before && !/trailsoff/.test(await p.eval("location.hash")), JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  await p.close();
+}
 // ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 {
@@ -1131,24 +1206,26 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const fold = await p.eval(`(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent === 'Elevation and stress'); const d = h?.nextElementSibling; return { heading: !!h, details: d?.tagName, open: d?.open, summary: d?.querySelector('summary')?.textContent }; })()`);
   check("chart: an \"Elevation and stress\" fold with its own heading, open beside the map", fold.heading && fold.details === "DETAILS" && fold.open === true && fold.summary === "Elevation and stress", JSON.stringify(fold));
   const first = await axNode(p, ".pc-plot");
-  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
+  check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
   check("chart: its description is the key hint only (the summary is the text just before it)", /^Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? "") && !/Over 2\.9 mi/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
   const shares = await p.eval("document.querySelector('.pc-summary').textContent");
   check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
   check("chart: no colour-only cue: the grade bands are named in words, and each has a pattern over the amber", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.includes('Grade 5% to 8%') && l.includes('Grade 8% or more') && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg pattern[id$="-dots"]') && !!document.querySelector('.pc-svg path.pc-band-1[fill$="-dots)"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
-  check("chart: the strip and its key say a traffic-free path as the map does", await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|') === 'Traffic-free path|LTS 2'"), await p.eval("[...document.querySelectorAll('.pc-tiers li')].map((x) => x.textContent).join('|')"));
+  // The rolling stress chart (OWNER-DECISIONS 460.12) in place of the strip: its key names the three levels, the log scale, the estimate and the junction shapes.
+  const calmKey = await p.eval("[...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent)");
+  check("chart: the rolling stress key names its levels, the log scale, the estimate and the junction shapes", ["Low stress (LTS 1 to 2 level)", "LTS 3 level", "LTS 4 level or higher", "Avoid (A where narrow)", "Higher stress junction (triangle)", "Very high stress junction (diamond)"].every((t) => calmKey.includes(t)) && calmKey.some((t) => /log scale/.test(t) && /an estimate/.test(t)), JSON.stringify(calmKey));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const three = await axNode(p, ".pc-plot");
-  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\.$/.test(three?.valuetext ?? ""), three?.valuetext);
+  check("chart: three Right arrows read Mile 0.3 with its elevation, grade and stress", /^Mile 0\.3: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: /.test(three?.valuetext ?? ""), three?.valuetext);
   check("chart: and put a marker on the map, hidden from a screen reader (the sentence is the announcement)", await p.eval("(() => { const m = document.querySelector('.scrub-marker'); return !!m && m.getAttribute('aria-hidden') === 'true' && m.tabIndex < 0; })()"));
   for (let i = 0; i < 9; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const climb = await axNode(p, ".pc-plot");
-  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test(climb?.valuetext ?? ""), climb?.valuetext);
+  check("chart: on the climb the sentence says the grade, as Mile 1.2: grade 6%", /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test(climb?.valuetext ?? ""), climb?.valuetext);
   await p.shot(`${SHOTS}/chart_stress_focused.png`);
   await p.key("End", "End", 35);
   await sleep(100);
@@ -1160,7 +1237,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("chart: a key it takes does not move the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   await p.key("c", "KeyC", 67);
   await sleep(100);
-  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
+  check("chart: C jumps to the next climb (a11y N4)", /^Mile 1\.1: elevation \d+ ft \(\d+ m\), grade 6%, LTS 2\. Mile around: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
   await p.key("Home", "Home", 36);
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(100);
@@ -1176,8 +1253,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(250);
   check("chart: Tab leaves the chart and the map's marker goes", await p.eval("!document.querySelector('.scrub-marker') && !document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   // The mouse: hovering moves the same marker. Under load the map draws it late, so wait for
-  // it (up to 2 s) rather than a fixed pause; the check below is unchanged.
-  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y });
+  // it (up to 2 s) rather than a fixed pause; the check below is unchanged. The chart is scrolled
+  // back into view and its box read again: the taller chart lets Tab scroll it off the panel.
+  const box2 = await p.eval("(() => { document.querySelector('.pc-svg').scrollIntoView({ block: 'center' }); const r = document.querySelector('.pc-svg').getBoundingClientRect(); return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.3 }; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box2.x, y: box2.y });
   await p.waitFor("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout')?.textContent ?? '')", 2000);
   check("chart: hovering the picture moves a marker on the map too, and shows the same sentence", await p.eval("!!document.querySelector('.scrub-marker') && /^Mile \\d\\.\\d: elevation/.test(document.querySelector('.pc-readout').textContent)"), await p.eval("document.querySelector('.pc-readout').textContent"));
   await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
@@ -1189,12 +1268,14 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(150);
   const table = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); const was = d.open; d.querySelector('summary').click(); const t = d.querySelector('table'); return { was, summary: d.querySelector('summary').textContent, caption: t?.querySelector('caption')?.textContent, heads: [...t.querySelectorAll('thead th')].map((x) => x.textContent), row: [...t.querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), rowHead: t.querySelector('tbody tr:first-child > *').tagName }; })()`);
   await sleep(150);
-  check("chart: the climbs table is behind a closed \"Climbs as a table\"", table.was === false && table.summary === "Climbs as a table", JSON.stringify(table));
+  check("chart: the climbs table is behind a closed \"Climbs and rolling stress as tables\"", table.was === false && table.summary === "Climbs and rolling stress as tables", JSON.stringify(table));
   check("chart: it has a caption and column headers: start, length, gain, average, maximum, stress", table.caption === "Climbs, in the order ridden" && JSON.stringify(table.heads) === JSON.stringify(["Start", "Length", "Gain", "Average grade", "Maximum grade", "Stress"]), JSON.stringify(table));
   check("chart: the climb's row, in feet first", JSON.stringify(table.row) === JSON.stringify(["Mile 1.1", "0.2 mi (0.3 km)", "68 ft (21 m)", "7%", "9%", "LTS 2"]) && table.rowHead === "TH", JSON.stringify(table.row));
   const ax = await axNode(p, ".pc-table");
   check("chart: the table is a table to a screen reader, named by its caption", ax?.role === "table" && ax.name === "Climbs, in the order ridden", JSON.stringify(ax));
-  check("chart: the stress strip is drawn, a section for each stress section, with a frame", await p.eval("document.querySelectorAll('.pc-svg g > rect[fill]').length >= 2 && !!document.querySelector('.pc-strip-frame')"));
+  const rolling = await p.eval(`(() => { const t = [...document.querySelectorAll('.pc-table')][1]; return { caption: t?.querySelector('caption')?.textContent, heads: [...(t?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent), rows: t?.querySelectorAll('tbody tr').length ?? 0, first: [...(t?.querySelectorAll('tbody tr:first-child > *') ?? [])].map((x) => x.textContent) }; })()`);
+  check("chart: the rolling stress table has a caption, headers and a row every half mile from the start to the end", rolling.caption === "Rolling stress, calm miles per mile over the mile around each point" && JSON.stringify(rolling.heads) === JSON.stringify(["At", "Calm miles per mile", "Reads as", "Junctions to watch since the row before"]) && rolling.rows === 7 && JSON.stringify(rolling.first) === JSON.stringify(["Mile 0.0", "0.6", "LTS 1 to 2 level", "None"]), JSON.stringify(rolling));
+  check("chart: the rolling stress line is drawn over its banded area, with its guides labelled and no strip", await p.eval("!!document.querySelector('.pc-calm-line') && document.querySelectorAll('.pc-calm-guide').length >= 2 && !document.querySelector('.pc-strip-frame') && [...document.querySelectorAll('.pc-guide-text')].map((t) => t.textContent).join('|') === 'LTS 3 from 2.7|LTS 4 from 9.3'"), await p.eval("[...document.querySelectorAll('.pc-guide-text')].map((t) => t.textContent).join('|')"));
   check("chart: nothing is wider than the panel at 1280 px", await p.eval("(() => { const c = document.querySelector('.elevation-chart'); return c.scrollWidth <= c.clientWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth; })()"));
   check("chart: no id is used twice (the patterns' ids are unique)", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   await p.close();
@@ -1382,6 +1463,11 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: another ride type asks for no Mass Ride tile, and draws the stress map", p.tileRequests.mass === 0 && p.tileRequests.stress > 1, JSON.stringify(p.tileRequests));
   // OWNER-DECISIONS 452a: the mountain-bike trails draw in a not-for-routes look, and the stress legend has a row
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
+  // 454: only while their layer is on, which is off until the rider turns it on.
+  check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail')`));
+  await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
+  await sleep(200);
   const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
     const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
@@ -1389,6 +1475,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
   check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
     !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
   await p.close();
 }
 {
@@ -1526,6 +1613,15 @@ async function saidInDialog(p, text) {
   check("road panel: Details and sources is a native disclosure, closed at first, and says so",
     brief.detailsOpen === false && brief.summaryFirst === "SUMMARY" && brief.summaryText === "Details and sources" && sumAx?.expanded === false,
     JSON.stringify({ ...brief, lines: undefined, sumAx }));
+  // Its last item is the link to the page on how ratings work (461; correctness C4, mutation T1).
+  const how = await p.eval(`(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (!det) return null;
+    det.open = true; const a = det.querySelector('.stress-page-link a'); if (!a) return { found: false };
+    return { found: true, href: a.getAttribute('href'), target: a.getAttribute('target'), last: det.lastElementChild === a.parentElement, shown: a.getBoundingClientRect().height > 0 }; })()`);
+  const howAx = await axNode(p, "dialog.road-info details.road-info-details .stress-page-link a");
+  await p.eval("(() => { const det = document.querySelector('dialog.road-info details.road-info-details'); if (det) det.open = false; return true; })()");
+  check("road panel: Details and sources ends with the link to how stress ratings work, in the same tab, named by its visible words",
+    how?.found && how.href === "/about/stress.html" && how.target === null && how.last && how.shown && howAx?.role === "link" && howAx?.name === "How stress ratings work",
+    JSON.stringify({ how, howAx }));
   check("road panel: each part is a section named by its own heading, the figures terms with the source in words, the stress in words",
     body.sections.length >= 6 && body.sections.every((x) => x.heading && x.tag === "H3") &&
       /Level = LTS 3: For experienced cyclistsSource: RouteMaker classifier/.test(rows) && /Speed limit = 30 mph \(48 km\/h\), postedSource: DC Roadway Block/.test(rows) &&
@@ -1965,11 +2061,210 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/stress-editor_phone.png`);
   await p.close();
 }
+
+// The page on how traffic-stress ratings work (OWNER-DECISIONS 461): a static page in public/, read
+// by screen reader users among the rest, and linked from the legend in the same tab.
+{
+  const p = await open();
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  await p.waitFor("!!document.querySelector('[aria-label=\"Traffic stress legend\"]')", 15000);
+  const link = await p.eval(`(() => { const a = document.querySelector('.stress-page-link a'); if (!a) return null;
+    return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="legend-heading"]') }; })()`);
+  const ax = await axNode(p, ".stress-page-link a");
+  check("stress page: the legend links to it in the same tab, named by its visible words",
+    link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How stress ratings work",
+    JSON.stringify({ link, ax }));
+  // Following it and then the page's own "Back to the map" (a bare "/") brings the route back
+  // (the accessibility review's SF1): the link keeps the plan in this tab's sessionStorage.
+  const before = await p.eval("location.hash");
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("document.querySelector('a.back')?.click(); true");
+  const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
+  check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
+    /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
+  // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
+  // cleared afterwards does not come back on reload (the correctness re-check's C8).
+  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
+  await p.eval("history.back(); true");
+  const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
+  await p.eval("history.replaceState(null, '', '/'); location.reload(); true");
+  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-canvas')", 40000);
+  const cleared = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
+  check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
+    onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
+  await p.close();
+}
+{
+  const p = await newPage(b, { width: 320, height: 800 });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/about/stress.html` });
+  await p.waitFor("document.readyState === 'complete' && !!document.querySelector('h1')", 20000);
+  const fit = await p.eval(`(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
+    font: parseFloat(getComputedStyle(document.body).fontSize),
+    tables: [...document.querySelectorAll('.table-wrap')].map((w) => ({ focusable: w.tabIndex === 0, named: !!w.getAttribute('aria-label') })) }))()`);
+  check("stress page at 320 px: nothing spills sideways, the text is 16 px or more, and a wide table scrolls in a named, focusable region",
+    fit.scroll <= fit.width && fit.font >= 16 && fit.tables.length > 0 && fit.tables.every((t) => t.focusable && t.named), JSON.stringify(fit));
+  const shape = await p.eval(`(() => { const levels = [...document.querySelectorAll('h1, h2, h3, h4')].map((h) => Number(h.tagName[1]));
+    const ordered = levels.every((l, i) => i === 0 || l <= levels[i - 1] + 1);
+    const items = [...document.querySelectorAll('.levels li')];
+    return { h1: levels.filter((l) => l === 1).length, first: levels[0], ordered,
+      landmarks: ['header', 'nav', 'main', 'footer'].every((t) => !!document.querySelector(t)),
+      swatches: items.length === 5 && items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true' && /^(LTS [1-4]: \\S|Avoid)/.test(li.querySelector('strong')?.textContent ?? '')),
+      lang: document.documentElement.lang }; })()`);
+  check("stress page: one h1, headings in order, its landmarks, and every swatch hidden beside its level in words",
+    shape.h1 === 1 && shape.first === 1 && shape.ordered && shape.landmarks && shape.swatches && shape.lang === "en", JSON.stringify(shape));
+  // The accessibility re-check of r4: a link off the site opens in the same tab and is named
+  // in words, so a screen reader neither lands in a new tab unwarned nor spells out a URL.
+  const away = await p.eval(`[...document.querySelectorAll('a[href^="http"]')].map((a) => ({
+    href: a.href, target: a.getAttribute('target'), name: a.textContent.replace(/\\s+/g, ' ').trim() }))`);
+  check("stress page: its one link off the site opens in the same tab and is named in words, not by a bare URL",
+    away.length === 1 && away.every((a) => a.target === null && a.name.length > 0 && !/https?:|www\.|github\.com|\.md\b/i.test(a.name)), JSON.stringify(away));
+  await p.tab();
+  await sleep(100);
+  const skip = await p.eval(`(() => { const a = document.activeElement; const r = a?.getBoundingClientRect();
+    return { skip: a?.classList.contains('skip'), visible: !!r && r.left >= 0 && r.width > 0 }; })()`);
+  await p.key("Enter", "Enter", 13);
+  await sleep(100);
+  const landed = await p.eval("location.hash");
+  check("stress page: the first Tab stop is a skip link that shows and goes to the content", skip.skip && skip.visible && landed === "#main", JSON.stringify({ skip, landed }));
+  await p.shot(`${SHOTS}/stress-page_320.png`);
+  await p.close();
+}
+// ---- Ride mode (WEB-NAV-plan.md section 11): a simulated GPS stepped along a mocked route ----
+{
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const p = await newPage(b, { width: 390, height: 844, mobile: true });
+  await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, S_RIDE);
+  await media(p, { scheme: "light" });
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: ORIGIN, browserContextId: p.contextId });
+  const [lon0, lat0] = RIDE_COORDS[0];
+  await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
+  // The voice and the wake lock, stubbed to record their calls (the plan's stub envs).
+  await p.s("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      window.__speech = []; window.__wake = [];
+      const synth = { speaking: false, speak(u) { window.__speech.push(u.text); }, cancel() { window.__speech.push('<cancel>'); } };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: synth });
+      window.SpeechSynthesisUtterance = function (text) { this.text = text; this.lang = ''; this.onend = null; };
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wake.push('request'); const s = { released: false, release: async () => { s.released = true; window.__wake.push('release'); } }; return s; } } });
+    })()`,
+  });
+  const hash = hashFor("default", 70);
+  await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
+  if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
+  await sleep(800);
+  const regions = "(() => ({ polite: [...document.querySelectorAll('.ride [role=status]')].map((e) => e.textContent.trim()).join(' | '), urgent: [...document.querySelectorAll('.ride [role=alert]')].map((e) => e.textContent.trim()).join(' | ') }))()";
+  // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
+  await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
+
+  // The first ride asks how to say the cues; its heading takes the focus, so the safety note is read first.
+  await p.eval("document.querySelector('.start-ride button').click(); true");
+  await sleep(300);
+  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.id === 'ride-ask-title' && document.activeElement.closest('.ride-ask') === d, safety: d?.textContent.includes('you stay responsible') }; })()");
+  check("ride: the first Start ride asks how to say the cues, with the safety note, and takes the focus", ask.shown && ask.role === "dialog" && ask.focus && ask.safety, JSON.stringify(ask));
+  await p.eval("(() => { const labels = [...document.querySelectorAll('.ride-ask label')]; labels.find((l) => l.textContent === 'Both')?.querySelector('input').click(); labels.find((l) => l.textContent.startsWith('Full'))?.querySelector('input').click(); [...document.querySelectorAll('.ride-ask button')].find((b) => b.textContent === 'Start').click(); return true; })()");
+  await sleep(800);
+  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride') }))()");
+  check("ride: Start hides the planner, focuses the ride's heading, unlocks the voice and holds the screen on",
+    started.ride && started.planner === true && started.focus === "ride-heading" && started.speech.includes("Ride started.") && started.speech[started.speech.indexOf("Ride started.") + 1] !== "<cancel>" && started.wake.filter((w) => w === "request").length === 1, JSON.stringify(started));
+  check("ride: the choices are kept on this device, and nothing else", started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), started.kept);
+  await p.shot(`${SHOTS}/ride_start.png`);
+
+  // Along the line towards the turn, a fix every 400 ms (the override's change fires the watch).
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const goTo = async ([lon, lat], ms = 400) => {
+    await p.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
+    await sleep(ms);
+  };
+  // The turn is at 1,000 m of 4,660, so about vertex 8.6 of the 40.
+  for (let i = 0; i <= 50; i += 1) await goTo(lerp(RIDE_COORDS[0], RIDE_COORDS[10], i / 50));
+  const heard = await p.eval("window.__heard.slice()");
+  const turnCues = heard.filter((t) => /R Street Northwest/.test(t));
+  const now = heard.filter((t) => t.startsWith("!Left now onto R Street Northwest"));
+  check("ride: the turn is said ahead in US units (polite) and again as it happens (assertive)",
+    turnCues.some((t) => /^In \d+(\.\d)? (feet|miles?), left onto R Street Northwest at a signal/.test(t)) && now.length === 1 && !heard.some((t) => / m\)| km\)/.test(t)), JSON.stringify(heard));
+  const card = await p.eval("(() => ({ text: document.querySelector('.cue-card')?.textContent, focus: document.activeElement?.id, live: !!document.querySelector('.cue-card [aria-live], .cue-card [role=status]') }))()");
+  check("ride: the cue card shows the next cue with metric in brackets, is not a live region, and the focus never moved",
+    /\(\d+(\.\d)? k?m\)/.test(card.text) && !card.live && card.focus === "ride-heading", JSON.stringify(card));
+  const speech = await p.eval("window.__speech.slice()");
+  check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
+  await p.shot(`${SHOTS}/ride_cue.png`);
+
+  // Where am I? on demand.
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Where am I?').click(); true");
+  await sleep(300);
+  const where = await p.eval(regions);
+  check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
+
+  // A pan by hand stops following; Re-centre (the C key) follows again.
+  const canvas = await p.eval("(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x, y: canvas.y, button: "left", clickCount: 1 });
+  for (let k = 1; k <= 6; k += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: canvas.x + k * 20, y: canvas.y + k * 10, button: "left", buttons: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x + 120, y: canvas.y + 60, button: "left", clickCount: 1 });
+  await sleep(400);
+  const paused = await p.eval("document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  await p.eval("document.querySelector('#ride-heading').focus(); true");
+  await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", text: "c" });
+  await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC" });
+  await sleep(300);
+  const resumed = await p.eval("!document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  check("ride: a pan by hand stops following; Re-centre (C) follows again", paused && resumed, JSON.stringify({ paused, resumed }));
+
+  // A tap on the map during a ride adds no point and plans nothing (the plan stays as started); the
+  // skip link goes to Ride mode, since the planner is hidden.
+  const tapBefore = p.routeRequests;
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x - 40, y: canvas.y - 40, button: "left", clickCount: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x - 40, y: canvas.y - 40, button: "left", clickCount: 1 });
+  await sleep(1200);
+  const tapped = await p.eval("({ hash: location.hash, pins: document.querySelectorAll('.point-marker, .maplibregl-marker:not(.rider-marker)').length, skip: document.querySelector('.skip-link')?.textContent, skipTo: document.querySelector('.skip-link')?.getAttribute('href') })");
+  check("ride: a tap on the map changes no plan and sends no request; the skip link goes to Ride mode",
+    tapped.hash === hash && p.routeRequests === tapBefore && tapped.skip === "Skip to ride mode" && tapped.skipTo === "#ride-heading", JSON.stringify({ ...tapped, requests: p.routeRequests - tapBefore }));
+  await p.eval("document.querySelector('.skip-link').click(); true");
+  const skipped = await p.eval("document.activeElement?.id");
+  check("ride: the skip link takes the focus to Ride mode's heading", skipped === "ride-heading", String(skipped));
+
+  // Off route: 150 m off the line for over 8 s; exactly one re-plan, from here, and the address bar unchanged.
+  const before = p.routeRequests;
+  const off = [RIDE_COORDS[10][0] + 0.0015, RIDE_COORDS[10][1] + 0.0010];
+  for (let k = 0; k < 12; k += 1) await goTo([off[0] + (k % 2) * 0.00001, off[1]], 1000);
+  await sleep(800);
+  const bodies = (p.routeBodies ?? []).slice(before);
+  const first = bodies.length ? JSON.parse(bodies[0]).points[0] : null;
+  const after = await p.eval("({ hash: location.hash, heard: window.__heard.slice() })");
+  check("ride: off route for over 8 s is said once, assertively, and re-plans once from the rider's position",
+    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
+    JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
+  check("ride: a re-plan never writes the address bar", after.hash === hash, after.hash);
+
+  // 320 px, and Big text.
+  await p.s("Emulation.setDeviceMetricsOverride", { width: 320, height: 700, deviceScaleFactor: 2, mobile: true });
+  await sleep(300);
+  const narrowFit = await p.eval("(() => ({ scroll: document.documentElement.scrollWidth, w: innerWidth, over: [...document.querySelectorAll('.ride button')].filter((b) => b.getBoundingClientRect().right > innerWidth + 1 || b.getBoundingClientRect().height < 43.5).map((b) => b.textContent) }))()");
+  check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').click(); true");
+  await sleep(300);
+  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: [...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').getAttribute('aria-pressed') })");
+  check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
+  await p.shot(`${SHOTS}/ride_big_320.png`);
+
+  // End ride: the planner again, the focus on Start ride, the lock let go.
+  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'End ride').click(); true");
+  await sleep(500);
+  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
+  check("ride: End ride shows the planner, puts the focus on Start ride and lets the screen lock go",
+    !ended.ride && ended.planner === false && ended.focus === "Start ride" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 334;
+const EXPECTED = 373;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

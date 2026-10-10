@@ -19,4 +19,4 @@ overrides in the build script and re-run it. The test suite regenerates and
 compares, so an edit here fails rather than silently diverging.
 
 Valhalla is MIT licensed. See
-https://github.com/valhalla/valhalla/blob/3.5.1/COPYING.
+https://github.com/valhalla/valhalla/blob/3.9.1/COPYING.

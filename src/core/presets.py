@@ -16,8 +16,9 @@ they start, and the other dials stay the preset's own:
   a default which is basically fastest time for most people in the middle, to
   hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
   (Valhalla's hills weight off) is an implementation choice.
-- **Group Ride**: "L1: standard variant, trails allowed" (its "Allow bike paths
-  and trails" toggle ships on, and the toggle is not offered yet); "L2: Cross,
+- **Group Ride**: "L1: standard variant, trails allowed" (its trails toggle ships on; the
+  "Keep to roads, not trails" switch, offered on every ride type, turns it off:
+  `variant_for_ride`); "L2: Cross,
   mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
@@ -152,8 +153,13 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # is not an alley (sif/dynamiccost.h, base_transition_cost). It does not depend
 # on use_roads, so it reaches every preset, Mass Ride at the direct end of the
 # stress slider included, and the way stays routable when it is the only one.
-# Half an hour: a detour of up to 30 minutes' riding is preferred to entering
-# one (4.8 km at Mass Ride's parade pace, 9 km at Hybrid's 18 km/h). Only
+# This is 1,800 s of cost, not 30 minutes of riding. An edge costs its time
+# times a factor of 1 or more (1 + grade + accommodation * roadway stress,
+# more on bad surfaces; sif/bicyclecost.cc), so a detour's extra cost is more than its extra time:
+# the penalty alone buys under 30 minutes of detour (4.8 km at Mass Ride's
+# parade pace, 9 km at Hybrid's 18 km/h, only at a factor of 1), and less the
+# hillier or busier the detour. What the router weighs is the penalty plus
+# the tier-5 way's own LTS 4 cost against the detour's cost. Only
 # tier-5 ways pay it (the owner, 2026-09-27: "Only tier-5 roads"): OSM's own
 # alleys are service roads in the graph, and `destination_only_penalty` is not
 # sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
@@ -268,8 +274,9 @@ def calm_rate_for(stress: int) -> float:
 # How far it may go (271: "Change the name from max distance to target distance,
 # because it can get longer"):
 # - The rider's "Target distance" (the request's `target_distance_m`) is a soft goal:
-#   the planner aims at or under it, and goes past it only where the extra miles buy
-#   enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar than the default's),
+#   the planner aims at or under it, the miles up to it at half the default's price
+#   (`core.refine.WORTH_UP_TO_TARGET`, OWNER-DECISIONS 435), and goes past it only where
+#   the extra miles buy enough stress (`core.refine.WORTH_OVER_TARGET`, a stricter bar),
 #   and never past TARGET_CEILING_RATIO times it (the hard ceiling). The answer says
 #   how far over it is.
 # - With no target, the ceiling is DEFAULT_CEILING_RATIO times the router's own route
@@ -652,8 +659,23 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 
 
-def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
+def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: bool = False) -> str:
     """The graph a ride routes on.
+
+    A ride with trails off (the rider's "Keep to roads, not trails" switch,
+    offered on every ride type: OWNER-DECISIONS 463, 463b, "Every type,
+    roadways ok") takes the no-trail graph, as Mass Ride always does, whatever
+    else the ride asks: the other choices below are then moot. An e-bike ride
+    (the E-bike ride type, or electric assist) with it on takes the no-trail
+    graph too, with no lock (OWNER-DECISIONS 463a, "Most ebikes are allowed on
+    multiuse trails"); it keeps the assist pace, and it does not get the e-bike
+    graph's bar (`pipeline.variants.bars_electric_bicycle`). With the trails
+    gone that bar matters only on a road that bars e-bikes, and the extract of
+    2026-10-09 has none: no way in the coverage carries `electric_bicycle=no`
+    (docs/DEVELOPMENT.md, "Trails off"). A Gravel or Mountain Goat ride gives
+    up the off-road graph's mountain-bike class, whose trails are the ones it
+    is turning off. Any trails-off ride may use the Key Bridge and Memorial
+    Bridge roadways, which only this graph keeps.
 
     Electric assist (Cargo Bike) takes the e-bike graph. Gravel and Mountain
     Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
@@ -662,6 +684,8 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     graphs have no weekend twin, so their weekend rides stay on them.
     """
     preset = PRESETS[name]
+    if trails_off:
+        return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
     if name in OFFROAD_PRESETS and preset.variant == Variant.STANDARD.value:

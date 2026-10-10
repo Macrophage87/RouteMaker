@@ -178,8 +178,9 @@ Decide and note down:
 - **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
-Never run anything under `scripts/boot/`, and do not follow `docs/DEPLOYMENT.md`'s boot section,
-on this server: they are for the home machine (Docker Desktop on WSL). `start-stack.sh` runs the base
+Never run anything under `scripts/boot/`, nor `scripts/local-up.sh`, and do not follow
+`docs/DEPLOYMENT.md`'s boot section, on this server: they are for the home machine (Docker Desktop
+on WSL); `local-up.sh` also refuses a `.env` whose project is not `routemaker`. `start-stack.sh` runs the base
 compose file without the overlay and exports `RESTART_POLICY=no`, which here would start caddy and
 the rebuild uncapped and stop the stack coming back after a reboot. Docker restarts the beta itself.
 
@@ -303,7 +304,7 @@ The postgis image is pinned by digest in `compose.beta.yaml` (the build home run
 a pull by digest fetches exactly that image and does **not** move the shared `postgis/postgis:16-3.4` tag that
 another stack on the host may use. Check first which images other stacks run:
 `docker ps --format '{{.Image}}' | grep -E 'postgis|photon|valhalla'`. The photon and valhalla tags are fixed
-release versions (`2.4.0`, `3.5.1`); if another stack uses the same tag, the pull fetches the same release.
+release versions (`2.4.0`, `3.9.1`); if another stack uses the same tag, the pull fetches the same release.
 
 The build needs network access (pip) and a few minutes. Images land in Docker's storage,
 Docker's root from step 1, which may be the root disk and not `/data` (the four images are about 3.7 GB).
@@ -426,7 +427,7 @@ read-only checks:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-for f in "$RM_DATA/frontend/index.html" "$RM_DATA/basemap/region.pmtiles" "$RM_SRC/deploy/beta/401.html"; do
+for f in "$RM_DATA/frontend/index.html" "$RM_DATA/basemap/region.pmtiles" "$RM_SRC/deploy/beta/401.html" "$RM_SRC/deploy/beta/502.html"; do
   sudo -u "$NGINX_USER" test -r "$f" && echo "nginx can read $f" || echo "NOT READABLE by nginx: $f (stop and ask the owner)"
 done
 ```
@@ -688,7 +689,10 @@ sudo nginx -t && sudo nginx -s reload
 ```
 
 Use the same options as in 9c, plus `--no-401-page`. Cancel then shows nginx's own plain
-"401 Authorization Required" page; the sign-in box itself is unchanged. Rerun the smoke test with
+"401 Authorization Required" page; the sign-in box itself is unchanged. The flag also leaves out
+the "Back soon" page (`deploy/beta/502.html`, read from the same directory), so a 502 shows nginx's
+own page again. The same goes for a 403 or 404 where a 502 was expected (nginx cannot read
+`deploy/beta/502.html`): the same re-render is the recovery. Rerun the smoke test with
 `--no-401-page` too: it then skips (and says so) the one line about the sign-in page's text, and
 every other line must PASS.
 
@@ -926,7 +930,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   landmarks, the headings, the beta notice, where Dismiss puts the focus), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
-  handout's section 7 (what testers hear during a deploy, and how long to wait): resend the
+  handout's section 8 (what testers hear during a deploy, and how long to wait): resend the
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
@@ -973,9 +977,9 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache and logging keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
-| `deploy/` (the nginx template, the 401 page, the env template) | owner steps with sudo | **stops** |
+| `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
 | a compose `image:` line, `docker/valhalla*`, `docker/photon*`, `docker/postgis*` | a third-party image to pull, maybe a data mismatch | **stops** |
 | `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
@@ -1003,8 +1007,9 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the rollback, and much less when the owner has loaded the api image from home. During it nginx
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
-   shows nginx's bare "502 Bad Gateway" page (the handout's section 7 tells testers to wait about
-   20 minutes). Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
+   shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
+   file rendered before that page existed, or with `--no-401-page`). The handout's section 8 tells
+   testers to wait about 20 minutes. Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
    database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no
    sudo); save the front end's top-level files (`index.html`, `beta-build.txt`) there; `git checkout --detach` the tag; `TAG=` in `.env` by `sed`; the

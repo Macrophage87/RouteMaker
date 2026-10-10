@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
+import { PLAN_KEY, forgetPlan, isPlainClick, planToOpen, rememberPlan, rememberPlanForPage } from "./signIn.ts";
 import {
   CAR_FREE_NOTE,
   LTS_MEANS,
+  STRESS_PAGE,
+  STRESS_PAGE_TEXT,
   MTB_LEGEND,
   MtbTrailSwatch,
   ROADWAY_LANES,
@@ -34,6 +37,7 @@ import {
   legendWidths,
   setAccessibility,
   setHighStressLanes,
+  setMtbTrails,
   tiersFor,
   unpavedWidth,
   MTB_TRAIL,
@@ -52,7 +56,7 @@ test("at zoom 12-13 the notice says this is the where-to-ride view and what wait
   const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
   assert.equal(
     out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads, mountain-bike trails and short paths show from zoom 14.",
+    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom 14.",
   );
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
 });
@@ -76,7 +80,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; mountain-bike trails and every short path show from zoom 14.",
+    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14, and mountain-bike trails too when their layer is on.",
   );
   // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
   assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
@@ -84,7 +88,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
     hint.includes(
       "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
         "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
-        "mountain-bike trails, shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
+        "shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
     ),
   );
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
@@ -260,7 +264,7 @@ test("the Unpaved row draws the brown ramp light to dark, each on its casing wit
       });
     });
   }
-  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\.$/);
+  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\. A short bridge is drawn like the trail it is on; tap it to read its own surface\.$/);
   assert.doesNotMatch(UNPAVED_LEGEND, /path edges/, "plain words (the a11y review's N2)");
 });
 
@@ -300,7 +304,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
 });
 
-test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom (OWNER-DECISIONS 452a)", () => {
+test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom, while their layer is on (OWNER-DECISIONS 452a, 454)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
     label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line.",
@@ -309,7 +313,16 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
     withSwitches(strong, false, () => {
       for (const zoom of [10, 12, 14, 16]) {
         for (const foldedZoom of [false, true]) {
-          const html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          // 454: off until the rider turns it on, and the legend names only what the map draws.
+          const off = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          assert.doesNotMatch(off, /class="mtb-trail"/, `zoom ${zoom}, folded ${foldedZoom}: no row while the layer is off`);
+          setMtbTrails(true, { remember: false });
+          let html: string;
+          try {
+            html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+          } finally {
+            setMtbTrails(false, { remember: false });
+          }
           const list = html.slice(html.indexOf('aria-label="Traffic stress legend"'), html.indexOf("</ul>"));
           const row = /<li class="mtb-trail">([\s\S]*?)<\/li>/.exec(list);
           assert.ok(row, `zoom ${zoom}, folded ${foldedZoom}: the row is in the stress legend's list`);
@@ -364,3 +377,72 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
   assert.doesNotMatch(UNKNOWN_SURFACE_LEGEND, /colour|tile|property|null/);
 });
 
+
+test("the legend links to the page on how ratings work, in the same tab, its name its visible words (461)", () => {
+  const html = legendHtml();
+  const link = html.match(/<p class="hint stress-page-link"><a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a><\/p>/);
+  assert.ok(link, html.slice(0, 400));
+  assert.equal(link[1], STRESS_PAGE);
+  assert.equal(link[2], "", "no target or other attribute: it opens in the same tab");
+  assert.equal(link[3], STRESS_PAGE_TEXT, "plain visible words, no hidden span (the accessibility review's N8)");
+  assert.equal(STRESS_PAGE_TEXT, "How stress ratings work");
+  assert.ok(html.indexOf("stress-page-link") > html.indexOf("lts-means"), "after the line that says what LTS is");
+});
+
+test("following the stress page link keeps the plan for the page's Back to the map (the accessibility review's SF1)", () => {
+  const source = readFileSync(new URL("./stressLegend.ts", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("export function StressPageLink"), source.indexOf("/** The unpaved mark's line"));
+  assert.match(body, /h\("a", \{ href: STRESS_PAGE, onClick: \(e\) => isPlainClick\(e\) && rememberPlanForPage\(tabSession\(\), window\.location\.hash\) \}, STRESS_PAGE_TEXT\)/);
+  // The page's own links go to a bare "/": the plan comes back from this tab's storage, once.
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  const plan = "#v=1&p=-77.03,38.9;-77.0,38.91&preset=default";
+  rememberPlanForPage(storage, plan);
+  assert.equal(planToOpen(storage, ""), plan);
+  assert.equal(planToOpen(storage, ""), "", "read once");
+  rememberPlanForPage(storage, "");
+  assert.equal(planToOpen(storage, ""), "", "an empty planner keeps nothing");
+  // A plan cleared after one was kept drops the kept one (the correctness re-check's C8).
+  rememberPlanForPage(storage, plan);
+  rememberPlanForPage(storage, "#v=1");
+  assert.equal(store.has(PLAN_KEY), false, "a plan with no points removes the kept plan");
+  rememberPlan(storage, plan);
+  forgetPlan(storage);
+  assert.equal(store.has(PLAN_KEY), false, "forgetPlan (a bfcache restore) removes it");
+  forgetPlan(null);
+  forgetPlan({ getItem: () => null, setItem: () => {}, removeItem: () => { throw new Error("refused"); } });
+  const page = readFileSync(new URL("../../public/about/stress.html", import.meta.url), "utf8");
+  assert.deepEqual(
+    [...page.matchAll(/<a [^>]*>Back to the map<\/a>/g)].map((m) => m[0]),
+    ['<a class="back" href="/">Back to the map</a>', '<a href="/">Back to the map</a>'],
+    "both go to a bare /, where planToOpen reads the kept plan",
+  );
+});
+
+test("a modified or non-primary click keeps no plan (the accessibility re-check's note)", () => {
+  const plain = { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
+  assert.equal(isPlainClick(plain), true);
+  for (const change of [{ button: 1 }, { button: 2 }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+    assert.equal(isPlainClick({ ...plain, ...change }), false, JSON.stringify(change));
+  }
+  const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(source, /window\.addEventListener\("pageshow", onShow\)/);
+  assert.match(source, /if \(e\.persisted\) forgetPlan\(tabSession\(\)\);/);
+  assert.doesNotMatch(source, /function session\(\)/, "one session helper, tabSession");
+});
+
+test("the road panel shows the same link at the end of Details and sources (correctness C4, mutation T1)", () => {
+  const panel = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
+  assert.match(panel, /import \{ StressPageLink \} from "\.\/lib\/stressLegend\.ts";/);
+  const open = panel.indexOf('className="road-info-details"');
+  const close = panel.indexOf("</details>", open);
+  assert.ok(open > 0 && close > open, "the Details and sources disclosure");
+  const inside = panel.slice(open, close);
+  assert.equal((inside.match(/<StressPageLink\b/g) ?? []).length, 1);
+  assert.match(inside, /<StressPageLink className="road-info-how" \/>\s*$/, "its last item");
+  assert.equal((panel.match(/<StressPageLink\b/g) ?? []).length, 1, "once in the panel");
+});

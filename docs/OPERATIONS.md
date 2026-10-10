@@ -420,6 +420,16 @@ Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
 every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
+router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
+7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
+search's measurements) and reads each (a trace and its `/locate`s): up to about 30
+calls in all. The ask and its readings end `refine.ALTERNATES_ROUND_RESERVE_S` (6 s)
+before the search's own 14 s, so a round is always left, and a plan whose hills
+slider already asked for them reuses them. Not yet measured from the live router:
+after the deploy that carries it, compare plan times at 100 with the figures below,
+and count the answers whose `calm_search.alternates.limited` is `time` (the log says
+"did not answer the calm search's ask for alternatives").
 Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
 re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
 2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the
@@ -630,7 +640,22 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 - An unnamed divided road's two carriageways are counted as two roads (half the
   second added), not once with the refuge credit.
 
+**The rolling stress chart** (OWNER-DECISIONS 460.12; docs/DEVELOPMENT.md "The rolling
+stress chart"). The route answer's `profile.calm` is worked out from the sections and
+junctions the answer already reads: no router call, no database read, no migration and no
+router restart; it ships with the API image and the front end, in either order (an older
+front end ignores it, and the new one draws the old stress strip where it is missing). A
+WARNING "the rolling stress score could not be built" means one answer went out with
+`calm: null`: its chart fell back to the strip and the route itself is unaffected. It adds
+at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus the
+sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
+compresses only tiles and the front end), so a long ride with candidates grows by tens of
+KB. `calm.estimate` is true while each stretch is priced by its tier.
+
 ## The stress tiles
+
+How a way gets its stress tier, and what each tier costs a route, is in
+[docs/stress/](stress/README.md).
 
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
 stress overlay from the live segment table with PostGIS's `ST_AsMVT`, for
@@ -720,12 +745,20 @@ unpaved. So it keeps no bridge on its own and lowers none. A bridge whose end
 meets another bridge in that bridge's middle, not at its end, is not chained
 to it, and is judged on its own deck.
 
+The map draws a judged bridge in its trail's surface too, at every zoom
+(`core.stress_tiles.BRIDGE_UNPAVED`, FORMAT_VERSION 8): the tile's `unpaved` is
+true on a `trail_bridge` of 2 and false on 1, whatever the deck. The owner,
+2026-10-09, on the C&O towpath's Seneca Aqueduct drawn as a paved path inside
+the unpaved towpath: "We made woodden bridges paved, so they didn't mess with
+the paved routing. Now it makes the unpaved routing look weird." Routing and
+the road panel still read the deck (`segment.is_unpaved`, OWNER-DECISIONS 440).
+
 **The columns are the rebuild's** (`trail_name`, `trail_route`, `trail_run_m`,
 `trail_bridge`). `pipeline.trail_routes` reads the route relations from the
 source extract (one relations-only pass), the writer stores a name only on a
 way the zoomed-out map draws, and `derive_trail_runs` ANALYZEs the staging
 table, chains the runs and judges the bridges (10 s on the full
-table). VALIDATE then refuses a build whose columns came out wrong
+table). VALIDATE_SEGMENTS then refuses a build whose columns came out wrong
 (`pipeline.run.assert_long_trails`): the Washington & Old Dominion Trail
 (OSM way 8810729) and the C&O Canal towpath (10595312),
 `settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS`, must each be on a long bicycle
@@ -739,9 +772,10 @@ sentinel; don't drop it.
 Until a rebuild has promoted the columns the tiles keep every path and trail
 at z10-11, as before: the rule applies only to a live table that has all of
 `trail_route`, `trail_run_m` and `trail_bridge`, which the ETag names (`t`,
-`l`, `b`). FORMAT_VERSION 7 (5 was the long trails; 6 was claimed by both the ride layer
+`l`, `b`). FORMAT_VERSION 8 (5 was the long trails; 6 was claimed by both the ride layer
 with the surface-unknown trails and the Mass Ride capacity, on branches that never shipped
-alone; 7 is the rebuild bundle, which carries both) must reach the api and the pipeline images
+alone; 7 is the rebuild bundle, which carries both; 8 draws a judged bridge in its trail's
+surface, below) must reach the api and the pipeline images
 together: build both under one TAG (`docker compose build`, or `build api
 rebuild` as in the format-change steps below), never `build api` alone. The
 pre-draw evicts every format but its own, so an api and a rebuild at
@@ -784,7 +818,20 @@ The rule reads one new column, `segment.calm_run_m`, written by the rebuild
 - null on every other way, and on a mountain-bike trail (a way in a route=mtb
   relation, one tagged `mtb:scale` 1 or more, `mtb=designated` or `mtb:type`
   unless paved, or one the no-bike-paths rules call mountain-bike only), so
-  those wait for z14 as well.
+  those wait for z14 as well. A way on a national or international bicycle
+  route (ncn, icn: the no-bike-paths rules' own exemption) is never a
+  mountain-bike trail to the map, whatever an mtb relation or tag says
+  (`trail_routes.is_mountain_bike`): the owner, 2026-10-09, found the C&O
+  towpath (USBR 50) missing at z13 and below east of Seneca Creek, OSM way
+  68565884, an open unpaved path that drew at z14. A data rebuild applies it,
+  and narrows OWNER-DECISIONS 378 for ways on those routes. The beta CD gate
+  stops on it (a pipeline file changed): ship the data with `ship-data.sh`
+  after the live rebuild, then run the pre-draw. To confirm it after the
+  rebuild (with the runbook's `Q` helper): `Q "select trail_route, trail_run_m, calm_run_m from live.segment
+  where osm_way_id = 68565884"` gives route 3 and runs in the miles; route 0
+  means the way is on no national route and the gap has another cause. Once
+  confirmed, add the way to `REBUILD_SENTINEL_LONG_TRAIL_WAYS` and
+  `REBUILD_SENTINEL_CALM_PATH_WAYS`.
 
 The writer marks the candidates (a `calm_run_m` of 0, `trail_routes.is_calm_candidate`)
 and the derive sets them; a road's name is written to `trail_name` for the
@@ -880,7 +927,7 @@ ft, 0.5 mi), against the busy roads it replaced, for the record:
 | z13 tiles over the box, bytes | before 81,637 (12 tiles) | after 29,220 |
 
 
-**VALIDATE** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
+**VALIDATE_SEGMENTS** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
 no named candidate may be left at 0 (the derive ran to the end); the path
 sentinels, the W&OD (OSM way 8810729) and the C&O towpath (10595312),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
@@ -898,9 +945,9 @@ don't drop it.
 drew before: the paths and the roads at LTS 3 and above, faint, with the front end's
 `FAINT` rules) on one that does not, so a table promoted before this rebuild draws
 today's z12-13 until the data rebuild promotes the column. The ETag names it with
-`k` (`+kcfrmwoesbtl-v7"` with all twelve optional columns, `e` being 403's `roadside` and
-`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 7
-(the rebuild bundle's format, with the surface-unknown properties below and the Mass Ride
+`k` (`+kcfrmwoesbtl-v8"` with all twelve optional columns, `e` being 403's `roadside` and
+`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 8
+(the rebuild bundle's format, 7, with the surface-unknown properties below and the Mass Ride
 capacity: the tile cache key changes, so run the pre-draw as the steps
 below say). The ride layer has its own partial index,
 `segment_ride_geom_idx` (`RIDE_INDEX_PREDICATE`), which the query is proved to imply
@@ -921,10 +968,11 @@ applies to that fallback only.
 **What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
 `mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
 "Zoom in to see busy roads and every street. This is the where-to-ride view: connected
-paths and trails and long calm roads. Busy roads, mountain-bike trails and short
-paths show from zoom 14."; and the standing hint, which gives the two runs in feet
-and miles (kilometres in brackets), says the busy roads, mountain-bike trails, shorter
-paths, the other streets and the junction warnings on the map show from zoom 14,
+paths and trails and long calm roads. Busy roads and short paths show from zoom
+14."; and the standing hint, which gives the two runs in feet and miles (kilometres
+in brackets), says the busy roads, shorter paths, the other streets and the junction
+warnings on the map show from zoom 14, and mountain-bike trails too when their layer
+is on (OWNER-DECISIONS 454),
 and that a planned route shows its own busy stretches and junction warnings at every
 zoom. On a table without the column the text is ahead of the tiles until the rebuild.
 
@@ -1014,7 +1062,7 @@ is unsure of stays dashed, as 376 A drew it.
 gives each segment from its way's tags, the classifier's lanes and, in DC, the Roadway Block
 blocks it lies along (the narrower direction, parked cars out; OWNER-DECISIONS 404); `routemaker.flow` makes flat-ground riders a minute of it (changing its constants needs no rebuild), and the tiles carry that as `rpm`
 (rounded down to ten; ETag letter `w`, since `r` is the rough surface's), the route's coloured sections carry it for a Mass Ride,
-and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE refuses a build whose column
+and the Mass Ride map is coloured by it. It is the rebuild's: VALIDATE_SEGMENTS refuses a build whose column
 came out wrong (`pipeline.run.assert_mass_capacity`): under 98% of the road rows, or of the path
 rows, with a figure; a road row under 44 or over 1,181 riders a minute; or a median road outside
 `settings.REBUILD_MASS_CAPACITY_MEDIAN_RANGE` (60 to 200 since OWNER-DECISIONS 404, which gives a
@@ -1023,7 +1071,7 @@ on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the
 rebuild has promoted the column, a Mass Ride keeps the stress map: the tiles carry no `rpm`, so the
 map keeps its stress layers (the Mass Ride layers switch on only once a capacity has been seen),
 and its legend and panel are the stress ones, with no error and nothing to do. The grey outside DC
-and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
+and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 8 (7, the rebuild bundle's tile format, then the judged bridges' surface) must reach the api
 and the pipeline images together, as the note above says: build both under one TAG (`docker
 compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
 the api's cache every week. The data takes effect after the next rebuild; the front end and the
@@ -1242,7 +1290,7 @@ z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tile
 are new tiles (the tag's `-v2`), drawn by the next pre-draw.
 An eviction keeps both the stress and the Mass Ride tags of the live table
 (`tile_cache.evict(..., also_keep=...)`), so neither evicts the other. Their own
-format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 7: a
+format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 8: a
 change to one re-draws only its own tiles. A new DC boundary file changes the
 digest, so its tiles are new too; re-run the pre-draw after deploying one. The
 draw slots, the draw timeout, the per-address limit and the Retry-After answers
@@ -1310,7 +1358,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v7"`, or `+kcfrmwoesbtl-v7"` with all twelve optional columns) and a repeat
+   (`-v8"`, or `+kcfrmwoesbtl-v8"` with all twelve optional columns) and a repeat
    with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.
@@ -1648,15 +1696,87 @@ restore is the restore, not a second fault.
 
 ## The rebuild's own budget
 
-A rebuild has eight hours (six until the owner's "Yes, 8 hours (Recommended)"
-of 2026-09-28, for the fourth graph). It hands whatever remains of that budget to every
-binary it runs and checks it between stages, and a rebuild that runs out is
-**abandoned rather than retried**, in either shape it arrives in
-(`RebuildTimedOut` from the stage boundary, `subprocess.TimeoutExpired` from a
-killed binary). It will not finish faster on the next attempt, and a retry runs
-the whole rebuild again including the swap — whose `DROP SCHEMA live_old`
-destroys the schema a rollback would have put back. Five retries of a timed-out
-rebuild would have dismantled its own rollback target, one attempt at a time.
+One **attempt** of a rebuild has `REBUILD_TIMEOUT_S` seconds: **28800 (eight hours)
+unless `.env` says otherwise** (it was six until the owner's "Yes, 8 hours
+(Recommended)" of 2026-09-28, for the fourth graph; it became a setting with
+OWNER-DECISIONS 459b). The rebuild hands whatever remains of the budget to every
+binary it runs and checks it between stages.
+
+**The setting.** `REBUILD_TIMEOUT_S` is a whole number of seconds from **60 to 82800
+(23 hours)**; empty or unset is 28800. Anything else (`0`, `59`, `82801`, `8h`, `2.5`)
+does **not** stop the site: every service logs `REBUILD_TIMEOUT_S='8h' is not a whole
+number of seconds between 60 and 82800 ...; using the default, 28800` and carries on with
+the default, and the **rebuild alone refuses**: each `weekly_rebuild` job fails at once
+with a run row naming the value (not retried), and `check_operations` prints
+`config: REBUILD_TIMEOUT_S='8h' is not ...` and exits non-zero until it is fixed.
+
+Compose passes the setting to **every** service that loads the settings, not only
+`rebuild`, because the operations page and `check_operations` call a rebuild wedged once
+it has been `doing` longer than this budget (`core.runs.job_budgets`): a rebuild service
+on 12 hours and an api on the default would report a healthy rebuild as wedged at hour 8.
+(A rebuild whose worker is gone is reported at once, whatever the budget: "Wedged jobs".)
+So after changing it, with no rebuild `todo` or `doing`, recreate the three services that
+read it, and only those:
+
+```sh
+docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
+```
+
+Not a plain `docker compose up -d`: that recreates every service whose configuration
+changed, the database and the routers among them, and it kills a running rebuild.
+
+**The backup-window rule.** The scheduled rebuild starts at 08:00 UTC and the
+nightly backup runs at 07:00 UTC, so an attempt that must end before the next backup
+has at most 23 hours; that is the ceiling the setting enforces. For a hand-fired
+rebuild the same rule is the start time: between 07:30 UTC and 07:00 UTC next day
+minus the budget (23:00 for the default eight hours), as the rebuild-bundle runbook
+says. Each attempt of a job is judged by it separately, and a retry's start is the
+previous failure plus Procrastinate's backoff (6 s, 36 s, 3.6 min, 22 min, 2.2 h), so
+**a retried job can run across 07:00 UTC**; the dump is then taking its locks while the
+rebuild works, which it tolerates (the rebuild writes only the staging schema and its
+own tile directory until the swap), but **never recreate `worker` between 07:00 and
+07:30 UTC**, and do not start a swap in that window by hand.
+
+An automatic retry can still reach SWAP inside that window. **That is expected, not a
+fault:** the swap's `lock_timeout` gives way to the dump's locks, the swap fails and undoes
+itself, the classification checkpoint is put back ("Rebuild checkpoints", "The swap"), and
+after the backoff the retry reuses every graph and runs VALIDATE_TILES (about 27 minutes)
+and the swap again. It costs one of the job's retries and nothing else.
+
+**What happens when an attempt runs out.** A timeout arrives in either shape
+(`RebuildTimedOut` from the stage boundary, `subprocess.TimeoutExpired` from a binary
+killed when the budget ran out):
+
+- **Before the swap, and this attempt wrote at least one new checkpoint that builds on the
+  job's earlier work** (the classification checkpoint or a graph's: "Rebuild checkpoints",
+  below): the job is **retried**, and the retry resumes from what was written. Each attempt
+  gets the whole budget again, so a slow run's total time can grow past one budget
+  (OWNER-DECISIONS 459a: "Yes, let it increase"). The log says
+  `... so it is retried and resumes from them (timeout retry 1 of at most 2 for job N)`.
+  Nothing is at risk before the swap: `live` and `live_old` are not written.
+- **Bounded twice.** An attempt that was offered a checkpoint and could not use it (an
+  input moved: a deploy, a newly approved override) started fresh, so what it wrote is the
+  same work again, not progress: its timeout is not retried. And at most **two** timeouts
+  of one job are retried (counted in `<DATA_ROOT>/rebuild/checkpoint/timeout-retries.json`);
+  the third is abandoned with "This job's timeout retries are used up". So a job spends at
+  most three budgets running out of time (24 hours at the default, 69 at the maximum).
+- **Before the swap, and this attempt wrote no new checkpoint** (it reused everything it
+  was given and still ran out, or ran out before the classification finished, or
+  `REBUILD_CHECKPOINTS=0`): **abandoned**, as before. A retry would repeat the same work
+  in the same budget. The alert says "This attempt wrote no new checkpoint".
+- **A command's own time limit** (the closure gate's two-minute `valhalla_service` read in
+  VALIDATE_TILES) is not the budget running out: abandoned, as before ("not the attempt's
+  budget"), since a wedged read is not a slow rebuild.
+- **After the swap began:** abandoned, always. A retry would re-run the swap, whose
+  `DROP SCHEMA live_old` destroys the schema a rollback would have put back.
+
+At 1 thread the whole rebuild is 6.6 to 8.3 hours (below), so on that setting a first
+attempt can time out in the offroad graph with four graphs and the classification
+written: the retry then needs only the offroad graph and VALIDATE_TILES. The checkpoints'
+hashing comes out of the same budget: about 9 to 10 GB more is read on a fresh run (the two
+extracts at the start, the five variant extracts at the checkpoint, about 1.1 GB per graph)
+and about 11 GB on a resume, a few minutes on this host; each manifest records it as
+`hash_seconds`, and the run row says `hashing took N s`.
 
 ## Tile build threads
 
@@ -1683,24 +1803,37 @@ reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
 race, not bad data: the same inputs build on the next try, and which graph it
 hits is luck.
 
+**The pinned image is 3.9.1 now (2026-10-10), which has that fix**: from 3.6.0
+Valhalla takes a process-wide lock around the cleanup (`Sqlite3::~Sqlite3`,
+src/mjolnir/sqlite3.cc:78-91 at 3.6.3, unchanged at 3.9.1). Both guards below
+stay until rebuilds on this host with the fix have shown no abort; the default stays 2 for memory as
+much as for the race. Once a few rebuilds are clean, 4 (the measured 4.5 h row
+below) is the setting to try. A `retry 1 of 1` line under 3.9.1 is no longer
+the known race: keep the log and report it.
+
 Two things keep it from failing a rebuild:
 
 - **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
   and less memory. **1 cannot hit it at all**, and is the setting to use if
   aborts keep happening; it makes the tile stage slower (the figures below).
 - **One retry of the crashed graph.** A `valhalla_build_tiles` that dies with
-  SIGABRT is run once more, for that graph only, logged as
-  `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1: <command>`.
+  SIGABRT (`-6`) **or SIGSEGV (`-11`)** is run once more, for that graph only, logged
+  as `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1: <command>`
+  or `valhalla_build_tiles crashed (SIGSEGV); running it again, retry 1 of 1: <command>`.
+  SIGSEGV is the same race seen as a crash (it killed a graph of job 8408 on
+  2026-10-09, OWNER-DECISIONS 459); SIGKILL (the out-of-memory killer) and everything
+  else are not retried.
   That line means the retry is running and nothing needs doing now. The rerun
   starts from scratch in the same build directory (Valhalla purges the tile
   level directories first) and gets whatever is left of the budget. Any other
   failure, or a second abort, fails the rebuild as before; a second abort is
-  reported as `valhalla_build_tiles exited -6 (after 1 retry): <command>`.
+  reported as `valhalla_build_tiles exited -6 (after 1 retry): <command>` (`-11` for a
+  second SIGSEGV).
 
 What it costs, measured on attempt 3 of job 8023 (2026-10-08, 4 threads, no
 abort): preprocessing up to the first build config took 2 h 37 min, the tile
 stage 1 h 15 min (5.6 to 20.6 min a graph; standard is the longest, since it
-also builds the admin and timezone databases), and VALIDATE 27 min. From those:
+also builds the admin and timezone databases), and VALIDATE (now VALIDATE_TILES) 27 min. From those:
 
 | Threads | Whole rebuild |
 |---|---|
@@ -1709,10 +1842,10 @@ also builds the admin and timezone databases), and VALIDATE 27 min. From those:
 | 1 | about 6.6 to 8.3 h |
 
 At 1 thread the top of that range is past the eight-hour budget ("The
-rebuild's own budget", above), and a rebuild that times out is abandoned, not
-retried. So set 1 only after an abort that the retry did not cure (the `(after
-1 retry)` failure), or after the retry line has shown up in more than one
-rebuild, and watch the next one against the budget.
+rebuild's own budget", above). An attempt that times out *after* writing a checkpoint is
+retried and resumes from it; one that wrote none is abandoned. So set 1 only after an abort
+that the retry did not cure (the `(after 1 retry)` failure), or after the retry line has
+shown up in more than one rebuild, and watch the next one against the budget.
 
 The setting is read when the settings load: a value that is not a whole number
 of at least 1 (`0`, `-1`, `2.5`, `x`) keeps the rebuild service from starting:
@@ -1735,6 +1868,292 @@ The value a build actually used is in its `build-config.json` under
 <threads> threads...` line is not in `docker compose logs rebuild` on a build
 that succeeds: the rebuild captures the output and logs it only when a command
 fails.)
+
+## Rebuild checkpoints
+
+OWNER-DECISIONS 459: "Why do we need to rerun everything when one fails. There should be
+reasonable checkpoints." A failed attempt keeps its work, and the **same job's** next
+attempt starts from it. Design: in the owner's report folder,
+`rmdata/demo/reports/REBUILD-CHECKPOINTS-design.md`; code: `pipeline.checkpoint` (the
+mechanism) and `pipeline.run` (the wiring).
+
+### The order of the stages
+
+```
+FETCH_EXTRACT  LOAD_REFERENCE_DATA  ELEVATION  CONFLATE_VOLUME  CLASSIFY_STRESS
+TAG_JURISDICTIONS  APPLY_OVERRIDES  INSERT_BORDER_NODES  INJECT_TAGS
+WRITE_SEGMENTS  VALIDATE_SEGMENTS   [classification checkpoint]
+BUILD_TILES [a checkpoint after each graph]   VALIDATE_TILES
+SWAP  RECONCILE
+```
+
+Two changes from the old order. WRITE_SEGMENTS moved before BUILD_TILES (it reads only
+memory and the staging schema, never a tile). The old VALIDATE stage split in two:
+**VALIDATE_SEGMENTS** has the checks that need no graph (the reference LTS 4 street, the
+owner's stretches, military and secured closures, Mass Ride capacity, long trails, calm
+runs) and **VALIDATE_TILES** the ones that read a built graph (the Lua loaded, no rule
+violations, the admin and timezone databases, grade, the derived and weekend tags, the
+bicycle-closure read-back). A segment failure now costs the 2.5 hours up to INJECT_TAGS
+instead of that plus the whole tile stage: job 8023's calm-run failure, found after the
+tiles in attempt 3, is found in attempt 1. An alert now says
+`rebuild failed at stage validate_segments` or `... validate_tiles`.
+
+Once VALIDATE_SEGMENTS has passed, the worker drops the classification's in-memory data
+(the ways and everything keyed by them), so the tile build has that memory on a small host;
+nothing after it reads them.
+
+### What is kept
+
+- **The classification checkpoint**, `<DATA_ROOT>/rebuild/checkpoint/classification.json`,
+  written when VALIDATE_SEGMENTS passes, last and atomically (temporary file, fsync, rename,
+  fsync of the directory). It names the build id and the job id; the size and SHA-256 of the
+  five variant extracts (`<DATA_ROOT>/rebuild/<variant>.osm.pbf`); the staging schema's
+  segment and border-crossing row counts and a token that is also stored as a comment on
+  the staging schema; the closure-probe list and the singletrack ways (so VALIDATE_TILES
+  never needs the 2.9 million ways in memory); the override report's text; and
+  `hash_seconds`.
+- **A per-graph checkpoint**, in each graph's own directory
+  `<DATA_ROOT>/tiles/<variant>/<build id>/`: `build.log` (the captured log, which
+  VALIDATE_TILES reads; written once the graph's commands have all succeeded, so a graph
+  whose build failed has none, and that failure is on the run row and in the rebuild's log)
+  and `routemaker-graph.json`, written last, naming the build id, the job, the fingerprint
+  below, the size and SHA-256 of `tiles.tar`, `admin.sqlite`, `tz_world.sqlite`, `build.log`
+  and `build-config.json`, the build's seconds and `hash_seconds`.
+
+The checkpoints are **best effort**. An error while measuring or writing one (a dangling
+file under the reference data, a full disk while writing a manifest, a database hiccup in
+the jurisdiction digest) is logged as `checkpoint bookkeeping failed while <what>; this
+attempt goes on and writes no further checkpoint`, and the rebuild carries on exactly as it
+would have without checkpoints. An error while *checking* one means it is not used (a fresh
+start, or that graph built again). Only the guards on what may be deleted
+(`CheckpointRefused`) still stop a rebuild.
+
+### When it is reused
+
+**Only inside the same Procrastinate job.** A retry of a failed attempt keeps the job id,
+and so does an `unwedge_job` requeue after a kill or a `docker compose up -d` that recreated
+the container. Both resume **if the image and the classification inputs are unchanged**: a
+deploy of a new image changes the code digest (`not resuming the classification checkpoint:
+these inputs changed since it was written: code.src`), and approving or editing an override
+row while the job is retrying changes the override digest; either way that attempt starts
+fresh under a new build id, and the abandoned build's graphs are deleted before its disk
+gate. A deploy is the most common reason a rebuild is killed, so expect a requeue after one
+to start over. A **new job** (`run_rebuild_now`, next Tuesday) never resumes another job's
+checkpoints: its first stage deletes the manifest and starts fresh.
+
+And only if everything it depends on is measured again and matches. The classification
+checkpoint is checked in this order, and the first failure means a fresh start, logged as
+`not resuming the classification checkpoint: <why>` and said on the run row:
+
+1. the manifest parses and is this format version, and its job id is this job's;
+2. its build id is not what any variant's `current` or `previous` link names;
+3. **the fingerprint**, re-measured now: the source and merged extracts (size, mtime and
+   SHA-256); a digest of `src/`, `fixtures/`, `lua/` and `valhalla/`; the installed Python
+   packages (name and version, so an image rebuilt with only a dependency changed counts);
+   a digest over **every approved override row** (id, kind, way, value, reason, approval
+   time; a count and a largest id would miss an edited value); the reference-data tree, the
+   crossings fixture and the `jurisdiction` table (count and a hash of every row and
+   geometry); the coverage polygon; and the settings that change the classification
+   (`COVERAGE_BBOX`, `COVERAGE_POLYGON`, `SEGMENT_SCHEMA_STAGING`, the four `MASS_RIDE_DC_*`,
+   and the sentinel numbers of the checks that need the in-memory classification);
+4. each variant extract has its recorded size and SHA-256;
+5. the staging schema exists, carries the token and has the recorded row counts (a schema
+   dropped, recreated empty, or renamed in by a rollback fails here).
+
+What is **not** in the fingerprint, on purpose: `REBUILD_TILE_CONCURRENCY` (a thread count
+does not change a graph; the owner changed it in the middle of job 8408), the time budget,
+the disk gate, the extract's age rule, URLs and refresh switch (its SHA covers it), and the
+live and retired schema names. `SOURCE_EXTRACT_FORCE_REFRESH=1` is a fresh start by itself.
+Not covered, and accepted as a small risk: the system libraries in the image (GEOS, PROJ,
+libspatialite, libluajit) and the PostGIS server behind the `derive_*` SQL. They change with
+an image or a database upgrade, which between two attempts of one job is a deploy and in
+practice changes the code digest as well.
+A change to the floors or sentinels of the checks that read only the staging schema
+(`REBUILD_CALM_RUN_FLOORS`, `REBUILD_LONG_TRAIL_FLOORS`, `REBUILD_MASS_CAPACITY_MEDIAN_RANGE`
+and the long-trail and calm-way lists) does not discard the classification: those checks run
+again against the new numbers on the resumed attempt, before any tile is built. A test
+(`tests/test_rebuild_checkpoints.py`) reads the pipeline's source and fails on any setting it
+reads that `pipeline.checkpoint.CHECKPOINT_SETTINGS` has not classified, and another digests
+every classification and validation setting with the value production gives it.
+
+A **graph** is reused when its manifest is valid, was written by this job for this build,
+its own fingerprint matches (the variant extract's SHA-256, the merged extract's, the build
+config **without** `mjolnir.concurrency`, the Lua, the elevation tiles, the two Valhalla
+binaries) **and** `tiles.tar`, the two databases, the log and the config **hash to what was
+recorded** (about 1.1 GB read per graph, 5 to 15 seconds). A reused standard graph still
+feeds the admin and timezone copies the later graphs make. A directory of this build
+without a valid manifest is partial and is deleted before it is built again, guarded three
+ways: the name must be a build id (`20261009T080000Z`) and the one the adopted
+classification manifest names, it must not be what any variant's `current` or `previous`
+points at, and it must not be a symlink. A refusal by a guard is terminal.
+
+### What a resumed attempt does
+
+It logs `resumed job 8408 build 20261009T080000Z: classification from <time>`, skips the
+stages from LOAD_REFERENCE_DATA through WRITE_SEGMENTS (never loading the ways), runs in
+VALIDATE_SEGMENTS only the checks that read the staging schema and only if their numbers
+changed, runs the disk gate and ELEVATION, builds **only the graphs without a valid manifest**, runs
+VALIDATE_TILES on all five, and goes on to the swap. Its disk gate asks only for the room of
+the graphs still to build plus the source once for scratch (each sized as its variant's
+served graph): the variant extracts and the finished graphs are on the volume already. The
+run row says what was kept:
+`Checkpoints: resumed job 8408 build ...; graphs reused: standard, no-trail, ebike, weekend;
+built: offroad; hashing took N s`. Its "N stages completed" counts the stages the
+checkpoint stood in for. The build id is the first attempt's, so the pre-run prune and the
+final prune both keep its directories.
+
+The prune before the disk gate keeps nothing by age: `current`, `previous` and the build a
+resumable checkpoint of this job names survive, and every other build directory (another
+job's failed build included) is deleted, so it is not counted against the gate.
+
+A **failed** attempt's run row ends with what it kept and what the next attempt will do:
+`Checkpoints: graphs reused: none; built: standard, no-trail; 3 written by this attempt; the
+next attempt of job 8408 (a retry, or an unwedge_job requeue) resumes build 20261009T080000Z
+if its inputs are unchanged ...`, or `no classification checkpoint is kept, so a retry starts
+fresh`. A failure that
+is not retried (an abandoned job: validation, a timeout at its retry cap, a failure after
+the swap) says `this failure is final, so the job is not retried and nothing resumes it`
+instead: a failed job cannot be requeued, and the next new job starts fresh and removes the
+kept build.
+
+Time saved on the 2026-10-08/09 pattern: a crash in the last graph used to cost 4.3 to 7.5
+hours (everything again); it now costs the checks (2 to 5 minutes), the offroad graph (about
+16 minutes at 4 threads) and VALIDATE_TILES (about 27 minutes).
+
+### Seeing what is kept
+
+Before a retry runs, from the host:
+
+```sh
+docker compose exec -T rebuild sh -c "head -c 600 /data/rebuild/checkpoint/classification.json; echo; ls /data/tiles/*/*/routemaker-graph.json" </dev/null
+```
+
+The first lines of the manifest name the job and the build; each `routemaker-graph.json`
+listed under that build id is a finished graph. In `docker compose logs rebuild`, the lines
+to look for are `classification checkpoint written for job`, `resumed job`,
+`not resuming the classification checkpoint`, `kept from the classification checkpoint`
+(one per skipped stage), `reusing the <variant> graph`, `rebuilding the <variant> graph`,
+`removed the partial or stale <variant> graph` and `checkpoint bookkeeping failed`.
+
+### The swap
+
+SWAP deletes the classification manifest **before** `perform_swap` and never resumes into a
+promoted build; nothing here writes `live` or `live_old` or removes a directory a link
+names. If the swap fails and its undo completes (the ordinary, retryable failure, such as a
+swap that met the backup's locks), the same manifest is put back, since the staging schema
+is again exactly what it describes, and the retry reuses every graph and re-runs
+VALIDATE_TILES and the swap. If the undo did not complete (`SwapUndoIncomplete`), or the
+process died, the manifest stays deleted and the next attempt starts fresh.
+
+### Starting fresh on purpose
+
+- Delete the directory: `docker compose exec -T rebuild rm -rf /data/rebuild/checkpoint`
+  ("delete the file to force it", as with the extract). It works while a retry is `todo`.
+- `docker compose exec -T rebuild ./manage.py run_rebuild_now --fresh` deletes it and then
+  queues a job (refused while one is queued or running, as without the flag). Run it in the
+  `rebuild` service, which mounts `/data/rebuild`; elsewhere it says `nothing at ... in this
+  container`.
+- `REBUILD_CHECKPOINTS=0` in `.env` (recreate the rebuild service): nothing is written and
+  nothing is resumed; every attempt starts from the first stage, as before. The per-graph
+  `build.log` is still written.
+- `SOURCE_EXTRACT_FORCE_REFRESH=1` also means fresh.
+
+A graph can also be forced to rebuild alone by deleting its `routemaker-graph.json`.
+
+### Trying a resume (the host-kill trial)
+
+Test plan item 11 of the design: kill the rebuild in the middle of the tile stage and watch
+the same job resume. **This is a real rebuild and a real promotion**, not a dry run: when it
+succeeds it swaps, `previous` moves to the build that is `current` now and the old rollback
+target is pruned, the routers need their restart (the run row says so), and the stress-tile
+pre-draw runs. Do it only when a promotion is wanted anyway. Steps:
+
+1. **Pick the window.** At `REBUILD_TILE_CONCURRENCY=1` a whole rebuild is up to about
+   8.3 hours and the kill and resume add about 1 to 1.5 hours (the killed graph again, and
+   VALIDATE_TILES), so start between **07:30 and about 21:00 UTC** ("The rebuild's own
+   budget"): after the 07:00 nightly backup has finished, and early enough that the swap
+   does not land in the next 07:00 to 07:30 backup window (a swap there undoes itself and the
+   job retries, which is safe but spends an attempt and leaves a red run row). Allow for the
+   minutes you take between the kill and the start. **Do not start on a Tuesday before
+   08:00 UTC**, and not on a Monday late enough to still be running then: the weekly rebuild
+   is scheduled for Tuesday 08:00 UTC (`WEEKLY_REBUILD_CRON`), and a tick that arrives while
+   the trial is running queues behind it on the single-slot rebuild queue and runs a
+   second full rebuild, and promotion, as soon as the trial finishes. Either start after
+   08:00 UTC on a Tuesday, or set `WEEKLY_REBUILD_PAUSED` before you start (never between the attempts).
+2. **Change nothing between the attempts.** No new image, no `.env` change, no override
+   approved, no `up -d`: any of them changes the fingerprint and the resume becomes a fresh
+   start, which is not what is under test.
+3. Queue it: `docker compose exec -T rebuild ./manage.py run_rebuild_now </dev/null`.
+4. **Get the job id** while it runs:
+
+   ```sh
+   docker compose exec -T worker ./manage.py shell -c "from procrastinate.contrib.django.models import ProcrastinateJob as J; print(list(J.objects.filter(task_name='weekly_rebuild', status='doing').values_list('id', 'attempts')))" </dev/null
+   ```
+
+5. **Know where it is.** Tile output is logged only on failure, so the log does not say
+   which graph is building. Take the build id from `classification checkpoint written for
+   job <id> build <B>`, and watch the directories: the offroad graph (the last) is building
+   when `/data/tiles/weekend/<B>/routemaker-graph.json` exists and `/data/tiles/offroad/<B>/`
+   exists **without** one.
+6. **Record the evidence before the kill**, for each of standard, no-trail, ebike and
+   weekend: the `sha256sum` and `stat -c %Y` of `/data/tiles/<variant>/<B>/tiles.tar`, and
+   the `outputs["tiles.tar"].sha256` in that directory's `routemaker-graph.json` (they must
+   already agree). Paste this, with `<B>` replaced by the build id, and keep the output; the
+   paths exist only inside the `rebuild` container:
+
+   ```sh
+   docker compose exec -T -e B=<B> rebuild sh -c 'for v in standard no-trail ebike weekend; do d=/data/tiles/$v/$B; echo "$v tar=$(sha256sum $d/tiles.tar | cut -d" " -f1) mtime=$(stat -c %Y $d/tiles.tar) manifest=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[\"outputs\"][\"tiles.tar\"][\"sha256\"])" $d/routemaker-graph.json)"; done' </dev/null
+   ```
+
+   Each line's `tar=` and `manifest=` values must be equal. The same command after the
+   resume (step 10) must print the same `tar=` and `mtime=` values.
+7. **Kill it, only during BUILD_TILES**, never once VALIDATE_TILES or SWAP has started:
+   `docker compose kill rebuild`.
+8. **Wait at least 30 seconds**, so the killed worker's heartbeat is stale; `unwedge_job`
+   refuses before that. The operations page lists the job as wedged with its worker gone.
+9. Requeue it and start the service again. This host runs `RESTART_POLICY=no`, so the
+   service stays down after the kill. Start the same container again; do not `up -d` or
+   `--force-recreate` it (a new image would discard the checkpoint through the code
+   digest, which is not what is under test):
+
+   ```sh
+   docker compose exec -T worker ./manage.py unwedge_job <job id> </dev/null
+   docker compose start rebuild
+   ```
+
+10. **Check the resume.** The log says `resumed job <id> build <B>`, `reusing the standard
+    graph` (and the other three), `rebuilding the offroad graph ... no valid manifest` and
+    `removed the partial or stale offroad graph`. For each reused graph, the step 6 command
+    prints the same `tar=` and `mtime=` as before the kill, and `tar=` still equals its
+    `manifest=` (the mtime is still before the kill). (Comparing with `current` after the
+    swap proves nothing: it points at the same directory.) The run row says `Checkpoints: resumed job ...; graphs reused:
+    standard, no-trail, ebike, weekend; built: offroad`. Note the run's `hash_seconds`.
+
+**Abort line:** if the log says `not resuming the classification checkpoint`, the trial has
+failed as a trial (something moved); either let it run as an ordinary fresh rebuild or stop
+it, and report the reason the line gives.
+
+### Not done (version 2, and what 459c needs)
+
+Resuming across jobs (`run_rebuild_now --resume`), sharing graphs between build ids, and
+checkpointing VALIDATE_TILES. OWNER-DECISIONS 459c plans the production rebuild on an AWS
+on-demand or spot instance (FOLLOWUP-CLOUD-REBUILD); a reclaimed spot instance resuming on a
+new one needs, beyond resuming across jobs:
+
+- **Content-only fingerprints.** The classification fingerprint compares both extracts'
+  mtimes, and the elevation digest is names, sizes and mtimes; a restore from S3 or a
+  snapshot rewrites mtimes, so nothing would be reused.
+- **The staging schema off the instance.** The classification checkpoint is tied to the
+  staging schema in this PostgreSQL by its comment token and row counts; a spot box with a
+  local database loses it. It needs a `pg_dump` of staging in the checkpoint, or the
+  database on the durable volume.
+- **A run id that survives a new instance.** Both manifests key on the Procrastinate job id.
+- **An upload after each manifest**, outputs first and the manifest last, to S3 or EBS, so
+  "written last" holds remotely.
+- **A handler for the two-minute spot interruption notice** that stops cleanly between
+  graphs.
+- **A durable volume sized** for one checkpointed build plus scratch (the resume gate's
+  formula above).
 
 ## The source extract
 
@@ -1882,6 +2301,17 @@ above. Sources, licence text verbatim, retrieval times and digests are in
 `fixtures/datasets/README.md`, "Federal land". The file is a hashed asset under
 `/assets/`, served and compressed with the rest of the front end and fetched
 only when a Mass Ride is open; no edge, compose or deploy change.
+
+The water and restrooms layer (`frontend/src/lib/waterRestrooms.ts`) is
+OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
+`frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
+by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
+not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
+federal-land file and fetched when the layer is on, which it is by default; no
+edge, compose or deploy change. A release that first carries it adds to its
+checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
+compressed, and is named by the published front end's script.
 
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
@@ -2071,11 +2501,15 @@ hand-run" — and until this command there was no way to fire one. The rebuild i
 a Procrastinate periodic task on its own queue, so the only route to it was
 `python -c` inside the right container with Django set up by hand.
 
+`run_rebuild_now --fresh` also deletes the rebuild checkpoint directory first ("Rebuild
+checkpoints"); a new job never resumes another job's checkpoints, so this only clears
+what an earlier job left behind.
+
 Before firing one for a deploy that changes `lua/`, `valhalla/` or the
 pipeline image, run `scripts/check_tile_build_access.sh` on that commit ("Bicycle
 closures in the tiles", step 1): about 2 s, and it is the only check that sees
 what Valhalla's C++ parser does with the transform's output before a rebuild
-spends hours on it. The rebuild's own VALIDATE gate (step 2) refuses the swap if
+spends hours on it. The rebuild's own VALIDATE_TILES gate (step 2) refuses the swap if
 a closure did not hold, and the probes (step 3) follow the router restart.
 
 It **queues** a job and returns; it does not run the rebuild. The `rebuild`
@@ -2206,9 +2640,10 @@ the first host to run it is the first test of it.
    `doing`, and the alert arrives eight days later. `docker compose ps rebuild`
    and `docker compose logs --tail=20 rebuild` are the check;
    `./manage.py unwedge_job <job_id>` is the repair if it has already happened.
-   A build takes up to eight hours from 08:00 UTC on Tuesdays and no grace period
-   can cover it, so the answer is to wait or to accept the unwedge, not to
-   lengthen the grace.
+   An attempt takes up to eight hours (`REBUILD_TIMEOUT_S`) from 08:00 UTC on
+   Tuesdays, a job can span several attempts, and no grace period can cover it, so
+   the answer is to wait or to accept the unwedge (which resumes from the
+   checkpoints if nothing was deployed in between), not to lengthen the grace.
 
    **Also check that no proof or test container is running from this
    project's images.** A container started with `docker run` from
@@ -2405,8 +2840,9 @@ the first host to run it is the first test of it.
    from that bucket — so a first host should expect to debug it before it expects
    it to work.
 
-   Budget eight hours, which is also the point at which the rebuild abandons
-   itself.
+   Budget eight hours per attempt (`REBUILD_TIMEOUT_S`). An attempt that runs out
+   is abandoned unless it wrote a checkpoint, in which case it is retried and
+   resumes from it ("The rebuild's own budget").
 
 9. **Restart the routers.** `valhalla_service` opens its tile extract once at
    start, so until this runs the four containers are serving the empty
@@ -2705,7 +3141,7 @@ writes nothing.
 
 Singletrack (OWNER-DECISIONS 90, 91, 111) is closed to bicycles on every graph,
 and so is OSM's own `bicycle=no`. Until the rebuild after 2026-10-03 neither
-held on a way with a mountain-bike rating: Valhalla 3.5.1's C++ parser reads
+held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 to 3.9.1) reads
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
@@ -2736,14 +3172,14 @@ development checkout, so a green CI run says nothing about it. Set
 run instead of skipping. That is the documented way to run it inside the
 pipeline image, and the script sets it.
 
-**2. During the rebuild: the closure gate.** VALIDATE, after the tile build and
+**2. During the rebuild: the closure gate.** VALIDATE_TILES, after the tile build and
 before the swap, reads a sample back from every staged graph: up to 40
 singletrack ways and up to 20 rated OSM `bicycle=no` ways, spread evenly by way
 id. It asks each graph once, with a one-shot pedestrian `valhalla_service
 locate`, and reads `access.bicycle` on the probed way's own edges. Pedestrian,
 because a bicycle locate finds no edge on a closed way, which a missed snap
 also produces. Each read has its own 120 s timeout inside the rebuild's budget;
-the four take a few seconds in all. The rebuild fails at VALIDATE, and **does
+the four take a few seconds in all. The rebuild fails at VALIDATE_TILES, and **does
 not swap**, if:
 
 - any graph is open to bicycles on any probed way: "the weekend graph is open
@@ -2827,6 +3263,51 @@ What the strip changes besides access, so it is not mistaken for a fault:
   `bicycle:backward=no` as well as `bicycle=no`, so no directional grant
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
+
+## Best order needs the routers restarted once (OWNER-DECISIONS 449)
+
+"Best order" (`POST /api/stop-order`, `core.stoporder`) orders up to ten stops by the router's cost
+from the legs of ordinary `/route` requests, which every router serves already. Past ten stops, or
+when those legs fail, it asks for a riding-time matrix, Valhalla's `sources_to_targets`, which the
+routers serve only once their config lists it in
+`loki.actions` (`valhalla/valhalla-*.json`, from `scripts/build_valhalla_configs.py`). The configs
+are read when a router starts, so after deploying the release that adds it, restart the routers once,
+as after a rebuild (below); the beta's CD restarts them itself when a `loki` key changes. Until then
+nothing fails: a press that needs the matrix orders the stops by straight-line distance, the answer's `by` is
+`straight_line`, the page says the router's riding times were not available (a press ordered by the matrix says it
+is by riding time alone, without traffic stress and hills), and the api logs "the
+<variant> router gave no riding-time matrix" at WARNING (the variant and the router's error only,
+never the points).
+
+What one press costs, up to ten stops: k(k+1) route legs for k stops (12 at three stops, 42 at six,
+110 at ten), asked as one chained request through the stop-to-stop pairs (split at 50 locations)
+and one start-stop-end request for each other stop, one after another inside 12 s (`COST_BUDGET_S`),
+each request bounded like a route's call and holding at most 50 locations and 250 mi (400 km) of
+straight line (under the routers' `max_distance`, 500 km). That is about k plans' worth of routing
+for k stops (about ten plans at ten stops), yet it counts as one request against the per-client
+limit and holds one routing slot, like a route; and as with `/route`, legs the api gave up on at
+12 s keep running on the router while the matrix is asked. The legs are logged at WARNING as "the <variant> router gave no leg costs" when they fail.
+They have not been measured on a real router: measure a ten-stop press on a ride of about 30 mi
+(50 km) before relying on it, and lower `COST_MAX_STOPS` if it runs near 12 s. Past ten stops, or
+when the legs fail: one matrix call (at most 26 by 26 points, far under `max_matrix_location_pairs`
+of 2,500), bounded on the api by `MATRIX_TIMEOUT_S` (20 s; 15 s on a weekend or off-road router) inside
+a 25 s budget, plus at most a few seconds of ordering in the worker (about a quarter of a second up to
+13 stops; new local-search starts stop after 3 s). It takes a routing slot and counts toward the
+per-client 60 requests a minute like a route, and the route the page asks for after a reorder counts
+again, so heavy reordering can meet a 429 sooner. As with `/route`, a matrix the api gave up on keeps
+running on the router until it finishes: the slot bounds the api's workers, not the router's. That is
+why a ride past 93 mi (150 km) of straight line is ordered by straight line without asking the router
+(`LONG_SPAN_M`, the route API's long-ride line): a matrix over that span is the long ride's search
+many times over. Its time and memory on a real router have not been measured; measure one 25-point
+matrix at about 90 mi (145 km) before relying on it near that line.
+
+The nearest water, restroom or Metro search (`POST /api/nearest`, `core.nearest`) asks the same
+`sources_to_targets`, one row of at most 10 places, and needs the same one restart; until then it
+answers by straight line (`by` is `straight_line`, the page says so) and the api logs "the <variant>
+router gave no distances to the nearest places" at WARNING, with no points. It has the same slot,
+time limits and per-client 60 requests a minute as Best order and `/route` (one budget: a search and
+the route a Ride here then plans count twice), and a place over 93 mi (150 km) away is measured in a
+straight line without asking the router.
 
 ## After a rebuild: restart the routers
 
@@ -3052,9 +3533,12 @@ own window (26 hours for the backup, 12 for the membership sweep) with nothing
 else to say why. The repair below is the same command with the same argument.
 
 The operations page and `manage.py check_operations` both name it — a job
-`doing` for longer than the budget its own task enforces
-(`core.runs.job_budgets`) is reported as wedged, and `check_operations` exits
-non-zero on it. Each line carries the job id and the remedy:
+`doing` whose worker is gone (no worker row, or no heartbeat for over 30
+seconds: the same test `unwedge_job` applies, below) is reported as wedged at
+once, and so is one `doing` for longer than the budget its own task enforces
+(`core.runs.job_budgets`); `check_operations` exits non-zero on either. A rebuild
+killed at hour three is therefore on the page within a minute, not at hour eight.
+Each line carries the job id and the remedy:
 
 ```sh
 docker compose exec -T worker ./manage.py unwedge_job <job id>
@@ -3079,9 +3563,15 @@ cases, all of them by design:
   violation inside the retry function. The queued job is the next run; let it
   run.
 
-After it succeeds the rebuild service picks the job up within seconds while it
-is running (`docker compose logs -f rebuild`). If that service is not up, start
-it, or queue a fresh rebuild with `run_rebuild_now` once the row has cleared.
+A rebuild requeued this way keeps its job id, so it **resumes** from the checkpoints its
+killed attempt wrote ("Rebuild checkpoints") **if the image and the classification inputs
+are unchanged**: the graph that was being built when the container died has no manifest and
+is built again, the finished ones are reused. A wedge caused by a deploy of a new image, or
+an override approved since, starts fresh instead (`not resuming the classification
+checkpoint: ...` in the log), and the killed build's graphs are deleted before its disk
+gate. The rebuild service picks the requeued job up within seconds while it is running
+(`docker compose logs -f rebuild`). If that service is not up, start it, or queue a fresh
+rebuild with `run_rebuild_now` once the row has cleared.
 
 **The fallback, if the command is not available** — an older image, a container
 that will not start — is Procrastinate's own shell, which is what this
@@ -3619,11 +4109,15 @@ answer's `moved_points` says so.
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
 tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
-trail in no routable layer but in its own not-for-routes look, for every ride type: a thin
+trail in no routable layer but in its own not-for-routes look: a thin
 mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
 superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
-`MTB_TRAILS_ROUTABLE`); the legend has a row "Mountain-bike trail: not used for routes" and
-the road panel says the same. `rough` draws as any unpaved trail does. Routing closes the class
+`MTB_TRAILS_ROUTABLE`). Since 454 it draws only while the Map layers sheet's
+"Mountain-bike trails" switch is on (off by default, kept per browser under
+`routemaker.mtbTrails`), in every ride type; the legend has a row "Mountain-bike trail: not
+used for routes" while it is on, and the road panel says the same whatever the switch.
+After the deploy that ships 454, riders who saw the dotted trails see none until they turn
+the layer on (Map layers, "Trails and terrain"). `rough` draws as any unpaved trail does. Routing closes the class
 for every preset but Gravel and Mountain Goat. The segment
 table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 (core 0010) is state-only.
@@ -3636,7 +4130,7 @@ longer ones close.
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
 
-**The gate.** VALIDATE reads back up to 8 ways of each new reason from every
+**The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
 graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
 does the same after the swap and now reads the off-road router too.
 
@@ -3853,7 +4347,7 @@ docker compose run --rm --no-deps migrate </dev/null                 # applies c
 Q "select count(*) from django_migrations"                           # one more than in B
 grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: check again just before the recreate
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
-docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
+docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 8 2 (7 2 before the judged bridges' surface)
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 2 (or the .env value; "Tile build threads")
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
@@ -3882,7 +4376,7 @@ the dry run each prints after `grep -v '^present:'`:
    Helen Burroughs Ave NE ways are re-written as floors, at least LTS 4, 4 and 3
    (`"at_least": true`: the rebuild keeps the classifier's tier where it is higher), 126
    new rows, and 445d writes Avoid on the interchange's two ramps, 128 new rows in all).
-   Dry: 529 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 248 present, no absent. VALIDATE refuses a build where
+   Dry: 529 retire, 128 create (90 tier 4, 36 tier 3, 2 tier 5), 248 present, no absent. VALIDATE_SEGMENTS refuses a build where
    the South Capitol stretch is not LTS 4, so this one is not optional.
 3. `2026-09-30-owner-veirs-mill-sidepath.json`, the Veirs Mill sidepath (433): retires the
    two `bicycle=designated` rows on the north-side sidewalks and closes them
@@ -3959,8 +4453,8 @@ Anacostia `retired 529 rows`, `wrote 128 of 376`; Veirs sidepath `retired 2 rows
 of 2`; Montgomery `retired 23 rows`, `wrote 0 of 386`; military `retired 2 rows`, `wrote 97
 of 97`; crosswalk links `wrote 4 of 4`. **Then check H before
 firing I**; a skipped
-or failed load is otherwise found only about 3 h into the rebuild (VALIDATE runs after the
-tile build), or, for the Veirs Mill and military files, never before the swap:
+or failed load is otherwise found only about 3 h into the rebuild (VALIDATE_SEGMENTS runs
+after INJECT_TAGS, before the tile build), or, for the Veirs Mill and military files, never before the swap:
 
 ```sh
 Q "select count(*) from override where approved and ((kind='stress' and (value->>'tier')::int=5 and osm_way_id in (468820704,590525532,455234174,468820714,1528642818,316866053,1181165198,128574906,697039269)) or (kind='access' and value->>'bicycle'='designated' and osm_way_id in (468762518,791422825)))"   # 0: every retired row gone
@@ -4025,12 +4519,12 @@ downloads. If `rebuilding the source extract` appears a second time in this run,
 rebuild and ask the owner before it goes on.
 
 Watch for `military areas:` (about 21,690 ways closed, 2,168 mi, and about 290 left open,
-41 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE's `military
+41 mi, at 2026-10-03's extract, with the military file of H loaded; VALIDATE_SEGMENTS's `military
 areas:` line repeats the count, and refuses an installation below its floor
 (`REBUILD_SENTINEL_MILITARY_MIN_CLOSED`) or an open network through a base),
 `secured federal compounds:` (about 2,561 ways closed, 156.4 mi, and 39 left open, 4.1 mi,
 at 2026-10-03's extract;
-VALIDATE refuses a compound below its floor, `REBUILD_SENTINEL_SECURED_MIN_CLOSED`, a
+VALIDATE_SEGMENTS refuses a compound below its floor, `REBUILD_SENTINEL_SECURED_MIN_CLOSED`, a
 Rowley sentinel way not closed; its open-network check cannot refuse yet, since every
 reason a way in a compound stays open is one of its exceptions), no warning
 `secured compounds listed by OSM id ... not in the extract`, no warning
@@ -4042,7 +4536,7 @@ R St NW), the Mass Ride width line (at least 98% of road and path rows with a wi
 median road 60-200 riders a minute), the calm-run floors (Elmer School Road at 2 mi), the
 long trails, the closure readback on **five** graphs, and `Stress tile cache pre-drawn:
 11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A
-VALIDATE refusal is terminal and nothing is promoted: keep the code (the new api is safe on
+VALIDATE_SEGMENTS refusal is terminal and nothing is promoted: keep the code (the new api is safe on
 the old table), hold the front end, and report.
 
 Once the tile stage starts (about 2.5 h in), a new build directory appears under
@@ -4059,9 +4553,10 @@ If the directory it prints is not dated today (UTC), the build has not started i
 yet and that is an older build's value (it may well say 4): wait and run it again, and do
 not conclude anything from it.
 
-A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
-the 3.5.1 race hit one graph and the retry is building it again: nothing needs doing during
-the run. Note it in the report; "Tile build threads" says when to move to
+A log line `valhalla_build_tiles aborted (SIGABRT)` or `crashed (SIGSEGV); running it again,
+retry 1 of 1` means a tile build failed and the retry is building it again: nothing needs doing during
+the run. Under 3.5.1 that was the known race; the pinned 3.9.1 fixes it, so an abort now is something new. Keep the
+rebuild's log and note the line in the report. "Tile build threads" says when to move to
 `REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
 line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
 the retry aborted too: set 1 before the next rebuild.
@@ -4089,7 +4584,7 @@ Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id 
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
 Q "select bike_access_reason, count(*) from live.segment group by 1 order by 2 desc"   # the road panel's closure reasons (new column): mostly null, then private, bicycle_no, military and the rest; an error here means the rebuild did not write it
-curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
+curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v8" (-v7" before the judged bridges' surface)
 curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
 curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
 ```

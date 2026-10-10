@@ -843,7 +843,7 @@ def secured_closures(
 def secured_missing(areas: Sequence[Area]) -> list[str]:
     """The curated compounds (`SECURED_AREAS`) the extract has no area for: deleted
     or renumbered upstream, so not closed until the list is updated. Warned about;
-    VALIDATE's floors refuse the build."""
+    VALIDATE_SEGMENTS's floors refuse the build."""
     seen = {getattr(area, "osm", "") for area in areas}
     return sorted(set(SECURED_AREAS) - seen)
 
