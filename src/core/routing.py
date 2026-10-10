@@ -1509,6 +1509,8 @@ def _crossing_out(major) -> dict:
         "crossed_tier": major.crossed_tier,
         "kind": getattr(major, "kind", intersections.MAJOR_FLAGGED),
         "corkers_needed": major.corkers_needed,
+        "oneway": getattr(major, "oneway", None),
+        "divided": getattr(major, "divided", False),
     }
 
 
@@ -1624,6 +1626,7 @@ def route_profile(
             ],
             "climbs": rows,
             "riders_per_min": None,
+            "level_riders_per_min": None,
             "flow": None,
             "crossings": None,
             "avoid": None,
@@ -1641,6 +1644,10 @@ def route_profile(
                 logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
             body["riders_per_min"] = [_int_or_none(riders[i]) for i in keep]
+            # The group's length at a ride size is read from these (PLAN items 128, 139).
+            body["level_riders_per_min"] = [
+                _int_or_none(level[i]) if level is not None else None for i in keep
+            ]
             known = [(round(r), m) for m, r in zip(sample_m, riders, strict=True) if r is not None]
             narrow = min(known, default=None)
             typical = sorted(
@@ -1650,6 +1657,10 @@ def route_profile(
                 "narrowest_riders_per_min": narrow[0] if narrow else None,
                 "narrowest_m": round(narrow[1]) if narrow else None,
                 "typical_riders_per_min": typical[len(typical) // 2] if typical else None,
+                "cruise_pace_ms": round(flow.CRUISE_PACE_MS, 4),
+                "default_level_riders_per_min": round(
+                    flow.level_riders_per_min(flow.GROUP_DEFAULT_WIDTH_M), 2
+                ),
             }
             end_m = sample_m[-1]
             body["avoid"] = _stretch_ranges(flow_stretches, STRETCH_AVOID, end_m)

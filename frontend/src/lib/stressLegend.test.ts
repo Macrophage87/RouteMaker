@@ -13,6 +13,8 @@ import {
   STRESS_PAGE_TEXT,
   MTB_LEGEND,
   MtbTrailSwatch,
+  MtbLevelSwatch,
+  mtbLevelLegend,
   ROADWAY_LANES,
   ROUTE_AT_EVERY_ZOOM,
   StressLegend,
@@ -41,6 +43,9 @@ import {
   tiersFor,
   unpavedWidth,
   MTB_TRAIL,
+  MTB_LEVEL,
+  MTB_LEVELS,
+  mtbLevelPaint,
   mtbTrailPaint,
 } from "../stressStyle.js";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
@@ -307,7 +312,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
 test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom, while their layer is on (OWNER-DECISIONS 452a, 454)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
-    label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line.",
+    label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line for an unrated trail; rated ones show by level below.",
   });
   for (const strong of [false, true]) {
     withSwitches(strong, false, () => {
@@ -331,6 +336,19 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
           // The swatch is decoration: the words carry it for a screen reader.
           assert.match(row[1], /^<svg [^>]*aria-hidden="true"/);
           assert.ok(!html.includes("mtb-hidden") && !html.includes("not shown on the map"), "452's line is gone");
+          // A row a level after it (456), in the same list, each naming its number and colour in words.
+          let after = list.indexOf('class="mtb-trail"');
+          for (const shape of MTB_LEVELS) {
+            const at = list.indexOf(`class="mtb-level mtb-level-${shape.level}"`);
+            assert.ok(at > after, `level ${shape.level}'s row follows, in order`);
+            after = at;
+            const levelRow = new RegExp(`<li class="mtb-level mtb-level-${shape.level}">([\\s\\S]*?)<\\/li>`).exec(list)!;
+            const words = levelRow[1].replace(/<svg[\s\S]*?<\/svg>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+            assert.equal(words, `${mtbLevelLegend(shape).short} ${mtbLevelLegend(shape).label}`);
+            assert.match(words, new RegExp(`^Level ${shape.level} \\(${shape.name}\\) Mountain-bike trail rated ${shape.scale}: `));
+            assert.match(levelRow[1], /^<svg [^>]*aria-hidden="true"/);
+          }
+          assert.doesNotMatch(off, /mtb-level/, "no level rows while the layer is off");
         }
       }
     });
@@ -349,6 +367,22 @@ test("the mountain-bike trail's swatch is the map's dots, on the base map's eart
     assert.ok(line.includes(`stroke-width="${paint["line-width"]}"`), line);
     assert.ok(line.includes(`stroke-dasharray="${dashPx(MTB_TRAIL.dash, paint["line-width"])}"`), line);
     assert.ok(!html.includes("<line") || html.match(/<line/g)!.length === 1, "one line: no casing or rails");
+  }
+});
+
+test("a mountain-bike level's swatch is the map's casing and coloured pattern on the base map's earth colour, wider with the accessibility switch (456)", () => {
+  for (const strong of [false, true]) {
+    for (const shape of MTB_LEVELS) {
+      const html = renderToStaticMarkup(createElement(MtbLevelSwatch, { shape, strong }));
+      const paint = mtbLevelPaint(shape.level, strong);
+      assert.ok(html.includes(`fill="${MTB_TRAIL.legendGround}"`), html);
+      const [casing, line] = [...html.matchAll(/<line ([^>]*?)\/?>/g)].map((m) => m[1]);
+      assert.ok(casing.includes(`stroke="${MTB_LEVEL.tick}"`) && casing.includes(`stroke-width="${paint.casing["line-width"]}"`), casing);
+      assert.ok(casing.includes(`stroke-dasharray="${dashPx(MTB_LEVEL.tickDash, paint.casing["line-width"])}"`), "the cross-ticks, as the map draws them");
+      assert.ok(line.includes(`stroke="${shape.color}"`), line);
+      assert.ok(line.includes(`stroke-width="${paint.line["line-width"]}"`), line);
+      assert.ok(line.includes(`stroke-dasharray="${dashPx(shape.dash, paint.line["line-width"])}"`), line);
+    }
   }
 });
 

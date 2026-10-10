@@ -534,8 +534,8 @@ def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace
             assert stored[way.osm_id] == facility(way.tags).value, way.osm_id
 
 
-def run_dials_extract(tmp_path):
-    source = install_source_extract(tmp_path, build_dials_extract)
+def run_dials_extract(tmp_path, **kwargs):
+    source = install_source_extract(tmp_path, build_dials_extract, **kwargs)
     ids = (
         WEEKEND_CLOSED_ID,
         SEPARATE_ROAD_ID,
@@ -636,8 +636,54 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     # The map agrees: no singletrack drawn as a trail nobody is routed down,
     # and the towpath either side of lock 21 is.
     drawn = stored_map_class(context)
+    # It has no bicycle tag on a dirt surface, which the tag rules close without the rating
+    # (natural_surface), so the mountain-bike layer does not draw it either (456).
+    assert SINGLETRACK_ID not in context.drawn_singletracks
     assert drawn[SINGLETRACK_ID] == "hidden"
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
+    # Its level is written all the same (`mtb:scale` 2, level 2), and the towpath, rated
+    # IMBA 0, a gravel trail (456b), has none.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id, mtb_level FROM {context.staging_schema}.segment "
+            "WHERE osm_way_id = ANY(%s)",
+            [[SINGLETRACK_ID, TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID]],
+        )
+        levels = dict(cursor.fetchall())
+    assert levels == {SINGLETRACK_ID: 2, TOWPATH_ABOVE_ID: None, TOWPATH_BELOW_ID: None}
+
+
+def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_with_its_level(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 456 (docs/MTB-TOPO-PLAN.md, slice 2), through the rebuild: singletrack
+    with a bicycle tag, which nothing but its rating closes, is drawn (map class road) as a
+    mountain-bike-only way with its level and no path rail, so only the mountain-bike layer
+    draws it; every graph still closes it."""
+    from pipeline.extract import read_ways
+
+    tags = {
+        "highway": "path",
+        "bicycle": "yes",
+        "surface": "dirt",
+        "mtb:scale": "5",
+        "ref": "Loop 3",
+    }
+    context, stored = run_dials_extract(tmp_path, singletrack_tags=tags)
+    assert context.singletracks == context.drawn_singletracks == {SINGLETRACK_ID}
+    for variant in Variant:
+        found = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SINGLETRACK_ID in found:
+            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route, mtb_name "
+            f"FROM {context.staging_schema}.segment WHERE osm_way_id = %s",
+            [SINGLETRACK_ID],
+        )
+        rows = cursor.fetchall()
+    # S5 is level 4 (S4-S6); no `name`, so its `ref` names it (2026-10-10).
+    assert rows == [("road", True, 4, "none", 0, "Loop 3")]
 
 
 def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_rebuild(
@@ -4430,6 +4476,20 @@ def test_the_rebuild_writes_the_long_trail_columns(
     # A street's name is written only for the ride layer's calm-street runs (391): this one is
     # LTS 1, so it has its name; test_the_rebuild_writes_the_ride_layer_and_the_track_surface.
     assert rows[NAMED_STREET_ID][0] == "Gamma Street"
+
+    # The mountain-bike name (2026-10-10) is written on the mountain-bike-only ways alone
+    # (run.py's `mtb_only` gate): a named long trail or street never carries one, so the
+    # mountain-bike layer never labels a routable way.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT osm_way_id, bool_or(mtb_only), max(mtb_name) "
+            f"FROM {settings.SEGMENT_SCHEMA_STAGING}.segment GROUP BY osm_way_id"
+        )
+        mtb = {way: (only, name) for way, only, name in cursor}
+    for way in (ALPHA_WEST_ID, ALPHA_EAST_ID, ALPHA_BRIDGE_ID, NAMED_STREET_ID, NATIONAL_MTB_ID):
+        assert mtb[way] == (False, None), way
+    assert mtb[MOUNTAIN_BIKE_ID] == (True, "Rocky Loop")
+    assert all(name is None for only, name in mtb.values() if not only)
 
 
 def test_a_rebuild_that_loses_the_long_trails_is_refused(

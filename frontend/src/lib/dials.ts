@@ -73,6 +73,37 @@ export interface Dials {
    */
   pickupStation?: string;
   dropoffStation?: string;
+  /**
+   * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
+   * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
+   * owner, 2026-10-10: "Corkers were intended to also have a rollback based on the length of
+   * the ride"). Absent is RIDE_SIZE_DEFAULT. It does not change the route, so it is never
+   * sent to the API (dialFields); it rides in the link (planHash.ts).
+   */
+  rideSize?: number;
+}
+
+/** The ride size's range and default, riders (PLAN item 129: the owner's typical range; 128: a proposed 500). */
+export const RIDE_SIZE_MIN = 100;
+export const RIDE_SIZE_MAX = 2_000;
+export const RIDE_SIZE_DEFAULT = 500;
+export const RIDE_SIZE_STEP = 50;
+
+/** Whether the ride size applies: Mass Ride only. */
+export function offersRideSize(preset: PresetId): boolean {
+  return preset === "mass-ride";
+}
+
+/** A ride size the chart will take: in range, to the slider's step; undefined where it is not a number. */
+export function fitRideSize(riders: unknown): number | undefined {
+  if (typeof riders !== "number" || !Number.isFinite(riders)) return undefined;
+  const stepped = Math.round(riders / RIDE_SIZE_STEP) * RIDE_SIZE_STEP;
+  return Math.min(RIDE_SIZE_MAX, Math.max(RIDE_SIZE_MIN, stepped));
+}
+
+/** The ride size a Mass Ride is drawn for: the rider's, or the default. */
+export function rideSizeOf(dials: Pick<Dials, "rideSize">): number {
+  return fitRideSize(dials.rideSize) ?? RIDE_SIZE_DEFAULT;
 }
 
 export const STRESS_MIN = 0;
@@ -299,6 +330,9 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
+      ? { rideSize: fitRideSize(dials.rideSize) }
+      : {}),
   };
 }
 

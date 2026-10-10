@@ -18,6 +18,12 @@ import {
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
+  RIDE_SIZE_DEFAULT,
+  RIDE_SIZE_MAX,
+  RIDE_SIZE_MIN,
+  RIDE_SIZE_STEP,
+  offersRideSize,
+  rideSizeOf,
   DEFAULT_CEILING_RATIO,
   TARGET_CEILING_RATIO,
   TARGET_MAX_M,
@@ -43,6 +49,8 @@ import {
 export interface SliderView {
   min: number;
   max: number;
+  /** The slider's step; absent is 5. */
+  step?: number;
   words: string;
   ends: [string, string, string];
   disabled: boolean;
@@ -61,6 +69,8 @@ export interface PanelView {
   /** The traffic-tolerant warning under the traffic slider, or null. */
   warning: string | null;
   hills: SliderView;
+  /** Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139), or null on any other ride type. */
+  rideSize: SliderView | null;
   /** The "Target distance" number input, or null where the traffic slider is not at the top. */
   target: TargetView | null;
   /**
@@ -241,7 +251,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
     dials.targetDistanceM !== undefined ||
-    (dials.loop === true && !hiddenLoop);
+    (dials.loop === true && !hiddenLoop) ||
+    (offersRideSize(preset) && rideSizeOf(dials) !== RIDE_SIZE_DEFAULT);
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
   else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
@@ -269,6 +280,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       disabled: false,
       note: hillsNote,
     },
+    rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     weight: offersTargetDistance(preset, dials.stress),
     trailsOff: {
@@ -280,6 +292,28 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       howAbout: TRAILS_OFF_HOW_ABOUT,
     },
     reset: moved ? start : null,
+  };
+}
+
+/** The ride size slider's name: its unit is in it, so it is said with the number (riders). */
+export const RIDE_SIZE_LABEL = "Anticipated ride size (riders)";
+export const RIDE_SIZE_NOTE =
+  "How many riders you expect. It sets the group's length, which the corker load counts over. It does not change the route.";
+
+/** "500 riders", as the slider's value text and the words beside its name. */
+export function rideSizeWords(riders: number): string {
+  return `${riders.toLocaleString("en-US")} riders`;
+}
+
+export function rideSizeView(riders: number): SliderView {
+  return {
+    min: RIDE_SIZE_MIN,
+    max: RIDE_SIZE_MAX,
+    step: RIDE_SIZE_STEP,
+    words: rideSizeWords(riders),
+    ends: [RIDE_SIZE_MIN.toLocaleString("en-US"), "", RIDE_SIZE_MAX.toLocaleString("en-US")],
+    disabled: false,
+    note: RIDE_SIZE_NOTE,
   };
 }
 
