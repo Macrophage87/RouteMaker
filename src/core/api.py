@@ -963,6 +963,20 @@ class ProfileFlowOut(Schema):
     narrowest_riders_per_min: int | None
     narrowest_m: int | None = Field(description="Metres along the route to the narrowest sample.")
     typical_riders_per_min: int | None = Field(description="The median over the route.")
+    cruise_pace_ms: float | None = Field(
+        default=None,
+        description=(
+            "The group's cruising pace, m/s (`routemaker.flow.CRUISE_PACE_MS`, 7 mph): with"
+            " `level_riders_per_min`, the group's length at a ride size (PLAN items 128, 139)."
+        ),
+    )
+    default_level_riders_per_min: float | None = Field(
+        default=None,
+        description=(
+            "The level figure of the road a group's length is read on where no width is"
+            " known anywhere on the route (`flow.GROUP_DEFAULT_WIDTH_M`, two 11 ft lanes)."
+        ),
+    )
 
 
 class ProfileCrossingOut(Schema):
@@ -994,6 +1008,20 @@ class ProfileCrossingOut(Schema):
             "Corkers hold it (OWNER-DECISIONS 142, 400): the crossed or joined road is LTS 3"
             " or worse; a left or right turn onto such a road needs them as a crossing does."
         )
+    )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "The crossed or joined road is one-way there (one approach to hold: 1 corker,"
+            " PLAN item 139), two-way (false: 2), or not known (null)."
+        ),
+    )
+    divided: bool | None = Field(
+        default=None,
+        description=(
+            "A divided road: its two one-way carriageways counted as one junction, so two"
+            " approaches to hold (2 corkers) whatever `oneway` says."
+        ),
     )
 
 
@@ -1033,9 +1061,10 @@ class ProfileCalmOut(Schema):
     """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
     calm miles per actual mile over the window centred on each sample (cut at the route's
     ends), each junction's cost at the ride's intersection weight counted once in every
-    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
-    all quiet-street riding; a path or a protected lane counts below it. Every ride type
-    but Mass Ride."""
+    window that holds them (at the top of the slider, the worth rule's exchange). Each road
+    counts at its own routing cost over the local quiet street's (`calm.quiet_factor`), so
+    about 1.0 is all quiet-street riding; a path or a protected lane counts below it. Every
+    ride type but Mass Ride."""
 
     window_m: int = Field(description="The window's length, metres (461e: about a mile).")
     ratio: list[float | None] = Field(
@@ -1050,14 +1079,18 @@ class ProfileCalmOut(Schema):
     )
     bands: list[float] = Field(
         description=(
-            "Where the words change: the 2.5 and 3.5 half-step midpoints at this ride's"
-            " slider position (LTS 1-2 below the first, LTS 3 to the second, LTS 4 above)."
+            "Where the words change, read from representative roads at their own cost at"
+            " this ride's slider position (`calm.bands`; LTS 1-2 below the first, LTS 3 to"
+            " the second, LTS 4 above)."
         )
     )
     estimate: bool = Field(
         description=(
-            "True while each tier's cost is the middle of its modelled range, not the"
-            " road's own speed and lanes."
+            "False where every road is priced by its own routing cost (its own speed, lanes"
+            " and cycle lane, as the router costs it); true where some stretch took its"
+            " tier's figure instead (the middle of the tier's modelled range), as a trace"
+            " with no edge attributes does, or where the live tier and the graph disagree"
+            " about grading (a stress edit since the last rebuild)."
         )
     )
 
@@ -1087,6 +1120,14 @@ class ProfileOut(Schema):
             "Mass Ride only: the grade-adjusted riders a minute at each sample"
             " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown or"
             " the stretch is marked Avoid (325: no carrying capacity)."
+        ),
+    )
+    level_riders_per_min: list[int | None] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the level riders a minute at each sample, from the width alone"
+            " (`flow.level_riders_per_min`), so the front end can read the group's length at"
+            " each point; null where the width is unknown or the stretch is marked Avoid."
         ),
     )
     flow: ProfileFlowOut | None = None

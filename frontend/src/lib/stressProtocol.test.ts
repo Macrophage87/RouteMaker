@@ -417,7 +417,7 @@ test("loadTile: during a ride a request that hangs is given up after the timeout
   const data = await loadTile(TILE, new AbortController().signal, hang, k.offline, 30);
   assert.deepEqual([...new Uint8Array(data)], [6]);
   assert.ok(Date.now() - started < 2000);
-  assert.equal(NETWORK_TIMEOUT_MS, 4000);
+  assert.equal(NETWORK_TIMEOUT_MS, 6000);
 });
 
 test("loadTile: a tile MapLibre cancelled is not answered from the kept tiles", async () => {

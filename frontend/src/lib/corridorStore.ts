@@ -239,6 +239,8 @@ export async function keepCorridor(line: readonly LonLat[], first = false): Prom
   if (first) await stopKeeping();
   else await clearing;
   if (ticket !== generation) return stopped();
+  // Another call may have started while this one waited: a re-plan never leaves two prefetches running.
+  running?.abort();
   const controller = new AbortController();
   running = controller;
   keepingStress = true;

@@ -323,6 +323,8 @@ export class CorridorSource implements Source {
   keepFailures = 0;
   private etag: string | undefined;
   private keptBytes = 0;
+  /** Bumped by each clear, so a write still in flight at End ride is not counted as kept. */
+  private ride = 0;
   private readonly inner: Source;
   private readonly store: RangeStore;
   private readonly budget: ByteBudget;
@@ -381,6 +383,7 @@ export class CorridorSource implements Source {
 
   /** End ride: nothing more is kept, and what was is cleared. */
   async clear(): Promise<void> {
+    this.ride += 1;
     this.keeping = false;
     this.etag = undefined;
     this.budget.give(this.keptBytes);
@@ -422,7 +425,15 @@ export class CorridorSource implements Source {
         return;
       }
       taken = true;
+      const ride = this.ride;
       await this.store.put({ key, etag: answer.etag, data: answer.data });
+      if (!this.keeping || ride !== this.ride) {
+        // End ride came while the write was in flight: its bytes are not this ride's, and a write that
+        // landed after the clear is cleared again (unless a new ride is already keeping).
+        this.budget.give(size);
+        if (!this.keeping) await this.store.clear().catch(() => undefined);
+        return;
+      }
       this.keptBytes += size;
     } catch {
       // Keeping is best effort: a full or refused store (a quota abort) leaves the ride online-only.

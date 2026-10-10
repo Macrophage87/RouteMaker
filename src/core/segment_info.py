@@ -156,7 +156,10 @@ ACCESS_WORDS = {
     "impassable": (False, "Closed: mapped as impassable"),
     "cbd_sidewalk": (False, "Closed: a downtown sidewalk where riding is not allowed"),
     "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
-    "singletrack": (False, "Closed: mountain-bike singletrack"),
+    "singletrack": (
+        False,
+        "Closed: mountain-bike singletrack, not used for routes by any ride type",
+    ),
     "mtb": (
         False,
         "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
@@ -196,6 +199,8 @@ OPTIONAL_COLUMNS = (
     "bike_access_reason",
     "mtb_only",
     "trail_bridge",
+    "mtb_level",
+    "mtb_name",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -266,9 +271,11 @@ def nearest_row(lat: float, lon: float) -> dict | None:
 
 
 def is_mtb_trail(row: dict) -> bool:
-    """A mountain-bike-class trail the map draws in its not-for-routes look (OWNER-DECISIONS
-    452a): closed as `mtb`, or `mtb_only` on a way the map draws (rated singletrack, also
-    `mtb_only`, is hidden and says so in its own words)."""
+    """A mountain-bike trail the map draws in its not-for-routes look (OWNER-DECISIONS
+    452a, 456): closed as `mtb`, or `mtb_only` on a way the map draws, which since 456 is
+    also rated singletrack that nothing but its rating closes (drawn in its level's colour on
+    the opt-in layer). Rated singletrack the map hides (`map_class` hidden) is not one: it
+    says so in its own words."""
     if row.get("bike_access_reason") == "mtb":
         return True
     return row.get("mtb_only") is True and row.get("map_class") != "hidden"
@@ -605,6 +612,18 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    level = row.get("mtb_level")
+    words = mtb_level_words(level)
+    if words and is_mtb_trail(row):
+        # OWNER-DECISIONS 456: the level the mountain-bike layer draws it in, in words; only
+        # on a way the layer draws, so a hidden way never names a colour.
+        rows.append(
+            _row(
+                "Mountain-bike difficulty",
+                f"{words[0].upper()}{words[1:]}: {MTB_LEVEL_SCALES[level]}",
+                OSM,
+            )
+        )
     if row.get("walk_bike"):
         rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
     return rows
@@ -733,9 +752,45 @@ ACCESS_SHORT = {
     "err_closed": "unclear, so treated as closed",
 }
 
-# A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a): what the map's dotted grey line
-# means, and, honestly, that Gravel and Mountain Goat (the off-road graph) do route on it.
-MTB_SUMMARY = "Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+# The mountain-bike difficulty levels (`segment.mtb_level`; OWNER-DECISIONS 456, 456a-c),
+# named with their map colour, so the level is in words and never in colour alone. The
+# front end's copy is `MTB_LEVELS` in frontend/src/stressStyle.js (a test holds them equal).
+MTB_LEVEL_COLOURS = {1: "green", 2: "blue", 3: "black", 4: "red"}
+# What each level is on the two OSM scales, for the panel's details.
+MTB_LEVEL_SCALES = {
+    1: "S1 or IMBA 1",
+    2: "S2 or IMBA 2",
+    3: "S3 or IMBA 3",
+    4: "S4 or above, or IMBA 4 or above",
+}
+
+
+def mtb_level_words(level: object) -> str | None:
+    """'level 2 (blue)', or None for no level."""
+    if not isinstance(level, int) or level not in MTB_LEVEL_COLOURS:
+        return None
+    return f"level {level} ({MTB_LEVEL_COLOURS[level]})"
+
+
+def mtb_summary(row: dict) -> str:
+    """A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a, 456): what the map's line
+    means, 'Mountain-bike trail, level 2 (blue), not used for routes', and, honestly, that
+    Gravel and Mountain Goat (the off-road graph) do route on it, unless it is rated
+    singletrack, which every graph closes."""
+    level = mtb_level_words(row.get("mtb_level"))
+    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
+    # A level is written on rated singletrack alone (`pipeline.trail_closures.mtb_level`),
+    # which every graph closes, so a levelled trail never says the off-road graph uses it.
+    closed_everywhere = bool(level) or row.get("bike_access_reason") == "singletrack"
+    # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
+    # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
+    # Trail, not used for routes".
+    name = (row.get("mtb_name") or "").strip()
+    head = f"{head}: {name}," if name else f"{head},"
+    if closed_everywhere:
+        return f"{head} not used for routes"
+    return f"{head} not used for routes (Gravel and Mountain Goat may use it)"
+
 
 # The parts of the classifier's rule the Lanes line already says.
 _LANE_PARTS = frozenset({"single lane", "urban multilane", "multilane"})
@@ -814,8 +869,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         add("walk", "Walk your bike", "A short stretch")
     reason = row.get("bike_access_reason")
     if open_ is not True and is_mtb_trail(row):
-        # OWNER-DECISIONS 452a: said as the map draws it; the off-road graph's ride types do use it.
-        add("bikes", "Bikes", MTB_SUMMARY)
+        # OWNER-DECISIONS 452a: said as the map draws it, with its level (456); the off-road
+        # graph's ride types do use it, unless it is rated singletrack.
+        add("bikes", "Bikes", mtb_summary(row))
     elif open_ is True:
         add("bikes", "Bikes", "Allowed")
     elif open_ is False:
@@ -833,7 +889,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
-    name = router.get("name") or row.get("trail_name")
+    # A mountain-bike trail's own name (`mtb_name`: name, ref or mtb:name) where the router
+    # and the long-trail name have none (the owner, 2026-10-10).
+    name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
     title = name or ("Unnamed path" if path or router.get("use") in PATH_USES else "Unnamed road")
