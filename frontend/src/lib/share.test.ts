@@ -43,6 +43,9 @@ test("the shared text is the distance, US first with metric in brackets, and the
   assert.deepEqual(Object.keys(content).sort(), ["text", "title", "url"]);
   assert.equal(content.title, SHARE_TITLE);
   assert.equal(SHARE_TITLE, "RouteMaker route");
+  // No distance while a re-plan is pending: the route shown is not the points the link carries.
+  assert.equal(shareText(null, "Mass Ride"), "Bike route. Ride type: Mass Ride.");
+  assert.match(app, /const distanceM = !stale && routedPoints === points \? shown\.distance_m : null;/);
 });
 
 test("the shared URL is Copy link's, at its full precision and without the weight", async () => {
@@ -61,7 +64,7 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
   // App hands share exactly the link Copy link copies.
-  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials\), shown\.distance_m, presetLabel\(preset\)\)/);
+  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials\), distanceM, presetLabel\(preset\)\)/);
   assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
 });
 
@@ -72,6 +75,9 @@ test("the rider closing the sheet is silent; any other failure says so and offer
   assert.equal(await shareLink({ share: () => Promise.reject(new DOMException("x", "AbortError")) }, content), "cancelled");
   assert.equal(await shareLink({ share: () => Promise.reject(new DOMException("x", "NotAllowedError")) }, content), "failed");
   assert.equal(await shareLink({ share: () => Promise.reject(null) }, content), "failed");
+  // A second press while a sheet is open: the browser's InvalidStateError is not a failure to announce.
+  assert.equal(await shareLink({ share: () => Promise.reject(new DOMException("x", "InvalidStateError")) }, content), "cancelled");
+  assert.equal(await shareLink({ share: () => { throw new DOMException("x", "DataError"); } }, content), "failed");
   assert.equal(await shareLink({}, content), "failed");
   assert.equal(shareSaidFor("shared"), "");
   assert.equal(shareSaidFor("cancelled"), "");
@@ -92,6 +98,23 @@ test("App shows Share beside Copy link only where it is supported, named Share r
     /\{canShare && \(\s*<button type="button" className="secondary" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
   );
   // A failure is said in the polite status Copy link uses, and shown; success and cancel say nothing.
-  assert.match(app, /const said = shareSaidFor\(await shareLink\(navigator, content\)\);\s*if \(!said\) return;/);
+  assert.match(app, /said = shareSaidFor\(await outcome\);/);
+  assert.match(app, /if \(!said\) return;\s*window\.setTimeout/);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(said\);/);
+});
+
+test("share() is called within the press: synchronously in shareLink, and before any await in shareRoute", () => {
+  // shareLink calls navigator.share before it returns, not after a tick.
+  let called = false;
+  void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
+  assert.equal(called, true, "share() called synchronously");
+  // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
+  const start = app.indexOf("const shareRoute = async () => {");
+  assert.ok(start > 0);
+  const body = app.slice(start, app.indexOf("\n  };\n", start));
+  const call = body.indexOf("shareLink(navigator, content)");
+  assert.ok(call > 0, "shareRoute calls shareLink");
+  assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
+  assert.match(body, /if \(!shown \|\| sharing\.current\) return;\s*sharing\.current = true;/);
+  assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });

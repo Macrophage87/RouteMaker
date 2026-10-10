@@ -35,27 +35,47 @@ export function canShareLink(nav: ShareNavigator | undefined, url: string): bool
   }
 }
 
-/** The shared text: "4.7 mi (7.6 km) bike route. Ride type: Group Ride." */
-export function shareText(distanceM: number, rideType: string): string {
-  return `${formatDistance(distanceM)} bike route. Ride type: ${rideType}.`;
+/**
+ * The shared text: "4.7 mi (7.6 km) bike route. Ride type: Group Ride." The distance is the route shown,
+ * so it is left out (null) while that route is not the plan's points the link carries (a re-plan pending):
+ * "Bike route. Ride type: Group Ride."
+ */
+export function shareText(distanceM: number | null, rideType: string): string {
+  const what = distanceM === null ? "Bike route" : `${formatDistance(distanceM)} bike route`;
+  return `${what}. Ride type: ${rideType}.`;
 }
 
 /** The sheet's content: `url` is Copy link's link, unchanged. */
-export function shareContent(url: string, distanceM: number, rideType: string): ShareContent {
+export function shareContent(url: string, distanceM: number | null, rideType: string): ShareContent {
   return { title: SHARE_TITLE, text: shareText(distanceM, rideType), url };
 }
 
 export type ShareOutcome = "shared" | "cancelled" | "failed";
 
-/** Opens the sheet. The rider closing it (AbortError) is "cancelled"; any other failure is "failed". */
-export async function shareLink(nav: ShareNavigator | undefined, content: ShareContent): Promise<ShareOutcome> {
-  if (typeof nav?.share !== "function") return "failed";
+/** Errors that are not failures to tell the rider about: the sheet closed, or one is already open. */
+const SILENT_ERRORS = new Set(["AbortError", "InvalidStateError"]);
+
+/**
+ * Opens the sheet. `nav.share` is called synchronously, before this function's first await, so the
+ * press's user activation still holds (browsers refuse share() without it, NotAllowedError); callers
+ * must call this before any await of their own. The rider closing the sheet (AbortError), or a second
+ * press while one is open (InvalidStateError), is "cancelled"; any other failure is "failed".
+ */
+export function shareLink(nav: ShareNavigator | undefined, content: ShareContent): Promise<ShareOutcome> {
+  if (typeof nav?.share !== "function") return Promise.resolve("failed");
+  let pending: Promise<void>;
   try {
-    await nav.share(content);
-    return "shared";
+    pending = nav.share(content);
   } catch (error) {
-    return (error as { name?: unknown } | null)?.name === "AbortError" ? "cancelled" : "failed";
+    pending = Promise.reject(error);
   }
+  return Promise.resolve(pending).then(
+    (): ShareOutcome => "shared",
+    (error): ShareOutcome => {
+      const name = (error as { name?: unknown } | null)?.name;
+      return typeof name === "string" && SILENT_ERRORS.has(name) ? "cancelled" : "failed";
+    },
+  );
 }
 
 /**

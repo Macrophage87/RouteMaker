@@ -4076,9 +4076,15 @@ Tests: `lib/sidebar.test.ts`.
   accessible name "Share route", described by the location line (395) like Copy link.
   `shareLink` maps the result: the sheet opened says nothing (browsers do not report
   where the link went, so "Shared" could be untrue); AbortError (the rider closed the
-  sheet) says nothing; any other failure goes to the same polite status and visible
-  line as Copy link: "Could not open the share sheet. Use Copy link instead." The a11y
-  check stubs `navigator.share` before the app starts (`open({ init })`).
+  sheet) and InvalidStateError (a sheet already open) say nothing; any other failure
+  goes to the same polite status and visible line as Copy link: "Could not open the
+  share sheet. Use Copy link instead." A press while a sheet is open is skipped (a
+  ref). `shareLink` calls `navigator.share` synchronously and `shareRoute` calls it
+  before any await, so the press's user activation holds (a test pins both). The text
+  leaves the distance out ("Bike route. Ride type: …") while a re-plan is pending, as
+  the route shown is then not the points the link carries. The a11y check stubs
+  `navigator.share` before the app starts (`open({ init })`), refusing a call without
+  user activation or while one is open, as browsers do.
 - **FacilityBreakdown's `part`**: "notices" (the traffic-tolerant warning, the roads
   best avoided, the hills search) stays in view; "figures" (the route colors and the
   bike facilities) goes in the Stress and facilities fold (`breakdownParts`).

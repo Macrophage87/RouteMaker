@@ -1191,13 +1191,25 @@ export function App() {
   // "Share": the same link as Copy link, to the phone's share sheet. The location line describes the button,
   // so it is read before the sheet opens. Nothing is said when the sheet opened or the rider closed it;
   // a failure is said, offering Copy link. It shares the said lines with Copy link, so the last press speaks.
+  // A press while the sheet is open is skipped. shareLink is called before any await, so the press's user
+  // activation still holds. The distance is the route shown, so it is left out while a re-plan is pending
+  // (the link carries the current points).
+  const sharing = useRef(false);
   const shareRoute = async () => {
-    if (!shown) return;
+    if (!shown || sharing.current) return;
+    sharing.current = true;
     const press = ++linkPresses.current;
     setLinkSaid("");
     setLinkSpoken("");
-    const content = shareContent(linkToCopy(window.location, points, preset, dials), shown.distance_m, presetLabel(preset));
-    const said = shareSaidFor(await shareLink(navigator, content));
+    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetLabel(preset));
+    const outcome = shareLink(navigator, content);
+    let said: string;
+    try {
+      said = shareSaidFor(await outcome);
+    } finally {
+      sharing.current = false;
+    }
     if (!said) return;
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(said);
