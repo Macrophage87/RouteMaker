@@ -58,6 +58,10 @@ STEPS = (1, 2, 3, 4, 5)
 # table; the Undo button and the endpoint stop answering after this long, and a later
 # reversal is a new change.
 UNDO_WINDOW = timedelta(minutes=30)
+# An edit's `at` is stamped before its transaction commits, so one stamped just before a
+# rebuild read the override table may still have been invisible to that read. The replay
+# after a promotion starts this much earlier; replaying is idempotent, so the overlap is free.
+REPLAY_MARGIN = timedelta(minutes=10)
 REASON_MAX = 500
 # One road piece in phase 1; the named stretch (phase 5) widens it.
 MAX_WAYS = 1
@@ -738,8 +742,12 @@ def after_promotion(overrides_read_at: datetime | None) -> int:
         row, _ = LiveEditGeneration.objects.get_or_create(table_oid=oid)
         LiveEditGeneration.objects.filter(pk=row.pk).update(overrides_read_at=overrides_read_at)
         if overrides_read_at is None:
+            logger.warning(
+                "the promoted build did not say when it read its overrides: the road panel's "
+                "edits were not re-applied; run reapply_stress_edits"
+            )
             return 0
-        return reapply_since(overrides_read_at)
+        return reapply_since(overrides_read_at - REPLAY_MARGIN)
     except Exception:  # noqa: BLE001 - the promotion stands whatever this does
         logger.exception("could not re-apply the road panel's edits after the promotion")
         return -1

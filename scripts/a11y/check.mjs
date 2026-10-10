@@ -1943,9 +1943,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ed = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const e = d.querySelector('.stress-editor'); const h = e?.querySelector('h3');
     const status = e?.querySelector('[role=status]');
     return { dialogs: document.querySelectorAll('dialog.road-info[open]').length, heading: h?.textContent, focus: document.activeElement === h, labelled: e?.getAttribute('aria-labelledby') === h?.id,
-      rowGone: !d.querySelector('ul.road-info-buttons'), status: status ? status.textContent : null, inside: !!e && d.contains(e) }; })()`);
+      rowGone: !d.querySelector('ul.road-info-buttons'), status: status ? status.textContent : null, shown: !!status && getComputedStyle(status).display !== 'none', inside: !!e && d.contains(e) }; })()`);
   check("stress editor: Change LTS opens the editor in the same dialog, in place of the action row, its heading focused, with an empty polite status region already in the page",
-    loaded && ed.dialogs === 1 && ed.heading === "Change traffic stress" && ed.focus && ed.labelled && ed.rowGone && ed.inside && ed.status === "", JSON.stringify(ed));
+    loaded && ed.dialogs === 1 && ed.heading === "Change traffic stress" && ed.focus && ed.labelled && ed.rowGone && ed.inside && ed.status === "" && ed.shown, JSON.stringify(ed));
   await p.shot(`${SHOTS}/stress-editor_open.png`);
 
   // The level: a native slider, named, read as its words, moved with the arrow keys, Home and End.

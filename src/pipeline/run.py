@@ -1712,6 +1712,8 @@ def build_handlers(
         ]
         context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
         context.override_summary = manifest.get("override_summary")
+        read_at = manifest.get("overrides_read_at")
+        context.overrides_read_at = datetime.fromisoformat(read_at) if read_at else None
         context.resumed = True
         context.revalidate_staging = validation_changed
         context.resume_note = (
@@ -3170,6 +3172,12 @@ def build_handlers(
                 ],
                 "singletracks": sorted(context.singletracks),
                 "override_summary": summary,
+                # When OVERRIDES read the override table, not when this was written: the
+                # swap re-applies the road panel's edits made after it, and a resumed
+                # attempt skips OVERRIDES, so without it the resume would replay none.
+                "overrides_read_at": (
+                    context.overrides_read_at.isoformat() if context.overrides_read_at else None
+                ),
                 # Every hash this attempt has read so far (both extracts, the code,
                 # the reference data, the variant extracts), out of its budget.
                 "hash_seconds": round(context.hasher.seconds, 1),

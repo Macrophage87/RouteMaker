@@ -434,6 +434,8 @@ def approved_override_rows() -> list[dict]:
             "value": row.value,
             "reason": row.reason,
             "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+            # An undo of a road panel edit changes only which row is superseded.
+            "superseded_by": row.superseded_by_id,
         }
         for row in Override.objects.filter(approved=True).order_by("id")
     ]

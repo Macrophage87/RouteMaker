@@ -1500,7 +1500,7 @@ change applies at once; nothing waits for a rebuild except what is listed below.
    and deletes only the cached tiles covering the road at z10-16 (plus a tile's margin), for the
    stress and the Mass Ride tiles, re-keying the rest to the new tag so the cache stays warm.
 
-The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v7"`), so a
+The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v8"`), so a
 browser's revalidation is never answered 304 for a changed tile. Other riders' browsers keep a
 tile for five minutes (`stress_tiles.MAX_AGE_S`, OWNER-DECISIONS 460.6); the editor's own map
 asks for every tile again under `?rev=<generation>` (the server ignores the parameter).
@@ -1544,7 +1544,13 @@ the admin).
 approved, non-superseded stress row per way. It first stops, naming the ways, if any way already
 has two approved stress rows (the loader refuses that, but a row typed into the admin can make
 it): leave one approved in the admin, then migrate. Run `migrate` before the new api image
-serves tiles: the tile query reads `live_edit_generation`.
+serves tiles: the tile query reads `live_edit_generation`. Because `migrate` runs at every `up`
+and the api waits for it, check first, before pulling the new images; this must print no rows:
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+  "SELECT osm_way_id, count(*) FROM override WHERE kind = 'stress' AND approved GROUP BY 1 HAVING count(*) > 1"
+```
 
 **Security.** All four endpoints (`GET /api/me`, `GET /api/stress-edits/way/{id}`,
 `POST /api/stress-edits`, `POST /api/stress-edits/{id}/undo`) answer `Cache-Control: no-store`,

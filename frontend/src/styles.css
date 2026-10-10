@@ -1384,7 +1384,8 @@ dialog.road-info::backdrop {
 }
 
 .stress-editor-said:empty {
-  display: none;
+  /* Stays in the page while empty, like the SF3 regions above: hidden, it would not be read. */
+  margin: 0;
 }
 
 .stress-editor-error {
