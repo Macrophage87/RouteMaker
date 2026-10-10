@@ -1518,6 +1518,7 @@ class TestLongTrails:
             (0, False, False),  # a bridge left to its own deck, and every other way
             (0, True, True),
             (0, None, None),  # an unknown surface stays left out
+            (2, None, True),  # a judged bridge needs no surface of its own
         ],
     )
     @pytest.mark.parametrize("z", [11, 14])

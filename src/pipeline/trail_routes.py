@@ -208,17 +208,17 @@ class RouteMembers(osmium.SimpleHandler):
     def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
         if r.tags.get("type") != "route":
             return
-        if "mtb" in route_routes(r.tags.get("route")):
+        routes = route_routes(r.tags.get("route"))
+        # Before the mountain-bike return: a `bicycle;mtb` relation on a national
+        # network is a national route too.
+        if "bicycle" in routes and r.tags.get("network") in NATIONAL_BICYCLE_NETWORKS:
+            self.national.update(m.ref for m in r.members if m.type == "w")
+        if "mtb" in routes:
             self.mountain_bike.update(m.ref for m in r.members if m.type == "w")
             return
         level = route_level(r.tags.get("route"), r.tags.get("network"))
         if not level:
             return
-        if (
-            "bicycle" in route_routes(r.tags.get("route"))
-            and r.tags.get("network") in NATIONAL_BICYCLE_NETWORKS
-        ):
-            self.national.update(m.ref for m in r.members if m.type == "w")
         # OWNER-DECISIONS 377, "Local trails only at higher zooms.": a local
         # route's name would let its unnamed ways join a named run.
         name = r.tags.get("name", "").strip() if level >= ROUTE_LONG_WALK else ""

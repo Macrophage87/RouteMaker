@@ -820,7 +820,15 @@ The rule reads one new column, `segment.calm_run_m`, written by the rebuild
   mountain-bike trail to the map, whatever an mtb relation or tag says
   (`trail_routes.is_mountain_bike`): the owner, 2026-10-09, found the C&O
   towpath (USBR 50) missing at z13 and below east of Seneca Creek, OSM way
-  68565884, an open unpaved path that drew at z14. A data rebuild applies it.
+  68565884, an open unpaved path that drew at z14. A data rebuild applies it,
+  and narrows OWNER-DECISIONS 378 for ways on those routes. The beta CD gate
+  stops on it (a pipeline file changed): ship the data with `ship-data.sh`
+  after the live rebuild, then run the pre-draw. To confirm it after the
+  rebuild (with the runbook's `Q` helper): `Q "select trail_route, trail_run_m, calm_run_m from live.segment
+  where osm_way_id = 68565884"` gives route 3 and runs in the miles; route 0
+  means the way is on no national route and the gap has another cause. Once
+  confirmed, add the way to `REBUILD_SENTINEL_LONG_TRAIL_WAYS` and
+  `REBUILD_SENTINEL_CALM_PATH_WAYS`.
 
 The writer marks the candidates (a `calm_run_m` of 0, `trail_routes.is_calm_candidate`)
 and the derive sets them; a road's name is written to `trail_name` for the
@@ -1060,7 +1068,7 @@ on DC's blocks, 99 for an untagged two-lane street; 405 and 407 did not move the
 rebuild has promoted the column, a Mass Ride keeps the stress map: the tiles carry no `rpm`, so the
 map keeps its stress layers (the Mass Ride layers switch on only once a capacity has been seen),
 and its legend and panel are the stress ones, with no error and nothing to do. The grey outside DC
-and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 7 (the rebuild bundle's tile format) must reach the api
+and the "DC only for now" words (418) follow the ride type and show either way. FORMAT_VERSION 8 (7, the rebuild bundle's tile format, then the judged bridges' surface) must reach the api
 and the pipeline images together, as the note above says: build both under one TAG (`docker
 compose build`, or `build api rebuild`), never `build api` alone, or the weekly pre-draw evicts
 the api's cache every week. The data takes effect after the next rebuild; the front end and the
@@ -1279,7 +1287,7 @@ z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tile
 are new tiles (the tag's `-v2`), drawn by the next pre-draw.
 An eviction keeps both the stress and the Mass Ride tags of the live table
 (`tile_cache.evict(..., also_keep=...)`), so neither evicts the other. Their own
-format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 7: a
+format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 8: a
 change to one re-draws only its own tiles. A new DC boundary file changes the
 digest, so its tiles are new too; re-run the pre-draw after deploying one. The
 draw slots, the draw timeout, the per-address limit and the Retry-After answers
@@ -1347,7 +1355,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v7"`, or `+kcfrmwoesbtl-v7"` with all twelve optional columns) and a repeat
+   (`-v8"`, or `+kcfrmwoesbtl-v8"` with all twelve optional columns) and a repeat
    with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.
@@ -3841,7 +3849,7 @@ docker compose run --rm --no-deps migrate </dev/null                 # applies c
 Q "select count(*) from django_migrations"                           # one more than in B
 grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: check again just before the recreate
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
-docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 7 2
+docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 8 2 (7 2 before the judged bridges' surface)
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 2 (or the .env value; "Tile build threads")
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
@@ -4078,7 +4086,7 @@ Q "select osm_way_id, map_class, stress_tier from live.segment where osm_way_id 
 Q "select facility, map_class from live.segment where osm_way_id = 468762518"     # the north sidewalk (433): none, barred
 Q "select map_class from live.segment where osm_way_id in (193043941,97677540,99419868)"   # JBAB: barred or hidden, never road
 Q "select bike_access_reason, count(*) from live.segment group by 1 order by 2 desc"   # the road panel's closure reasons (new column): mostly null, then private, bicycle_no, military and the rest; an error here means the rebuild did not write it
-curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v7"
+curl -sI http://localhost/tiles/stress/12/1171/1566.pbf | grep -i etag            # ...-v8" (-v7" before the judged bridges' surface)
 curl -sI http://localhost/tiles/mass/12/1171/1566.pbf   | grep -i etag            # W/"mass-...+fmw-...-v2"
 curl -s  -o /dev/null -w '%{size_download}\n' http://localhost/tiles/mass/12/1176/1562.pbf   # Baltimore: empty
 ```
