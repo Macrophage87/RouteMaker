@@ -4128,6 +4128,23 @@ Tests: `lib/sidebar.test.ts`.
   the fragment App writes to the address bar, which never holds the weight (313). Its
   "Link copied." is polite, said again on a second press, and cleared when the plan
   changes.
+- **Share** (owner, 2026-10-10; `lib/share.ts`) sits right after Copy link, only where
+  `canShareLink` finds `navigator.share` (and `canShare({ url })` says yes, where the
+  browser has it); elsewhere it is not rendered and Copy link stays. It hands
+  `navigator.share` the title "RouteMaker route", `shareText` ("4.7 mi (7.6 km) bike
+  route. Ride type: Default.") and `linkToCopy`'s URL unchanged. Visible word "Share",
+  accessible name "Share route", described by the location line (395) like Copy link.
+  `shareLink` maps the result: the sheet opened says nothing (browsers do not report
+  where the link went, so "Shared" could be untrue); AbortError (the rider closed the
+  sheet) and InvalidStateError (a sheet already open) say nothing; any other failure
+  goes to the same polite status and visible line as Copy link: "Could not open the
+  share sheet. Use Copy link instead." A press while a sheet is open is skipped (a
+  ref). `shareLink` calls `navigator.share` synchronously and `shareRoute` calls it
+  before any await, so the press's user activation holds (a test pins both). The text
+  leaves the distance out ("Bike route. Ride type: …") while a re-plan is pending, as
+  the route shown is then not the points the link carries. The a11y check stubs
+  `navigator.share` before the app starts (`open({ init })`), refusing a call without
+  user activation or while one is open, as browsers do.
 - **FacilityBreakdown's `part`**: "notices" (the traffic-tolerant warning, the roads
   best avoided, the hills search) stays in view; "figures" (the route colors and the
   bike facilities) goes in the Stress and facilities fold (`breakdownParts`).
@@ -4238,7 +4255,8 @@ a stop.", `hereEffectLine`), and the spoken result count includes it ("3 places 
   accuracy (`here`): React state only (a test reads the sources for that, and that they reach only the
   note, the hint and the circle). Copy link shows one line, "This link includes your location as the
   start." (`linkLocationNote`; "as a point on the route" when only a later point came from the location),
-  decided by point object identity. The button is described by it, and a press says it with the
+  decided by point object identity. The button (and Share, where shown, so it is read before the share
+  sheet opens) is described by it, and a Copy link press says it with the
   confirmation ("Link copied. This link includes your location as the start."). A drag of a point that
   came from the location keeps the note (`movedFromHere`: the moved point is still the rider's spot); an
   undo that brings a point back restores it.

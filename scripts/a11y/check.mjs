@@ -35,13 +35,15 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null, init = "" } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
+  // A script run before the app starts (the Share section stubs or removes navigator.share).
+  if (init) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: init });
   if (before) await before(p);
   await p.s("Page.navigate", { url: `http://127.0.0.1:${port}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
@@ -3386,12 +3388,91 @@ async function hazardsAsked(p, ms = 15000) {
   await p.close();
 }
 
+// ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
+{
+  // No share sheet: no Share button, and Copy link is still there.
+  const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
+  const none = await p.eval("({ share: [...document.querySelectorAll('.route-actions button')].some((e) => /^Share/.test(e.textContent.trim())), copy: [...document.querySelectorAll('.route-actions button')].some((e) => e.textContent.trim() === 'Copy link') })");
+  check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
+  await p.close();
+}
+// A stubbed share sheet, as strict as a browser's: no user activation (an await before share()) is
+// NotAllowedError, a call while one is open is InvalidStateError. window.__shareMode says how it answers:
+// "ok", "abort" (the rider closed it), "fail" (DataError) or "hold" (open until window.__release()).
+const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__noActivation = 0; window.__open = false;
+  Object.defineProperty(Navigator.prototype, "share", { configurable: true, value: function (d) {
+    if (!navigator.userActivation?.isActive) { window.__noActivation += 1; return Promise.reject(new DOMException("no activation", "NotAllowedError")); }
+    if (window.__open) return Promise.reject(new DOMException("already open", "InvalidStateError"));
+    window.__shared.push(JSON.parse(JSON.stringify(d)));
+    const mode = window.__shareMode;
+    if (mode === "hold") { window.__open = true; return new Promise((done) => { window.__release = () => { window.__open = false; done(); }; }); }
+    return mode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", mode === "abort" ? "AbortError" : "DataError")); } });
+  Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
+const MARK_SHARE = "(() => { const all = [...document.querySelectorAll('.route-actions button')]; const c = all.find((e) => e.textContent.trim() === 'Copy link'); const s = all.find((e) => e.textContent.trim() === 'Share'); if (c) c.id = '__copy'; if (s) s.id = '__share'; return true; })()";
+{
+  const p = await open({ init: SHARE_STUB });
+  await p.eval(MARK_SHARE);
+  const ax = await axNode(p, "#__share");
+  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, after: document.getElementById('__copy')?.nextElementSibling === s }; })()");
+  check("share: a button named Share route, right after Copy link, 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box?.after && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  await p.eval("document.getElementById('__copy').focus(); true");
+  await p.tab();
+  check("share: the next Tab stop after Copy link", await p.eval("document.activeElement?.id === '__share'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.enter();
+  await sleep(600);
+  const sent = await p.eval("({ shared: window.__shared, href: location.href, noActivation: window.__noActivation })");
+  const one = sent.shared[0] ?? {};
+  check("share: Enter hands the sheet this page's link (Copy link's), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && one.url === sent.href && /#p=/.test(one.url) && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
+  const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
+  const afterOk = await p.eval(status);
+  check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
+  // Each press is a real key press on the focused button, so it carries user activation.
+  const pressShare = async () => { await p.eval("document.getElementById('__share').focus(); true"); await p.enter(); };
+  await p.eval("window.__shareMode = 'abort'; true");
+  await pressShare();
+  await sleep(600);
+  const afterAbort = await p.eval(status);
+  check("share: closing the sheet (AbortError) is silent", afterAbort.spoken === "" && afterAbort.shown === "" && afterAbort.shared === 2 && afterAbort.noActivation === 0, JSON.stringify(afterAbort));
+  // A second press while the sheet is open is skipped (no second share(), so no InvalidStateError), and nothing is said.
+  await p.eval("window.__shareMode = 'hold'; true");
+  await pressShare();
+  await sleep(300);
+  await pressShare();
+  await sleep(300);
+  await p.eval("window.__release?.(); true");
+  await sleep(600);
+  const afterHold = await p.eval(status);
+  check("share: a second press while the sheet is open is skipped and says nothing", afterHold.shared === 3 && afterHold.spoken === "" && afterHold.shown === "" && afterHold.noActivation === 0, JSON.stringify(afterHold));
+  await p.eval("window.__shareMode = 'fail'; true");
+  await pressShare();
+  await sleep(600);
+  const afterFail = await p.eval(status);
+  const polite = await p.eval("document.querySelector('.route-actions [role=status]')?.getAttribute('aria-live') !== 'assertive'");
+  check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
+  // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does.
+  // (The last key press's transient activation lasts about 5 s: wait for it to lapse first.)
+  const lapsed = await p.waitFor("!navigator.userActivation?.isActive", 10000);
+  await p.eval("window.__shareMode = 'ok'; document.getElementById('__share').click(); true");
+  await sleep(600);
+  const guard = await p.eval(status);
+  check("share: the stub refuses share() without user activation (so an await before share() would fail the checks above)", lapsed && guard.noActivation === 1 && guard.shared === 4 && guard.spoken === "Could not open the share sheet. Use Copy link instead.", JSON.stringify(guard));
+  await p.close();
+}
+{
+  // On a 320 px phone the three route actions share the row; Share is still 44 px each way and nothing spills.
+  const p = await open({ init: SHARE_STUB, width: 320, height: 800, mobile: true });
+  await p.eval(MARK_SHARE);
+  const fit = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const row = s.parentElement.getBoundingClientRect(); return { w: r.width, h: r.height, inRow: r.left >= row.left - 1 && r.right <= row.right + 1, over: s.scrollWidth > s.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()");
+  check("share at 320 px: 44 px or more each way, inside the actions row, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 525;
+const EXPECTED = 535;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
