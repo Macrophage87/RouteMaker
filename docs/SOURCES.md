@@ -254,6 +254,40 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
+## Noto Emoji skull and crossbones (the Avoid-rated junction marker; not a map credit)
+
+A bundled asset, like the panel's font, not a data source: no `Credit:` line and not in the
+map's credits (301 is about data sources). It is credited where the font is, in the shipped
+`licenses.txt`, which the map's "Software licences" link opens.
+
+- What it is: the skull and crossbones (U+2620) the Avoid-rated junction marker draws on a
+  ringed disc (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 309, 310), inlined into the page from
+  `frontend/src/icons/noto-emoji-u2620.svg` (nothing is fetched at run time). The junction
+  list, the notice and the description use the Unicode character itself (310); the legend has
+  no row for it (the owner, 2026-10-10).
+- Publisher: Google (Noto Emoji, <https://github.com/googlefonts/noto-emoji>).
+- The one file downloaded, with the owner's approval of 2026-10-10 13:57 UTC: `2D/svg/emoji_u2620.svg`
+  at commit `e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e` (the repository's `main` that day),
+  <https://raw.githubusercontent.com/googlefonts/noto-emoji/e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e/2D/svg/emoji_u2620.svg>,
+  retrieved 2026-10-10. The repository now keeps its SVGs under `2D/svg/`; `svg/emoji_u2620.svg`,
+  the path first named, answers 404 at that commit. 8,320 bytes, sha256
+  `4baff1c033110775d495b6fe6da05a7bdf94452af12f8a9207c00de28364535e`, committed unmodified.
+- Inspected before use (downloaded into an empty directory first): an Adobe Illustrator export
+  of `<svg>`, `<g>`, `<path>` and `<ellipse>` with inline fills only; no script, no event
+  attribute, no link or `href`, no external reference (the only URLs are the SVG and XLink
+  namespace names). `frontend/src/lib/avoidJunctions.test.ts` holds the sha256 and these checks.
+- Licence: Apache License 2.0. The repository's README says its "Tools and most image
+  resources are under the Apache license, version 2.0" and its fonts under the SIL Open Font
+  License; the root `LICENSE` file at that commit is the OFL text (for the fonts), and the SVG
+  directory's own `2D/svg/LICENSE` is the Apache 2.0 notice ("Copyright 2013 Google, Inc. All
+  Rights Reserved. Licensed under the Apache License, Version 2.0 ..."), which governs this file.
+  That notice, verbatim, is `frontend/src/icons/NOTICE-noto-emoji.txt`; the full licence text is
+  `frontend/src/icons/LICENSE-Apache-2.0.txt` (the standard text, sha256
+  `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`, taken from the build host's
+  `/usr/share/common-licenses/Apache-2.0`, not downloaded). Both are added to `licenses.txt` by
+  the `licenceNotices` plugin (`frontend/src/licences/notices.mjs`, `BUNDLED_ICONS`).
+- Records: `fixtures/icons/README.md`; docs/DEVELOPMENT.md, "Avoid-rated junctions".
+
 ## The Mass Ride flow model (pending: FOLLOWUP-FLOW-CALIBRATION)
 
 - Credit: on the chart's source line, "Riders per minute: estimated from road widths (in

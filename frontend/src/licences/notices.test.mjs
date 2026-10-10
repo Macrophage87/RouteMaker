@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUNDLED_FONTS, COMMITTED_NOTICES, completeLicences, fontTexts, inlinedPackages, licenceFile, packageOf, withFontNotices } from "./notices.mjs";
+import { BUNDLED_FONTS, BUNDLED_ICONS, COMMITTED_NOTICES, completeLicences, fontTexts, iconTexts, inlinedPackages, licenceFile, packageOf, withFontNotices, withIconNotices } from "./notices.mjs";
 
 const FRONTEND = new URL("../../", import.meta.url);
 
@@ -171,4 +171,21 @@ test("the font files, the licence and the plugin's wiring are in place", () => {
   const plugin = readFileSync(new URL("src/licences/notices.mjs", FRONTEND), "utf8");
   assert.match(plugin, /const fonts = fontTexts\(root\);/);
   assert.match(plugin, /withFontNotices\(completeLicences\(readFileSync\(file, "utf8"\), \{ fill: committed, inlined \}\), fonts\)/);
+});
+
+test("the Avoid junction icon's Apache 2.0 notice and full licence are added under a heading of their own (310)", () => {
+  assert.deepEqual(BUNDLED_ICONS.map((i) => i.license), ["Apache-2.0"]);
+  const icons = iconTexts(fileURLToPath(FRONTEND));
+  assert.equal(icons.length, 1);
+  const text = withIconNotices(withFontNotices(VITE, []), icons);
+  assert.ok(text.startsWith(VITE.replace(/\s+$/, "")));
+  assert.match(text, /^## Noto Emoji skull and crossbones \(U\+2620\) - e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e \(Apache-2\.0\)$/m);
+  assert.match(text, /Copyright 2013 Google, Inc\. All Rights Reserved\./);
+  assert.match(text, /2D\/svg\/emoji_u2620\.svg/);
+  assert.match(text, /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/);
+  // An icon with no text fails the build.
+  assert.throws(() => withIconNotices(VITE, [{ ...BUNDLED_ICONS[0], text: null }]), /no licence text for bundled icon/);
+  assert.equal(withIconNotices(VITE, []), VITE);
+  const plugin = readFileSync(new URL("src/licences/notices.mjs", FRONTEND), "utf8");
+  assert.match(plugin, /withIconNotices\(withFontNotices\(/);
 });

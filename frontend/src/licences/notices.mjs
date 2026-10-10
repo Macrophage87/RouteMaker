@@ -22,6 +22,10 @@
  * - The self-hosted font (Atkinson Hyperlegible, OWNER-DECISIONS 384) is a file, not a
  *   package, so build.license never lists it. Its credit and the full SIL Open Font
  *   License text (frontend/src/fonts/OFL.txt) are appended under their own heading.
+ * - So is the bundled icon, the Noto Emoji skull and crossbones of the Avoid-rated
+ *   junction marker (OWNER-DECISIONS 310): its notice (src/icons/NOTICE-noto-emoji.txt)
+ *   and the full Apache License 2.0 (src/icons/LICENSE-Apache-2.0.txt), which section
+ *   4(a) and (c) ask to travel with a redistributed copy.
  *
  * A bundled package left without licence text fails the build.
  */
@@ -113,6 +117,34 @@ export function withFontNotices(text, fonts) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
 }
 
+/** The icons bundled into the app, each with its notice and its licence's full text. */
+export const BUNDLED_ICONS = [
+  {
+    name: "Noto Emoji skull and crossbones (U+2620)",
+    version: "e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e",
+    license: "Apache-2.0",
+    files: ["src/icons/NOTICE-noto-emoji.txt", "src/icons/LICENSE-Apache-2.0.txt"],
+  },
+];
+
+/** Each bundled icon with its notice and licence read from `root` (frontend/); null where a file is missing. */
+export function iconTexts(root, icons = BUNDLED_ICONS) {
+  return icons.map((icon) => ({
+    ...icon,
+    text: icon.files.every((f) => existsSync(join(root, f))) ? icon.files.map((f) => readFileSync(join(root, f), "utf8").trim()).join("\n\n") : null,
+  }));
+}
+
+/** The notices with the bundled icons' notices and licences added under a heading of their own; throws when one has no text. */
+export function withIconNotices(text, icons) {
+  if (icons.length === 0) return text;
+  const missing = icons.filter((i) => !i.text || !i.text.trim()).map((i) => i.name);
+  if (missing.length > 0) throw new Error(`no licence text for bundled icon(s): ${missing.join(", ")}`);
+  const out = [text.replace(/\s+$/, ""), "", "---", "", "Icons bundled with the app:", ""];
+  for (const i of icons) out.push(`## ${i.name} - ${i.version} (${i.license})`, "", i.text.trim(), "");
+  return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
+}
+
 /** A package's own licence file's text, or null. */
 export function licenceFile(dir) {
   const name = readdirSync(dir).find((f) => /^(licen[cs]e|copying)/i.test(f));
@@ -143,7 +175,11 @@ export function licenceNotices(root, fileName = "licenses.txt") {
         });
         if (!existsSync(file)) throw new Error(`${fileName} was not written by build.license`);
         const fonts = fontTexts(root);
-        writeFileSync(file, withFontNotices(completeLicences(readFileSync(file, "utf8"), { fill: committed, inlined }), fonts));
+        const icons = iconTexts(root);
+        writeFileSync(
+          file,
+          withIconNotices(withFontNotices(completeLicences(readFileSync(file, "utf8"), { fill: committed, inlined }), fonts), icons),
+        );
       },
     },
   };
