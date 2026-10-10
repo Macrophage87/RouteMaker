@@ -324,20 +324,23 @@ if [ -f "$DATA_ROOT/tiles/standard/current/tiles.tar" ]; then
 else
   [ "${#STACK_ARGS[@]}" = 0 ] || say "note: no routing data yet, so the arguments after -- (for start-stack.sh) are not used"
   say "no routing data yet: starting ${FIRST_RUN_SERVICES[*]} (the routers wait for the first rebuild)"
-  up_args=(-d --no-build)
+  services=("${FIRST_RUN_SERVICES[@]}")
   # The first rebuild runs for hours with no tiles.tar to show for it until it
-  # promotes, and recreating its container kills it (compose.yaml, rebuild).
-  # While that container runs, start what is missing and leave the rest alone, as
-  # start-stack.sh does.
+  # promotes, and recreating the rebuild container kills it (compose.yaml,
+  # rebuild). So a running rebuild container is left alone, as start-stack.sh
+  # leaves it unless told otherwise; nothing depends on it, and the rest are
+  # started, and recreated where their image or .env changed, as usual.
   if [ -n "$("$DOCKER" ps -q --filter "label=com.docker.compose.project=$PROJECT" \
     --filter label=com.docker.compose.service=rebuild --filter status=running 2>/dev/null || true)" ]; then
-    say "note: the rebuild container is running, so running containers are left as they are (newly built images go into service once it has finished and this is run again)"
-    up_args+=(--no-recreate)
+    say "note: the rebuild container is running and is left as it is, so a rebuild in progress carries on"
+    services=()
+    for svc in "${FIRST_RUN_SERVICES[@]}"; do [ "$svc" = rebuild ] || services+=("$svc"); done
   fi
-  run dc up "${up_args[@]}" "${FIRST_RUN_SERVICES[@]}"
+  run dc up -d --no-build "${services[@]}"
   if [ "$DRY_RUN" = 0 ]; then
     say "waiting up to ${HEALTHY_S}s for $BASE_URL/healthz"
     waited=0
+    said=0
     until [ "$(health)" = 200 ]; do
       if [ "$waited" -ge "$HEALTHY_S" ]; then
         warn "the stack started but $BASE_URL/healthz has not answered 200 in ${HEALTHY_S}s."
@@ -347,7 +350,10 @@ else
       fi
       sleep "$POLL_S"
       waited=$((waited + POLL_S))
-      [ "$waited" = 0 ] || [ $((waited % 30)) -ne 0 ] || say "still waiting for $BASE_URL/healthz (${waited}s)"
+      if [ $((waited - said)) -ge 30 ]; then
+        say "still waiting for $BASE_URL/healthz (${waited}s)"
+        said=$waited
+      fi
     done
   fi
   HAVE_DATA=0

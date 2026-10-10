@@ -48,7 +48,10 @@ Routing needs data that the first rebuild makes (hours, and three reference
 files you supply). Until then the map loads but routes do not, and the script
 prints the next step:
 [PLAYBOOK section 7, "The first rebuild"](docs/PLAYBOOK.md#7-the-first-rebuild--a4).
-Once a build is promoted, the same command starts the routers too.
+Once a build is promoted, the same command starts the routers too, through
+`scripts/boot/start-stack.sh`, which leaves running containers alone: after
+pulling new code, `scripts/local-up.sh -- --force-recreate-all` puts the new
+images into service (it stops a rebuild that is running).
 
 It needs the internet on a first run: Docker Hub, ghcr.io, pypi.org,
 deb.debian.org, registry.npmjs.org, build.protomaps.com and github.com, plus

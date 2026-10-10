@@ -388,7 +388,8 @@ class LocalUpTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(any("prepare_data_root.sh" in c for c in self.calls()))
 
-    def test_a_running_rebuild_is_not_recreated(self) -> None:
+    def test_a_running_rebuild_is_left_alone_and_the_rest_started(self) -> None:
+        """A first rebuild in progress survives a rerun after a .env or code change."""
         self.first_run()
         (self.fake / "calls.log").unlink()
         (self.fake / "rebuild_running").write_text("0123456789ab\n")
@@ -396,13 +397,15 @@ class LocalUpTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         ups = [c for c in self.calls() if c.startswith("compose ") and " up " in c]
         self.assertEqual(len(ups), 1, ups)
-        self.assertIn(" --no-recreate ", ups[0])
+        services = ups[0].split("|")[0].split(" up -d --no-build ")[1].split()
+        self.assertEqual(services, ["postgis", "api", "worker", "caddy", "photon"])
+        self.assertNotIn("--no-recreate", ups[0])
 
-    def test_without_a_running_rebuild_up_may_recreate(self) -> None:
+    def test_without_a_running_rebuild_it_is_started_too(self) -> None:
         self.first_run()
         ups = [c for c in self.calls() if c.startswith("compose ") and " up " in c]
         self.assertEqual(len(ups), 1, ups)
-        self.assertNotIn("--no-recreate", ups[0])
+        self.assertIn(" rebuild ", ups[0])
 
     # --- With routing data --------------------------------------------------------
 
