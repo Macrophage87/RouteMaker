@@ -136,6 +136,8 @@ test("the target distance's words say what it does, with miles first and kilomet
   assert.equal(empty.how, TARGET_HOW);
   assert.match(TARGET_HOW, /fewest heavy-traffic roads and very high stress junctions first/);
   assert.match(TARGET_HOW, /goes past your target only where the extra miles avoid enough busy road/);
+  // OWNER-DECISIONS 435, "One rule": the miles up to the target are no longer free.
+  assert.match(TARGET_HOW, /Up to your target, each extra mile must still avoid a tenth of a mile of busy road\./);
   assert.match(TARGET_HOW, /never past 1\.25 times it/);
   // OWNER-DECISIONS 287(3): a target below the calm route gives the calm route, flagged (the spec review's NIT1).
   assert.match(TARGET_HOW, /If the calmest route is longer than your target, it is still the one chosen, and the route summary says how far over your target it is\./);

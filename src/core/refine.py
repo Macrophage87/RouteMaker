@@ -1,6 +1,6 @@
 """A search over the router's own routes: the calm detour and crossing avoidance.
 
-Why a search and not a cost. Valhalla 3.5.1's bicycle costing prices a road by
+Why a search and not a cost. Valhalla's bicycle costing (3.5.1 and 3.6.3) prices a road by
 `use_roads`, which runs 0 to 1 and no further, and at 0 an LTS 3 way is already
 at its ceiling (about 5 to 13 times its time). It has no hook that knows which
 road a rider crosses or how they turn (`routemaker.intersections`, "Why this is
@@ -58,7 +58,9 @@ the "second" (metres of LTS 3 plus the cost of each higher stress junction, 260)
 the hills preference (262), then distance (`MAXCALM_STEPS`, `better`). Extra distance
 has diminishing returns (268, `worth_it`): a longer candidate is taken only where the
 stress it saves pays for the miles it adds (`WORTH_DEFAULT`; past the rider's target
-the stricter `WORTH_OVER_TARGET`, and up to the target nothing). A candidate past the
+the stricter `WORTH_OVER_TARGET`, and up to the target `WORTH_UP_TO_TARGET`, half the
+default's price, OWNER-DECISIONS 435; below the top the same rule holds at `worth_ratio`,
+which rises with the slider). A candidate past the
 ceiling is never taken, and the router's own price for the route, and any credit for
 trail, do not come into it. A trip past the working span (`REFINE_MAX_SPAN_M`) is
 planned leg by leg (`refine_long`).
@@ -257,9 +259,10 @@ class Context:
     # The top of the slider (`presets.maxcalm_for`): candidates are ranked by
     # `better`, not by the score, and none longer than `ceiling_m` metres is taken
     # (None: no limit, as below the top). `target_m` is the rider's target distance
-    # (OWNER-DECISIONS 271; None: none set), up to which distance costs nothing and
-    # past which it must buy stress at WORTH_OVER_TARGET; with none, every extra metre
-    # must buy it at WORTH_DEFAULT (268). `worth_rule` off: no such price (a long
+    # (OWNER-DECISIONS 271; None: none set), up to which distance costs WORTH_UP_TO_TARGET
+    # (435, "One rule") and past which it must buy stress at WORTH_OVER_TARGET; with
+    # none, every extra metre must buy it at the slider's `worth_ratio` (268, 435:
+    # WORTH_DEFAULT at the top). `worth_rule` off: no such price (a long
     # plan's legs, whose options are priced for the whole trip, `choose_options`).
     maxcalm: bool = False
     ceiling_m: float | None = None
@@ -424,10 +427,18 @@ MAXCALM_STEPS = (15.0, 50.0, 50.0)
 # - WORTH_DEFAULT where the rider set no target: 5 metres added per metre saved;
 # - WORTH_OVER_TARGET for the metres past the rider's target distance (271: "may
 #   exceed it when that buys a meaningful stress cut"), a stricter bar: 2.5;
-# - up to the rider's target, distance costs nothing (they asked for it).
+# - up to the rider's target, WORTH_UP_TO_TARGET, half the default's price (435, "One
+#   rule"; free under 271 until then).
 # Tunable; docs/DEVELOPMENT.md, "Long calm trips", has the measurements.
 WORTH_DEFAULT = 5.0
 WORTH_OVER_TARGET = 2.5
+# One rule across the calm search (OWNER-DECISIONS 435, the owner's "One rule",
+# 2026-10-10): every longer route must buy its miles with calm, below the top of the
+# slider too, at a ratio that rises with the slider's calm rate from 1 just above the
+# old top to WORTH_DEFAULT at the top (`worth_ratio`: about 1.2 at 85, 1.7 at 90, 2.8
+# at 95); and under a target the miles up to it cost WORTH_UP_TO_TARGET metres per
+# metre of LTS 3 saved, half the default's price, where 271 made them free.
+WORTH_UP_TO_TARGET = 10.0
 # The level weights the stress saved is counted at: the standard 1, 2 and 3 for LTS 3,
 # LTS 4 and Avoid (`presets.EXPOSURE_STANDARD`), on every ride. Not the stress-averse
 # rides' 1, 8 and 16 (item 250), which the ranking does not need (it puts LTS 4 first
@@ -491,23 +502,35 @@ def distance_charge_m(
 ) -> float:
     """The stress (metres of LTS 3, `stress_weight_m`) a route must save to be
     `to_m` long rather than `from_m` (actual metres of the whole trip; 268, 271):
-    - with a target, nothing up to it and the actual metres past it over
-      WORTH_OVER_TARGET (the target is in actual miles, 262);
-    - with none, the metres added over WORTH_DEFAULT, as the Hills slider weighs
+    - with a target, the actual metres up to it over WORTH_UP_TO_TARGET (435, "One
+      rule") and those past it over WORTH_OVER_TARGET (the target is in actual
+      miles, 262);
+    - with none, the metres added over the slider's `worth_ratio`, as the Hills slider weighs
       them (`blended_m`, the difference in `level3`; `to_m - from_m` where it is
       not given), so a longer route that is less effort is not charged for it."""
     if ctx.target_m is None:
         added = to_m - from_m if blended_m is None else blended_m
-        return max(added, 0.0) / WORTH_DEFAULT
+        return max(added, 0.0) / worth_ratio(ctx)
     over = to_m - max(from_m, ctx.target_m)
-    return max(over, 0.0) / WORTH_OVER_TARGET
+    within = min(to_m, ctx.target_m) - from_m
+    return max(over, 0.0) / WORTH_OVER_TARGET + max(within, 0.0) / WORTH_UP_TO_TARGET
+
+
+def worth_ratio(ctx: Context) -> float:
+    """Metres a route may add for each metre of LTS 3 (`stress_weight_m`) it saves, where
+    the rider set no target (OWNER-DECISIONS 435, "One rule"): WORTH_DEFAULT at the top
+    of the slider, and below it 1 + (WORTH_DEFAULT - 1) x the calm rate over its top."""
+    if ctx.maxcalm:
+        return WORTH_DEFAULT
+    return 1.0 + (WORTH_DEFAULT - 1.0) * max(ctx.rate, 0.0) / presets.CALM_RATE_MAX
 
 
 def worth_it(shorter: Analysis, longer: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
     """Whether `longer` saves enough stress over `shorter` for the distance it adds
     (`distance_charge_m`). `rest_m` is the rest of the trip where the two are one leg
     of it (the target is the whole trip's). Always, where the rule is off."""
-    if not ctx.worth_rule:
+    if not ctx.worth_rule or (not ctx.maxcalm and ctx.rate <= 0):
+        # No calm search (crossing avoidance alone): no bar on distance but the score.
         return True
     charge = distance_charge_m(
         shorter.length_m + rest_m,
@@ -533,12 +556,17 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
     """Whether `read` is to replace `best`: below the top of the slider, by the
-    score (IMPROVEMENT_EPS_S); at the top, by `MAXCALM_STEPS` down `Analysis.key`
+    score (IMPROVEMENT_EPS_S), a longer route also worth its extra miles (`worth_it`,
+    435 "One rule"); at the top, by `MAXCALM_STEPS` down `Analysis.key`
     (`calmer`), with diminishing returns on the distance (`worth_it`): a longer
     route must be calmer and worth its extra miles, and a shorter one replaces a
     calmer longer one whose extra miles were not worth it. `rest_m`: see `worth_it`."""
     if not ctx.maxcalm:
-        return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S
+        # Below the top a longer route must also be worth its miles (OWNER-DECISIONS
+        # 435, "One rule"; `worth_ratio`), wherever the calm search runs.
+        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:
+            return False
+        return read.length_m <= best.length_m or worth_it(best, read, ctx, rest_m)
     if read.length_m > best.length_m:
         return calmer(read, best, ctx) and worth_it(best, read, ctx, rest_m)
     if calmer(read, best, ctx):
@@ -1217,7 +1245,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["limited"] = seek["limited"] or "too_long"
             return best, best_trip
         # And the extra miles worth the stress they save (OWNER-DECISIONS 268, 271).
-        if ctx.maxcalm and read.length_m > best.length_m and not worth_it(best, read, ctx):
+        if read.length_m > best.length_m and not worth_it(best, read, ctx):
             seek["taken"] = False
             seek["whole_trip"] = "not_worth"
             seek["limited"] = seek["limited"] or "not_worth"

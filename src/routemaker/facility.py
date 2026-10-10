@@ -48,7 +48,7 @@ from enum import StrEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .ridetime import closed_settings
-from .tags import CYCLEWAY_KEYS, cycleway_provision
+from .tags import CYCLEWAY_KEYS, PERMISSIVE_ACCESS, cycleway_provision, narrow_access_lists
 
 
 class Facility(StrEnum):
@@ -122,11 +122,58 @@ def _unrestricted(tags: dict[str, str], keys: Sequence[str]) -> bool:
     return all(tags.get(key) is None or tags[key] in _PERMISSIVE_ACCESS for key in keys)
 
 
+def physically_closed(tags: dict[str, str]) -> bool:
+    """A way mapped as impassable, which the router closes to every vehicle
+    (`impassable=yes`; `smoothness=impassable` from Valhalla 3.6.0) unless a
+    bicycle tag reopens it (lua/routemaker_remap.lua, `physically_closed`)."""
+    return tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable"
+
+
+def _public_vehicle_grant(tags: dict[str, str]) -> bool:
+    vehicle = tags.get("vehicle")
+    return vehicle is not None and all(
+        part.strip() in PERMISSIVE_ACCESS for part in vehicle.split(";")
+    )
+
+
+# The `vehicle` values Valhalla 3.6.2 reads as a grant, and the `access` values
+# whose closure such a grant does not lift for a bicycle (lua/routemaker_remap.lua,
+# `VEHICLE_GRANTS` and `ACCESS_CLOSES`; `trailaccess.UPSTREAM_VEHICLE_ACCESS`).
+VEHICLE_GRANTS = frozenset(
+    {
+        "yes", "private", "permissive", "delivery", "designated", "destination", "customers",
+        "official", "public", "restricted", "allowed", "permit", "residents",
+    }
+)  # fmt: skip
+ACCESS_CLOSES = frozenset({"no", "agricultural", "forestry", "discouraged", "emergency", "psv"})
+
+
+def _restricted_vehicle_grant_on_open_class(tags: dict[str, str]) -> bool:
+    """A cycleway or path with a restricted `vehicle` grant (`vehicle=delivery`)
+    and no closing `access`: upstream opens it, and the remap leaves it open
+    because the class is open to bicycles anyway (`vehicle_reopens_for_bicycle`)."""
+    vehicle = tags.get("vehicle")
+    return (
+        vehicle is not None
+        and tags.get("highway") in TRAIL_OPEN_BY_DEFAULT
+        and tags.get("access") not in ACCESS_CLOSES
+        and any(part.strip() in VEHICLE_GRANTS for part in vehicle.split(";"))
+    )
+
+
 def trail_open_to_bicycle(tags: dict[str, str]) -> bool:
-    """Whether a bicycle may ride a trail-class way, as Valhalla will read it."""
+    """Whether a bicycle may ride a trail-class way, as Valhalla will read it:
+    access lists narrowed as the transform narrows them, a bicycle tag first,
+    then impassability, then a public `vehicle` grant (read for bicycles from
+    Valhalla 3.6.2, valhalla/valhalla#5802), then the class default."""
+    tags = narrow_access_lists(tags)
     bicycle = tags.get("bicycle")
     if bicycle is not None:
-        return bicycle in BICYCLE_ALLOWED
+        return any(part.strip() in BICYCLE_ALLOWED for part in bicycle.split(";"))
+    if physically_closed(tags):
+        return False
+    if _public_vehicle_grant(tags) or _restricted_vehicle_grant_on_open_class(tags):
+        return True
     return tags.get("highway") in TRAIL_OPEN_BY_DEFAULT and _unrestricted(
         tags, ("access", "vehicle")
     )
@@ -423,7 +470,12 @@ def map_class(tags: dict[str, str]) -> MapClass:
         return MapClass.ALLEY if alley else MapClass.ROAD
     if closed or bicycle == "private":
         return MapClass.HIDDEN
-    if highway in BARRED_HIGHWAY or bicycle in BARRING_BICYCLE or tags.get("motorroad") == "yes":
+    if (
+        highway in BARRED_HIGHWAY
+        or bicycle in BARRING_BICYCLE
+        or tags.get("motorroad") == "yes"
+        or (bicycle is None and physically_closed(tags))
+    ):
         return MapClass.BARRED
     if alley:
         return MapClass.ALLEY
@@ -463,6 +515,8 @@ def bike_access_reason(
         return "bicycle_use_sidepath"
     if bicycle == "private" or any(tags.get(k) in NO_PUBLIC_ACCESS for k in ("access", "vehicle")):
         return "private"
+    if bicycle is None and physically_closed(tags):
+        return "impassable"
     if tags.get("highway") in BARRED_HIGHWAY:
         return "motorway"
     if tags.get("motorroad") == "yes":

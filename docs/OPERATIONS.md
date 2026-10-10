@@ -640,6 +640,18 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 - An unnamed divided road's two carriageways are counted as two roads (half the
   second added), not once with the refuge credit.
 
+**The rolling stress chart** (OWNER-DECISIONS 460.12; docs/DEVELOPMENT.md "The rolling
+stress chart"). The route answer's `profile.calm` is worked out from the sections and
+junctions the answer already reads: no router call, no database read, no migration and no
+router restart; it ships with the API image and the front end, in either order (an older
+front end ignores it, and the new one draws the old stress strip where it is missing). A
+WARNING "the rolling stress score could not be built" means one answer went out with
+`calm: null`: its chart fell back to the strip and the route itself is unaffected. It adds
+at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus the
+sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
+compresses only tiles and the front end), so a long ride with candidates grows by tens of
+KB. `calm.estimate` is true while each stretch is priced by its tier.
+
 ## The stress tiles
 
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
@@ -1608,6 +1620,14 @@ Upstream fixed it in 3.6.0 ([valhalla/valhalla#5005](https://github.com/valhalla
 reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
 race, not bad data: the same inputs build on the next try, and which graph it
 hits is luck.
+
+**The pinned image is 3.6.3 now (2026-10-10), which has that fix**: 3.6.3 takes
+a process-wide lock around the cleanup (`Sqlite3::~Sqlite3`,
+src/mjolnir/sqlite3.cc:78-91 at 3.6.3). Both guards below stay until 3.6.3
+rebuilds on this host have shown no abort; the default stays 2 for memory as
+much as for the race. Once a few rebuilds are clean, 4 (the measured 4.5 h row
+below) is the setting to try. A `retry 1 of 1` line under 3.6.3 is no longer
+the known race: keep the log and report it.
 
 Two things keep it from failing a rebuild:
 
@@ -2631,7 +2651,7 @@ writes nothing.
 
 Singletrack (OWNER-DECISIONS 90, 91, 111) is closed to bicycles on every graph,
 and so is OSM's own `bicycle=no`. Until the rebuild after 2026-10-03 neither
-held on a way with a mountain-bike rating: Valhalla 3.5.1's C++ parser reads
+held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 and 3.6.3) reads
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
@@ -4022,8 +4042,9 @@ yet and that is an older build's value (it may well say 4): wait and run it agai
 not conclude anything from it.
 
 A log line `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1` means
-the 3.5.1 race hit one graph and the retry is building it again: nothing needs doing during
-the run. Note it in the report; "Tile build threads" says when to move to
+a tile build aborted and the retry is building it again: nothing needs doing during
+the run. Under 3.5.1 that was the known race; the pinned 3.6.3 fixes it, so an abort now is something new. Keep the
+rebuild's log and note the line in the report. "Tile build threads" says when to move to
 `REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
 line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
 the retry aborted too: set 1 before the next rebuild.

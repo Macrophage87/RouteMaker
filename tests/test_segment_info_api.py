@@ -579,6 +579,7 @@ class TestWords:
             "bicycle_no",
             "bicycle_use_sidepath",
             "private",
+            "impassable",
             "motorway",
             "motorroad",
         }
