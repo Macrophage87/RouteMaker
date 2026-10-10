@@ -853,7 +853,7 @@ the credits (301). The front-end ones are 71 of 71 killed; the Python ones need 
 PLAN.md FOLLOWUP-FEDERAL-LAYER. The Mass Ride map shades the land under federal
 control, as information and not legal advice: ownership is not police
 jurisdiction. The routing and description half of item 239 (stops inside federal
-land, the parkway stretches) is a later step and is not here.
+land, the parkway stretches) is the next section.
 
 * **Data.** `scripts/build_federal_land.py` merges the National Parks, Reservations
   and Military Bases layers (fetched once each, records in
@@ -901,6 +901,94 @@ validity and a few known places), and the browser check section 9 of
 `scripts/a11y/check.mjs` (`scripts/a11y/run.sh`: the section, switch, legend at 320
 px with text spacing, and no section and no fetch for another ride type).
 `scripts/mutants_federal.py` runs 36 mutants against them.
+
+### Federal stops and parkways (item 239, the routing part)
+
+PLAN.md FOLLOWUP-FEDERAL-LAYER, "Still to do". On a Mass Ride, the places the group
+stops on federal land and the stretches it rides on a National Park Service parkway,
+in the map, the points list, the route description and the road panel. All of it is
+`frontend/src/lib/federalStops.ts`; every other ride type is unchanged.
+
+* **Client side, not the API.** The overlay's file is already in the page for a Mass
+  Ride (MapView fetches it whatever the shading switch says, `federalWanted`), and
+  `federalLand.ts` already had the point-in-polygon test. Reading the same file on the
+  server would mean shipping a front-end asset into the api image, a second parser
+  and a new field on the route answer, for the same answer; the points list and the
+  markers need it before any route is planned anyway. So the stops and the parkway
+  test run in the browser, with a bounding box per area cached so a point is tested
+  against only the few areas near it. The cost: the description lines are worded in
+  `federalStops.ts`, not `describe.py`, so they are placed before the API's entries
+  rather than among them, and they come only once the file has loaded. Until then, or
+  if it cannot be had, a Mass Ride's description, copied text, cue sheet and GPX
+  description carry one line instead, "Federal land could not be checked for this
+  route." (`FEDERAL_UNCHECKED`, `federalRouteLines`).
+* **Stops** (239 (b)). `federalAreaAt` (`federalLand.ts`, which `federalPoints` uses
+  too) gives a point's most specific area (FEDERAL_KINDS order) with its agency; failing
+  that, the most specific area whose outer edge is within `FEDERAL_EDGE_M`, 66 ft (20 m),
+  marked `near` and said "next to" (238: "err on the side of flagging", for a stop on a
+  simplified boundary). `stopWarning` says "End is inside U.S.
+  Capitol grounds, managed by Architect of the Capitol – federal land: check permit
+  requirements for gathering here." Where the data names no agency (Military Bases)
+  the kind is said instead ("Fort Leslie J. McNair (Military installation)"), never an
+  invented manager. The start, the end and every Stop N are checked. The planner has
+  no separate regroup or staging point: a regroup is planned as a stop, so it is a
+  Stop N here.
+* **Riding through** (239 (c)). A stretch on an ordinary city street inside an area is
+  not warned.
+* **Parkways** (239 (d)). `PARKWAYS` lists the five the owner named. A description
+  stretch is on one when its OpenStreetMap street name matches it ("Rock Creek and
+  Potomac Parkway Northwest", "Rock Creek Parkway", "Clara Barton Parkway", ...), or
+  when it is an unnamed or parkway-named road stretch with two of its quarter points
+  inside the NPS layer's polygon of that parkway (only those inside the District are in
+  that layer). Unnamed means the API's own words, `describe.py` `UNNAMED_ROAD` ("unnamed
+  road") and `UNTRACED_STREET` ("this part of the route"), which `federalStops.ts` repeats
+  and `tests/test_describe.py` holds equal. A path is never a federal road, by name or by
+  polygon: a stretch with `facility` "path" or the street "unnamed path" is skipped
+  (Rock Creek's trail is inside the parkway's polygon, and a "Suitland Parkway Trail"
+  matches the parkway's name).
+  Stretches on one parkway less than `PARKWAY_JOIN_M` (525 ft, 160 m) apart are one run, said
+  as "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park
+  Service parkway – federal road: check permit requirements for riding it as a group."
+  OpenStreetMap's `operator` tag is not in the routing data (the segments carry the
+  name, not the operator), so it is not read; adding it is a pipeline change for a
+  rebuild.
+* **Where it shows.**
+  - *The map:* a marker for a point on federal land has the class `pin-federal`, a
+    square "!" badge at its corner (a shape, not only a colour), and the warning in its
+    accessible name and title (`MapView` `pointWarnings`, part of `markerDeps`).
+  - *The points list:* the row gets the warning on a line of its own with the same
+    badge (`PointsList` `warnings`), before Remove in the reading order. The planner's
+    separate list of points on federal land is gone (the rows say it); the planner
+    still says "None of your points is on federal land." when none is, and the Map
+    layers sheet keeps its list and says what the badge means (`FEDERAL_BADGE`).
+  - *The description:* `federalLines` (a heading line that says it is information, not
+    legal advice, and that federal ownership is not police jurisdiction; the stops; the
+    parkway runs) is listed under its heading before the steps in Directions, and is in
+    the copied text, the downloaded cue sheet and the GPX file's description
+    (`descriptionText`, `gpxDescriptionText`, `exportOf`). Nothing is said when there is
+    nothing to say. The GPX description keeps the lines where the API gave no entries,
+    and counts them when it chooses the full text or the overview (`GPX_FULL_MAX_CHARS`).
+  - *The road panel:* the keyboard's and screen reader's way to ask what a shaded area
+    is. "Road info at map center" (I on the map) and a right-click or long press, on a
+    Mass Ride, show "Federal land: Inside ... – federal land: check permit requirements
+    for gathering here." with the caveat, whether or not a road is found, and the
+    dialog's status sentence ends with it, said again if the data comes after the road's
+    answer.
+* **Units.** The run's range goes through `format.ts` `formatMileRange` (miles first,
+  kilometres in brackets), as every unit does. For a short run it follows `describe.py`
+  `range_words`' feet rule (under a tenth of a mile, where it starts and its length in
+  feet), and it also uses feet where both ends round to the same tenth, which
+  `range_words` does not check.
+
+Tests: `lib/federalStops.test.ts` (the area and its words, the rows and markers only on
+a Mass Ride with the data, the five parkways by name and nothing else, runs joined and
+by the NPS layer with a path and a city street left out, the description, text and GPX
+lines, the rendered row, the marker and road-panel wiring, the real file at Lafayette
+Square, the Capitol and the Rock Creek and Potomac Parkway), and the browser check's
+section "The Mass Ride's stops on federal land and its parkway stretches"
+(`scripts/a11y/check.mjs`, 8 checks: the End row and marker at the Capitol and not the
+Start, the Directions list and its name, I at the map's center over the Capitol and off
+it, no warning on another ride type, and the row at 320 px with text spacing).
 
 ### The Mass Ride capacity map (FOLLOWUP-MASSRIDE-MAP part 1, items 325-327, 387)
 

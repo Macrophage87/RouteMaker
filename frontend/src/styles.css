@@ -948,6 +948,37 @@ button.secondary {
   font-size: 0.78rem;
 }
 
+/* A Mass Ride point on federal land (lib/federalStops.ts, item 239): its warning on a line of its own
+   under the point, with a badge like the marker's so it is not told by colour. In the DOM it comes
+   before Remove, so a screen reader reads it with the point. */
+.points li.point-on-federal {
+  flex-wrap: wrap;
+}
+
+.point-federal {
+  order: 1;
+  flex: 1 0 100%;
+  font-size: 0.85rem;
+  padding-left: 60px;
+  position: relative;
+}
+
+.point-federal::before {
+  content: "!";
+  position: absolute;
+  left: 40px;
+  top: 0.1em;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #92400e;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  box-sizing: border-box;
+  font: 700 10px/12px system-ui, sans-serif;
+  text-align: center;
+}
+
 /* Markers. */
 .pin {
   width: 28px;
@@ -979,6 +1010,24 @@ button.secondary {
   width: 18px;
   height: 18px;
   font-size: 10px;
+}
+
+/* A Mass Ride point on federal land (item 239): a square "!" badge at the marker's corner, a shape
+   and not only a colour; its name and title say the warning in words. */
+.pin-federal::before {
+  content: "!";
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: #92400e;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  font: 700 10px/13px system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
 }
 
 /* A finger is wider than the marker: the pressable area is not. */
@@ -1500,6 +1549,27 @@ dialog.road-info::backdrop {
 
 .road-info-station-name {
   margin: 0;
+}
+
+/* A Mass Ride spot on federal land (item 239): the area, its manager and the permit note. */
+.road-info-federal {
+  margin: 6px 0;
+}
+
+.road-info-federal-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* The route description's federal-land lines (item 239). */
+.federal-route ul {
+  margin: 4px 0 8px;
+  padding-left: 1.2em;
+}
+
+.federal-route-heading {
+  margin: 6px 0 0;
+  font-weight: 600;
 }
 
 .road-info-links {
