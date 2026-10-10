@@ -16,7 +16,10 @@ import {
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
+  stressTileTemplate,
 } from "./lib/mapStyle.ts";
+import { fontStacks } from "./lib/corridor.ts";
+import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import {
   ROUTE_BLUE,
@@ -201,8 +204,12 @@ function registerPmtiles(): void {
   if (protocolRegistered) return;
   maplibregl.setWorkerUrl(maplibreWorkerUrl);
   const protocol = new Protocol();
+  // The archive's source keeps a ride's corridor for dead spots (lib/corridor.ts, CorridorSource).
+  protocol.add(basemapArchive);
   maplibregl.addProtocol("pmtiles", protocol.tile);
   protocolRegistered = true;
+  // A corridor kept over a day ago (a ride never ended) is cleared (WEB-NAV-plan.md section 6).
+  sweepCorridor();
 }
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
@@ -371,10 +378,13 @@ export function MapView(props: Props) {
     registerPmtiles();
     const origin = window.location.origin;
     const basemapLayers = protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" });
+    const style = buildStyle(origin, basemapLayers);
+    // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
+    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
     const [west, south, east, north] = COVERAGE_BBOX;
     const map = new maplibregl.Map({
       container: container.current,
-      style: buildStyle(origin, basemapLayers) as maplibregl.StyleSpecification,
+      style: style as maplibregl.StyleSpecification,
       center: DC_CENTRE,
       zoom: OPENING_ZOOM,
       minZoom: 7,

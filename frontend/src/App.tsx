@@ -88,6 +88,7 @@ import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import { corridorStress } from "./lib/corridorStore.ts";
 import { refreshStressTiles } from "./lib/mapStyle.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
@@ -162,7 +163,8 @@ import { NearestFinder } from "./lib/nearestFinder.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
-registerStressProtocol(maplibregl);
+// With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
+registerStressProtocol(maplibregl, undefined, corridorStress);
 
 /**
  * One entry of the undo history: the points as they were, and, for an edit

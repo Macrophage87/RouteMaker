@@ -11,6 +11,7 @@ import {
   backoffMs,
   fetchTile,
   httpUrl,
+  loadTile,
   protocolUrl,
   registerStressProtocol,
   retryAfterS,
@@ -332,4 +333,51 @@ test("an outage longer than one recheck is asked about again, and again, until i
   }
   assert.deepEqual(h.events, ["unavailable", "unavailable", "unavailable", "add", "available"]);
   assert.equal(h.timers.length, 0);
+});
+
+/** Ride mode's kept tiles (lib/corridorStore.ts), in a Map. */
+function keptTiles(start: Record<string, number[]> = {}) {
+  const tiles = new Map(Object.entries(start).map(([url, bytes]) => [url, new Uint8Array(bytes).buffer]));
+  const kept: string[] = [];
+  return {
+    tiles,
+    kept,
+    offline: {
+      kept: async (url: string) => tiles.get(url) ?? null,
+      keep: (url: string, data: ArrayBuffer) => {
+        kept.push(url);
+        tiles.set(url, data);
+      },
+    },
+  };
+}
+
+test("loadTile: a tile from the network is offered to the ride's kept tiles", async () => {
+  const k = keptTiles();
+  const get = (async () => new Response(new Uint8Array([7]), { status: 200 })) as unknown as typeof fetch;
+  const data = await loadTile(TILE, new AbortController().signal, get, k.offline);
+  assert.deepEqual([...new Uint8Array(data)], [7]);
+  assert.deepEqual(k.kept, [TILE]);
+});
+
+test("loadTile: no signal in a dead spot, a kept tile answers; one never kept still fails", async () => {
+  const k = keptTiles({ [TILE]: [4, 5] });
+  const dead = (async () => {
+    throw new TypeError("Failed to fetch");
+  }) as unknown as typeof fetch;
+  const data = await loadTile(TILE, new AbortController().signal, dead, k.offline);
+  assert.deepEqual([...new Uint8Array(data)], [4, 5]);
+  await assert.rejects(() => loadTile(`${TILE}?other`, new AbortController().signal, dead, k.offline));
+  // Without the ride's tiles (no ride), a failure is a failure, as before.
+  await assert.rejects(() => loadTile(TILE, new AbortController().signal, dead));
+});
+
+test("loadTile: a tile MapLibre cancelled is not answered from the kept tiles", async () => {
+  const k = keptTiles({ [TILE]: [4] });
+  const abort = new AbortController();
+  const get = (async () => {
+    abort.abort();
+    throw new DOMException("aborted", "AbortError");
+  }) as unknown as typeof fetch;
+  await assert.rejects(() => loadTile(TILE, abort.signal, get, k.offline), { name: "AbortError" });
 });

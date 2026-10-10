@@ -15,6 +15,8 @@
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
  * - Big text (map hidden), Re-centre (and the C key), heading-up, the ride's settings, End ride.
+ * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
+ *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
@@ -35,6 +37,8 @@ import {
   ReplanGate,
   VERBOSITY_LABELS,
   nextAction,
+  placeOnRoute,
+  pointAt,
   replanPoints,
   rideModel,
   startState,
@@ -45,6 +49,7 @@ import {
   type Cue,
   type RideEvent,
   type RideFix,
+  type RideModel,
   type RideState,
   type Verbosity,
 } from "./lib/navigate.ts";
@@ -85,6 +90,25 @@ import {
 } from "./lib/nearest.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
+import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
+import { clearCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { inDc } from "./lib/dcBoundary.ts";
+import { copyText, selectionCopy } from "./lib/sidebar.ts";
+import {
+  DC_311_ONLINE,
+  REPORT_KINDS,
+  REPORT_NOTE_MAX,
+  REPORT_NO_PLACE,
+  REPORT_OFF_ROUTE,
+  REPORT_OTHER_HINT,
+  REPORT_OUTSIDE_DC,
+  REPORT_PRIVACY,
+  REPORT_SUMMARY,
+  canText,
+  reportText,
+  smsHref,
+  type ReportKind,
+} from "./lib/report311.ts";
 
 /** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
 export const rideVoice = new Voice(browserSpeech());
@@ -192,6 +216,82 @@ export function RideSettingsFields({
         ))}
       </fieldset>
     </>
+  );
+}
+
+/** How long the copy reply waits after clearing, so a second press is a change a screen reader says. */
+const COPY_REPLY_DELAY_MS = 150;
+
+/**
+ * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, an optional note, and
+ * the message built from the rider's place in the route's street names. On a phone a pothole or a
+ * streetlight is a Text to 311 link the rider sends; anything else, and everything on a desktop, is the
+ * same words to copy into DC 311 online. The place follows the rider; the message is shown as sent.
+ */
+function Report311({ model, progressM, off, idBase }: { model: RideModel; progressM: number | null; off: boolean; idBase: string }) {
+  const [kind, setKind] = useState<ReportKind>("pothole");
+  const [note, setNote] = useState("");
+  const [copied, setCopied] = useState("");
+  const place = progressM === null ? null : placeOnRoute(model, progressM);
+  const outside = progressM !== null && !inDc(pointAt(model, progressM));
+  const text = outside ? null : reportText(kind, place, note);
+  const keyword = REPORT_KINDS.find((k) => k.kind === kind)?.keyword ?? null;
+  const phone = typeof navigator !== "undefined" && canText(navigator.userAgent, navigator.maxTouchPoints ?? 0);
+  const copy = async () => {
+    if (!text) return;
+    const done = await copyText(text, navigator.clipboard, selectionCopy);
+    setCopied("");
+    window.setTimeout(() => setCopied(done ? "Report copied." : "Could not copy; select the report's text instead."), COPY_REPLY_DELAY_MS);
+  };
+  return (
+    <details className="fold ride-report">
+      <summary>{REPORT_SUMMARY}</summary>
+      <div className="fold-body">
+        <fieldset className="ride-choice">
+          <legend>What is it?</legend>
+          {REPORT_KINDS.map((k) => (
+            <label key={k.kind} className="radio">
+              <input type="radio" name={`${idBase}-report`} checked={kind === k.kind} onChange={() => setKind(k.kind)} />
+              {k.label}
+            </label>
+          ))}
+        </fieldset>
+        <label className="ride-report-note">
+          Note (optional)
+          <input type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
+        </label>
+        {text === null ? (
+          <p className="hint">{outside ? REPORT_OUTSIDE_DC : off ? REPORT_OFF_ROUTE : REPORT_NO_PLACE}</p>
+        ) : (
+          <>
+            <p className="ride-report-text">
+              <span className="ride-report-label">The report: </span>
+              {text}
+            </p>
+            <div className="actions ride-report-actions">
+              {phone && keyword && (
+                <a className="action-link" href={smsHref(text, navigator.userAgent, navigator.maxTouchPoints ?? 0)}>
+                  Text to DC 311 (32311)
+                </a>
+              )}
+              {(!phone || !keyword) && (
+                <a className="action-link" href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
+                  Open DC 311 online (new tab)
+                </a>
+              )}
+              <button type="button" className="secondary" onClick={() => void copy()}>
+                Copy the report
+              </button>
+            </div>
+            <p className="hint" role="status">
+              {copied}
+            </p>
+            {!keyword && <p className="hint">{REPORT_OTHER_HINT}</p>}
+          </>
+        )}
+        <p className="hint">{REPORT_PRIVACY}</p>
+      </div>
+    </details>
   );
 }
 
@@ -505,6 +605,23 @@ export function RideMode({
     onView({ route, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
   }, [route, fix, onView]);
 
+  // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
+  // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
+  // Shown under the controls, not said: it changes nothing the rider must do.
+  const [corridor, setCorridor] = useState<PrefetchResult | "saving" | null>(null);
+  useEffect(() => {
+    let current = true;
+    setCorridor("saving");
+    void keepCorridor(route.geometry.coordinates).then((result) => {
+      if (current && !ended.current) setCorridor(result);
+    });
+    return () => {
+      current = false;
+    };
+  }, [route]);
+  useEffect(() => () => void clearCorridor(), []);
+  const corridorText = corridorNote(corridor);
+
   const resume = () => {
     pausedRef.current = false;
     pausedSaid.current = false;
@@ -704,9 +821,10 @@ export function RideMode({
       </div>
 
       <div className="ride-controls">
-        {(gps && ride.fix) || paused || wakeNote || replanNote ? (
+        {(gps && ride.fix) || paused || wakeNote || replanNote || corridorText ? (
           <div className="ride-notes">
             {gps && ride.fix && <p className="hint">{gps}</p>}
+            {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
             {wakeNote && <p className="hint">{wakeNote}</p>}
             {replanNote && <p className="hint">{replanNote}</p>}
             {paused && (
@@ -787,6 +905,7 @@ export function RideMode({
             </div>
           </details>
         )}
+        <Report311 model={model} progressM={ride.off ? null : progress} off={ride.off} idBase={settingsId} />
         <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>
           <div className="fold-body">

@@ -162,11 +162,45 @@ export interface ProtocolHost {
 
 let registered = false;
 
-/** Register the protocol, once per page. */
-export function registerStressProtocol(host: ProtocolHost, get?: typeof fetch): void {
+/**
+ * Ride mode's kept tiles (lib/corridorStore.ts; WEB-NAV-plan.md section 6): `kept` answers a tile the
+ * network did not (no signal in a dead spot), `keep` is offered each tile the map loads.
+ */
+export interface OfflineTiles {
+  kept(url: string): Promise<ArrayBuffer | null>;
+  keep(url: string, data: ArrayBuffer): void;
+}
+
+function offlineNow(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/** One tile through the protocol: the network, and with `offline` the ride's kept tiles behind it. */
+export async function loadTile(url: string, signal: AbortSignal, get?: typeof fetch, offline?: OfflineTiles): Promise<ArrayBuffer> {
+  if (offline && offlineNow()) {
+    const kept = await offline.kept(url);
+    if (kept) return kept;
+  }
+  try {
+    const data = await fetchTile(url, { get, signal });
+    offline?.keep(url, data);
+    return data;
+  } catch (error) {
+    if (!offline || signal.aborted) throw error;
+    const kept = await offline.kept(url);
+    if (kept) return kept;
+    throw error;
+  }
+}
+
+/**
+ * Register the protocol, once per page. With `offline`, a tile the network fails to give (or any, while
+ * the browser says it is offline) is looked for among the ride's kept tiles before it fails.
+ */
+export function registerStressProtocol(host: ProtocolHost, get?: typeof fetch, offline?: OfflineTiles): void {
   if (registered) return;
   host.addProtocol(STRESS_PROTOCOL, async (params, abort) => ({
-    data: await fetchTile(httpUrl(params.url), { get, signal: abort.signal }),
+    data: await loadTile(httpUrl(params.url), abort.signal, get, offline),
   }));
   registered = true;
 }
