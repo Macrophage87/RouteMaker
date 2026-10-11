@@ -634,7 +634,7 @@ class Beta:
         self.state = tmp / "state"
         self.cd = self.state / "cd"
         (self.cd / "bin").mkdir(parents=True)
-        for name in ("cd_logic.py", "receive-data.sh"):
+        for name in ("cd_logic.py", "receive-data.sh", "frontend-build.sh"):
             shutil.copy2(BETA / name, self.cd / "bin" / name)
         (self.cd / "deployed-tag").write_text("v0.1.0\n")
         (self.cd / "deployed-sha").write_text(self.v1 + "\n")
@@ -1202,8 +1202,10 @@ def test_a_front_end_release_is_built_after_the_stop_and_installed(beta: Beta) -
     assert "VITE_BETA=1\n" in built and f"git={sha}\n" in built
     calls = beta.calls()
     build = next(line for line in calls.splitlines() if "/out" in line)
-    for flag in ("--pull never", "--network none", "--memory 1536m", "--oom-score-adj 1000"):
+    for flag in ("--pull never", "--network none", "--memory=1536m", "--oom-score-adj=1000"):
         assert flag in build, flag
+    # frontend-build.sh's mounts: the whole exported tree, for tests that read beside frontend/
+    assert ":/repo:ro" in build and "-w /repo/frontend" in build
     _order(calls, "stop api worker", build, "pg_dump", "up -d api worker", "smoke --local")
 
 
