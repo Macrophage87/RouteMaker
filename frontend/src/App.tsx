@@ -37,7 +37,7 @@ import { bikeshareOf } from "./lib/bikeshare.ts";
 import type { Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
-import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
+import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
@@ -781,7 +781,7 @@ export function App() {
 
   // A station's Start here / End here / Add as stop (railStations.ts): an
   // edit of the points like any other, so it can be undone and redone.
-  const placeStation = useCallback((role: StationRole, point: LonLat) => {
+  const placeStation = useCallback((role: StationRole, point: LonLat, place: { name: string; label: string }) => {
     if (!insideCoverage(point)) {
       setNotice("That station is outside the area this map covers.");
       return;
@@ -792,9 +792,11 @@ export function App() {
       return;
     }
     setNotice(null);
+    // Named for the station, not the street its bike entrance is on (PLAN.md, the stationBikeEntrance naming).
+    namer.remember(point, place.name, place.label);
     commit(edit.next);
     announce(stationSaid(edit.index, edit.next.length, loopVias));
-  }, [commit, announce, loopVias]);
+  }, [commit, announce, loopVias, namer]);
 
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
@@ -926,6 +928,7 @@ export function App() {
       commit,
       loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
+      entrance: stationEntranceForPlace,
     });
     if (point === null) return;
     setNotice(null);

@@ -19,6 +19,8 @@ import {
   entranceNote,
   lineStyle,
   linesLabel,
+  stationPlaceLabel,
+  stationPlaceName,
   stationRoles,
   visibleLines,
   type RailVisibility,
@@ -35,7 +37,8 @@ export interface RailInteractionOptions {
   pointCount(): number;
   /** "Make it a loop" is on: a station can be a start or a stop, not an end (OWNER-DECISIONS 374). */
   loop?(): boolean;
-  onStationPoint(role: StationRole, point: LonLat): void;
+  /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
+  onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
 }
 
 const ROLE_TEXT: Record<StationRole, string> = {
@@ -136,7 +139,12 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
     openCard({ hit, station }) {
       // Where the focus goes back to on Escape, as for a via's Remove.
       const returnTo = document.activeElement;
-      const point: LonLat = hit.elevator ?? bikeEntrance(station).point;
+      const entrance = bikeEntrance(station);
+      const point: LonLat = hit.elevator ?? entrance.point;
+      const place = {
+        name: stationPlaceName(station),
+        label: stationPlaceLabel(station, hit.elevator ? "elevator" : entrance.kind),
+      };
       const content = summary(station, options, hit.elevator !== undefined);
       const actions = document.createElement("div");
       actions.className = "station-actions";
@@ -146,7 +154,7 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
         button.textContent = ROLE_TEXT[role];
         button.addEventListener("click", () => {
           popup.remove();
-          options.onStationPoint(role, point);
+          options.onStationPoint(role, point, place);
         });
         actions.append(button);
       }
