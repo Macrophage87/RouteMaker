@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MODE_LABEL, OPEN_IN_LABEL, TAB_MODE_KEY, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -204,7 +204,7 @@ test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and P
   assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);
-  assert.match(change, /announce\(modeSaid\(next\)\);/);
+  assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
   assert.match(change, /saveMyGoNow\(\{ \.\.\.myGoRef\.current, openIn: next \}, false\);/);
   // A save waits for the account's My Go to be read, so a Home is never overwritten by an early save.
   assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) return;/);
@@ -276,4 +276,73 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
 test("Big text has a text-size icon (not the info icon); Ride mode's buttons keep their words", () => {
   assert.match(ride, /className="secondary big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\}>\s*<Icon name="textsize" size=\{20\} \/>\s*Big text/);
   assert.ok(ICON_PATHS.textsize && ICON_PATHS.textsize !== ICON_PATHS.info);
+});
+
+// ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----
+
+test("go start: the location is asked for only in Go, once, and only while the plan has no point (a link's start wins)", () => {
+  assert.equal(shouldAskGoStart({ mode: "go", asked: false, pointCount: 0 }), true);
+  assert.equal(shouldAskGoStart({ mode: "plan", asked: false, pointCount: 0 }), false, "never in Plan");
+  assert.equal(shouldAskGoStart({ mode: "go", asked: true, pointCount: 0 }), false, "once per page");
+  assert.equal(shouldAskGoStart({ mode: "go", asked: false, pointCount: 1 }), false, "a start from the link wins");
+});
+
+test("go start: the line says the location, a typed or tapped start in its place, or that there is none", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.equal(goStartLine(here, null), "Start: your current location");
+  assert.equal(GO_START_SAID, "Start: your current location.");
+  assert.equal(goStartLine(here, "Union Station"), "Start: Union Station", "a typed or tapped start replaces it");
+  assert.equal(goStartLine({ kind: "locating" }, null), "Start: finding your location…");
+  assert.equal(goStartLine({ kind: "none" }, null), "Start: none yet; type a start");
+  assert.equal(GO_START_UNAVAILABLE, "Current location not available; type a start.");
+});
+
+test("go start: a destination routes from the plan's first point, else from the location found, else asks", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.deepEqual(goRouteStart([], here), { point: [-77.03, 38.9], located: true });
+  assert.deepEqual(goRouteStart([[-77.0, 38.89]], here), { point: [-77.0, 38.89], located: false }, "typed, tapped or from the link");
+  assert.equal(goRouteStart([], { kind: "none" }), null);
+  assert.equal(goRouteStart([], { kind: "locating" }), null);
+});
+
+test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
+  assert.match(app, /if \(pointsRef\.current\.length === 0\) announce\(GO_START_SAID\);/);
+  assert.match(app, /if \(pointsRef\.current\.length === 0\) setNotice\(GO_START_UNAVAILABLE\);/);
+  assert.match(app, /const known = goRouteStart\(pointsRef\.current, goStart\);/);
+  // Go offers the routes to choose from at once; Plan keeps its fold.
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
+});
+
+// ---- Announcements, Brief or Full (the owner, 2026-10-11 20:23 UTC) ----
+import { ANNOUNCE_KEY, announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice } from "./announceLevel.ts";
+
+test("announcements: unset, Go is brief and Plan is full; a choice holds in both, and is kept on this device", () => {
+  assert.equal(announceLevel("", "go"), "brief");
+  assert.equal(announceLevel("", "plan"), "full");
+  assert.equal(announceLevel("full", "go"), "full");
+  assert.equal(announceLevel("brief", "plan"), "brief");
+  assert.equal(saysExtra("brief"), false);
+  assert.equal(saysExtra("full"), true);
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  assert.equal(readAnnounceChoice(store), "");
+  writeAnnounceChoice("full", store);
+  assert.equal(kept.get(ANNOUNCE_KEY), "full");
+  assert.equal(readAnnounceChoice(store), "full");
+  kept.set(ANNOUNCE_KEY, "loud");
+  assert.equal(readAnnounceChoice(store), "", "anything else is unset");
+});
+
+test("announcements: the essentials are always said; only the narration is extra", () => {
+  const app = appSource();
+  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetLabel(id)}.`);", 'announceExtra("The map is at your location.");'])
+    assert.ok(app.includes(extra), extra);
+  // The start Go found, and when it could not, are essentials.
+  assert.match(app, /announce\(GO_START_SAID\)/);
+  assert.match(app, /setNotice\(GO_START_UNAVAILABLE\)/);
+  // Go starts the ride at once; Plan asks the first time.
+  assert.match(app, /if \(!ridePrefs\.chosen && mode !== "go"\) \{/);
 });

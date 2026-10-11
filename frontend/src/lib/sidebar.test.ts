@@ -466,10 +466,11 @@ test("a Fold: closed unless open, 'Routes to choose from' open by default, and i
   const closed = renderToStaticMarkup(createElement(Fold, { title: "Junctions to watch", count: 4, heading: "Junctions to watch", children: "x" }));
   assert.equal(
     closed,
-    '<h3 class="visually-hidden">Junctions to watch</h3><details class="fold"><summary><span class="fold-title">Junctions to watch</span><span class="fold-count"><span class="visually-hidden"> (</span>4<span class="visually-hidden">)</span></span></summary><div class="fold-body">x</div></details>',
+    '<h3 class="visually-hidden">Junctions to watch</h3><details class="fold"><summary><span class="fold-title" aria-hidden="true">Junctions to watch</span><span class="fold-count" aria-hidden="true">4</span><span class="visually-hidden">Junctions to watch (4)</span></summary><div class="fold-body">x</div></details>',
   );
   // A count of 0 is still said; no count, no brackets.
-  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", count: 0, children: "x" })), /<span class="visually-hidden"> \(<\/span>0<span/);
+  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", count: 0, children: "x" })), /<span class="visually-hidden">x \(0\)<\/span>/);
+  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", children: "x" })), /<summary><span class="fold-title">x<\/span><\/summary>/);
   assert.doesNotMatch(renderToStaticMarkup(createElement(Fold, { title: "x", count: null, children: "x" })), /fold-count/);
   const open = renderToStaticMarkup(createElement(Fold, { title: "Bikeshare plan", open: true, children: "x" }));
   assert.match(open, /^<details class="fold" open="">/);
@@ -508,7 +509,7 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   );
   assert.equal(
     html,
-    '<h3 id="route-description-heading" class="visually-hidden">Directions</h3><details class="fold route-description"><summary><span class="fold-title">Directions</span><span class="fold-count"><span class="visually-hidden"> (</span>2 steps<span class="visually-hidden">)</span></span></summary><div class="fold-body"><ol class="description-list"></ol></div></details>',
+    '<h3 id="route-description-heading" class="visually-hidden">Directions</h3><details class="fold route-description"><summary><span class="fold-title" aria-hidden="true">Directions</span><span class="fold-count" aria-hidden="true">2 steps</span><span class="visually-hidden">Directions (2 steps)</span></summary><div class="fold-body"><ol class="description-list"></ol></div></details>',
   );
   const component = src("../RouteDescription.tsx");
   const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));

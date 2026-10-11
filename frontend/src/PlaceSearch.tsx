@@ -49,8 +49,9 @@ export interface LocateControl {
 
 /** What a Go or Home search does with the place picked (UI-CLEANUP). */
 const SINGLE_HINT = {
-  go: "From your location. The place you pick is where the route goes.",
+  go: "The place you pick is where the route goes, from the start above.",
   home: "The place you pick is kept as your Home.",
+  start: "The place you pick is where the route starts, in place of your location.",
 } as const;
 
 /** The "Your location" choice in the list, ahead of the places found. */
@@ -83,7 +84,7 @@ export function PlaceSearch({
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
    * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
    */
-  variant?: "plan" | "go" | "home";
+  variant?: "plan" | "go" | "home" | "start";
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -196,7 +197,7 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : "Find a place"}
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : "Find a place"}
       </label>
       <div className={locate || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
@@ -214,7 +215,7 @@ export function PlaceSearch({
         spellCheck={false}
         enterKeyHint="search"
         maxLength={MAX_QUERY_CHARS}
-        placeholder={variant === "go" ? "Where to?" : "A place, an address or a street"}
+        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : "A place, an address or a street"}
         value={query}
         onChange={(event) => change(event.target.value)}
         onKeyDown={onKeyDown}

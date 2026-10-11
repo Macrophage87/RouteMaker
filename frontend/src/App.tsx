@@ -142,7 +142,8 @@ import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
-import { hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode, type AppMode } from "./lib/appMode.ts";
+import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goRouteStart, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { PRESETS } from "./lib/presets.ts";
@@ -418,6 +419,11 @@ export function App() {
   // Every point that came from a look-up, or a drag of one, for the link note (the start may be an earlier
   // one than `here`). Not capped: a few points of memory, and a cap could drop a start still in the plan.
   const [fromHere, setFromHere] = useState<LonLat[]>([]);
+  // Announcements, Brief or Full (Settings > Display): the rider's choice, kept on this device.
+  const [announceChoice, setAnnounceChoice] = useState<AnnounceChoice>(() => readAnnounceChoice());
+  // Go's start (the owner, 2026-10-11): the rider's location, asked for once when Go opens, never in Plan.
+  const [goStart, setGoStart] = useState<GoStart>({ kind: "idle" });
+  const goStartAsked = useRef(false);
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -651,6 +657,11 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // Extra narration (lib/announceLevel.ts): said only at Full; Brief, Go's default, keeps to the essentials.
+  const announceLevelNow = useRef<AnnounceLevel>("full");
+  const announceExtra = useCallback((text: string) => {
+    if (saysExtra(announceLevelNow.current)) announce(text);
+  }, [announce]);
 
   // My Go (lib/myGo.ts; the owner's choice 2): signed in it is the account's (GET /api/me/go, read once
   // the page knows it is signed in), and an account's Open in or ride may still move a view that was only
@@ -761,17 +772,18 @@ export function App() {
   }, [notice, announce]);
 
   // Which bands the Mass Ride map shows changes with the zoom (OWNER-DECISIONS 421). The legend's status
-  // line says it; while the Map layers sheet is not on screen it is said through the app-level region
-  // instead, and only when the set of bands changes (not at every zoom step, nor on coming to the map).
+  // line says it; while the Legend sheet (UI-CLEANUP: behind Layers' Legend button) is not on screen it is
+  // said through the app-level region instead, and only when the set of bands changes (not at every zoom
+  // step, nor on coming to the map).
   const massBands = massMap && stressVisible ? massBandsSaid(zoom) : null;
   const massBandsBefore = useRef<string | null>(null);
-  const layersShownNow = useRef(false);
-  layersShownNow.current = view === "layers" && panelOpen;
+  const legendShownNow = useRef(false);
+  legendShownNow.current = view === "legend" && panelOpen;
   // Only for a zoom the rider made: after the first fit to a route, or a place search's fly-to, the
   // route's or the place's own sentence is what matters (accessibility review S4).
   const zoomByRider = useRef(false);
   useEffect(() => {
-    const said = massBandsChangeSaid(massBandsBefore.current, massBands, layersShownNow.current);
+    const said = massBandsChangeSaid(massBandsBefore.current, massBands, legendShownNow.current);
     massBandsBefore.current = massBands;
     if (said && zoomByRider.current) announce(said);
   }, [massBands, announce]);
@@ -1122,7 +1134,7 @@ export function App() {
   // another look-up is under way or a later one replaced it. The fix is kept only as Use my location's is.
   const locateForGo = async (): Promise<LocateResult | null> => {
     const press = gate.begin();
-    announce(FINDING_LOCATION);
+    announceExtra(FINDING_LOCATION);
     if (press === null) return null;
     setLocating(true);
     const result = await locate(geoEnv);
@@ -1130,11 +1142,58 @@ export function App() {
     setLocating(false);
     return result;
   };
+  // Go's start, when Go opens with an empty plan: the location becomes the start (not yet a point, so the
+  // link holds no position until a destination is picked). A start from the link, or one typed or tapped
+  // first, wins. Denied, unavailable or timed out: the start stays empty and that is said politely.
+  useEffect(() => {
+    if (!shouldAskGoStart({ mode, asked: goStartAsked.current, pointCount: pointsRef.current.length })) return;
+    goStartAsked.current = true;
+    setGoStart({ kind: "locating" });
+    void (async () => {
+      const result = await locateForGo();
+      if (result === null) {
+        setGoStart({ kind: "idle" });
+        return;
+      }
+      if (!result.ok || !insideCoverage(result.fix.point)) {
+        setGoStart({ kind: "none" });
+        if (pointsRef.current.length === 0) setNotice(GO_START_UNAVAILABLE);
+        return;
+      }
+      setHere(result.fix);
+      setGoStart({ kind: "here", point: result.fix.point });
+      if (pointsRef.current.length === 0) announce(GO_START_SAID);
+    })();
+    // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A start typed into Go's start box: the plan's first point, in place of the location.
+  const goStartPick = (found: Place) => {
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    if (point === null) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    setNotice(null);
+    commit([point]);
+    announce(`Start: ${found.name}.`);
+  };
   const goTo = async (dest: LonLat, name: string) => {
     cancelLocateNotice();
     setNotice(null);
     if (!insideCoverage(dest)) {
       setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    // The start Go already has: the plan's first point (typed, tapped or from the link), else the location
+    // found when Go opened. Only with neither is the location looked up now.
+    const known = goRouteStart(pointsRef.current, goStart);
+    if (known !== null) {
+      const ride = rideRef.current;
+      commit([known.point, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+      if (known.located) setFromHere((prior) => [...prior, known.point]);
+      announceExtra(`Planning a route to ${name} from ${known.located ? "your location" : "your start"}.`);
+      if (goSheetNow.current === "peek") setGoSheet("half");
+      mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
       return;
     }
     const result = await locateForGo();
@@ -1150,7 +1209,7 @@ export function App() {
     setHere(result.fix);
     commit([result.fix.point, dest], noLoop);
     setFromHere((prior) => [...prior, result.fix.point]);
-    announce(`Planning a route to ${name} from your location.`);
+    announceExtra(`Planning a route to ${name} from your location.`);
     mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
   };
   const goToPlace = (found: Place) => {
@@ -1182,14 +1241,14 @@ export function App() {
     }
     setHere(result.fix);
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
-    else announce("The map is at your location.");
+    else announceExtra("The map is at your location.");
     mapRef.current?.flyTo({ center: result.fix.point, zoom: Math.max(mapRef.current.getZoom(), 15) });
   };
   // A ride type chip (Go's quick three, or the Ride sheet's): as the ride type dialog picks one.
   const pickRide = (id: PresetId) => {
     if (id === preset) return;
     choosePreset(id, mtbChosen(preset, id, chooseRideType(id, carries(id) ? "cargo" : null, dials)));
-    announce(`${presetLabel(id)}.`);
+    announceExtra(`${presetLabel(id)}.`);
   };
   const searchBias = (): LonLat | undefined => {
     const centre = mapRef.current?.getCenter();
@@ -1446,7 +1505,7 @@ export function App() {
     setPanelOpen(true);
     setGoSheet("half");
     setModeState(next);
-    announce(modeSaid(next));
+    announceExtra(modeSaid(next));
     saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
@@ -1548,7 +1607,9 @@ export function App() {
   const startRide = () => {
     const opener = document.activeElement;
     rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
-    if (!ridePrefs.chosen) {
+    // Go goes straight to the ride (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"):
+    // no first-ride question; the cues are Settings > Ride mode's (the defaults until changed there). Plan asks once.
+    if (!ridePrefs.chosen && mode !== "go") {
       setRideAsk(true);
       return;
     }
@@ -1875,6 +1936,12 @@ export function App() {
     />
   );
   const goMode = mode === "go";
+  announceLevelNow.current = announceLevel(announceChoice, mode);
+  const chooseAnnounce = (level: AnnounceLevel) => {
+    setAnnounceChoice(level);
+    writeAnnounceChoice(level);
+    announce(level === "brief" ? "Announcements: brief." : "Announcements: full.");
+  };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =
     preset === "bikeshare" && points.length > 0 ? (
@@ -2147,7 +2214,10 @@ export function App() {
                   }}
                   rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" />}
                   notice={notice}
-                  route={points.length > 0 || status.kind !== "idle" ? routeSection : null}
+                  route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
+                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}
+                  startMissing={goStart.kind === "none" && points.length === 0}
+                  onStartPick={goStartPick}
                 />
               ) : (
                 order.map((id) => sections[id])
@@ -2181,6 +2251,7 @@ export function App() {
               {...{
                 nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
+                announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
               }}
             />
             <NearestSheet nav={sheetNav}>
@@ -2197,7 +2268,8 @@ export function App() {
             </FoodSheet>
             <RideSheet nav={sheetNav}>
               <RideChips ids={PRESETS.map((p) => p.id)} preset={preset} onPick={pickRide} label="Every ride type" />
-              {sections.presets}
+              {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
+              {goMode && sections.presets}
             </RideSheet>
           </div>
 

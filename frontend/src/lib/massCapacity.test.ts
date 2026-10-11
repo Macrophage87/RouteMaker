@@ -275,8 +275,9 @@ test("the app-level region says a change of bands only while the legend is off s
   // App.tsx wires it so.
   const app = appSource();
   assert.match(app, /const massBands = massMap && stressVisible \? massBandsSaid\(zoom\) : null;/);
-  assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, layersShownNow\.current\)/);
-  assert.match(app, /layersShownNow\.current = view === "layers" && panelOpen;/);
+  assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, legendShownNow\.current\)/);
+  // UI-CLEANUP: the bands' status line is in the Legend sheet, so that is the sheet that says it itself.
+  assert.match(app, /legendShownNow\.current = view === "legend" && panelOpen;/);
 });
 
 // --- The route line -----------------------------------------------------------------------

@@ -7,7 +7,7 @@
  *
  * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
  */
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
@@ -119,6 +119,9 @@ export function GoSheet({
   rides,
   notice,
   route,
+  startLine,
+  startMissing,
+  onStartPick,
 }: {
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
@@ -132,8 +135,17 @@ export function GoSheet({
   notice: string | null;
   /** The Route section, Go's variant, or null before there are points. */
   route: ReactNode;
+  /** Go's start line ("Start: your current location"; lib/appMode.ts goStartLine). */
+  startLine: string;
+  /** No start and no location: the start box is shown open. */
+  startMissing: boolean;
+  /** A start typed in: it replaces the location. */
+  onStartPick: (place: Place) => void;
 }) {
   const homeHint = useId();
+  const startBoxId = useId();
+  const [startOpen, setStartOpen] = useState(false);
+  const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
   const routeShown = route !== null;
   return (
@@ -145,6 +157,35 @@ export function GoSheet({
           looking at), and Where to? follows for a new place. */}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
+        {/* The start (the owner, 2026-10-11): the rider's location by default; a typed or tapped start replaces it. */}
+        {!routeShown && (
+          <div className="go-start-row">
+            <p className="go-start-line">
+              <Icon name="locate" size={18} />
+              <span>{startLine}</span>
+            </p>
+            {!startMissing && (
+              <button type="button" className="link go-change-start" aria-expanded={startOpen} aria-controls={startBoxId} onClick={() => setStartOpen(!startOpen)}>
+                Change start
+              </button>
+            )}
+          </div>
+        )}
+        {!routeShown && (
+          <div id={startBoxId} className="go-start-search" hidden={!startShown}>
+            <PlaceSearch
+              variant="start"
+              pointCount={0}
+              full={false}
+              gate={geoGate}
+              bias={searchBias}
+              onPick={(place: Place, _choice: PlaceChoice) => {
+                setStartOpen(false);
+                onStartPick(place);
+              }}
+            />
+          </div>
+        )}
         <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} />
         <div className="chip-row go-places" role="group" aria-label="Places">
           <button
@@ -176,6 +217,9 @@ export function GoSheet({
         )}
         {!routeShown && rides}
       </div>
+      {/* With a route, the ride types follow it (bigger than peek): one press re-plans, and Bikeshare names
+          its pick-up and drop-off stations in the route's Bikeshare plan (only in Bikeshare: the owner's word). */}
+      {routeShown && size !== "peek" && <div className="go-route-rides">{rides}</div>}
       {/* Said by the app's own region (Go has no Points section's status line; App noticeSaidElsewhere). */}
       {notice && <p className="go-notice notice">{notice}</p>}
     </div>

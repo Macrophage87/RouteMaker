@@ -120,3 +120,39 @@ export function laterMyGoApplies(by: "tab" | "link" | "my-go" | "screen", switch
 export function modeSaid(mode: AppMode): string {
   return mode === "go" ? "Go: type a place, then Start." : "Plan: the full planner.";
 }
+
+// ---- Go's start (the owner, 2026-10-11 19:53 UTC: "in go, make the current location the starting location by default") ----
+
+/** Where Go's start stands: looking, the rider's location found, not available, or not asked yet. */
+export type GoStart = { kind: "idle" } | { kind: "locating" } | { kind: "here"; point: [number, number] } | { kind: "none" };
+
+/** Said politely when the location becomes the start, and shown on Go's start line. */
+export const GO_START_SAID = "Start: your current location.";
+/** Said politely (and shown) when the location could not be had: denied, unavailable or timed out. */
+export const GO_START_UNAVAILABLE = "Current location not available; type a start.";
+
+/**
+ * Whether Go asks for the location now: only in Go (never in Plan), once per page, and only while the plan
+ * has no point, so a start from the link (or one typed or tapped first) wins.
+ */
+export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCount: number }): boolean {
+  return state.mode === "go" && !state.asked && state.pointCount === 0;
+}
+
+/**
+ * Go's start line: the plan's own first point when there is one (from the link, typed or tapped: it replaces
+ * the location), else the location, else what is happening.
+ */
+export function goStartLine(start: GoStart, firstPointName: string | null): string {
+  if (firstPointName !== null) return `Start: ${firstPointName}`;
+  if (start.kind === "here") return "Start: your current location";
+  if (start.kind === "locating") return "Start: finding your location…";
+  return "Start: none yet; type a start";
+}
+
+/** The start Go routes from: the plan's first point, else the location found; null when there is neither. */
+export function goRouteStart(points: readonly [number, number][], start: GoStart): { point: [number, number]; located: boolean } | null {
+  if (points.length > 0) return { point: points[0], located: false };
+  if (start.kind === "here") return { point: start.point, located: true };
+  return null;
+}

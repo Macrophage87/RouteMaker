@@ -482,7 +482,9 @@ export function RouteSummary({
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
-  const [routesOpen, setRoutesOpen] = useState(false);
+  // Go offers the routes to choose from at once (the owner, 2026-10-11: "select a destination ... then offer
+  // the options for routing to it"); Plan keeps them in their closed fold.
+  const [routesOpen, setRoutesOpen] = useState(mode === "go");
   const infoId = useId();
   const routesId = useId();
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).

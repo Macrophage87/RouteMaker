@@ -4182,8 +4182,24 @@ details.zoom-notes {
     bottom: 56%;
   }
 
-  .panel.go-panel .panel-header {
-    display: none;
+}
+
+/* Go keeps the panel's h1 (the planner's focus target and the page's heading) out of sight, so its header
+   takes no room; on a wider screen the card sits under Go's bar. */
+.panel.go-panel .panel-header {
+  padding: 0;
+  border: 0;
+}
+
+@media (min-width: 721px) {
+  .app.go-mode .panel {
+    top: 64px;
+    max-height: calc(100% - 76px);
+  }
+
+  .app.go-mode:has(.go-destination) .panel {
+    top: 114px;
+    max-height: calc(100% - 126px);
   }
 }
 
@@ -4657,4 +4673,47 @@ details.fold > summary .icon {
 .panel .go-places .place-chip {
   padding: 0 9px;
   gap: 4px;
+}
+
+/* UI-CLEANUP: Go has no Hide planner toggle (its sheet has a handle); `hidden` must beat the phone rule's display. */
+.panel-toggle[hidden] {
+  display: none;
+}
+
+/* Go's sheets: a focused heading scrolls into view with its Close button above it, not cut off. */
+.go-panel .sheet h2 {
+  scroll-margin-top: 64px;
+}
+
+/* Go's start line (the owner, 2026-10-11): the start and Change start on one row. */
+.go-start-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.go-start-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.go-change-start {
+  min-height: 44px;
+}
+
+.go-start-search {
+  margin-bottom: 8px;
+}
+
+.go-start-search[hidden] {
+  display: none;
+}
+
+.go-start-search input {
+  min-height: 44px;
 }

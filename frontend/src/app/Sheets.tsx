@@ -50,6 +50,7 @@ import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import { Icon } from "../Icon.tsx";
+import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 
 /** How the sheets go back: to the planner, or to the sheet that opened them (Layers for Legend, Suggest for Review). */
@@ -336,6 +337,8 @@ export interface SettingsSheetProps {
   accessMode: boolean;
   toggleAccessMode: (focusTools: boolean) => void;
   myGo: MyGoControls;
+  /** Announcements, Brief or Full (lib/announceLevel.ts): the level in force, and the rider's choice. */
+  announcements: { level: AnnounceLevel; choose: (level: AnnounceLevel) => void };
   /** Go shows this sheet as its Menu: Plan, Suggest, GPX and (an admin's) Review above the settings. */
   mode: AppMode;
   menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
@@ -343,7 +346,7 @@ export interface SettingsSheetProps {
 
 /** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -408,6 +411,17 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {ACCESS_HELP}
           </p>
         </div>
+        {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
+        <fieldset className="ride-choice announce-level">
+          <legend>Announcements</legend>
+          {(["brief", "full"] as const).map((level) => (
+            <label key={level} className="radio">
+              <input type="radio" name="settings-announce" checked={announcements.level === level} onChange={() => announcements.choose(level)} />
+              {ANNOUNCE_LABEL[level]}
+            </label>
+          ))}
+          <p className="hint">{ANNOUNCE_HINT}</p>
+        </fieldset>
         {/* Open in Go or Plan: this device's, signed out; signed in it is My Go's, under Account. */}
         {!myGo.signedIn && (
           <OpenInChoice value={myGo.myGo.openIn} onChange={(openIn) => myGo.save({ ...myGo.myGo, openIn })} idBase="display" hint={`${OPEN_IN_HINT} Kept on this device.`} />

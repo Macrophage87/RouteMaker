@@ -8,7 +8,7 @@
  * and its words in text; none depends on colour.
  */
 import { Fragment, createElement as h, useId, useState, type ReactElement, type ReactNode } from "react";
-import { RIDE_ACTION_SPOKEN, rideActionLabel } from "./sidebar.ts";
+import { RIDE_ACTION_SPOKEN, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
 import { stressZoomNotice } from "./stressLegend.ts";
 import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL } from "./accessibilitySwitch.ts";
@@ -114,16 +114,11 @@ export function Fold({
       "summary",
       null,
       icon ? lineIcon(icon) : null,
-      h("span", { className: "fold-title" }, title),
-      shown === null
-        ? null
-        : h(
-            "span",
-            { className: "fold-count" },
-            h("span", { className: "visually-hidden" }, " ("),
-            shown,
-            h("span", { className: "visually-hidden" }, ")"),
-          ),
+      // With a count, the line shows the title and the count apart (the count on the right) and is read as
+      // one phrase, "Directions (11 steps)" (foldTitle): flex items read apart would add spaces round it.
+      h("span", { className: "fold-title", "aria-hidden": shown === null ? undefined : "true" }, title),
+      shown === null ? null : h("span", { className: "fold-count", "aria-hidden": "true" }, shown),
+      shown === null ? null : h("span", { className: "visually-hidden" }, foldTitle(title, shown)),
     ),
     h("div", { className: "fold-body" }, children),
   );
