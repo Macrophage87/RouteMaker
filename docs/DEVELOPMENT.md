@@ -3099,7 +3099,8 @@ from the dock) keeps the nearest way. Only ways the ride's costing allows are
 candidates, so a way closed to bicycles is never matched (err closed is unchanged), and
 on the no-trail graph there is no trail to match.
 
-The trade-off, for the owner to confirm: the radius ignores height and the rider's
+The trade-off, CONFIRMED by the owner for every ride type (2026-10-11: "Any ride type.
+15m is inconsequential for bike riding"): the radius ignores height and the rider's
 intent. On a direct ride (or Mass Ride) a stop put on a sidepath to pull the route onto
 it can be served from the road beside it when that is cheaper, and a stop on a trail
 under a bridge can be served from the deck above, or the other way (the same problem as
