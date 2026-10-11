@@ -779,6 +779,28 @@ class TestWideSearch:
         kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
         assert kept["legs"][0]["shape"] == "o" and not info["wide"]["taken"]
 
+    def test_each_wide_route_is_held_to_the_route_it_started_from(self, monkeypatch) -> None:
+        # The first point is taken with 40 m of retrace; the second, with 80 m, is past
+        # the starting route by more than the slack, though not past the first's.
+        orig = analysis("o", "1" * 40, cost_s=4000.0)
+        first = analysis("a", "1" * 40, cost_s=3000.0, shift=100)
+        second = analysis("b", "1" * 40, cost_s=2000.0, shift=200)
+        retraced = {id(first): 40.0, id(second): 80.0}
+        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
+        routes = [trip_of("a", 4.0)] + [trip_of("b", 4.0)] * 3
+        World(monkeypatch, {"o": orig, "a": first, "b": second}, routes)
+        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
+        assert kept["legs"][0]["shape"] == "a"
+
+    def test_a_wide_route_that_retraces_no_more_than_its_start_is_taken(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 40, cost_s=4000.0)
+        wide = analysis("w", "1" * 40, cost_s=3000.0, shift=100)
+        retraced = {id(orig): 300.0, id(wide): 300.0}
+        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
+        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
+        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
+        assert kept["legs"][0]["shape"] == "w"
+
     def test_a_wide_route_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
         shape, info = self.wide_world(monkeypatch, 1000.0, events=None)
         assert shape == "o" and not info["wide"]["taken"]
@@ -1357,6 +1379,42 @@ class TestRetrace:
         read.via_m = [1800.0]
         assert refine.retrace_m(read) == 0.0
 
+    def test_tolerances_are_tight_from_both_sides(self) -> None:
+        # Lengths 15% apart are different edges; a way 3 m off is another way.
+        read = analysis("a", "1" * 4)
+        read.marks = [(50.0, -77.0, 38.9, 100.0), (157.5, -77.0, 38.9, 115.0)]
+        assert refine.retrace_m(read) == 0.0
+        read.marks = [(50.0, -77.0, 38.9, 100.0), (150.0, -77.0, 38.9 + 3.0 / 110_540.0, 100.0)]
+        assert refine.retrace_m(read) == 0.0
+
+    def test_the_reading_keeps_each_marks_leg(self, monkeypatch) -> None:
+        # Out to a stop and back, where a dropped trace edge makes the marks' metres run
+        # past `via_m`: the reading's own legs keep the two apart.
+        out = [(BASE[0] + 0.001, BASE[1]), (BASE[0] + 0.002, BASE[1])]
+
+        def midpoints(trace, shape, offset):
+            if offset == 0.0:
+                return [(50.0, *out[0], 100.0), (250.0, *out[1], 100.0)]
+            return [(offset + 50.0, *out[1], 100.0), (offset + 150.0, *out[0], 100.0)]
+
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(routing, "decode_polyline6", lambda s: [BASE, out[1]])
+        monkeypatch.setattr(
+            routing, "classify", lambda p, when, roadway_only=False: [("1", "none")] * len(p)
+        )
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", midpoints)
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        leg = {"shape": "x"}
+        trip = {"legs": [leg, dict(leg)], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
+        ctx = context()
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.via_m == [200.0]
+        assert read.mark_legs == [0, 0, 1, 1]
+        assert refine.retrace_m(read) == 0.0
+
     def test_doubling_back_is_measured_against_the_route_replaced(self) -> None:
         own = refine.retrace_m(doubling_back("o", spur=3))
         assert not refine.doubles_back(doubling_back("a", spur=3), own)
@@ -1568,6 +1626,14 @@ class TestTrailSeek:
         assert shape == "o"
         assert info["seek"]["tried"][0]["outcome"] == "doubles_back"
         assert info["seek"]["taken"] is False
+
+    def test_a_candidate_that_retraces_no_more_than_the_leg_is_taken(self, monkeypatch) -> None:
+        own = self.orig()
+        calm = analysis("t", "1" * 45, cost_s=3000.0, shift=100)
+        retraced = {id(own): 300.0, id(calm): 300.0}
+        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
+        _w, shape, info = self.run(monkeypatch, {"o": own, "t": calm}, [trip_of("t", 4.5)])
+        assert shape == "t" and info["seek"]["tried"][0]["outcome"] == "taken"
 
     def test_each_candidate_is_held_to_the_legs_own_route(self, monkeypatch) -> None:
         # The first is taken with 40 m of retrace; the second, with 80 m, is past the

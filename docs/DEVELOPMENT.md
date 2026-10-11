@@ -3110,7 +3110,7 @@ Tests: `TestRetrace`, `TestTrailSeek::test_a_route_that_rides_out_and_back_to_a_
 and `::test_each_candidate_is_held_to_the_legs_own_route`,
 `TestWideSearch::test_a_wide_route_that_rides_out_and_back_is_not_taken` (tests/test_refine.py),
 `test_each_stop_is_matched_to_every_way_near_it` (tests/test_route_api.py) and the
-radius in the stop-order request test (tests/test_stop_order.py); 12 mutants in
+radius in the stop-order request tests (tests/test_stop_order.py); 19 mutants in
 scripts/mutants_trailseek.py ("doubling back", all killed).
 
 ### The detour warning
