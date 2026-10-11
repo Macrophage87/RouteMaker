@@ -3091,8 +3091,9 @@ way within that distance as a candidate and the route takes the cheapest, where 
 it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft (4.5 m)
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
 trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
-the plan's locations, so they match alike, and so do the stop-order leg costs
-(`stoporder`). The cut points of a long plan (`refine.long_legs`) and the dedodge
+the plan's locations, so they match alike, and so do the stop-order leg costs and
+its matrix past ten stops (`stoporder`); `core.nearest` asks for fixed places and keeps
+the nearest way. The cut points of a long plan (`refine.long_legs`) and the dedodge
 locations are on the route and get no radius; a bikeshare walk leg (pedestrian, to and
 from the dock) keeps the nearest way. Only ways the ride's costing allows are
 candidates, so a way closed to bicycles is never matched (err closed is unchanged), and

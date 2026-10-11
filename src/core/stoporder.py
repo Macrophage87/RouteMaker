@@ -243,7 +243,10 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline) -> list
     """The riding times (seconds) and distances (metres) between every pair, or
     None if the router would not give them. Only the variant and the router's
     error are logged, never the points."""
-    locations = [{"lon": lon, "lat": lat} for lon, lat in request_points]
+    # Matched as the plan's own /route matches them.
+    locations = [
+        {"lon": lon, "lat": lat, "radius": routing.STOP_RADIUS_M} for lon, lat in request_points
+    ]
     payload = {
         "sources": locations,
         "targets": locations,

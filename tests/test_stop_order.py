@@ -517,7 +517,10 @@ class TestEndpoint:
             "cargo", 85, -40, assist=True, avoid_gravel=True
         )
         assert payload["sources"] == payload["targets"]
-        assert payload["sources"] == [{"lon": lon, "lat": lat} for lon, lat in POINTS]
+        # Each stop matched as the plan's own /route matches it.
+        assert payload["sources"] == [
+            {"lon": lon, "lat": lat, "radius": routing.STOP_RADIUS_M} for lon, lat in POINTS
+        ]
 
     def test_lengths_are_read_in_the_direction_ridden(self, client, router) -> None:
         times = along_the_line(POINTS)
@@ -626,7 +629,11 @@ class TestEndpoint:
         # Round the edge, one way or the other; the finish (the start again) is not returned.
         assert body["order"] in ([0, 2, 1, 3], [0, 3, 1, 2])
         # The matrix carries the start again as the loop's finish.
-        assert fake.calls[-1][1]["sources"][-1] == {"lon": -77.05, "lat": 38.90}
+        assert fake.calls[-1][1]["sources"][-1] == {
+            "lon": -77.05,
+            "lat": 38.90,
+            "radius": routing.STOP_RADIUS_M,
+        }
         assert len(fake.calls[-1][1]["sources"]) == 5
 
     def test_the_same_points_without_the_loop_keep_their_end(self, client, router) -> None:
