@@ -154,6 +154,11 @@ import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import { WaterAlongList, WaterSection } from "./lib/waterLegend.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, type ClimbsStatus } from "./lib/climbs.ts";
+import { ClimbsAlongList, ClimbsLayerControls } from "./lib/climbsLegend.ts";
+// `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
+// the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
+import climbsUrl from "./climb-data/climbs.json?url&no-inline";
 import {
   findingSaid,
   requestNearest,
@@ -315,6 +320,27 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureWater();
   }, [waterOn, ensureWater]);
+  // The Climbs layer (lib/climbs.ts; 454): off until turned on, kept on this device; the data is
+  // fetched the first time it is shown. An empty file (before the build host has measured any) is
+  // "empty", not "unavailable".
+  const [climbsOn, setClimbsOnState] = useState<boolean>(() => readClimbsOn());
+  const changeClimbsOn = (on: boolean) => {
+    setClimbsOnState(on);
+    saveClimbsOn(on);
+  };
+  const [climbsStatus, setClimbsStatus] = useState<ClimbsStatus>("loading");
+  const [climbsData, setClimbsData] = useState<Climb[] | null>(null);
+  const climbsLoad = useRef<Promise<Climb[] | null> | null>(null);
+  useEffect(() => {
+    if (!climbsOn || climbsLoad.current) return;
+    setClimbsStatus("loading");
+    climbsLoad.current = loadClimbs(climbsUrl).then((data) => {
+      if (!data) climbsLoad.current = null;
+      setClimbsData(data);
+      setClimbsStatus(data === null ? "unavailable" : data.length === 0 ? "empty" : "ready");
+      return data;
+    });
+  }, [climbsOn]);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -1396,6 +1422,11 @@ export function App() {
         : null,
     [waterOn, waterData, waterPrefs, shown],
   );
+  // The Climbs layer in words: the climbs the route rides, in riding order.
+  const climbsAlong = useMemo(
+    () => (climbsOn && climbsData && shown ? climbsAlongRoute(shown.geometry.coordinates, climbsData) : null),
+    [climbsOn, climbsData, shown],
+  );
   // A Mass Ride's federal-land lines for the description and the GPX file (item 239; lib/federalStops.ts):
   // the stops on federal land and the parkway stretches, from the route as planned, or one line saying
   // federal land could not be checked while the data is loading or unavailable.
@@ -1752,6 +1783,9 @@ export function App() {
       {shown && waterOn && waterStatus === "ready" && (
         <WaterAlongList items={waterAlong} onAddStop={addWaterStop} headingId="water-along-planner-heading" level="h3" />
       )}
+      {shown && climbsOn && climbsStatus === "ready" && (
+        <ClimbsAlongList items={climbsAlong} headingId="climbs-along-planner-heading" level="h3" />
+      )}
       {shown && rideAsk && (
         <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
           onKeyDown={(event) => {
@@ -1889,6 +1923,8 @@ export function App() {
         massHazards={massHazards}
         water={waterData}
         waterPrefs={waterPrefs}
+        climbs={climbsData}
+        climbsOn={climbsOn}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -2085,10 +2121,11 @@ export function App() {
               {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
               {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. Topo lines
-                  and climbs join the mountain-bike trails here once the tiles carry them (docs/MTB-TOPO-PLAN.md). */}
+                  join the mountain-bike trails and climbs here once their data is built (docs/MTB-TOPO-PLAN.md). */}
               <section aria-labelledby="terrain-heading">
                 <h3 id="terrain-heading">Trails and terrain</h3>
                 <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+                <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} />
               </section>
 
               {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
