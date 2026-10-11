@@ -2683,6 +2683,7 @@ details.zoom-notes {
 /* 11 viewBox units, as the mock-up (the a11y review's N5): about 10 px at 375 px wide. */
 .pc-axis-text,
 .pc-guide-text,
+.pc-need-text,
 .pc-cross-text,
 .pc-narrowest-text {
   font-size: 11px;
@@ -2694,12 +2695,14 @@ details.zoom-notes {
    a11y review's S1); the band colour is on the line and the swatch beside the figure. */
 .pc-cross-text,
 .pc-guide-text,
+.pc-need-text,
 .pc-narrowest-text {
   fill: var(--text);
 }
 
 /* Labels that sit over the filled area: a halo in the panel's colour keeps them readable. */
 .pc-guide-text,
+.pc-need-text,
 .pc-narrowest-text {
   paint-order: stroke;
   stroke: var(--bg);
@@ -2722,6 +2725,20 @@ details.zoom-notes {
 
 .pc-guide-2 {
   stroke: var(--pc-guide-2);
+}
+
+/* The ride size's requirement (OWNER-DECISIONS 128, PLAN 147): a long dash in the text colour, cased in
+   the panel's colour so one of the two is 3:1 against every band it crosses; told from the dotted
+   band guides by its dash and its words, not by colour. */
+.pc-need-casing {
+  stroke: var(--bg);
+  stroke-width: 3.6;
+}
+
+.pc-need-line {
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-dasharray: 7 3;
 }
 
 .pc-guide-swatch {
@@ -3042,8 +3059,13 @@ details.zoom-notes {
   .pc-axis-text,
   .pc-cross-text,
   .pc-guide-text,
+  .pc-need-text,
   .pc-narrowest-text {
     fill: CanvasText;
+    stroke: Canvas;
+  }
+
+  .pc-need-casing {
     stroke: Canvas;
   }
 
@@ -3063,6 +3085,7 @@ details.zoom-notes {
   .pc-tick,
   .pc-corker-line,
   .pc-corker-half,
+  .pc-need-line,
   .pc-unchecked-frame,
   .pc-strip-frame {
     stroke: CanvasText;

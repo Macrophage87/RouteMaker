@@ -6,7 +6,8 @@
  *
  * - Riders per minute: the grade-adjusted riders a minute, filled in the spectral band colours (each
  *   also with a pattern), dotted guides at 60, 120 and 200, the narrowest point marked with a caret
- *   and its figure (147), and the stretches marked Avoid (325: no carrying capacity).
+ *   and its figure (147), the stretches marked Avoid (325: no carrying capacity), and the riders a
+ *   minute the anticipated ride size needs as a dashed line (128, 147; lib/profileChart.ts `rideNeed`).
  * - Corker load: the corkers held at once with the group's head at each point, for the anticipated
  *   ride size (the owner, 2026-10-10: "Corkers were intended to also have a rollback based on the
  *   length of the ride"; lib/profileChart.ts `corkerLoad`): a window the group's length slid along
@@ -35,6 +36,7 @@ import {
   GRADE_BANDS,
   GRADE_BAND_FILL,
   MASS_CHARTS,
+  RIDE_HOLD_MINUTES,
   avoidLabel,
   axisDistance,
   axisLength,
@@ -51,16 +53,20 @@ import {
   flowShapes,
   gradeBandShapes,
   jumpTargets,
+  labelBox,
   linear,
   lonLatAt,
   massReadings,
   massSummaries,
+  needLabelPlace,
   placeCrossings,
   positionAfterKey,
   readingAt,
+  rideNeed,
   ridersTop,
   type MassChartKey,
   type Plot,
+  type RideNeed,
 } from "./lib/profileChart.ts";
 import { RIDE_SIZE_DEFAULT } from "./lib/dials.ts";
 import { formatSpeed } from "./lib/format.ts";
@@ -96,12 +102,13 @@ export function MassRideCharts({
   const [hover, setHover] = useState<number | null>(null);
   const active = hover ?? (focused ? at : null);
   const load = useMemo(() => corkerLoad(profile, total, rideSize), [profile, total, rideSize]);
-  const reading = useMemo(() => readingAt(route, profile, active ?? at ?? 0, "mass"), [route, profile, active, at]);
-  const shown = useMemo(() => massReadings(route, profile, load, active ?? at ?? 0), [route, profile, load, active, at]);
+  const need = useMemo(() => rideNeed(rideSize), [rideSize]);
+  const reading = useMemo(() => readingAt(route, profile, active ?? at ?? 0, "mass", need), [route, profile, active, at, need]);
+  const shown = useMemo(() => massReadings(route, profile, load, active ?? at ?? 0, rideSize), [route, profile, load, active, at, rideSize]);
   // What a screen reader hears: the keyboard's position only (a11y S3).
-  const spoken = useMemo(() => massReadings(route, profile, load, at ?? 0), [route, profile, load, at]);
+  const spoken = useMemo(() => massReadings(route, profile, load, at ?? 0, rideSize), [route, profile, load, at, rideSize]);
   const spokenM = useMemo(() => readingAt(route, profile, at ?? 0, "mass").m, [route, profile, at]);
-  const summaries = useMemo(() => massSummaries(route, profile, load), [route, profile, load]);
+  const summaries = useMemo(() => massSummaries(route, profile, load, rideSize), [route, profile, load, rideSize]);
   const targets = useMemo(() => jumpTargets(profile), [profile]);
   const heard = useRef(onScrub);
   heard.current = onScrub;
@@ -180,7 +187,7 @@ export function MassRideCharts({
   );
 
   const charts: Record<MassChartKey, { picture: ReactNode; legend: ReactNode }> = {
-    riders: ridersChart({ uid: `${uid}r`, profile, x, active, markerX, riders: reading.riders, slider }),
+    riders: ridersChart({ uid: `${uid}r`, profile, x, active, markerX, riders: reading.riders, need, slider }),
     corkers: corkerChart({ uid: `${uid}c`, profile, load, x, total, active, markerX, at: reading.m, slider }),
     elevation: elevationOnly({ uid: `${uid}e`, profile, x, active, markerX, elevation: reading.elevationM, slider }),
   };
@@ -206,7 +213,7 @@ export function MassRideCharts({
         {keys}
       </p>
       <p className="hint pc-source">
-        Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Corker load: the major intersections that cross or join an LTS 3 or worse road, 2 corkers each (1 on a one-way road), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
+        Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Dashed line: the riders a minute the ride size needs for the group to pass a junction within {RIDE_HOLD_MINUTES} minutes (a proposal). Corker load: the major intersections that cross or join an LTS 3 or worse road, one corker for each approach lane of that road, or one an approach at a traffic signal (2 approaches, 1 on a one-way road; 1 lane where not known), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
       </p>
       <details className="pc-table-fold">
         <summary>Climbs, bottlenecks and intersections as tables</summary>
@@ -244,6 +251,7 @@ function ridersChart({
   active,
   markerX,
   riders,
+  need,
   slider,
 }: {
   uid: string;
@@ -252,14 +260,35 @@ function ridersChart({
   active: number | null;
   markerX: number;
   riders: number | null;
+  /** The anticipated ride size's requirement (128): drawn as a dashed line where the route has figures. */
+  need: RideNeed | null;
   slider: Slider;
 }): { picture: ReactNode; legend: ReactNode } {
   const L = LAYOUT.riders;
-  const top = ridersTop(profile);
+  const hasFigures = (profile.riders_per_min ?? []).some((v) => v !== null);
+  const line = hasFigures ? need : null;
+  const top = ridersTop(profile, line);
   const y = linear(0, top, L.bottom, L.top);
   const flow = flowShapes(profile, x, y, y(0));
   const edge = flowLine(profile, x, y);
   const narrowest = bottleneckMark(profile, x, y, LEFT, RIGHT);
+  const narrowestY = narrowest ? (narrowest.y - 14 >= L.top + 9 ? narrowest.y - 14 : narrowest.y + 13) : 0;
+  const narrowestX = narrowest ? (narrowest.anchor === "start" ? LEFT : narrowest.anchor === "end" ? RIGHT : narrowest.x) : 0;
+  const guides = FLOW_GUIDES.filter((g) => g.at < top);
+  // The requirement's words go where they clear the guides' figures and the narrowest point's.
+  const needText = line ? `${line.perMin} needed for ${line.riders.toLocaleString("en-US")} riders` : "";
+  const needPlace = line
+    ? needLabelPlace(
+        needText,
+        y(line.perMin) - 3,
+        [
+          ...guides.map((g) => ({ x0: RIGHT - String(g.at).length * 6.2 - 11, x1: RIGHT, y: y(g.at) - 2 })),
+          ...(narrowest ? [labelBox(narrowest.label, narrowestX, narrowestY, narrowest.anchor)] : []),
+        ],
+        LEFT,
+        RIGHT,
+      )
+    : null;
   const avoid = profile.avoid ?? [];
   const body = (
     <>
@@ -299,7 +328,7 @@ function ridersChart({
         );
       })}
       <path className="pc-flow-edge" d={edge} fill="none" />
-      {FLOW_GUIDES.filter((g) => g.at < top).map((g) => {
+      {guides.map((g) => {
         const label = String(g.at);
         const textW = label.length * 6.2;
         return (
@@ -312,15 +341,20 @@ function ridersChart({
           </g>
         );
       })}
+      {line && (
+        // The ride size's requirement (128, 147): a dashed line, cased in the panel's colour so it reads over every band, with its words at the left.
+        <g className="pc-need">
+          <line className="pc-need-casing" x1={LEFT} y1={y(line.perMin)} x2={RIGHT} y2={y(line.perMin)} />
+          <line className="pc-need-line" x1={LEFT} y1={y(line.perMin)} x2={RIGHT} y2={y(line.perMin)} />
+          <text className="pc-need-text" x={needPlace?.x ?? LEFT + 2} y={y(line.perMin) - 3} textAnchor={needPlace?.anchor ?? "start"}>
+            {needText}
+          </text>
+        </g>
+      )}
       {narrowest && (
         <g className="pc-narrowest">
           <path d={`M${narrowest.x - 5} ${narrowest.y - 11} L${narrowest.x + 5} ${narrowest.y - 11} L${narrowest.x} ${narrowest.y - 2} Z`} />
-          <text
-            className="pc-narrowest-text"
-            x={narrowest.anchor === "start" ? LEFT : narrowest.anchor === "end" ? RIGHT : narrowest.x}
-            y={narrowest.y - 14 >= L.top + 9 ? narrowest.y - 14 : narrowest.y + 13}
-            textAnchor={narrowest.anchor}
-          >
+          <text className="pc-narrowest-text" x={narrowestX} y={narrowestY} textAnchor={narrowest.anchor}>
             {narrowest.label}
           </text>
         </g>
@@ -353,6 +387,15 @@ function ridersChart({
             <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
           </svg>
           Marked Avoid (A where narrow): no capacity given
+        </li>
+      )}
+      {line && (
+        <li>
+          <svg width="14" height="10" aria-hidden="true">
+            <path d="M0 5H14" className="pc-need-casing" />
+            <path d="M0 5H14" className="pc-need-line" />
+          </svg>
+          Dashed line (proposed): about {line.perMin} a minute, what {line.riders.toLocaleString("en-US")} riders need to pass a junction within {RIDE_HOLD_MINUTES} minutes
         </li>
       )}
       {narrowest && (
