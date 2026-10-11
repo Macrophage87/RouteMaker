@@ -12,6 +12,8 @@
  */
 import { Fragment, useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { BACK_LABEL, BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
+import { Icon } from "./Icon.tsx";
+import type { IconName } from "./lib/iconPaths.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
 
 // The parts a test renders are written with createElement in lib/sidebarParts.ts (node's test runner
@@ -48,41 +50,28 @@ export function QuickFigures({ figures }: { figures: readonly QuickFigure[] }) {
   );
 }
 
-const ICONS: Record<BarItem["id"], ReactNode> = {
-  plan: <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" />,
-  layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5" />,
-  legend: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 8v4M12 16h.01" />
-    </>
-  ),
-  gpx: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
-  settings: (
-    <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
-    </>
-  ),
+const ICONS: Record<BarItem["id"], IconName> = {
+  plan: "list",
+  layers: "layers",
+  suggest: "flag",
+  gpx: "file",
+  settings: "gear",
 };
 
 /** The bottom bar: real buttons, each with an icon (hidden from screen readers) and its words. */
 export function BottomBar({
   view,
-  legend,
   onOpen,
   buttonRef,
 }: {
   view: PanelView;
-  /** Whether the layers sheet was opened by Legend, so that button is the current one. */
-  legend: boolean;
-  onOpen: (item: BarItem) => void;
+  onOpen: (item: BarItem, button: HTMLButtonElement) => void;
   buttonRef: (id: BarItem["id"], button: HTMLButtonElement | null) => void;
 }) {
   return (
     <nav aria-label={BAR_NAME} className="bottom-bar">
       {BAR_ITEMS.map((item) => {
-        const current = barCurrent(item, view, legend);
+        const current = barCurrent(item, view);
         return (
           <Fragment key={item.id}>
             <button
@@ -92,11 +81,9 @@ export function BottomBar({
               className="bar-button"
               aria-current={current ? "true" : undefined}
               aria-describedby={`bar-${item.id}-hint`}
-              onClick={() => onOpen(item)}
+              onClick={(event) => onOpen(item, event.currentTarget)}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                {ICONS[item.id]}
-              </svg>
+              <Icon name={ICONS[item.id]} />
               <span>{item.label}</span>
             </button>
             {/* The hint is a sibling, not part of the button, so the name is the label alone and the hint is
@@ -123,13 +110,19 @@ export function SheetFrame({
   open,
   onBack,
   headingRef,
+  backLabel = BACK_LABEL,
+  extra,
   children,
 }: {
   id: string;
   title: string;
   open: boolean;
   onBack: () => void;
-  headingRef: Ref<HTMLHeadingElement>;
+  headingRef?: Ref<HTMLHeadingElement>;
+  /** The Back button's words: back to the planner, or to the sheet this one was opened from. */
+  backLabel?: string;
+  /** A control at the header's end (Layers' Legend button). */
+  extra?: ReactNode;
   children: ReactNode;
 }) {
   // Escape inside a nested dialog or the place search's list is theirs, not the sheet's (lib/sidebar.ts).
@@ -143,11 +136,12 @@ export function SheetFrame({
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          {BACK_LABEL}
+          {backLabel}
         </button>
         <h2 id={`${id}-title`} ref={headingRef} tabIndex={-1}>
           {title}
         </h2>
+        {extra}
       </header>
       {children}
     </section>

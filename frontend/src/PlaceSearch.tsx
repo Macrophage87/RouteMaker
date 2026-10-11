@@ -26,6 +26,7 @@ import {
   type PlaceChoice,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
+import { Icon } from "./Icon.tsx";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
@@ -45,6 +46,12 @@ export interface LocateControl {
    */
   onLocate: (choice?: PlaceChoice) => void;
 }
+
+/** What a Go or Home search does with the place picked (UI-CLEANUP). */
+const SINGLE_HINT = {
+  go: "From your location. The place you pick is where the route goes.",
+  home: "The place you pick is kept as your Home.",
+} as const;
 
 /** The "Your location" choice in the list, ahead of the places found. */
 const HERE = "here" as const;
@@ -70,7 +77,13 @@ export function PlaceSearch({
   onPick,
   loop = false,
   locate,
+  variant = "plan",
 }: {
+  /**
+   * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
+   * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
+   */
+  variant?: "plan" | "go" | "home";
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -84,6 +97,7 @@ export function PlaceSearch({
   onPick: (place: Place, choice: PlaceChoice) => void;
 }) {
   const id = useId();
+  const single = variant !== "plan";
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<GeoResult | null>(null);
   const [answered, setAnswered] = useState("");
@@ -137,7 +151,7 @@ export function PlaceSearch({
   };
 
   const pick = (place: Place) => {
-    onPick(place, choice);
+    onPick(place, single ? "end" : choice);
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -180,11 +194,12 @@ export function PlaceSearch({
   };
 
   return (
-    <div className="place-search">
-      <label htmlFor={`${id}-input`} className="place-search-label">
-        Find a place
+    <div className={variant === "go" ? "place-search go-search" : "place-search"}>
+      <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : "Find a place"}
       </label>
-      <div className={locate ? "place-search-row" : undefined}>
+      <div className={locate || variant === "go" ? "place-search-row" : undefined}>
+      {variant === "go" && <Icon name="search" className="search-icon" />}
       <input
         id={`${id}-input`}
         type="search"
@@ -199,7 +214,7 @@ export function PlaceSearch({
         spellCheck={false}
         enterKeyHint="search"
         maxLength={MAX_QUERY_CHARS}
-        placeholder="A place, an address or a street"
+        placeholder={variant === "go" ? "Where to?" : "A place, an address or a street"}
         value={query}
         onChange={(event) => change(event.target.value)}
         onKeyDown={onKeyDown}
@@ -280,7 +295,7 @@ export function PlaceSearch({
           {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
         </p>
       )}
-      {choices.length > 1 && (
+      {!single && choices.length > 1 && (
         <fieldset className="place-choice">
           <legend>Use the place as</legend>
           {choices.map((option) => (
@@ -297,9 +312,9 @@ export function PlaceSearch({
           ))}
         </fieldset>
       )}
-      <p id={`${id}-hint`} className="hint">
-        {placeEffectHint(effect, loop)}
-        {full && " The route has as many points as it can take, so no stop can be added."}
+      <p id={`${id}-hint`} className={variant === "go" ? "hint go-from" : "hint"}>
+        {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : SINGLE_HINT[variant]}
+        {!single && full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
         {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}

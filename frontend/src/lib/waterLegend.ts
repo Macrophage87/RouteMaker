@@ -154,7 +154,9 @@ function checkbox(checked: boolean, onChange: (on: boolean) => void, label: stri
  * not want (basic toilets, untreated water); one persistent status line whose words change (a live region
  * inserted with its text is often not read); the legend, the list and the help.
  */
-export function WaterSection({ prefs, onChange, status, items, onAddStop }: SectionProps): ReactElement {
+export function WaterSection({ prefs, onChange, status, items, onAddStop, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
+  // UI-CLEANUP: Layers keeps the switch and its two filters; the list along the route is the route's
+  // "Water and restrooms" fold, and the legend is behind Layers' Legend button (along and legend false there).
   const ready = prefs.on && status === "ready";
   return h(
     "section",
@@ -170,8 +172,8 @@ export function WaterSection({ prefs, onChange, status, items, onAddStop }: Sect
         checkbox(prefs.untreated, (untreated) => onChange({ ...prefs, untreated }), WATER_UNTREATED_SWITCH),
       ),
     h("p", { className: "hint water-status", role: "status" }, waterStatusText(prefs.on, status)),
-    ready && h(WaterLegend, { prefs }),
-    ready && h(WaterAlongList, { items, onAddStop, headingId: "water-along-layers-heading" }),
+    ready && legend && h(WaterLegend, { prefs }),
+    ready && along && h(WaterAlongList, { items, onAddStop, headingId: "water-along-layers-heading" }),
     h("p", { className: "hint" }, WATER_HELP),
     prefs.on && prefs.untreated && h("p", { className: "hint" }, WATER_UNTREATED_HELP),
   );

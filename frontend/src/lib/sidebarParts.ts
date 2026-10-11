@@ -12,6 +12,25 @@ import { RIDE_ACTION_SPOKEN, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
 import { stressZoomNotice } from "./stressLegend.ts";
 import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL } from "./accessibilitySwitch.ts";
+import { ICON_PATHS, type IconName } from "./iconPaths.ts";
+
+/** A line icon for createElement modules (Icon.tsx's twin), hidden from assistive technology. */
+export function lineIcon(name: IconName, size = 18): ReactElement {
+  return h("svg", {
+    className: "icon",
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+    focusable: "false",
+    dangerouslySetInnerHTML: { __html: ICON_PATHS[name] },
+  });
+}
 
 /**
  * The Ride line: one line saying how the ride is set, and Edit, which opens the controls
@@ -24,6 +43,9 @@ import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL } f
 export function RideSettings({ summary, spoken, children }: { summary: string; spoken: string; children?: ReactNode }): ReactElement {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
+  // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (type, traffic,
+  // hills, when, then anything else set), all one button, so the row is one press and one name.
+  const chips = summary.split(" · ");
   return h(
     "section",
     { className: "ride-settings", "aria-label": "Ride" },
@@ -36,8 +58,12 @@ export function RideSettings({ summary, spoken, children }: { summary: string; s
         h(
           "span",
           { className: "ride-line-text" },
-          h("span", { className: "ride-line-label" }, "Ride"),
-          h("span", { className: "ride-line-summary", "aria-hidden": "true" }, summary),
+          h("span", { className: "ride-line-label visually-hidden" }, "Ride"),
+          h(
+            "span",
+            { className: "ride-line-summary", "aria-hidden": "true" },
+            ...chips.map((chip, i) => h("span", { key: i, className: "ride-chip" }, i === 0 ? lineIcon("bike", 16) : null, chip)),
+          ),
           h("span", { className: "visually-hidden" }, `: ${spoken}.`),
         ),
         h("span", { className: "ride-line-action", "aria-hidden": "true" }, rideActionLabel(open)),
@@ -61,6 +87,8 @@ export function Fold({
   open,
   className,
   onToggle,
+  count,
+  icon,
   children,
 }: {
   title: string;
@@ -69,8 +97,12 @@ export function Fold({
   open?: boolean;
   className?: string;
   onToggle?: (open: boolean) => void;
+  /** UI-CLEANUP: the fold's count on the right of its line ("11 steps", "55% quiet"), read after the title in brackets. */
+  count?: string | number | null;
+  icon?: IconName;
   children?: ReactNode;
 }): ReactElement {
+  const shown = count === undefined || count === null || count === "" ? null : String(count);
   const details = h(
     "details",
     {
@@ -78,7 +110,21 @@ export function Fold({
       open,
       onToggle: onToggle ? (event: { currentTarget: { open: boolean } }) => onToggle(event.currentTarget.open) : undefined,
     },
-    h("summary", null, title),
+    h(
+      "summary",
+      null,
+      icon ? lineIcon(icon) : null,
+      h("span", { className: "fold-title" }, title),
+      shown === null
+        ? null
+        : h(
+            "span",
+            { className: "fold-count" },
+            h("span", { className: "visually-hidden" }, " ("),
+            shown,
+            h("span", { className: "visually-hidden" }, ")"),
+          ),
+    ),
     h("div", { className: "fold-body" }, children),
   );
   if (!heading) return details;

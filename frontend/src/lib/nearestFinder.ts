@@ -46,15 +46,16 @@ export interface FinderProps {
   canAddStop: boolean;
   onRide: (item: Nearby) => void;
   onAddStop: (item: Nearby) => void;
+  /** A fold of its own (the default), or the body alone, in the map's Water sheet (UI-CLEANUP), whose heading names it. */
+  folded?: boolean;
 }
 
 export function NearestFinder(props: FinderProps): ReactElement {
-  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop } = props;
+  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, folded = true } = props;
   const addStops = list !== null && canAddStop && stopsOnTheWay(list.kind);
-  return h(
-    "details",
-    { className: "fold nearest" },
-    h("summary", null, NEAREST_SUMMARY),
+  const wrap = (body: ReactElement) =>
+    folded ? h("details", { className: "fold nearest" }, h("summary", null, NEAREST_SUMMARY), body) : h("div", { className: "nearest nearest-sheet" }, body);
+  return wrap(
     h(
       "div",
       { className: "fold-body" },

@@ -1,12 +1,15 @@
-// Moved out of App.tsx unchanged (UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"): the same
-// elements, in the same order, with App's state and handlers passed in under the names App gives them,
-// so the DOM, the focus and every announcement are as they were. App.tsx keeps the state and the effects.
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+// The planner's Route section (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx
+// split"), laid out as the approved UI mockup of 2026-10-11 has it (reports/v0.5.0/ui-mockup.html): the
+// totals in one line with Info beside them, the stress bar, one warning line with its count, one line for
+// each note, Start with GPX, Link and More beside it, then one closed line for each fold. Go shows the same
+// route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
+// the state and the effects; the questions, the errors and Start ride's question are as they were.
+import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { RouteError, RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
-import type { PresetId } from "../lib/presets.ts";
-import { stressSegments } from "../lib/stressBar.ts";
+import { presetLabel, type PresetId } from "../lib/presets.ts";
+import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
@@ -17,7 +20,7 @@ import { mtbNotes } from "../lib/mtbMode.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
-import { avoidItems } from "../lib/avoidJunctions.ts";
+import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
 import { ElevationChart } from "../ElevationChart.tsx";
 import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
@@ -32,15 +35,19 @@ import { CapacityFigures, CapacityStats } from "../lib/massLegend.ts";
 import { outsideDcNote } from "../lib/dcBoundary.ts";
 import { downloadGpx } from "../GpxPanel.tsx";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
-import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen, foldTitle } from "../lib/sidebar.ts";
+import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
-import { quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
+import { calmPercent, quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterAlongList } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsAlongList } from "../lib/climbsLegend.ts";
 import { KEEP_LABEL } from "../lib/offlineRoutes.ts";
+import { facilityNoticeCount, warningsLabel } from "../lib/routeNotices.ts";
+import type { AppMode } from "../lib/appMode.ts";
+import type { IconName } from "../lib/iconPaths.ts";
+import { Icon } from "../Icon.tsx";
 
 export type Status =
   | { kind: "idle" }
@@ -49,6 +56,34 @@ export type Status =
   | { kind: "ok" }
   | { kind: "error"; error: RouteError }
   | { kind: "confirm"; error: RouteError };
+
+/** Download GPX, Copy link, Share and Keep for offline: beside Start in Plan (Share and Keep behind More). */
+export interface RouteActionsProps {
+  shown: RouteResponse;
+  routedPoints: LonLat[];
+  routedLoop: boolean;
+  federalRoute: readonly string[];
+  copyLink: () => void;
+  linkNote: string;
+  canShare: boolean;
+  shareRoute: () => void;
+  linkSpoken: string;
+  keepShown: boolean;
+  keepForOffline: () => Promise<void>;
+  keeping: boolean;
+  keepSpoken: { text: string; count: number };
+  linkSaid: string;
+}
+
+/** Go's few extra controls on the route: its ride chip, the Routes chip and Plan in detail. */
+export interface GoRouteControls {
+  /** Opens the Ride sheet. */
+  onRide: () => void;
+  /** Switches to Plan, the route kept. */
+  onPlan: () => void;
+  /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
+  peek: boolean;
+}
 
 export interface RouteSectionProps {
   /** A re-plan is under way: the section is aria-busy. */
@@ -95,14 +130,22 @@ export interface RouteSectionProps {
   climbsOn: boolean;
   climbsStatus: ClimbsStatus;
   climbsAlong: ClimbAlong[] | null;
+  /** Go or Plan (lib/appMode.ts). */
+  mode: AppMode;
+  /** Plan's Download GPX, Copy link and More, beside Start. */
+  actions: Omit<RouteActionsProps, "shown" | "routedPoints" | "federalRoute">;
+  /** Bikeshare's "Choose a station" fold (NearbyStations), or nothing. */
+  stations: ReactNode;
+  go: GoRouteControls;
 }
 
-/** The planner's Route section: planning, the long-ride question, errors, the route summary, water along it and Start ride's question. */
+/** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go } = props;
+  const goMode = mode === "go";
   return (
-    <section key="route" aria-labelledby="route-heading" aria-busy={stale}>
-      <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1}>
+    <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
+      <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
         Route
       </h2>
       {status.kind === "loading" && <p className="loading">{announcement}</p>}
@@ -114,7 +157,7 @@ export function RouteSection(props: RouteSectionProps) {
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
       </div>
       {/* Read where it stands, not spoken: it never changes while shown (recheck N-new-2). */}
-      {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
+      {status.kind === "idle" && points.length < 2 && !goMode && <p className="hint">No route yet.</p>}
       {status.kind === "confirm" && (
         <div
           className="confirm"
@@ -154,11 +197,14 @@ export function RouteSection(props: RouteSectionProps) {
           )}
         </div>
       )}
-      {/* First in the panel and announced first (335): the route goes through an Avoid-rated junction. */}
-      {shown && answer && <AvoidNotice answer={answer} choice={choice} around={aroundAvoid} onAround={setAroundAvoid} />}
+      {!goMode && stations}
       {shown && (
         <RouteSummary
           route={shown}
+          answer={answer}
+          choice={choice}
+          around={aroundAvoid}
+          onAround={setAroundAvoid}
           points={routedPoints}
           federal={federalRoute}
           narrow={narrow}
@@ -173,13 +219,13 @@ export function RouteSection(props: RouteSectionProps) {
           ride={{ onStart: startRide, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
+          water={waterOn && waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
+          climbs={climbsOn && climbsStatus === "ready" ? climbsAlong : null}
+          actions={{ ...actions, shown, routedPoints, federalRoute }}
+          mode={mode}
+          preset={preset}
+          go={go}
         />
-      )}
-      {shown && waterOn && waterStatus === "ready" && (
-        <WaterAlongList items={waterAlong} onAddStop={addWaterStop} headingId="water-along-planner-heading" level="h3" />
-      )}
-      {shown && climbsOn && climbsStatus === "ready" && (
-        <ClimbsAlongList items={climbsAlong} headingId="climbs-along-planner-heading" level="h3" />
       )}
       {shown && rideAsk && (
         <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
@@ -227,52 +273,57 @@ export function RouteSection(props: RouteSectionProps) {
   );
 }
 
-export interface RouteActionsProps {
-  shown: RouteResponse;
-  routedPoints: LonLat[];
-  routedLoop: boolean;
-  federalRoute: readonly string[];
-  copyLink: () => void;
-  linkNote: string;
-  canShare: boolean;
-  shareRoute: () => void;
-  linkSpoken: string;
-  keepShown: boolean;
-  keepForOffline: () => Promise<void>;
-  keeping: boolean;
-  keepSpoken: { text: string; count: number };
-  linkSaid: string;
-}
-
-/** Pinned under the scrolling part while a route is shown: Download GPX, Copy link, Share and Keep for offline. */
-export function RouteActions(props: RouteActionsProps) {
-  const { shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid } = props;
+/**
+ * Start's row in Plan: Download GPX and Copy link as icon buttons beside it, and More (a disclosure)
+ * holding Share and Keep for offline (the owner's choice 8). The said lines stay outside More, so a
+ * press is heard however More stands.
+ */
+function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
+  const { shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start } = props;
+  const [more, setMore] = useState(false);
+  const moreId = useId();
+  const hasMore = canShare || keepShown;
   return (
     <div className="route-actions">
-      <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)}>
-        Download GPX
-      </button>
-      <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
-        {COPY_LINK}
-      </button>
-      {canShare && (
-        <button type="button" className="secondary" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
-          {SHARE_LABEL}
+      <div className="route-actions-row">
+        {start}
+        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)} aria-label="Download GPX">
+          <Icon name="download" />
+          <span aria-hidden="true">GPX</span>
         </button>
+        <button type="button" className="secondary icon-button copy-link" onClick={copyLink} aria-label={COPY_LINK} aria-describedby={linkNote ? "link-note" : undefined}>
+          <Icon name="link" />
+          <span aria-hidden="true">Link</span>
+        </button>
+        {hasMore && (
+          <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
+            <Icon name="more" />
+            <span>More</span>
+          </button>
+        )}
+      </div>
+      {hasMore && (
+        <div id={moreId} className="route-more-body" hidden={!more}>
+          {canShare && (
+            <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+              {SHARE_LABEL}
+            </button>
+          )}
+          {keepShown && (
+            <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+              {KEEP_LABEL}
+            </button>
+          )}
+        </div>
       )}
       <span role="status" className="visually-hidden">
         {linkSpoken}
       </span>
       {keepShown && (
-        <>
-          <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
-            {KEEP_LABEL}
-          </button>
-          <p id="keep-offline-said" className="hint keep-said" role="status">
-            {keepSpoken.text}
-            {keepSpoken.count % 2 === 1 ? " " : ""}
-          </p>
-        </>
+        <p id="keep-offline-said" className="hint keep-said" role="status">
+          {keepSpoken.text}
+          {keepSpoken.count % 2 === 1 ? " " : ""}
+        </p>
       )}
       {linkSaid && (
         <span className="hint link-said" aria-hidden="true">
@@ -288,8 +339,101 @@ export function RouteActions(props: RouteActionsProps) {
   );
 }
 
+/** The route's notes, one line each with an icon (the owner's choice 5), their full words behind Info. */
+interface NoteLine {
+  key: string;
+  className: string;
+  icon: IconName;
+  text: string;
+}
+
+function noteLines(route: RouteResponse, points: LonLat[]): NoteLine[] {
+  const lines: NoteLine[] = [];
+  // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
+  const moved = movedPointsNote(route, points.length);
+  if (moved) lines.push({ key: "moved", className: "notice moved-points", icon: "pin", text: moved });
+  // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
+  // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
+  const outsideDc = outsideDcNote(route);
+  if (outsideDc) lines.push({ key: "outside", className: "notice mass-outside-dc", icon: "warn", text: outsideDc });
+  const detour = detourView(route, points);
+  if (detour) lines.push({ key: "detour", className: `notice detour detour-${detour.level}`, icon: "warn", text: detour.text });
+  const calm = calmSearchNote(route);
+  if (calm) lines.push({ key: "calm", className: "hint calm-search", icon: "info", text: calm });
+  const loop = loopNote(route);
+  if (loop) lines.push({ key: "loop", className: "hint loop-note", icon: "loop", text: loop });
+  // Mountain Bike (slice 6): what the trail rules could not hold, said first, then how much is trail.
+  const mtb = mtbNotes(route.mtb);
+  for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
+  if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
+  return lines;
+}
+
+/**
+ * The warning line (the owner's choice 5): the Avoid-rated junction first (AvoidNotice, an alert whose
+ * whole sentence is read), with Avoid it beside it, and a count of the route's other warnings (the roads
+ * best avoided, a traffic-tolerant ride, what the hills search found), listed behind it.
+ */
+function RouteAlerts({ route, answer, choice, around, onAround }: { route: RouteResponse; answer: RouteResponse | null; choice: number; around: boolean; onAround: (around: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const others = facilityNoticeCount(route);
+  const hasAvoid = avoidNoticeFor(answer, choice) !== null;
+  if (!hasAvoid && others === 0) return null;
+  return (
+    <div className="route-alerts">
+      {/* First in the route's warnings and announced first (335): the route goes through an Avoid-rated junction. */}
+      {hasAvoid && answer && <AvoidNotice answer={answer} choice={choice} around={around} onAround={onAround} />}
+      {others > 0 && (
+        <>
+          <button type="button" className="secondary alert-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+            <Icon name="warn" size={16} />
+            {warningsLabel(others, hasAvoid)}
+          </button>
+          <div id={id} className="alert-details" hidden={!open}>
+            <FacilityBreakdown route={route} part="notices" />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The stress bar and its key: patterns as well as colours, and the shares in words (312). */
+function StressFigure({ segments }: { segments: StressSegment[] }) {
+  return (
+    <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
+      <figcaption id="stress-figure-caption" className="visually-hidden">
+        Traffic stress along the route
+      </figcaption>
+      {/* One image to a screen reader, named with each share; the line under it says the same in text. */}
+      <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
+        {segments
+          .filter((s) => s.fraction > 0)
+          .map((s) => (
+            <span
+              key={s.key}
+              className={`stress-seg stress-seg-${s.key}`}
+              style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+              title={`${s.short}: ${s.percent}%`}
+            />
+          ))}
+      </div>
+      <p className="stress-key" aria-hidden="true">
+        {stressBarKey(segments)}
+      </p>
+    </figure>
+  );
+}
+
+const climbCount = (n: number) => (n === 1 ? "1 climb" : `${n} climbs`);
+
 export function RouteSummary({
   route,
+  answer,
+  choice,
+  around,
+  onAround,
   points,
   federal,
   narrow,
@@ -300,13 +444,23 @@ export function RouteSummary({
   ride,
   rideSize,
   onEnding,
+  water,
+  climbs,
+  actions,
+  mode,
+  preset,
+  go,
 }: {
   route: RouteResponse;
+  answer: RouteResponse | null;
+  choice: number;
+  around: boolean;
+  onAround: (around: boolean) => void;
   points: LonLat[];
   /** A Mass Ride's federal-land lines for the description (lib/federalStops.ts federalLines, item 239). */
   federal: readonly string[];
   narrow: boolean;
-  /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered under the figures and with the directions. */
+  /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
   ride: { onStart: () => void; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
@@ -317,30 +471,31 @@ export function RouteSummary({
   /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
   rideSize: number;
   onEnding: (ending: Ending) => void;
+  /** Water and restrooms along the route, while that layer is on and loaded; else null. */
+  water: { items: WaterAlong[] | null; onAddStop: (item: WaterAlong) => void } | null;
+  /** The climbs the route rides, while the Climbs layer is on and loaded; else null. */
+  climbs: ClimbAlong[] | null;
+  actions: RouteActionsProps;
+  mode: AppMode;
+  preset: PresetId;
+  go: GoRouteControls;
 }) {
   useStressStyle();
+  const [info, setInfo] = useState(false);
+  const [routesOpen, setRoutesOpen] = useState(false);
+  const infoId = useId();
+  const routesId = useId();
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
-  const detour = detourView(route, points);
-  const calmNote = calmSearchNote(route);
-  const loopSaid = loopNote(route);
-  // Mountain Bike (slice 6): what the trail rules could not hold, said first, then how much is trail.
-  const mtb = mtbNotes(route.mtb);
-  // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
-  // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
-  const outsideDc = outsideDcNote(route);
-  // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
-  const moved = movedPointsNote(route, points.length);
+  const notes = noteLines(route, points);
   const pace = paceText(route);
-  // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
-  // figures in view; Elevation and stress (322; Riders per minute, corker load and elevation on a Mass Ride),
-  // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
   // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
   const avoidCount = avoidItems(route).length;
   const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
   const bikeshare = bikeshareOf(route);
+  const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
   // is only the ride between the docks, so the walk to the first dock would read as off route.
   const rideable = !bikeshare && route.distance_m <= RIDE_MAX_M;
@@ -349,158 +504,266 @@ export function RouteSummary({
       Start ride
     </button>
   ) : null;
-  return (
-    <div className="summary">
-      {bikeshare && <BikeshareSummary plan={bikeshare} onEnding={onEnding} />}
-      {moved && (
-        <p className="notice moved-points" role="note">
-          {moved}
-        </p>
-      )}
-      {outsideDc && (
-        <p className="notice mass-outside-dc" role="note">
-          {outsideDc}
-        </p>
-      )}
-      {detour && (
-        <p className={`notice detour detour-${detour.level}`} role="note">
-          {detour.text}
-        </p>
-      )}
-      {calmNote && (
-        <p className="hint calm-search" role="note">
-          {calmNote}
-        </p>
-      )}
-      {loopSaid && (
-        <p className="hint loop-note" role="note">
-          {loopSaid}
-        </p>
-      )}
-      {mtb.warnings.map((text) => (
-        <p key={text} className="notice mtb-warning" role="note">
-          {text}
-        </p>
-      ))}
-      {mtb.notes.length > 0 && (
-        <p className="hint mtb-note" role="note">
-          {mtb.notes.join(" ")}
-        </p>
-      )}
-      {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}
-      <h3 className="visually-hidden">Totals</h3>
-      <dl className="stats totals">
-        <div className="stat-distance">
-          <dt>Distance</dt>
-          <dd>{formatDistance(route.distance_m)}</dd>
-        </div>
-        <div>
-          <dt>Moving time</dt>
-          <dd>{formatDuration(route.duration_s)}</dd>
-        </div>
-        <div>
-          <dt>Climb</dt>
-          <dd>{formatClimb(route.climb_m)}</dd>
-        </div>
-        <div>
-          <dt>Descent</dt>
-          <dd>{formatClimb(route.descent_m)}</dd>
-        </div>
-      </dl>
+  const goMode = mode === "go";
+  // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
+  const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
+  // Start: the big button (Go), or the first of its row (Plan). Short rides only; a longer one goes to a bike computer (OD 255).
+  const start = rideable ? (
+    <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
+      <Icon name="play" />
+      Start ride
+    </button>
+  ) : null;
+  const startHint = rideable ? (
+    <p id="start-ride-hint" className="hint start-ride-hint">
+      Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
+    </p>
+  ) : bikeshare ? null : (
+    <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+  );
+  const alerts = <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />;
+  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route);
+  // What Info holds: the pace, the notes in full, how to reshape the line and the route's sources (the owner's choice 5).
+  const infoBody = (
+    <div id={infoId} className="route-info" hidden={!info}>
       {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
-      <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
-      {segments.length > 0 && (
-        <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
-          <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
-          {/* One image to a screen reader, named with each share; the line under it says the same in text. */}
-          <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
-            {segments
-              .filter((s) => s.fraction > 0)
-              .map((s) => (
-                <span
-                  key={s.key}
-                  className={`stress-seg stress-seg-${s.key}`}
-                  style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
-                  title={`${s.short}: ${s.percent}%`}
-                />
-              ))}
-          </div>
-          <p className="stress-key" aria-hidden="true">
-            {stressBarKey(segments)}
-          </p>
-        </figure>
-      )}
-      <QuickFigures figures={quickFigures(route)} />
-      {/* Start ride (WEB-NAV-plan.md Q1): short rides only; a longer one goes to a bike computer (OD 255). */}
-      {rideable ? (
-        <div className="actions start-ride">
-          <button type="button" ref={ride.startRef} onClick={ride.onStart}>
-            Start ride
-          </button>
-          <p className="hint">Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.</p>
+      {notes.map((note) => (
+        <p key={note.key} className="hint note-full">
+          {note.text}
+        </p>
+      ))}
+      {/* Riders often arrive by a shared link, straight into a route, and a
+          phone has no hover to show the handle: say that the line moves. */}
+      <p className="hint reshape">
+        {narrow ? "To reshape the route, press and hold the line, then drag it." : "To reshape the route, drag the line."}
+      </p>
+      <p className="route-credit">Route data: {routeCredits(route).join("; ")}.</p>
+    </div>
+  );
+  const infoButton = (
+    <button type="button" className="link icon-button info-button route-info-button" aria-expanded={info} aria-controls={infoId} onClick={() => setInfo(!info)}>
+      <Icon name="info" />
+      <span>Info</span>
+    </button>
+  );
+  const noteList =
+    notes.length > 0 ? (
+      <ul className="note-lines" role="list">
+        {notes.map((note) => (
+          <li key={note.key} className={`note-line ${note.className}`}>
+            <Icon name={note.icon} size={16} />
+            <span className="note-text">{note.text}</span>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+  const bikeshareFold = bikeshare ? (
+    // The bikeshare plan, as a fold kept open (the mockup's table: "Same: a fold, open").
+    <Fold title="Bikeshare plan" open className="bikeshare-fold" icon="bikeshare">
+      <BikeshareSummary plan={bikeshare} onEnding={onEnding} />
+    </Fold>
+  ) : null;
+
+  if (goMode) {
+    // Go (the approved mockup's route sheets): the time big, the distance and climb in a line, Info, the
+    // stress bar, the warning line, Start, then the ride, the routes and Plan in detail. At its smallest
+    // (peek) the sheet keeps the time, Start and the stress bar, and counts the warnings.
+    return (
+      <div className={`summary go-summary${go.peek ? " peek" : ""}`}>
+        {!go.peek && bikeshareFold}
+        <div className="go-head">
+          <h3 className="visually-hidden">Totals</h3>
+          <dl className="stats totals go-totals">
+            <div className="total-time">
+              <dt className="visually-hidden">Moving time</dt>
+              <dd>{formatDuration(route.duration_s)}</dd>
+            </div>
+            <div className="stat-distance">
+              <dt className="visually-hidden">Distance</dt>
+              <dd>{formatDistance(route.distance_m)}</dd>
+            </div>
+            {go.peek && alertCount > 0 ? (
+              <div className="total-alerts">
+                <dt className="visually-hidden">Warnings</dt>
+                <dd>
+                  <Icon name="warn" size={14} />
+                  {alertCount === 1 ? "1 alert" : `${alertCount} alerts`}
+                </dd>
+              </div>
+            ) : (
+              <div className="total-climb">
+                <dt className="visually-hidden">Climb</dt>
+                <dd>
+                  <Icon name="mountain" size={14} />
+                  {formatClimb(route.climb_m)}
+                </dd>
+              </div>
+            )}
+          </dl>
+          {go.peek ? start : infoButton}
         </div>
-      ) : bikeshare ? null : (
-        <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
-      )}
-      <FacilityBreakdown route={route} part="notices" />
-      {profile && (
+        {!go.peek && infoBody}
+        {segments.length > 0 && <StressFigure segments={segments} />}
+        {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
+        {!go.peek && alerts}
+        {!go.peek && noteList}
+        {!go.peek && (
+          <div className="actions start-ride go-start">
+            {start}
+            {startHint}
+          </div>
+        )}
+        {!go.peek && (
+          <div className="go-chips" role="group" aria-label="Route options">
+            <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
+              <Icon name="bike" size={18} />
+              {presetLabel(preset)}
+            </button>
+            <span id="go-ride-hint" hidden>
+              Opens the ride settings.
+            </span>
+            {picker && (
+              <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
+                <Icon name="routes" size={18} />
+                {`${pickerCount} routes`}
+              </button>
+            )}
+            <button type="button" className="chip go-plan-chip" onClick={go.onPlan} aria-describedby="go-plan-hint">
+              <Icon name="list" size={18} />
+              Plan
+            </button>
+            <span id="go-plan-hint" hidden>
+              Plan in detail: the full planner, with this route.
+            </span>
+          </div>
+        )}
+        {!go.peek && picker && (
+          <div id={routesId} className="go-routes" hidden={!routesOpen}>
+            {picker}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="summary">
+      {bikeshareFold}
+      {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}
+      <div className="totals-row">
+        <h3 className="visually-hidden">Totals</h3>
+        <dl className="stats totals">
+          <div className="total-time">
+            <dt className="visually-hidden">Moving time</dt>
+            <dd>{formatDuration(route.duration_s)}</dd>
+          </div>
+          <div className="stat-distance">
+            <dt className="visually-hidden">Distance</dt>
+            <dd>{formatDistance(route.distance_m)}</dd>
+          </div>
+          <div className="total-climb">
+            <dt className="visually-hidden">Climb</dt>
+            <dd>
+              <span aria-hidden="true">↑ </span>
+              {formatClimb(route.climb_m)}
+            </dd>
+          </div>
+          <div className="total-descent">
+            <dt className="visually-hidden">Descent</dt>
+            <dd>
+              <span aria-hidden="true">↓ </span>
+              {formatClimb(route.descent_m)}
+            </dd>
+          </div>
+        </dl>
+        {infoButton}
+      </div>
+      {infoBody}
+      <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
+      {segments.length > 0 && <StressFigure segments={segments} />}
+      {alerts}
+      {noteList}
+      <div className="actions start-ride">
+        <RouteActions {...actions} start={start} />
+        {startHint}
+      </div>
+      {(profile || climbs) && (
         <Fold
-          title={foldName(chartKind(route))}
-          heading={foldName(chartKind(route))}
-          // Offered collapsed on a small screen (OWNER-DECISIONS 322); open beside the map.
+          title={elevationTitle}
+          heading={elevationTitle}
+          icon="chart"
+          count={climbs && climbs.length > 0 ? climbCount(climbs.length) : null}
+          // Closed by default, on a computer too (the owner's choice 7).
           open={chartFoldOpen(narrow)}
+          className="elevation-fold"
         >
-          <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />
+          {profile && <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
+          {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
+          {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>
       )}
       {capacity && (
         // A Mass Ride's fold is about riders per minute, in place of the stress and facility figures (OWNER-DECISIONS 325).
-        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open}>
+        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open} icon="road">
           <CapacityFigures route={route} />
         </Fold>
       )}
       {!capacity && (
-      <Fold title={ROUTE_FOLDS.facilities.title} heading={ROUTE_FOLDS.facilities.title} open={ROUTE_FOLDS.facilities.open}>
-        {segments.length > 0 && (
-          <figure className="stress" aria-labelledby="stress-detail-caption">
-            <figcaption id="stress-detail-caption">Traffic stress, stretch by stretch</figcaption>
-            <ul className="stress-list">
-              {segments.map((s) => (
-                <li key={s.key}>
-                  <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
-                  <span className="stress-name">{s.short}</span>
-                  <span className="visually-hidden">, </span>
-                  <span className="stress-pct">{s.percent}%</span>
-                  <span className="visually-hidden">, </span>
-                  <span className="stress-label">{s.label}</span>
-                </li>
-              ))}
-            </ul>
-          </figure>
-        )}
-        <FacilityBreakdown route={route} part="figures" />
-      </Fold>
+        <Fold
+          title={ROUTE_FOLDS.facilities.title}
+          heading={ROUTE_FOLDS.facilities.title}
+          open={ROUTE_FOLDS.facilities.open}
+          icon="road"
+          count={calm === null ? null : `${calm}% quiet`}
+          className="facilities-fold"
+        >
+          {/* The four quick figures, first in the fold (the owner's choice 4). */}
+          <QuickFigures figures={quickFigures(route)} />
+          {segments.length > 0 && (
+            <figure className="stress" aria-labelledby="stress-detail-caption">
+              <figcaption id="stress-detail-caption">Traffic stress, stretch by stretch</figcaption>
+              <ul className="stress-list">
+                {segments.map((s) => (
+                  <li key={s.key}>
+                    <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
+                    <span className="stress-name">{s.short}</span>
+                    <span className="visually-hidden">, </span>
+                    <span className="stress-pct">{s.percent}%</span>
+                    <span className="visually-hidden">, </span>
+                    <span className="stress-label">{s.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </figure>
+          )}
+          <FacilityBreakdown route={route} part="figures" />
+        </Fold>
       )}
       <RouteDescription route={route} fold rideAction={rideAction} federal={federal} />
       {junctions !== null && (
-        <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
+        <Fold title={ROUTE_FOLDS.junctions.title} count={junctions} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open} icon="junction">
           <IntersectionList route={route} onSelect={onSelectJunction} />
         </Fold>
       )}
       {picker && (
-        <Fold title={foldTitle(ROUTE_FOLDS.choices.title, pickerCount)} heading={ROUTE_FOLDS.choices.title} open={ROUTE_FOLDS.choices.open}>
+        <Fold title={ROUTE_FOLDS.choices.title} count={pickerCount} heading={ROUTE_FOLDS.choices.title} open={ROUTE_FOLDS.choices.open} icon="routes">
           {picker}
         </Fold>
       )}
-      {/* Riders often arrive by a shared link, straight into a route, and a
-          phone has no hover to show the handle: say that the line moves. */}
-      <p className="hint reshape">
-        {narrow
-          ? "To reshape the route, press and hold the line, then drag it."
-          : "To reshape the route, drag the line."}
-      </p>
-      <p className="route-credit">Route data: {routeCredits(route).join("; ")}.</p>
+      {water && (
+        // Water and restrooms along the route: one closed fold here, no longer also in Layers (the mockup's table).
+        <Fold
+          title={ROUTE_FOLDS.water.title}
+          count={water.items?.length ?? null}
+          heading={ROUTE_FOLDS.water.title}
+          open={ROUTE_FOLDS.water.open}
+          icon="water"
+          className="water-fold"
+        >
+          <WaterAlongList items={water.items} onAddStop={water.onAddStop} headingId="water-along-planner-heading" level="h4" />
+        </Fold>
+      )}
     </div>
   );
 }

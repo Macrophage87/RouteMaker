@@ -38,10 +38,12 @@ export interface FoodFinderProps {
   canAddStop: boolean;
   onShow: (result: FoodResult) => void;
   onAddStop: (result: FoodResult) => void;
+  /** A fold of its own (the default), or the body alone, in the map's Food sheet (UI-CLEANUP), whose heading names it. */
+  folded?: boolean;
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop } = props;
+  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, folded = true } = props;
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
   const focusFrom = useRef<number | null>(null);
@@ -53,10 +55,9 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
     list.current.querySelectorAll("li")[from]?.querySelector("button")?.focus();
   }, [shown]);
   const anyDetour = results?.some((r) => r.detour) ?? false;
-  return h(
-    "details",
-    { className: "fold food" },
-    h("summary", null, FOOD_SUMMARY),
+  const wrap = (body: ReactElement) =>
+    folded ? h("details", { className: "fold food" }, h("summary", null, FOOD_SUMMARY), body) : h("div", { className: "food food-sheet" }, body);
+  return wrap(
     h(
       "div",
       { className: "fold-body" },

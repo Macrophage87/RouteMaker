@@ -20,7 +20,8 @@ import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { neutralPaletteSearch, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
-import { isMtb, mtbLevelOf } from "./lib/mtbMode.ts";
+import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
+import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -36,7 +37,7 @@ import { RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
-import { trailsAreOff, type Dials } from "./lib/dials.ts";
+import { carries, startDials, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
@@ -53,6 +54,8 @@ import { refreshStressTiles } from "./lib/mapStyle.ts";
 import * as maplibregl from "maplibre-gl";
 import {
   FINDING_LOCATION,
+  LOCATE_MESSAGES,
+  LOCATION_OUTSIDE,
   browserEnv,
   linkLocationNote,
   locate,
@@ -62,9 +65,10 @@ import {
   movedFromHere,
   placeFix,
   type Fix,
+  type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { pickIntoPlan, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -131,8 +135,17 @@ import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { NARROW, useLongerThan, useNarrow, useSettled } from "./app/hooks.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
-import { RouteActions, RouteSection, type Status } from "./app/RoutePanel.tsx";
-import { GpxSheet, LayersSheet, SettingsSheet } from "./app/Sheets.tsx";
+import { RouteSection, type Status } from "./app/RoutePanel.tsx";
+import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { NearestFinder } from "./lib/nearestFinder.ts";
+import { NearbyStations } from "./NearbyStations.tsx";
+import { Fold } from "./Sidebar.tsx";
+import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode, type AppMode } from "./lib/appMode.ts";
+import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
+import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
+import { PRESETS } from "./lib/presets.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -153,6 +166,14 @@ interface Plan {
 }
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+
+// Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
+// link with a plan in it, else My Go's Open in (the account's copy or this device's), else by screen size.
+const START_MY_GO = readStartMyGo();
+const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
+const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: START_MY_GO.myGo.openIn, wide: !window.matchMedia(NARROW).matches });
+// Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
+const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
 const OPEN_AT = atFromHash(window.location.hash);
 
@@ -165,8 +186,18 @@ const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC r
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
-  const [preset, setPreset] = useState<PresetId>(initialPlan.preset);
-  const [dials, setDials] = useState<Dials>(initialPlan.dials);
+  const [preset, setPreset] = useState<PresetId>(GO_START_RIDE ?? initialPlan.preset);
+  const [dials, setDials] = useState<Dials>(() => (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
+  // Go or Plan (lib/appMode.ts), and why it opened so (a later account My Go may still move it).
+  const [mode, setModeState] = useState<AppMode>(OPENING.mode);
+  const modeSwitched = useRef(false);
+  // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
+  const [myGo, setMyGo] = useState<MyGo>(START_MY_GO.myGo);
+  const [myGoSaid, setMyGoSaid] = useState("");
+  // /api/me's flags: signed in (My Go to the account, the Home chip) and an instance admin (Review).
+  const [me, setMe] = useState<Me>(NO_ME);
+  // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
+  const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
   // the link carries, and added only to the request (planDials).
   const weightStore = useRef<WeightStore | null>(null);
@@ -313,12 +344,15 @@ export function App() {
   // which Legend opens scrolled to the legend, GPX, Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
-  const [legendTarget, setLegendTarget] = useState(false);
   // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
   // this opens the search, Add point and the rest again.
   const [editPoints, setEditPoints] = useState(false);
   const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
-  const openedBy = useRef<BarItem["id"]>("layers");
+  // The way back through the sheets (lib/sidebar.ts openOnto, backFrom): each step is the view that was
+  // showing and what opened the next sheet (a bar button, a map chip, Go's Menu, Layers' Legend button).
+  const opened = useRef<Opened<HTMLElement>[]>([]);
+  // Where Back from the top sheet gives the focus: what opened it.
+  const backTo = useRef<HTMLElement | null>(null);
   const prevView = useRef<PanelView>("planner");
   // Why the view last changed (lib/sidebar.ts focusOnViewChange): a bar button, Back, or an error or
   // the long-ride question bringing the planner back.
@@ -328,9 +362,7 @@ export function App() {
   const pointsEditRef = useRef<HTMLDivElement>(null);
   const editPointsRef = useRef<HTMLButtonElement>(null);
   const wasCompact = useRef(false);
-  const layersHeadingRef = useRef<HTMLHeadingElement>(null);
   const legendHeadingRef = useRef<HTMLHeadingElement>(null);
-  const gpxHeadingRef = useRef<HTMLHeadingElement>(null);
   const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
   // What "Copy link" answered: said politely, and again for a second press. The spoken one adds the
@@ -566,10 +598,13 @@ export function App() {
   useEffect(() => {
     const was = prevView.current;
     prevView.current = view;
-    const target = focusOnViewChange({ was, view, legendTarget, openedBy: openedBy.current, cause: viewCause.current });
+    const target = focusOnViewChange({ was, view, cause: viewCause.current });
     if (target === null) return;
-    if (target.kind === "bar") barButtons.current[target.id]?.focus();
-    else if (target.kind === "error") errorRef.current?.focus();
+    if (target.kind === "opener") {
+      const opener = backTo.current;
+      if (opener?.isConnected && opener.offsetParent !== null) opener.focus();
+      else plannerHeadingRef.current?.focus();
+    } else if (target.kind === "error") errorRef.current?.focus();
     else if (target.kind === "plan") planButtonRef.current?.focus();
     else if (target.kind === "planner") {
       // The Plan button (OWNER-DECISIONS 392): the planner's heading, at the top of the panel.
@@ -577,11 +612,11 @@ export function App() {
       panelBodyRef.current?.scrollTo?.({ top: 0 });
     }
     else {
-      const heading = target.legend ? legendHeadingRef : { layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef }[target.view];
-      heading.current?.focus();
-      heading.current?.scrollIntoView?.({ block: "start" });
+      const heading = document.getElementById(`sheet-${target.view}-title`);
+      heading?.focus();
+      heading?.scrollIntoView?.({ block: "start" });
     }
-  }, [view, legendTarget]);
+  }, [view]);
 
   // The long-ride question takes the focus when it comes, so a keyboard rider lands on it (once the
   // sheet is open: a hidden button cannot take it). Not again on the way back from a bar sheet while
@@ -590,6 +625,12 @@ export function App() {
   const focusPlan = focusesPlanButton(status.kind, panelOpen);
   const viewNow = useRef(view);
   viewNow.current = view;
+  const goSheetNow = useRef(goSheet);
+  goSheetNow.current = goSheet;
+  const myGoRef = useRef(myGo);
+  myGoRef.current = myGo;
+  const meRef = useRef(me);
+  meRef.current = me;
   useEffect(() => {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
@@ -608,6 +649,65 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+
+  // My Go (lib/myGo.ts; the owner's choice 2): signed in it is the account's (GET /api/me/go, read once
+  // the page knows it is signed in), and an account's Open in or ride may still move a view that was only
+  // the screen's guess; signed out, the device's. A save goes to the account only once it has been read,
+  // so a Home is never overwritten by a save made before the page knew it.
+  const accountMyGoRead = useRef(false);
+  const rideTouched = useRef(false);
+  const myGoSaidTimer = useRef<number | undefined>(undefined);
+  const sayMyGo = (text: string) => {
+    window.clearTimeout(myGoSaidTimer.current);
+    setMyGoSaid("");
+    myGoSaidTimer.current = window.setTimeout(() => setMyGoSaid(text), 150);
+  };
+  const saveMyGoNow = (next: MyGo, speak = true) => {
+    setMyGo(next);
+    if (meRef.current.signed_in) {
+      if (!accountMyGoRead.current) return;
+      saveAccountCopy(next);
+      void saveMyGo(window.location.origin, next).then((saved) => {
+        if (saved) setMyGo(saved);
+        if (speak) sayMyGo(saved ? MY_GO_SAVED : MY_GO_NOT_SAVED);
+      });
+    } else {
+      saveDeviceMyGo(next);
+      if (speak) sayMyGo(MY_GO_SAVED_DEVICE);
+    }
+  };
+  useEffect(() => {
+    let live = true;
+    const origin = window.location.origin;
+    void fetchMe(origin).then(async (found) => {
+      if (!live) return;
+      setMe(found);
+      if (!found.signed_in) {
+        // Signed out (or the account's copy is from before a sign-out): this device's My Go.
+        if (START_MY_GO.account) {
+          saveAccountCopy(null);
+          setMyGo(readStartMyGo().myGo);
+        }
+        return;
+      }
+      const account = await fetchMyGo(origin);
+      if (!live || !account) return;
+      accountMyGoRead.current = true;
+      setMyGo(account);
+      saveAccountCopy(account);
+      if (laterMyGoApplies(OPENING.by, modeSwitched.current)) {
+        const later = openingMode({ tab: null, planLink: false, openIn: account.openIn, wide: !window.matchMedia(NARROW).matches }).mode;
+        setModeState((now) => (now === later ? now : later));
+        if (later === "go" && account.ride && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0) {
+          setPreset(account.ride);
+          setDials(startDials(account.ride));
+        }
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
   // same region; shown at the top of the planner (InstallableApp.tsx).
   const appStatus = useAppStatus(riding, announce);
@@ -652,7 +752,8 @@ export function App() {
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
   // the app-level region then, and only then (no second reading while the planner shows it; recheck S1).
   const plannerShownNow = useRef(true);
-  plannerShownNow.current = view === "planner" && panelOpen;
+  // Go's sheet has no Points section: its notice is said through the app's region there too.
+  plannerShownNow.current = view === "planner" && panelOpen && mode === "plan";
   useEffect(() => {
     if (noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
   }, [notice, announce]);
@@ -900,7 +1001,8 @@ export function App() {
     window.clearTimeout(nearestTimer.current);
     setNearestStatus("");
     nearestTimer.current = window.setTimeout(() => setNearestStatus(text), 150);
-    if (!plannerShownNow.current) announce(text);
+    // Its own status line is in the Water sheet; out of it, the app's region says it.
+    if (!(viewNow.current === "nearest" && panelOpen)) announce(text);
   };
   // A list is for the ride and the spot it was found for: a new ride type or slider (other distances),
   // a new "Search from", or a start that moved under a "start" search put it away.
@@ -915,6 +1017,22 @@ export function App() {
   useEffect(() => {
     if (nearestList?.from === "start" && String(points[0]) !== String(nearestList.origin)) setNearestList(null);
   }, [points, nearestList]);
+  // Go's Water and Restroom chips search from the rider's location: the "Search from" is set first, and the
+  // search runs once it has (a change of it puts away a list found for the old one: nearestKey).
+  const nearestPending = useRef<NearestKind | null>(null);
+  useEffect(() => {
+    const kind = nearestPending.current;
+    if (kind === null || nearestFrom !== "location") return;
+    nearestPending.current = null;
+    void findNearest(kind);
+  });
+  const findNearestHere = (kind: NearestKind) => {
+    if (nearestFrom === "location" || !nearestFromOptions.includes("location")) void findNearest(kind);
+    else {
+      nearestPending.current = kind;
+      setNearestFrom("location");
+    }
+  };
   const findNearest = async (kind: NearestKind) => {
     if (nearestBusyRef.current) {
       sayNearest(STILL_SEARCHING);
@@ -994,6 +1112,82 @@ export function App() {
     setNotice(null);
     const map = mapRef.current;
     map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
+  };
+  // Go (the owner's commute view): the place picked is the destination and the start is the rider's
+  // location, in one edit (Undo puts the plan back). Without a location the destination stands alone and
+  // the notice says why; Plan sets a start by hand.
+  // Go's one look-up (Where to?, the Home chip and Locate), through Use my location's gate: null when
+  // another look-up is under way or a later one replaced it. The fix is kept only as Use my location's is.
+  const locateForGo = async (): Promise<LocateResult | null> => {
+    const press = gate.begin();
+    announce(FINDING_LOCATION);
+    if (press === null) return null;
+    setLocating(true);
+    const result = await locate(geoEnv);
+    if (!gate.finish(press)) return null;
+    setLocating(false);
+    return result;
+  };
+  const goTo = async (dest: LonLat, name: string) => {
+    cancelLocateNotice();
+    setNotice(null);
+    if (!insideCoverage(dest)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    const result = await locateForGo();
+    if (result === null) return;
+    const ride = rideRef.current;
+    // To a place and no further: a loop the rider had on is turned off, in the same edit.
+    const noLoop = ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined;
+    if (!result.ok || !insideCoverage(result.fix.point)) {
+      commit([dest], noLoop);
+      setNotice(`${result.ok ? LOCATION_OUTSIDE : LOCATE_MESSAGES[result.reason]} Go starts from your location; Plan sets a start by hand.`);
+      return;
+    }
+    setHere(result.fix);
+    commit([result.fix.point, dest], noLoop);
+    setFromHere((prior) => [...prior, result.fix.point]);
+    announce(`Planning a route to ${name} from your location.`);
+    mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
+  };
+  const goToPlace = (found: Place) => {
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    if (point === null) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    void goTo(point, found.name);
+  };
+  // Go's Home chip (the owner's choice 3): signed in with a Home, ride there; else My Go, under Settings.
+  const goHome = (chip: HTMLElement) => {
+    const home = myGoRef.current.home;
+    if (meRef.current.signed_in && home) {
+      namer.remember(home.point, home.label || "Home", home.label || "Home");
+      void goTo(home.point, home.label || "Home");
+      return;
+    }
+    openView("settings", chip);
+    window.setTimeout(() => document.getElementById("settings-my-go-heading")?.scrollIntoView?.({ block: "start" }), 50);
+  };
+  // Go's Locate (the top bar): the map goes to the rider, and nothing is added to the plan.
+  const goLocate = async () => {
+    const result = await locateForGo();
+    if (result === null) return;
+    if (!result.ok) {
+      setNotice(LOCATE_MESSAGES[result.reason]);
+      return;
+    }
+    setHere(result.fix);
+    if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
+    else announce("The map is at your location.");
+    mapRef.current?.flyTo({ center: result.fix.point, zoom: Math.max(mapRef.current.getZoom(), 15) });
+  };
+  // A ride type chip (Go's quick three, or the Ride sheet's): as the ride type dialog picks one.
+  const pickRide = (id: PresetId) => {
+    if (id === preset) return;
+    choosePreset(id, mtbChosen(preset, id, chooseRideType(id, carries(id) ? "cargo" : null, dials)));
+    announce(`${presetLabel(id)}.`);
   };
   const searchBias = (): LonLat | undefined => {
     const centre = mapRef.current?.getCenter();
@@ -1156,6 +1350,7 @@ export function App() {
   const choosePreset = (id: PresetId, next: Dials) => {
     const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     if (said) announce(said);
+    rideTouched.current = true;
     // Mountain Bike (slice 6) turns the mountain-bike and contour layers on (the owner's defaults of
     // 2026-10-11), not remembered as the rider's own choice; its loop is on in `next` (mtbChosen).
     if (isMtb(id) && !isMtb(preset)) {
@@ -1200,7 +1395,7 @@ export function App() {
   // already on the planner nothing changes, so the heading is focused and the panel scrolled to the top here.
   const showPlanner = (focusHeading = true) => {
     viewCause.current = focusHeading ? "planButton" : "panelToggle";
-    setLegendTarget(false);
+    opened.current = [];
     if (viewNow.current === "planner") {
       if (focusHeading) {
         plannerHeadingRef.current?.focus();
@@ -1208,19 +1403,48 @@ export function App() {
       }
     } else setView("planner");
   };
-  const openSheet = (item: BarItem) => {
-    if (item.opens === "planner") {
+  // A sheet: from the bar, a map chip or Go's Menu (a new way back), or from inside a sheet (Layers' Legend,
+  // Suggest's Review, the Menu's pages: one more step back). The focus goes to its heading.
+  const openView = (next: PanelView, opener: HTMLElement | null, nested = false) => {
+    if (next === "planner") {
       showPlanner();
       return;
     }
-    openedBy.current = item.id;
+    opened.current = openOnto(opened.current, viewNow.current, opener, nested);
     viewCause.current = "bar";
-    setLegendTarget(item.toLegend === true);
-    setView(item.opens);
+    setPanelOpen(true);
+    if (goSheetNow.current === "peek") setGoSheet("half");
+    setView(next);
   };
+  const openSheet = (item: BarItem, button: HTMLButtonElement) => openView(item.opens, button);
+  // Back (or Escape): to the sheet this one was opened from, or the planner, and the focus to what opened it.
   const backToPlanner = () => {
+    const step = backFrom(opened.current);
+    opened.current = step.stack;
+    backTo.current = step.opener;
     viewCause.current = "back";
+    setView(step.view);
+  };
+  const backLabel = (of: PanelView): string => {
+    const step = opened.current[opened.current.length - 1];
+    if (!step || viewNow.current !== of || step.from === "planner") return BACK_LABEL;
+    return `Back to ${step.from === "settings" && mode === "go" ? "Menu" : SHEET_TITLES[step.from as Exclude<PanelView, "planner">]}`;
+  };
+  const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
+
+  // Go and Plan (lib/appMode.ts): the switch changes the view, keeps the route, and is remembered as My Go's
+  // Open in (the account's signed in, this device's not) and for this tab.
+  const changeMode = (next: AppMode) => {
+    if (next === mode) return;
+    modeSwitched.current = true;
+    writeTabMode(next);
+    opened.current = [];
     setView("planner");
+    setPanelOpen(true);
+    setGoSheet("half");
+    setModeState(next);
+    announce(modeSaid(next));
+    saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
@@ -1402,7 +1626,8 @@ export function App() {
     window.clearTimeout(foodTimer.current);
     setFoodStatus("");
     foodTimer.current = window.setTimeout(() => setFoodStatus(text), 150);
-    if (!plannerShownNow.current) announce(text);
+    // Its own status line is in the Food sheet; out of it, the app's region says it.
+    if (!(viewNow.current === "food" && panelOpen)) announce(text);
   };
   const foodRoute = useMemo(() => routeForDetour(shown), [shown]);
   const foodAll = useMemo(
@@ -1429,9 +1654,9 @@ export function App() {
       map.once("idle", draw);
     }
   }, [foodResults]);
-  const searchFoodNow = async () => {
+  const searchFoodNow = async (asked?: string) => {
     if (foodBusy) return;
-    const query = foodQuery;
+    const query = asked ?? foodQuery;
     if (!foodTerms(query)) {
       setFoodAsked(null);
       sayFood(FOOD_EMPTY_QUERY);
@@ -1477,8 +1702,32 @@ export function App() {
     namer.remember(point, result.place.name);
     placeSpot("via", point);
   };
+  // The nearest finder (Plan's Water chip, Go's Water and Restroom chips): its own sheet now.
+  const nearestProps = {
+    from: nearestFrom,
+    fromOptions: nearestFromOptions,
+    onFrom: setNearestFrom,
+    onFind: (kind: NearestKind) => void findNearest(kind),
+    busy: nearestBusy,
+    status: nearestStatus,
+    list: nearestList,
+    canAddStop: points.length >= 2,
+    onRide: rideToNearest,
+    onAddStop: addNearestStop,
+  };
+  // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
+  const reviewOpener = me.can_change_lts ? (opener: HTMLElement) => openView("review", opener, true) : null;
+  const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, said: myGoSaid, geoGate, searchBias };
+  // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
+  const menu = {
+    onPlan: () => changeMode("plan"),
+    onSuggest: (opener: HTMLElement) => openView("suggest", opener, true),
+    onGpx: (opener: HTMLElement) => openView("gpx", opener, true),
+    onReview: reviewOpener,
+  };
   const foodFinder = (
     <FoodFinder
+      folded={false}
       query={foodQuery}
       onQuery={setFoodQuery}
       scope={foodScope}
@@ -1608,22 +1857,40 @@ export function App() {
   );
   const loop = loopView(preset, dials.loop, points);
   const loopHintId = useId();
+  const [tips, setTips] = useState(false);
+  const tipsId = useId();
   const pointsSection = (
     <PointsSection key="points"
       {...{
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
         dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
-        routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, foodFinder, nearestFrom, nearestFromOptions,
-        setNearestFrom, findNearest, nearestBusy, nearestStatus, nearestList, rideToNearest, addNearestStop,
+        routeShownForPoints, editPointsRef, setEditPoints, federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
-        undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice,
+        undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId,
       }}
     />
   );
+  const goMode = mode === "go";
+  // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
+  const stations =
+    preset === "bikeshare" && points.length > 0 ? (
+      <Fold title="Choose a station" icon="bikeshare" className="stations-fold">
+        <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
+      </Fold>
+    ) : null;
+  const actions = {
+    routedLoop, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+  };
+  const go = {
+    onRide: () => openView("ride", document.activeElement instanceof HTMLElement ? document.activeElement : null),
+    onPlan: () => changeMode("plan"),
+    peek: goSheet === "peek",
+  };
   const routeSection = (
     <RouteSection key="route"
       {...{
+        mode, actions, stations, go,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn,
@@ -1664,6 +1931,19 @@ export function App() {
         <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
           {SKIP_LINK_TEXT}
         </a>
+      )}
+      {/* Go's bar over the map, first in the reading order as it is at the top of the screen. */}
+      {!riding && goMode && (
+        <GoTopBar
+          mode={mode}
+          onMode={changeMode}
+          onMenu={(button) => openView("settings", button)}
+          onLayers={(button) => openView("layers", button)}
+          onLocate={() => void goLocate()}
+          locating={locating}
+          destination={shown && points.length >= 2 ? (namer.name(points[points.length - 1])?.name ?? "Destination") : null}
+          onClear={clearAll}
+        />
       )}
       <MapView
         points={riding ? NO_POINTS : points}
@@ -1748,6 +2028,7 @@ export function App() {
         onPlace={placeSpot}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
+      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} />}
       {!riding && narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
@@ -1802,19 +2083,18 @@ export function App() {
         ref={panelRef}
         id="route-planner"
         tabIndex={-1}
-        className={`panel ${panelOpen ? "open" : "closed"}`}
+        className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}`}
         aria-label="Route planner"
         hidden={riding}
       >
         <header className="panel-header">
-          <div>
-            <h1 ref={plannerHeadingRef} tabIndex={-1}>
-              {PLANNER_TITLE}
-            </h1>
-            <p className="tagline">Bike routes for the DC region and Baltimore. No sign-in needed.</p>
-          </div>
+          <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
+            {PLANNER_TITLE}
+          </h1>
+          {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" />}
           <button
             type="button"
+            hidden={goMode}
             className="panel-toggle"
             aria-expanded={panelOpen}
             aria-controls="panel-body"
@@ -1840,47 +2120,85 @@ export function App() {
           <AppStatusBar status={appStatus} />
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
-              {order.map((id) => sections[id])}
+              {goMode ? (
+                <GoSheet
+                  size={goSheet}
+                  onSize={setGoSheet}
+                  pointCount={points.length}
+                  geoGate={geoGate}
+                  searchBias={searchBias}
+                  onPick={goToPlace}
+                  places={{
+                    homeReady: me.signed_in && myGo.home !== null,
+                    signedIn: me.signed_in,
+                    onHome: goHome,
+                    onFood: (chip) => openView("food", chip),
+                    onWater: (chip) => {
+                      openView("nearest", chip);
+                      findNearestHere("water");
+                    },
+                    onRestroom: (chip) => {
+                      openView("nearest", chip);
+                      findNearestHere("restroom");
+                    },
+                  }}
+                  rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" />}
+                  notice={notice}
+                  route={points.length > 0 || status.kind !== "idle" ? routeSection : null}
+                />
+              ) : (
+                order.map((id) => sections[id])
+              )}
             </div>
 
-            {/* The bottom bar's sheets stay in the page while hidden, so the opened GPX file
-                and the switches keep their state. */}
+            {/* The sheets stay in the page while hidden, so the opened GPX file and the switches keep their state. */}
             <LayersSheet
               {...{
-                view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible,
-                showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs,
-                changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails,
-                showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
-                legendHeadingRef, zoom, facilitiesShown,
+                nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
+                setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong,
+                addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
+                climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
               }}
             />
-
+            <LegendSheet
+              {...{
+                nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
+                waterStatus, climbsOn, climbsStatus,
+              }}
+            />
+            <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
+            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} />
             <GpxSheet
               {...{
-                view, backToPlanner, gpxHeadingRef, shown, routedPoints, routedLoop, federalRoute, points, status,
-                imported, openImported, refineImported, getMap,
+                nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported,
+                refineImported, getMap,
               }}
             />
-
             <SettingsSheet
               {...{
-                view, backToPlanner, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion,
-                openKept, announce, linkNote, mapRef, setHazardsAsked,
+                nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
+                linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
               }}
             />
+            <NearestSheet nav={sheetNav}>
+              <NearestFinder {...nearestProps} folded={false} />
+            </NearestSheet>
+            <FoodSheet
+              nav={sheetNav}
+              onChip={(food) => {
+                setFoodQuery(food);
+                void searchFoodNow(food);
+              }}
+            >
+              {foodFinder}
+            </FoodSheet>
+            <RideSheet nav={sheetNav}>
+              <RideChips ids={PRESETS.map((p) => p.id)} preset={preset} onPick={pickRide} label="Every ride type" />
+              {sections.presets}
+            </RideSheet>
           </div>
 
-          {/* Pinned under the scrolling part while a route is shown: its file and its link. */}
-          {view === "planner" && shown && (
-            <RouteActions
-              {...{
-                shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare, shareRoute, linkSpoken,
-                keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
-              }}
-            />
-          )}
-
-          <BottomBar view={view} legend={legendTarget} onOpen={openSheet} buttonRef={(id, button) => (barButtons.current[id] = button)} />
+          {!goMode && <BottomBar view={view} onOpen={openSheet} buttonRef={(id, button) => (barButtons.current[id] = button)} />}
         </div>
       </aside>
     </div>

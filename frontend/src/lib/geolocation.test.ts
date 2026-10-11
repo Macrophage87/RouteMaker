@@ -604,7 +604,12 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.doesNotMatch(app, /watchPosition/);
   // Two look-up paths, both through the one gate: Use my location, and the nearest-place search from
   // the rider's location (lib/nearest.ts), whose position goes only in its own request, as a route's points do.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 2, "two look-up paths");
+  // A third, Go's (UI-CLEANUP: Where to?, Home and Locate), through the same gate, whose fix goes to the plan
+  // as Use my location's does, and to the map's camera.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 3, "three look-up paths");
+  const go = body(app, "const locateForGo", "const goTo");
+  assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
+  assert.doesNotMatch(body(app, "const locateForGo", "const goToPlace"), LEAKS);
   const nearest = body(app, "const findNearest", "const rideToNearest");
   assert.match(nearest, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*gate\.finish\(press\);/);
   assert.doesNotMatch(nearest, LEAKS);
@@ -630,7 +635,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare,/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;

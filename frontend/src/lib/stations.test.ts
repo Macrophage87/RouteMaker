@@ -198,7 +198,12 @@ test("each station is a real button named as it is read, with aria-pressed for t
 });
 
 test("the lists are in the Bikeshare panel only and a choice is forgotten with its point", () => {
-  assert.match(app, /preset === "bikeshare" && <NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/);
+  // UI-CLEANUP: under Route, in a closed "Choose a station" fold (the approved mockup's control table).
+  assert.match(
+    app,
+    /preset === "bikeshare" && points\.length > 0 \? \(\s*<Fold title="Choose a station" icon="bikeshare" className="stations-fold">\s*<NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/,
+  );
+  assert.equal((app.match(/<NearbyStations /g) ?? []).length, 1, "in one place");
   assert.match(app, /activePins\(preset, points, stationPins\)/);
   assert.match(app, /withStations\(withWeight\(routeDials, weight\), stationChoice\)/);
   assert.doesNotMatch(app, /encodePlan\([^)]*stationPins/, "never in the link");

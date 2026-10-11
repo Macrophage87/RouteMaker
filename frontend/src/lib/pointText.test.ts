@@ -176,7 +176,7 @@ test("the lone-start hint: a stop next in a loop; the toggle offered only where 
 
 test("accessibility mode off: the hints say to turn it on, not to use Map tools that is not there (455)", () => {
   // The owner's sentence (455a(4)) on its own, with where the switch is (the a11y review's SF1; mutation U17).
-  const turnOn = "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).";
+  const turnOn = "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).";
   assert.equal(loneStartHint("default", true), `Now click the map to add a stop. ${turnOn} The ride comes back to the start.`);
   assert.equal(
     loneStartHint("default", false),

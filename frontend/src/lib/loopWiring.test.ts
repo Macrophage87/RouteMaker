@@ -117,7 +117,8 @@ test("App: Reverse in a loop of a start and one stop is aria-disabled with its r
   );
   assert.match(
     app,
-    /onClick=\{reverse\}\s+disabled=\{points\.length < 2\}\s+aria-disabled=\{reverseHint \? true : undefined\}\s+aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/,
+    // UI-CLEANUP: Swap beside the Points heading, shown with two points or more.
+    /\{points\.length >= 2 && \(\s*<button[\s\S]{0,120}?className="secondary icon-button swap-points"\s+onClick=\{reverse\}\s+aria-disabled=\{reverseHint \? true : undefined\}\s+aria-describedby=\{reverseHint \? "reverse-hint" : "swap-hint"\}/,
   );
   assert.match(app, /\{reverseHint && <p className="hint" id="reverse-hint">\{reverseHint\}<\/p>\}/);
 });

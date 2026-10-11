@@ -128,6 +128,26 @@ export function avoidOffer(answer: Pick<RouteResponse, "avoid_alternate"> | null
 }
 
 /**
+ * UI-CLEANUP's one-line warning (the owner's choice 5): "Avoid junction: Main St and 1st Ave", the first
+ * Avoid-rated junction the route passes (with "and 1 more" where it passes several), or the noun alone
+ * where the plan names none.
+ */
+export function avoidLine(route: Pick<RouteResponse, "avoid_junctions"> | null): string {
+  const items = avoidItems(route);
+  const first = items[0]?.name?.trim();
+  if (!first) return `${AVOID_NOUN} on this route`;
+  const more = items.length > 1 ? ` and ${items.length - 1} more` : "";
+  return `Avoid junction: ${first}${more}`;
+}
+
+/** How much longer the way round is, for the Avoid it button ("+1.0 mi (1.6 km)"); null where it is not longer, or there is none. */
+export function avoidOfferShort(answer: Pick<RouteResponse, "avoid_alternate"> | null): string | null {
+  const extra = answer?.avoid_alternate?.extra_distance_m;
+  if (extra === undefined || !(extra >= 80)) return null;
+  return `+${formatDistance(extra)}`;
+}
+
+/**
  * The notice for the route the rider has chosen (the answer, or one of the routes to
  * choose from): its own `avoid_notice`, so a candidate that avoids the junction has none
  * and one that passes it has its own. The way round (`avoid_alternate`) is the answer's,
