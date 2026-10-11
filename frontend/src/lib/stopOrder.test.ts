@@ -16,6 +16,7 @@ import {
   stopsThatMove,
   type StopOrder,
 } from "./stopOrder.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const S: LonLat = [-77.05, 38.9];
 const A: LonLat = [-77.03, 38.9];
@@ -254,7 +255,7 @@ test("an answer is not used when the points, ride type or dials changed meanwhil
 });
 
 test("the button is in the point tools, only with two or more stops, and says when it is still working", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.equal(BEST_ORDER_LABEL, "Best order");
   assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
   assert.match(app, /const orderShown = !isMassRide\(preset\) && stopsThatMove\(points, loopVias\) >= 2;/);

@@ -56,6 +56,7 @@ CSS = "src/styles.css"
 MV = "src/MapView.tsx"
 DP = "src/DialsPanel.tsx"
 APP = "src/App.tsx"
+RP = "src/app/RoutePanel.tsx"
 DPL = "src/lib/dialsPanel.ts"
 DI = "src/lib/dials.ts"
 CA = "src/lib/candidates.ts"
@@ -304,7 +305,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- the release's a11y review (SF1-SF6, N1-N10) and spec NITs -----------
     (
         "still planning said at once",
-        APP,
+        RP,
         '{status.kind === "loading" && slow && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}',
         '{status.kind === "loading" && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}',
         FIXES,
