@@ -197,7 +197,7 @@ interface Props {
   /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
   waterPrefs?: WaterPrefs;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
-  onStationPoint: (role: StationRole, point: LonLat) => void;
+  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
   /**
    * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
    * long press on a phone, or I with the map focused (the map's centre).
@@ -941,7 +941,7 @@ export function MapView(props: Props) {
         visibility: () => callbacks.current.rail,
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
-        onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
+        onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
       // the first time it is shown, under the stress overlay and the route.
