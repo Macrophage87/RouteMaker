@@ -32,7 +32,7 @@ export type WaterSource = "p" | "n";
 export type ToiletType = "f" | "b" | "u";
 
 export interface WaterPoint {
-  /** OSM element, "n123" or "w456". */
+  /** OSM element, "n123" or "w456"; or a unit from the Throne hand list, "throne-..." (not in OSM). */
   id: string;
   lon: number;
   lat: number;
@@ -44,6 +44,8 @@ export interface WaterPoint {
   hours?: string;
   seasonal?: string;
   bottle?: boolean;
+  /** "Throne" for a Throne smart restroom: the card says how to open the door. */
+  operator?: "Throne";
 }
 
 export type WaterStatus = "loading" | "ready" | "unavailable";
@@ -130,6 +132,7 @@ export function parseWaterRestrooms(value: unknown): WaterPoint[] | null {
     const seasonal = text(raw.s);
     if (seasonal) p.seasonal = seasonal;
     if (raw.b === 1 && p.water === "p") p.bottle = true;
+    if (raw.op === "Throne" && p.toilet) p.operator = "Throne";
     out.push(p);
   }
   return out;
@@ -174,6 +177,7 @@ export function waterKindLabel(p: WaterPoint): string {
 /** The point's details, each a short sentence: what the map's card and the list say after the kind. */
 export function waterDetails(p: WaterPoint): string[] {
   const out: string[] = [];
+  if (p.operator === "Throne") out.push(THRONE_DETAIL);
   if (p.bottle) out.push("Bottle filler.");
   if (p.fee === "no") out.push("Free.");
   if (p.fee === "yes") out.push("Fee to use.");
@@ -192,11 +196,26 @@ export function waterTitle(p: WaterPoint): string {
 
 /** What the map's card says: the kind, the name, the details and the caution (waterInteraction.ts draws it). */
 export function waterCard(p: WaterPoint): { kind: string; name: string | null; details: string[]; caution: string } {
-  return { kind: waterKindLabel(p), name: p.name ?? null, details: waterDetails(p), caution: WATER_CAUTION };
+  return { kind: waterKindLabel(p), name: p.name ?? null, details: waterDetails(p), caution: waterCaution(p) };
 }
 
 /** The standing caution: OSM is volunteers' mapping, and taps get shut off. */
 export const WATER_CAUTION = "From OpenStreetMap: check it is working before you count on it.";
+
+/**
+ * How a Throne smart restroom opens, from Throne's own page (https://thronelabs.co/how-it-works,
+ * read 2026-10-11): free, unlocked by the app, a text or a free entry card, 10 minutes a visit.
+ */
+export const THRONE_DETAIL =
+  "Throne smart restroom, free: open the door with the Throne app, by texting THRONE to 202-751-3694 and then the unit number shown by the door, or with a free Throne entry card. 10-minute limit.";
+
+/** The caution for a unit from the Throne hand list, which is not in OpenStreetMap. */
+export const THRONE_CAUTION = "From Throne Labs and city sources, not OpenStreetMap: check the Throne app before you count on it.";
+
+/** The caution a point's card ends with. */
+export function waterCaution(p: WaterPoint): string {
+  return p.id.startsWith("throne-") ? THRONE_CAUTION : WATER_CAUTION;
+}
 
 // --- Along the route -----------------------------------------------------
 
