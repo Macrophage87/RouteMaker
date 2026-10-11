@@ -48,7 +48,13 @@ from enum import StrEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .ridetime import closed_settings
-from .tags import CYCLEWAY_KEYS, PERMISSIVE_ACCESS, cycleway_provision, narrow_access_lists
+from .tags import (
+    CYCLEWAY_KEYS,
+    PERMISSIVE_ACCESS,
+    cycleway_provision,
+    narrow_access_lists,
+    open_to_buses,
+)
 
 
 class Facility(StrEnum):
@@ -180,7 +186,11 @@ def trail_open_to_bicycle(tags: dict[str, str]) -> bool:
 
 
 def closed_to_motor_traffic(tags: dict[str, str]) -> bool:
-    """A road whose tags close it to motor vehicles for good, and open it to bicycles."""
+    """A road whose tags close it to motor vehicles for good, and open it to bicycles.
+    Never one open to buses (`tags.open_to_buses`, FOLLOWUP-BUS-ROADS): they are
+    motor traffic."""
+    if open_to_buses(tags):
+        return False
     bicycle = tags.get("bicycle")
     explicitly_open = bicycle in BICYCLE_ALLOWED
     if bicycle is not None and not explicitly_open:
@@ -200,6 +210,9 @@ def car_free_when(tags: dict[str, str]) -> frozenset[str]:
     if highway in TRAIL_CLASS_HIGHWAY or highway in MOTOR_ONLY_HIGHWAY or highway is None:
         return frozenset()
     if tags.get("bicycle") is not None and tags["bicycle"] not in BICYCLE_ALLOWED:
+        return frozenset()
+    # Buses keep running through a closure to cars (FOLLOWUP-BUS-ROADS).
+    if open_to_buses(tags):
         return frozenset()
     closed: frozenset[str] = frozenset()
     for key in MOTOR_KEYS:
