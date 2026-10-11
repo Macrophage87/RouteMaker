@@ -2278,6 +2278,39 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
+**Uphill stress** (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409). The owner, 2026-10-05,
+of Connecticut Ave NW: "It's a bit weird here because of a hill. I'd definitely ride
+down it, but not so much up." And 2026-10-10, asked how: "Maybe make it
+multiplicitive? Hill distance * traffic-relative distance." So the score's extra
+price also counts, with the slider's weight (`refine.grade_stress_weight_for`: 0 at
+the traffic tolerant end, rising to 1 at Default and above):
+
+    uphill stress (m) = FACTOR x sum over rising windows of GRADE_FROM or more of
+                        run x (effort factor(grade) - 1) x traffic weight(tier)
+
+The hill distance is the climb's extra effort-equivalent distance, from the effort
+model (`routemaker.effort`, the standard cycling power model, Martin et al. 1998;
+8% costs 6.5 times the flat), over its windows of at least 984 ft (300 m) of the
+router's elevation profile, in the direction ridden, matched to the traced pieces'
+tiers by metres along the route (`refine.uphill_of`, `grade_stress.uphill_by_tier`).
+The traffic-relative distance is the ride's own exposure weight for that tier (LTS 3
+once, LTS 4 twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2
+only where the ride weighs it). A descent's effort factor is floored at the flat, so
+downhill is unchanged, and a climb on a quiet street (LTS 1 and 2) costs what it did.
+Defaults (`routemaker.grade_stress`, for the owner to confirm with before and after
+routes): `GRADE_FROM` 3% (where `routemaker.climbs` already starts to price a
+sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 ft
+(40 m) gained, then counts about 0.43 mi (690 m) of quiet riding on LTS 3 and
+0.86 mi (1,380 m) on LTS 4; at 6%, 0.64 mi (1,030 m) and 1.28 mi (2,060 m). At the top
+of the slider, where candidates are ranked by the stress order, the same climbing
+(times `FACTOR`) joins the figure it is ridden on: LTS 4 and Avoid climbing the top
+figure, LTS 3 climbing the second (`Analysis.key`, `Analysis.uphill_levels_m`); the
+figures the LTS 4 hold and the worth rule read are unchanged. It is in the ranking only
+(the calm search and its ranking of the router's alternatives, 435): the router's own
+costs and the graph are not changed, so no rebuild. It moves into the router's costs
+only if the ranking alone is not enough (Stephen's answer 4 of 2026-10-10, v0.5.0
+plan). Mass Ride, whose plans the calm search does not run on, is unchanged.
+
 **One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
 2026-10-10). Below the top of the slider a longer candidate must also be worth its
 miles, as at the top: the stress it saves (`refine.stress_weight_m`, metres of LTS 3

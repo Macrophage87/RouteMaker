@@ -46,7 +46,12 @@ LTS 3 avoided, on top of the router's own price for it. The intersection weight
 rises from 0.25 at the traffic tolerant end to 1 at Default (turn and
 intersection costs stay active at every setting, as the literature review's
 guardrail asks), and the climb weight is the hills slider's avoid half, so a
-relaxed ride is not a zig-zag over a hill.
+relaxed ride is not a zig-zag over a hill. The extra price also counts the uphill
+stress (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409, `routemaker.grade_stress`): a climb's
+extra effort times the traffic weight of the road it is ridden up, times
+`Context.grade_stress_weight` (`grade_stress_weight_for`), so uphill on a busy road
+counts worse than downhill; at the top of the slider the same climbing joins the two
+stress figures it is ridden on (`Analysis.key`).
 
 Below the top of the slider there is no cap on the detour. The search stops
 when a round finds nothing left to exclude, when two rounds in a row do not
@@ -81,7 +86,7 @@ import math
 from dataclasses import dataclass, field
 
 from routemaker import avoid_junctions as avoid_model
-from routemaker import calm, effort, trace_junctions
+from routemaker import calm, effort, grade_stress, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
@@ -251,6 +256,9 @@ class Context:
     # more of, the slider over 100 at the top of the stress slider (298(3)), else 0.
     hills_weight: float = 0.0
     hills_seek_weight: float = 0.0
+    # How much the uphill stress counts (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409;
+    # `grade_stress_weight_for`): 0 at the traffic tolerant end, 1 from Default up.
+    grade_stress_weight: float = 0.0
     # Whether bike lanes count as "none" in the breakdown (`routing.classify`): on
     # Mass Ride, which takes the roadway, not on every ride on the no-trail graph.
     lanes_as_roadway: bool = False
@@ -367,6 +375,9 @@ class Analysis:
     # as `routemaker.calm.avoid_entry_m` counts an Avoid road's entry charge).
     avoid_passages: list = field(default_factory=list)
     avoid_junction_m: float = 0.0
+    # The climbs' extra effort-equivalent metres by the stress tier they are ridden up
+    # (`grade_stress.uphill_by_tier`, FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409).
+    uphill_m: dict = field(default_factory=dict)
 
     def score(self, ctx: Context) -> float:
         """The router's cost plus the extra price (see the module docstring), and 30
@@ -375,7 +386,24 @@ class Analysis:
         extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
         if ctx.rate == 0 and self.lts2_weight > 0:
             extra += self.lts2_weight * lts3_added_m(ctx) * self.lts2_m
+        extra += ctx.grade_stress_weight * self.uphill_stress_m(ctx)
         return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
+
+    def uphill_stress_m(self, ctx: Context) -> float:
+        """The uphill stress, metres of quiet riding, at the ride's traffic weights
+        (`grade_stress.uphill_stress_m`; 409), before the slider's weight."""
+        return grade_stress.uphill_stress_m(self.uphill_m, ctx.exposure.weights)
+
+    def uphill_levels_m(self, ctx: Context) -> tuple[float, float]:
+        """What the uphill stress adds to the top and second figures of `key` (409): the
+        climbing on LTS 4 and Avoid, and on LTS 3 (and LTS 2 at the ride's weight for it),
+        times `grade_stress.FACTOR` and the slider's weight. The figures themselves, which
+        the LTS 4 hold and the worth rule read, are unchanged."""
+        w = ctx.grade_stress_weight * grade_stress.FACTOR
+        up = self.uphill_m
+        top = up.get("4", 0.0) + up.get("5", 0.0)
+        second = up.get("3", 0.0) + self.lts2_weight * up.get("2", 0.0)
+        return w * top, w * second
 
     @property
     def red_m(self) -> float:
@@ -409,7 +437,8 @@ class Analysis:
         """What the top of the slider ranks by, least first (OWNER-DECISIONS
         258-263): the top figure, the second figure, and the distance as the Hills
         slider blends it (`level3`)."""
-        return (self.top_m, self.second_m, level3(self, ctx))
+        top, second = self.uphill_levels_m(ctx)
+        return (self.top_m + top, self.second_m + second, level3(self, ctx))
 
 
 def lts3_added_m(ctx: Context) -> float:
@@ -750,10 +779,30 @@ def analyse(
         avoid_junction_m=(
             avoid_model.penalty_s(avoid_passages) / ctx.quiet_cost if ctx.quiet_cost > 0 else 0.0
         ),
+        uphill_m=uphill_of(trip, pieces, classes, ctx.mass_kg),
     )
     if with_events:
         ctx.analyses[key] = result
     return result
+
+
+def uphill_of(trip: dict, pieces: list, classes: list, mass_kg: float) -> dict[str, float]:
+    """The trip's climbing by the tier it is ridden up (`grade_stress.uphill_by_tier`): its
+    elevation profile's climbs (`routing.grade_profile`) against its traced pieces' tiers,
+    in metres along the route, in the order ridden. A half step counts as its lower level."""
+    stretches, along = [], 0.0
+    for piece, cls in zip(pieces, classes, strict=False):
+        stretches.append((along, along + piece.metres, cls[0]))
+        along += piece.metres
+    windows = grade_stress.uphill_windows(routing.grade_profile(trip), mass_kg=mass_kg)
+    return grade_stress.uphill_by_tier(windows, stretches)
+
+
+def grade_stress_weight_for(stress: int) -> float:
+    """How much the uphill stress counts at a stress slider position (409): nothing at the
+    traffic tolerant end, the owner's "fastest legal route", rising to all of it at
+    Default (`presets.STRESS_DEFAULT_AT`) and above."""
+    return min(1.0, max(stress, 0) / presets.STRESS_DEFAULT_AT)
 
 
 def stress_totals(stress: dict, halves: dict) -> dict[str, float]:
@@ -2265,6 +2314,10 @@ def combine(reads: list[Analysis]) -> Analysis:
         effort_m=sum(r.effort_m for r in reads),
         avoid_passages=passages,
         avoid_junction_m=unit_m * len(passages),
+        uphill_m={
+            tier: sum(r.uphill_m.get(tier, 0.0) for r in reads)
+            for tier in {t for r in reads for t in r.uphill_m}
+        },
     )
 
 
