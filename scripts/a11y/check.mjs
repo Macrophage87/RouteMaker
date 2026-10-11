@@ -2452,10 +2452,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
     const fs = d.querySelector('fieldset');
     const small = [...d.querySelectorAll('summary, label.radio, input[type=text], .ride-report-actions a, .ride-report-actions button')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
     const note = d.querySelector('input[type=text]');
-    return { legend: fs?.querySelector('legend')?.textContent, radios: fs?.querySelectorAll('input[type=radio]').length, labelled: [...fs.querySelectorAll('input[type=radio]')].every((i) => i.closest('label')?.textContent.trim().length > 0), note: note?.closest('label')?.textContent.trim(), small, focus: document.activeElement?.id };
+    return { legend: fs?.querySelector('legend')?.textContent, radios: fs?.querySelectorAll('input[type=radio]').length, checked: fs?.querySelector('input[type=radio]:checked')?.closest('label')?.textContent, labelled: [...fs.querySelectorAll('input[type=radio]')].every((i) => i.closest('label')?.textContent.trim().length > 0), note: note?.closest('label')?.textContent.trim(), small, focus: document.activeElement?.id };
   })()`);
-  check("ride 311: what it is is a named group of radios, the note a labelled field, and every control at least 44 px tall",
-    reportForm.legend === "What is it?" && reportForm.radios === 3 && reportForm.labelled && reportForm.note === "Note (optional)" && reportForm.small.length === 0, JSON.stringify(reportForm));
+  check("ride 311: what it is is a named group of six radios with Pothole first and chosen, the note a labelled field, and every control at least 44 px tall",
+    reportForm.legend === "What is it?" && reportForm.radios === 6 && reportForm.checked === "Pothole" && reportForm.labelled && reportForm.note === "Note (optional)" && reportForm.small.length === 0, JSON.stringify(reportForm));
   // On a phone (an Android browser), a streetlight is a text to 32311 with the same words; something else has no keyword, so DC 311 online.
   const ua = await p.eval("navigator.userAgent");
   await p.s("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36" });
@@ -2465,11 +2465,26 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
   await sleep(300);
   const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
+  // The owner's three new kinds have no DC keyword: DC 311 online, with the problem named first and the hint
+  // naming DC's request only where a source does (none for an obstruction).
+  const newKinds = {};
+  for (const label of ["Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed"]) {
+    await p.eval(`[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === ${JSON.stringify(label)}).querySelector('input').click(); true`);
+    await sleep(300);
+    newKinds[label] = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent, hint: [...document.querySelectorAll('.ride-report .hint')].map((h) => h.textContent).find((t) => t.startsWith(\"DC's text service\")) })");
+  }
+  const at = "Location: near Q Street Northwest and R Street Northwest, Washington, DC.";
+  const online = (k) => JSON.stringify(k?.links) === JSON.stringify(["https://311.dc.gov/"]);
+  const tree = newKinds["Downed tree"], lane = newKinds["Vehicle parked in a bike lane"], blocked = newKinds["Roadway or bikeway obstructed"];
+  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Pothole').querySelector('input').click(); true");
   await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
-  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else goes to DC 311 online",
+  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else, a downed tree, a vehicle in a bike lane or an obstructed roadway or bikeway (each named first, DC's request in the hint only where sourced) goes to DC 311 online",
     sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
-      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC.",
-    JSON.stringify({ sms, other }));
+      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." &&
+      online(tree) && tree.text === `The report: Downed tree. ${at}` && /Tree Inspection and Tree Removal/.test(tree.hint ?? "") &&
+      online(lane) && lane.text === `The report: Vehicle parked in a bike lane. ${at}` && /Parking Enforcement/.test(lane.hint ?? "") &&
+      online(blocked) && blocked.text === `The report: Roadway or bikeway obstructed. ${at}` && !!blocked.hint && !/Enforcement|Inspection|Removal|Repair/.test(blocked.hint),
+    JSON.stringify({ sms, other, newKinds }));
   await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
 
   // A pan by hand stops following; Re-centre (the C key) follows again.

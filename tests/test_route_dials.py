@@ -1170,8 +1170,6 @@ def test_the_calm_search_discounts_the_climbing_charge_too():
     )
     ctx = type("Ctx", (), {})()
     ctx.rate, ctx.weight, ctx.climb_weight, ctx.quiet_cost = 0.0, 1.0, 0.0, 0.44
-    # The uphill stress (FOLLOWUP-GRADE-STRESS, #76) off, where the score reads it.
-    ctx.grade_stress_weight, ctx.exposure = 0.0, presets.EXPOSURE_STANDARD
     ctx.hills_tolerate_weight = 0.0
     assert read.score(ctx) == pytest.approx(600.0)
     ctx.hills_tolerate_weight = 0.5
