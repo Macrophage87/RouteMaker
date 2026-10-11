@@ -108,8 +108,8 @@ function noteText(note: ImportNote): string {
       return `Its ${note.parts} separate parts were joined into one route.`;
     case "far-parts":
       return note.count === 1
-        ? `One other part lies more than ${milesText(JOIN_GAP_M)} from it and was left out; the plan follows the longest part.`
-        : `${note.count} other parts lie more than ${milesText(JOIN_GAP_M)} from it and were left out; the plan follows the longest part.`;
+        ? `The plan follows its longest part; one other part lies more than ${milesText(JOIN_GAP_M)} from it and was left out.`
+        : `The plan follows its longest part; ${note.count} other parts lie more than ${milesText(JOIN_GAP_M)} from it and were left out.`;
     case "waypoints-unused":
       return note.count === 1
         ? "Its waypoint was not used: the planner has no cue points yet."

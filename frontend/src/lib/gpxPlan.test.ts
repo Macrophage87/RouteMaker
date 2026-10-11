@@ -204,6 +204,26 @@ test("parts within the join gap of each other are joined, and a far one breaks t
   assert.equal(result.outsideShare, 0);
 });
 
+test("a track written a segment per point is still one line, as before the far-apart fix", () => {
+  const points = line(at(0, 0), at(3000, 0), 40);
+  const plan = planFromGpx(file({ tracks: [{ segments: points.map((p) => [p]) }] }));
+  assert.equal(plan.source, "track");
+  assert.ok(Math.abs(plan.referenceM - 3000) < 5, String(plan.referenceM));
+  assert.equal(note(plan.notes, "far-parts"), undefined);
+});
+
+test("a far group of several close segments counts as one part left out, and a lone far point as none", () => {
+  const main = line(at(0, 0), at(5000, 0), 50);
+  const farA = line(at(0, 20_000), at(500, 20_000), 10);
+  const farB = line(at(600, 20_000), at(1000, 20_000), 10);
+  const lone = [at(0, 40_000)];
+  const result = followedPart([main, farA, farB, lone]);
+  assert.equal(result.pieces.length, 1);
+  assert.equal(result.leftOut, 1);
+  const plan = planFromGpx(file({ tracks: [{ segments: [main, farA, farB, lone] }] }));
+  assert.deepEqual(note(plan.notes, "far-parts"), { kind: "far-parts", count: 1 });
+});
+
 test("a file entirely outside the area is refused as such", () => {
   const far = line([-80, 40], [-80.1, 40.1], 10);
   assert.throws(

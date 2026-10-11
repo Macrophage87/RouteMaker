@@ -109,9 +109,12 @@ export function clipToCoverage(line: readonly LonLat[]): { runs: LonLat[][]; out
  * coverage box; the pieces that leaves, in the file's order, are joined while
  * each starts within JOIN_GAP_M of where the one before it ended. Of the
  * joined runs the longest is followed, and the pieces of the rest are counted
- * as left out: joining them would draw a straight jump across the gap and
- * follow it as track. outsideShare is the share of the file's length outside
- * the box, the gaps between segments not counted.
+ * as left out (leftOut counts those runs, not their pieces): joining them
+ * would draw a straight jump across the gap and follow it as track. A
+ * one-point piece joins its neighbours like any other (some apps write a
+ * segment per point), but a run that is one point on its own is no line and
+ * neither followed nor counted. outsideShare is the share of the file's
+ * length outside the box, the gaps between segments not counted.
  */
 export function followedPart(lines: readonly (readonly LonLat[])[]): {
   pieces: LonLat[][];
@@ -129,8 +132,7 @@ export function followedPart(lines: readonly (readonly LonLat[])[]): {
     const length = cumulative(kept).at(-1) ?? 0;
     total += length;
     outside += clipped.outsideShare * length;
-    // A lone point inside the box is no line to follow or join.
-    pieces.push(...clipped.runs.filter((run) => run.length >= 2));
+    pieces.push(...clipped.runs);
   }
   const chains: LonLat[][][] = [];
   for (const piece of pieces) {
@@ -139,9 +141,11 @@ export function followedPart(lines: readonly (readonly LonLat[])[]): {
     if (last && end && haversineM(end, piece[0]) <= JOIN_GAP_M) last.push(piece);
     else chains.push([piece]);
   }
+  // A run that is a lone point (a track grazing the box) is no line to follow.
+  const runsToFollow = chains.filter((chain) => dedupe(chain.flat()).length >= 2);
   let best: LonLat[][] = [];
   let bestM = -1;
-  for (const chain of chains) {
+  for (const chain of runsToFollow) {
     const m = cumulative(chain.flat()).at(-1) ?? 0;
     if (m > bestM) {
       best = chain;
@@ -151,7 +155,7 @@ export function followedPart(lines: readonly (readonly LonLat[])[]): {
   const allOutside = anyPoint && pieces.length === 0;
   return {
     pieces: best,
-    leftOut: pieces.length - best.length,
+    leftOut: Math.max(0, runsToFollow.length - 1),
     outsideShare: total > 0 ? outside / total : allOutside ? 1 : 0,
   };
 }
