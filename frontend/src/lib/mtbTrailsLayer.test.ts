@@ -239,7 +239,7 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   assert.match(view, /subscribeMtbTrails\(\(\) => \{\s*const map = mapRef\.current;\s*if \(map && loaded\.current\) setStressVisibility\(map, callbacks\.current\.stressVisible\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  assert.match(sheet, /<h3 id="terrain-heading">Trails and terrain<\/h3>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
+  assert.match(sheet, /<h3 id="terrain-heading">Trails and terrain<\/h3>\s*(?:<TopoLinesSwitch [^\n]*\/>\s*)?<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
   // Every ride type: not inside a ride-type condition.
   const before = sheet.slice(0, sheet.indexOf("<MtbTrailsSwitch"));
   assert.ok(before.lastIndexOf('<section aria-labelledby="terrain-heading">') > before.lastIndexOf("&&"));

@@ -140,6 +140,22 @@ slices (2-6) wait for bikeshare.
    licence for the style code (checked 2026-10-10), so the style is rewritten here, not copied,
    and the credit line names OpenTopoMap as the look's source. Needs: owner approval of the
    download, disk and build time on the host.
+   - Answered (the owner, 2026-10-10, 5:34 pm, with the defaults: a contour overlay on the current
+     base map, 3DEP 1/3 arc-second): "For topo, have the lines scale with zoom." Every 100 ft (30 m)
+     at zoom 12 and below, 40 ft (12 m) at zoom 13, 20 ft (6 m) from zoom 14, every fifth line a
+     heavier index line labelled in feet (metres in brackets), widths growing with zoom.
+   - Status: built on `claude/v0-5-0-mtb-topo`; the data waits for the build host
+     (docs/OPERATIONS.md, "Topo lines"). `scripts/build_contours.py` traces every 20 ft line and
+     writes `contours.pmtiles` with three layers by coarsest spacing (`c100` from zoom 10, `c40`
+     from 13, `c20` from 14); `frontend/src/lib/topoLines.ts` draws each zoom band's own spacing
+     and its index lines and labels, under the base map's roads, and adds the switch under "Trails
+     and terrain".
+   - Default picked: drawn from zoom 10 (the archive's lowest zoom); nothing zoomed further out,
+     where a 100 ft spacing over the region is a smear.
+   - Default picked: brown lines (#b07d4f, index #8a5a2c), labels #7a4e24 on a white halo (over
+     4.5:1); written here, not taken from OpenTopoMap. The source's credit reads "Topo look after
+     OpenTopoMap"; USGS 3DEP is already in the map's credits.
+   - Default picked: no 0 ft line (it would trace every tidal shoreline the base map draws).
 5. **Climbs layer** (454). Named climbs drawn on the map with their length and average grade
    (US units first). Source and definition to propose: the sustained-climb reading in
    `routemaker.climbs` run over the road and trail network once at build time, or a curated

@@ -23,6 +23,7 @@ import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSecti
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "./lib/mtbTrailsSwitch.ts";
+import { setTopoLines, topoAvailable, TopoLinesSwitch, useTopoLines } from "./lib/topoLines.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
@@ -281,6 +282,16 @@ export function App() {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
   const showMtbTrails = useMtbTrails();
+  // Topo lines (lib/topoLines.ts; 454): the switch's state is shared with the map; whether the server
+  // has the archive is asked once, the first time the layer is on.
+  const showTopoLines = useTopoLines();
+  const [topoReady, setTopoReady] = useState(true);
+  const topoAsked = useRef(false);
+  useEffect(() => {
+    if (!showTopoLines || topoAsked.current) return;
+    topoAsked.current = true;
+    void topoAvailable().then(setTopoReady);
+  }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -2088,6 +2099,7 @@ export function App() {
                   and climbs join the mountain-bike trails here once the tiles carry them (docs/MTB-TOPO-PLAN.md). */}
               <section aria-labelledby="terrain-heading">
                 <h3 id="terrain-heading">Trails and terrain</h3>
+                <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
                 <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
               </section>
 

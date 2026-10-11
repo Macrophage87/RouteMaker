@@ -2769,7 +2769,7 @@ to prevent.
 
 Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
-`/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
+`/basemap/*` answers only `region.pmtiles`, `contours.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
 page on it; anything else is a 403, sent `no-store` so a browser does not keep
@@ -2784,6 +2784,71 @@ TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
+
+### Topo lines (contours; docs/MTB-TOPO-PLAN.md, slice 4)
+
+The Map layers sheet's "Topo lines" switch (OWNER-DECISIONS 454; `frontend/src/lib/topoLines.ts`)
+draws contours from `<DATA_ROOT>/basemap/contours.pmtiles`, served beside the base map at
+`/basemap/contours.pmtiles` with the same same-origin guard and `no-cache` (the Caddyfile and the
+beta's nginx template both list it). Until the file exists the switch's description says "Topo
+lines are not available on this server yet" and nothing else changes. The edge change needs the
+Caddyfile re-read once (below, "Applying a Caddyfile change").
+
+`scripts/build_contours.py` makes the file from the USGS 3DEP 1/3 arc-second DEM (four one-degree
+cells over `COVERAGE_BBOX`: n40w078, n40w077, n39w078, n39w077; 1.82 GB in all, 370 to 500 MB each,
+as the bucket listed them on 2026-10-11): it downloads them (kept in its work directory, so a second
+run downloads nothing; each checked against the bucket's Content-Length, since 3DEP publishes no
+checksum), clips the mosaic to the coverage, traces every 20 ft contour (`gdal_contour`), splits them
+into three layers by the coarsest spacing each belongs to (100, 40 and 20 ft, tiled from zoom 10, 13
+and 14), and writes the archive (GDAL's PMTiles driver, zoom 10 to 14) through a `.part` name, so the
+edge never serves half a file. `--print-plan` lists the cells, URLs and levels without touching the
+network.
+
+When: once, as part of the release's last step before the beta, with the rebuild (the owner: "Rebuild
+should be the last step before it's on the beta"), and again only if USGS republishes the cells. It
+needs no database and no router, and it does not touch the running stack: the edge reads the file per
+request, so the next request gets the new archive.
+
+It needs GDAL 3.8 or later with the PMTiles driver, and must write as the basemap directory's owner
+(uid 10001 after `prepare_data_root.sh`), so, like the base map fetch, it runs in a container as
+10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag (record
+its digest in this section on the first pull: the cloud container that wrote this could not pull it).
+From the repository root:
+
+```sh
+docker run --rm -u 10001:10001 \
+  -v <DATA_ROOT>/basemap:/out \
+  -v "$PWD/scripts/build_contours.py:/build_contours.py:ro" \
+  ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  python3 /build_contours.py --out /out
+```
+
+The work directory is `/out/.contours-work` (`<DATA_ROOT>/basemap/.contours-work`, which the edge
+refuses like any unlisted path). It is deleted at the end, downloads and all, because
+`scripts/beta/ship-data.sh` copies the whole basemap directory to the beta; `--keep-work` keeps it
+(a re-run then downloads nothing), and a kept one must be deleted before shipping data.
+
+Disk and time, measured in the cloud container on 2026-10-11 with Ubuntu 24.04's GDAL 3.8.4 on one
+whole cell (n39w078 clipped to the coverage's 38.2 N, 0.8 of a square degree, among the hillier parts,
+its highest line 1,800 ft): 500 MB downloaded, 297 MB clipped DEM, 254 MB of contour lines, 254 MB of split
+layers, a 39 MB archive, 291 s in all on 4 cores (the tiling 183 s of it, at 209 MB peak memory). The coverage is
+about 3 square degrees, mostly flatter, so expect: **about 1.8 GB to download, about 5 GB free on the
+data volume at the peak (downloads, the clipped DEM and two line files), an archive of roughly 100 to
+150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core.
+GDAL streams the DEM in blocks; give the container 2 GB. Check the result:
+
+```sh
+docker run --rm -v <DATA_ROOT>/basemap:/out:ro ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  ogrinfo -so /out/contours.pmtiles        # name=RouteMaker contours, minzoom=10, maxzoom=14
+```
+
+then turn the switch on in the app at zoom 12, 13 and 15: 100 ft lines with 500 ft index lines, then
+40 ft with 200 ft, then 20 ft with 100 ft, each index line heavier and labelled "500 ft (152 m)".
+
+Source and licence: docs/SOURCES.md, "USGS 3D Elevation Program" (U.S. public domain; the map's
+credits already name "USGS 3DEP"). The look is this app's own, written for it; the source's credit
+names OpenTopoMap as the look's inspiration (docs/MTB-TOPO-PLAN.md, slice 4), and nothing of
+OpenTopoMap's style code, which names no licence, is copied.
 
 ## Applying a Caddyfile change
 

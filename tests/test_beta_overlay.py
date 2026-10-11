@@ -879,6 +879,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
     ):
         assert expected in paths, expected
     assert "= /basemap/region.pmtiles" in paths
+    assert "= /basemap/contours.pmtiles" in paths
     assert "^~ /basemap/fonts/" in paths and "^~ /basemap/sprites/" in paths
     # the preset redirects are the Caddyfile's, all of them
     caddy_presets = set(re.findall(r"@preset-([a-z-]+) path ", CADDYFILE))
@@ -959,7 +960,7 @@ def test_the_basemap_is_same_origin_only_with_the_caddyfiles_three_paths() -> No
     full = stage("full")
     assert 'map "$http_origin|$http_referer" $rmbeta_basemap_foreign' in full
     caddy_allowed = re.search(r"@unlisted not path ([^\n]+)", CADDYFILE).group(1).split()
-    assert caddy_allowed == ["/region.pmtiles", "/fonts/*", "/sprites/*"]
+    assert caddy_allowed == ["/region.pmtiles", "/contours.pmtiles", "/fonts/*", "/sprites/*"]
     for path, body in locations(full):
         if path.startswith(("= /basemap", "^~ /basemap")):
             assert "if ($rmbeta_basemap_foreign)" in body and "return 403;" in body, path
