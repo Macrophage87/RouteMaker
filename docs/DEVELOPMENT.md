@@ -269,10 +269,12 @@ the checkout:
 
 ```sh
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm ci
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm test
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -w /app node:22 npm test
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm run build
 ```
 
+- `npm test` needs `src/` mounted read-only at `/src`: one test reads the API's
+  own wording from `src/routemaker/avoid_junctions.py`.
 - `npm test` is `node --test` over `src/**/*.test.{mjs,ts}`: the pure logic
   (error mapping, request pacing, the long-ride rule, stress bar maths, the
   plan in the link) and the stress palette's contrast against the base map's

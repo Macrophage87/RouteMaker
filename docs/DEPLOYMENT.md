@@ -1065,7 +1065,9 @@ build, pinned by digest:
 
 ```sh
 # 1. Install, test and build, as you, into frontend/dist (not committed).
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app \
+#    src/ is mounted read-only at /src because one test checks the API's own
+#    wording in src/routemaker/avoid_junctions.py (../../../src from the test).
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -w /app \
   docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7 \
   sh -c 'npm ci && npm test && npm run build'
 
