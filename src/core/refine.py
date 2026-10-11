@@ -412,6 +412,13 @@ class Analysis:
     rated_lts2_m: float | None = None
 
     @property
+    def rated_exposure_m(self) -> float:
+        """`exposure_m` in rated metres, at a hill factor of 1: what the Traffic-wins guard
+        compares (OWNER-DECISIONS 61, "Traffic wins" over hill avoidance; 409), so a route
+        that leaves out a busy climb by riding more busy road is still busier."""
+        return self.exposure_m if self.flat_exposure_m is None else self.flat_exposure_m
+
+    @property
     def hill_exposure_m(self) -> float:
         """What the hill factor adds to `exposure_m` (409): the traffic weight x (hill
         factor - 1) x metres, at the ride's own exposure weights."""
@@ -1041,7 +1048,8 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     if ctx.stop_at is not None:
         hard_stop = min(hard_stop, ctx.stop_at)
     stop_at = min(routing.clock() + ctx.search_budget_s, hard_stop)
-    first_exposure = best.exposure_m
+    # The Traffic-wins guard's reference, in rated metres (61, 409: `rated_exposure_m`).
+    first_exposure = best.rated_exposure_m
     ctx.first_avoid_m = best.avoid_junction_m
     original = best
     info["original_m"] = round(best.length_m, 1)
@@ -1449,7 +1457,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
                 stop_at = min(hard_stop, stop_at + (routing.clock() - started))
             if incumbent is None:
                 continue
-            reference = first_legs[k] if first_legs else incumbent.exposure_m
+            reference = first_legs[k] if first_legs else incumbent.rated_exposure_m
             reference_lts4 = (
                 [ctx.first_lts4[k]]
                 if len(ctx.first_lts4) == count
@@ -1504,7 +1512,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         # Traffic wins for the whole trip too (OWNER-DECISIONS 61, 188: "2% +
         # 164 ft" for the plan): each leg's allowance is its own, so n legs
         # could otherwise add n x 50 m between them (review r1).
-        if read.exposure_m > _allowance(first_exposure):
+        if read.rated_exposure_m > _allowance(first_exposure):
             seek["taken"] = False
             # Its own key as well, so that a "time" from a later leg does not
             # hide it (review r2).
@@ -1693,7 +1701,7 @@ def _seek_leg(
             if read.events is None:
                 tried["outcome"] = "unread"
                 continue
-            busier = read.exposure_m > _allowance(reference)
+            busier = read.rated_exposure_m > _allowance(reference)
             tried["lts4_m"] = round(read.lts4_m)
             tried["lts3_m"] = round(read.lts3_m)
             if not ctx.maxcalm:
@@ -1732,8 +1740,13 @@ def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
     "busier" for the LTS 3 it takes on in place of it (308: the route uses one only
     where there is no reasonable alternative). With no Avoid junction on either it is
     the plain guard. The guard's tolerance (`_allowance`) is on the exposure alone: the
-    first route's Avoid junctions are added at their penalty, not scaled up with it."""
-    return read.exposure_m + read.avoid_junction_m > _allowance(first_exposure) + ctx.first_avoid_m
+    first route's Avoid junctions are added at their penalty, not scaled up with it. The
+    exposure is the rated metres' (`Analysis.rated_exposure_m`, 409): hill avoidance never
+    makes a route busier (61), so leaving out a busy climb does not excuse more busy road."""
+    return (
+        read.rated_exposure_m + read.avoid_junction_m
+        > _allowance(first_exposure) + ctx.first_avoid_m
+    )
 
 
 # A seek candidate asked with the search's exclusions is asked again without
@@ -2695,11 +2708,8 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["lts4_m_after"] = round(lts4, 1)
     info["lts3_m_after"] = round(lts3, 1)
     if ctx.exposure.hold_lts4:
-        # The hold's figure, in rated metres (409), less the LTS 4 traded as above.
-        rated_traded = sum(
-            max(0.0, rated_lts4_m(f) - rated_lts4_m(r)) for f, r in zip(finals, reads, strict=True)
-        )
-        info["lts4_after_m"] = round(sum(rated_lts4_m(a) for a in finals) - rated_traded, 1)
+        # The hold's figure on the route kept, in rated metres (409).
+        info["lts4_after_m"] = round(sum(rated_lts4_m(a) for a in finals), 1)
     # One reading of the whole route, which the answer reuses: the legs' traces
     # are remembered, the junctions read once across the joints. Inside the late
     # deadline, and not kept where the clock cut it short (S3): the answer then

@@ -2397,9 +2397,15 @@ decides; reverted if the owner picks "Only above 80"):
   never buys more LTS 4, and a climb never refuses a route with no more LTS 4 than the
   router's first. The answer's `lts4_before_m` and `lts4_after_m`, the hold's figures,
   are the rated metres too (`refine.rated_lts4_m`).
-The hill still counts, unscaled by the rate, where a figure is read without it: the
-Traffic-wins guard (`_busier`, against the first route's weighted exposure) and the group
-rides' check that a way round a junction adds no LTS 4 (`avoid_junctions.group_takes`).
+- The Traffic-wins guard (OWNER-DECISIONS 61: hill avoidance never makes a route busier;
+  `_busier` and the seek's guards) compares the rated exposure (`Analysis.rated_exposure_m`),
+  not the hill-weighted one: a route that leaves out a busy 0.62 mi (1 km) climb by riding
+  1.24 mi (2 km) of flat LTS 4 is still busier and refused. The group rides' check that a way
+  round a junction adds no LTS 4 (`avoid_junctions.group_takes`) reads the rated LTS 4
+  metres too (`refine.rated_lts4_m`), as the hold does.
+- From 81 to 87 on the stress slider the calm rate is above 0 but under 1, so the hill's
+  share counts at 1 while the flat part counts at the rate: there the hill weighs more,
+  relative to the flat traffic, than a plain product would.
 
 The worked example: 0.62 mi (1 km) of LTS 4 up 6% at the detent has a factor of about
 2.03, so it counts as 1.26 mi (2,030 m) of LTS 4. In the worth rule (435's "One rule",

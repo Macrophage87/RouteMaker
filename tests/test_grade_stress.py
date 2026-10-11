@@ -267,6 +267,21 @@ class TestTheLts4HoldComparesRatedMetres:
         assert not refine.more_lts4(up, refine.top_by_leg(first), self.ctx())
 
 
+class TestTrafficWinsComparesRatedMetres:
+    """OWNER-DECISIONS 61, "Traffic wins": hill avoidance never makes a route busier. The
+    guard compares the rated exposure (`Analysis.rated_exposure_m`), so a route that leaves
+    out a busy climb by riding more busy road is still refused (the review of #87)."""
+
+    def test_two_km_of_flat_lts4_is_busier_than_one_km_up_a_hill(self, monkeypatch):
+        climb = analysed(monkeypatch, [(1000.0, "4")], 0.06)
+        flat = analysed(monkeypatch, [(2000.0, "4")], 0.0)
+        assert flat.exposure_m < climb.exposure_m, "less by the hill-weighted figure"
+        assert climb.rated_exposure_m == pytest.approx(2000.0)
+        ctx = test_refine.context(rate=10.0)
+        assert refine._busier(flat, climb.rated_exposure_m, ctx)
+        assert not refine._busier(climb, flat.rated_exposure_m, ctx)
+
+
 class TestTheHillCountsAtEverySliderPosition:
     """The owner's own case (409, Connecticut Avenue NW, at Default, 70 on the stress
     slider, where the calm rate is 0): the hill's share of the exposure counts in the score
@@ -306,8 +321,13 @@ class TestTheHillCountsAtEverySliderPosition:
                 ctx.quiet_cost * ctx.rate * up.exposure_m
             )
 
-    @pytest.mark.parametrize("lts2", [0.0, presets.LTS2_WEIGHT])
-    def test_a_flat_route_scores_as_before_at_every_position(self, monkeypatch, lts2):
+    @pytest.mark.parametrize(
+        ("lts2", "exposure_m"),
+        # 300 m each of LTS 2, 3 and 4 and 100 m of LTS 1: 300 + 2 x 300 on the standard
+        # weights; 0.25 x 300 + 300 + 8 x 300 on the stress-averse ones with LTS 2 weighed.
+        [(0.0, 900.0), (presets.LTS2_WEIGHT, 2775.0)],
+    )
+    def test_a_flat_route_scores_as_before_at_every_position(self, monkeypatch, lts2, exposure_m):
         exposure = (
             dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=lts2)
             if lts2
@@ -315,11 +335,16 @@ class TestTheHillCountsAtEverySliderPosition:
         )
         tiers = [(300.0, "2"), (300.0, "3"), (300.0, "4"), (100.0, "1")]
         flat = analysed(monkeypatch, tiers, 0.0, exposure=exposure)
-        flat = dataclasses.replace(flat, lts2_weight=lts2)
-        before = dataclasses.replace(flat, flat_exposure_m=None, rated_lts2_m=None, hill=[])
+        assert flat.exposure_m == pytest.approx(exposure_m) and flat.hill_exposure_m == 0.0
         for stress in self.POSITIONS:
             ctx = self.ctx(stress, lts2)
-            assert flat.score(ctx) == pytest.approx(before.score(ctx)), stress
+            # The score before the hill (release/v0.5.0): the router's cost plus the quiet
+            # cost x (calm rate x exposure, and at a rate of 0 the LTS 2 term); no junctions,
+            # no climb, no Avoid junctions in this reading.
+            extra = ctx.rate * exposure_m
+            if ctx.rate == 0 and lts2:
+                extra += lts2 * refine.lts3_added_m(ctx) * 300.0
+            assert flat.score(ctx) == pytest.approx(flat.cost_s + ctx.quiet_cost * extra), stress
 
     def test_lts2_climbing_counts_once_at_a_rate_of_zero(self, monkeypatch):
         # The score's LTS 2 term at a rate of 0 (FOLLOWUP-LTS2-WEIGHT) reads the rated
