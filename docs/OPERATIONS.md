@@ -1811,7 +1811,8 @@ per rider (a partial unique constraint on suggester and node). The review endpoi
 the roads' 200-an-hour review budget. Every action is an `audit_log` entry (`junction_suggest`,
 `junction_suggest_approve`, `_delete`, `_discord`). `junction_suggestion` is left out of the beta's
 data shipment; `junction_override`, `avoid_junction` and `override` ship with their person columns
-(who made and approved each) blanked, and `db --update-data` replaces the beta's junction overrides
+(who made and approved each) blanked and without the riders' words (the evidence of a junction
+override or Avoid junction, and the private reason of an override an approved road suggestion made), and `db --update-data` replaces the beta's junction overrides
 with home's, as it does `override` (docs/BETA-RUNBOOK.md).
 
 **The migration** is `core/migrations/0018_junction_suggestions.py` (two new tables,

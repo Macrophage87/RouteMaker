@@ -91,6 +91,15 @@ class TestRatedJunction:
         )
         assert merged.cost_ft > 3000.0
 
+    def test_easy_keeps_a_cost_below_its_own_75_ft(self) -> None:
+        # A right turn off an LTS 4 road onto a quiet one: the model's 15 ft, under easy's 75 ft.
+        right = junction(movement=Movement.RIGHT, incoming=LTS4, outgoing=QUIET)
+        model = m.assess(right)
+        assert model is not None and model.cost_ft == m.RIGHT_FROM_BUSY_FT == 15.0
+        rated = m.assess(replace(right, rating=2))
+        assert rated is not None and rated.rating == 2
+        assert rated.cost_ft == 15.0 < m.RATING_COST_FT[2]
+
     def test_easy_never_costs_more_than_the_model_and_adds_nothing_where_it_has_nothing(
         self,
     ) -> None:

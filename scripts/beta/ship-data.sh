@@ -116,21 +116,30 @@ EXCLUDED_TABLE_DATA=(
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 )
-# Tables the beta needs from home that also name a person: shipped with those columns blanked
-# (NULL), never whole. Each is left out of the dump and written instead as db/blanked/<table>.copy
-# from a SELECT that puts NULL in every listed column, so nothing in the bundle points at app_user
-# (which is excluded) and the restore's foreign keys hold; receive-data.sh loads the files after
-# the restore. The approver's account is home's alone; what was approved is what the beta needs.
-#   override           the access and stress corrections (created_by, approved_by)
-#   junction_override  riders' approved junction ratings (core.junction_suggestions)
-#   avoid_junction     approved Avoid junctions (core.avoid_junctions)
-# Format TABLE:COLUMN,COLUMN. The script refuses a table that has a column ending in _by_id or
-# user_id not listed here, so a person column added later is not shipped by accident.
+# Tables the beta needs from home that also name a person or carry a rider's words: shipped with
+# those columns blanked, never whole. Each is left out of the dump and written instead as
+# db/blanked/<table>.copy from a SELECT that blanks every listed column, so nothing in the bundle
+# points at app_user (which is excluded) and the restore's foreign keys hold, and no rider's reason
+# leaves home; receive-data.sh loads the files after the restore. The approver's account and the
+# rider's words are home's alone; what was approved is what the beta needs.
+#   override           the access and stress corrections (created_by, approved_by; and the
+#                      reason of a row an approved rider suggestion made, "Rider suggestion N,
+#                      approved: <the rider's reason>", core.suggestions.approve)
+#   junction_override  riders' approved junction ratings (core.junction_suggestions; evidence is
+#                      "Rider suggestion N: <the rider's reason>")
+#   avoid_junction     approved Avoid junctions (core.avoid_junctions; evidence the same where a
+#                      rider's suggestion made it, and private to the admin where not)
+# Format TABLE:COLUMN,COLUMN. A column ending in _by_id or user_id becomes NULL; COLUMN=rider keeps
+# the text unless it is a rider suggestion's ("Rider suggestion ..."), which becomes
+# RIDER_REASON_BLANKED; any other column becomes '' (a NOT NULL text column). The script refuses a
+# table that has a foreign key to app_user, or a column ending in user_id, not listed here, so a
+# person column added later is not shipped by accident.
 BLANKED_TABLE_DATA=(
-	override:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id
-	junction_override:created_by_id,created_by_user_id
-	avoid_junction:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id
+	override:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id,reason=rider
+	junction_override:created_by_id,created_by_user_id,evidence
+	avoid_junction:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id,evidence
 )
+RIDER_REASON_BLANKED="Rider suggestion (its reason stays at home)"
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -334,27 +343,35 @@ if want db; then
 	mkdir -p "$stage/db/blanked"
 	for entry in "${BLANKED_TABLE_DATA[@]}"; do
 		t=${entry%%:*}
-		blank=",${entry#*:},"
+		declare -A spec_of=()
+		IFS=, read -r -a wanted_blank <<<"${entry#*:}"
+		for spec in "${wanted_blank[@]}"; do spec_of[${spec%%=*}]=$spec; done
 		cols=$(dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c \
 			"select string_agg(column_name, ',' order by ordinal_position) from information_schema.columns where table_schema = 'public' and table_name = '$t'" </dev/null)
 		[ -n "$cols" ] || die "no table public.$t to ship blanked"
 		case "$cols" in *[!a-z0-9_,]*) die "public.$t has a column name this script will not quote" ;; esac
-		IFS=, read -r -a wanted_blank <<<"${entry#*:}"
-		for c in "${wanted_blank[@]}"; do
+		# The columns that name a person: a foreign key to app_user, or a plain copy of a user id.
+		persons=$(dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c \
+			"select string_agg(a.attname, ',') from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.contype = 'f' and c.conrelid = 'public.$t'::regclass and c.confrelid = 'public.app_user'::regclass" </dev/null)
+		for c in "${!spec_of[@]}"; do
 			case ",$cols," in *",$c,"*) ;; *) die "public.$t has no column $c to blank; update BLANKED_TABLE_DATA" ;; esac
 		done
 		IFS=, read -r -a all_cols <<<"$cols"
 		select=""
 		for c in "${all_cols[@]}"; do
-			case "$blank" in
-				*",$c,"*) expr="NULL AS $c" ;;
-				*)
-					case "$c" in *_by_id | *user_id) die "public.$t has a person column $c that BLANKED_TABLE_DATA does not blank" ;; esac
+			case "${spec_of[$c]:-}" in
+				"")
+					case ",$persons," in *",$c,"*) die "public.$t has a person column $c (a key to app_user) that BLANKED_TABLE_DATA does not blank" ;; esac
+					case "$c" in *user_id) die "public.$t has a person column $c that BLANKED_TABLE_DATA does not blank" ;; esac
 					expr=$c
 					;;
+				*=rider) expr="CASE WHEN $c LIKE 'Rider suggestion %' THEN '$RIDER_REASON_BLANKED' ELSE $c END AS $c" ;;
+				*_by_id | *user_id) expr="NULL AS $c" ;;
+				*) expr="'' AS $c" ;;
 			esac
 			select="${select:+$select, }$expr"
 		done
+		unset spec_of
 		dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -v ON_ERROR_STOP=1 -c \
 			"COPY (select $select from public.$t order by 1) TO STDOUT WITH (FORMAT text, HEADER true)" </dev/null >"$stage/db/blanked/$t.copy"
 		[ "$(head -n 1 "$stage/db/blanked/$t.copy" | tr '\t' ',')" = "$cols" ] || die "db/blanked/$t.copy does not start with public.$t's columns"

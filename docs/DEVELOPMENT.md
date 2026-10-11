@@ -6648,9 +6648,14 @@ confirmation group with the warning before anything is sent.
 `junction_override` and `avoid_junction` name a person (`created_by`, `approved_by`), and so does
 `override`; `app_user` is not shipped, so a whole copy would break the restore's foreign keys.
 `scripts/beta/ship-data.sh` ships them in `BLANKED_TABLE_DATA`: left out of the dump and written as
-`db/blanked/<table>.copy` (COPY text format) from a SELECT with NULL in every person column; it
-refuses a table with a `*_by_id` or `*user_id` column not listed. `receive-data.sh` loads them after
-the restore, and `--update-data` replaces `override` and `junction_override` in its one transaction.
+`db/blanked/<table>.copy` (COPY text format) from a SELECT with NULL in every person column. The
+riders' words are blanked too: `junction_override.evidence` and `avoid_junction.evidence` ("Rider
+suggestion N: <reason>", written by `junction_suggestions.approve`) ship as '', and an `override`
+row's `reason` that an approved road suggestion wrote ("Rider suggestion N, approved: ...") ships as
+"Rider suggestion (its reason stays at home)" (`reason=rider`); every other reason ships. It refuses
+a table with a foreign key to `app_user` (read from `pg_constraint`) or a `*user_id` column not
+listed. `receive-data.sh` loads them after the restore, and `--update-data` replaces `override` and
+`junction_override` in its one transaction (a missing file aborts it).
 `stress_edit` (the editor's history, `actor` a person) is excluded. `tests/test_beta_overlay.py`
 reads every foreign key in `core/models.py` (bare, quoted or `settings.AUTH_USER_MODEL`) and fails
 when shipped data points at an excluded table without that column blanked.

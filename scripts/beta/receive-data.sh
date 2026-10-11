@@ -493,7 +493,7 @@ if [ "$update_data" = 1 ]; then
 	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
 	# live table this replaces, so none could be served again (the runbook predraws afterwards).
 	# shellcheck disable=SC2016
-	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
+	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
 		{ bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
 	bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null
 	psql_q "analyze" >/dev/null
@@ -530,7 +530,7 @@ else
 		bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 		rm -f "$extra"
 		bc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -q -1 -v ON_ERROR_STOP=1 -f /tmp/beta-blanked.sql </dev/null >/dev/null ||
-			{ bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null; die "loading the blanked tables failed and was rolled back (above); restore again"; }
+			{ bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null; die "loading the blanked tables (override and the junction ratings) failed and was rolled back (above), so the database has the rest of the bundle without them; restore again with: db --replace-db"; }
 		bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
 	fi
 fi

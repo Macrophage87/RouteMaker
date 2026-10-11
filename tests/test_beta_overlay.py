@@ -1851,7 +1851,8 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
 
 
 def shipped_blanked() -> dict[str, set[str]]:
-    """BLANKED_TABLE_DATA: each table shipped with these (person) columns set to NULL."""
+    """BLANKED_TABLE_DATA: each table shipped with these columns blanked ("reason=rider" for a
+    column blanked only where a rider's words are in it)."""
     text = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
     body = re.search(r"^BLANKED_TABLE_DATA=\(\n(.*?)^\)", text, re.M | re.S).group(1)
     return {entry.split(":")[0]: set(entry.split(":")[1].split(",")) for entry in body.split()}
@@ -1910,30 +1911,120 @@ def test_every_table_that_points_at_an_excluded_table_is_excluded_or_blanked() -
     assert checked >= 20
 
 
-def test_the_blanked_tables_are_the_approved_junction_data_and_blank_every_person_column() -> None:
+def test_the_blanked_tables_blank_every_person_column_and_every_riders_words() -> None:
     blanked = shipped_blanked()
     assert set(blanked) == {"override", "junction_override", "avoid_junction"}
-    assert blanked["override"] == {
-        "created_by_id",
-        "created_by_user_id",
-        "approved_by_id",
-        "approved_by_user_id",
-    }
-    assert blanked["junction_override"] == {"created_by_id", "created_by_user_id"}
-    assert blanked["avoid_junction"] == {
-        "created_by_id",
-        "created_by_user_id",
-        "approved_by_id",
-        "approved_by_user_id",
-    }
+    people = {"created_by_id", "created_by_user_id", "approved_by_id", "approved_by_user_id"}
+    # override.reason holds "Rider suggestion N, approved: <reason>" where an approved rider
+    # suggestion made the row (core.suggestions.approve); only those are blanked
+    assert blanked["override"] == people | {"reason=rider"}
+    # the junction overrides' and Avoid junctions' evidence holds the rider's reason
+    # (core.junction_suggestions.approve): it never ships
+    assert blanked["junction_override"] == {"created_by_id", "created_by_user_id", "evidence"}
+    assert blanked["avoid_junction"] == people | {"evidence"}
     assert not set(blanked) & set(shipped_exclusions())
     text = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
     # left out of the dump, refused if the dump carries them, written as COPY text from a SELECT
     assert "--exclude-table-data=public.${entry%%:*}" in text
     assert "must ship with its person columns blanked" in text
-    assert 'expr="NULL AS $c"' in text
-    assert "*_by_id | *user_id) die" in text
     assert "TO STDOUT WITH (FORMAT text, HEADER true)" in text
+
+
+def test_the_rider_text_the_approvals_write_is_what_the_blanking_matches() -> None:
+    """The blanking keys on the words the approvals write: if they change, so must ship-data.sh."""
+    junctions = (REPO / "src" / "core" / "junction_suggestions.py").read_text()
+    assert 'evidence = f"Rider suggestion {suggestion.pk}: {suggestion.reason}"' in junctions
+    roads = (REPO / "src" / "core" / "suggestions.py").read_text()
+    assert 'private = f"Rider suggestion {suggestion.pk}, approved: {suggestion.reason}"' in roads
+    assert "reason=private[" in roads
+    text = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    assert "LIKE 'Rider suggestion %'" in text
+
+
+COLUMNS = {
+    "override": "id,kind,reason,evidence,created_by_id,created_by_user_id,approved_by_id,"
+    "approved_by_user_id,superseded_by_id",
+    "junction_override": "id,name,location,level,evidence,created_by_id,created_by_user_id",
+    "avoid_junction": "id,name,reason,evidence,approved_by_user_id,created_by_user_id,"
+    "approved_by_id,created_by_id,suggestion_ref",
+}
+PERSON_KEYS = {
+    "override": "created_by_id,approved_by_id",
+    "junction_override": "created_by_id",
+    "avoid_junction": "approved_by_id,created_by_id",
+}
+
+
+def blanking_run(
+    tmp_path: Path, columns: dict[str, str], keys: dict[str, str] = PERSON_KEYS
+) -> subprocess.CompletedProcess:
+    """ship-data.sh's blanking loop, run with a stand-in database that answers `columns` and
+    PERSON_KEYS and records each COPY it is asked for."""
+    script = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    table = re.search(r"^BLANKED_TABLE_DATA=\(.*?^RIDER_REASON_BLANKED=.*?$", script, re.M | re.S)
+    loop = re.search(
+        r'^\tmkdir -p "\$stage/db/blanked"$.*?^\t\[ -s "\$stage/db/blanked/override.copy" \].*?$',
+        script,
+        re.M | re.S,
+    )
+    answers = "\n".join(
+        f'\t\t*"information_schema"*"\'{t}\'"*) echo "{c}" ;;\n'
+        f'\t\t*pg_constraint*"\'public.{t}\'"*) echo "{keys[t]}" ;;'
+        for t, c in columns.items()
+    )
+    harness = tmp_path / "blank.sh"
+    harness.write_text(
+        "set -euo pipefail\n"
+        'die() { echo "DIE: $*"; exit 2; }\n'
+        f'stage="{tmp_path}/stage"; pguser=u; pgdatabase=d\n'
+        'dc() {\n\tlocal sql=${*: -1}\n\tcase "$sql" in\n'
+        '\t\tCOPY*) echo "$sql" >>"$stage/copies.sql"; t=${sql#*from public.}; t=${t%% *}\n'
+        '\t\t\tcase "$t" in\n'
+        + "\n".join(f'\t\t\t\t{t}) echo "{c}" | tr , "\\t" ;;' for t, c in columns.items())
+        + "\n\t\t\tesac ;;\n"
+        + answers
+        + '\n\t\t*information_schema*) echo "" ;;\n\tesac\n}\n'
+        + 'mkdir -p "$stage"\n'
+        + table.group(0)
+        + "\n"
+        + loop.group(0)
+        + "\n",
+    )
+    return subprocess.run(["bash", str(harness)], capture_output=True, text=True, check=False)
+
+
+@needs_sh
+def test_the_blanking_loop_nulls_people_empties_evidence_and_keeps_other_columns(
+    tmp_path: Path,
+) -> None:
+    done = blanking_run(tmp_path, COLUMNS)
+    assert done.returncode == 0, done.stdout + done.stderr
+    copies = (tmp_path / "stage" / "copies.sql").read_text().splitlines()
+    override, junction, avoid = (
+        next(c for c in copies if f"from public.{t} " in c) for t in COLUMNS
+    )
+    assert (
+        "CASE WHEN reason LIKE 'Rider suggestion %' THEN 'Rider suggestion (its reason stays at "
+        "home)' ELSE reason END AS reason, evidence, NULL AS created_by_id" in override
+    )
+    # a key to another override is not a person and ships
+    assert "superseded_by_id from public.override" in override
+    assert (
+        "level, '' AS evidence, NULL AS created_by_id, NULL AS created_by_user_id from" in junction
+    )
+    assert "reason, '' AS evidence, NULL AS approved_by_user_id" in avoid
+    assert "suggestion_ref from public.avoid_junction" in avoid
+
+
+@needs_sh
+def test_the_blanking_loop_refuses_a_person_column_it_does_not_blank(tmp_path: Path) -> None:
+    columns = {**COLUMNS, "junction_override": COLUMNS["junction_override"] + ",checked_by_id"}
+    keys = {**PERSON_KEYS, "junction_override": "created_by_id,checked_by_id"}
+    done = blanking_run(tmp_path, columns, keys)
+    assert done.returncode == 2 and "checked_by_id (a key to app_user)" in done.stdout
+    columns = {**COLUMNS, "avoid_junction": COLUMNS["avoid_junction"] + ",reviewer_user_id"}
+    done = blanking_run(tmp_path, columns)
+    assert done.returncode == 2 and "person column reviewer_user_id" in done.stdout
 
 
 def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings() -> None:
@@ -1944,7 +2035,12 @@ def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings(
     # beta's own suggestions go of them (a TRUNCATE would refuse the foreign key)
     assert "DELETE FROM public.junction_override;" in text
     assert "UPDATE public.junction_suggestion SET override_id = NULL" in text
-    assert "cat /tmp/beta-blanked.sql; } | psql" in text
+    # a missing file aborts the transaction instead of committing the TRUNCATE with nothing loaded
+    assert (
+        'cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; }'
+        " | psql" in text
+    )
+    assert "restore again with: db --replace-db" in text
     counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
     assert "public.junction_override" in counted
     # and the whole-database path loads every blanked table in one transaction

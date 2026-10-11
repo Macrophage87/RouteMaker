@@ -179,6 +179,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                         return;
                       }
                       setWarned(key);
+                      setConfirming(null); // one question open at a time
                       setFocusNext(id(`w${key}`));
                     }}
                   >
@@ -196,6 +197,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                     aria-disabled={busy !== null ? true : undefined}
                     onClick={() => {
                       setConfirming(key);
+                      setWarned(null); // one question open at a time
                       setFocusNext(id(`y${key}`));
                     }}
                   >
