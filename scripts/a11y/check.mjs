@@ -3925,6 +3925,44 @@ async function goWith(permission, { width = 390, height = 844, mobile = true, ha
     got.line === "Start: none yet; type a start" && got.notice === "Current location not available; type a start." && got.said.some((t) => t.includes("Current location not available; type a start.")) && got.box && got.assertive === 0, JSON.stringify(got));
   await p.close();
 }
+// Two places for the search: "Dupont…" finds Dupont Circle, anything else Union Station.
+const GEO_TWO = `(() => { const real = window.fetch.bind(window); window.fetch = (input, init) => { const url = String(input?.url ?? input); if (!/\\/api\\/geocode/.test(url)) return real(input, init); const dupont = /q=Dup/i.test(url); const r = dupont ? { name: "Dupont Circle", label: "Dupont Circle, Washington, DC", lon: -77.0434, lat: 38.9096, kind: "place" } : { name: "Union Station", label: "Union Station, Washington, DC", lon: -77.0063, lat: 38.8973, kind: "station" }; return Promise.resolve(new Response(JSON.stringify({ results: [r], attribution: [] }), { headers: { "Content-Type": "application/json" } })); }; })();`;
+async function goPick(p, box, text) {
+  await p.eval(`document.querySelector('${box} input').focus(); true`);
+  await p.type(text);
+  await p.waitFor(`!!document.querySelector('${box} [role=option]')`, 15000);
+  await p.eval(`(() => { const o = document.querySelector('${box} [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()`);
+}
+{
+  // Review of PR #95: with the location denied, a destination picked is kept (never made the start), the start box
+  // asks for a start, and a start typed there plans the route to that destination.
+  const p = await goWith("denied", { init: GEO_TWO });
+  await goPick(p, ".go-sheet .go-search", "Union");
+  await sleep(1200);
+  const waiting = await p.eval("({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, line: document.querySelector('.go-start-line')?.textContent.trim(), said: window.__said.slice(-3) })");
+  await goPick(p, ".go-start-search", "Dupont");
+  const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
+  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })");
+  check("go start: with the location denied, a destination picked is kept and said (\"To Union Station. Current location not available; type a start.\"), not made the start; a start typed then plans the route to it",
+    waiting.notice === "To Union Station. Current location not available; type a start." && waiting.said.some((t) => t.includes("To Union Station.")) && !/p=/.test(waiting.hash) && waiting.box && waiting.line === "Start: none yet; type a start" &&
+      routed && after.dest === "To Union Station" && after.points === 2, JSON.stringify({ waiting, after }));
+  await p.close();
+}
+{
+  // Review of PR #95: a destination picked while Go is still finding the location (a cold GPS, or the permission
+  // prompt still open) waits for it and is routed when it comes; it is not dropped.
+  const SLOW = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 4000) }); })();";
+  const p = await goWith("granted", { init: GEO_TWO + SLOW });
+  const locating = await p.eval("document.querySelector('.go-start-line')?.textContent.trim()");
+  await goPick(p, ".go-sheet .go-search", "Union");
+  await sleep(300);
+  const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
+  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })");
+  check("go start: a destination picked while the location is still being found waits (\"To Union Station: finding your location…\") and is routed from the location when it comes",
+    locating === "Start: finding your location…" && /^To Union Station: finding your location/.test(waiting) && routed && after.dest === "To Union Station" && after.points === 2, JSON.stringify({ locating, waiting, after }));
+  await p.close();
+}
 {
   const wide = await goWith("granted", { width: 1280, height: 900, mobile: false });
   const linked = await goWith("granted", { hash: hashFor("default", 70) });
@@ -4109,7 +4147,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 588;
+const EXPECTED = 590;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

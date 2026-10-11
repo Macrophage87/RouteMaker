@@ -1,9 +1,10 @@
 """My Go (UI-CLEANUP, the owner's choice 2 of 2026-10-11): GET and POST /api/me/go, a signed-in
-rider's own settings: the view the app opens in, the ride type Go uses, and Home (core.models.MyGo).
+rider's own settings: the view the app opens in, the ride type Go uses, and Home
+(core.models.MyGo).
 
-Signed out is 401 (the front end keeps the same choices in the browser); a write needs the CSRF token
-the read sets, a JSON body and a same-site request; Home is inside the map's area, rounded to about a
-metre, and goes with the account.
+Signed out is 401 (the front end keeps the same choices in the browser); a write needs the CSRF
+token the read sets, a JSON body and a same-site request; Home is inside the map's area, rounded
+to about a metre, and goes with the account.
 """
 
 from __future__ import annotations
@@ -52,7 +53,9 @@ def signed_in_client(user: User | None = None) -> tuple[Client, User, str]:
 
 def save(client: Client, payload, csrf: str | None, **headers):
     extra = {"HTTP_X_CSRFTOKEN": csrf} if csrf else {}
-    return client.post(URL, data=json.dumps(payload), content_type="application/json", **extra, **addr(), **headers)
+    return client.post(
+        URL, data=json.dumps(payload), content_type="application/json", **extra, **addr(), **headers
+    )
 
 
 @db
@@ -69,7 +72,11 @@ class TestRead:
         client.force_login(user)
         now = timezone.now()
         Session.objects.create(
-            session_key=client.session.session_key, user=user, issued_epoch=user.session_epoch, created_at=now, last_seen_at=now
+            session_key=client.session.session_key,
+            user=user,
+            issued_epoch=user.session_epoch,
+            created_at=now,
+            last_seen_at=now,
         )
         r = client.get(URL, **addr())
         assert r.status_code == 200
@@ -94,10 +101,18 @@ class TestRead:
 class TestSave:
     def test_the_whole_of_my_go_is_saved_and_read_back(self) -> None:
         client, user, csrf = signed_in_client()
-        payload = {"open_in": "go", "ride": "cargo", "home": {"lon": -77.0365432, "lat": 38.8976789, "label": " Home "}}
+        payload = {
+            "open_in": "go",
+            "ride": "cargo",
+            "home": {"lon": -77.0365432, "lat": 38.8976789, "label": " Home "},
+        }
         r = save(client, payload, csrf)
         assert r.status_code == 200, r.content
-        assert r.json() == {"open_in": "go", "ride": "cargo", "home": {"lon": -77.03654, "lat": 38.89768, "label": "Home"}}
+        assert r.json() == {
+            "open_in": "go",
+            "ride": "cargo",
+            "home": {"lon": -77.03654, "lat": 38.89768, "label": "Home"},
+        }
         row = MyGo.objects.get(user=user)
         assert (row.home_lon, row.home_lat) == (-77.03654, 38.89768), "rounded to about a metre"
         assert client.get(URL, **addr()).json() == r.json()

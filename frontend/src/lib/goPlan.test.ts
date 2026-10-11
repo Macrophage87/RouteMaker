@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -189,12 +189,20 @@ test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-
   assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
 });
 
-test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it says why", () => {
+test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
+  const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
+  assert.match(routeGo, /commit\(\[start, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
-  assert.match(goTo, /const noLoop = ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined;/);
-  assert.match(goTo, /commit\(\[result\.fix\.point, dest\], noLoop\);/);
-  assert.match(goTo, /commit\(\[dest\], noLoop\);\s*setNotice\(`\$\{result\.ok \? LOCATION_OUTSIDE : LOCATE_MESSAGES\[result\.reason\]\} Go starts from your location; Plan sets a start by hand\.`\);/);
+  assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
+  // Never the destination alone (it would become the start), and never dropped while the location is found.
+  assert.doesNotMatch(goTo, /commit\(\[dest\]/);
+  assert.match(goTo, /goPending\.current = \{ dest, name \};\s*if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
+  assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*setNotice\(goDestinationNeedsStart\(name\)\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
+  // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
+  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name\);/);
+  const startPick = appFile.slice(appFile.indexOf("const goStartPick = "), appFile.indexOf("const routeGo = ("));
+  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name\);/);
 });
 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
@@ -305,12 +313,22 @@ test("go start: a destination routes from the plan's first point, else from the 
   assert.equal(goRouteStart([], { kind: "locating" }), null);
 });
 
+test("go pick: route from the start Go has, wait while the location is found, else look it up (review of PR #95)", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.deepEqual(goPickAction([], here), { kind: "route", point: [-77.03, 38.9], located: true });
+  assert.deepEqual(goPickAction([[-77.0, 38.89]], { kind: "none" }), { kind: "route", point: [-77.0, 38.89], located: false });
+  assert.deepEqual(goPickAction([], { kind: "locating" }), { kind: "wait" }, "a pick while the location is found is kept, not dropped");
+  assert.deepEqual(goPickAction([], { kind: "none" }), { kind: "locate" });
+  assert.deepEqual(goPickAction([], { kind: "idle" }), { kind: "locate" });
+  assert.equal(goDestinationNeedsStart("Union Station"), "To Union Station. Current location not available; type a start.");
+  assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
+});
+
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
-  assert.match(app, /if \(pointsRef\.current\.length === 0\) announce\(GO_START_SAID\);/);
-  assert.match(app, /if \(pointsRef\.current\.length === 0\) setNotice\(GO_START_UNAVAILABLE\);/);
-  assert.match(app, /const known = goRouteStart\(pointsRef\.current, goStart\);/);
+  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else announce\(GO_START_SAID\);/);
+  assert.match(app, /if \(pointsRef\.current\.length === 0\) setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\);/);
   // Go offers the routes to choose from at once; Plan keeps its fold.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
@@ -342,7 +360,7 @@ test("announcements: the essentials are always said; only the narration is extra
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);
-  assert.match(app, /setNotice\(GO_START_UNAVAILABLE\)/);
+  assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
   // Go starts the ride at once; Plan asks the first time.
   assert.match(app, /if \(!ridePrefs\.chosen && mode !== "go"\) \{/);
 });

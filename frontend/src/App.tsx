@@ -143,7 +143,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { keepOptions, optionName, optionPins, optionSaid, optionsKey, pickedOption, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goRouteStart, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { PRESETS } from "./lib/presets.ts";
@@ -423,7 +423,12 @@ export function App() {
   const [announceChoice, setAnnounceChoice] = useState<AnnounceChoice>(() => readAnnounceChoice());
   // Go's start (the owner, 2026-10-11): the rider's location, asked for once when Go opens, never in Plan.
   const [goStart, setGoStart] = useState<GoStart>({ kind: "idle" });
+  const goStartRef = useRef(goStart);
+  goStartRef.current = goStart;
   const goStartAsked = useRef(false);
+  // A destination picked in Go before it has a start (the location still being found, or not available): kept
+  // and routed once the start comes, from the location or the start box (lib/appMode.ts goPickAction).
+  const goPending = useRef<{ dest: LonLat; name: string } | null>(null);
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -1155,14 +1160,20 @@ export function App() {
         setGoStart({ kind: "idle" });
         return;
       }
+      const pending = goPending.current;
       if (!result.ok || !insideCoverage(result.fix.point)) {
         setGoStart({ kind: "none" });
-        if (pointsRef.current.length === 0) setNotice(GO_START_UNAVAILABLE);
+        if (pointsRef.current.length === 0) setNotice(pending ? goDestinationNeedsStart(pending.name) : GO_START_UNAVAILABLE);
         return;
       }
       setHere(result.fix);
       setGoStart({ kind: "here", point: result.fix.point });
-      if (pointsRef.current.length === 0) announce(GO_START_SAID);
+      if (pointsRef.current.length > 0) return;
+      // A destination picked while the location was being found: routed now, not dropped.
+      if (pending) {
+        goPending.current = null;
+        routeGoRef.current(result.fix.point, true, pending.dest, pending.name);
+      } else announce(GO_START_SAID);
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1174,9 +1185,29 @@ export function App() {
       return;
     }
     setNotice(null);
+    // A destination picked before there was a start: the start typed here, then that destination.
+    const pending = goPending.current;
+    if (pending) {
+      goPending.current = null;
+      routeGo(point, false, pending.dest, pending.name);
+      return;
+    }
     commit([point]);
     announce(`Start: ${found.name}.`);
   };
+  // A Go route from `start` to `dest`, in one edit, with a loop the rider had on turned off (to a place and no further).
+  const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string) => {
+    const ride = rideRef.current;
+    setNotice(null);
+    commit([start, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    if (located) setFromHere((prior) => [...prior, start]);
+    announceExtra(`Planning a route to ${name} from ${located ? "your location" : "your start"}.`);
+    if (goSheetNow.current === "peek") setGoSheet("half");
+    mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
+  };
+  // The opening look-up answers after later renders: it routes through the current one.
+  const routeGoRef = useRef(routeGo);
+  routeGoRef.current = routeGo;
   const goTo = async (dest: LonLat, name: string) => {
     cancelLocateNotice();
     setNotice(null);
@@ -1185,32 +1216,36 @@ export function App() {
       return;
     }
     // The start Go already has: the plan's first point (typed, tapped or from the link), else the location
-    // found when Go opened. Only with neither is the location looked up now.
-    const known = goRouteStart(pointsRef.current, goStart);
-    if (known !== null) {
-      const ride = rideRef.current;
-      commit([known.point, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
-      if (known.located) setFromHere((prior) => [...prior, known.point]);
-      announceExtra(`Planning a route to ${name} from ${known.located ? "your location" : "your start"}.`);
-      if (goSheetNow.current === "peek") setGoSheet("half");
-      mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
+    // found when Go opened. While the location is still being found, the destination waits for it.
+    const action = goPickAction(pointsRef.current, goStartRef.current);
+    if (action.kind === "route") {
+      goPending.current = null;
+      routeGo(action.point, action.located, dest, name);
       return;
     }
+    goPending.current = { dest, name };
+    if (action.kind === "wait") {
+      setNotice(goDestinationLocating(name));
+      return;
+    }
+    // No location yet: one more look-up (the rider may have allowed it since); failing that the destination is
+    // kept and the start box asks for a start. The destination is never made the start.
+    setGoStart({ kind: "locating" });
     const result = await locateForGo();
-    if (result === null) return;
-    const ride = rideRef.current;
-    // To a place and no further: a loop the rider had on is turned off, in the same edit.
-    const noLoop = ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined;
+    if (result === null) {
+      // Another look-up is under way: its answer routes the destination, as Go's opening one does.
+      return;
+    }
     if (!result.ok || !insideCoverage(result.fix.point)) {
-      commit([dest], noLoop);
-      setNotice(`${result.ok ? LOCATION_OUTSIDE : LOCATE_MESSAGES[result.reason]} Go starts from your location; Plan sets a start by hand.`);
+      setGoStart({ kind: "none" });
+      setNotice(goDestinationNeedsStart(name));
       return;
     }
     setHere(result.fix);
-    commit([result.fix.point, dest], noLoop);
-    setFromHere((prior) => [...prior, result.fix.point]);
-    announceExtra(`Planning a route to ${name} from your location.`);
-    mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
+    setGoStart({ kind: "here", point: result.fix.point });
+    const pending = goPending.current;
+    goPending.current = null;
+    if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name);
   };
   const goToPlace = (found: Place) => {
     const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);

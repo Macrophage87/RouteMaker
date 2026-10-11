@@ -4422,8 +4422,12 @@ puts it, at most two presses away.
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
   shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
-  tapped on the map is the plan's first point and replaces the location. Picking a destination
-  plans at once; Go then shows the routes to choose from open, and the ride types under the
+  tapped on the map is the plan's first point and replaces the location. A destination picked
+  before there is a start is never dropped nor made the start (`goPickAction`): while the
+  location is still being found it waits ("To …: finding your location for the start…") and is
+  routed when the location comes; with no location, it is kept ("To …. Current location not
+  available; type a start.") and the start typed in the start box plans the route to it. Picking a
+  destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
