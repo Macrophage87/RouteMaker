@@ -161,7 +161,8 @@ def group_takes(trip: dict, around: dict, ctx, deadline) -> bool:
         return False
     if before is None or after is None:
         return False
-    return after.lts4_m <= before.lts4_m + GROUP_LTS4_SLACK_M
+    # The rated LTS 4 metres, as the LTS 4 hold reads them (409): not hill-weighted.
+    return refine.rated_lts4_m(after) <= refine.rated_lts4_m(before) + GROUP_LTS4_SLACK_M
 
 
 def settle(

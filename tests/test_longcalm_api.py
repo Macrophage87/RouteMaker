@@ -22,6 +22,7 @@ from test_route_api import (
 )
 
 from core import api, presets, ratelimit, refine, routing
+from routemaker import grade_stress
 
 db = pytest.mark.django_db(transaction=True)
 
@@ -955,6 +956,43 @@ class TestFineWithHillsAtTheTop:
         assert body["hills_tolerate"]["discount_s"] == 0
         routes = [p for url, p in fake.calls if url.endswith("/route")]
         assert "alternates" not in routes[0]
+
+
+class TestTheHillFactorsCoefficientIsTheHillsSliders:
+    """OWNER-DECISIONS 409, the owner 2026-10-11: "The sliders control the various
+    coefficients for each component." The calm search's hill factor takes its coefficient
+    from the hills slider (`grade_stress.coefficient_for`), FACTOR at the detent and 0 at
+    "fine with hills", and its descent threshold from the ride type; the stress slider
+    does not move it."""
+
+    real = staticmethod(refine.refine)
+
+    def seen(self, client, router, monkeypatch, body) -> list:
+        seen = []
+        real = self.real
+
+        def spy(trip, ctx):
+            seen.append((ctx.hill_coefficient, ctx.brake_grade))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        router(standard_router())
+        assert post(client, body).status_code == 200
+        return seen
+
+    def test_the_hills_slider_sets_it(self, client, segments, router, monkeypatch) -> None:
+        brake = presets.BRAKE_GRADES["trailmaxxing"]
+        detent = self.seen(client, router, monkeypatch, top_body(hills=0))
+        fine = self.seen(client, router, monkeypatch, top_body(hills=100))
+        averse = self.seen(client, router, monkeypatch, top_body(hills=-60))
+        assert detent == [(grade_stress.FACTOR, brake)]
+        assert fine == [(0.0, brake)], "fine with hills: every factor 1"
+        assert averse == [(pytest.approx(1.6 * grade_stress.FACTOR), brake)]
+
+    def test_the_stress_slider_does_not(self, client, segments, router, monkeypatch) -> None:
+        top = self.seen(client, router, monkeypatch, top_body(hills=-40))
+        lower = self.seen(client, router, monkeypatch, top_body(hills=-40, stress=90))
+        assert top == lower == [(pytest.approx(1.4 * grade_stress.FACTOR), 0.06)]
 
 
 class TestTheSpanEdge:

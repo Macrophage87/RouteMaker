@@ -2334,43 +2334,114 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
-**Uphill stress** (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409). The owner, 2026-10-05,
-of Connecticut Ave NW: "It's a bit weird here because of a hill. I'd definitely ride
-down it, but not so much up." And 2026-10-10, asked how: "Maybe make it
-multiplicitive? Hill distance * traffic-relative distance." So the score's extra
-price also counts, with the slider's weight (`refine.grade_stress_weight_for`: 0 at
-the traffic tolerant end, rising to 1 at Default and above):
+**Uphill stress: one stress figure** (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409). The
+owner, 2026-10-05, of Connecticut Ave NW: "It's a bit weird here because of a hill. I'd
+definitely ride down it, but not so much up." 2026-10-10, asked how: "Maybe make it
+multiplicitive? Hill distance * traffic-relative distance." And 2026-10-11: "Why not
+combine it all into a single stress metric? Basically you calculate the uphill portion
+and then the traffic stress portion. Multiply the two together." "The sliders control
+the various coefficients for each component." "So a fine with hills will basically be
+multiplying everything by 1." "We wanted some stress for extreme downhills." So every
+stretch of a route counts, in the calm search's stress figures, one figure:
 
-    uphill stress (m) = FACTOR x sum over rising windows of GRADE_FROM or more of
-                        run x (effort factor(grade) - 1) x traffic weight(tier)
+    stress-weighted metres = run x traffic weight(tier) x hill factor
+    hill factor            = 1 + hills coefficient x extra
 
-The hill distance is the climb's extra effort-equivalent distance, from the effort
-model (`routemaker.effort`, the standard cycling power model, Martin et al. 1998;
-8% costs 6.5 times the flat), over its windows of at least 984 ft (300 m) of the
-router's elevation profile, in the direction ridden, matched to the traced pieces'
-tiers by metres along the route (`refine.uphill_of`, `grade_stress.uphill_by_tier`).
-The traffic-relative distance is the ride's own exposure weight for that tier (LTS 3
-once, LTS 4 twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2
-only where the ride weighs it: Trailmaxxing, Cargo with passengers, Kids). A descent's
-effort factor is floored at the flat, so downhill is unchanged, and a climb on LTS 1
-(and on LTS 2 where the ride does not weigh it) costs what it did.
-Defaults (`routemaker.grade_stress`, for the owner to confirm with before and after
-routes): `GRADE_FROM` 3% (where `routemaker.climbs` already starts to price a
-sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 ft
-(40 m) gained, then counts about 0.43 mi (690 m) of quiet riding on LTS 3 and
-0.86 mi (1,380 m) on LTS 4; at 6%, 0.64 mi (1,030 m) and 1.28 mi (2,060 m). At the top
-of the slider, where candidates are ranked by the stress order, the same climbing
-(times `FACTOR`) joins the figure it is ridden on: LTS 4 and Avoid climbing the top
-figure, LTS 3 climbing the second (`Analysis.key`, `Analysis.uphill_levels_m`); the
-figures the LTS 4 hold and the worth rule read are unchanged. So the uphill stress never
-buys extra miles on its own: it decides between a route and one no longer than it, or
-between longer routes whose saving in LTS metres already pays for their miles (435's
-"One rule", untouched). Whether the worth rule should count it too is for the owner,
-with before and after routes. It is in the ranking only
-(the calm search and its ranking of the router's alternatives, 435): the router's own
-costs and the graph are not changed, so no rebuild. It moves into the router's costs
-only if the ranking alone is not enough (Stephen's answer 4 of 2026-10-10, v0.5.0
-plan). Mass Ride, whose plans the calm search does not run on, is unchanged.
+- The traffic weight is the ride's own exposure weight for the tier (LTS 3 once, LTS 4
+  twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2 only where
+  the ride weighs it), and the stress slider sets how much it counts (the calm rate in
+  the score, the stress order and the worth ratio at the top), as before.
+- `extra` is the window's extra effort over the flat, in effort-equivalent metres a
+  metre (`routemaker.effort`, the standard cycling power model, Martin et al. 1998; 8%
+  costs 6.5 times the flat), over the effort model's windows of at least 984 ft (300 m)
+  of the router's elevation profile, in the direction ridden: on a climb of `GRADE_FROM`
+  (3%) or more, `effort_factor(grade) - 1`; on a descent steeper than the ride type's
+  brake grade (`presets.BRAKE_GRADES`, OWNER-DECISIONS 56: 3% on Cargo and Kids, 4% on
+  Mass Ride and Bikeshare, 5% on Group ride, 6% on the rest, none on Mountain Goat and
+  Fast), what a climb as steep as the excess would be, `effort_factor(grade - brake
+  grade) - 1` (the shape of `climbs.descent_cost_s`, which weighs a descent's excess past
+  the brake grade as a climb's past 3%); 0 elsewhere, so the factor is 1 on the flat, on
+  gentle climbs and on gentle descents.
+- The hills coefficient is the hills slider's (`grade_stress.coefficient_for`):
+  `FACTOR` (0.25) at the detent, rising in proportion to the avoid half's weight to 0.5
+  at full avoid, and falling with the right half to 0 at its end ("fine with hills", and
+  Mountain Goat's seeking end), where every factor is exactly 1. At each ride type's
+  starting position: 0.25 on Default, Trailmaxxing, Gravel and Fast; 0.375 on Group ride;
+  0.4 on Cargo and Bikeshare; 0.45 on Kids; 0.49 on Mass Ride; 0.125 on E-bike; 0 on
+  Mountain Goat.
+
+Each traced piece gets its factor from the windows that overlap it, shared by metres
+(`grade_stress.hill_factors`, `refine.hill_of`), and `refine.analyse` sums each piece's
+metres times its factor into every stress figure: `exposure_m` (the score), `lts4_m`,
+`lts3_m`, `lts2_m`, `avoid_m` and `lts45_m` (the stress order's top and second figures,
+the worth rule's saving, `stress_weight_m`), and each leg's LTS 4 (`lts4_by_leg`, the
+LTS 4 hold). A long plan's legs are combined from those (`refine.combine`). No consumer
+adds the hill on its own. What the rider is shown, the map's LTS colours, the stress
+chart, the route summary's LTS miles and the descriptions, is the rated metres, from the
+same pieces unweighted (`routing.totals`): the hill only changes which route is chosen.
+The calm search's diagnostics (`calm_search`'s `exposure_*`, `lts4_m_*` and `lts3_m_*`)
+are the weighted figures.
+
+Two refinements (review of #87, the coordinator's recommended option while the owner
+decides; reverted if the owner picks "Only above 80"):
+- The hill counts at every slider position. At 80 and below (Default starts at 70) the
+  calm rate is 0, so a plain product would drop the hill there and the owner's own case,
+  the Connecticut Ave NW climb at Default, would no longer change the default ranking. So
+  in the score the hill's share of the exposure (`Analysis.hill_exposure_m`: traffic
+  weight x (hill factor - 1) x metres, at the ride's own exposure weights) counts at the
+  calm rate where that is over 1 and one for one in quiet metres below it (`max(rate,
+  1)`), as #76's term did from Default up; the flat part keeps its rate exactly
+  (`flat_exposure_m`). A flat route scores as before at every position, and "fine with
+  hills" is still exactly 1. At Default the 0.62 mi (1 km) climb at 6% on LTS 4 adds
+  about 2,060 quiet metres to the score, about 15 minutes of the router's cost at a
+  quiet cost of 0.44 s a metre. On a ride that weighs LTS 2, the score's LTS 2 term at a
+  rate of 0 (`lts3_added_m`) reads the rated LTS 2 metres, so a climb on LTS 2 comes in
+  once, through the hill's share.
+- The LTS 4 hold (250, on Trailmaxxing, Cargo with passengers and Kids) compares the
+  rated LTS 4 metres (`refine.lts4_by_leg`), not hill-weighted ones: leaving out a hill
+  never buys more LTS 4, and a climb never refuses a route with no more LTS 4 than the
+  router's first. The answer's `lts4_before_m` and `lts4_after_m`, the hold's figures,
+  are the rated metres too (`refine.rated_lts4_m`).
+- The Traffic-wins guard (OWNER-DECISIONS 61: hill avoidance never makes a route busier;
+  `_busier` and the seek's guards) compares the rated exposure (`Analysis.rated_exposure_m`),
+  not the hill-weighted one: a route that leaves out a busy 0.62 mi (1 km) climb by riding
+  1.24 mi (2 km) of flat LTS 4 is still busier and refused. The group rides' check that a way
+  round a junction adds no LTS 4 (`avoid_junctions.group_takes`) reads the rated LTS 4
+  metres too (`refine.rated_lts4_m`), as the hold does.
+- From 81 to 87 on the stress slider the calm rate is above 0 but under 1, so the hill's
+  share counts at 1 while the flat part counts at the rate: there the hill weighs more,
+  relative to the flat traffic, than a plain product would.
+
+The worked example: 0.62 mi (1 km) of LTS 4 up 6% at the detent has a factor of about
+2.03, so it counts as 1.26 mi (2,030 m) of LTS 4. In the worth rule (435's "One rule",
+the owner's "Count it" of 2026-10-11: "A longer route can win by avoiding a busy climb,
+so some plans get longer"), at its 1 / 2 / 3 weights:
+- what the climb adds over the same road on the flat: about 1.28 mi (2,060 m) of LTS 3,
+  which on its own buys about 2.2 mi (3.6 km) of extra riding at 90 on the slider (ratio
+  1.7) and 6.4 mi (10.3 km) at 100 (ratio 5);
+- the total for avoiding the climb on a quiet street: about 2.52 mi (4,060 m) of LTS 3,
+  the road's own 2,000 m and the climb's 2,060 m, which buys about 4.3 mi (6.9 km) at 90
+  and 12.6 mi (20.3 km) at 100.
+On LTS 3 the climb adds half that; on a quiet street nothing. At 4%, the climb adds
+0.43 mi (690 m) of LTS 3 on LTS 3 and 0.86 mi (1,380 m) on LTS 4. A descent of 0.62 mi
+(1 km) at 8% on LTS 4 on Cargo (brake grade 3%, coefficient 0.4 at its start) has a
+factor of about 2.37: 1.47 mi (2,370 m) of LTS 4 where the flat road counts 1,000 m. The
+rule's ratios and targets are unchanged.
+
+The steep-descent term and the hills slider's brake cost are separate steps.
+`climbs.grade_cost_s` (a time cost on sustained climbs past 3% and descents past the brake
+grade, OWNER-DECISIONS 56) still picks among the router's alternatives on the avoid half
+of the hills slider (`routing.choose_gentlest`), before the calm search, and is unchanged:
+a steep descent on an LTS 1 path has no traffic weight to multiply, so only that step
+prices it. The calm search's score reads the hill-weighted figure and not
+`grade_cost_s`; its own climb term (`CLIMB WEIGHT x climb`, the avoid half) is
+unchanged. So neither consumer counts a descent twice.
+
+Defaults for the owner to confirm with before and after routes: `GRADE_FROM` 3%, `FACTOR`
+0.25, the coefficient's mapping, and the descent term. It is in the calm search only (and
+its ranking of the router's alternatives, 435): the router's own costs and the graph are
+not changed, so no rebuild. Mass Ride, whose plans the calm search does not run on, is
+unchanged. Before and after routes on the live router are still to be measured.
 
 **One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
 2026-10-10). Below the top of the slider a longer candidate must also be worth its
@@ -6955,6 +7026,26 @@ is "Location: <place>, Washington, DC." then the rider's note (at most 120 chara
 copied as is; the text adds DC's keyword in front (`forText`), which a hint says. US units only, since
 it is the message itself. Whether DC's service reads a keyword and a place in one message is not
 verified until a real text is sent (the owner's).
+
+The kinds (`REPORT_KINDS`; the owner, 2026-10-11: "311 should have the following at least: Pothole /
+Downed tree / Vehicle parked in a bike lane / Roadway/bikeway obstructed"), in this order: Pothole (the
+default), Downed tree, Vehicle parked in a bike lane, Roadway or bikeway obstructed (the owner's words, with "or" for
+the slash, which a screen reader reads aloud), Streetlight out, Something
+else. DC's page (read again 2026-10-11) still names keywords only for POTHOLE, STREETLIGHT and TRASH, so
+the three new kinds go to DC 311 online like Something else, and their words name the problem first
+(`problem`: "Downed tree. Location: ...", "Vehicle parked in a bike lane. Location: ...", "Roadway or
+bikeway obstructed. Location: ...") so DC knows what it is without a note; Something else still relies
+on the note, and its hint says so. The hint beside DC 311 online (`onlineHint`) names the request there
+where one is known: DC GIS's open service requests of the last 30 days
+(https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/SR_30days_Open/MapServer/0, distinct
+`SERVICECODEDESCRIPTION`, read 2026-10-11) include "Tree Inspection", "Tree Removal" and "Parking
+Enforcement", and DPW places its bike lane enforcement officers partly by 311 requests
+(dpw.dc.gov/node/1442566, 2019-11-12, read 2026-10-11). Neither says which request a vehicle in a bike
+lane is (DPW's "Request Parking Enforcement" page, https://dpw.dc.gov/service/request-parking-enforcement,
+read 2026-10-11, lists meters, permits, driveways, bus stops, crosswalks and hydrants, not bike lanes),
+so its hint says only that DC's parking requests include Parking Enforcement. No request for an obstructed roadway or
+bikeway was found there, and 311.dc.gov's own form could not be read (its robots.txt refuses fetches),
+so that hint names none.
 
 The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
 position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
