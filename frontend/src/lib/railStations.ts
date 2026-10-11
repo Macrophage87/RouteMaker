@@ -340,6 +340,54 @@ export function entranceNote(kind: BikeEntrance["kind"]): string {
   }
 }
 
+/**
+ * The name a plan point placed at a station carries, rather than the street
+ * its bike entrance is on (PLAN.md, the stationBikeEntrance naming): "Federal
+ * Triangle Metro station", as the nearest-stations list says it; a MARC-only
+ * station "Odenton MARC station", or its own name where that already ends in
+ * "Station".
+ */
+export function stationPlaceName(station: Pick<Station, "name" | "metro">): string {
+  if (station.metro.length > 0) return `${station.name} Metro station`;
+  return /\bstation$/i.test(station.name) ? station.name : `${station.name} MARC station`;
+}
+
+/** The point's longer label: which way in it is, in words, so it is not only shown on the map. */
+export function stationPlaceLabel(station: Pick<Station, "name" | "metro">, kind: BikeEntrance["kind"]): string {
+  const name = stationPlaceName(station);
+  switch (kind) {
+    case "elevator":
+    case "osm-elevator":
+      return `${name}, at its elevator`;
+    case "entrance":
+      return `${name}, at its nearest entrance`;
+    case "station":
+      return name;
+  }
+}
+
+/**
+ * A search result this close to a station, and tagged as a station, is that
+ * station: OSM's station node can sit anywhere in its footprint, and the
+ * shared MARC and Metro stations are already one within SHARED_STATION_M.
+ */
+export const STATION_MATCH_M = 300;
+
+/**
+ * The station a place search result is, or null: a railway or public
+ * transport station (or halt) within STATION_MATCH_M of one of `stations`.
+ * The search then puts the point at that station's bike entrance, as a tap
+ * on the station does.
+ */
+export function stationForPlace(
+  stations: readonly Station[],
+  place: { lon: number; lat: number; osm_key?: string | null; osm_value?: string | null },
+): Station | null {
+  if (place.osm_key !== "railway" && place.osm_key !== "public_transport") return null;
+  if (place.osm_value !== "station" && place.osm_value !== "halt") return null;
+  return nearest(stations, [place.lon, place.lat], STATION_MATCH_M);
+}
+
 /** Stations by id, and the bike entrance by station id: what railData.ts exports. */
 export function stationIndex(stations: readonly Station[]) {
   const byId = new Map(stations.map((station) => [station.id, station]));

@@ -7,6 +7,7 @@ import {
   LINE_KEYS,
   METRO_LINES,
   SHARED_STATION_M,
+  STATION_MATCH_M,
   allIconLines,
   ENTRANCE_REACH_M,
   PENN_LABEL,
@@ -21,6 +22,9 @@ import {
   parseLines,
   placeAtStation,
   railFeatures,
+  stationForPlace,
+  stationPlaceLabel,
+  stationPlaceName,
   stationRoles,
   visibleLines,
   type BikeEntrance,
@@ -432,4 +436,32 @@ test("each card note fits its case: the two elevators say so, the other two say 
   assert.doesNotMatch(entranceNote("entrance"), /station itself/);
   assert.match(entranceNote("station"), /station itself/);
   assert.doesNotMatch(entranceNote("elevator"), /OpenStreetMap/);
+});
+
+test("a point at a station is named for the station, not its entrance's street", () => {
+  assert.equal(stationPlaceName({ name: "Federal Triangle", metro: ["blue"] }), "Federal Triangle Metro station");
+  assert.equal(stationPlaceName({ name: "Odenton", metro: [] }), "Odenton MARC station");
+  assert.equal(stationPlaceName({ name: "Washington Union Station", metro: [] }), "Washington Union Station");
+  const metroCenter = stations.find((s) => s.name === "Metro Center")!;
+  assert.equal(stationPlaceName(metroCenter), "Metro Center Metro station");
+  // The way in is said in words, not left to the map.
+  assert.equal(stationPlaceLabel(metroCenter, "elevator"), "Metro Center Metro station, at its elevator");
+  assert.equal(stationPlaceLabel(metroCenter, "osm-elevator"), "Metro Center Metro station, at its elevator");
+  assert.equal(stationPlaceLabel(metroCenter, "entrance"), "Metro Center Metro station, at its nearest entrance");
+  assert.equal(stationPlaceLabel(metroCenter, "station"), "Metro Center Metro station");
+});
+
+test("a search result tagged as a station near one is that station; anything else is not", () => {
+  const metroCenter = stations.find((s) => s.name === "Metro Center")!;
+  const [lon, lat] = metroCenter.point;
+  const near = (m: number): [number, number] => [lon, lat + m / 111_195];
+  const at = (p: [number, number], osm_key: string | null, osm_value: string | null) => ({ lon: p[0], lat: p[1], osm_key, osm_value });
+  assert.equal(stationForPlace(stations, at(near(100), "railway", "station"))?.id, metroCenter.id);
+  assert.equal(stationForPlace(stations, at(near(100), "public_transport", "station"))?.id, metroCenter.id);
+  assert.equal(stationForPlace(stations, at(near(100), "railway", "halt"))?.id, metroCenter.id);
+  // Too far, or not a station: a cafe next door, an entrance node, an untagged result.
+  assert.equal(stationForPlace(stations, at(near(STATION_MATCH_M + 400), "railway", "station")), null);
+  assert.equal(stationForPlace(stations, at(near(50), "amenity", "cafe")), null);
+  assert.equal(stationForPlace(stations, at(near(50), "railway", "subway_entrance")), null);
+  assert.equal(stationForPlace(stations, { lon, lat }), null);
 });
