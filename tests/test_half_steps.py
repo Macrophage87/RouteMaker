@@ -308,21 +308,26 @@ class TestRanking:
 
 class TestJunctions:
     def test_a_half_step_road_costs_the_midpoint(self) -> None:
+        # Option C's tables (468): LTS 3 1,600 ft and LTS 4 / Avoid 4,000 ft stopped,
+        # 150 ft and 600 ft at a signal. A 35 mph road in town, so the severe tier's
+        # speed and rural factors are 1.0 and the midpoint shows bare.
         def cost(tier, half, control=Control.NONE):
-            return intersections.crossing_ft(Road(tier, half=half), control, 1)
+            road = Road(tier, half=half, speed_mph=35.0, urban=True)
+            return intersections.crossing_ft(road, control, 1)
 
-        assert cost(2, True) == 600.0
-        assert cost(3, True) == 2100.0
-        assert cost(4, True) == 3000.0
+        assert cost(2, True) == 800.0
+        assert cost(3, True) == 2800.0
+        assert cost(4, True) == 4000.0
         assert cost(2, True, Control.SIGNAL) == 75.0
-        assert cost(3, True, Control.SIGNAL) == 225.0
+        assert cost(3, True, Control.SIGNAL) == 375.0
 
     def test_two_and_a_half_is_busy_and_two_is_not(self) -> None:
         assert Road(2, half=True).busy and not Road(2).busy and Road(3).busy
 
     def test_left_across_oncoming_at_the_midpoint(self) -> None:
         road = Road(3, half=True, oneway=False, lanes=1)
-        assert intersections.left_from_ft(road, Control.NONE) == 1050.0
+        # Midway between LTS 3's 800 ft and LTS 4's 4,000 ft (468).
+        assert intersections.left_from_ft(road, Control.NONE) == 2400.0
 
 
 class TestRollingChart:

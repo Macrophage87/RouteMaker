@@ -1528,6 +1528,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
         lanes=current.lanes,
         oneway=current.oneway,
         graph_oneway=current.graph_oneway,
+        default_speed_mph=current.default_speed_mph,
     )
     return True
 
@@ -3040,6 +3041,10 @@ def build_handlers(
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
+                        road_default_speed_mph=_smallint(
+                            getattr(stress, "default_speed_mph", None)
+                        ),
+                        road_urban=way.osm_id in reference.urban_way_ids,
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
                             way.tags,

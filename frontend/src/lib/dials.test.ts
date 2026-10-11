@@ -178,13 +178,15 @@ test("only Cargo Bike carries a load", () => {
   for (const preset of PRESETS) assert.equal(carries(preset.id), preset.id === "cargo", preset.id);
 });
 
-test("the three ride times, and nothing else, are ride times", () => {
-  // FE32: dropping weekday_offpeak from WHENS left every test green.
+test("the four ride times, and nothing else, are ride times", () => {
+  // FE32: dropping weekday_offpeak from WHENS left every test green. Night is
+  // OWNER-DECISIONS 469c.
   assert.deepEqual(
     WHENS.map((w) => w.id),
-    ["weekend", "weekday_rush", "weekday_offpeak"],
+    ["weekend", "weekday_rush", "weekday_offpeak", "night"],
   );
-  for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) assert.ok(isWhen(when), when);
+  for (const when of ["weekend", "weekday_rush", "weekday_offpeak", "night"]) assert.ok(isWhen(when), when);
+  assert.equal(decodePlan("#preset=default&when=night").dials.when, "night");
   assert.equal(isWhen("now"), false);
   assert.equal(decodePlan("#preset=default&when=weekday_offpeak").dials.when, "weekday_offpeak");
 });

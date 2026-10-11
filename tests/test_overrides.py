@@ -70,6 +70,17 @@ def test_a_stress_override_replaces_the_tier_and_says_so() -> None:
     assert classified[1].assumed == ("maxspeed",), "the provenance of the inputs survives"
 
 
+def test_a_stress_override_keeps_the_statutory_default() -> None:
+    """OWNER-DECISIONS 469: a road an override raises is still priced at the speed
+    the law sets where nothing is posted, not at the 45 mph stopgap."""
+    classified = {
+        1: StressResult(Stress.LTS3, "mixed traffic, 30 mph", ("maxspeed",), default_speed_mph=30.0)
+    }
+    apply_stress(classified, [Override("stress", 1, {"tier": 4})])
+    assert classified[1].tier is Stress.LTS4
+    assert classified[1].default_speed_mph == 30.0
+
+
 FLOOR = {
     "tier": 3,
     "at_least": True,
@@ -964,6 +975,7 @@ class TestACarFreeRoadIsTier1:
                 "ddot",
                 oneway=False,
                 graph_oneway=True,
+                default_speed_mph=25.0,
             )
         }
         assert car_free_tier_1(way, stress) is False, "open to cars: untouched"
@@ -972,6 +984,7 @@ class TestACarFreeRoadIsTier1:
         assert stress[1].tier is Stress.LTS1
         # The road is the same road: both readings of its direction travel.
         assert (stress[1].oneway, stress[1].graph_oneway) == (False, True)
+        assert stress[1].default_speed_mph == 25.0
         assert stress[1].rule.startswith("closed to motor traffic")
         assert (stress[1].assumed, stress[1].volume_source) == (("maxspeed",), "ddot")
 

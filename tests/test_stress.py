@@ -6,6 +6,8 @@ the plan fixes: speed, then facility, then volume, then surface.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from routemaker.stress import (
@@ -2331,7 +2333,39 @@ class TestSpeedDefaults:
     @pytest.mark.parametrize("state", ["MD", "VA"])
     def test_rural_roads_keep_the_statutory_default(self, highway, state) -> None:
         road = {"highway": highway}
-        assert classify(road, urban=False, jurisdiction=state) == classify(road, urban=False)
+        known = classify(road, urban=False, jurisdiction=state)
+        assert replace(known, default_speed_mph=None) == replace(
+            classify(road, urban=False), default_speed_mph=None
+        )
+
+    @pytest.mark.parametrize(
+        ("state", "urban", "divided", "tags", "mph"),
+        [
+            ("DC", True, False, {"highway": "primary"}, 20.0),
+            ("DC", True, False, {"highway": "service", "service": "alley"}, 15.0),
+            ("MD", True, False, {"highway": "primary"}, 30.0),
+            ("MD", True, True, {"highway": "primary"}, 35.0),
+            ("MD", False, False, {"highway": "secondary"}, 50.0),
+            ("MD", False, True, {"highway": "trunk"}, 55.0),
+            ("VA", True, False, {"highway": "secondary"}, 25.0),
+            ("VA", False, False, {"highway": "secondary"}, 55.0),
+            ("VA", False, False, {"highway": "tertiary", "surface": "gravel"}, 35.0),
+            ("VA", True, False, {"highway": "tertiary", "surface": "gravel"}, 25.0),
+            (None, False, False, {"highway": "secondary"}, 55.0),
+        ],
+    )
+    def test_the_junction_model_gets_the_statutory_default(
+        self, state, urban, divided, tags, mph
+    ) -> None:
+        """OWNER-DECISIONS 469, 469a: MD Transportation 21-801.1 and Code of
+        Virginia 46.2-870 to 878; where the state is unknown, the classifier's own
+        assumption."""
+        result = classify(tags, urban=urban, jurisdiction=state, divided=divided)
+        assert result.default_speed_mph == mph
+
+    def test_a_posted_road_has_no_default(self) -> None:
+        road = {"highway": "secondary", "maxspeed": "40 mph"}
+        assert classify(road, urban=True, jurisdiction="MD").default_speed_mph is None
 
     def test_outside_a_known_state_nothing_changes(self) -> None:
         road = {"highway": "primary"}

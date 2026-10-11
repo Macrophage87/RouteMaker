@@ -1,7 +1,7 @@
 /** What the GPX section says, and the export's name and description. */
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { WHENS, carryingWords, hillsWords, stressWords } from "./dials.ts";
+import { WHENS, carryingWords, hillsWords, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
@@ -49,7 +49,7 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
   return (
     `${head} Traffic slider ${d.stress} of 100 (${stressWords(d.stress)}); ` +
     `hills slider ${d.hills} (${hillsWords(d.hills)})` +
-    (when ? `; ride time ${when.toLowerCase()}` : "") +
+    (when ? `; ride time ${whenInSentence(when)}` : "") +
     (d.carrying ? `; ${carryingWords(d.carrying)}` : "") +
     (d.assist ? "; electric assist" : "") +
     // "Keep to roads, not trails" (OWNER-DECISIONS 463); Mass Ride always keeps to roads, so it is not said there.

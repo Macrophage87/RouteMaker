@@ -12,8 +12,14 @@ test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-09-28T14:00:00Z")), "weekday_offpeak"); // 10:00 EDT, the end
   assert.equal(whenAt(new Date("2026-09-28T21:30:00Z")), "weekday_rush"); // 17:30 EDT
   assert.equal(whenAt(new Date("2026-09-28T23:00:00Z")), "weekday_offpeak"); // 19:00 EDT
-  // Friday 23:30 EDT is 03:30 on Saturday in UTC: still a weekday here.
-  assert.equal(whenAt(new Date("2026-10-03T03:30:00Z")), "weekday_offpeak");
+  // Friday 20:30 EDT is 00:30 on Saturday in UTC: still a weekday here.
+  assert.equal(whenAt(new Date("2026-10-03T00:30:00Z")), "weekday_offpeak");
+  // Night, 21:00 to 07:00 on any day (OWNER-DECISIONS 469c), as the API reads it.
+  assert.equal(whenAt(new Date("2026-10-03T03:30:00Z")), "night"); // Friday 23:30 EDT
+  assert.equal(whenAt(new Date("2026-09-29T01:00:00Z")), "night"); // Monday 21:00 EDT, the start
+  assert.equal(whenAt(new Date("2026-09-29T00:59:00Z")), "weekday_offpeak"); // 20:59 EDT
+  assert.equal(whenAt(new Date("2026-09-28T10:59:00Z")), "night"); // Monday 06:59 EDT
+  assert.equal(whenAt(new Date("2026-10-04T03:00:00Z")), "night"); // Saturday 23:00 EDT
   // In winter the region is five hours behind: Monday 08:30 EST.
   assert.equal(whenAt(new Date("2026-12-07T13:30:00Z")), "weekday_rush");
 });

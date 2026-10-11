@@ -15,6 +15,7 @@ draws five.
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 import pytest
 from django.db import connection
@@ -120,7 +121,12 @@ class TestCache:
         assert after.status_code == 200
         assert after.content == b"" and before.content != b""
 
-    def test_the_eviction_drops_stale_rows_and_the_oldest_past_the_budget(self) -> None:
+    def test_the_eviction_drops_stale_rows_and_the_oldest_past_the_budget(
+        self, monkeypatch
+    ) -> None:
+        # `put` evicts 1 in EVICT_EVERY at random: here the only eviction is the one asked for
+        # (a random one inside the puts, under the default budget, failed about 1 run in 13).
+        monkeypatch.setattr(tile_cache, "random", SimpleNamespace(randrange=lambda n: 1))
         for n in range(4):
             tile_cache.put("new", 15, n, 0, b"x" * 100)
             time.sleep(0.01)
