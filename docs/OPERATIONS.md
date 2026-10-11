@@ -2816,6 +2816,26 @@ edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
 
+The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
+v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
+Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
+by `scripts/build_food.py` from the extract; like the water file, the weekly
+rebuild does not refresh it. The file committed with the feature is empty
+(the search says "No food data yet"), so **the v0.5.0 rebuild on the build
+host runs it once**, next to the water layer's refresh by hand:
+
+    .venv311/bin/python scripts/build_food.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+then records the printed counts, size and digest in
+`frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
+the file. It is a hashed asset under `/assets/`, fetched on the first search
+only (about 450 KB compressed expected) and left out of the service worker's
+precache, so installing the app does not download it (`LAZY_ASSET` in
+`frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
+release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
+compressed, and a search for "pizza" in Washington lists places.
+
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
 in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
@@ -3027,8 +3047,9 @@ and `manifest-src` falls back to `default-src 'self'`.
 `/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
 and carries the build's id; `index.html` carries the same id in `<meta
 name="routemaker-build">`. What it does, and what it never touches, is the table
-in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
-`index.html`, answers a navigation to `/` from the network first (3 s, then the
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` (but
+the Find food places, `/assets/food-*.json`, kept only once a search fetches
+them) and `index.html`, answers a navigation to `/` from the network first (3 s, then the
 kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
 the base map archive, the admin path and every non-GET included. It caches no API
 answer and nothing private.
