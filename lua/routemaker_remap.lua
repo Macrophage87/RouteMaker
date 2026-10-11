@@ -386,15 +386,61 @@ M.REVIEWER_PENALTY_FLOOR = M.MAX_PENALISED_ROUGHNESS  -- retained name, see abov
 -- already rougher than that threshold: clamping naively lifts a genuine gravel
 -- road to compacted, which would quietly overwrite surveyed data with the cap
 -- and make the rural references look better surfaced than they are.
+--
+-- `current` is the way's own OSM `surface` (nil when untagged) and `proposed`
+-- a class name from SURFACE_ORDER. The result is an OSM `surface` value, or
+-- `current` itself where the penalty changes nothing (nil: write nothing).
+-- Both ends go through the parser's own reading (FOLLOWUP-VALHALLA-36-LEFTOVERS,
+-- item 1): Valhalla reads `surface` by substring (src/mjolnir/pbfgraphparser.cc,
+-- the `surface` handler at 3.9.1), so the class names themselves are not tags
+-- it can read - `paved_rough` and `paved` contain "paved" and read as
+-- paved_smooth, `path` and `impassable` match nothing and fall back to the
+-- class default - and `asphalt` or `ground` were not in this table at all, so
+-- a ground path read as `paved` here and a penalty could "improve" it.
 function M.bounded_surface(current, proposed)
-  local now = M.SURFACE_ORDER[current] or M.SURFACE_ORDER.paved
+  local now = M.SURFACE_ORDER[M.valhalla_surface(current)] or M.SURFACE_ORDER.paved_smooth
   local want = M.SURFACE_ORDER[proposed] or now
   local ceiling = math.max(now, M.REVIEWER_PENALTY_FLOOR)
   local capped = math.min(math.max(want, now), ceiling)
+  if capped == now then return current end
   for name, rank in pairs(M.SURFACE_ORDER) do
-    if rank == capped then return name end
+    if rank == capped then return M.SURFACE_TAG[name] end
   end
   return current
+end
+
+-- An OSM `surface` value the parser reads as each class, for the classes a
+-- penalty can land on (at most the cap, `compacted`; a rougher class is only
+-- ever the way's own, kept as it is).
+M.SURFACE_TAG = {
+  paved_smooth = "asphalt", paved = "paving_stones", paved_rough = "cobblestone",
+  compacted = "compacted", dirt = "dirt", gravel = "gravel", path = "grass",
+}
+
+-- The parser's substring reading of `surface`, in its own order (pbfgraphparser.cc
+-- at 3.9.1, the `surface` handler): the first list a value contains a word of
+-- decides. nil where none matches, as the parser then uses the class default.
+M.SURFACE_WORDS = {
+  { "gravel", { "unpaved" } },
+  { "paved_smooth", { "paved", "pavement", "asphalt", "concrete", "cement", "chipseal", "metal" } },
+  { "paved", { "tartan", "pavingstone", "paving_stones", "sett", "grass_paver" } },
+  { "paved_rough", { "cobblestone", "brick" } },
+  { "compacted", { "compacted", "wood", "boardwalk" } },
+  { "dirt", { "dirt", "natural", "earth", "ground", "mud", "clay", "laterite" } },
+  { "gravel", { "gravel", "pebblestone", "sand" } },
+  { "path", { "grass", "stepping_stones" } },
+}
+
+--- The surface class Valhalla's parser gives an OSM `surface` value, or nil.
+function M.valhalla_surface(value)
+  if type(value) ~= "string" then return nil end
+  value = value:lower()
+  for _, entry in ipairs(M.SURFACE_WORDS) do
+    for _, word in ipairs(entry[2]) do
+      if value:find(word, 1, true) then return entry[1] end
+    end
+  end
+  return nil
 end
 
 --- Remap one way's tags. Returns a table of *changes* only.
@@ -493,7 +539,8 @@ function M.remap_way(tags, derived)
   end
 
   if derived.reviewer_surface_penalty then
-    out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
+    local penalised = M.bounded_surface(tags.surface, derived.reviewer_surface_penalty)
+    if penalised ~= nil then out.surface = penalised end
   end
 
   -- A `vehicle` grant opens no more to a bicycle than it did under 3.5.1.
@@ -763,9 +810,9 @@ end
 -- graph.lua already strips the ratings from every way upstream leaves closed
 -- (`M.strip_ratings_if_closed`), so on a closed way the rating was never what
 -- decided access, and on an open one it grants nothing new. `sac_scale` is left
--- alone: upstream reads it as an access grant on a way with no bicycle tag, and
--- it does not set the surface. `mtb:scale:uphill` and `mtb:description` stay as
--- they are.
+-- alone: upstream reads it for no bicycle (only in its ferry-and-rail branch),
+-- and it sets the surface only where no `surface` tag does. `mtb:scale:uphill`
+-- and `mtb:description` stay as they are.
 M.PAVED_SURFACES = { asphalt = true, concrete = true, paved = true,
   paving_stones = true, chipseal = true, wood = true, boardwalk = true,
   cobblestone = true, unhewn_cobblestone = true, metal = true, metal_grid = true,
@@ -1205,8 +1252,63 @@ function M.remap_node(tags)
     end
   end
 
+  if M.derives_signal(tags) then
+    out.highway = "traffic_signals"
+    -- Kept on the node for anything that reads the crossing's own scheme; the
+    -- parser reads only `highway` (src/mjolnir/pbfgraphparser.cc, the node loop).
+    if tags.highway == "crossing" and tags.crossing == nil then
+      out.crossing = "traffic_signals"
+    end
+  end
+
   return out
 end
+
+-- FOLLOWUP-SIGNAL-DERIVE. Valhalla's parser sets a node's traffic-signal flag
+-- from `highway=traffic_signals` and nothing else (src/mjolnir/pbfgraphparser.cc
+-- at 3.9.1, `n.set_traffic_signal(tag.second == "traffic_signals")`), so a
+-- signalised trail crossing mapped the other two ways OSM maps one read "no
+-- signal mapped" in the junction model (`core.junctions`):
+--   * on the node, `highway=crossing` + `crossing=traffic_signals` (or
+--     `crossing:signals=yes`), read here from the node's own tags;
+--   * on the crossing way alone, which the transform never sees with the road
+--     it crosses, so the rebuild marks the shared node `rm:crossing_signal=yes`
+--     (`pipeline.signals`) and this reads the mark.
+-- The node becomes `highway=traffic_signals` only where it says nothing else
+-- about its control: no other `highway` value (a stop or give-way sign is left
+-- alone) and no `crossing` value that says there is no signal.
+M.SIGNAL_MARK = "rm:crossing_signal"
+-- OSM's wiki: `uncontrolled` and `unmarked` crossings have no traffic signals. A
+-- contradiction is read as no signal, the reading the model had before.
+M.NOT_SIGNALISED = { uncontrolled = true, unmarked = true, no = true, informal = true }
+-- Upstream's `nodes_proc` reopens a `highway=crossing` node to bicycles when its
+-- `bicycle` value maps to 0 ("do not shut off bike access if there is a highway
+-- crossing"), and these are the values that map to 0 in its `bicycle_node`.
+-- Rewriting such a node's class would close the road through it to bicycles, so
+-- it keeps `highway=crossing` and no signal.
+M.CROSSING_REGRANTS_BICYCLE = { no = true, none = true }
+
+function M.signalised_crossing(tags)
+  local crossing = tags.crossing
+  if crossing == "traffic_signals" then
+    return tags["crossing:signals"] ~= "no"
+  end
+  return tags["crossing:signals"] == "yes" and not M.NOT_SIGNALISED[crossing]
+end
+
+function M.derives_signal(tags)
+  local highway = tags.highway
+  if highway ~= nil and highway ~= "crossing" then return false end
+  if M.NOT_SIGNALISED[tags.crossing] or tags["crossing:signals"] == "no" then return false end
+  if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end
+  if tags[M.SIGNAL_MARK] == "yes" then return true end
+  return highway == "crossing" and M.signalised_crossing(tags)
+end
+
+-- The one forbidden write a node may make: its class to a signal. `highway` on a
+-- way sets hierarchy, shortcuts and the road-class factor; on a node the parser
+-- reads it only for the signal, stop and give-way flags (and `motorway_junction`).
+M.NODE_WRITES_ALLOWED = { highway = "traffic_signals" }
 
 --- Whether a set of remapped tags is safe to apply.
 -- A border-control node exists to be charged for, not to refuse passage: a

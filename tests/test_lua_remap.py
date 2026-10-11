@@ -15,6 +15,7 @@ Valhalla cannot use.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -839,31 +840,38 @@ def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
 # `routemaker.intersections` reads a junction's signal from the router's tiles
 # (`/locate`'s `traffic_signal`), and the transform decides what a signal is.
 # Upstream's `nodes_proc` reads `highway=traffic_signals` and
-# `traffic_signals:direction`; a mapped crossing way tagged
-# `crossing=traffic_signals` (a signal or a HAWK on a trail crossing) is not one,
-# which is why the model counts a marked crossing with no signal flag at
-# `MARKED_CROSSING_FACTOR` (docs/DEVELOPMENT.md, "Known gaps"). These two tests
-# are the tripwire for that gap: when either side changes, the factor should too.
+# `traffic_signals:direction`, and the parser sets the flag from `highway` alone.
+# A signalised trail crossing mapped on its crossing node (`highway=crossing` +
+# `crossing=traffic_signals`) or on its crossing way alone is not one upstream, so
+# the remap derives it (FOLLOWUP-SIGNAL-DERIVE: `remap.derives_signal`,
+# `pipeline.signals`); a marked crossing still left with no signal flag is counted
+# at `MARKED_CROSSING_FACTOR`. These two tests are the tripwire: if upstream starts
+# reading another signal tag, the derivation may double up or be redundant.
 
 
 def test_upstream_reads_signals_from_traffic_signals_nodes_only() -> None:
     upstream = (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
     reads = {m.group(0) for m in re.finditer(r"traffic_signals[:\w]*", upstream)}
     assert reads == {"traffic_signals", "traffic_signals:direction"}, (
-        "upstream now reads another signal tag: a signalized trail crossing may reach the "
-        "router's signal flag, and routemaker.intersections.MARKED_CROSSING_FACTOR is stale"
+        "upstream now reads another signal tag: check remap.derives_signal and "
+        "pipeline.signals against it (FOLLOWUP-SIGNAL-DERIVE)"
     )
     assert not re.search(r"crossing\W+\]?\s*==\s*[\"']traffic_signals", upstream)
 
 
-def test_the_remap_derives_no_signal() -> None:
-    """Nothing here writes `forward_signal` or `backward_signal`, so a node's
-    signal flag is upstream's. Deriving one from `crossing=traffic_signals` is a
-    recorded follow-up that needs a rebuild to verify (OPERATIONS.md, "Intersection
-    costs and the calm search")."""
+def test_the_remap_derives_signals_only_through_the_node_class() -> None:
+    """The one signal the remap writes is `highway=traffic_signals` on a node
+    (`derives_signal`, allowed through graph.lua's guard by
+    `NODE_WRITES_ALLOWED`). It writes no `forward_signal` or `backward_signal`,
+    which would need a direction the crossing tags do not give."""
     source = (REPO / "lua" / "routemaker_remap.lua").read_text()
     assert "forward_signal" not in source and "backward_signal" not in source
-    assert "traffic_signals" not in source
+    assert 'out.highway = "traffic_signals"' in source
+    assert 'M.NODE_WRITES_ALLOWED = { highway = "traffic_signals" }' in source
+    graph = (REPO / "lua" / "graph.lua").read_text()
+    assert "apply(kv, changes, remap.NODE_WRITES_ALLOWED)" in graph
+    # Ways never get the allowance: `highway` there sets hierarchy and shortcuts.
+    assert "apply(kv, remap.remap_way(kv, derived_from(kv)))" in graph
 
 
 # OWNER-DECISIONS 216 ("Enforce on all maps"): the District's one-way record is
@@ -1049,9 +1057,10 @@ UPSTREAM_OPEN_CASES = [
     {"smoothness": "impassable"},
     {"smoothness": "impassable", "bicycle": "yes"},
     {"impassable": "yes"},
-    # `sac_scale=hiking` alone is left out: upstream keeps a footway closed
-    # there in 3.5.1 to 3.9.1 alike while the model calls it open, a
-    # difference that predates the upgrade and only ever closes a closed way.
+    # Upstream keeps a footway, pedestrian way or bridleway closed under
+    # `sac_scale=hiking` (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 3).
+    {"sac_scale": "hiking"},
+    {"sac_scale": "mountain_hiking"},
     {"sac_scale": "hiking", "vehicle": "no"},
     {"sac_scale": "mountain_hiking", "vehicle": "yes"},
 ]
@@ -1078,3 +1087,60 @@ def test_the_trail_rules_model_of_upstream_agrees_with_the_real_transform(highwa
     upstream = result.stdout.split("\n")[:-1]
     model = ["open" if trailaccess.upstream_open(case) else "closed" for case in cases]
     assert [(c, m) for c, m, u in zip(cases, model, upstream, strict=True) if m != u] == []
+
+
+# FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2. Valhalla runs graph.lua with
+# luaL_dostring, ignores what it returns (src/mjolnir/luatagtransform.cc:50 at
+# 3.9.1) and only checks that the `*_proc` globals exist. graph.lua used to load
+# upstream's file, which installs them, before the remap; a remap that failed to
+# load then built every graph on the stock transform. Now a failure anywhere in
+# the file leaves no entry point, and the build refuses the script
+# (tests/test_tile_build_access.py builds it with a broken remap).
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "error('deliberately broken')\n",
+        "local M = {\n",  # a syntax error
+        "return true\n",  # loads, but is not the module
+        None,  # missing
+    ],
+)
+def test_a_remap_that_fails_to_load_leaves_no_entry_point(tmp_path, broken) -> None:
+    lua = tmp_path / "lua"
+    shutil.copytree(REPO / "lua", lua)
+    if broken is None:
+        (lua / "routemaker_remap.lua").unlink()
+    else:
+        (lua / "routemaker_remap.lua").write_text(broken)
+    interpreter = _require(LUAJIT, "LuaJIT")
+    result = subprocess.run(
+        [
+            interpreter,
+            "-e",
+            f"local ok, err = pcall(dofile, {json.dumps(str(lua / 'graph.lua'))})\n"
+            "io.write(tostring(ok), ' ', type(ways_proc), ' ', type(nodes_proc), ' ',\n"
+            "  type(rels_proc), '\\n', tostring(err), '\\n')\n",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ROUTEMAKER_LUA_DIR": str(lua)},
+    )
+    assert result.returncode == 0, result.stderr
+    first, reason = result.stdout.splitlines()[:2]
+    assert first == "false nil nil nil", result.stdout
+    assert "routemaker_remap.lua did not load" in reason
+
+
+def test_a_late_failure_takes_upstreams_entry_points_down_too() -> None:
+    """Between capturing upstream's entry points and defining its own, the file
+    holds no `*_proc` global, so nothing failing there can leave upstream's."""
+    source = (REPO / "lua" / "graph.lua").read_text()
+    remap = source.index('pcall(require, "routemaker_remap")')
+    upstream = source.index('pcall(require, "graph_upstream")')
+    cleared = source.index("ways_proc, nodes_proc, rels_proc = nil, nil, nil")
+    defined = source.index("function ways_proc")
+    assert remap < upstream < cleared < defined

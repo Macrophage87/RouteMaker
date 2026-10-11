@@ -103,6 +103,17 @@ HARD_SURFACE_PRICES = {
     "unhewn_cobblestone": "paved_rough",
 }
 
+# (the way's own surface, a reviewer penalty, the class the tile should price)
+# (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 1; `bounded_surface`).
+REVIEWER_SURFACES = [
+    ("asphalt", "paved", "paved"),
+    ("asphalt", "paved_rough", "paved_rough"),
+    ("asphalt", "compacted", "compacted"),
+    ("asphalt", "path", "compacted"),
+    ("ground", "gravel", "dirt"),
+    ("gravel", "paved_smooth", "gravel"),
+]
+
 CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
     ("singletrack, as the extract carries it", {**CCT, **SINGLETRACK}, CLOSED),
     (
@@ -493,6 +504,19 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         {"highway": "footway", "footway": "sidewalk", "bicycle": "no", "rm:trail_class": "yes"},
         CLOSED,
     ),
+    # FOLLOWUP-VALHALLA-36-LEFTOVERS, item 3: upstream reads no `sac_scale` for a
+    # bicycle, so the class decides (`trailaccess.upstream_open`).
+    ("a footway rated sac_scale=hiking", {"highway": "footway", "sac_scale": "hiking"}, CLOSED),
+    ("a path rated sac_scale=hiking", {"highway": "path", "sac_scale": "hiking"}, OPEN),
+    # Item 1: a reviewer surface penalty lands as the class it names (SURFACES).
+    *(
+        (
+            f"a reviewer {penalty} penalty on {surface}",
+            {"highway": "residential", "surface": surface, "rm:reviewer_surface": penalty},
+            OPEN,
+        )
+        for surface, penalty, _ in REVIEWER_SURFACES
+    ),
 ]
 
 # What the tile says the surface is, where a rating decides it. The parser
@@ -511,6 +535,12 @@ SURFACES = {
     "the C&O towpath above lock 21": "dirt",
     **{f"a {surface} trail deck": price for surface, price in HARD_SURFACE_PRICES.items()},
     "a wooden Rock Creek Trail bridge rated mtb:scale=0": "paved",
+    # The penalty's class, capped at compacted, and never smoother than the
+    # way's own (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 1).
+    **{
+        f"a reviewer {penalty} penalty on {surface}": price
+        for surface, penalty, price in REVIEWER_SURFACES
+    },
 }
 
 
@@ -780,6 +810,21 @@ def test_closures_reach_the_tiles(tmp_path) -> None:
     seen = locate(config, port, where, env)
     problems = failures(seen) + gate_failures(config, where, env)
     assert not problems, "\n".join(problems)
+
+
+def test_a_remap_that_fails_to_load_fails_the_build(tmp_path) -> None:
+    """FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2: valhalla_build_tiles (3.9.1) used to
+    build every graph on upstream's stock transform when routemaker_remap.lua
+    failed to load, with one line in its log. lua/graph.lua now leaves no entry
+    point, and Valhalla refuses the script."""
+    missing = missing_binaries()
+    if missing:
+        _skip_or_fail(missing)
+    lua = tmp_path / "lua"
+    shutil.copytree(REPO / "lua", lua)
+    (lua / "routemaker_remap.lua").write_text("error('deliberately broken')\n")
+    with pytest.raises(RuntimeError, match="does not contain a function"):
+        build(tmp_path / "work", lua, CASES[:1])
 
 
 def main() -> int:
