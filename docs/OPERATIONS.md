@@ -2702,6 +2702,13 @@ Since 2026-10-10 the script merges a restroom node into the restroom building
 around it and leaves out historic springs (rules and merge order in that
 README); the committed file predates both until the next refresh by hand,
 which is the only step a release carrying the change needs.
+Since 2026-10-11 (v0.5.0, RESTROOMS-FIX) it also leaves out points inside
+airports, military sites and prisons, and merges the open Throne smart
+restrooms from the cited hand list `frontend/src/amenity-data/throne-restrooms.json`.
+The committed file already has the Throne units (`--throne-only` needs no
+extract); the secured-site filter waits for the same refresh by hand on the
+build host, whose printed "left out inside airports, military sites and
+prisons" count goes in that README's Status.
 It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
 federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its

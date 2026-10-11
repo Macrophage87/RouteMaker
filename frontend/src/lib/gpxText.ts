@@ -3,7 +3,7 @@ import type { RouteProfile, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { WHENS, carryingWords, hillsWords, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
-import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
+import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
 import { gpxDescriptionText } from "./routeDescription.ts";
 import { FIDELITY_WITHIN_M, type Fidelity } from "./trackMatch.ts";
@@ -152,6 +152,10 @@ function noteText(note: ImportNote): string {
       return `About ${percent(note.share)}% of it is outside the area this map covers and was left out.`;
     case "joined":
       return `Its ${note.parts} separate parts were joined into one route.`;
+    case "far-parts":
+      return note.count === 1
+        ? `The plan follows its longest part; one other part lies more than ${milesText(JOIN_GAP_M)} from it and was left out.`
+        : `The plan follows its longest part; ${note.count} other parts lie more than ${milesText(JOIN_GAP_M)} from it and were left out.`;
     case "waypoints-unused":
       return note.count === 1
         ? "Its waypoint was not used: the planner has no cue points yet."

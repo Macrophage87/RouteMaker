@@ -145,6 +145,13 @@ test("an opened file is described: its name, its length, then one sentence per n
   assert.doesNotMatch(unnamed[0], /undefined/);
 });
 
+test("parts left out for lying far away are said, with the gap in miles then kilometres", () => {
+  const [, one] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 1 }] });
+  assert.equal(one, "The plan follows its longest part; one other part lies more than 0.5 mi (0.8 km) from it and was left out.");
+  const [, two] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 2 }] });
+  assert.match(two, /; 2 other parts lie more than 0\.5 mi \(0\.8 km\) from it and were left out\.$/);
+});
+
 test("elevations along the line are read from the profile by distance, scaled to the profile's length", () => {
   // Three points due east, about 1 km apart at 38.9 N.
   const step = 1000 / (111_195 * Math.cos((38.9 * Math.PI) / 180));

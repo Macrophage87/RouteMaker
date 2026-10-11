@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EditHistory } from "./editHistory.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot } from "./planEdits.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 function wired(start: number[] = [], ride = "default") {
   const history = new EditHistory<Snapshot<number[], string>>();
@@ -118,7 +119,7 @@ test("an edit that sets the ride is one step: undo gives back the points and the
 });
 
 test("App edits through planEdits, with its own history, points and ride", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /planEdits<LonLat\[\], Ride>\(\{\s*history: history\.current,\s*current: \(\) => pointsRef\.current,\s*ride: \(\) => rideRef\.current,/);
   assert.match(app, /const commit = edits\.commit;/);
   assert.match(app, /const next = edits\.travel\(direction\);/);

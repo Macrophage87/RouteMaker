@@ -5,10 +5,12 @@ import { GPX_NS_11, PLAN_TYPE_PREFIX, parseGpx, writeGpx, type GpxFile } from ".
 import {
   IMPORT_START_POINTS,
   ImportError,
+  JOIN_GAP_M,
   REFERENCE_MAX_VERTICES,
   REFINE_ADD,
   REFINE_ROUNDS,
   clipToCoverage,
+  followedPart,
   nextRefinement,
   planFromGpx,
   type ImportNote,
@@ -153,12 +155,73 @@ test("the part of a track outside the area is left out and its share said", () =
   assert.ok(outside && outside.kind === "outside" && Math.abs(outside.share - 0.25) < 0.01, JSON.stringify(outside));
 });
 
-test("a track that leaves the area and comes back is one plan, with the gap noted as a join", () => {
+test("a track that leaves the area and comes back close by is one plan, with the gap noted as a join", () => {
   const [, , east] = COVERAGE_BBOX;
-  const out = [line([east - 0.1, 39.0], [east + 0.1, 39.0], 21), line([east + 0.1, 39.01], [east - 0.1, 39.01], 21)].flat();
+  // Back in about 330 m (0.003 degrees of latitude) from where it left.
+  const out = [line([east - 0.1, 39.0], [east + 0.1, 39.0], 21), line([east + 0.1, 39.003], [east - 0.1, 39.003], 21)].flat();
   const plan = planFromGpx(file({ tracks: [{ segments: [out] }] }));
   assert.deepEqual(note(plan.notes, "joined"), { kind: "joined", parts: 2 });
+  assert.equal(note(plan.notes, "far-parts"), undefined);
   assert.ok(clipToCoverage(out).runs.length === 2);
+});
+
+test("a track that comes back into the area far from where it left follows the longer part only", () => {
+  const [, , east] = COVERAGE_BBOX;
+  // Leaves at 39.0 N and comes back 0.2 degrees (about 22 km) further north, with a shorter run inside.
+  const out = [line([east - 0.1, 39.0], [east + 0.1, 39.0], 21), line([east + 0.1, 39.2], [east - 0.05, 39.2], 21)].flat();
+  const plan = planFromGpx(file({ tracks: [{ segments: [out] }] }));
+  assert.equal(note(plan.notes, "joined"), undefined);
+  assert.deepEqual(note(plan.notes, "far-parts"), { kind: "far-parts", count: 1 });
+  assert.ok(plan.reference.every(([, lat]) => lat === 39.0), "only the first, longer run is the reference");
+  assert.ok(plan.points.every(([, lat]) => lat === 39.0));
+  // About 0.1 degrees of longitude at 39 N, not the 22 km jump.
+  assert.ok(plan.referenceM < 9_000, String(plan.referenceM));
+});
+
+test("tracks far apart are not joined: the longest is followed and the others are noted as left out", () => {
+  const a = line(at(0, 0), at(2000, 0), 50);
+  const b = line(at(0, 30_000), at(5000, 30_000), 50);
+  const c = line(at(0, 60_000), at(1000, 60_000), 50);
+  const plan = planFromGpx(file({ tracks: [{ segments: [a] }, { segments: [b] }, { segments: [c] }] }));
+  assert.equal(plan.source, "track");
+  assert.deepEqual(plan.points[0], b[0]);
+  assert.deepEqual(plan.points.at(-1), b.at(-1));
+  assert.ok(Math.abs(plan.referenceM - haversineM(b[0], b.at(-1)!)) < 5, String(plan.referenceM));
+  assert.deepEqual(note(plan.notes, "far-parts"), { kind: "far-parts", count: 2 });
+  assert.equal(note(plan.notes, "joined"), undefined);
+  assert.equal(note(plan.notes, "outside"), undefined, "a gap between parts is not outside the area");
+});
+
+test("parts within the join gap of each other are joined, and a far one breaks the chain", () => {
+  const a = line(at(0, 0), at(1000, 0), 20);
+  const near = JOIN_GAP_M - 50;
+  const b = line(at(1000, near), at(2000, near), 20);
+  const c = line(at(2000, near + JOIN_GAP_M + 50), at(2500, near + JOIN_GAP_M + 50), 20);
+  const result = followedPart([a, b, c]);
+  assert.equal(result.pieces.length, 2);
+  assert.deepEqual(result.pieces[0][0], a[0]);
+  assert.equal(result.leftOut, 1);
+  assert.equal(result.outsideShare, 0);
+});
+
+test("a track written a segment per point is still one line, as before the far-apart fix", () => {
+  const points = line(at(0, 0), at(3000, 0), 40);
+  const plan = planFromGpx(file({ tracks: [{ segments: points.map((p) => [p]) }] }));
+  assert.equal(plan.source, "track");
+  assert.ok(Math.abs(plan.referenceM - 3000) < 5, String(plan.referenceM));
+  assert.equal(note(plan.notes, "far-parts"), undefined);
+});
+
+test("a far group of several close segments counts as one part left out, and a lone far point as none", () => {
+  const main = line(at(0, 0), at(5000, 0), 50);
+  const farA = line(at(0, 20_000), at(500, 20_000), 10);
+  const farB = line(at(600, 20_000), at(1000, 20_000), 10);
+  const lone = [at(0, 40_000)];
+  const result = followedPart([main, farA, farB, lone]);
+  assert.equal(result.pieces.length, 1);
+  assert.equal(result.leftOut, 1);
+  const plan = planFromGpx(file({ tracks: [{ segments: [main, farA, farB, lone] }] }));
+  assert.deepEqual(note(plan.notes, "far-parts"), { kind: "far-parts", count: 1 });
 });
 
 test("a file entirely outside the area is refused as such", () => {

@@ -30,6 +30,7 @@ import { addStressOverlay, overlayLayerShown, setStressVisibility, type OverlayM
 import { MTB_LEGEND, MtbTrailLegend, mtbLevelLegend } from "./stressLegend.ts";
 import { STRESS_SOURCE_ID } from "./mapStyle.ts";
 import { MTB_TRAILS_HINT, MTB_TRAILS_LABEL, MTB_TRAILS_NO_MAP_HINT, MtbTrailsSwitch } from "./mtbTrailsSwitch.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
@@ -237,7 +238,7 @@ test("setting the overlay's visibility sets the trails' by the switch, and the r
 test("MapView shows or hides the layer in place when the switch changes, and App puts the switch in the Map layers sheet", () => {
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(view, /subscribeMtbTrails\(\(\) => \{\s*const map = mapRef\.current;\s*if \(map && loaded\.current\) setStressVisibility\(map, callbacks\.current\.stressVisible\);/);
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   assert.match(sheet, /<h3 id="terrain-heading">Trails and terrain<\/h3>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
   // Every ride type: not inside a ride-type condition.
@@ -291,6 +292,6 @@ test("the Mass Ride legend names the trails' line while the layer is on, and not
   } finally {
     setMtbTrails(false, { remember: false });
   }
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>/);
 });

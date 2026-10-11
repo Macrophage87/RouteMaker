@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { federalHolidays, mapWhen, whenAt } from "./rideTime.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-10-03T13:00:00Z")), "weekend"); // Saturday 09:00 EDT
@@ -40,7 +41,7 @@ test("the map follows the ride time chosen, and the moment's for 'when I'm plann
   const monday = new Date("2026-09-28T16:00:00Z");
   assert.equal(mapWhen("weekend", monday), "weekend");
   assert.equal(mapWhen(null, monday), "weekday_offpeak");
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /when=\{mapWhen\(dials\.when \?\? null\)\}/);
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(view, /setStressWhen\(map, props\.when\);\s*\}, \[props\.when\]\);/);

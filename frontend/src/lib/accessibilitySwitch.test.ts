@@ -57,6 +57,7 @@ import {
   followAccessibility,
   setRootClass,
 } from "./accessibilitySwitch.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const TIERS = [1, 2, 3, 4, 5] as const;
 const colours = (name: "blended" | "twotone" | "cvd") => TIERS.map((n) => PALETTES[name][n].color);
@@ -703,8 +704,8 @@ test("the map and the panel are wired to the switch: MapView repaints on it, the
   assert.match(mapView, /setRouteSections\(map, callbacks\.current\.route, callbacks\.current\.stale\)/);
   // The subscription is the effect's return value, so it is stopped with the component.
   assert.match(mapView, /useEffect\(\s*\(\) =>\s*subscribePalette\(/);
-  for (const name of ["App.tsx", "FacilityBreakdown.tsx"]) assert.match(src(name), /useStressStyle\(\)/, name);
-  const app = src("App.tsx");
+  for (const name of ["App.tsx", "app/RoutePanel.tsx", "FacilityBreakdown.tsx"]) assert.match(src(name), /useStressStyle\(\)/, name);
+  const app = appSource();
   assert.match(app, /<AccessibilitySwitch/);
   assert.match(app, /setAccessibility\(on\)/);
   assert.match(src("main.tsx"), /followAccessibility\(document\.documentElement\)/);
