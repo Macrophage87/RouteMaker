@@ -164,12 +164,6 @@ function levelName(step: number, words: string): string {
   return step === 5 ? "Avoid" : `LTS ${stepLabel(step)} (${words})`;
 }
 
-/** What the status region says after an action. */
-export function actionSaid(action: ReviewAction, item: SuggestionItem, message: string): string {
-  if (action === "discord") return `The post for ${item.road} is ready to copy below. The suggestion is marked as sent to Discord.`;
-  return message;
-}
-
 /** The map link the admin's Show on map uses: the app's own `#at=lon,lat` (lib/planHash.ts). */
 export function mapLink(origin: string, item: Pick<SuggestionItem, "lat" | "lon">): string {
   return `${origin}/#at=${item.lon.toFixed(5)},${item.lat.toFixed(5)}`;

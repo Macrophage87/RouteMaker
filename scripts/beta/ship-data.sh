@@ -21,6 +21,8 @@
 #   db/routemaker.dump  pg_dump --format=custom of the `live` and `public` schemas, minus the
 #                       data of sessions, rate-limit rows, membership cache, job queues and
 #                       every table holding an identity (accounts, audit log, guild roster)
+#   db/blanked/*.copy   the tables that name a person but are needed (override, approved
+#                       junction ratings, Avoid junctions), with every person column NULL
 #   db/row-counts.tsv   what receive-data.sh checks the restore against
 #   SHA256SUMS          one line per file; MANIFEST.txt the bundle's facts
 #
@@ -99,15 +101,47 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 #                                     install's review (core.suggestions)
 #   mass_hazard                       reporter_id and decided_by_id -> app_user, plus the plain
 #                                     reporter_user_id: riders' hazard reports, the same (core.mass_hazards)
-# `override` has no user column and is shipped whole. tests/test_beta_overlay.py asserts this
-# list; ship-data.sh refuses a dump that carries data for any name in it.
+#   junction_suggestion               the same for junctions (suggester_id, decided_by_id,
+#                                     suggester_user_id; core.junction_suggestions)
+#   stress_edit                       actor_id -> app_user, plus the plain actor_user_id: home's
+#                                     half-step editor history. What it changed is already in the
+#                                     shipped live table and override rows; it also points at
+#                                     override rows, which the beta's update replaces.
+# tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
+# excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
 	app_session django_session rate_limit_window cached_membership
 	procrastinate_events procrastinate_jobs procrastinate_periodic_defers procrastinate_workers
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
-	configured_guild role_mapping stress_suggestion mass_hazard
+	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 )
+# Tables the beta needs from home that also name a person or carry a rider's words: shipped with
+# those columns blanked, never whole. Each is left out of the dump and written instead as
+# db/blanked/<table>.copy from a SELECT that blanks every listed column, so nothing in the bundle
+# points at app_user (which is excluded) and the restore's foreign keys hold, and no rider's reason
+# leaves home; receive-data.sh loads the files after the restore. The approver's account and the
+# rider's words are home's alone; what was approved is what the beta needs.
+#   override           the access and stress corrections (created_by, approved_by; and the
+#                      reason of a row an approved rider suggestion made, "Rider suggestion N,
+#                      approved: <the rider's reason>", core.suggestions.approve)
+#   junction_override  riders' approved junction ratings (core.junction_suggestions; evidence is
+#                      "Rider suggestion N: <the rider's reason>")
+#   avoid_junction     approved Avoid junctions (core.avoid_junctions; evidence the same where a
+#                      rider's suggestion made it, and private to the admin where not)
+# Format TABLE:COLUMN,COLUMN. A column ending in _by_id or user_id becomes NULL; COLUMN=rider keeps
+# the text unless it is a rider suggestion's ("Rider suggestion ..."), which becomes
+# RIDER_REASON_BLANKED; any other column becomes '' (a NOT NULL text column). The script refuses a
+# table that has a foreign key to app_user, or a column ending in user_id, not listed here, so a
+# person column added later is not shipped by accident.
+# The commas are part of each entry, not separators (read with IFS=, below).
+# shellcheck disable=SC2054
+BLANKED_TABLE_DATA=(
+	override:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id,reason=rider
+	junction_override:created_by_id,created_by_user_id,evidence
+	avoid_junction:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id,evidence
+)
+RIDER_REASON_BLANKED="Rider suggestion (its reason stays at home)"
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -284,6 +318,7 @@ fi
 # --- database ---------------------------------------------------------------------------------------------
 excluded_args=()
 for t in "${EXCLUDED_TABLE_DATA[@]}"; do excluded_args+=("--exclude-table-data=public.$t"); done
+for entry in "${BLANKED_TABLE_DATA[@]}"; do excluded_args+=("--exclude-table-data=public.${entry%%:*}"); done
 
 if want db; then
 	mkdir -p "$stage/db"
@@ -295,11 +330,55 @@ if want db; then
 	listing=$(dc exec -T postgis pg_restore --list <"$stage/db/routemaker.dump")
 	# Here-strings, not pipes: under pipefail a grep -q that exits early makes printf fail with SIGPIPE.
 	grep -q "TABLE DATA $live_schema " <<<"$listing" || die "the dump has no data for the $live_schema schema"
-	grep -q "TABLE DATA public override " <<<"$listing" || die "the dump has no override data"
 	for t in "${EXCLUDED_TABLE_DATA[@]}"; do
 		if grep -q "TABLE DATA public $t " <<<"$listing"; then die "the dump carries data for $t, which must be excluded"; fi
 	done
+	for entry in "${BLANKED_TABLE_DATA[@]}"; do
+		if grep -q "TABLE DATA public ${entry%%:*} " <<<"$listing"; then die "the dump carries ${entry%%:*} whole; it must ship with its person columns blanked"; fi
+	done
 	if grep -Eq "TABLE DATA (tiger|topology|${live_schema}_old) " <<<"$listing"; then die "the dump carries a schema it should not"; fi
+
+	# The tables that ship with their person columns blanked (BLANKED_TABLE_DATA): a read-only
+	# SELECT with NULL in each of those columns, in COPY's text format (a backslash in the data is
+	# doubled, so no line of it can end the inline COPY receive-data.sh feeds psql) with a header
+	# line naming every column.
+	mkdir -p "$stage/db/blanked"
+	for entry in "${BLANKED_TABLE_DATA[@]}"; do
+		t=${entry%%:*}
+		declare -A spec_of=()
+		IFS=, read -r -a wanted_blank <<<"${entry#*:}"
+		for spec in "${wanted_blank[@]}"; do spec_of[${spec%%=*}]=$spec; done
+		cols=$(dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c \
+			"select string_agg(column_name, ',' order by ordinal_position) from information_schema.columns where table_schema = 'public' and table_name = '$t'" </dev/null)
+		[ -n "$cols" ] || die "no table public.$t to ship blanked"
+		case "$cols" in *[!a-z0-9_,]*) die "public.$t has a column name this script will not quote" ;; esac
+		# The columns that name a person: a foreign key to app_user, or a plain copy of a user id.
+		persons=$(dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c \
+			"select string_agg(a.attname, ',') from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.contype = 'f' and c.conrelid = 'public.$t'::regclass and c.confrelid = 'public.app_user'::regclass" </dev/null)
+		for c in "${!spec_of[@]}"; do
+			case ",$cols," in *",$c,"*) ;; *) die "public.$t has no column $c to blank; update BLANKED_TABLE_DATA" ;; esac
+		done
+		IFS=, read -r -a all_cols <<<"$cols"
+		select=""
+		for c in "${all_cols[@]}"; do
+			case "${spec_of[$c]:-}" in
+				"")
+					case ",$persons," in *",$c,"*) die "public.$t has a person column $c (a key to app_user) that BLANKED_TABLE_DATA does not blank" ;; esac
+					case "$c" in *user_id) die "public.$t has a person column $c that BLANKED_TABLE_DATA does not blank" ;; esac
+					expr=$c
+					;;
+				*=rider) expr="CASE WHEN $c LIKE 'Rider suggestion %' THEN '$RIDER_REASON_BLANKED' ELSE $c END AS $c" ;;
+				*_by_id | *user_id) expr="NULL AS $c" ;;
+				*) expr="'' AS $c" ;;
+			esac
+			select="${select:+$select, }$expr"
+		done
+		unset spec_of
+		dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -v ON_ERROR_STOP=1 -c \
+			"COPY (select $select from public.$t order by 1) TO STDOUT WITH (FORMAT text, HEADER true)" </dev/null >"$stage/db/blanked/$t.copy"
+		[ "$(head -n 1 "$stage/db/blanked/$t.copy" | tr '\t' ',')" = "$cols" ] || die "db/blanked/$t.copy does not start with public.$t's columns"
+	done
+	[ -s "$stage/db/blanked/override.copy" ] || die "the bundle has no override data"
 
 	# Row counts of the tables whose data is shipped; receive-data.sh compares them after the restore.
 	tables=$(dc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c \
@@ -359,6 +438,7 @@ git_dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l)
 	echo "database=$pgdatabase"
 	echo "database_server=$db_version"
 	echo "excluded_table_data=${EXCLUDED_TABLE_DATA[*]}"
+	echo "blanked_table_data=${BLANKED_TABLE_DATA[*]}"
 	echo "parts=$(for p in tiles elevation basemap photon frontend db; do want "$p" && printf '%s ' "$p"; done)"
 	echo "files=$files"
 	echo "bytes=$bytes"

@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { AT_ZOOM, atFromHash } from "./planHash.ts";
 import {
   STEP_WORDS,
-  actionSaid,
   fetchSuggestions,
   mapLink,
   reviewSuggestion,
@@ -77,8 +76,6 @@ test("the review list and an action", async () => {
 test("a suggestion's heading names the road and both levels in words", () => {
   assert.equal(suggestionLine(ITEM), "Oak Street: from LTS 3 (For experienced cyclists) to LTS 2.5 (Fine for most confident adults)");
   assert.equal(suggestionLine({ ...ITEM, step: 5, words: "Avoid" }), "Oak Street: from LTS 3 (For experienced cyclists) to Avoid");
-  assert.match(actionSaid("discord", ITEM, ""), /ready to copy.*marked as sent to Discord/);
-  assert.equal(actionSaid("delete", ITEM, "Deleted."), "Deleted.");
 });
 
 test("the spot link opens the map at the spot, street level, and only inside the covered area", () => {

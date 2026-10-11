@@ -1716,8 +1716,7 @@ options are lettered reactions, each standing for one level, so the votes can be
 A half step is said as the two it lies between ('Between "Fine for most people, even nervous
 riders" and "OK for confident riders"'). The same builder has a junction's wording ("Is crossing
 New York Avenue NE at Florida Avenue NE harder or easier than we show?", options Easy / Takes
-patience / Hard / Avoid crossing here / Not sure), for when junction suggestions arrive; the panel
-suggests road pieces only today.
+patience / Hard / Avoid crossing here / Not sure), which junction suggestions use (below).
 
 **Security.** `POST /api/stress-suggestions` needs a session of an account the setting allows
 (401 / 403, audited), a JSON body, the CSRF token, a same-site request, the address count (120 a
@@ -1774,9 +1773,63 @@ account is on the `mass_hazard` row for the admin only, and the table is left ou
 shipment (`scripts/beta/ship-data.sh`).
 
 **The migration** is `core/migrations/0017_mass_hazard.py`, which adds one new table and changes
-nothing else. It follows `0016_stress_suggestions`. The junction suggestions also use the number 0017,
-so whichever branch merges second renumbers its migration (and its `dependencies`) to keep the chain
-linear.
+nothing else. It follows `0016_stress_suggestions`; the junction suggestions' migration,
+`0018_junction_suggestions`, follows it.
+
+### Junction suggestions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
+
+The owner, 2026-10-03: "add a mechanism for intersections as well. In some times the road is fine,
+but the intersection can be especially dangerous." The same setting (**Who may suggest**), the same
+review list and the same three actions as the roads'; only the place is a junction.
+
+**Suggesting.** A rider the settings allow gets **Suggest a junction change** in the road panel
+whenever the panel's spot is within 82 ft (25 m) of a junction (a road vertex another way shares),
+and on a junction marker's card (it opens the panel with the form open). The form has two radio
+groups, each optional: a level in the poll's plain words (Easy / Takes patience / Hard / Avoid
+crossing here) and "More / Less dangerous than shown", plus the required reason (500 characters). A
+comparison alone means one level from what the map shows; a level and a comparison that disagree, the
+level already shown, "more" on Avoid or "less" on easy are refused (400, naming the field). What the
+map shows is, in order: an approved junction override's level, Avoid where an approved Avoid junction
+is there, else the rider's route's marker (orange 3, red 4; none, or no route: 2, "not marked"). A
+route that showed Avoid where none is approved any more is refused (`stale`: plan again).
+
+**Privacy.** Only the junction's node is stored (`junction_suggestion.lon/lat/node`, the shared
+vertex to 6 decimals), never the spot clicked; a spot with no junction within 82 ft (25 m) is
+refused (`no_junction`), and so is a bend in one road (two ways there and no second name).
+The poll's place is the junction's two busiest roads in words ("Where: Oak Street at Elm Street")
+and a map link to the node rounded to 4 decimals; nothing about the rider.
+
+**Approve now** makes a **junction override** (`junction_override`, level 2 easy, 3 takes patience,
+4 hard), which the planner reads at request time (`core.junction_suggestions.approved_ratings`): from
+the next plan every route passing within 49 ft (15 m) of the node takes the level's cost and marker
+(`routemaker.intersections.RATING_COST_FT`: 75 ft and no marker, 1,600 ft and orange, 4,000 ft and
+red), raising or lowering the model's own figure, a junction of two quiet streets included, for
+every movement through it. "Easy" only lowers: it never costs more than the model's own figure, and
+adds nothing where the model has nothing there. The rated junction stands for its own other nodes
+within 49 ft (15 m) along the route; a junction farther on keeps its own marker and cost. Avoid makes an approved Avoid
+junction instead (`source` "community", `suggestion_ref` "junction suggestion N", the rider-facing
+reason "Riders rate it too dangerous to cross"; the rider's own words go to `evidence`, never shown).
+An approval replaces what rated the junction before: earlier overrides there are withdrawn, and a
+level below Avoid withdraws an approved Avoid junction there (the review list warns and asks
+first); the audit entry names each. **Core >
+Junction overrides** in the admin lists them; an instance admin may withdraw one there (audited); they
+are made only by approving a suggestion. No rebuild and no restart.
+
+**Security and limits.** `GET /api/junction-suggestions/at` (the road panel's look-up, asked only
+for a rider who may suggest) and `POST /api/junction-suggestions` have the roads' guards; the hourly
+count (10) and the 20 waiting are shared with road suggestions, one waiting suggestion per junction
+per rider (a partial unique constraint on suggester and node). The review endpoints (`GET
+/api/junction-suggestions/open`, `POST /api/junction-suggestions/{id}/approve|delete|discord`) share
+the roads' 200-an-hour review budget. Every action is an `audit_log` entry (`junction_suggest`,
+`junction_suggest_approve`, `_delete`, `_discord`). `junction_suggestion` is left out of the beta's
+data shipment; `junction_override`, `avoid_junction` and `override` ship with their person columns
+(who made and approved each) blanked and without the riders' words (the evidence of a junction
+override or Avoid junction, and the private reason of an override an approved road suggestion made), and `db --update-data` replaces the beta's junction overrides
+with home's, as it does `override` (docs/BETA-RUNBOOK.md).
+
+**The migration** is `core/migrations/0018_junction_suggestions.py` (two new tables,
+`junction_suggestion` and `junction_override`; nothing else changed), after
+`0017_mass_hazard`, so the chain stays linear with one leaf. `migrate` runs at `up`, as always.
 
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

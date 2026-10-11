@@ -46,6 +46,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from . import ridetime
+from .geo import Point, haversine
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -273,6 +274,47 @@ RED = "red"
 # a reversal rather than a turn.
 STRAIGHT_MAX_DEG = 35.0
 
+# --- Riders' ratings of a junction (OWNER-DECISIONS 232) ----------------------
+#
+# "In some times the road is fine, but the intersection can be especially
+# dangerous." A rider suggests a danger level for a junction and an instance
+# admin approves it (`core.junction_suggestions`): from then on every route
+# through that junction pays the level's cost and shows its marker, whatever
+# the roads either side make of it, raising or lowering the model's own figure.
+# Levels are the poll's (`core.suggestion_post.JUNCTION_WORDS`): 2 easy, 3 takes
+# patience, 4 hard. Avoid (5) is not a rating here: it is an Avoid-rated
+# junction (`routemaker.avoid_junctions`), with its own penalty and marker.
+# The costs are the model's own figures for the matching colour: an all-way
+# stop's for easy (no marker), a stopped-side LTS 3 crossing's for orange, an
+# LTS 4 crossing's for red. A PROPOSAL, as every number here.
+RATING_COST_FT = {2: ALL_WAY_STOP_FT, 3: STOPPED_CROSSING_FT[3], 4: STOPPED_CROSSING_FT[4]}
+RATING_SEVERITY = {2: None, 3: ORANGE, 4: RED}
+RATING_WORDS = {2: "easy", 3: "takes patience", 4: "hard"}
+# A route passes a rated junction where one of its nodes is this close to the
+# rating's point (metres): the Avoid junctions' own 49 ft (15 m), which takes in
+# a divided road's two carriageway nodes and stays short of the next junction.
+RATING_MATCH_M = 15.0
+
+
+@dataclass(frozen=True)
+class Rating:
+    """An approved rider rating of one junction: its node and its level (2 to 4)."""
+
+    id: int
+    lon: float
+    lat: float
+    level: int
+
+
+def rating_at(lon: float, lat: float, ratings: Sequence[Rating]) -> Rating | None:
+    """The rating nearest (lon, lat) within RATING_MATCH_M, or None."""
+    best, best_m = None, RATING_MATCH_M
+    for rating in ratings:
+        m = haversine(Point(lon, lat), Point(rating.lon, rating.lat))
+        if m <= best_m:
+            best, best_m = rating, m
+    return best
+
 
 class Movement(StrEnum):
     LEFT = "left"
@@ -365,6 +407,9 @@ class Junction:
     # a way with a name in common. Its tier changing here is not "joining" it
     # (review r2, SHOULD_FIX 1).
     continues: bool = False
+    # An approved rider rating of the junction (`Rating.level`, 2 to 4), which
+    # sets its cost and colour (OWNER-DECISIONS 232); None: the model's own.
+    rating: int | None = None
 
 
 @dataclass(frozen=True)
@@ -408,6 +453,8 @@ class Event:
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
     group: int | None = None
+    # The riders' rating that set this event's cost and colour (2 to 4), or None.
+    rating: int | None = None
     # The cost read a speed the map did not give (the statutory default, or the
     # 45 mph stopgap; `cost_speed`): for the debug list; never said to a rider.
     assumed_speed: bool = field(default=False, compare=False)
@@ -730,8 +777,20 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     `group` is the Mass Ride reading (items 133 and 138: "put an orange warning
     icon across any LTS3 intersection and a red one across an LTS4"): the colour
     is the busy road's own tier, orange for LTS 3 and red for LTS 4 or Avoid, and
-    a left across a one-way road gets none. The cost is still the model's."""
+    a left across a one-way road gets none. The cost is still the model's.
+
+    A junction riders have rated (`Junction.rating`) takes the rating's cost and
+    colour on either reading, a neighbourhood junction included (232), except
+    that "easy" never costs more than the model's own figure and adds nothing
+    where the model has nothing to say."""
     cost, kind, about = cost_of(junction)
+    if junction.rating in RATING_COST_FT:
+        # "Easy" is held to the model's figure for this hour (468a); a rating's own cost
+        # is fixed, as a person set it.
+        model = cost
+        if kind != "neighbourhood" and about is not None:
+            model = min(cost * time_factor(when, about.urban), MAX_CROSSING_FT)
+        return rated(junction, kind, about, model, group)
     if kind == "neighbourhood" or about is None:
         return None
     # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
@@ -798,6 +857,67 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     )
 
 
+def rated(
+    junction: Junction, kind: str, about: Road | None, model_ft: float = 0.0, group: bool = False
+) -> Event | None:
+    """The event at a junction riders have rated: the rating's cost and colour,
+    never capped (a person looked at it), with the model's reason where it has
+    one and the riders' rating after it. "Easy" only ever lowers: it costs the
+    lesser of its figure and the model's (`model_ft`), and where the model has
+    no event there it adds none. On a Mass Ride (`group`) the event carries the
+    group reading's flag, so a rated signalized crossing still joins a group."""
+    level = junction.rating if junction.rating in RATING_COST_FT else 2
+    severity = RATING_SEVERITY[level]
+    said = f"Riders rate this junction {RATING_WORDS[level]}"
+    quiet = kind == "neighbourhood" or about is None
+    cost = RATING_COST_FT[level]
+    if level == min(RATING_COST_FT):
+        if quiet:
+            return None
+        cost = min(cost, model_ft)
+    if quiet:
+        kind = "rated"
+        about = max(
+            (r for r in (junction.incoming, junction.outgoing) if r.tier is not None),
+            key=lambda r: r.level,
+            default=junction.outgoing,
+        )
+        reason = said
+    else:
+        reason = f"{reason_of(kind, about, junction.control)}. {said}"
+    return Event(
+        junction.m,
+        junction.lon,
+        junction.lat,
+        kind,
+        junction.movement,
+        junction.control,
+        cost,
+        severity,
+        reason,
+        about.tier,
+        severity is not None,
+        junction.approach,
+        group,
+        road_names=about.names,
+        road_display=about.display,
+        road_ways=about.ways,
+        road_oneway=about.oneway,
+        rating=level,
+    )
+
+
+def with_ratings(junctions: Sequence[Junction], ratings: Sequence[Rating]) -> list[Junction]:
+    """The junctions with each one's approved rating, where one is within RATING_MATCH_M."""
+    if not ratings:
+        return list(junctions)
+    out = []
+    for junction in junctions:
+        found = rating_at(junction.lon, junction.lat, ratings)
+        out.append(replace(junction, rating=found.level) if found else junction)
+    return out
+
+
 # Events this close along the route are one junction as a rider meets it: a
 # divided road's two carriageways, a slip lane and its main road, a crossing
 # way and the roads at each end of it.
@@ -813,6 +933,9 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
 # - The merged colour is never more than the worst single event's (item 185: "A
 #   merge must never raise the colour of one road's crossing"); the refuge can
 #   lower it. Only the cost, which a route is chosen by, adds up.
+# - Where riders rated a junction (an approved rating, 232), its rated event
+#   stands for that junction's own nodes within RATING_MATCH_M along the
+#   route; events beyond are other junctions and add as above.
 MERGE_WITHIN_M = 45.0
 MERGED_SHARE = 0.5
 
@@ -833,10 +956,11 @@ def _divided(crossings: list[Event]) -> bool:
 def _one_road(events: list[Event]) -> list[Event]:
     """A road's events at one junction: its crossings as one (a divided road
     crossed once, with the refuge's credit), every other event as it is."""
-    crossings = [e for e in events if e.kind == "crossing"]
+    # A rated junction's event is the riders' figure, never given a refuge credit.
+    crossings = [e for e in events if e.kind == "crossing" and e.rating is None]
     if len(crossings) < 2:
         return events
-    rest = [e for e in events if e.kind != "crossing"]
+    rest = [e for e in events if e not in crossings]
     worst = max(crossings, key=lambda e: e.cost_ft)
     if not _divided(crossings):
         return [worst, *rest]
@@ -852,6 +976,31 @@ def _one_road(events: list[Event]) -> list[Event]:
     return [refuge, *rest]
 
 
+def _rated_stand_in(events: list[Event]) -> list[Event]:
+    """A run of nearby events with each rated junction standing for its own
+    nodes (232): an unrated event within RATING_MATCH_M along the route of a
+    rated one is that junction's other node and drops out, and of several rated
+    nodes that close the highest rating counts once. Events farther off are
+    other junctions and merge as usual."""
+    rated_here = [e for e in events if e.rating is not None]
+    if not rated_here:
+        return events
+
+    def near(a: Event, b: Event) -> bool:
+        return abs(a.m - b.m) <= RATING_MATCH_M
+
+    out = []
+    for event in events:
+        if event.rating is None:
+            if not any(near(event, r) for r in rated_here):
+                out.append(event)
+            continue
+        best = max((r for r in rated_here if near(event, r)), key=lambda r: (r.rating or 0, -r.m))
+        if best is event:
+            out.append(event)
+    return out
+
+
 def merge_nearby(events: list[Event]) -> list[Event]:
     merged: list[Event] = []
     group: list[Event] = []
@@ -860,7 +1009,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
         if not group:
             return
         roads: list[list[Event]] = []
-        for event in group:
+        for event in _rated_stand_in(group):
             for same in roads:
                 if event.road_names & same[0].road_names:
                     same.append(event)

@@ -69,6 +69,8 @@ import { attachWaterInteraction } from "./waterInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
+import { fetchMe } from "./lib/stressEditor.ts";
+import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
 import {
   BIKESHARE_CREDIT,
   WALK_CASING,
@@ -363,6 +365,23 @@ export function MapView(props: Props) {
       const back = focusAfterClose(opener, focusWasInCard, active === null || active === document.body);
       if (back === null) return;
       (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
+    });
+    // A rider the settings allow may suggest a danger level for the junction (OWNER-DECISIONS 232): a
+    // button at the card's foot opens the road panel on the junction with its suggestion form open
+    // (SuggestJunction.tsx). The card closes first, giving the focus back to what opened it, which the
+    // panel then gives it back to when it closes.
+    void fetchMe(window.location.origin).then((me) => {
+      if (!me.can_suggest || junctionCard.current !== card) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary junction-card-suggest";
+      button.textContent = JUNCTION_SUGGEST_TEXT;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        card.remove();
+        callbacks.current.onRoadInfo?.({ point: [item.lon, item.lat], origin: "spot", junction: true });
+      });
+      card.getElement().querySelector(".junction-card")?.append(button);
     });
   };
   /** The marker now drawn for the junction at `index` (its group's, if it is in one). */

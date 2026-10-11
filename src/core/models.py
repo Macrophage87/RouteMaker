@@ -1573,3 +1573,132 @@ class MassHazard(models.Model):
 
     def __str__(self) -> str:
         return f"way {self.osm_way_id}: {self.get_level_display()}, {self.get_status_display()}"
+
+
+class JunctionSuggestion(models.Model):
+    """A rider's suggested danger level for one junction (OWNER-DECISIONS 232, 460.5).
+
+    "In some times the road is fine, but the intersection can be especially dangerous." The
+    road suggestions' twin (`StressSuggestion`), for a node: a level in plain words (easy,
+    takes patience, hard, or Avoid) and/or "more or less dangerous than shown", with a reason.
+    Never applied by itself: an instance admin approves it now (it becomes a
+    `JunctionOverride`, or for Avoid an approved `AvoidJunction`), deletes it, or sends it to
+    Discord as a ready-to-paste poll (`core.suggestion_post`) and decides later.
+
+    The place kept is the junction's node, where the roads' centre lines meet
+    (`core.junction_suggestions.locate`), never the spot the rider clicked or stood at. The
+    account is kept only so an admin can see a pattern of abuse, and is never in the post.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for review"
+        SENT = "sent_to_discord", "Sent to Discord"
+        APPROVED = "approved", "Approved"
+        DELETED = "deleted", "Deleted"
+
+    class Direction(models.TextChoices):
+        NONE = "", "No comparison"
+        MORE = "more", "More dangerous than shown"
+        LESS = "less", "Less dangerous than shown"
+
+    created_at = models.DateTimeField(default=timezone.now)
+    suggester = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    suggester_user_id = models.BigIntegerField(null=True, blank=True)
+    # The junction's node, (lon, lat) to 6 decimals, and the same as text: the key one open
+    # suggestion per rider per junction is held by.
+    lon = models.FloatField()
+    lat = models.FloatField()
+    node = models.CharField(max_length=32)
+    # The roads that meet there, as riders know them, busiest first.
+    roads = models.JSONField(default=list, blank=True)
+    # The level the map showed (2 easy or not marked, 3 orange, 4 red, 5 Avoid) and the level
+    # suggested, which a comparison alone resolves one step from the shown level.
+    current_level = models.SmallIntegerField()
+    level = models.SmallIntegerField(null=True, blank=True)
+    direction = models.CharField(
+        max_length=8, choices=Direction.choices, default=Direction.NONE, blank=True
+    )
+    target_level = models.SmallIntegerField()
+    reason = models.TextField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # What an approval made: a junction override (levels 2 to 4) or an Avoid junction (5).
+    override = models.ForeignKey(
+        "JunctionOverride", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    avoid = models.ForeignKey(
+        AvoidJunction, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "junction_suggestion"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "-created_at"], name="junction_suggestion_open")]
+        # One open suggestion per rider per junction, held by the database (as the roads').
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggester", "node"],
+                condition=models.Q(status__in=["pending", "sent_to_discord"]),
+                name="junction_suggestion_one_open_per_node",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(target_level__gte=2, target_level__lte=5),
+                name="junction_suggestion_target_level",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"junction {self.node}: {self.get_status_display()}"
+
+    @property
+    def name(self) -> str:
+        return " and ".join(self.roads[:2]) if self.roads else "An unnamed junction"
+
+
+class JunctionOverride(models.Model):
+    """An approved danger level for one junction (OWNER-DECISIONS 232): the intersection model
+    applies it to every route through the junction (`routemaker.intersections.Rating`),
+    raising or lowering its cost and marker, even where the roads either side are fine.
+
+    Made only by an instance admin approving a rider's `JunctionSuggestion`; read at plan
+    time (`core.junction_suggestions.approved_ratings`), so it changes the next plan with no
+    rebuild. Avoid is not a level here: it is an `AvoidJunction`. Withdrawing one (the admin,
+    an audited action) turns it off; a later approval at the same junction replaces it.
+    """
+
+    class Level(models.IntegerChoices):
+        EASY = 2, "Easy: little waiting, and drivers are slow"
+        PATIENCE = 3, "Takes patience: you wait for a gap"
+        HARD = 4, "Hard: long waits or fast traffic"
+
+    name = models.CharField(max_length=200)
+    location = models.PointField(srid=4326)
+    level = models.SmallIntegerField(choices=Level.choices)
+    # The rider's reason, kept for the admin. Not shown to riders.
+    evidence = models.TextField(blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_by_user_id = models.BigIntegerField(null=True, blank=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "junction_override"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["active"], name="junction_override_active")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(level__gte=2, level__lte=4), name="junction_override_level"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.get_level_display()}"

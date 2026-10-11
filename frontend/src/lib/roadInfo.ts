@@ -68,6 +68,11 @@ export type InfoOrigin = "spot" | "centre";
 export interface InfoRequest {
   point: LonLat;
   origin: InfoOrigin;
+  /**
+   * Asked for by a junction card's Suggest a change (OWNER-DECISIONS 232; lib/junctionSuggest.ts): the
+   * panel opens the junction's suggestion form straight away, where a rider may suggest.
+   */
+  junction?: boolean;
 }
 
 /**

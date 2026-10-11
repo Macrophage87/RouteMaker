@@ -1636,7 +1636,13 @@ def unexpected(request, exc: Exception):
 # The place-search endpoints, whose unexpected failure is not a route's.
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 # The road panel's stress editor, whose answers are private and name the form field.
-STRESS_EDIT_PATHS = ("/api/stress-edits", "/api/stress-suggestions", "/api/mass-hazards", "/api/me")
+STRESS_EDIT_PATHS = (
+    "/api/stress-edits",
+    "/api/stress-suggestions",
+    "/api/junction-suggestions",
+    "/api/mass-hazards",
+    "/api/me",
+)
 
 
 def errors_as_json(view):
@@ -3339,6 +3345,221 @@ def mass_hazard_discord(request, hazard_id: int, body: UndoIn, response: HttpRes
             "characters": len(post.text),
             "options": [
                 {"letter": o.letter, "label": o.label, "level": o.level} for o in post.options
+            ],
+        },
+    )
+
+
+# ---- Rider suggestions for junctions (OWNER-DECISIONS 232; core.junction_suggestions) ----
+
+
+class JunctionAtOut(Schema):
+    lon: float = Field(description="The junction's node, never the spot asked about.")
+    lat: float
+    name: str = Field(description='"Oak Street and Elm Street", or "An unnamed junction".')
+    roads: list[str]
+
+
+class JunctionSuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: StrictFloat = Field(ge=-90, le=90, description="A spot at the junction; not stored.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    level: StrictInt | None = Field(
+        default=None, description="2 easy, 3 takes patience, 4 hard, 5 Avoid; or null."
+    )
+    direction: Literal["more", "less"] | None = Field(
+        default=None, description="More or less dangerous than shown; or null."
+    )
+    shown: Literal["none", "orange", "red", "avoid"] | None = Field(
+        default=None, description="The marker the rider's route showed there, if any."
+    )
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class JunctionSuggestionOut(Schema):
+    id: int
+    junction: str
+    lat: float
+    lon: float
+    current_level: int
+    current_words: str
+    level: int
+    words: str
+    direction: Literal["more", "less"] | None = None
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+    # Approved Avoid junctions Approve now would withdraw there; the review warns first.
+    withdraws_avoid: int = 0
+
+
+class JunctionSuggestionListOut(Schema):
+    suggestions: list[JunctionSuggestionOut]
+
+
+@api.get(
+    "/junction-suggestions/at",
+    response={200: JunctionAtOut, **SUGGESTION_RESPONSES},
+    summary="The junction nearest a spot, for a rider the settings allow to suggest",
+)
+@decorate_view(
+    suggester_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def junction_at(request, lat: float, lon: float, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import junction_suggestions, stress_edits
+
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return _stress_error(400, "That spot is not on the map.", "lat")
+    try:
+        node = junction_suggestions.locate(lat, lon)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    get_token(request)
+    _private(response)
+    return Status(
+        200, {"lon": node.lon, "lat": node.lat, "name": node.name, "roads": list(node.roads)}
+    )
+
+
+@api.post(
+    "/junction-suggestions",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a junction's danger level (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def junction_suggestion_create(request, body: JunctionSuggestionIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.create(
+            request.user,
+            body.lat,
+            body.lon,
+            body.level,
+            body.direction or "",
+            body.shown,
+            body.reason,
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": f"Thanks. Your suggestion for {suggestion.name} was sent to the map's "
+            "admins. Nothing changes on the map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/junction-suggestions/open",
+    response={200: JunctionSuggestionListOut, **SUGGESTION_RESPONSES},
+    summary="The junction suggestions waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def junction_suggestion_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import junction_suggestions
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {
+            "suggestions": [
+                junction_suggestions.summary(s) for s in junction_suggestions.open_suggestions()
+            ]
+        },
+    )
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a junction suggestion now: the next plan uses it (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_approve(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.approve(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    if suggestion.target_level == junction_suggestions.AVOID:
+        rated = "now rated Avoid"
+    else:
+        words = junction_suggestions.LEVEL_WORDS[suggestion.target_level]
+        rated = f"now rated {words[0].lower()}{words[1:]}"
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "message": f"Approved. {suggestion.name} is {rated}. "
+            "Routes planned from now on use it.",
+        },
+    )
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a junction suggestion (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_delete(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.delete(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": suggestion.pk, "status": suggestion.status, "message": "Deleted."})
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/discord",
+    response={200: DiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a junction suggestion to Discord: the poll to paste, and it is marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_discord(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion, post = junction_suggestions.send_to_discord(
+            request.user, suggestion_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
             ],
         },
     )

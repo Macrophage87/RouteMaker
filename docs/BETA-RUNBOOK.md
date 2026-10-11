@@ -843,7 +843,9 @@ so if that ship used another `--report-url`, the agent's next front-end build ke
    the beta's own accounts, sessions and audit log alone (`--replace-db` would delete them; it refuses while any
    exist). **It resets `override` to home's**: an override added or edited on the beta is lost (it is in the
    `pre-update` safety dump). Make override changes at home, or ask the owner before updating if any were made on
-   the beta. Stop the api and worker first so nothing writes during it:
+   the beta. The junction overrides (`junction_override`, approved junction suggestions) are reset to home's the
+   same way, and the beta's own half-step edit history (`stress_edit`, which points at the overrides it replaces)
+   is emptied. Stop the api and worker first so nothing writes during it:
 
    ```sh
    . "$HOME/routemaker-beta-state/vars.sh"

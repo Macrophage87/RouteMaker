@@ -2215,6 +2215,10 @@ def plan(
     # A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325), read once a plan:
     # empty as shipped, and never read for another ride type (325: "for this mode only").
     hazard_list = mass_hazards.approved() if preset_name == "mass-ride" else {}
+    # The approved rider ratings of junctions (OWNER-DECISIONS 232), read the same way.
+    from .junction_suggestions import approved_ratings
+
+    junction_ratings = approved_ratings()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -2402,6 +2406,7 @@ def plan(
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
         avoid=avoid_list,
+        junction_ratings=junction_ratings,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
