@@ -49,12 +49,19 @@ guardrail asks), and the climb weight is the hills slider's avoid half, so a
 relaxed ride is not a zig-zag over a hill. Right of the detent on every ride type but
 Mountain Goat ("fine with hills", FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242) the
 score also takes `Context.hills_tolerate_weight` of the router's own climbing charge
-off (`Analysis.router_climb_m`), as `routing.choose_direct` does. The extra price
-also counts the uphill stress (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409,
-`routemaker.grade_stress`): a climb's extra effort times the traffic weight of the
-road it is ridden up, times `Context.grade_stress_weight` (`grade_stress_weight_for`),
-so uphill on a busy road counts worse than downhill; at the top of the slider the same
-climbing joins the two stress figures it is ridden on (`Analysis.key`).
+off (`Analysis.router_climb_m`), as `routing.choose_direct` does.
+
+Every metre in the stress figures (the exposure above, the LTS 4, LTS 3, LTS 2 and Avoid
+metres the top of the slider, the worth rule and the LTS 4 hold read) is hill-weighted
+(FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409, `routemaker.grade_stress`; the owner,
+2026-10-11: "Why not combine it all into a single stress metric? ... Multiply the two
+together"): one figure, run x traffic weight x hill factor, the hill factor 1 + the hills
+slider's coefficient (`Context.hill_coefficient`) x the window's extra effort on a climb of
+3% or more, or on a descent past the ride type's brake grade, and 1 elsewhere. So uphill on
+a busy road counts worse than downhill, the stress slider's rate still scales the traffic
+part and the hills slider the hill part, and "fine with hills" multiplies everything by 1.
+What the rider is shown (the LTS colours, the stress chart, the summary's LTS miles) is
+the rated metres, unweighted.
 
 Below the top of the slider there is no cap on the detour. The search stops
 when a round finds nothing left to exclude, when two rounds in a row do not
@@ -71,7 +78,7 @@ plus the cost of each very high stress junction, OWNER-DECISIONS 258 and 259), t
 the "second" (metres of LTS 3 plus the cost of each higher stress junction, 260), then
 the hills preference (262), then distance (`MAXCALM_STEPS`, `better`). Extra distance
 has diminishing returns (268, `worth_it`): a longer candidate is taken only where the
-stress it saves, its uphill stress included (`uphill_weight_m`), pays for the miles it
+stress it saves, in hill-weighted metres (so avoiding a busy climb counts), pays for the miles it
 adds (`WORTH_DEFAULT`; past the rider's target
 the stricter `WORTH_OVER_TARGET`, and up to the target `WORTH_UP_TO_TARGET`, half the
 default's price, OWNER-DECISIONS 435; below the top the same rule holds at `worth_ratio`,
@@ -265,9 +272,12 @@ class Context:
     # position over 100 below the top of the stress slider on every ride type but
     # Mountain Goat, else 0.
     hills_tolerate_weight: float = 0.0
-    # How much the uphill stress counts (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409;
-    # `grade_stress_weight_for`): 0 at the traffic tolerant end, 1 from Default up.
-    grade_stress_weight: float = 0.0
+    # The hill factor's coefficient (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409;
+    # `grade_stress.coefficient_for` the hills slider: FACTOR at the detent, 0 at "fine with
+    # hills"), and the ride type's brake grade, past which a descent counts in it
+    # (`presets.BRAKE_GRADES`, OWNER-DECISIONS 56; None: none does). 0: every factor is 1.
+    hill_coefficient: float = 0.0
+    brake_grade: float | None = None
     # Whether bike lanes count as "none" in the breakdown (`routing.classify`): on
     # Mass Ride, which takes the roadway, not on every ride on the no-trail graph.
     lanes_as_roadway: bool = False
@@ -362,7 +372,9 @@ class Analysis:
     via_m: list = field(default_factory=list)
     # The middle of each traced edge: (metres along, lon, lat, edge metres).
     marks: list = field(default_factory=list)
-    # Metres of LTS 4 and Avoid, and of LTS 3, as the classes say them.
+    # Metres of LTS 4 and Avoid, and of LTS 3, as the classes say them, each times its
+    # piece's hill factor (`hill`, OWNER-DECISIONS 409): so are `exposure_m` and the other
+    # tier figures below. The rider is shown the rated metres (`routing.totals`), not these.
     lts4_m: float = 0.0
     lts3_m: float = 0.0
     # Of `lts4_m`, the metres of Avoid (the diminishing-returns weights tell them apart).
@@ -387,9 +399,9 @@ class Analysis:
     # What the router's cost charged for its climbing, in metres of quiet riding
     # (`climbs.router_climb_m`), which "fine with hills" discounts (`score`).
     router_climb_m: float = 0.0
-    # The climbs' extra effort-equivalent metres by the stress tier they are ridden up
-    # (`grade_stress.uphill_by_tier`, FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409).
-    uphill_m: dict = field(default_factory=dict)
+    # Each piece's hill factor (`grade_stress.hill_factors`, FOLLOWUP-GRADE-STRESS,
+    # OWNER-DECISIONS 409), in the order of `pieces`; empty: all 1.
+    hill: list = field(default_factory=list)
 
     def score(self, ctx: Context) -> float:
         """The router's cost plus the extra price (see the module docstring), and 30
@@ -400,25 +412,7 @@ class Analysis:
         if ctx.rate == 0 and self.lts2_weight > 0:
             extra += self.lts2_weight * lts3_added_m(ctx) * self.lts2_m
         extra -= ctx.hills_tolerate_weight * self.router_climb_m
-        extra += ctx.grade_stress_weight * self.uphill_stress_m(ctx)
         return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
-
-    def uphill_stress_m(self, ctx: Context) -> float:
-        """The uphill stress, metres of quiet riding, at the ride's traffic weights
-        (`grade_stress.uphill_stress_m`; 409), before the slider's weight."""
-        return grade_stress.uphill_stress_m(self.uphill_m, ctx.exposure.weights)
-
-    def uphill_levels_m(self, ctx: Context) -> tuple[float, float]:
-        """What the uphill stress adds to the top and second figures of `key` (409): the
-        climbing on LTS 4 and Avoid, and on LTS 3 (and LTS 2 at the ride's weight for it),
-        times `grade_stress.FACTOR` and the slider's weight. The figures themselves, which
-        the LTS 4 hold reads, are unchanged; the worth rule counts the same climbing at its
-        own weights (`uphill_weight_m`)."""
-        w = ctx.grade_stress_weight * grade_stress.FACTOR
-        up = self.uphill_m
-        top = up.get("4", 0.0) + up.get("5", 0.0)
-        second = up.get("3", 0.0) + self.lts2_weight * up.get("2", 0.0)
-        return w * top, w * second
 
     @property
     def red_m(self) -> float:
@@ -451,9 +445,8 @@ class Analysis:
     def key(self, ctx: Context) -> tuple[float, float, float]:
         """What the top of the slider ranks by, least first (OWNER-DECISIONS
         258-263): the top figure, the second figure, and the distance as the Hills
-        slider blends it (`level3`)."""
-        top, second = self.uphill_levels_m(ctx)
-        return (self.top_m + top, self.second_m + second, level3(self, ctx))
+        slider blends it (`level3`). The metres in the two figures are hill-weighted."""
+        return (self.top_m, self.second_m, level3(self, ctx))
 
 
 def lts3_added_m(ctx: Context) -> float:
@@ -555,31 +548,16 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     that share of the LTS 3 weight: a quarter (a half on Riding with kids), so a mile
     of LTS 2 saved buys a quarter (a half) of what a mile of LTS 3 does, and each
     Avoid-rated junction's penalty in quiet metres, one for one (308: 30 minutes, as
-    it is in the score). And its uphill stress (`uphill_weight_m`, OWNER-DECISIONS 409
-    and 435), so a longer route can buy its miles by avoiding a busy climb."""
-    return _top_weight_m(read, ctx) + _second_weight_m(read, ctx)
+    it is in the score). Its metres are hill-weighted (`Analysis.hill`, OWNER-DECISIONS 409;
+    the owner's "Count it", 2026-10-11, on whether the hill counts when a longer route is
+    worth its extra miles: "A longer route can win by avoiding a busy climb, so some plans
+    get longer"), so a longer route can buy its miles by avoiding a busy climb."""
+    return _top_weight_m(read) + _second_weight_m(read)
 
 
-def uphill_weight_m(read: Analysis, ctx: Context) -> tuple[float, float]:
-    """The uphill stress in the worth rule's units (OWNER-DECISIONS 409; the owner's
-    "Count it", 2026-10-11, on whether it counts when a longer route is worth its extra
-    miles: "A longer route can win by avoiding a busy climb, so some plans get longer"):
-    `grade_stress.FACTOR` times the climbs' extra effort-equivalent metres
-    (`Analysis.uphill_m`) at WORTH_WEIGHTS (LTS 3 once, LTS 4 twice, Avoid three times,
-    LTS 2 at the ride's share of LTS 3, LTS 1 nothing), times the slider's weight for it
-    (`Context.grade_stress_weight`). Returned as the top figure's part (LTS 4 and Avoid
-    climbing) and the second's (LTS 3 and LTS 2), split as `Analysis.uphill_levels_m` is."""
-    w = WORTH_WEIGHTS
-    g = ctx.grade_stress_weight * grade_stress.FACTOR
-    up = read.uphill_m
-    top = w.lts4 * up.get("4", 0.0) + w.avoid * up.get("5", 0.0)
-    second = w.lts3 * (up.get("3", 0.0) + read.lts2_weight * up.get("2", 0.0))
-    return g * top, g * second
-
-
-def _top_weight_m(read: Analysis, ctx: Context) -> float:
+def _top_weight_m(read: Analysis) -> float:
     """The top figure's part of `stress_weight_m`: LTS 4, Avoid, red junctions and
-    Avoid-rated junctions, and the climbing on LTS 4 and Avoid (`uphill_weight_m`)."""
+    Avoid-rated junctions."""
     w = WORTH_WEIGHTS
     return (
         w.lts4 * (read.lts4_m - read.avoid_m)
@@ -587,15 +565,13 @@ def _top_weight_m(read: Analysis, ctx: Context) -> float:
         + (w.avoid - w.lts4) / 2 * read.lts45_m
         + w.lts4 * read.red_m
         + read.avoid_junction_m
-        + uphill_weight_m(read, ctx)[0]
     )
 
 
-def _second_weight_m(read: Analysis, ctx: Context) -> float:
+def _second_weight_m(read: Analysis) -> float:
     """The second figure's part of `stress_weight_m`: LTS 3 and orange junctions, and
-    LTS 2 at the ride's weight where it has one (`Analysis.second_m`), and the climbing
-    on LTS 3 and LTS 2 (`uphill_weight_m`)."""
-    return WORTH_WEIGHTS.lts3 * read.second_m + uphill_weight_m(read, ctx)[1]
+    LTS 2 at the ride's weight where it has one (`Analysis.second_m`)."""
+    return WORTH_WEIGHTS.lts3 * read.second_m
 
 
 def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float:
@@ -606,20 +582,18 @@ def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float
     stress saving buys"). Where the top figure improves by more than its tie step, its
     saving pays on its own and a loss at the second level does not subtract from it
     (a gain there still adds), so LTS 4 never loses to extra LTS 3. Otherwise the two
-    levels are netted at the 1/2/3 weights, as within one level they always were. Each
-    level counts its uphill stress (`uphill_weight_m`, 409 and the owner's "Count it",
-    2026-10-11), and the top level's step is read on the top figure of `Analysis.key`,
-    which has its climbing in it.
+    levels are netted at the 1/2/3 weights, as within one level they always were. Both
+    are in hill-weighted metres (409 and the owner's "Count it", 2026-10-11), so avoiding
+    a busy LTS 4 climb is a top-level saving.
 
     It errs the safe way (the release re-check's NT1, kept as it is): `Analysis.top_m`
     counts Avoid metres as LTS 4's, but `_top_weight_m` weighs them 3 to 2, so a route
     that trades LTS 4 for Avoid can rank calmer on `top_m` and still have a negative
     saving here (1000 m of LTS 4 against 900 m all Avoid: -700). Such a route is never
     worth any extra distance, which is right, since Avoid is worse."""
-    top = _top_weight_m(worse, ctx) - _top_weight_m(calmer_one, ctx)
-    second = _second_weight_m(worse, ctx) - _second_weight_m(calmer_one, ctx)
-    # The top figure as `Analysis.key` ranks it, the climbing on LTS 4 and Avoid in it (409).
-    if worse.key(ctx)[0] - calmer_one.key(ctx)[0] > MAXCALM_STEPS[0]:
+    top = _top_weight_m(worse) - _top_weight_m(calmer_one)
+    second = _second_weight_m(worse) - _second_weight_m(calmer_one)
+    if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:
         return top + max(second, 0.0)
     return top + second
 
@@ -781,8 +755,11 @@ def analyse(
             via_m.append(offset)
     classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
-    stress, _facility = routing.totals(zip(pieces, classes, strict=True))
-    halves = half_metres(pieces, classes)
+    # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
+    hill = hill_of(trip, pieces, ctx)
+    hilled = [_Metres(piece.metres * f) for piece, f in zip(pieces, hill, strict=True)]
+    stress, _facility = routing.totals(zip(hilled, classes, strict=True))
+    halves = half_metres(hilled, classes)
     weights = ctx.exposure.weights
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
@@ -808,30 +785,33 @@ def analyse(
             avoid_model.penalty_s(avoid_passages) / ctx.quiet_cost if ctx.quiet_cost > 0 else 0.0
         ),
         router_climb_m=climbs.router_climb_m(routing.grade_profile(trip)),
-        uphill_m=uphill_of(trip, pieces, classes, ctx.mass_kg),
+        hill=hill,
     )
     if with_events:
         ctx.analyses[key] = result
     return result
 
 
-def uphill_of(trip: dict, pieces: list, classes: list, mass_kg: float) -> dict[str, float]:
-    """The trip's climbing by the tier it is ridden up (`grade_stress.uphill_by_tier`): its
-    elevation profile's climbs (`routing.grade_profile`) against its traced pieces' tiers,
-    in metres along the route, in the order ridden. A half step counts as its lower level."""
-    stretches, along = [], 0.0
-    for piece, cls in zip(pieces, classes, strict=False):
-        stretches.append((along, along + piece.metres, cls[0]))
-        along += piece.metres
-    windows = grade_stress.uphill_windows(routing.grade_profile(trip), mass_kg=mass_kg)
-    return grade_stress.uphill_by_tier(windows, stretches)
+@dataclass(frozen=True)
+class _Metres:
+    """A piece's metres as the stress figures count them (`analyse`)."""
+
+    metres: float
 
 
-def grade_stress_weight_for(stress: int) -> float:
-    """How much the uphill stress counts at a stress slider position (409): nothing at the
-    traffic tolerant end, the owner's "fastest legal route", rising to all of it at
-    Default (`presets.STRESS_DEFAULT_AT`) and above."""
-    return min(1.0, max(stress, 0) / presets.STRESS_DEFAULT_AT)
+def hill_of(trip: dict, pieces: list, ctx: Context) -> list[float]:
+    """Each traced piece's hill factor (`grade_stress.hill_factors`, 409): the trip's
+    elevation profile's counted windows (`routing.grade_profile`, climbs of GRADE_FROM and
+    descents past the ride type's brake grade) against its pieces, in metres along the
+    route, in the order ridden, at the hills slider's coefficient. All 1 at a coefficient of
+    0 ("fine with hills")."""
+    lengths = [piece.metres for piece in pieces]
+    if ctx.hill_coefficient == 0:
+        return [1.0] * len(lengths)
+    windows = grade_stress.hill_windows(
+        routing.grade_profile(trip), mass_kg=ctx.mass_kg, brake_grade=ctx.brake_grade
+    )
+    return grade_stress.hill_factors(windows, lengths, ctx.hill_coefficient)
 
 
 def stress_totals(stress: dict, halves: dict) -> dict[str, float]:
@@ -1215,11 +1195,13 @@ def top_by_leg(analysis: Analysis) -> list[float]:
 
 
 def lts4_by_leg(analysis: Analysis) -> list[float]:
-    """Each leg's LTS 4 and Avoid metres, in traced metres (`leg_bounds`)."""
+    """Each leg's LTS 4 and Avoid metres, hill-weighted (`Analysis.hill`, 409) as
+    `Analysis.lts4_m` is, the legs split in traced metres (`leg_bounds`)."""
     bounds = leg_bounds(analysis)
     out = [0.0] * len(bounds)
     along = 0.0
-    for piece, cls in zip(analysis.pieces, analysis.classes, strict=False):
+    hill = analysis.hill or [1.0] * len(analysis.pieces)
+    for piece, cls, factor in zip(analysis.pieces, analysis.classes, hill, strict=False):
         tier = cls[0]
         a, b = along, along + piece.metres
         along = b
@@ -1229,7 +1211,7 @@ def lts4_by_leg(analysis: Analysis) -> list[float]:
         if not share:
             continue
         for k, (lo, hi) in enumerate(bounds):
-            out[k] += share * max(0.0, min(b, hi) - max(a, lo))
+            out[k] += share * factor * max(0.0, min(b, hi) - max(a, lo))
     return out
 
 
@@ -2344,10 +2326,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         avoid_passages=passages,
         avoid_junction_m=unit_m * len(passages),
         router_climb_m=sum(r.router_climb_m for r in reads),
-        uphill_m={
-            tier: sum(r.uphill_m.get(tier, 0.0) for r in reads)
-            for tier in {t for r in reads for t in r.uphill_m}
-        },
+        hill=[f for r in reads for f in (r.hill or [1.0] * len(r.pieces))],
     )
 
 
