@@ -6661,11 +6661,15 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
   (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
   `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
   and never touch the network.
-- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
-  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
-  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
-  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
-  Valhalla pedestrian costing on the standard graph at 3 mph.
+- `core/bikeshare.py`: the plan. Candidates are the 3 best docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 best free-floating
+  e-bikes, "best" by the direction rule below (within 1.9 mi (3 km)); each is walked for real, the
+  quickest pair is chosen (real walks plus the estimated ride; ties by the walks plus extra riding),
+  and only that pair is routed as a ride. The time, not the rule, picks the pair because it also
+  credits a dock ahead for the riding it saves; by the rule alone about a quarter of trips came out
+  slower (1 in 10 by 17 s or more, the worst by over 3 min) for almost no more docks on the way (a simulation in the review of PR #94). Walking is Valhalla pedestrian costing on the standard graph at 3 mph.
+  The answer's `bikeshare.options` lists up to 3 pairs, best first, the first being the plan itself
+  (below).
 - The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
   exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
   hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
@@ -6701,12 +6705,14 @@ the last 30 minutes); when choosing where to dock, the 3 nearest to the end that
 (<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
 reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
 question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
-programme; nothing is ranked beyond distance, and the rider chooses.
+programme, and the rider chooses. Once both ends are placed, stations on the rider's way come first
+(below); with only a start, the pick-up list is by distance.
 
-- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
-  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
-  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
-  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff", toward?: [lon,
+  lat]}` answers `{action, availability, stations: [{station_id, name, lon, lat, percent_full,
+  distance_m, bikes, ebikes, docks, extra_m, on_the_way}], credit}` (`core.bikeshare.nearby_stations`,
+  no distance cap (the owner, 2026-10-10), up to 3, best first by the direction rule toward
+  `toward`; nearest first, with `extra_m` and `on_the_way` null, without it). A POST so the point is in the body and in no URL; `Cache-Control:
   no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
   no station list; with no availability feed `availability` is `unknown` and the list is empty.
 - A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
@@ -6723,6 +6729,44 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+### Stations on your way first, and the route options (the owner, 2026-10-11)
+
+"For rideshare, we should prioritize the stations that would be in the direction of the route." One
+rule ranks the station lists, the plan's candidate docks, its choice of pair and its route options:
+**a station costs its walk plus the extra riding it adds.** The extra riding is how much farther the
+station is from the trip's other end than the rider's own point is, never below zero
+(`core.bikeshare.extra_riding_m`, straight lines):
+
+- picking up near the start, the other end is the destination: a dock toward it adds nothing, a dock
+  behind the rider adds its distance back;
+- returning near the destination, the other end is the start: a dock on the way in adds nothing, a
+  dock past the destination adds how far past it is.
+
+So a dock 100 m (330 ft) behind ranks with one 200 m (660 ft) ahead, and nearer still wins among
+docks on the way. It was chosen over a bearing penalty because it has no tuning angle and can be
+checked with a ruler. A station adding under 50 m (165 ft) is "on your way"
+(`ON_THE_WAY_M`, so a dock a little to one side of a long trip still counts); any other says
+"adds 0.1 mi (160 m) of riding". The words are in the button's own text, so a screen reader hears
+the reason; nothing is said by colour or an arrow. Unchanged: 3 stations shown, no distance cap,
+the 3/4 and 1/4 fullness rules, stations with no bikes or docks or silent for 30 minutes left out,
+and the e-bike counts.
+
+Route options, for the Go screen ("pull out your phone, then select a destination ... offer the
+options for routing to it with stations"; Bikeshare only, the owner: "only if youre in bikeshare
+mode"): a Bikeshare `POST /api/route` answer carries `bikeshare.options`, up to 3 pairs, quickest
+first, from the docks the rule chose (`core.api.BikeshareOptionOut`): `rank`, `chosen` (the first, which is the plan the
+answer routed), `pickup` and `dropoff` (each a `BikeshareStopOut` plus `walk_m`, `walk_s`,
+`extra_m`, `on_the_way` and `way_text`), `pickup_station`, `dropoff_station` and `ending` (send
+them on `POST /api/route` to plan that option), `ride_m` and `total_s` (the routed figures for the
+chosen one, estimates by straight line and the detour factor otherwise, `estimated`), `cost_m` (both walks
+plus the extra riding, the tie-break) and `text`, the option in plain words for a button: "Pick up at Ahead, 0.1 mi (0.2
+km) walk, on your way. Return at Before, 0.1 mi (0.2 km) walk, on your way. About 27 min in all."
+No extra routing is done for them: they reuse the walks the plan already asked for. An answer
+planned with a chosen station lists only the pair asked for, so a screen keeps the first answer's
+list; a free-floating e-bike is offered only as the plan's own start (it has no id to ask for
+again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
+`tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
