@@ -124,6 +124,11 @@ def _windows(profile: Sequence[tuple[float, float | None]]) -> list[tuple[float,
     return [(end - begin, rise) for begin, end, rise in windows_along(profile)]
 
 
+def windows(profile: Sequence[tuple[float, float | None]]) -> list[tuple[float, float]]:
+    """The profile as (length, rise) windows of at least WINDOW_M (`_windows`)."""
+    return _windows(profile)
+
+
 def effort_equivalent_m(
     profile: Sequence[tuple[float, float | None]],
     length_m: float | None = None,
