@@ -1506,6 +1506,39 @@ class TestTimeBand:
         event = m.assess(j, when="weekday_rush")
         assert event is not None and event.time_band is None
 
+    def test_a_merge_names_the_hour_where_it_moved_the_merged_cost(self) -> None:
+        """Review of PR #90: a merged event took its worst member's band, so a
+        signalised left held at the box turn (no band) beside a signalised crossing
+        rush hour did raise said nothing about rush hour."""
+        big = Road(4, speed_mph=45, lanes=3, names=frozenset({"a"}))
+        left = junction(movement=Movement.LEFT, incoming=big, control=Control.SIGNAL)
+        side = junction(m=10.0, crossed=(Road(4, names=frozenset({"b"})),), control=Control.SIGNAL)
+        rush = [m.assess(left, when="weekday_rush"), m.assess(side, when="weekday_rush")]
+        assert rush[0].cost_ft == m.BOX_TURN_CAP_FT and rush[0].time_band is None
+        assert rush[1].time_band == "weekday_rush"
+        (merged,) = m.merge_nearby(rush)
+        (unmoved,) = m.merge_nearby([m.assess(left), m.assess(side)])
+        assert merged.cost_ft > unmoved.cost_ft
+        assert merged.time_band == "weekday_rush"
+
+    def test_a_merge_held_at_the_cap_names_no_hour(self) -> None:
+        """The worst member reached the 2 mi cap only at rush hour, but the merge is at
+        the cap at any hour, so the merged event says nothing about rush hour."""
+        moved = junction(
+            crossed=(Road(4, speed_mph=45, lanes=2, names=frozenset({"a"})),), control=Control.STOP
+        )
+        capped = junction(
+            m=10.0,
+            crossed=(Road(4, speed_mph=45, lanes=3, names=frozenset({"b"})),),
+            control=Control.STOP,
+        )
+        events = [m.assess(moved, when="weekday_rush"), m.assess(capped, when="weekday_rush")]
+        assert events[0].cost_ft == m.MAX_CROSSING_FT and events[0].time_band == "weekday_rush"
+        assert events[1].time_band is None
+        (merged,) = m.merge_nearby(events)
+        assert merged.cost_ft == m.MAX_CROSSING_FT
+        assert merged.time_band is None
+
 
 def test_an_assumed_speed_in_town_is_not_read_as_rural() -> None:
     """A statutory default of 45 mph or more inside an urban area says nothing

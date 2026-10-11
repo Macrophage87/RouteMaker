@@ -466,6 +466,14 @@ class Event:
     # words (468a: "rush hour"); None where the cost is the hour-free one: off-peak,
     # no setting, a cap that held either way, a quiet-street stop or a rated junction.
     time_band: str | None = field(default=None, compare=False)
+    # The cost this event would have with no ride time (same caps), or None where it
+    # is `cost_ft`: carried through a refuge credit and a merge, so a merged event
+    # names the ride time only where the hour moved the merged cost too.
+    untimed_ft: float | None = field(default=None, compare=False)
+
+
+def _untimed(event: Event) -> float:
+    return event.cost_ft if event.untimed_ft is None else event.untimed_ft
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -842,6 +850,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             assumed_speed=assumed,
             time_factor=factor,
             time_band=band,
+            untimed_ft=untimed,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -866,6 +875,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         assumed_speed=assumed,
         time_factor=factor,
         time_band=band,
+        untimed_ft=untimed,
     )
 
 
@@ -983,7 +993,12 @@ def _one_road(events: list[Event]) -> list[Event]:
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
     refuge = replace(
-        worst, cost_ft=cost, severity=severity, flagged=severity is not None, road_divided=True
+        worst,
+        cost_ft=cost,
+        severity=severity,
+        flagged=severity is not None,
+        road_divided=True,
+        untimed_ft=_untimed(worst) * MEDIAN_REFUGE_FACTOR,
     )
     return [refuge, *rest]
 
@@ -1032,9 +1047,21 @@ def merge_nearby(events: list[Event]) -> list[Event]:
         worst = max(ones, key=lambda e: e.cost_ft)
         extra = sum(e.cost_ft for e in ones if e is not worst) * MERGED_SHARE
         cost = min(worst.cost_ft + extra, MAX_CROSSING_FT)
+        # The same sum with no ride time: the hour is named only where it moved the
+        # merged cost (a capped or rated worst event can sit beside timed ones).
+        untimed_extra = sum(_untimed(e) for e in ones if e is not worst) * MERGED_SHARE
+        untimed = min(_untimed(worst) + untimed_extra, MAX_CROSSING_FT)
+        band = next((e.time_band for e in ones if e.time_band), None)
         severity = _worst(e.severity for e in ones)
         merged.append(
-            replace(worst, cost_ft=cost, severity=severity, flagged=any(e.flagged for e in ones))
+            replace(
+                worst,
+                cost_ft=cost,
+                severity=severity,
+                flagged=any(e.flagged for e in ones),
+                time_band=band if abs(cost - untimed) >= 1.0 else None,
+                untimed_ft=untimed,
+            )
         )
         group.clear()
 

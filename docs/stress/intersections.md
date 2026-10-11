@@ -174,7 +174,10 @@ where a busy road meets there (`:572-576`).
   "more at rush hour", "a little less at the weekend", or "less at night, when traffic
   is usually calmer" (decision 468a: "shown in the panel/chart in words ("rush hour")").
   Off-peak, with no ride time, where a cap holds at any hour, and on a rated junction it
-  is null and nothing is said. The words never give the factor: a night junction is x0.85
+  is null and nothing is said. Nearby junctions merged into one (a divided road's
+  refuge credit, `merge_nearby`) carry the same sum with no ride time
+  (`Event.untimed_ft`), so a merged row names the hour only where it moved the merged
+  cost. The words never give the factor: a night junction is x0.85
   until the rebuild brings `road_urban` and x0.5 in town after it (469d, 469e), and the
   same words are true of both. The panel's ride-time hint and the rider page say the
   same in general terms, without "most of all in towns" for the same reason.
