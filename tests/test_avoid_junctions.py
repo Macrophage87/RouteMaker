@@ -297,13 +297,18 @@ class TestSettle:
         Outside it, the route is kept and the way round offered."""
         around(AroundRouter(trip_of(DETOUR, around_km, 99_999)))
         read = {route_km: lts4[0], around_km: lts4[1]}
+        # The check reads the rated LTS 4 metres (`refine.rated_lts4_m`, 409), not the
+        # hill-weighted `lts4_m`: the way round's weighted figure here is far over.
         monkeypatch.setattr(
             refine,
             "analyse",
             lambda trip, ctx, deadline, with_events=True: SimpleNamespace(
+                rated=read[trip["summary"]["length"]],
                 lts4_m=read[trip["summary"]["length"]]
+                + (5000.0 if trip["summary"]["length"] == around_km else 0.0),
             ),
         )
+        monkeypatch.setattr(refine, "rated_lts4_m", lambda analysis: analysis.rated)
         trip, info, offered = avoid_junctions.settle(
             trip_of(VERTICES, route_km, 500), {}, "standard", preset, far_deadline(),
             [junction()], True, ctx=object(),
@@ -333,7 +338,10 @@ class TestSettle:
         round is a plain route through the same points, so it is offered, never swapped
         in, and the loop's own figures describe the route shown (the review of 351e65b)."""
         around(AroundRouter(trip_of(DETOUR, 2.3, 500 + 10)))
-        monkeypatch.setattr(refine, "analyse", lambda *a, **k: SimpleNamespace(lts4_m=0.0))
+        monkeypatch.setattr(
+            refine, "analyse", lambda *a, **k: SimpleNamespace(lts4_m=0.0, rated=0.0)
+        )
+        monkeypatch.setattr(refine, "rated_lts4_m", lambda analysis: analysis.rated)
         trip, info, offered = avoid_junctions.settle(
             trip_of(VERTICES, 2.2, 500), {}, "standard", preset, far_deadline(),
             [junction()], False, ctx=object(), loop=True,

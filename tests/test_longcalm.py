@@ -1894,3 +1894,32 @@ class TestLTS4NeverLosesToExtraLTS3:
     def test_a_loops_way_back_by_the_same_rule(self) -> None:
         best = ((False, 0.0), None, self.lts4)
         assert refine._loop_before((False, 0.0), self.lts3, best, self.ctx)
+
+
+class TestALongPlansLts4AfterIsTheRouteKept:
+    """`lts4_after_m` (the LTS 4 hold's figure, 250) on a long plan is the rated LTS 4 on the
+    route kept, all of it: LTS 4 a leg took on in place of a red junction (259) is in it,
+    not subtracted (the review of #87: 84b119e4 took the traded metres off)."""
+
+    def test_the_traded_lts4_is_in_it(self, monkeypatch) -> None:
+        firsts = {
+            "L0": (13.3, analysis("L0", "1" * 133)),
+            # 100 m of LTS 4 and 1 km of LTS 3 past a red junction...
+            "L1": (
+                13.3,
+                analysis("L1", "1" * 20 + "4" + "3" * 10 + "1" * 102, events=[event(1500.0)]),
+            ),
+            "L2": (13.3, analysis("L2", "1" * 133)),
+        }
+        # ... and a way round on 300 m of LTS 4, which the hold allows for the junction.
+        world = LongWorld(monkeypatch, cut_lons(), firsts, {1: [("L1c", 13.3, None)], 2: []})
+        world.readings["whole"] = analysis(
+            "whole", "1" * 120 + "4" + "3" * 24 + "1" * (LEN - 145), events=[event(12050.0)]
+        )
+        world.readings["L1c"] = analysis("L1c", "1" * 20 + "444" + "1" * 110)
+        ctx = long_context(ceiling_m=45_000.0)
+        ctx.exposure = AVERSE
+        _trip, info = refine.refine_long(whole_trip(), ctx)
+        assert info["long"]["answered"] == "legs"
+        assert info["lts4_before_m"] == 100.0
+        assert info["lts4_after_m"] == 300.0
