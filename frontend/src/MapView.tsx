@@ -66,6 +66,8 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
+import { addClimbs, CLIMBS_SOURCE_ID, setClimbsOn, type Climb, type ClimbsMap } from "./lib/climbs.ts";
+import { attachClimbInteraction } from "./climbInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
@@ -196,6 +198,10 @@ interface Props {
   water?: readonly WaterPoint[] | null;
   /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
   waterPrefs?: WaterPrefs;
+  /** The Climbs layer's climbs (lib/climbs.ts), once App has loaded them; null before. */
+  climbs?: readonly Climb[] | null;
+  /** The Climbs switch (454: off until turned on). */
+  climbsOn?: boolean;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
   /**
@@ -398,6 +404,8 @@ export function MapView(props: Props) {
   const federalSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the water and restrooms layer in line with the props. */
   const waterSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: puts the Climbs layer in line with the props. */
+  const climbsSync = useRef<(() => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -490,6 +498,22 @@ export function MapView(props: Props) {
       waterById = new Map(data.map((p) => [p.id, p]));
       // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
       addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+    };
+    let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
+    let climbById = new Map<string, Climb>();
+    /** Add the Climbs layer when its data has come, then show or hide it with the switch. */
+    const syncClimbs = () => {
+      const on = callbacks.current.climbsOn === true;
+      if (map.getSource(CLIMBS_SOURCE_ID)) {
+        setClimbsOn(map as unknown as ClimbsMap, on);
+        climbCard?.close();
+        return;
+      }
+      const data = callbacks.current.climbs;
+      if (!data || data.length === 0) return;
+      climbById = new Map(data.map((c) => [c.id, c]));
+      // Under the route, with the water and the stations (railLayer.ts's order).
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -953,9 +977,16 @@ export function MapView(props: Props) {
       });
       waterSync.current = () => syncWater();
       syncWater();
+      climbCard = attachClimbInteraction(map, {
+        visible: () => callbacks.current.climbsOn === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
+        climb: (id) => climbById.get(id),
+      });
+      climbsSync.current = () => syncClimbs();
+      syncClimbs();
       federal = attachFederalInteraction(map, {
         visible: () => callbacks.current.federalVisible,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true,
       });
       federalSync.current = () => syncFederal();
       syncFederal();
@@ -979,6 +1010,8 @@ export function MapView(props: Props) {
       federalSync.current = null;
       water?.detach();
       waterSync.current = null;
+      climbCard?.detach();
+      climbsSync.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -1404,6 +1437,11 @@ export function MapView(props: Props) {
   useEffect(() => {
     waterSync.current?.();
   }, [props.water, props.waterPrefs]);
+
+  // The Climbs layer: its data when it comes, and the switch.
+  useEffect(() => {
+    climbsSync.current?.();
+  }, [props.climbs, props.climbsOn]);
 
   return (
     <>

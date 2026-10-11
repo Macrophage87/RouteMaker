@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, fitTarget, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, fitTarget, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { presetLabel, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -26,11 +26,12 @@ export function trafficShort(stress: number): string {
   return "calmest";
 }
 
-/** The hills slider's position in two words. */
-export function hillsShort(hills: number): string {
+/** The hills slider's position in two words; right of the middle, by ride type (242, `hillsWords`). */
+export function hillsShort(hills: number, climbs: boolean): string {
   if (hills <= -80) return "avoids hills";
   if (hills < -10) return "gentler hills";
   if (hills <= 10) return "balanced hills";
+  if (!climbs) return hills < 80 ? "hills matter less" : "fine with hills";
   if (hills < 80) return "some climbing";
   return "seeks hills";
 }
@@ -65,7 +66,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
   return [
     rideTypeShort(preset, dials),
     locked ? "most direct roadway" : trafficShort(dials.stress),
-    hillsShort(dials.hills),
+    hillsShort(dials.hills, seeksClimbs(preset)),
     whenShort(dials.when),
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? ["loop"] : []),

@@ -27,6 +27,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from routemaker import effort
+
 # A climb survives a dip of this many metres and a flat of this many metres
 # without ending: a sag in a long climb, or a cross street, is not the top.
 # Three metres is above 1-arc-second DEM noise on a road (the elevation gain
@@ -155,4 +157,48 @@ def grade_cost_s(profile: Sequence[tuple[float, float | None]], brake_grade: flo
     return sum(
         climb_cost_s(run) if run.rise_m > 0 else descent_cost_s(run, brake_grade)
         for run in runs(profile)
+    )
+
+
+# What the router itself charges for climbing at the hills detent (`use_hills` 1.0,
+# where only Valhalla's slower uphill speed, `kGradeBasedSpeedFactor`, prices a
+# grade): the extra cost per metre climbed over flat riding on a quiet street, in
+# metres of flat riding, by grade. Measured on the live router (docs/DEVELOPMENT.md,
+# "Sustained grades", the `use_hills` 1.0 row), with 0 at the flat; read between the
+# points in a straight line and held past the last.
+ROUTER_CLIMB_FLAT_M = (
+    (0.0, 0.0),
+    (0.03, 12.0),
+    (0.05, 13.0),
+    (0.065, 17.0),
+    (0.08, 20.0),
+    (0.10, 20.0),
+    (0.13, 23.0),
+    (0.15, 31.0),
+)
+
+
+def router_climb_factor(grade: float) -> float:
+    """`ROUTER_CLIMB_FLAT_M` at a grade (rise over run): flat metres per metre climbed;
+    0 on the flat and downhill."""
+    if grade <= 0:
+        return 0.0
+    for (g0, f0), (g1, f1) in zip(ROUTER_CLIMB_FLAT_M, ROUTER_CLIMB_FLAT_M[1:], strict=False):
+        if grade <= g1:
+            return f0 + (f1 - f0) * (grade - g0) / (g1 - g0)
+    return ROUTER_CLIMB_FLAT_M[-1][1]
+
+
+def router_climb_m(profile: Sequence[tuple[float, float | None]]) -> float:
+    """What the router's own route cost charges for a profile's climbing at the hills
+    detent, in metres of quiet flat riding (`ROUTER_CLIMB_FLAT_M`): each rising window
+    of the effort model's (`routemaker.effort`, at least 300 m, so a 2 m sample error
+    is not read as a steep pitch) at its rise times the factor for its grade. Descents
+    add nothing. "Fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242) takes
+    a share of this off a route's cost (`core.routing.choose_direct`); it never takes
+    more than the router charged, so a climb never earns a route a credit."""
+    return sum(
+        rise * router_climb_factor(rise / run)
+        for run, rise in effort.windows(profile)
+        if run > 0 and rise > 0
     )

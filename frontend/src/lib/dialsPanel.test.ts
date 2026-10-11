@@ -10,6 +10,8 @@ import {
   MASS_RIDE_HILLS_NOTE,
   MASS_RIDE_TRAFFIC_NOTE,
   SEEK_NOTE,
+  TOLERATE_CALM_NOTE,
+  TOLERATE_NOTE,
   calmNote,
   panelView,
   routeWarning,
@@ -45,7 +47,7 @@ test("Mass Ride's traffic slider is locked, and says why; no other ride type's i
   }
 });
 
-test("Mass Ride's hills slider stops at Fastest and says why; the others seek", () => {
+test("Mass Ride's hills slider stops at Fastest and says why; Mountain Goat seeks, the others are fine with hills", () => {
   const mass = panelView("mass-ride", startDials("mass-ride")).hills;
   assert.deepEqual([mass.min, mass.max], [HILLS_MIN, 0]);
   assert.equal(mass.note, MASS_RIDE_HILLS_NOTE);
@@ -53,10 +55,32 @@ test("Mass Ride's hills slider stops at Fastest and says why; the others seek", 
   const dials = startDials("default");
   const hills = panelView("default", dials).hills;
   assert.deepEqual([hills.min, hills.max], [HILLS_MIN, HILLS_MAX]);
-  assert.deepEqual(hills.ends, ["Avoid hills", "Fastest", "Seek hills"]);
+  // FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242): the right half is "fine with hills" on every ride type but Mountain Goat.
+  assert.deepEqual(hills.ends, ["Avoid hills", "Fastest", "Fine with hills"]);
   assert.equal(hills.note, undefined);
-  assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.note, SEEK_NOTE);
+  assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.note, TOLERATE_NOTE);
+  assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.words, "Hills matter less");
   assert.equal(panelView("default", dials, { ...dials, hills: -40 }).hills.note, AVOID_NOTE);
+  assert.match(TOLERATE_NOTE, /never a busier one/);
+  assert.match(TOLERATE_NOTE, /16 mi \(25 km\)/);
+  const goat = startDials("mountain-goat");
+  const climbing = panelView("mountain-goat", goat).hills;
+  assert.deepEqual(climbing.ends, ["Avoid hills", "Fastest", "Seek hills"]);
+  assert.equal(climbing.note, SEEK_NOTE);
+  assert.equal(climbing.words, "Seeks hills");
+  for (const preset of PRESETS) {
+    if (preset.id === "mass-ride") continue;
+    const ends = panelView(preset.id, startDials(preset.id)).hills.ends;
+    assert.equal(ends[2], preset.id === "mountain-goat" ? "Seek hills" : "Fine with hills", preset.id);
+  }
+});
+
+test("the E-bike ride type starts fine with hills (242)", () => {
+  const ebike = startDials("ebike");
+  assert.ok(ebike.hills > 0);
+  const view = panelView("ebike", ebike).hills;
+  assert.equal(view.note, TOLERATE_NOTE);
+  assert.equal(view.words, "Hills matter less");
 });
 
 test("the words follow the position being dragged", () => {
@@ -158,12 +182,19 @@ test("the calm note is short sentences, since a screen reader hears it as the sl
 });
 
 test("at the top of the traffic slider, seeking climbs says it only breaks ties, and the target stays offered (OWNER-DECISIONS 298(3))", () => {
-  const dials = { ...startDials("trailmaxxing"), hills: 60 };
-  const view = panelView("trailmaxxing", dials);
+  // Seeking climbs is Mountain Goat's alone since FOLLOWUP-HILLS-TOLERATE (242).
+  const dials = { ...startDials("mountain-goat"), stress: STRESS_MAX, hills: 60 };
+  const view = panelView("mountain-goat", dials);
   assert.equal(view.hills.note, SEEK_CALM_NOTE);
   assert.match(SEEK_CALM_NOTE, /only chooses between equally calm routes, preferring the one that climbs more/);
   assert.notEqual(view.target, null, "the Target distance dial is still offered while seeking");
   assert.notEqual(view.weight, null);
   // Below the top, seeking is the search among alternatives it was.
-  assert.equal(panelView("default", { ...startDials("default"), hills: 60 }).hills.note, SEEK_NOTE);
+  assert.equal(panelView("mountain-goat", { ...startDials("mountain-goat"), hills: 60 }).hills.note, SEEK_NOTE);
+});
+
+test("at the top of the traffic slider, fine with hills says the calmest route decides (242)", () => {
+  const view = panelView("trailmaxxing", { ...startDials("trailmaxxing"), hills: 60 });
+  assert.equal(view.hills.note, TOLERATE_CALM_NOTE);
+  assert.equal(panelView("default", { ...startDials("default"), hills: 60 }).hills.note, TOLERATE_NOTE);
 });
