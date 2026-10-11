@@ -41,6 +41,22 @@ export interface SummaryRow {
   value: string;
 }
 
+export interface MoreLink {
+  label: string;
+  url: string;
+  system?: string | null;
+}
+
+/**
+ * The MORE link the panel shows, or null: only an https link on MORE's own site is shown, so the
+ * panel never opens a page the API did not mean.
+ */
+export function moreLink(info: Pick<SegmentInfo, "found" | "more"> | null | undefined): MoreLink | null {
+  const more = info?.found ? info.more : null;
+  if (!more || typeof more.url !== "string" || typeof more.label !== "string") return null;
+  return more.url.startsWith("https://more-mtb.org/") ? more : null;
+}
+
 export interface SegmentInfo {
   found: boolean;
   title: string;
@@ -58,6 +74,11 @@ export interface SegmentInfo {
   distance_m: number | null;
   /** The nearest point on the way itself, [lon, lat], where Street View opens (441o); absent from an older API. */
   on_way?: [number, number] | null;
+  /**
+   * A mountain-bike trail's link to MORE (Mid-Atlantic Off-Road Enthusiasts): its trail system's page,
+   * or MORE's trail guide (docs/MTB-TOPO-PLAN.md, slice 6). Absent on other ways and from an older API.
+   */
+  more?: MoreLink | null;
   sections: InfoSection[];
   attribution: string[];
 }

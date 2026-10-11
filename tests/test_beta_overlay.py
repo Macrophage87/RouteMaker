@@ -220,7 +220,7 @@ def test_photons_heap_direct_buffers_and_native_rest_fit_its_cap() -> None:
 
 
 def test_every_overridden_service_exists_in_the_base() -> None:
-    placeholder = {"valhalla-offroad"}
+    placeholder = {"valhalla-offroad", "valhalla-mtb"}
     assert set(OVERLAY["services"]) - placeholder <= set(BASE["services"])
 
 
@@ -422,7 +422,7 @@ def test_the_checker_refuses_renderer_and_bot() -> None:
     for name in ("renderer", "bot"):
         found = problems_for(lambda s, n=name: s.update({n: copy.deepcopy(s["worker"])}))
         assert f"{name}: must not be part of the beta stack" in " ".join(found), found
-    assert beta.OPTIONAL_SERVICES == {"valhalla-offroad"}
+    assert beta.OPTIONAL_SERVICES == {"valhalla-offroad", "valhalla-mtb"}
 
 
 # --- the memory rules at their boundaries (final review, mutation NIT 1: M6-M18) ---
@@ -505,6 +505,7 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4
+        expected["valhalla-mtb"] = 4
     assert counts == expected
     assert not any(
         "would be created empty" in p for p in beta.check({"services": services}, None, semantics)

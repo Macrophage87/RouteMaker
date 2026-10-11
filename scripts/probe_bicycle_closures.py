@@ -50,10 +50,20 @@ ROUTERS = {
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
     "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
+    "mtb": os.environ.get("VALHALLA_MTB_URL", "http://valhalla-mtb:8002"),
 }
 OFFROAD = "offroad"
+MTB = "mtb"
+# Behind the compose profile `offroad`: skipped where they are not running.
+PROFILED = (OFFROAD, MTB)
 # The off-road graph reopens the mountain-bike class on purpose.
 OFFROAD_KEEPS = ("mtb",)
+# The Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6) also reopens rated singletrack
+# that nothing but its rating closes (pipeline.trail_closures.mtb_graph_keeps). The probe
+# file does not say which singletrack is drawn, so every singletrack probe is left out here;
+# the rebuild's own readback (pipeline.run) holds the undrawn ones closed.
+MTB_KEEPS = ("mtb", "singletrack")
+KEEPS = {OFFROAD: OFFROAD_KEEPS, MTB: MTB_KEEPS}
 MAX_PROBES = 200
 TIMEOUT_S = 60
 MILE_M = 1609.344
@@ -87,15 +97,16 @@ def locate(args: argparse.Namespace) -> int:
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        held = [p for p in probes if not (name == OFFROAD and p.reason in OFFROAD_KEEPS)]
+        held = [p for p in probes if p.reason not in KEEPS.get(name, ())]
         try:
             answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
         except urllib.error.URLError as error:
-            # The off-road router is behind the compose profile `offroad` and off on
-            # the small host and the beta: no container, so no name or no listener.
+            # The off-road and Mountain Bike routers are behind the compose profile
+            # `offroad`, off on the small host and the beta: no container, so no name or
+            # no listener.
             # That alone is skipped (REBUILD-BUNDLE operations review, S6); an HTTP
             # error from a running router, or any other router unreachable, still fails.
-            if name != OFFROAD or isinstance(error, urllib.error.HTTPError):
+            if name not in PROFILED or isinstance(error, urllib.error.HTTPError):
                 raise
             print(f"{name}: not running, skipped ({error.reason})")
             continue

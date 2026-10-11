@@ -170,6 +170,38 @@ slices (2-6) wait for bikeshare.
    link to MORE (Mid-Atlantic Off-Road Enthusiasts) for trailheads and trail information. The
    criteria ("a whole set of criteria") are the owner's to set; this plan asks for them when the
    slice starts.
+   - Answered (the owner, 2026-10-11, 7:45 am, "Those work for me.", to the criteria
+     listed in /mnt/project-files/plans/v0.5.0-plan.md): hardest trail level 2 (blue, IMBA 2),
+     a choice of 1-4; unrated mountain-bike trails as level 2; strong trail seeking (a trail mile
+     about half a road mile); connecting roads up to LTS 2, LTS 3 for gaps under 0.5 mi; hills at
+     "fine with hills"; a loop from a trailhead on by default; about 6 mph (10 km/h) on
+     singletrack for the time; the mountain-bike and contour layers on; one-way trails followed;
+     bike-banned and hiking-only trails always closed (unclear access closed); wet closures not
+     routed on, the trail page linking to MORE's conditions; one MORE link per trail system where
+     MORE has a page, else one general link.
+   - Status: built on `claude/v0-5-0-mtb-topo-mode` (stacked on slice 4); the graph waits for the
+     release's rebuild on the owner's host. PLAN.md, 454, "Status, the Mountain Bike mode", says
+     what it does; docs/OPERATIONS.md, "The Mountain Bike graph", how to build and start it.
+   - How the level is held: one graph opens every level (`pipeline.trail_closures.mtb_graph_keeps`:
+     the mountain-bike class, and rated singletrack that only its rating closes), and the rider's
+     level is held at plan time on the router's routes (`core.mtb.settle`, rules in
+     `routemaker.mtbmode`), so a level change needs no other graph.
+   - The map: `stressFilters`' `routableMtb` takes the chosen level (`setRoutableMtb`): trails up to
+     it (an unrated one as 2) draw in the routable layers, harder ones keep their level's
+     not-for-routes look, and every trail keeps its name.
+   - Default picked: a route that cannot avoid a harder trail is answered, with `mtb.over_level_m`
+     and a warning in words, not refused ("unclear access is closed" is the graph's, and a harder
+     trail is open to bicycles; the rider decides).
+   - Default picked: "trail" for the seeking is a mountain-bike-only way or an unpaved trail-class
+     way; a paved path is not trail.
+   - Default picked: stress 80 (the old top), the stress-averse exposure, a Mountain bicycle type
+     with every surface accepted, no brake grade (a rider who chose it wants the descent).
+   - Default picked: a wet closure is closed on the Mountain Bike graph always (the graph cannot
+     know the ground); the trail page sends the rider to MORE for the day's conditions.
+   - Default picked: MORE's system is matched by the words in the trail's OSM names; no match gives
+     MORE's trail guide, never a guess.
+   - Default picked: the profile-gated routers share the 1536M the off-road router had alone, one
+     worker each in 768M, so the 32G swap-time check holds at 32.0G.
 
 ## Questions for the owner, when their slice starts
 

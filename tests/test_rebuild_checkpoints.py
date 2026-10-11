@@ -171,7 +171,7 @@ def built(binaries: FakeBinaries) -> list[str]:
     return [Path(c[2]).parent.parent.name for c in binaries.commands("valhalla_build_tiles")]
 
 
-def first_attempt_fails_at(env: Env, variant: str = "offroad") -> Outcome:
+def first_attempt_fails_at(env: Env, variant: str = "mtb") -> Outcome:
     outcome = attempt(env, binaries=FailsAt(variant))
     assert outcome.error is not None and outcome.error.stage is Stage.BUILD_TILES
     return outcome
@@ -216,7 +216,7 @@ def test_a_failed_tile_stage_leaves_a_classification_and_a_manifest_for_each_fin
     variant extracts' sizes and hashes and the staging schema's token and counts; each
     finished graph has its log and a manifest written last; the unfinished graph has
     neither."""
-    outcome = first_attempt_fails_at(env, "offroad")
+    outcome = first_attempt_fails_at(env, "mtb")
     manifest = checkpoint.read_classification(env.work)
     assert manifest["job_id"] == JOB and manifest["build_id"] == FIRST
     assert set(manifest["variant_pbfs"]) == set(ORDER)
@@ -243,8 +243,8 @@ def test_a_failed_tile_stage_leaves_a_classification_and_a_manifest_for_each_fin
             graph["outputs"]
         )
         assert graph["fingerprint"]["variant_pbf_sha256"]
-    assert not (env.build_dir("offroad") / checkpoint.GRAPH_MANIFEST).exists()
-    assert outcome.context.checkpoints_written == 1 + 4
+    assert not (env.build_dir("mtb") / checkpoint.GRAPH_MANIFEST).exists()
+    assert outcome.context.checkpoints_written == 1 + 5
 
 
 def test_the_checkpoint_is_written_last_and_atomically(tmp_path, monkeypatch) -> None:
@@ -296,29 +296,29 @@ def test_a_truncated_or_foreign_manifest_is_not_a_checkpoint(env, content, reset
 
 
 def test_a_resume_after_the_last_graph_failed_builds_only_that_graph(env, reset_calls) -> None:
-    """T3: the fake sees `valhalla_build_tiles` for offroad only. The admin and timezone
-    copies come from the reused standard directory, all five logs and configs are on the
+    """T3: the fake sees `valhalla_build_tiles` for mtb (the last graph) only. The admin and
+    timezone copies come from the reused standard directory, all six logs and configs are on the
     context, VALIDATE_TILES passes, and the build id is the first attempt's."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     second = attempt(env, build_id=None)
     assert second.error is None
     context = second.context
     assert context.resumed and context.build_id == FIRST
-    assert built(second.binaries) == ["offroad"]
+    assert built(second.binaries) == ["mtb"]
     assert second.binaries.commands("valhalla_build_admins") == [], "the admin database is reused"
     copies = {(Path(c[1]), Path(c[2])) for c in second.binaries.commands("cp")}
     standard = env.build_dir("standard")
-    offroad = env.build_dir("offroad")
-    assert (standard / "admin.sqlite", offroad / "admin.sqlite") in copies
-    assert (standard / "tz_world.sqlite", offroad / "tz_world.sqlite") in copies
+    mtb = env.build_dir("mtb")
+    assert (standard / "admin.sqlite", mtb / "admin.sqlite") in copies
+    assert (standard / "tz_world.sqlite", mtb / "tz_world.sqlite") in copies
     assert set(context.build_logs) == set(Variant) == set(context.build_configs)
-    assert context.graphs_reused == ORDER[:-1] and context.graphs_built == ["offroad"]
+    assert context.graphs_reused == ORDER[:-1] and context.graphs_built == ["mtb"]
     assert Stage.VALIDATE_TILES in second.report.completed
     assert len(reset_calls) == 1, "T6: a resume never resets the staging schema"
     for command in ("osmium", "curl"):
         assert second.binaries.commands(command) == [], "the extract is not produced again"
     assert "classification from" in context.checkpoint_summary()
-    assert "reused: standard, no-trail, ebike, weekend; built: offroad" in (
+    assert "reused: standard, no-trail, ebike, weekend, offroad; built: mtb" in (
         context.checkpoint_summary()
     )
 
@@ -329,7 +329,7 @@ def test_a_resumed_rebuild_can_go_on_to_swap(env) -> None:
     first_attempt_fails_at(env, "weekend")
     second = attempt(env, skip=frozenset(), build_id=None)
     assert second.error is None and second.report.succeeded
-    assert built(second.binaries) == ["weekend", "offroad"]
+    assert built(second.binaries) == ["weekend", "offroad", "mtb"]
     assert checkpoint.read_classification(env.work) is None
     for variant in ORDER:
         assert os.readlink(env.tiles / variant / "current") == FIRST
@@ -338,12 +338,12 @@ def test_a_resumed_rebuild_can_go_on_to_swap(env) -> None:
 def test_a_new_thread_count_is_not_an_input(env, monkeypatch) -> None:
     """T1: the owner changed REBUILD_TILE_CONCURRENCY in the middle of job 8408. It
     invalidates neither checkpoint, and the graph built after it records its own."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     monkeypatch.setattr(settings, "REBUILD_TILE_CONCURRENCY", 1)
     second = attempt(env, build_id=None)
     assert second.error is None and second.context.resumed
-    assert built(second.binaries) == ["offroad"]
-    config = json.loads((env.build_dir("offroad") / "build-config.json").read_text())
+    assert built(second.binaries) == ["mtb"]
+    config = json.loads((env.build_dir("mtb") / "build-config.json").read_text())
     assert config["mjolnir"]["concurrency"] == 1
     old = json.loads((env.build_dir("standard") / "build-config.json").read_text())
     assert old["mjolnir"]["concurrency"] == 2, "a reused graph keeps the count it was built with"
@@ -355,30 +355,30 @@ def test_a_new_thread_count_is_not_an_input(env, monkeypatch) -> None:
 @pytest.mark.parametrize("name", ["tiles.tar", "admin.sqlite", "tz_world.sqlite", "build.log"])
 def test_a_graph_with_one_byte_flipped_is_rebuilt_and_only_that_one(env, name) -> None:
     """T4: reuse re-hashes the tile archive and the two databases (and the log)."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     path = env.build_dir("ebike") / name
     data = bytearray(path.read_bytes())
     data[-1] ^= 0xFF
     path.write_bytes(bytes(data))
     second = attempt(env, build_id=None)
     assert second.error is None
-    assert built(second.binaries) == ["ebike", "offroad"]
-    assert second.context.graphs_reused == ["standard", "no-trail", "weekend"]
+    assert built(second.binaries) == ["ebike", "mtb"]
+    assert second.context.graphs_reused == ["standard", "no-trail", "weekend", "offroad"]
 
 
 def test_a_graph_with_a_different_size_is_rebuilt(env) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     path = env.build_dir("no-trail") / "tiles.tar"
     path.write_bytes(path.read_bytes() + b"x")
     second = attempt(env, build_id=None)
-    assert built(second.binaries) == ["no-trail", "offroad"]
+    assert built(second.binaries) == ["no-trail", "mtb"]
 
 
 def test_a_missing_output_is_rebuilt(env) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     (env.build_dir("weekend") / "tz_world.sqlite").unlink()
     second = attempt(env, build_id=None)
-    assert built(second.binaries) == ["weekend", "offroad"]
+    assert built(second.binaries) == ["weekend", "mtb"]
 
 
 # --- T2: partial graphs ----------------------------------------------------------------
@@ -394,7 +394,7 @@ def test_a_graph_without_a_manifest_is_partial_and_is_deleted_and_rebuilt(env) -
     (partial / "stray-from-the-dead-process").write_text("x")
     second = attempt(env, build_id=None)
     assert second.error is None
-    assert built(second.binaries) == ["ebike", "weekend", "offroad"]
+    assert built(second.binaries) == ["ebike", "weekend", "offroad", "mtb"]
     assert not (partial / "stray-from-the-dead-process").exists()
 
 
@@ -424,7 +424,7 @@ def test_a_crash_between_the_outputs_and_the_manifest_leaves_a_partial_graph(
     assert (weekend / "tiles.tar").is_file() and not (weekend / checkpoint.GRAPH_MANIFEST).exists()
     second = attempt(env, build_id=None)
     assert second.error is None and second.context.resumed
-    assert built(second.binaries) == ["weekend", "offroad"]
+    assert built(second.binaries) == ["weekend", "offroad", "mtb"]
 
 
 @pytest.mark.parametrize(
@@ -441,12 +441,12 @@ def test_a_crash_between_the_outputs_and_the_manifest_leaves_a_partial_graph(
     ids=["truncated", "job", "build", "variant", "format", "fingerprint", "no-outputs"],
 )
 def test_a_graph_manifest_that_does_not_describe_the_graph_is_not_used(env, damage) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     path = env.build_dir("weekend") / checkpoint.GRAPH_MANIFEST
     path.write_text(damage(json.loads(path.read_text())))
     second = attempt(env, build_id=None)
     assert second.error is None
-    assert built(second.binaries) == ["weekend", "offroad"]
+    assert built(second.binaries) == ["weekend", "mtb"]
 
 
 def test_changed_lua_rebuilds_every_graph_and_keeps_the_classification(env, monkeypatch) -> None:
@@ -457,7 +457,7 @@ def test_changed_lua_rebuilds_every_graph_and_keeps_the_classification(env, monk
     (base / "lua").mkdir(parents=True)
     (base / "lua" / "graph.lua").write_text("-- v1")
     monkeypatch.setattr(settings, "BASE_DIR", base)
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     (base / "lua" / "graph.lua").write_text("-- v2")
     second = attempt(env, build_id=None)
     assert second.error is None and second.context.resumed
@@ -465,7 +465,7 @@ def test_changed_lua_rebuilds_every_graph_and_keeps_the_classification(env, monk
 
 
 def test_a_changed_elevation_tile_rebuilds_every_graph(env) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     tile = next((env.root / "elevation").rglob("*.hgt"))
     tile.write_bytes(tile.read_bytes() + b"\0\0")
     second = attempt(env, build_id=None)
@@ -474,7 +474,7 @@ def test_a_changed_elevation_tile_rebuilds_every_graph(env) -> None:
 
 
 def test_a_changed_valhalla_binary_rebuilds_every_graph(env, monkeypatch) -> None:
-    first_attempt_fails_at(env, "offroad")  # no valhalla binary on PATH: "absent"
+    first_attempt_fails_at(env, "mtb")  # no valhalla binary on PATH: "absent"
     binary = env.root / "valhalla_build_tiles"
     binary.write_bytes(b"v1")
     monkeypatch.setattr(
@@ -615,7 +615,7 @@ def test_an_undo_that_only_moves_superseded_by_invalidates_it(env, reset_calls) 
 def test_a_resume_keeps_when_the_first_attempt_read_the_overrides(env) -> None:
     """A resumed attempt skips OVERRIDES, so the swap's replay of the road panel's edits
     needs the first attempt's read time from the manifest, not None (which replays none)."""
-    first = first_attempt_fails_at(env, "offroad")
+    first = first_attempt_fails_at(env, "mtb")
     read_at = first.context.overrides_read_at
     assert read_at is not None
     assert checkpoint.read_classification(env.work)["overrides_read_at"] == read_at.isoformat()
@@ -723,7 +723,7 @@ def test_a_sentinel_number_for_a_staging_check_reruns_only_those_checks(env, mon
     """T1: the floors of the checks that read the staging schema are not a reason to
     classify again. The classification is kept, those checks run against the new
     numbers, and the recorded numbers are updated so the next attempt does not."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     before = checkpoint.read_classification(env.work)["fingerprint"]["validation"]
     ran = []
     real = run_module.assert_mass_capacity
@@ -735,7 +735,7 @@ def test_a_sentinel_number_for_a_staging_check_reruns_only_those_checks(env, mon
     assert second.error is None
     assert second.context.resumed and second.context.revalidate_staging
     assert ran == [1], "VALIDATE_SEGMENTS ran its staging checks again"
-    assert built(second.binaries) == ["offroad"]
+    assert built(second.binaries) == ["mtb"]
     after = checkpoint.read_classification(env.work)["fingerprint"]["validation"]
     assert after != before
 
@@ -748,7 +748,7 @@ def test_a_sentinel_number_for_a_staging_check_reruns_only_those_checks(env, mon
 def test_a_staging_check_that_fails_against_new_numbers_stops_the_resume_before_any_tile(
     env, monkeypatch
 ) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     monkeypatch.setattr(settings, "REBUILD_MASS_CAPACITY_MEDIAN_RANGE", (5000, 6000))
     second = attempt(env, build_id=None)
     assert second.error is not None and second.error.stage is Stage.VALIDATE_SEGMENTS
@@ -875,7 +875,7 @@ def test_the_rebuild_deletes_nothing_it_may_not_when_a_checkpoint_names_a_promot
 ) -> None:
     """T5 end to end: a resume that reached the graph stage with a promoted build id
     (the manifest said another, the links say this) cannot delete that build's graphs."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     for variant in ORDER:
         os.symlink(FIRST, env.tiles / variant / "current")
     second = attempt(env, build_id=None)
@@ -996,7 +996,7 @@ def test_a_staging_schema_that_is_not_the_checkpoints_means_a_fresh_start(
 
 def test_the_swap_deletes_the_checkpoint_before_it_promotes_anything(env, monkeypatch) -> None:
     """T7."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     seen = []
     real = promotion.perform_swap
 
@@ -1080,7 +1080,7 @@ def test_a_resumed_attempt_leaves_live_old_and_the_previous_links_as_they_were(e
     before = snapshot()
     assert before["live_old"] == 5 and ("ebike", "previous") in before["links"]
 
-    third = attempt(env, job_id=3, binaries=FailsAt("offroad"), build_id=FIRST)
+    third = attempt(env, job_id=3, binaries=FailsAt("mtb"), build_id=FIRST)
     assert third.error is not None
     assert snapshot() == before
     fourth = attempt(env, job_id=3, build_id=None)
@@ -1109,7 +1109,7 @@ def test_the_prune_keeps_the_checkpointed_build_and_nothing_it_may_not(tmp_path)
 
 def test_a_different_job_starts_fresh_and_deletes_the_old_checkpoint(env, reset_calls) -> None:
     """T9."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     kept, resumable = checkpoint.find_resumable(env.work, JOB + 1)
     assert kept is not None and resumable is None
     second = attempt(env, job_id=JOB + 1, build_id="20261002T000000Z")
@@ -1124,7 +1124,7 @@ def test_deleting_the_checkpoint_directory_between_attempts_means_a_fresh_start(
 ) -> None:
     """T9: the operator's switch - and the manifest is gone, so nothing is resumed
     even though the graph directories (with their manifests) are still there."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     shutil.rmtree(checkpoint.checkpoint_dir(env.work))
     second = attempt(env, build_id="20261002T000000Z")
     assert second.error is None and not second.context.resumed
@@ -1140,7 +1140,7 @@ def test_a_missing_job_id_never_resumes(env) -> None:
 
 def test_checkpoints_off_writes_nothing_and_resumes_nothing(env) -> None:
     """REBUILD_CHECKPOINTS=0."""
-    first = attempt(env, binaries=FailsAt("offroad"), enabled=False)
+    first = attempt(env, binaries=FailsAt("mtb"), enabled=False)
     assert first.error is not None
     assert not checkpoint.checkpoint_dir(env.work).exists()
     assert not list(env.tiles.rglob(checkpoint.GRAPH_MANIFEST))
@@ -1151,7 +1151,7 @@ def test_checkpoints_off_writes_nothing_and_resumes_nothing(env) -> None:
 
 
 def test_a_forced_extract_refresh_means_a_fresh_start(env) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     kept, resumable = checkpoint.find_resumable(env.work, JOB, force_fresh=True)
     assert kept is not None and resumable is None
 
@@ -1240,7 +1240,7 @@ def test_the_closure_probes_are_computed_before_the_tiles_and_survive_a_resume(e
         ONE_WAY_ID,
     )
     write_reference_data(env.root, urban=urban)
-    first = first_attempt_fails_at(env, "offroad")
+    first = first_attempt_fails_at(env, "mtb")
     assert [p.way_id for p in first.context.closure_probes] == [SINGLETRACK_ID]
     # The fake can only answer a locate for a graph it built itself.
     reused = FakeBinaries()
@@ -1571,7 +1571,7 @@ def test_a_dangling_link_in_the_reference_data_is_part_of_its_digest(tmp_path) -
 def test_a_resume_that_cannot_be_checked_starts_fresh_and_deletes_the_abandoned_build(
     env, monkeypatch, reset_calls
 ) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     assert env.build_dir("standard").is_dir()
 
     def hiccup():
@@ -1591,7 +1591,7 @@ def test_a_resume_that_cannot_be_checked_starts_fresh_and_deletes_the_abandoned_
 
 
 def test_a_graph_that_cannot_be_checked_is_built_again(env, monkeypatch) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     real = checkpoint.graph_problem
 
     def flaky(build_dir, **kwargs):
@@ -1603,7 +1603,7 @@ def test_a_graph_that_cannot_be_checked_is_built_again(env, monkeypatch) -> None
     second = attempt(env, build_id=None)
     assert second.error is None, second.error
     assert second.context.resumed
-    assert built(second.binaries) == ["standard", "offroad"]
+    assert built(second.binaries) == ["standard", "mtb"]
 
 
 def test_the_guarded_delete_is_checked_against_the_adopted_manifests_build(
@@ -1611,7 +1611,7 @@ def test_the_guarded_delete_is_checked_against_the_adopted_manifests_build(
 ) -> None:
     """Nit 5 of review r2: `this_build` comes from the manifest the attempt adopted, a
     second source beside the context's own build id."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     (env.build_dir("weekend") / checkpoint.GRAPH_MANIFEST).unlink()
     calls = []
     real = checkpoint.remove_partial_graph
@@ -1624,7 +1624,7 @@ def test_the_guarded_delete_is_checked_against_the_adopted_manifests_build(
     second = attempt(env, build_id=None)
     assert second.error is None
     assert second.context.resumed_build_id == FIRST
-    assert calls == [("weekend", FIRST, FIRST), ("offroad", FIRST, FIRST)]
+    assert calls == [("weekend", FIRST, FIRST), ("mtb", FIRST, FIRST)]
 
 
 # --- Review r2: the resume's disk gate, and the hashing ---------------------------------------
@@ -1642,7 +1642,7 @@ def test_a_resume_sizes_its_disk_gate_for_the_graphs_still_to_build(env, monkeyp
     monkeypatch.setattr(tiles, "check_resume_disk_gate", spy)
     second = attempt(env, build_id=None)
     assert second.error is None and second.context.resumed
-    assert asked == [["weekend", "offroad"]]
+    assert asked == [["weekend", "offroad", "mtb"]]
 
 
 def test_the_resume_gate_counts_only_what_is_left_to_build(tmp_path) -> None:
@@ -1667,7 +1667,7 @@ def test_the_resume_gate_counts_only_what_is_left_to_build(tmp_path) -> None:
 
 
 def test_the_manifests_record_the_time_spent_hashing(env) -> None:
-    outcome = first_attempt_fails_at(env, "offroad")
+    outcome = first_attempt_fails_at(env, "mtb")
     assert checkpoint.read_classification(env.work)["hash_seconds"] >= 0
     graph = json.loads((env.build_dir("standard") / checkpoint.GRAPH_MANIFEST).read_text())
     assert graph["hash_seconds"] >= 0
@@ -1676,7 +1676,7 @@ def test_the_manifests_record_the_time_spent_hashing(env) -> None:
 
 def test_the_installed_packages_are_an_input(env, monkeypatch, reset_calls) -> None:
     """Nit 6 of review r2: an image rebuilt with only a dependency changed."""
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     monkeypatch.setattr(checkpoint, "packages_digest", lambda: "another venv")
     second = attempt(env, build_id=None)
     assert not second.context.resumed
@@ -1771,7 +1771,7 @@ def test_the_guarded_delete_uses_the_adopted_manifests_build_not_the_contexts(
     spy test cannot tell the two sources apart. Make them differ: the delete must be
     refused against the manifest's build, and the other build's directory must survive."""
     drift = "20261002T000000Z"
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     (env.build_dir("weekend") / checkpoint.GRAPH_MANIFEST).unlink()
     other = env.build_dir("weekend", drift)
     other.mkdir(parents=True)
@@ -1866,7 +1866,7 @@ def test_a_build_log_that_cannot_be_written_does_not_fail_the_rebuild(env, monke
 def test_new_validation_numbers_that_cannot_be_recorded_do_not_fail_the_resume(
     env, monkeypatch
 ) -> None:
-    first_attempt_fails_at(env, "offroad")
+    first_attempt_fails_at(env, "mtb")
     monkeypatch.setattr(settings, "REBUILD_MASS_CAPACITY_MEDIAN_RANGE", (1, 100000))
 
     def full(*args, **kwargs):

@@ -84,6 +84,8 @@ CONTRACT_KEYS = {
     "candidates",
     # Additive, OWNER-DECISIONS 266: a loop's way back against its way out.
     "loop",
+    # Additive, docs/MTB-TOPO-PLAN.md slice 6: null except on a Mountain Bike plan.
+    "mtb",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.

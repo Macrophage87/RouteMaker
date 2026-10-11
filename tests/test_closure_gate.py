@@ -521,6 +521,9 @@ def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_pa
     probes = [
         tiles.ClosureProbe(1, -77.0, 38.9, "mtb"),
         tiles.ClosureProbe(2, -77.0, 38.91, "private"),
+        # Rated singletrack the map draws (only its rating closes it) and one it does not.
+        tiles.ClosureProbe(3, -77.0, 38.92, "singletrack"),
+        tiles.ClosureProbe(4, -77.0, 38.93, "singletrack"),
     ]
     monkeypatch.setattr(run_module, "closure_probes", lambda context: probes)
     monkeypatch.setattr(run_module, "write_closure_reports", lambda *args: None)
@@ -529,11 +532,17 @@ def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_pa
     )
     context = SimpleNamespace(
         work_dir=tmp_path,
-        singletracks=set(),
+        singletracks={3, 4},
+        drawn_singletracks={3},
         build_configs={variant: tmp_path / f"{variant.value}.json" for variant in Variant},
     )
     readbacks = run_module._closures_across_variants(context, run=None)
     assert set(readbacks) == set(Variant)
     for variant in Variant:
-        expected = [2] if variant is Variant.OFFROAD else [1, 2]
+        expected = {
+            # The off-road graph opens the mountain-bike class; the Mountain Bike graph that
+            # and the drawn singletrack too (slice 6), and holds the undrawn one closed.
+            Variant.OFFROAD: [2, 3, 4],
+            Variant.MTB: [2, 4],
+        }.get(variant, [1, 2, 3, 4])
         assert readbacks[variant] == expected, variant

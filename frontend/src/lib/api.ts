@@ -5,6 +5,7 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
@@ -477,6 +478,8 @@ export interface RouteResponse {
   bikeshare?: BikesharePlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
+  /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
+  mtb?: MtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
   dodges?: Dodges | null;
   /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
@@ -491,7 +494,7 @@ export interface RouteResponse {
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   geometry: { type: "LineString"; coordinates: LonLat[] };

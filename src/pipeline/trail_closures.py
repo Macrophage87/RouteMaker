@@ -18,7 +18,7 @@ nothing yet.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Set
 from dataclasses import dataclass, field
 
 from routemaker import cbd, facility, singletrack, trailaccess, zoo
@@ -32,6 +32,7 @@ from .restricted_areas import (
     reopened_by_override,
     ways_inside,
 )
+from .variants import Variant
 
 # The hook for per-park rules (OWNER-DECISIONS 291(6): "Tags now, parks after
 # review"). Keyed by the unit's OSM id, a value is the `rm:no_bicycle` reason
@@ -56,8 +57,45 @@ ORDER = (
 # Reasons that only the standard graphs close: the off-road graph keeps them
 # open (OWNER-DECISIONS 291(2)).
 OFFROAD_KEEPS = frozenset({trailaccess.MTB})
-# Reasons whose ways a future mountain-bike mode would ride (`segment.mtb_only`).
+# Reasons whose ways the Mountain Bike ride type rides (`segment.mtb_only`).
 MTB_ONLY = frozenset({trailaccess.MTB, singletrack.NO_BICYCLE})
+# The Mountain Bike graph's own closure (`pipeline.variants.Variant.MTB`): a trail mapped
+# closed when wet (`routemaker.mtbmode.closed_when_wet`), closed on that graph alone.
+WET = "wet"
+
+
+def mtb_graph_keeps(reason: str | None, osm_id: int, drawn_singletrack: Set[int]) -> bool:
+    """Whether the Mountain Bike graph keeps a closed way open (docs/MTB-TOPO-PLAN.md, slice 6):
+    the mountain-bike class (`mtb`), as the off-road graph does, and rated singletrack that
+    nothing but its rating closes (`drawn_singletrack`, the ways the mountain-bike layer draws
+    in their level's colour). A singletrack way that a tag rule would close without its rating
+    (bicycle=no, a hiking-only footpath, private, a park rule, err closed) or a walk-your-bike
+    way is not drawn, and so stays closed here too: bike-banned and hiking-only trails always
+    stay closed (the owner's defaults of 2026-10-11). Every other reason stays closed."""
+    if reason == trailaccess.MTB:
+        return True
+    return reason == singletrack.NO_BICYCLE and osm_id in drawn_singletrack
+
+
+def graph_reason(
+    variant: Variant,
+    reason: str | None,
+    osm_id: int,
+    drawn_singletrack: Set[int],
+    wet_closed: Set[int],
+) -> str | None:
+    """The `rm:no_bicycle` reason a way carries on one graph, or None for open: the
+    rebuild's reason, less what the off-road graph keeps open (`OFFROAD_KEEPS`) and what the
+    Mountain Bike graph keeps open (`mtb_graph_keeps`); on the Mountain Bike graph a way
+    mapped closed when wet is closed (`WET`) whatever else it is."""
+    if reason is not None and variant is Variant.OFFROAD and reason in OFFROAD_KEEPS:
+        reason = None
+    if variant is Variant.MTB:
+        if mtb_graph_keeps(reason, osm_id, drawn_singletrack):
+            reason = None
+        if reason is None and osm_id in wet_closed:
+            reason = WET
+    return reason
 
 
 @dataclass

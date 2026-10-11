@@ -44,6 +44,7 @@ from routemaker import (
     facility,
     lane_overrides,
     massflow,
+    mtbmode,
     ridetime,
     singletrack,
     speed_corrections,
@@ -695,6 +696,9 @@ class RebuildContext:
     # trail layer in their level's colour (pipeline.trail_closures.drawn_singletrack;
     # OWNER-DECISIONS 456); the rest stay hidden.
     drawn_singletracks: set[int] = field(default_factory=set)
+    # Ways mapped closed when wet, which the Mountain Bike graph closes
+    # (`routemaker.mtbmode.closed_when_wet`; docs/MTB-TOPO-PLAN.md, slice 6).
+    wet_closed: set[int] = field(default_factory=set)
     # Every `rm:no_bicycle` reason of the NO-BIKE-PATHS rules (routemaker.trailaccess,
     # routemaker.zoo, pipeline.trail_closures), cbd_sidewalk and singletrack
     # included, by way; the short dismount connectors routing keeps and the route
@@ -2504,6 +2508,10 @@ def build_handlers(
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
+        # Closed on the Mountain Bike graph alone (`routemaker.mtbmode.closed_when_wet`).
+        context.wet_closed = {
+            way.osm_id for way in context.ways if mtbmode.closed_when_wet(way.tags)
+        }
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -2706,10 +2714,17 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                reason = context.no_bicycle.get(way.osm_id)
-                if reason is not None and not (
-                    variant is variants.Variant.OFFROAD and reason in trail_closures.OFFROAD_KEEPS
-                ):
+                # The off-road graph keeps the mountain-bike class open; the Mountain Bike
+                # graph that and drawn singletrack, and closes a trail mapped closed when
+                # wet (slice 6; `trail_closures.graph_reason`).
+                reason = trail_closures.graph_reason(
+                    variant,
+                    context.no_bicycle.get(way.osm_id),
+                    way.osm_id,
+                    context.drawn_singletracks,
+                    context.wet_closed,
+                )
+                if reason is not None:
                     derived["no_bicycle"] = reason
                 if way.osm_id in context.destination_only:
                     derived["destination_only"] = zoo.DESTINATION_ONLY
@@ -3457,6 +3472,12 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             for probe in probes
             if not (
                 variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+            )
+            and not (
+                variant is variants.Variant.MTB
+                and trail_closures.mtb_graph_keeps(
+                    probe.reason, probe.way_id, context.drawn_singletracks
+                )
             )
         ]
         readbacks[variant] = _read_back(

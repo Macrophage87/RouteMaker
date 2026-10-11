@@ -470,3 +470,13 @@ them (OWNER-DECISIONS 152, 153, 155, 162).
   <https://www.mta.maryland.gov/schedule/timetable/marc-penn>, checked 2026-10-07 (the
   page lists Perryville to Washington Union Station). Offered at every Penn Line station
   the map draws; only the Penn Line is drawn.
+- **MORE trail pages** (OWNER-DECISIONS 454; the owner's defaults of 2026-10-11 for the
+  Mountain Bike ride type, docs/MTB-TOPO-PLAN.md, slice 6): the road panel gives a
+  mountain-bike trail one link to MORE (Mid-Atlantic Off-Road Enthusiasts): its trail
+  system's page, `https://more-mtb.org/products/<slug>`, or MORE's trail guide,
+  <https://more-mtb.org/collections/trails>, where the trail's names place it in no system.
+  The systems, their slugs and the words they are matched by are in
+  `src/routemaker/more_links.py`, from MORE's trail list (pages 1 and 2 of
+  <https://more-mtb.org/collections/trails>, read 2026-10-11), limited to systems inside
+  the planner's coverage or at its edge; skills parks and pump tracks are left out. Only
+  the names and page addresses are kept; no trail data is taken from MORE.

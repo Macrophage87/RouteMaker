@@ -20,7 +20,8 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid, movedPointsNote } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, neutralPaletteSearch } from "./stressStyle.js";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails, setRoutableMtb, neutralPaletteSearch } from "./stressStyle.js";
+import { isMtb, mtbLevelOf, mtbNotes } from "./lib/mtbMode.ts";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "./lib/mtbTrailsSwitch.ts";
 import { setTopoLines, topoAvailable, TopoLinesSwitch, useTopoLines } from "./lib/topoLines.ts";
@@ -70,7 +71,7 @@ import { NearbyStations } from "./NearbyStations.tsx";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf, routeCredits } from "./lib/bikeshare.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
-import { rideSizeOf, type Dials, type Ending } from "./lib/dials.ts";
+import { rideSizeOf, trailsAreOff, type Dials, type Ending } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
@@ -1177,6 +1178,12 @@ export function App() {
   };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
+  // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
+  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
+  useEffect(() => {
+    setRoutableMtb(routableLevel);
+  }, [routableLevel]);
   // The Adjust panel's sliders and toggles. Turning the loop on or off renames
   // the points (OWNER-DECISIONS 374), which a screen reader would not hear.
   const commitDials = (next: Dials) => {
@@ -1190,6 +1197,12 @@ export function App() {
   const choosePreset = (id: PresetId, next: Dials) => {
     const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     if (said) announce(said);
+    // Mountain Bike (slice 6) turns the mountain-bike and contour layers on (the owner's defaults of
+    // 2026-10-11), not remembered as the rider's own choice; its loop is on in `next` (mtbChosen).
+    if (isMtb(id) && !isMtb(preset)) {
+      setMtbTrails(true, { remember: false });
+      setTopoLines(true, { remember: false });
+    }
     setPreset(id);
     setDials(next);
     // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
@@ -2319,6 +2332,8 @@ function RouteSummary({
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
+  // Mountain Bike (slice 6): what the trail rules could not hold, said first, then how much is trail.
+  const mtb = mtbNotes(route.mtb);
   // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);
@@ -2367,6 +2382,16 @@ function RouteSummary({
       {loopSaid && (
         <p className="hint loop-note" role="note">
           {loopSaid}
+        </p>
+      )}
+      {mtb.warnings.map((text) => (
+        <p key={text} className="notice mtb-warning" role="note">
+          {text}
+        </p>
+      ))}
+      {mtb.notes.length > 0 && (
+        <p className="hint mtb-note" role="note">
+          {mtb.notes.join(" ")}
         </p>
       )}
       {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}

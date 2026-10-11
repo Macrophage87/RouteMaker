@@ -1704,6 +1704,17 @@ dialog.road-info::backdrop {
   gap: 4px 16px;
 }
 
+/* A mountain-bike trail's MORE link (slice 6): a real link, its tap target at least 44 px tall. */
+.road-info-more {
+  margin: 8px 0 0;
+}
+
+.road-info-more a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .road-info-details {
   margin-top: 10px;
   border-top: 1px solid var(--border);
@@ -3553,6 +3564,26 @@ details.zoom-notes {
 }
 .bikeshare-endings .hint,
 .bikeshare-bike .hint {
+  display: block;
+}
+
+/* Mountain Bike's hardest trail level (slice 6): one 44 px row per level, its words under its name. */
+.mtb-level {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.mtb-level .toggle {
+  align-items: flex-start;
+  min-height: 44px;
+}
+.mtb-level .toggle input {
+  min-width: 24px;
+  min-height: 24px;
+  margin-top: 2px;
+}
+.mtb-level .hint {
   display: block;
 }
 

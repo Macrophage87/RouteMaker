@@ -76,7 +76,17 @@ from django.utils import timezone
 from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
-from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import (
+    calm,
+    climbs,
+    describe,
+    flow,
+    intersections,
+    mtbmode,
+    ridetime,
+    trace_junctions,
+    zoo,
+)
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -84,7 +94,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, presets
+from . import avoid_junctions, mass_hazards, mtb, presets
 
 logger = logging.getLogger(__name__)
 
@@ -827,6 +837,9 @@ class Dials:
     # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
     # flagged or not, for re-running a sample with all junctions counted (468).
     debug_junctions: bool = False
+    # Mountain Bike only: the hardest trail level the rider takes, 1-4 (docs/MTB-TOPO-PLAN.md,
+    # slice 6); None: `routemaker.mtbmode.DEFAULT_MAX_LEVEL`, level 2.
+    mtb_level: int | None = None
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -919,7 +932,11 @@ _weekend_failed_at: float | None = None
 # on the same timeout and failure memory: a deployment that has not built it
 # yet, or whose router is down, still answers, without the mountain-bike class.
 _offroad_failed_at: float | None = None
-TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value)
+# The Mountain Bike router (`Variant.MTB`, docs/MTB-TOPO-PLAN.md, slice 6), a sixth behind the
+# same profile, falls back the same way: the ride is then planned on the standard graph and
+# its answer says so (`mtb.limited` = no_mtb_graph).
+_mtb_failed_at: float | None = None
+TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value, Variant.MTB.value)
 
 
 def _weekend_down() -> bool:
@@ -930,7 +947,13 @@ def _offroad_down() -> bool:
     return _offroad_failed_at is not None and clock() - _offroad_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _mtb_down() -> bool:
+    return _mtb_failed_at is not None and clock() - _mtb_failed_at < WEEKEND_FAILURE_TTL_S
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_down()
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
 
 
@@ -951,7 +974,13 @@ def _offroad_is_promoted() -> bool:
     return _promoted_row(Variant.OFFROAD.value)
 
 
+def _mtb_is_promoted() -> bool:
+    return _promoted_row(Variant.MTB.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_is_promoted()
     if variant == Variant.OFFROAD.value:
         return _offroad_is_promoted()
     return _weekend_is_promoted()
@@ -963,8 +992,10 @@ def _mark_weekend(ok: bool) -> None:
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at
-    if variant == Variant.OFFROAD.value:
+    global _offroad_failed_at, _mtb_failed_at
+    if variant == Variant.MTB.value:
+        _mtb_failed_at = None if ok else clock()
+    elif variant == Variant.OFFROAD.value:
         _offroad_failed_at = None if ok else clock()
     else:
         _mark_weekend(ok)
@@ -2258,6 +2289,10 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
+    # Mountain Bike ranks the router's own routes by its trail rules (`core.mtb`): two-point
+    # plans ask for them, as the hills search does.
+    if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
+        request.setdefault("alternates", SEEK_ALTERNATES)
     if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
         logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
@@ -2500,6 +2535,24 @@ def plan(
             refined["limited"] = None
         else:
             refined["no_fit"] = bool(refined.get("no_fit"))
+
+    # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
+    # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
+    # router's own alternatives (`core.mtb.settle`). Only on its own graph: a trails-off ride,
+    # or one the standard graph answered while the mountain-bike router was down, has no
+    # trails to weigh.
+    mtb_info = None
+    if preset_name == mtb.PRESET and variant == Variant.MTB.value:
+        trip, mtb_info = mtb.settle(
+            # A loop is weighed alone: the router's alternatives are not loops.
+            [trip] if loop else trips, trip, request, variant, trace_costing, when,
+            deadline, traces,
+            dials.mtb_level, points,
+        )  # fmt: skip
+    elif preset_name == mtb.PRESET and not trails_off:
+        # Trails off is the rider's own choice, said by the answer's `dials`; this is the
+        # router not being there.
+        mtb_info = {"max_level": mtbmode.clamp_level(dials.mtb_level), "limited": "no_mtb_graph"}
 
     # A long calm plan searched in legs of its own answers in the plan's legs: the
     # grouping of its search legs into the plan's, the answer's and its candidates'
@@ -2814,6 +2867,13 @@ def plan(
         }
 
     body = _answer(trip, refined, dodges_of=dodges)
+    body["mtb"] = mtb_info
+    if mtb_info and mtb_info.get("singletrack_m"):
+        # About 6 mph (10 km/h) on singletrack (`mtbmode.duration_s`); the router's own time kept.
+        mtb_info["router_duration_s"] = body["duration_s"]
+        body["duration_s"] = round(
+            mtbmode.duration_s(body["duration_s"], body["distance_m"], mtb_info["singletrack_m"]), 1
+        )
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:

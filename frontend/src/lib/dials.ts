@@ -10,6 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { PresetId } from "./presets.ts";
+import { DEFAULT_MTB_LEVEL, fitMtbLevel } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -58,6 +59,11 @@ export interface Dials {
   systemWeightKg?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
+  /**
+   * Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level, 1 (green) to 4 (red).
+   * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
+   */
+  mtbLevel?: number;
   /** Bikeshare only: the bike. Absent is classic. */
   bike?: Bike;
   /**
@@ -157,6 +163,8 @@ export const STARTS: Record<PresetId, Start> = {
   "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 40, hills: 100, seek: true },
+  // Slice 6: the old top of the traffic slider, hills at "fine with hills" (core.presets MTB_HILLS).
+  "mountain-bike": { stress: 80, hills: 50, seek: true },
   gravel: { stress: 40, hills: 0, seek: true },
   fast: { stress: 10, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
@@ -338,6 +346,10 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
+    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
+      ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
+      : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
       ? { rideSize: fitRideSize(dials.rideSize) }
       : {}),
@@ -358,6 +370,9 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // The API takes whole kilograms (core.api, StrictInt).
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (dials.loop) fields.loop = true;
+  // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
+  const level = fitMtbLevel(dials.mtbLevel);
+  if (level !== undefined) fields.mtb_level = level;
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;

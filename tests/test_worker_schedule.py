@@ -225,13 +225,13 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         assert cursor.fetchone()[0] == 5
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.border_crossing")
         assert cursor.fetchone()[0] == 1
-    assert ValhallaUpstream.objects.count() == 5
+    assert ValhallaUpstream.objects.count() == 6
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id
-    assert len(binaries.commands("valhalla_build_tiles")) == 5
-    assert len(binaries.commands("valhalla_service")) == 7, (
-        "five grade reads, the derived tag read and the weekend sentinel read"
+    assert len(binaries.commands("valhalla_build_tiles")) == 6
+    assert len(binaries.commands("valhalla_service")) == 8, (
+        "six grade reads, the derived tag read and the weekend sentinel read"
     )
     assert (root / "elevation" / "N38" / "N38W078.hgt").is_file()
 
@@ -2478,11 +2478,14 @@ def test_a_retry_of_the_same_job_resumes_and_a_new_job_does_not(
     binaries.calls.clear()
     all_binaries_work(monkeypatch, binaries)
     task(job_context(77), timestamp=0)
-    assert tile_builds(binaries) == ["offroad"], "only the graph that failed"
+    assert tile_builds(binaries) == [
+        "offroad",
+        "mtb",
+    ], "only the graph that failed and the one it stopped before"
     detail = last_rebuild_detail()
     assert f"build {build}" in detail
     assert "Checkpoints: resumed job 77" in detail
-    assert "graphs reused: standard, no-trail, ebike, weekend; built: offroad" in detail
+    assert "graphs reused: standard, no-trail, ebike, weekend; built: offroad, mtb" in detail
 
     fail_tile_build_of(monkeypatch, binaries, "offroad")
     with pytest.raises(RebuildFailed):
@@ -2490,7 +2493,7 @@ def test_a_retry_of_the_same_job_resumes_and_a_new_job_does_not(
     binaries.calls.clear()
     all_binaries_work(monkeypatch, binaries)
     task(job_context(79), timestamp=0)
-    assert tile_builds(binaries) == ["standard", "no-trail", "ebike", "weekend", "offroad"]
+    assert tile_builds(binaries) == ["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
     assert "resumed" not in last_rebuild_detail()
 
 

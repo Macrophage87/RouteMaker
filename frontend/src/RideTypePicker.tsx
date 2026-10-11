@@ -14,6 +14,7 @@ import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
+import { mtbChosen } from "./lib/mtbMode.ts";
 
 interface Props {
   preset: PresetId;
@@ -49,7 +50,8 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   }, []);
 
   const pick = (id: PresetId, load: Carrying | null) => {
-    onChoose(id, choose(id, load, dials));
+    // Mountain Bike starts as a loop from the start (slice 6; lib/mtbMode.ts mtbChosen).
+    onChoose(id, mtbChosen(preset, id, choose(id, load, dials)));
     close();
   };
 
