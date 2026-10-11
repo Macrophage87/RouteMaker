@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -618,6 +619,7 @@ class TestRouteProfile:
                 "corkers_needed": True,
                 "oneway": None,
                 "divided": False,
+                "approach_lanes": None,
             }
         ]
 
@@ -1308,6 +1310,37 @@ class TestMajorJunctions:
         assert len(majors) == 1
         assert majors[0].kind == m.MAJOR_CROSSING
         assert majors[0].oneway is True and majors[0].divided is True
+
+    def test_a_major_carries_its_approach_lanes_for_the_per_lane_rule(self):
+        """PLAN item 139's per-lane rule (the chart counts it, `corkersFor`): each major
+        carries its road's through lanes per direction, flagged or not."""
+        flagged = self.run(junction(100.0, [road("Mass Avenue", lanes=3, tier=4)]))
+        # No events: the busy-road path's majors.
+        busy = m.major_crossings(
+            [junction(100.0, [road("K Street", lanes=2, tier=3, oneway=False)], Control.NONE)], []
+        )
+        unknown = m.major_crossings(
+            [junction(100.0, [road("L Street", lanes=None, tier=3)], Control.NONE)], []
+        )
+        assert flagged[0].kind == m.MAJOR_FLAGGED and busy[0].kind == m.MAJOR_CROSSING
+        assert [x.approach_lanes for x in flagged + busy + unknown] == [3, 2, None]
+
+    def test_a_divided_road_takes_its_busier_carriageways_lanes(self):
+        name = frozenset({"new york avenue northwest"})
+        north = Road(4, lanes=2, oneway=True, names=name, ways=frozenset({1}))
+        south = Road(4, lanes=3, oneway=True, names=name, ways=frozenset({2}))
+        refuge = self.run(junction(100.0, [north]), junction(111.0, [south]))
+        assert refuge[0].divided is True and refuge[0].approach_lanes == 3
+        north3 = replace(north, tier=3)
+        south3 = replace(south, tier=3)
+        path = m.major_crossings(
+            [
+                junction(100.0, [north3], Control.CROSS_STOP),
+                junction(111.0, [south3], Control.CROSS_STOP),
+            ],
+            [],
+        )
+        assert path[0].divided is True and path[0].approach_lanes == 3
 
     def test_a_single_one_way_street_or_a_two_way_pair_is_not_divided(self):
         one = self.run(junction(100.0, [road("I Street", tier=3, oneway=True)], Control.CROSS_STOP))
