@@ -19,19 +19,21 @@ import {
   reverseUnavailableHint,
   reversedSaid,
   stationSaid,
+  START_GLYPH,
+  END_GLYPH,
 } from "./pointText.ts";
 import { LOOP_START_NAME as SUMMARY_LOOP_START_NAME } from "./summary.ts";
 import type { LonLat } from "./geo.ts";
 
 const labels = (count: number, loop: boolean) => Array.from({ length: count }, (_, i) => pointLabel(i, count, loop));
 
-test("pointLabel: in a loop A is the start and finish, the rest are numbered stops, and there is no B or End", () => {
+test("pointLabel: in a loop the start (a glyph, no letter) is the start and finish, the rest are numbered stops, and there is no End", () => {
   assert.deepEqual(labels(3, true), [
-    { text: "A", name: LOOP_START_NAME, kind: "start" },
+    { text: "", name: LOOP_START_NAME, kind: "start" },
     { text: "1", name: "Stop 1", kind: "via" },
     { text: "2", name: "Stop 2", kind: "via" },
   ]);
-  assert.deepEqual(labels(1, true), [{ text: "A", name: "Start and finish", kind: "start" }]);
+  assert.deepEqual(labels(1, true), [{ text: "", name: "Start and finish", kind: "start" }]);
   for (let count = 1; count <= 6; count += 1) {
     for (const label of labels(count, true)) {
       assert.notEqual(label.text, "B");
@@ -41,13 +43,18 @@ test("pointLabel: in a loop A is the start and finish, the rest are numbered sto
   }
 });
 
-test("pointLabel: off the loop, A is the start, B the end, and the stops between are numbered", () => {
+test("pointLabel: off the loop, the start and end carry glyphs, not letters (the owner, 21:29 UTC), and the stops between are numbered", () => {
   assert.deepEqual(labels(3, false), [
-    { text: "A", name: "Start", kind: "start" },
+    { text: "", name: "Start", kind: "start" },
     { text: "1", name: "Stop 1", kind: "via" },
-    { text: "B", name: "End", kind: "end" },
+    { text: "", name: "End", kind: "end" },
   ]);
-  assert.deepEqual(labels(1, false), [{ text: "A", name: "Start", kind: "start" }]);
+  assert.deepEqual(labels(1, false), [{ text: "", name: "Start", kind: "start" }]);
+  // A play triangle and a stop square: told apart by shape, each hidden from a screen reader (the name says it).
+  assert.match(START_GLYPH, /aria-hidden="true"/);
+  assert.match(START_GLYPH, /<path d="M7 4\.5 19\.5 12 7 19\.5z"/);
+  assert.match(END_GLYPH, /aria-hidden="true"/);
+  assert.match(END_GLYPH, /<rect /);
 });
 
 test("one name for the loop's start, shared by the list, the markers and the GPX", () => {

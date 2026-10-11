@@ -4433,6 +4433,18 @@ puts it, at most two presses away.
   kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
   Go found, errors and notices are always said; Brief leaves out the narration (`announceExtra`:
   finding your location, planning a route to, the view or ride type changed, the map moved).
+- **Lettered places** (the owner, 2026-10-11 21:04 UTC; `lib/letteredPlaces.ts`): the nearest
+  water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
+  pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
+  buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
+  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
+  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
+  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
+  letters. Bikeshare's station lists are not lettered yet.
+- **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
+  (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
+  "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
 - **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
   Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
   after it has been read, so an early save never clears a Home), with a copy on the device

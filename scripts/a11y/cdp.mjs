@@ -196,6 +196,13 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       type = "application/x-protobuf";
       // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
       if (stressTiles === "capacity") body = capacityTile();
+    } else if (url.pathname === "/api/nearest" && request.method === "POST") {
+      // The nearest finder (lib/nearest.ts requestNearest): straight-line distances, 400 m apart, nearest first.
+      const asked = JSON.parse(request.postData ?? "{}");
+      const count = Math.max(0, (asked.points?.length ?? 1) - 1);
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify({ by: "straight_line", places: Array.from({ length: count }, (_, i) => ({ distance_m: 400 * (i + 1), time_s: null })) });
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
       // The bodies, for Ride mode's re-plan check (its first point is the rider's position).

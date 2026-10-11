@@ -10,6 +10,7 @@
  * Show more adds a page and moves the focus to the first new result, so a keyboard rider goes on
  * from where they were.
  */
+import { placeLetter } from "./letteredPlaces.ts";
 import { createElement as h, useEffect, useRef, type ReactElement } from "react";
 import { FOOD_DETOUR_NOTE, foodHowFar, foodKindText, FOOD_PAGE, type FoodResult, type FoodScope } from "./food.ts";
 
@@ -37,13 +38,15 @@ export interface FoodFinderProps {
   /** Whether there is a plan to add a stop to. */
   canAddStop: boolean;
   onShow: (result: FoodResult) => void;
+  /** Go: Ride here, the place as the destination (the owner's lettered places of 2026-10-11). */
+  onRide?: (result: FoodResult) => void;
   onAddStop: (result: FoodResult) => void;
   /** A fold of its own (the default), or the body alone, in the map's Food sheet (UI-CLEANUP), whose heading names it. */
   folded?: boolean;
 }
 
 export function FoodFinder(props: FoodFinderProps): ReactElement {
-  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, folded = true } = props;
+  const { query, onQuery, scope, onScope, onSearch, busy, status, results, total, onMore, canAddStop, onShow, onAddStop, onRide, folded = true } = props;
   const list = useRef<HTMLOListElement | null>(null);
   // After Show more: the index of the first new result, whose first button takes the focus.
   const focusFrom = useRef<number | null>(null);
@@ -119,8 +122,8 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                 h(
                   "span",
                   null,
-                  // The number is the map marker's.
-                  h("strong", null, `${i + 1}. ${r.place.name}`),
+                  // The letter is the map marker's (lib/letteredPlaces.ts).
+                  h("strong", null, `${placeLetter(i)}. ${r.place.name}`),
                   ` ${foodKindText(r.place)}. ${foodHowFar(r)}`,
                   r.place.hours ? ` Hours as mapped: ${r.place.hours}.` : "",
                 ),
@@ -129,9 +132,15 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                   { className: "actions" },
                   h(
                     "button",
-                    { type: "button", className: "secondary", "aria-label": `Show on map: ${r.place.name}, marker ${i + 1}`, onClick: () => onShow(r) },
+                    { type: "button", className: "secondary", "aria-label": `Show on map: ${r.place.name}, marker ${placeLetter(i)}`, onClick: () => onShow(r) },
                     "Show on map",
                   ),
+                  onRide &&
+                    h(
+                      "button",
+                      { type: "button", className: "secondary", "aria-label": `Ride here: ${r.place.name}`, onClick: () => onRide(r) },
+                      "Ride here",
+                    ),
                   canAddStop &&
                     h(
                       "button",

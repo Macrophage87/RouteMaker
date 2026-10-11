@@ -7,9 +7,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { LonLat } from "./geo.ts";
 import {
   CIRCUITY,
-  FOOD_CIRCLE_LAYER,
-  FOOD_LABEL_LAYER,
-  FOOD_SOURCE_ID,
   FOOD_SYNONYMS,
   NO_FOOD_DATA,
   ON_ROUTE_M,
@@ -26,8 +23,6 @@ import {
   projector,
   routeForDetour,
   searchFood,
-  setFoodMarkers,
-  type FoodMap,
   type FoodPlace,
   type FoodResult,
 } from "./food.ts";
@@ -223,16 +218,17 @@ test("the panel: a labelled search, the two scopes, a status line, collapsed", (
   assert.doesNotMatch(html, /<ol/);
 });
 
-test("the panel's list: numbered as the markers, Show on map, Add as stop, website, Show more", () => {
+test("the panel's list: lettered as the markers, Show on map, Add as stop, website, Show more", () => {
   const results: FoodResult[] = [
     { place: { ...place("n2", "Near Crab", ["crab"]), website: "https://crab.example" }, fromCentreM: 100, detour: { offM: 300, alongM: 1000, extraM: 840, extraS: 210 } },
     { place: place("n4", "Dock", ["seafood"]), fromCentreM: 200, detour: { offM: 1, alongM: 500, extraM: 0, extraS: 0 } },
   ];
   const html = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, results, total: 25 }));
   assert.match(html, /<ol role="list" aria-labelledby="food-list-heading">/);
-  assert.match(html, /<strong>1\. Near Crab<\/strong>/);
-  assert.match(html, /<strong>2\. Dock<\/strong>/);
-  assert.match(html, /aria-label="Show on map: Near Crab, marker 1"/);
+  assert.match(html, /<strong>A\. Near Crab<\/strong>/);
+  assert.match(html, /<strong>B\. Dock<\/strong>/);
+  assert.match(html, /aria-label="Show on map: Near Crab, marker A"/);
+  assert.doesNotMatch(html, /Ride here/, "Ride here is Go's (onRide)");
   assert.match(html, /aria-label="Add as stop: Dock"/);
   assert.match(html, /href="https:\/\/crab.example" target="_blank" rel="noopener noreferrer" aria-label="Website: Near Crab \(opens in a new tab\)"/);
   assert.match(html, />Show 10 more</);
@@ -243,33 +239,6 @@ test("the panel's list: numbered as the markers, Show on map, Add as stop, websi
   assert.doesNotMatch(none, /Show \d+ more/);
 });
 
-test("the markers: added once, numbered, then replaced; none drawn before a search", () => {
-  const calls: string[] = [];
-  let data: unknown = null;
-  const sources = new Map<string, unknown>();
-  const map: FoodMap = {
-    getSource: (id) => sources.get(id),
-    addSource: (id, source) => {
-      calls.push(`source ${id}`);
-      data = source.data;
-      sources.set(id, { setData: (d: unknown) => (data = d) });
-    },
-    addLayer: (layer) => calls.push(`layer ${(layer as { id: string }).id}`),
-    getLayer: () => undefined,
-  };
-  setFoodMarkers(map, []);
-  assert.deepEqual(calls, []);
-  const r: FoodResult = { place: place("n2", "Near Crab", ["crab"]), fromCentreM: 0 };
-  setFoodMarkers(map, [r, { ...r, place: { ...r.place, id: "n3" } }]);
-  assert.deepEqual(calls, [`source ${FOOD_SOURCE_ID}`, `layer ${FOOD_CIRCLE_LAYER}`, `layer ${FOOD_LABEL_LAYER}`]);
-  assert.deepEqual(
-    (data as { features: Array<{ properties: { n: string } }> }).features.map((f) => f.properties.n),
-    ["1", "2"],
-  );
-  setFoodMarkers(map, []);
-  assert.equal(calls.length, 3);
-  assert.deepEqual((data as { features: unknown[] }).features, []);
-});
 
 test("the planner renders Find food right after the nearest finder, and fetches the file only on a search", () => {
   const app = appSource();

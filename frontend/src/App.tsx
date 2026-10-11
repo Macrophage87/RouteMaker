@@ -103,9 +103,7 @@ import {
   foodTerms,
   routeForDetour,
   searchFood,
-  setFoodMarkers,
   type Bounds,
-  type FoodMap,
   type FoodPlace,
   type FoodResult,
   type FoodScope,
@@ -143,6 +141,7 @@ import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
+import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { GO_START_SAID, GO_START_UNAVAILABLE, goRouteStart, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -1703,21 +1702,6 @@ export function App() {
     if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null));
     // Said for a new search or a new route, not for Show more (which says its own words).
   }, [foodAll]);
-  // The results on the map, numbered as the list; none before a search.
-  const foodResultsRef = useRef(foodResults);
-  foodResultsRef.current = foodResults;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const draw = () => setFoodMarkers(map as unknown as FoodMap, foodResultsRef.current ?? []);
-    // isStyleLoaded is false while any tiles load, so try, and if the style itself is not ready
-    // (adding a source throws), draw once the map is idle.
-    try {
-      draw();
-    } catch {
-      map.once("idle", draw);
-    }
-  }, [foodResults]);
   const searchFoodNow = async (asked?: string) => {
     if (foodBusy) return;
     const query = asked ?? foodQuery;
@@ -1757,9 +1741,9 @@ export function App() {
   };
   const showFood = (result: FoodResult) => {
     const map = mapRef.current;
-    const n = (foodResults?.indexOf(result) ?? -1) + 1;
+    const n = foodResults?.indexOf(result) ?? -1;
     map?.flyTo({ center: [result.place.lon, result.place.lat], zoom: Math.max(map.getZoom(), 15) });
-    announce(`Showing ${result.place.name} on the map${n > 0 ? `, marker ${n}` : ""}.`);
+    announce(`Showing ${result.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
   };
   const addFoodStop = (result: FoodResult) => {
     const point: LonLat = [result.place.lon, result.place.lat];
@@ -1776,7 +1760,7 @@ export function App() {
     status: nearestStatus,
     list: nearestList,
     canAddStop: points.length >= 2,
-    onRide: rideToNearest,
+    onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : rideToNearest(item)),
     onAddStop: addNearestStop,
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
@@ -1789,9 +1773,57 @@ export function App() {
     onGpx: (opener: HTMLElement) => openView("gpx", opener, true),
     onReview: reviewOpener,
   };
+  // The lettered places (the owner, 2026-10-11 21:04 UTC; lib/letteredPlaces.ts): the list on the sheet open,
+  // the nearest water, restrooms or Metro, or the food found, lettered on the map as in the list. A pick (its
+  // marker, Ride here in Go, or its letter's key) is the destination in Go, straight to the route options;
+  // in Plan, the nearest's Ride here, and food's Show on map.
+  const letteredOf: "nearest" | "food" | null =
+    view === "nearest" && nearestList && nearestList.items.length > 0 ? "nearest" : view === "food" && foodResults && foodResults.length > 0 ? "food" : null;
+  const lettered = useMemo(
+    () =>
+      letteredOf === "nearest" && nearestList
+        ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.distanceM }))
+        : letteredOf === "food" && foodResults
+          ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }))
+          : null,
+    [letteredOf, nearestList, foodResults],
+  );
+  const goToLettered = (point: LonLat, title: string) => {
+    namer.remember(point, title);
+    showPlanner(true);
+    void goTo(point, title);
+  };
+  const pickLettered = (index: number) => {
+    if (letteredOf === "nearest" && nearestList) {
+      const item = nearestList.items[index];
+      if (!item) return;
+      if (mode === "go") goToLettered(item.place.point, item.place.title);
+      else rideToNearest(item);
+    } else if (letteredOf === "food" && foodResults) {
+      const r = foodResults[index];
+      if (!r) return;
+      if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
+      else showFood(r);
+    }
+  };
+  const pickLetteredRef = useRef(pickLettered);
+  pickLetteredRef.current = pickLettered;
+  // A letter's key picks that option while its list's sheet is open (not while typing, nor on the map).
+  useEffect(() => {
+    if (!lettered) return;
+    const onKey = (event: KeyboardEvent) => {
+      const index = letterKeyIndex(event, Math.min(lettered.length, 26));
+      if (index === null) return;
+      event.preventDefault();
+      pickLetteredRef.current(index);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [lettered]);
   const foodFinder = (
     <FoodFinder
       folded={false}
+      onRide={mode === "go" ? (r) => goToLettered([r.place.lon, r.place.lat], r.place.name) : undefined}
       query={foodQuery}
       onQuery={setFoodQuery}
       scope={foodScope}
@@ -2039,6 +2071,8 @@ export function App() {
         onFollowBroken={() => setFollow(false)}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
+        lettered={riding ? null : lettered}
+        onLettered={pickLettered}
         onReady={(map) => {
           mapRef.current = map;
           void fetchCoverage(window.location.origin).then((coverage) => {

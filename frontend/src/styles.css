@@ -4740,3 +4740,89 @@ details.fold > summary .icon {
 .go-start-search input {
   min-height: 44px;
 }
+
+/* Lettered places (the owner, 2026-10-11 21:04 UTC; lib/letteredPlaces.ts): a 44 px button holding a pin with
+   its letter; the list's rows carry the same letter in the same pin. Letter and shape, not colour alone. */
+.lettered-marker {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 44px;
+  height: 48px;
+  padding: 0 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lettered-pin,
+.place-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  background: #1e3a8a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transform: rotate(-45deg);
+}
+
+.lettered-letter,
+.place-letter > * {
+  transform: rotate(45deg);
+}
+
+.lettered-letter {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.place-letter {
+  width: 28px;
+  height: 28px;
+  margin: 2px 8px 0 2px;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.lettered-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.lettered-marker:focus-visible {
+  outline: 3px solid var(--focus, #1d4ed8);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (forced-colors: active) {
+  .lettered-pin,
+  .place-letter {
+    border-color: CanvasText;
+    background: Canvas;
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .lettered-letter {
+    color: CanvasText;
+  }
+}
+
+/* The lettered row: the pin first (fixed), then the words take the room the first span had. */
+.nearest-list li.lettered-row > .place-letter {
+  flex: none;
+}
+
+.nearest-list li.lettered-row > span:nth-child(2) {
+  flex: 1 1 12em;
+}

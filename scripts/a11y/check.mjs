@@ -3276,7 +3276,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     first: document.querySelector('.food-list li')?.textContent ?? '',
   }))()`);
   check("food: Enter searches; a polite status says how many match, where, the order and how many are shown", listed.status === "12 places match “crab” in the whole area, least detour first. Showing the first 10." && listed.items === 10, JSON.stringify(listed));
-  check("food: each result says its detour off the route, miles first with metric in brackets, and where to turn off", /^1\. Crab place \d+ Restaurant: seafood, crab\. (Detour about \+[\d.]+ mi \([\d.]+ km\) and \d+ min there and back, turning off at|On your route at) [\d.,]+ (mi|ft) \([\d.,]+ (km|m)\)/.test(listed.first), listed.first);
+  check("food: each result says its detour off the route, miles first with metric in brackets, and where to turn off", /^A\. Crab place \d+ Restaurant: seafood, crab\. (Detour about \+[\d.]+ mi \([\d.]+ km\) and \d+ min there and back, turning off at|On your route at) [\d.,]+ (mi|ft) \([\d.,]+ (km|m)\)/.test(listed.first), listed.first);
   const sizes = await p.eval(`(() => [...document.querySelectorAll('.food button, .food-list a.food-web, .food-scope label')].map((e) => Math.round(e.getBoundingClientRect().height)))()`);
   check("food: every button, link and choice in the panel is at least 44 px tall", sizes.length >= 32 && sizes.every((h) => h >= 44), JSON.stringify(sizes));
   // Show more: the focus goes to the first new result, and the count is said.
@@ -3956,6 +3956,48 @@ async function goWith(permission, { width = 390, height = 844, mobile = true, ha
   await p.close();
 }
 {
+  // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
+  // map; a marker's tap or the letter's key picks one as Go's destination, straight to the route options.
+  const p = await goWith("granted");
+  const openMetro = async () => {
+    await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
+    await sleep(600);
+    await p.eval("[...document.querySelectorAll('#sheet-nearest .nearest-kinds button')].find((x) => /Metro/.test(x.textContent)).click(); true");
+    return p.waitFor("document.querySelectorAll('.lettered-marker').length === 3", 20000);
+  };
+  const shown = await openMetro();
+  const lettered = await p.eval(`({ rows: [...document.querySelectorAll('.nearest-list li')].map((li) => ({ pin: li.querySelector('.place-letter')?.textContent, hidden: li.querySelector('.place-letter')?.getAttribute('aria-hidden'), heard: li.querySelector('.visually-hidden')?.textContent })),
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => { const r = m.getBoundingClientRect(); return { tag: m.tagName, name: m.getAttribute('aria-label'), letter: m.textContent, w: Math.round(r.width), h: Math.round(r.height) }; }) })`);
+  const ax = await axNode(p, ".lettered-marker");
+  check("lettered places: the nearest listed are lettered A, B, C in the list (a pin seen, the letter heard first) and on the map, each a 44 px button named letter, place and distance, US units first",
+    shown && JSON.stringify(lettered.rows.map((r) => r.pin)) === '["A","B","C"]' && lettered.rows.every((r, i) => r.hidden === "true" && r.heard === `${"ABC"[i]}: `) &&
+      lettered.markers.every((m, i) => m.tag === "BUTTON" && m.letter === "ABC"[i] && m.name.startsWith(`${"ABC"[i]}: `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
+      ax?.role === "button" && /^A: .+ Metro station, /.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
+  await p.eval("document.querySelectorAll('.lettered-marker')[0].click(); true");
+  const byTap = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
+  const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length })");
+  check("lettered places: a tap on marker A makes it Go's destination and shows the route at once (the sheet closes, the markers go)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0, JSON.stringify(tapped));
+  await openMetro();
+  const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
+  await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
+  await p.key("b", "KeyB", 66);
+  await sleep(2500);
+  const keyed = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '' })");
+  check("lettered places: pressing the B key picks option B as the destination", keyed.sheet && keyed.dest === `To ${second}`, JSON.stringify({ keyed, second }));
+  await p.close();
+}
+{
+  // The route's start and end pins (the owner, 2026-10-11 21:29 UTC): a start icon and a stop icon in place of
+  // A and B, told apart by shape; the names stay "Start" and "End"; stops keep their numbers.
+  const p = await open({ ride: false, junctions: false });
+  const pins = await p.eval(`(() => { const one = (sel) => { const m = document.querySelector(sel); return m && { text: m.textContent, name: m.getAttribute('aria-label'), path: !!m.querySelector('svg path'), rect: !!m.querySelector('svg rect'), hidden: m.querySelector('svg')?.getAttribute('aria-hidden') }; };
+    return { start: one('.pin.pin-start'), end: one('.pin.pin-end') }; })()`);
+  check("pins: the start shows a play triangle and the end a stop square (no A or B), each glyph hidden, named Start and End",
+    pins.start?.text === "" && pins.start.path && !pins.start.rect && pins.start.hidden === "true" && /^Start\. /.test(pins.start.name ?? "") &&
+      pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\. /.test(pins.end.name ?? ""), JSON.stringify(pins));
+  await p.close();
+}
+{
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
   await p.eval("document.querySelector('.go-menu').click(); true");
@@ -4024,7 +4066,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 581;
+const EXPECTED = 585;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

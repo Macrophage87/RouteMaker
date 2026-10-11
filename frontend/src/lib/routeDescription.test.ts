@@ -174,7 +174,7 @@ test("stops are Stop N in the points list, the announcements, the map and the GP
     assert.doesNotMatch(source, /`Via |"Via |Via point|via point|Add as via/, file);
   }
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /import \{ pointLabel \} from "\.\/lib\/pointText\.ts";/);
+  assert.match(map, /import \{ END_GLYPH, START_GLYPH, pointLabel \} from "\.\/lib\/pointText\.ts";/);
   const app = appSource();
   assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias\)\)/);
 });
