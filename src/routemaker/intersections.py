@@ -461,6 +461,11 @@ class Event:
     assumed_speed: bool = field(default=False, compare=False)
     # The ride-time factor that was applied (`time_factor`, 468a, 469c-469e).
     time_factor: float = field(default=1.0, compare=False)
+    # The ride's setting (`routemaker.ridetime`: "weekday_rush", "weekend" or
+    # "night") where it changed this event's cost, so the planner can say so in
+    # words (468a: "rush hour"); None where the cost is the hour-free one: off-peak,
+    # no setting, a cap that held either way, a quiet-street stop or a rated junction.
+    time_band: str | None = field(default=None, compare=False)
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -797,11 +802,15 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
     # weekend and at night.
     factor = time_factor(when, about.urban)
+    untimed = min(cost, MAX_CROSSING_FT)
     cost = min(cost * factor, MAX_CROSSING_FT)
     if kind == "left_from" and junction.control is Control.SIGNAL:
         # The box turn is the way out at any hour (468: "box-turn cap at
         # signals"), so rush hour cannot lift a signalised left above it.
         cost = min(cost, BOX_TURN_CAP_FT)
+        untimed = min(untimed, BOX_TURN_CAP_FT)
+    # Said only where the hour moved the cost by a foot or more.
+    band = when if abs(cost - untimed) >= 1.0 else None
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
     reason = reason_of(kind, about, junction.control)
@@ -832,6 +841,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             road_oneway=about.oneway,
             assumed_speed=assumed,
             time_factor=factor,
+            time_band=band,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -855,6 +865,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         road_oneway=about.oneway,
         assumed_speed=assumed,
         time_factor=factor,
+        time_band=band,
     )
 
 

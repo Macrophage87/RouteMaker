@@ -15,7 +15,10 @@ quiet-street riding (`Event.cost_ft`), so the feet follow the kilometers in the 
 469b; `src/core/routing.py:1692-1695`). The rolling stress chart counts a junction at its
 cost times the intersection weight at the ride's slider position (section 8;
 `junction_m`, `src/routemaker/calm.py:153-161`; [stress-number.md](stress-number.md),
-section 4).
+section 4). The planner shows that own cost on each row of the junction list and on the card a
+marker opens, "Costs 0.74 calm mi (1.19 calm km)" (`junctionCostText`,
+`frontend/src/lib/intersectionMarkers.ts`), from `calm_mi` and `calm_km`, or from
+`cost_ft` / 5,280 on an older answer.
 
 ## 1. Why it is not in the graph
 
@@ -165,6 +168,16 @@ where a busy road meets there (`:572-576`).
   does (`src/routemaker/ridetime.py:22-24`). Quiet-street stops are not scaled, because
   they make no event. The factored cost is capped at 2.00 calm mi, and a signalized left
   is held at the box-turn cap (section 5). These are typical values, not measured ones.
+  Where the ride time moved a flagged junction's cost by a foot or more, its
+  `intersections` row carries `time_band` (`weekday_rush`, `weekend` or `night`;
+  `Event.time_band`, set in `assess`), and the planner adds the words after the figure:
+  "more at rush hour", "a little less at the weekend", or "less at night, when traffic
+  is usually calmer" (decision 468a: "shown in the panel/chart in words ("rush hour")").
+  Off-peak, with no ride time, where a cap holds at any hour, and on a rated junction it
+  is null and nothing is said. The words never give the factor: a night junction is x0.85
+  until the rebuild brings `road_urban` and x0.5 in town after it (469d, 469e), and the
+  same words are true of both. The panel's ride-time hint and the rider page say the
+  same in general terms, without "most of all in towns" for the same reason.
 - A junction takes the **largest** of the costs that apply to it, not their sum (`take`
   in `cost_of`, `:523-581`).
 - Events that follow one another no more than 148 ft [45 m] apart along the route are
