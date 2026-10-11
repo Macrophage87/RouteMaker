@@ -5,6 +5,7 @@
 #
 #   scripts/cloud/import-result.sh [options] RUN_URL          install, then a dry run
 #   scripts/cloud/import-result.sh [options] --swap RUN_URL   the swap, then the routers
+#   scripts/cloud/import-result.sh --beta [options] RUN_URL   on the beta server (below)
 #
 #   RUN_URL   the same s3://<bucket>/rebuild-checkpoints/transfer/<run> as the other two
 #
@@ -29,7 +30,25 @@
 # "Bicycle closures in the tiles", step 3). Options after `--` go to import_cloud_build,
 # e.g. `--swap RUN_URL -- --accept-later-overrides`.
 #
+# On the beta server (--beta), for a run the box made with --beta-bundle: the beta's own
+# "New data only" update (docs/BETA-RUNBOOK.md), with S3 in place of ship-data.sh's rsync.
+#   Without --swap: downloads RUN_URL/beta/ to --incoming and runs receive-data.sh verify.
+#   With --swap: refuses unless what is in --incoming was downloaded from this run, and,
+#   where continuous deployment is installed, unless it is paused with no pass running and
+#   no deploy left half done. Then receive-data.sh verify and `files` (sudo; each graph's
+#   old build stays as `previous`), stops the api and worker, `db --update-data` (sudo;
+#   after its own safety dump, in one transaction; resets override and junction_override to
+#   home's and empties the beta's stress_edit history, as every data update does), starts
+#   them again (also when the update fails), restarts the four routers, starts the
+#   stress-tile pre-draw in the background, and runs the local smoke test, retried while the
+#   app and routers start. Then run smoke-test.sh --public yourself. Rollback is the
+#   runbook's (rollback A for the tiles, the pre-update dump for the database).
+#
 # Options:
+#   --beta                  the beta server's mode (above)
+#   --incoming DIR          --beta: where the bundle is downloaded [$RM_INCOMING]
+#   --state DIR             --beta: the runbook's state directory [$RM_STATE, or
+#                           ~/routemaker-beta-state]
 #   --live-dir DIR          the live stack's checkout: compose.yaml and .env [this repository]
 #   --stage DIR             where the result is downloaded [~/cloud-runs/<run>/out]
 #   --profile NAME          the AWS CLI profile (`aws sso login --profile NAME` first)
@@ -37,9 +56,11 @@
 #   --no-safety-dump        skip step 3 (rollback_rebuild still works without it)
 #   --remove-tars           delete the downloaded graph tars once they are unpacked
 #   --allow-sha-mismatch    install a build made from another commit than this checkout's
+#                           (with --beta, passed to receive-data.sh)
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
-# CLOUD_GIT [git].
+# CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
+# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15].
 set -Eeuo pipefail
 
 die() { echo "import-result: $*" >&2; exit 2; }
@@ -48,6 +69,7 @@ note() { echo "import-result: $*"; }
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 live_dir=$(cd "$here/../.." && pwd)
 stage="" profile="" swap=0 safety=1 allow_mismatch=0 remove_tars=0 url="" extra=()
+beta=0 incoming=${RM_INCOMING:-} beta_state=${RM_STATE:-$HOME/routemaker-beta-state}
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--live-dir) [ $# -ge 2 ] || die "$1 needs a value"; live_dir=$2; shift 2 ;;
@@ -57,6 +79,9 @@ while [ $# -gt 0 ]; do
 		--no-safety-dump) safety=0; shift ;;
 		--allow-sha-mismatch) allow_mismatch=1; shift ;;
 		--remove-tars) remove_tars=1; shift ;;
+		--beta) beta=1; shift ;;
+		--incoming) [ $# -ge 2 ] || die "$1 needs a value"; incoming=$2; shift 2 ;;
+		--state) [ $# -ge 2 ] || die "$1 needs a value"; beta_state=$2; shift 2 ;;
 		--) shift; extra=("$@"); break ;;
 		-h | --help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
 		-*) die "unknown option $1" ;;
@@ -85,6 +110,85 @@ pguser=$(env_value PGUSER); pguser=${pguser:-routemaker}
 pgdb=$(env_value PGDATABASE); pgdb=${pgdb:-routemaker}
 compose() { (cd "$live_dir" && "$DOCKER" compose "$@"); }
 psql_() { compose exec -T postgis psql -U "$pguser" -d "$pgdb" -AtX -v ON_ERROR_STOP=1 -c "$1" </dev/null; }
+
+if [ "$beta" = 1 ]; then
+	[ -n "$incoming" ] || die "--beta needs --incoming DIR (the runbook's \$RM_INCOMING)"
+	incoming=$(realpath -m "$incoming")
+	case "$incoming/" in
+		"$(realpath -m "$data_root")"/* | "$(realpath -m "$live_dir")"/*)
+			die "--incoming $incoming is inside DATA_ROOT or the checkout; put it elsewhere" ;;
+	esac
+	receive=${CLOUD_RECEIVE:-$live_dir/scripts/beta/receive-data.sh}
+	bcompose=${CLOUD_BETA_COMPOSE:-$live_dir/scripts/beta/beta-compose.sh}
+	smoke=${CLOUD_SMOKE:-$live_dir/scripts/beta/smoke-test.sh}
+	sha_opt=()
+	[ "$allow_mismatch" = 0 ] || sha_opt=(--allow-sha-mismatch)
+	receive_() { "$receive" --bundle "$incoming" --env-file "$env_file" ${sha_opt[@]+"${sha_opt[@]}"} "$@"; }
+	# DATA_ROOT's directories belong to the containers' uid, so `files` and `db` run as root.
+	sudo_receive() { $SUDO "$receive" --bundle "$incoming" --env-file "$env_file" ${sha_opt[@]+"${sha_opt[@]}"} "$@"; }
+	routers=(valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend)
+
+	if [ "$swap" = 0 ]; then
+		# Checked first, so a run with no beta bundle leaves whatever is in --incoming alone.
+		aws_ s3 ls "$url/beta/MANIFEST.txt" >/dev/null 2>&1 ||
+			die "$url/beta/ has no finished bundle: the box ran without --beta-bundle, its bundle failed, or its upload did not finish"
+		mkdir -p "$incoming"
+		note "downloading $url/beta/ to $incoming"
+		# The old manifest and checksums first, so a download that stops is one verify refuses.
+		rm -f "$incoming/SHA256SUMS" "$incoming/MANIFEST.txt" "$incoming/.cloud-run"
+		aws_ s3 sync "$url/beta/" "$incoming/" --only-show-errors
+		[ -s "$incoming/MANIFEST.txt" ] && [ -s "$incoming/SHA256SUMS" ] ||
+			die "$url/beta/ has no finished bundle: the box ran without --beta-bundle, or its upload did not finish"
+		receive_ verify
+		echo "$url" >"$incoming/.cloud-run"
+		note "downloaded and verified. To install it: scripts/cloud/import-result.sh --beta --swap $url"
+		exit 0
+	fi
+
+	if [ -d "$beta_state/cd/bin" ]; then
+		[ -f "$beta_state/cd/PAUSED" ] ||
+			die "continuous deployment is not paused; first: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
+		if [ -e "$beta_state/cd/lock" ] && ! (exec 8>>"$beta_state/cd/lock" && flock -n 8); then
+			die "a deployment pass is still running; wait for it: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
+		fi
+		[ ! -e "$beta_state/cd/in-progress" ] ||
+			die "a stopped deploy is half done ($beta_state/cd/in-progress); see BETA-RUNBOOK, \"Shipping an update later\", before installing data"
+	fi
+	[ -s "$incoming/MANIFEST.txt" ] && [ "$(cat "$incoming/.cloud-run" 2>/dev/null)" = "$url" ] ||
+		die "$incoming does not hold this run's bundle: run this without --swap first"
+	receive_ verify
+	note "installing the graphs (each one's old build stays as \`previous\`)"
+	sudo_receive files
+	note "stopping the api and worker for the database update"
+	"$bcompose" stop api worker
+	if ! sudo_receive db --update-data; then
+		"$bcompose" up -d api worker
+		die "db --update-data failed; it runs in one transaction, so the database is as it was. The api and worker are started again; the new graphs are installed (rollback A puts the old ones back)"
+	fi
+	"$bcompose" up -d api worker
+	note "restarting the routers so they serve the new graphs"
+	"$bcompose" restart "${routers[@]}"
+	note "drawing the stress tiles again, in the background: $beta_state/predraw.log"
+	mkdir -p "$beta_state"
+	# shellcheck disable=SC2016 # $1 and $? are the inner shell's
+	( umask 077; setsid nohup sh -c '"$1" exec -T worker ./manage.py predraw_stress_tiles; echo "predraw exit $?"' \
+		sh "$bcompose" </dev/null >"$beta_state/predraw.log" 2>&1 & )
+	# The api and the routers take a while to come up; the smoke test only reads.
+	tries=${CLOUD_SMOKE_TRIES:-20} smoke_rc=0
+	until "$smoke" --local; do
+		tries=$((tries - 1))
+		if [ "$tries" -le 0 ]; then
+			note "WARNING: the local smoke test still fails. The data is installed; look at it before the testers do"
+			smoke_rc=1
+			break
+		fi
+		note "the smoke test failed; the app may still be starting, so trying again"
+		sleep "${CLOUD_SMOKE_WAIT_S:-15}"
+	done
+	note "installed. Wait for \"predraw exit 0\" in $beta_state/predraw.log, run $smoke --public,"
+	note "then resume continuous deployment if it was paused: \"$beta_state/cd/bin/auto-release.sh\" resume"
+	exit "$smoke_rc"
+fi
 
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/out"
 # Checked before anything is created, so a mistaken --stage never writes into DATA_ROOT.

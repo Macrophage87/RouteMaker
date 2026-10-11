@@ -25,10 +25,15 @@
 #   wait      until that job succeeds; a failed job stops here (and the box, see below).
 #             A job left `doing` by a worker that died (a spot reclaim, an OOM kill) is
 #             put back with unwedge_job, which changes nothing while the worker is alive
+#   beta      only with --beta-bundle: the beta server's data bundle (tiles and database,
+#             the parts a "New data only" update takes), staged by scripts/beta/ship-data.sh
+#             from this box's stack exactly as it is staged at home. A failure here is a
+#             warning: the run goes on to the export, so home's result never waits on it
 #   export    the new segment schema renamed to `staging` and dumped, each graph's build
 #             directory tarred, the rebuild's reports tarred (reports.tar, kept for
 #             reading; the import does not use it), MANIFEST.txt and SHA256SUMS
-#   upload    to RUN_URL/out/, SHA256SUMS last
+#   upload    to RUN_URL/out/, SHA256SUMS last; with --beta-bundle the beta's bundle to
+#             RUN_URL/beta/ too, SHA256SUMS and MANIFEST.txt last (import-result.sh --beta)
 #
 # Then the box powers itself off (with the launch template's "Shutdown behavior: Stop" that
 # is a stop, which costs only the disk). It powers off after a failed rebuild too, with the
@@ -52,11 +57,13 @@
 #   --tile-threads N       REBUILD_TILE_CONCURRENCY [4]
 #   --deadline-hours N     give up on the job after N hours of waiting [24]
 #   --refire               fire a new rebuild job even though one was fired already
+#   --beta-bundle          also make the beta server's data bundle (step beta). Remembered for
+#                          the run, so a resume makes it without being told again
 #   --no-stop              leave the box running at the end
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_POLL_S [60], CLOUD_POWEROFF [sudo poweroff], CLOUD_RUNS [~/cloud-runs],
-# CLOUD_DEADLINE_S [--deadline-hours in seconds].
+# CLOUD_DEADLINE_S [--deadline-hours in seconds], CLOUD_SHIP_DATA [<build-dir>/scripts/beta/ship-data.sh].
 set -Eeuo pipefail
 
 die() { echo "box-rebuild: $*" >&2; exit 2; }
@@ -65,7 +72,7 @@ note() { echo "box-rebuild: $(date -u +%H:%M:%SZ) $*"; }
 build_dir="$HOME/rm-build"
 repo_url=https://github.com/Macrophage87/RouteMaker.git
 data_root=/srv/routemaker/data
-rebuild_memory=26G tile_threads=4 stop=1 url="" deadline_hours=24 refire=0
+rebuild_memory=26G tile_threads=4 stop=1 url="" deadline_hours=24 refire=0 beta_bundle=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--build-dir) [ $# -ge 2 ] || die "$1 needs a value"; build_dir=$2; shift 2 ;;
@@ -75,6 +82,7 @@ while [ $# -gt 0 ]; do
 		--tile-threads) [ $# -ge 2 ] || die "$1 needs a value"; tile_threads=$2; shift 2 ;;
 		--deadline-hours) [ $# -ge 2 ] || die "$1 needs a value"; deadline_hours=$2; shift 2 ;;
 		--refire) refire=1; shift ;;
+		--beta-bundle) beta_bundle=1; shift ;;
 		--no-stop) stop=0; shift ;;
 		-h | --help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
 		-*) die "unknown option $1" ;;
@@ -102,8 +110,9 @@ work="${CLOUD_RUNS:-$HOME/cloud-runs}/$run"
 state="$work/state"
 mkdir -p "$work/in" "$work/out" "$state"
 if [ "$refire" = 1 ]; then
-	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/export.done" "$state/upload.done"
+	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done"
 fi
+if [ "$beta_bundle" = 1 ]; then touch "$state/beta-wanted"; elif [ -e "$state/beta-wanted" ]; then beta_bundle=1; fi
 # The AWS CLI wants a region; on the box it is the box's own, from the instance metadata.
 if [ -z "${AWS_DEFAULT_REGION:-}${AWS_REGION:-}" ]; then
 	token=$(curl -sf -m 5 -X PUT http://169.254.169.254/latest/api/token \
@@ -311,6 +320,30 @@ if ! done_already wait; then
 	mark wait
 fi
 
+# --- beta --------------------------------------------------------------------------------
+# Before the export: ship-data.sh dumps the `live` schema, which the export renames. Any
+# failure is a warning and the run goes on: home's result does not wait on the beta's.
+beta_warn() { note "WARNING: no bundle for the beta from this run: $*"; }
+if [ "$beta_bundle" = 1 ] && ! done_already beta; then
+	if done_already export; then
+		beta_warn "the export already renamed the new table it is made from"
+	else
+		note "staging the beta's data bundle (tiles and database) with scripts/beta/ship-data.sh"
+		rm -rf "${work:?}/beta"
+		built=$(psql_ "SELECT max(build_id) FROM valhalla_upstream")
+		if ! "${CLOUD_SHIP_DATA:-$build_dir/scripts/beta/ship-data.sh}" --live-dir "$build_dir" --stage "$work/beta" \
+			--no-transfer --without elevation --without basemap --without photon --without frontend; then
+			beta_warn "ship-data.sh failed (its message is above)"
+		elif ! [ -s "$work/beta/MANIFEST.txt" ] || ! [ -s "$work/beta/SHA256SUMS" ]; then
+			beta_warn "ship-data.sh staged no bundle in $work/beta"
+		elif [ "$(sed -n 's/^tiles=//p' "$work/beta/MANIFEST.txt" | tr ' ' '\n' | grep -c "=$built\$")" != 5 ]; then
+			beta_warn "its graphs are not all build $built: $(sed -n 's/^tiles=//p' "$work/beta/MANIFEST.txt")"
+		else
+			mark beta
+		fi
+	fi
+fi
+
 # --- export ------------------------------------------------------------------------------
 if ! done_already export; then
 	builds=$(psql_ "SELECT count(DISTINCT build_id) || ' ' || max(build_id) FROM valhalla_upstream")
@@ -354,8 +387,22 @@ if ! done_already upload; then
 	"$AWS" s3 rm "$url/out/SHA256SUMS" >/dev/null 2>&1 || true
 	"$AWS" s3 cp "$work/out/" "$url/out/" --recursive --exclude SHA256SUMS --only-show-errors
 	"$AWS" s3 cp "$work/out/SHA256SUMS" "$url/out/SHA256SUMS" --only-show-errors
+	if done_already beta; then
+		# The stage holds links to the graphs; `aws s3 cp` follows them. Its manifest and
+		# checksums go last, so a bundle that stopped part way is one receive-data.sh refuses.
+		note "uploading the beta's bundle to $url/beta/"
+		"$AWS" s3 rm "$url/beta/" --recursive --only-show-errors >/dev/null 2>&1 || true
+		"$AWS" s3 cp "$work/beta/" "$url/beta/" --recursive --exclude SHA256SUMS --exclude MANIFEST.txt --only-show-errors
+		"$AWS" s3 cp "$work/beta/SHA256SUMS" "$url/beta/SHA256SUMS" --only-show-errors
+		"$AWS" s3 cp "$work/beta/MANIFEST.txt" "$url/beta/MANIFEST.txt" --only-show-errors
+	fi
 	mark upload
 fi
 note "done: build $(sed -n 's/^build=//p' "$work/out/MANIFEST.txt") is at $url/out/"
 note "next, at home: scripts/cloud/import-result.sh $url"
+if done_already beta; then
+	note "and on the beta server: scripts/cloud/import-result.sh --beta $url"
+elif [ "$beta_bundle" = 1 ]; then
+	note "WARNING: there is no bundle for the beta from this run (see above)"
+fi
 finish 0
