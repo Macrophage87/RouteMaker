@@ -831,6 +831,12 @@ so if that ship used another `--report-url`, the agent's next front-end build ke
 
 **New data only** (a fresh build of the tiles, database or Photon index, same release):
 
+A rebuild run on the cloud box with `--beta-bundle` brings the tiles and database by S3
+instead of step 1: `scripts/cloud/import-result.sh --beta "$RUN_URL"`, then `--beta --swap`,
+which runs steps 2 to 5 below except `smoke-test.sh --public`, which you run once the
+pre-draw has finished (OPERATIONS.md, "The beta server from the same run"). Pause
+continuous deployment first, as above, and resume it after.
+
 1. At home: `ship-data.sh ...` as before; `--without` leaves out parts that did not change
    (`--without photon --without basemap --without elevation` for a new tile build and database). It sends only
    what differs, because rsync compares.
