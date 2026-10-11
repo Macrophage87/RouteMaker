@@ -573,7 +573,7 @@ class TestWhatItMustAvoid:
 
     def test_the_cost_of_junctions_counts_as_stress(self) -> None:
         """A red junction as LTS 4 and an orange one as LTS 3, in their own cost."""
-        red = 3000.0
+        red = 3300.0
         orange = 1500.0
         assert dedodge.avoided_m(read(), read(red=[red])) == pytest.approx(red * FT)
         assert dedodge.avoided_m(read(), read(orange=[orange])) == pytest.approx(orange * FT)
@@ -624,7 +624,7 @@ class TestTheVerdict:
         assert verdict(read(turns=2, lts4=0.0), read(lts4=top)).remove
 
     def test_the_top_figure_includes_red_junctions(self) -> None:
-        got = verdict(read(turns=2), read(red=[3000.0]))
+        got = verdict(read(turns=2), read(red=[3300.0]))
         assert not got.remove and got.reason == "top"
 
     def test_an_orange_junction_is_second_figure_stress(self) -> None:
@@ -1407,9 +1407,10 @@ class TestTheTieStepOnEveryPreset:
         assert not got.remove and got.needed_m == 50.0
 
     def test_an_orange_junction_counts_at_the_second_level(self) -> None:
-        # 700 ft of junction cost (an orange junction is 600 ft or more) is 213 m.
-        got = verdict(read(turns=2), read(orange=[700.0]), CTX)
-        assert not got.remove and got.avoided_m == pytest.approx(700.0 * FT)
+        # 900 ft of junction cost (an orange junction is 800 ft or more since 468; 700 ft
+        # was one at 600) is 274 m.
+        got = verdict(read(turns=2), read(orange=[900.0]), CTX)
+        assert not got.remove and got.avoided_m == pytest.approx(900.0 * FT)
 
     def test_the_guards_still_hold(self) -> None:
         for ctx in (TOP, CTX):

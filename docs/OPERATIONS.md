@@ -405,6 +405,18 @@ once and remembers the answer, as `core.routing` does for the facility columns,
 so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
+**Statutory speeds and the night ride time (OWNER-DECISIONS 469-469e).** No
+restart and no router rebuild. The segment table gains `road_default_speed_mph`
+and `road_urban` with the next rebuild; until then an unposted LTS 4 road is
+priced at 45 mph and every night junction at x0.85. A request without `when`
+between 9 PM and 7 AM is now `night`, which routes on the standard graph on
+every day, so weekend-router load falls and standard-router load rises in those
+hours. The next rebuild adds `night` to `car_free_when` and moves the off-peak
+sample instant from 21:00 to 20:30, so a few ways' off-peak car-free status may
+change: compare the counts with the previous build after the promotion. Until
+that rebuild, a night ride treats timed closures as open to cars. Rolling the
+images back to before this change makes a saved `when: "night"` a 422.
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
@@ -413,9 +425,9 @@ read the signals and stop signs OSM puts on the stop lines up the approaches
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
-avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
-route), one `/trace_attributes` for it and its `/locate`s, and one more route for
-the detour warning when the route is at least twice the straight line, or above
+avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
+are worth a second route), one `/trace_attributes` for it and its `/locate`s, and one
+more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
@@ -4032,8 +4044,12 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
 Each process remembers, for its life, that the live segment table has the
-facility, adjustment and road-trait columns (`routing._has_facility_columns`,
-`_has_adjustment_columns`, `junctions.has_trait_columns` cache a True). Rolled
+facility, adjustment, road-trait and junction-cost columns
+(`routing._has_facility_columns`, `_has_adjustment_columns`,
+`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
+cache a True). Rolled back past the junction-cost columns
+(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
+intersection: the logs say "the intersection events could not be read". Rolled
 back to a build from before those columns (20260927 and earlier), every route
 query still names `seg.car_free_when` and `facility`, nothing catches the
 database error, and every route answers 500 until the processes start again.

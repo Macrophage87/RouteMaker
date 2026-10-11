@@ -1021,6 +1021,46 @@ class TestRoadsByWay:
         assert not junctions.has_trait_columns(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)] == Road(4)
 
+    def test_the_statutory_default_and_the_urban_flag_are_read(self, segment_schemas) -> None:
+        """OWNER-DECISIONS 469, 469d-e: an unposted road's default speed and whether
+        it lies in an urban area reach the junction model."""
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, road_default_speed_mph, road_urban) "
+                "VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test', 55, false)",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_trait_columns_seen = False
+        junctions._has_cost_columns_seen = False
+        road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
+        assert (road.speed_mph, road.default_speed_mph, road.urban) == (None, 55.0, False)
+
+    def test_one_missing_cost_column_is_enough_to_fall_back(self, segment_schemas) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN road_urban")
+        junctions._has_cost_columns_seen = False
+        assert not junctions.has_cost_columns(live)
+        junctions._has_cost_columns_seen = False
+
+    def test_a_table_before_the_cost_columns_reads_none(self, segment_schemas) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            for column in ("road_default_speed_mph", "road_urban"):
+                cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN {column}")
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
+                [line((LON, LAT - 0.002), (LON, LAT))],
+            )
+        junctions._has_cost_columns_seen = False
+        assert not junctions.has_cost_columns(live)
+        road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
+        assert (road.default_speed_mph, road.urban) == (None, None)
+        junctions._has_cost_columns_seen = False
+
     def test_a_smoothed_link_is_crossed_at_its_raw_count_and_tier(self, segment_schemas) -> None:
         """1st St NW at Q St (OWNER-DECISIONS 285, 303; ARTERIAL review r0, SF1): the
         link is LTS 2 on the street's median, the crossing is LTS 3 on DDOT's 10,665,
@@ -1354,7 +1394,9 @@ class TestEvents:
         signalled = answer(crossroads()["edges"], [node(N, signal=True)])
         (event,) = junctions.events_of([raw()], "weekend", False, self.locate_with(signalled))
         assert event.control is Control.SIGNAL
-        assert not event.flagged and event.cost_ft == model.SIGNALISED_CROSSING_FT[4]
+        # "weekend": 468a's x0.85 on the 600 ft signalised crossing.
+        assert not event.flagged
+        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * model.time_factor("weekend")
 
     @db
     def test_riding_along_the_arterial_past_a_merge_is_not_a_crossing(self, grid) -> None:

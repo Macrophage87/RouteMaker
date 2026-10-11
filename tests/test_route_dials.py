@@ -218,8 +218,10 @@ class TestRideTime:
         [
             # 08:30 in Washington on Tuesday 29 September: morning rush.
             (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush", "2026-10-06T08:00"),
-            # 22:00 on Friday 2 October there, Saturday already in UTC.
-            (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "weekday_offpeak", "2026-10-06T12:00"),
+            # 20:00 on Friday 2 October there, Saturday already in UTC: off-peak.
+            (datetime(2026, 10, 3, 0, 0, tzinfo=UTC), "weekday_offpeak", "2026-10-06T12:00"),
+            # 22:00 that Friday: night (OWNER-DECISIONS 469c), told the next Tuesday 22:00.
+            (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "night", "2026-10-06T22:00"),
             # Saturday noon there.
             (datetime(2026, 10, 3, 16, 0, tzinfo=UTC), "weekend", "2026-10-10T09:00"),
         ],
