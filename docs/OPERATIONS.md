@@ -5259,6 +5259,7 @@ route chart width estimate).
   Montgomery Planning files. The 2026-10-03 clipped extract is kept as
   `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
   was made. The old api ignores an `offroad` row in `valhalla_upstream`.
+
 ## Bikeshare feeds
 
 The api container makes outbound HTTPS requests to the bikeshare operator's official GBFS feeds
@@ -5282,3 +5283,171 @@ docs/SOURCES.md, "Capital Bikeshare".
 `POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
 OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
 address, and reads the shared copy, never the feeds directly.
+
+## Rebuilding on the cloud box
+
+The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
+on 2026-10-10 (16 GB, with the rebuild container capped at 8 GiB). The box builds from a
+copy of this deployment's database, so every access override, stress edit and Avoid
+junction is in its map, runs the ordinary `run_rebuild_now` with every check a rebuild
+here has, and sends back the five graphs and its new segment table. Here they are swapped
+in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
+undoes an imported build exactly as it undoes one built here.
+
+Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
+backup, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
+on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
+the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
+the bucket or the account: the run's folder is an argument. The same flow as a diagram:
+
+```text
+this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
+scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts --> box-rebuild.sh
+scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
+```
+
+This is the by-hand version of the cloud rebuild (no launcher, no S3 checkpoints, no
+on-demand fallback); this host stays the fallback, and its weekly rebuild is unchanged.
+
+### One-time setup (the owner, in the AWS console)
+
+- **No access keys anywhere.** The box gets an instance role; this host signs in with
+  IAM Identity Center (`aws configure sso`, then `aws sso login --profile <name>` before
+  each run).
+- **The box:** a launch template with a memory-heavy type of at least 32 GiB and 8 vCPUs
+  (m7i.2xlarge), Ubuntu with Docker and `docker-compose-v2` from user data, a 150 GiB gp3
+  root volume, a security group with **no inbound rules** (the shell is Session Manager),
+  IMDSv2 required, and spot with request type **Persistent** and interruption behaviour
+  **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
+  **Stop**, so `box-rebuild.sh`'s power-off stops it. In the bucket's region.
+- **The role:** `AmazonSSMManagedInstanceCore` plus an inline policy that reaches one
+  folder of the bucket and nothing else:
+
+  ```json
+  {"Version": "2012-10-17", "Statement": [
+    {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::<bucket>",
+     "Condition": {"StringLike": {"s3:prefix": ["rebuild-checkpoints/*"]}}},
+    {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+     "Resource": "arn:aws:s3:::<bucket>/rebuild-checkpoints/*"}]}
+  ```
+
+  The box never holds anything that can write this deployment's database.
+- **The bucket:** a lifecycle rule scoped to the prefix `rebuild-checkpoints/` (never the
+  whole bucket) expiring objects after 14 days, and a monthly budget alarm.
+- **On the box, once:** `sudo snap install aws-cli --classic`, then
+  `git clone https://github.com/Macrophage87/RouteMaker.git ~/RouteMaker`.
+
+### A run
+
+Before it: no Change LTS edits, override loads or suggestion approvals here from the
+backup the run starts from until the swap, and no rebuild here in between: start the run
+after a Tuesday rebuild and swap before the next, or pause the weekly rebuild
+(`WEEKLY_REBUILD_PAUSED`, above) for the run. A rebuild here resets the staging schema an
+install restored. The box builds the commit this host is on, so deploy first, not
+during, and that commit must be pushed: the box clones it from GitHub. A deployment that
+sets `COVERAGE_POLYGON` or its own segment schema names is refused; the box builds with
+the defaults, so build those here.
+
+1. **Here:** send the inputs. `RUN` is any name of lowercase letters, digits and hyphens.
+
+   ```sh
+   RUN_URL=s3://<bucket>/rebuild-checkpoints/transfer/cloud-20261011
+   scripts/cloud/send-inputs.sh --profile <name> "$RUN_URL"
+   ```
+
+   It takes the newest nightly backup (`routemaker-<utc>.dump`; its time is when the
+   box's database was copied), tars `reference/`, `elevation/` and `extracts/` with
+   their owner kept, writes `MANIFEST.txt` (run, commit, backup, `read_at`) and
+   `SHA256SUMS`, clears the run's `in/` folder and uploads them with the checksums last. It refuses a checkout with
+   uncommitted changes to tracked files (the box builds the commit, not the working
+   tree) unless `--allow-dirty`.
+
+2. **On the box:** start it, open **Connect, Session Manager**, then
+
+   ```sh
+   sudo -iu ubuntu
+   cd ~/RouteMaker && git pull --quiet
+   nohup scripts/cloud/box-rebuild.sh "s3://<bucket>/rebuild-checkpoints/transfer/cloud-20261011" >>~/cloud-rebuild.log 2>&1 &
+   tail -f ~/cloud-rebuild.log
+   ```
+
+   Closing the window does not stop it. It fetches and checks the inputs, checks out
+   the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own
+   `.env` (fresh random values for the four secrets, `WEEKLY_REBUILD_PAUSED=1`, `REBUILD_TILE_CONCURRENCY=4`)
+   and a `compose.override.yaml` giving `rebuild` 26 GiB, unpacks the inputs, builds the
+   two images, restores the backup into an empty database ("Restoring one", above),
+   cancels every job the copy brought from here, starts `migrate` and `rebuild`, and
+   fires `run_rebuild_now --fresh`. When the job succeeds it renames the box's new
+   `live` schema to `staging`, dumps it, tars each graph's build directory and the
+   rebuild's reports (`reports.tar`, for reading; the import does not use it), uploads
+   them with the checksums last, and powers the box off.
+
+   Each step is recorded under `~/cloud-runs/<run>/state/`, so the same command run
+   again carries on. **A spot reclaim** stops the box with its disk; start it when AWS
+   has room and run the command again: it puts back the job the dead worker held
+   (`unwedge_job`, which changes nothing while a worker is alive) and the rebuild resumes
+   from its checkpoints. It tries the same every ten minutes while the job is `doing`, in
+   case the rebuild container was killed under a running script. **A failed rebuild**
+   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz` and powers off;
+   nothing is uploaded. To try again, start the box and run the same command with
+   `--refire`. A job still unfinished after `--deadline-hours` (24) is given up on the
+   same way, so a stuck run does not keep the box running. Before the rebuild is fired, a
+   failure leaves the box running for you to fix it.
+
+3. **Here:** install, and read the dry run.
+
+   ```sh
+   scripts/cloud/import-result.sh --profile <name> "$RUN_URL"
+   ```
+
+   It downloads and checks the result, and refuses unless the box built this checkout's
+   commit (`--allow-sha-mismatch` overrides that), no rebuild is queued or running, there
+   is no `staging` schema, neither link of any graph names the box's build id, and the
+   tiles volume has room for the graphs. Then it takes a safety dump into its stage,
+   leaving out the tables the nightly backup leaves out (`--no-safety-dump` skips it),
+   unpacks the graphs under `<DATA_ROOT>/tiles` beside the ones being served, restores the
+   box's table as `staging`, and runs `import_cloud_build` dry: the build each graph would
+   move to, both tables' segment counts, and any access override approved after the
+   backup, which this build does not have. An override revoked or deleted after the
+   backup is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
+   a failure and it carries on; once the install has finished, a second run goes straight
+   to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
+
+4. **Here:** swap.
+
+   ```sh
+   scripts/cloud/import-result.sh --profile <name> --swap "$RUN_URL"
+   ```
+
+   `import_cloud_build --confirm` runs `perform_swap` (promote the five graphs, repoint
+   the settings rows, rename `staging` into `live` and `live` into `live_old`; a failure
+   undoes all of it), writes an audit row and the drift report; the script then restarts
+   the routers, the off-road one where it runs, and pre-draws the stress tiles. Then the
+   post-swap probes ("Bicycle closures in the tiles", step 3). If the dry run listed
+   later access overrides, the swap refuses; send a fresh run, or let them wait for the
+   next rebuild with `scripts/cloud/import-result.sh --swap "$RUN_URL" --
+   --accept-later-overrides`.
+
+**Rollback** is the ordinary one, dry and then confirmed, then restart the routers:
+
+```sh
+docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null
+docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+```
+
+The safety dump is the last resort.
+
+`import_cloud_build` refuses, on the dry run as well, while a rebuild is queued or
+running, for a build id a rebuild would not write, when any graph lacks its `tiles.tar`
+or already serves the build, when `staging.segment` is missing or empty, when
+`--overrides-read-at` is not a UTC time in the past, and outside `rebuild`; `--confirm`
+also refuses while access overrides approved after `--overrides-read-at` are missing from
+the build, unless `--accept-later-overrides`. Where the swap re-applies the road panel's
+edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
+made while it ran, that check gives way to the re-apply; the scripts pass the backup's
+time.
+
+**What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`
+and `sudo` (tests/test_cloud_scripts.py) and the command against a real PostGIS
+(tests/test_import_cloud_build.py). The first run on the box is the first real one, so
+keep its log and read the dry run before `--swap`.
