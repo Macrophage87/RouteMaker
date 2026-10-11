@@ -82,6 +82,29 @@ def service_item(layer: str) -> dict:
     return info if isinstance(info, dict) else {}
 
 
+def parse_bbox(text: str) -> tuple[float, float, float, float]:
+    """`west,south,east,north` in degrees, refused unless it is a real box."""
+    try:
+        west, south, east, north = (float(part) for part in text.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--bbox wants west,south,east,north: {text!r}") from None
+    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+        raise argparse.ArgumentTypeError(f"--bbox is not a box: {text!r}")
+    return west, south, east, north
+
+
+def spatial_filter(bbox: tuple[float, float, float, float] | None) -> dict[str, str]:
+    """The query parameters that keep only features touching `bbox`, or none."""
+    if bbox is None:
+        return {}
+    return {
+        "geometry": ",".join(repr(value) for value in bbox),
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--slug", required=True)
@@ -96,6 +119,10 @@ def main() -> int:
     parser.add_argument("--order-by", default="OBJECTID")
     parser.add_argument("--where", default="1=1")
     parser.add_argument("--note", default="")
+    # Only the features that touch this box (west,south,east,north in WGS 84):
+    # a statewide layer clipped to the coverage area (`settings.COVERAGE_BBOX`),
+    # so the stored file is the region's and not, say, the Eastern Shore's.
+    parser.add_argument("--bbox", type=parse_bbox, default=None)
     # Where an item's metadata is read from; a test points it at a local server.
     parser.add_argument("--item-base", default=ITEM_BASE, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -112,8 +139,10 @@ def main() -> int:
     else:
         item = service_item(args.layer)
     meta = _get(args.layer, {"f": "json"})
+    clip = spatial_filter(args.bbox)
     expected = _get(
-        f"{args.layer}/query", {"where": args.where, "returnCountOnly": "true", "f": "json"}
+        f"{args.layer}/query",
+        {"where": args.where, "returnCountOnly": "true", "f": "json", **clip},
     )["count"]
     page = int(meta.get("maxRecordCount") or 1000)
     retrieved = datetime.now(UTC)
@@ -135,6 +164,7 @@ def main() -> int:
                     "resultOffset": str(offset),
                     "resultRecordCount": str(page),
                     "f": "geojson",
+                    **clip,
                 },
             )
             features = body.get("features", [])
@@ -170,7 +200,7 @@ def main() -> int:
 | Retrieved (UTC) | {retrieved:%Y-%m-%d %H:%M:%S} |
 | Source layer | <{args.layer}> |
 | ArcGIS item | {item_line} |
-| Query | `where={args.where}`, `outFields=*`, `outSR=4326`, `f=geojson`, ordered by `{args.order_by}`, pages of {page} |
+| Query | `where={args.where}`, `outFields=*`, `outSR=4326`, `f=geojson`, ordered by `{args.order_by}`, pages of {page}{f", features touching the box {args.bbox} (W, S, E, N)" if args.bbox else ""} |
 | Features | {written:,} stored; the service reported {expected:,} ({pages} pages) |
 | Credit (item `accessInformation`) | {item.get("accessInformation") or "(none)"} |
 | Required credit line | {args.credit} |

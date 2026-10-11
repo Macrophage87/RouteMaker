@@ -76,7 +76,17 @@ from django.utils import timezone
 from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
-from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import (
+    calm,
+    climbs,
+    describe,
+    flow,
+    intersections,
+    mdot_aadt,
+    ridetime,
+    trace_junctions,
+    zoo,
+)
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -85,6 +95,7 @@ from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
 from . import avoid_junctions, mass_hazards, presets
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -2290,6 +2301,13 @@ def plan(
         "directions_type": "none",
         "units": "kilometers",
     }
+    # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
+    # to bicycles is left out of every request this plan makes (the derived requests
+    # copy this one), and the zones a rider may pass are weighed once the router has
+    # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
+    zones_plan = work_zones.plan_zones(points, when)
+    if zones_plan is not None and zones_plan.exclude:
+        request["exclude_polygons"] = list(zones_plan.exclude)
     # Past the detent the hills slider is a climb search among the router's
     # alternatives. Valhalla computes alternatives only between two locations,
     # and not inside a long ride's budget, so anything else keeps the route
@@ -2362,8 +2380,25 @@ def plan(
                 refusal.code,
                 refusal,
             )
-        raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+        if not (zones_plan is not None and zones_plan.exclude and refusal.code in NO_PATH_CODES):
+            raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+        # No way round the work zones closed to bicycles: plan through them, each one
+        # warned of in red, rather than answer no route (the rider can walk through or
+        # choose; `work_zones.drop_exclusions`).
+        work_zones.drop_exclusions(request, zones_plan)
+        try:
+            answer, timed_out = _route(variant, request, deadline)
+        except RouterRefused as again:
+            raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
 
+    if zones_plan is not None:
+        answer = work_zones.settle_penalties(
+            answer,
+            request,
+            zones_plan,
+            lambda trial: _route(variant, trial, deadline)[0],
+            lambda: deadline.at - clock(),
+        )
     routed_at = clock()
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
@@ -2896,7 +2931,7 @@ def plan(
             ),
         }
 
-    body = _answer(trip, refined, dodges_of=dodges)
+    body = work_zones.with_work_zones(_answer(trip, refined, dodges_of=dodges), zones_plan)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -2907,7 +2942,7 @@ def plan(
         # a trace for each of its legs.
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
-                around = _answer(avoid_trip, None, True)
+                around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
@@ -2925,7 +2960,7 @@ def plan(
         # dodge pass is the answer's alone, one bounded pass a plan.
         try:
             refine.analyse(found, refine_context, deadline)
-            candidate = _answer(found, None, True)
+            candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling
@@ -2974,6 +3009,9 @@ ATTRIBUTION = (
     "© OpenStreetMap contributors (ODbL)",
     "DC Open Data (CC BY 4.0, adapted): https://creativecommons.org/licenses/by/4.0/",
     "VDOT",
+    # MDOT SHA's traffic counts (FOLLOWUP-MDOT-AADT): Maryland iMAP's terms ask that
+    # derived data acknowledge the State of Maryland, so the credit names it.
+    mdot_aadt.CREDIT,
     # DDOT's Pavement Condition Index (DC-PCI): District streets' smoothness reading.
     # The service states no licence; docs/SOURCES.md records that it is to be confirmed.
     "DDOT Pavement Condition Index (DC GIS)",

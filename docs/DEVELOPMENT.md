@@ -3503,12 +3503,24 @@ the failure this produced.
   reach here, which is why the property name is an argument rather than
   guessed.
 
-  **Phase 1 installs VDOT and DDOT, and deliberately not Maryland.** MDOT SHA's
-  layer is conditionally licensed, and while the pipeline can say which agency
-  touched a way it cannot yet withhold those ways from the published
-  derivative — identifiable, not excludable — so installing it today would mean
-  publishing something that source influenced. PLAN.md:31-34's waiver mechanism
-  is what closes that; handoff.md section 7 carries the row.
+  **Phase 1 installed VDOT and DDOT; v0.5.0 adds Maryland** (FOLLOWUP-MDOT-AADT,
+  OWNER-DECISIONS 429, download approved for that rebuild). MDOT SHA's layer is
+  conditionally licensed, and the pipeline can say which agency touched a way
+  but cannot yet withhold those ways from a published derivative — identifiable,
+  not excludable. No published derivative is built, so nothing carries the
+  condition onward today; one that is built must withhold `volume_source =
+  'mdot-sha'` until PLAN.md:31-34's waiver is in hand (handoff.md section 7
+  carries the row). The Maryland file is MDOT SHA's AADT Segments
+  (`--volume-source mdot-sha`, AADT property `AADT`, the default), and two things
+  are Maryland's alone. The installer reads the year from the layer's fields
+  (`routemaker.mdot_aadt.current_year`: the newest `AADT_<year>` plus one) where
+  no `--volume-year` is typed, and leaves out rows whose `LOC_ERROR` says the
+  line is misplaced. And the rebuild gives a divided road's second carriageway
+  the count conflation gave the first (`conflation.share_with_carriageways`):
+  exclusivity along a count line otherwise leaves one carriageway uncounted, and
+  MD 185 north of Chevy Chase Circle, the case 429 is about, is two
+  carriageways. VDOT's and DDOT's counts are not shared that way, so no tier the
+  owner has already seen moves.
 
   One `--volume-source` flag sets two things, through `SOURCE_TIERS`. `source`
   is the **precedence tier** — `locality`, `state`, `osm` — and it is the only

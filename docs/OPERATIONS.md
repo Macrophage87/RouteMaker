@@ -3380,17 +3380,17 @@ the first host to run it is the first test of it.
    publishers on a road they both cover, and with one file in the input the
    locality-over-state precedence rule has nothing to choose between. VDOT's is
    the traffic-volume export from the Virginia Roads portal; the District's is
-   DDOT's AADT layer from the District's open-data portal. **Maryland's arrives
-   the same way, and phase 1 does not install it.** The pipeline records which
-   agency published every count that reached a way — the segment table's
+   DDOT's AADT layer from the District's open-data portal. **Maryland's is the
+   third pair, from v0.5.0** (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; the owner
+   approved the download for the v0.5.0 rebuild): "Maryland traffic counts (MDOT
+   SHA)" below has the fetch and the extra `--volume` lines. The pipeline records
+   which agency published every count that reached a way — the segment table's
    `volume_source`, `volume_aadt` and `volume_year` columns — so a Maryland
-   layer's influence on the published map is identifiable. It is not yet
-   *excludable*: nothing in the export can withhold the segments a
-   conditionally licensed source touched, so installing Maryland today means
-   publishing a derivative that is influenced by it. Add the third pair once
-   the waiver mechanism PLAN.md:31-34 describes exists; handoff.md section 7
-   carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
-   and how the counts have to be normalised before they get here.
+   count's influence is identifiable, and no published derivative exists for it
+   to reach; one that is built must withhold `volume_source = 'mdot-sha'` until
+   the waiver PLAN.md:31-34 describes is in hand (docs/SOURCES.md, "Maryland
+   traffic counts (MDOT SHA)"). docs/DEVELOPMENT.md, "Reference data", has what
+   each one is and how the counts have to be normalised before they get here.
 
    **Optional, the agency street layers.** Add `--roadway-block
    /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
@@ -4071,6 +4071,78 @@ to buses; open two or three on openstreetmap.org to confirm. A row that is not a
 bus road moved for another reason (an OSM edit since the last extract): check its
 history there. The ways also drop out of the car-free path
 count on the map (fewer `facility = 'path'` roads, outside the trail classes).
+
+## Maryland traffic counts (MDOT SHA)
+
+FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,
+2026-10-10). MDOT SHA's AADT segments fill the Maryland roads no other count
+reaches, the first being MD 185 (Connecticut Ave) from Chevy Chase Circle to MD
+410, LTS 3 until now only for want of a count. Run on the home PC: the cloud
+proxy cannot reach the service.
+
+1. **Fetch it once**, clipped to the coverage box, from the checkout on the host
+   into the operator's scratch folder (as for the other agency layers,
+   fixtures/datasets/README.md), then copy it into the inputs folder the rebuild
+   container binds. Standard library only, so no virtualenv is needed. `--bbox=`
+   takes the equals sign because the box starts with a minus sign:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py \
+       --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
+       --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
+       --bbox=-78.0,38.2,-76.02,39.72 \
+       --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
+       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"
+   ```
+
+   It pages at the layer's 2,000 a page, retries each request three times, and
+   writes `mdot-sha-aadt.geojson` and a README with the size, sha256, retrieval
+   time and the item's licence text. Exit 3 means the pages did not add up to the
+   count the service reported: delete the folder and run it again. Copy the size
+   and sha256 into docs/SOURCES.md, "Maryland traffic counts (MDOT SHA)", and
+   fixtures/datasets/README.md in the release's notes commit.
+
+2. **Install it with the other two counts**, by adding a third pair to step 6's
+   command of "First rebuild on a fresh host" (the installer rewrites
+   `volume.json` from every `--volume` it is given, so all three go in one run):
+
+   ```sh
+       --volume /data/reference/inputs/mdot-sha-aadt/mdot-sha-aadt.geojson \
+           --volume-source mdot-sha
+   ```
+
+   No `--volume-year`: the installer reads the year from the layer's fields (the
+   newest `AADT_<year>` plus one; 2024 on the 2026-10-11 layer) and prints the
+   rows it left out (`LOC_ERROR` set, or no count). A typed `--volume-year` wins.
+
+3. **After the rebuild**, read the log and check MD 185:
+
+   | Line | What to look for |
+   |---|---|
+   | `.../mdot-sha-aadt.geojson: N count lines from mdot-sha (state)` (installer) | some thousands for the box |
+   | `MDOT SHA counts shared with N opposite carriageways` | in the hundreds: each divided Maryland road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; Maryland's counts only) |
+   | `volume conflation: N matched, ...` | N up by the Maryland roads against the last rebuild |
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT osm_way_id, stress_tier, volume_source, volume_aadt, volume_year
+        FROM live.segment
+       WHERE geometry && ST_MakeEnvelope(-77.0800, 38.9675, -77.0740, 38.9880, 4326)
+         AND road_speed_mph IS NOT NULL
+       ORDER BY ST_YMin(geometry);"
+   ```
+
+   The box is MD 185 from the DC line to MD 410, and the cross streets in it come
+   back too: the Connecticut Avenue rows are the ones at 30 mph. Both carriageways
+   should be there, `mdot-sha`, with 39,141 (2024) or that year's figure, and
+   `stress_tier` 4, as the same road is in the District at 30 mph. A row at 3
+   there means the count did not reach it: check the line above, then
+   `named-corridors.md` and `override-rematch.md` for a row holding the way.
+   The before/after tier count for Maryland goes in the release notes: every
+   tier a Maryland count moved is a road that was graded without one.
 
 ## DC pavement condition (DC-PCI)
 
@@ -5597,6 +5669,58 @@ docs/SOURCES.md, "Capital Bikeshare".
 `POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
 OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
 address, and reads the shared copy, never the feeds directly.
+
+## Work zones
+
+Live work zones (FOLLOWUP-WORKZONES, OWNER-DECISIONS 341-349). The worker's
+`refresh_work_zones` task reads the state DOTs' WZDx feeds every five minutes (`core.workzones`)
+and keeps the zones in one row of `bikeshare_feed_cache` under the key `workzones`, replaced in
+place; nothing is kept as history, and the row is excluded from the nightly dump with the rest of
+that table. The planner reads it at most once a minute a process. Nothing needs the rebuild.
+
+- **Maryland** is read as soon as the release is up: no key.
+- **Virginia** needs the owner's SmarterRoads key. Put it in `.env` as `SMARTERROADS_TOKEN=<key>`
+  (never in a commit, never printed), then `docker compose up -d worker` (not `restart`: compose
+  reads `.env` when it creates the container). Only `worker` holds it, and it is never logged or
+  written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
+- What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
+  left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
+  lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
+  mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
+  it costs no more than the penalties. Each zone the answer still runs along gets a heads-up in
+  the description, with its source, and the disclaimer.
+- Labels: a feed last read 20 minutes to 2 hours ago is still used and its heads-ups say so; older,
+  or never read well, its zones are dropped and the description says "Work zones could not be
+  checked for this route: ... not available". Before the first refresh is stored nothing is said
+  at all (`work_zones` is null).
+
+**After the release is deployed** (no rebuild needed):
+
+1. After five minutes, the run row:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT started_at, succeeded, detail FROM scheduled_run WHERE task = 'refresh_work_zones' ORDER BY started_at DESC LIMIT 3;"
+   ```
+
+   Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
+   is in). `md failed` means the feed did not answer three tries; the worker log says why, never
+   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   parser was written against the WZDx specification without a live download, so check the first
+   real reading here.
+2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
+   shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
+   zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
+3. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
+   minutes.
+
+**Dropping Virginia** needs no code change: empty `SMARTERROADS_TOKEN` and `docker compose up -d
+worker`; the next refresh removes Virginia's zones. There is no switch for Maryland: turning work
+zones off altogether is a code change (remove the `refresh_work_zones` task), then
+`DELETE FROM bikeshare_feed_cache WHERE key = 'workzones';`, after which plans say nothing about
+work zones.
 
 ## Rebuilding on the cloud box
 

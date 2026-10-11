@@ -1,0 +1,109 @@
+{
+  "feed_info": {
+    "publisher": "Hand-made fixture in the shape of a WZDx v4.1 WorkZoneFeed (not agency data)",
+    "version": "4.1",
+    "update_date": "2026-10-11T12:00:00Z",
+    "data_sources": [{"data_source_id": "fixture", "organization_name": "fixture"}]
+  },
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "wz-closed-bikes",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "event_type": "work-zone",
+          "data_source_id": "fixture",
+          "road_names": ["Example Road"],
+          "direction": "northbound",
+          "description": "Bridge deck replacement. Road and bike lane closed."
+        },
+        "start_date": "2026-10-01T00:00:00Z",
+        "end_date": "2026-12-01T00:00:00Z",
+        "vehicle_impact": "all-lanes-closed",
+        "lanes": [
+          {"order": 1, "type": "general", "status": "closed"},
+          {"order": 2, "type": "bike-lane", "status": "closed"}
+        ]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[-77.0300, 38.9500], [-77.0300, 38.9530]]}
+    },
+    {
+      "id": "wz-closed-unknown",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "event_type": "work-zone",
+          "data_source_id": "fixture",
+          "road_names": ["Sample Avenue"],
+          "direction": "eastbound",
+          "description": "Road closed for utility work."
+        },
+        "start_date": "2026-10-01T00:00:00Z",
+        "end_date": "2026-12-01T00:00:00Z",
+        "vehicle_impact": "all-lanes-closed",
+        "lanes": [{"order": 1, "type": "general", "status": "closed"}]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[-77.0400, 38.9600], [-77.0360, 38.9600]]}
+    },
+    {
+      "id": "wz-shoulder",
+      "type": "Feature",
+      "properties": {
+        "core_details": {"event_type": "work-zone", "data_source_id": "fixture", "road_names": ["MD 999"], "direction": "southbound"},
+        "start_date": "2026-10-01T00:00:00Z",
+        "end_date": null,
+        "vehicle_impact": "all-lanes-open",
+        "lanes": [
+          {"order": 1, "type": "general", "status": "open"},
+          {"order": 2, "type": "shoulder", "status": "closed"}
+        ]
+      },
+      "geometry": {"type": "MultiPoint", "coordinates": [[-77.0500, 38.9700], [-77.0500, 38.9730]]}
+    },
+    {
+      "id": "wz-lane",
+      "type": "Feature",
+      "properties": {
+        "core_details": {"event_type": "work-zone", "data_source_id": "fixture", "road_names": ["Test Street"], "direction": "unknown"},
+        "start_date": "2026-10-10T13:00:00Z",
+        "end_date": "2026-10-10T21:00:00Z",
+        "vehicle_impact": "some-lanes-closed",
+        "lanes": [
+          {"order": 1, "type": "general", "status": "closed"},
+          {"order": 2, "type": "general", "status": "open"}
+        ]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[-77.0600, 38.9800], [-77.0600, 38.9830]]}
+    },
+    {
+      "id": "wz-flagger",
+      "type": "Feature",
+      "properties": {
+        "core_details": {"event_type": "work-zone", "data_source_id": "fixture", "road_names": ["Country Lane"]},
+        "start_date": "2026-10-01T00:00:00Z",
+        "end_date": "2026-11-01T00:00:00Z",
+        "vehicle_impact": "alternating-one-way"
+      },
+      "geometry": {"type": "LineString", "coordinates": [[-77.0700, 38.9900], [-77.0700, 38.9930]]}
+    },
+    {
+      "id": "detour-1",
+      "type": "Feature",
+      "properties": {
+        "core_details": {"event_type": "detour", "data_source_id": "fixture", "road_names": ["Detour Road"]},
+        "start_date": "2026-10-01T00:00:00Z"
+      },
+      "geometry": {"type": "LineString", "coordinates": [[-77.0800, 38.9900], [-77.0800, 38.9930]]}
+    },
+    {
+      "id": "no-line",
+      "type": "Feature",
+      "properties": {
+        "core_details": {"event_type": "work-zone", "data_source_id": "fixture", "road_names": ["Nowhere"]},
+        "vehicle_impact": "all-lanes-closed"
+      },
+      "geometry": {"type": "Point", "coordinates": [-77.09, 38.99]}
+    }
+  ]
+}
