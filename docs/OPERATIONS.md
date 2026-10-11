@@ -460,7 +460,9 @@ each time). After the swap:
 3. A night ride in town halves its junction costs. Plan the same urban route with
    `when` `weekday_offpeak` and `night`: the night answer's red and orange
    junctions are the same or fewer, and none is added. The same route in a rural
-   area changes by x0.85 only.
+   area changes by x0.85 only. Night also opens the ways whose timed closure
+   covers it (`car_free_when`), so if the night route takes a different line,
+   compare the junctions on the stretch the two routes share.
 4. `car_free_when` gains `night` (469c): compare the counts with the previous
    build, as the paragraph above says:
 
