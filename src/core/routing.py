@@ -1638,6 +1638,7 @@ def _crossing_out(major) -> dict:
         "corkers_needed": major.corkers_needed,
         "oneway": getattr(major, "oneway", None),
         "divided": getattr(major, "divided", False),
+        "approach_lanes": getattr(major, "approach_lanes", None),
     }
 
 
