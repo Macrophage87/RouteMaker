@@ -623,7 +623,10 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   of a signalized junction can be priced as signalized, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
-  name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
+  name in OSM. From the Track B rebuild a signalized trail crossing (a HAWK or
+  a mid-block crossing signal, FOLLOWUP-SIGNAL-DERIVE) carries the router's
+  signal flag on the road, so a side street within 100 ft (30 m) of one can
+  take it the same way. For a rider arriving on a road, a driveway, a parking aisle or
   a drive-through, a signal at a node up an arm that a road of another name
   joins, or one facing away from the junction, is not taken (review r3; gate
   1 for driveways and parking aisles, which took it until then); nor is a
