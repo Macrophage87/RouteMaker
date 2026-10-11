@@ -1285,6 +1285,43 @@ def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> N
     assert done.returncode == 2 and "inside" in done.stderr, done.stderr
 
 
+@needs_sh
+def test_ship_data_refuses_a_contour_builds_leftovers_in_the_basemap(tmp_path: Path) -> None:
+    """The basemap directory is shipped whole, so scripts/build_contours.py's work directory
+    (kept, or left by a failed run) or its half-written archive must not ride along."""
+    live = tmp_path / "live"
+    data = tmp_path / "data"
+    live.mkdir()
+    (data / "basemap").mkdir(parents=True)
+    (data / "basemap" / "region.pmtiles").write_bytes(b"PMTiles")
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    args = [
+        "bash",
+        SHIP,
+        "--live-dir",
+        str(live),
+        "--stage",
+        str(tmp_path / "stage"),
+        "--no-transfer",
+    ]
+    args += [
+        arg
+        for part in ("db", "frontend", "tiles", "elevation", "photon")
+        for arg in ("--without", part)
+    ]
+    for leftover in (".contours-work", ".contours.pmtiles.part"):
+        path = data / "basemap" / leftover
+        path.mkdir() if leftover.endswith("work") else path.write_bytes(b"x")
+        done = run(*args)
+        assert done.returncode == 2 and f"basemap/{leftover} is left from" in done.stderr, (
+            done.stderr
+        )
+        path.rmdir() if path.is_dir() else path.unlink()
+    done = run(*args)
+    assert "left from scripts/build_contours.py" not in done.stderr, done.stderr
+
+
 def _bundle(tmp_path: Path, sha: str | None = None) -> Path:
     """A minimal bundle: one file, its SHA256SUMS and a manifest with no parts to install."""
     bundle = tmp_path / "incoming"
