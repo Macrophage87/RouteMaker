@@ -14,7 +14,7 @@ import corrections from "../rail-data/metro-line-corrections.json?raw";
 import wmataSlugs from "../rail-data/wmata-station-slugs.json?raw";
 import type { LonLat } from "./geo.ts";
 import { loadRailStations } from "./railFixtures.ts";
-import { stationIndex, type Station } from "./railStations.ts";
+import { bikeEntrance, stationForPlace, stationIndex, type Station } from "./railStations.ts";
 import { parseStationSlugs, type StationSlugs } from "./stationLinks.ts";
 
 export { PENN_COLOUR } from "./railStations.ts";
@@ -41,6 +41,16 @@ export const stationById: (id: string) => Station | undefined = index.station;
  * map's own station tap does. Null for an id it does not know.
  */
 export const stationBikeEntrance: (stationId: string) => LonLat | null = index.bikeEntrance;
+
+/**
+ * For the place search (geocode.ts, placeFromSearch): a result that is one of
+ * the bundled stations goes to its bike entrance, keeping the name it was
+ * found by; null for any other place.
+ */
+export function stationEntranceForPlace(place: Parameters<typeof stationForPlace>[1]): LonLat | null {
+  const station = stationForPlace(RAIL_STATIONS, place);
+  return station ? bikeEntrance(station).point : null;
+}
 
 /**
  * The WMATA station page slugs (OWNER-DECISIONS 441b; lib/stationLinks.ts), checked once

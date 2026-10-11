@@ -16,7 +16,9 @@
  * make the file differ run to run), fixed coordinate precision and a fixed
  * attribute order, so the same route always gives the same bytes. The
  * OpenStreetMap credit sits in metadata/copyright with no year (PLAN.md:42)
- * and the route's full attribution in metadata/desc.
+ * and the route's full attribution in metadata/desc. Track points carry
+ * <ele> from the route's elevation profile where it has one (gpxText.ts,
+ * elevationsAlong), to a tenth of a metre.
  */
 import type { LonLat } from "./geo.ts";
 import { LOOP_START_NAME } from "./loop.ts";
@@ -411,6 +413,12 @@ export interface GpxExport {
   loop?: boolean;
   /** The route line. */
   geometry: readonly LonLat[];
+  /**
+   * Metres above sea level at each vertex of `geometry`, index for index, from
+   * the route's elevation profile; null (or the array absent) where it has none,
+   * and that trkpt is written without <ele>.
+   */
+  elevations?: readonly (number | null)[];
 }
 
 function escapeXml(text: string): string {
@@ -479,7 +487,15 @@ export function writeGpx(input: GpxExport): string {
   lines.push(`    <desc>${escapeXml(input.description)}</desc>`);
   lines.push("    <type>cycling</type>");
   lines.push("    <trkseg>");
-  for (const p of input.geometry) lines.push(`      <trkpt ${position(p)}/>`);
+  input.geometry.forEach((p, index) => {
+    const ele = input.elevations?.[index];
+    // GPX 1.1 wptType: ele is the first child, in metres (https://www.topografix.com/GPX/1/1/, read 2026-10-11).
+    if (typeof ele === "number" && Number.isFinite(ele)) {
+      lines.push(`      <trkpt ${position(p)}><ele>${ele.toFixed(1)}</ele></trkpt>`);
+    } else {
+      lines.push(`      <trkpt ${position(p)}/>`);
+    }
+  });
   lines.push("    </trkseg>");
   lines.push("  </trk>");
   lines.push("</gpx>");

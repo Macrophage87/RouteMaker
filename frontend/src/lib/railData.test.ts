@@ -33,3 +33,12 @@ test("the shipped stations carry the line corrections, OSM's elevators and the b
   assert.equal(data.stationById(metroCenter.id), metroCenter);
   assert.equal(data.stationBikeEntrance("nope"), null);
 });
+
+test("the search's station lookup puts a shipped station at its bike entrance", async () => {
+  const data = await import("./railData.ts");
+  const metroCenter = data.RAIL_STATIONS.find((s) => s.name === "Metro Center")!;
+  const [lon, lat] = metroCenter.point;
+  const entrance = data.stationEntranceForPlace({ lon, lat, osm_key: "railway", osm_value: "station" });
+  assert.deepEqual(entrance, data.stationBikeEntrance(metroCenter.id));
+  assert.equal(data.stationEntranceForPlace({ lon, lat, osm_key: "amenity", osm_value: "cafe" }), null);
+});

@@ -4,6 +4,7 @@ import type { LonLat } from "./geo.ts";
 import type { ImportedPlan } from "./gpxPlan.ts";
 import {
   FIDELITY_WARN_BELOW,
+  elevationsAlong,
   exportFileName,
   exportName,
   exportOf,
@@ -142,4 +143,42 @@ test("an opened file is described: its name, its length, then one sentence per n
   const unnamed = importSentences({ ...PLAN, name: undefined, notes: [] });
   assert.equal(unnamed.length, 1);
   assert.doesNotMatch(unnamed[0], /undefined/);
+});
+
+test("parts left out for lying far away are said, with the gap in miles then kilometres", () => {
+  const [, one] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 1 }] });
+  assert.equal(one, "The plan follows its longest part; one other part lies more than 0.5 mi (0.8 km) from it and was left out.");
+  const [, two] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 2 }] });
+  assert.match(two, /; 2 other parts lie more than 0\.5 mi \(0\.8 km\) from it and were left out\.$/);
+});
+
+test("elevations along the line are read from the profile by distance, scaled to the profile's length", () => {
+  // Three points due east, about 1 km apart at 38.9 N.
+  const step = 1000 / (111_195 * Math.cos((38.9 * Math.PI) / 180));
+  const line: LonLat[] = [0, 1, 2].map((i) => [-77 + i * step, 38.9]);
+  // The router measured 2,100 m; the elevation climbs evenly from 10 m to 31 m.
+  const ele = elevationsAlong(line, { m: [0, 1050, 2100], elevation_m: [10, 20.5, 31] });
+  assert.equal(ele.length, 3);
+  assert.equal(ele[0], 10);
+  assert.ok(Math.abs((ele[1] ?? 0) - 20.5) < 0.05, String(ele[1]));
+  assert.ok(Math.abs((ele[2] ?? 0) - 31) < 1e-6, String(ele[2]));
+});
+
+test("elevations are null across a gap in the profile, and all null without one", () => {
+  const line: LonLat[] = [[-77, 38.9], [-76.99, 38.9], [-76.98, 38.9]];
+  // A leg with no elevation: a null at each end of it.
+  const gap = elevationsAlong(line, { m: [0, 400, 1000, 1600], elevation_m: [5, null, null, 9] });
+  assert.equal(gap[0], 5);
+  assert.equal(gap[1], null);
+  assert.equal(gap[2], 9);
+  assert.deepEqual(elevationsAlong(line, null), [null, null, null]);
+  assert.deepEqual(elevationsAlong(line, { m: [0, 1], elevation_m: [null, null] }), [null, null, null]);
+});
+
+test("the export carries the profile's elevations for the track, and none for a route without a profile", () => {
+  const line = ROUTE.geometry.coordinates;
+  const profile = { interval_m: 30, m: [0, 3600], elevation_m: [10, 14], grade_pct: [null, null], climbs: [] };
+  assert.deepEqual(exportOf({ ...ROUTE, profile }, line).elevations, [10, 14]);
+  assert.equal(exportOf(ROUTE, line).elevations, undefined);
+  assert.equal(exportOf({ ...ROUTE, profile: null }, line).elevations, undefined);
 });

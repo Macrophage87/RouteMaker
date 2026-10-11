@@ -24,8 +24,8 @@ export interface Place {
   /**
    * The OSM element and tag behind the result, when the API knows them: what
    * the list shows as the place's type (`placeType`), and what a station
-   * result is matched by to the Metro lane's station records
-   * (`stationBikeEntrance`, wip/metro), which is not on this branch yet.
+   * result is matched by to the bundled rail stations (railStations.ts,
+   * stationForPlace), so it goes to the station's bike entrance.
    */
   osm_type?: "N" | "W" | "R" | null;
   osm_id?: number | null;
@@ -449,13 +449,18 @@ export function nameSender(
  * Where a picked place goes, or null if it is outside the map's area (the
  * API fences results to the box, so that is a result to refuse, not trust).
  * The point keeps the name it was found by: `remember` is the namer's.
+ * `entrance` moves a station to its bike entrance (railData.ts,
+ * stationEntranceForPlace), where a tap on the station would put it; the
+ * point is still named for the station, not the entrance's street.
  */
 export function placeFromSearch(
   found: Place,
   remember: (point: LonLat, name: string, label: string) => void,
+  entrance?: (found: Place) => LonLat | null,
 ): LonLat | null {
-  const point: LonLat = [found.lon, found.lat];
-  if (!insideCoverage(point)) return null;
+  if (!insideCoverage([found.lon, found.lat])) return null;
+  const moved = entrance?.(found) ?? null;
+  const point: LonLat = moved && insideCoverage(moved) ? moved : [found.lon, found.lat];
   remember(point, found.name, found.label);
   return point;
 }
@@ -505,9 +510,11 @@ export function pickIntoPlan(
     remember: (point: LonLat, name: string, label: string) => void;
     /** "Make it a loop" is on (OWNER-DECISIONS 374). */
     loop?: boolean;
+    /** A station's bike entrance, for a result that is a station (placeFromSearch). */
+    entrance?: (found: Place) => LonLat | null;
   },
 ): LonLat | null {
-  const point = placeFromSearch(found, plan.remember);
+  const point = placeFromSearch(found, plan.remember, plan.entrance);
   if (point === null) return null;
   plan.commit(applyPlace(plan.current(), point, choice, plan.loop === true));
   return point;
