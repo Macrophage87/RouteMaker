@@ -17,9 +17,14 @@ and, given the inputs, produces the other two:
         --extract /srv/routemaker/data/extracts/source.osm.pbf \\
         --urban-areas tl_2024_us_uac20.geojson \\
         --volume vdot-aadt-2024.geojson --volume-source vdot --volume-year 2024 \\
-        --volume ddot-aadt-2024.geojson --volume-source ddot --volume-year 2024
+            --aadt-property ADT \\
+        --volume ddot-aadt-2024.geojson --volume-source ddot --volume-year 2024 \\
+            --aadt-property AADT
 
-`--volume` and its two companions repeat, and the three lists are matched up in
+(VDOT's export names its count `ADT`; without `--aadt-property ADT` it installs
+0 Virginia count lines and still exits 0. docs/OPERATIONS.md, step 6.)
+
+`--volume` and its companions repeat, and the lists are matched up in
 order. The region has three count-publishing agencies and the conflation step
 exists precisely to arbitrate between them on a road they both cover, so a
 single-valued option could not express the input that makes the arbitration
