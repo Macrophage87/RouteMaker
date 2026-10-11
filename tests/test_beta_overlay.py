@@ -2033,7 +2033,7 @@ def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings(
     assert "setval(pg_get_serial_sequence(" in text
     # the update path replaces the junction ratings in its one transaction, after letting the
     # beta's own suggestions go of them (the foreign key would refuse the commit)
-    assert "DELETE FROM public.junction_override;" in text
+    assert "printf 'DELETE FROM public.%s;\\n' \"$t\"" in text
     assert "UPDATE public.junction_suggestion SET override_id = NULL" in text
     assert "UPDATE public.junction_suggestion SET avoid_id = NULL" in text
     assert "for t in junction_override avoid_junction; do" in text
