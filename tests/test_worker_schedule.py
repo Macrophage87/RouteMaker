@@ -2179,6 +2179,8 @@ def test_every_alert_window_is_pinned() -> None:
         "membership_sweep": 12 * 60 * 60,
         "degraded_guild_sweep": 30 * 60,
         "worker_heartbeat": 10 * 60,
+        # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
+        "refresh_work_zones": 30 * 60,
     }
 
 
