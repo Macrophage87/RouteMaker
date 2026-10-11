@@ -28,13 +28,13 @@ test("DC's published keywords: POTHOLE and STREETLIGHT; anything else has none (
   );
 });
 
-test("the owner's list (2026-10-11): Pothole first, then a downed tree, a vehicle in a bike lane, a blocked road or bikeway; Streetlight out and Something else kept", () => {
+test("the owner's list (2026-10-11): Pothole first, then a downed tree, a vehicle in a bike lane, a roadway or bikeway obstructed, in the owner's words; Streetlight out and Something else kept", () => {
   assert.deepEqual(
     REPORT_KINDS.map((k) => k.label),
-    ["Pothole", "Downed tree", "Vehicle parked in bike lane", "Road or bikeway blocked", "Streetlight out", "Something else"],
+    ["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"],
   );
   assert.equal(REPORT_KINDS[0].kind, "pothole", "Pothole is first, the default");
-  for (const k of REPORT_KINDS) assert.ok(k.label.length <= 28, `short enough for a phone: ${k.label}`);
+  for (const k of REPORT_KINDS) assert.ok(k.label.length <= 30, `short enough for a phone: ${k.label}`);
   assert.equal(new Set(REPORT_KINDS.map((k) => k.kind)).size, REPORT_KINDS.length);
 });
 
@@ -58,7 +58,9 @@ test("the hint beside DC 311 online names its request where one is known, and no
   assert.equal(onlineHint("pothole"), null);
   assert.equal(onlineHint("streetlight"), null);
   assert.match(onlineHint("tree") ?? "", /Tree Inspection and Tree Removal/);
-  assert.match(onlineHint("bikeLane") ?? "", /Parking Enforcement/);
+  assert.match(onlineHint("bikeLane") ?? "", /parking requests include Parking Enforcement/);
+  // No source says a vehicle in a bike lane is a Parking Enforcement request, so the hint does not say so.
+  assert.doesNotMatch(onlineHint("bikeLane") ?? "", /is a Parking Enforcement request/);
   for (const kind of ["tree", "bikeLane", "obstruction", "other"] as const) {
     assert.ok(onlineHint(kind)?.startsWith(REPORT_OTHER_HINT), kind);
   }

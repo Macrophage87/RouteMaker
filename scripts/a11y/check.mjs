@@ -2465,17 +2465,26 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
   await sleep(300);
   const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
-  // A downed tree has no DC keyword: DC 311 online, with the problem named first and its request in the hint.
-  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Downed tree').querySelector('input').click(); true");
-  await sleep(300);
-  const tree = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent, hint: [...document.querySelectorAll('.ride-report .hint')].some((h) => h.textContent.includes('Tree Inspection')) })");
+  // The owner's three new kinds have no DC keyword: DC 311 online, with the problem named first and the hint
+  // naming DC's request only where a source does (none for an obstruction).
+  const newKinds = {};
+  for (const label of ["Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed"]) {
+    await p.eval(`[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === ${JSON.stringify(label)}).querySelector('input').click(); true`);
+    await sleep(300);
+    newKinds[label] = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent, hint: [...document.querySelectorAll('.ride-report .hint')].map((h) => h.textContent).find((t) => t.startsWith(\"DC's text service\")) })");
+  }
+  const at = "Location: near Q Street Northwest and R Street Northwest, Washington, DC.";
+  const online = (k) => JSON.stringify(k?.links) === JSON.stringify(["https://311.dc.gov/"]);
+  const tree = newKinds["Downed tree"], lane = newKinds["Vehicle parked in a bike lane"], blocked = newKinds["Roadway or bikeway obstructed"];
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Pothole').querySelector('input').click(); true");
   await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
-  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else, or a downed tree (named first, its request in the hint), goes to DC 311 online",
+  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else, a downed tree, a vehicle in a bike lane or an obstructed roadway or bikeway (each named first, DC's request in the hint only where sourced) goes to DC 311 online",
     sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
       JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." &&
-      JSON.stringify(tree.links) === JSON.stringify(["https://311.dc.gov/"]) && tree.text === "The report: Downed tree. Location: near Q Street Northwest and R Street Northwest, Washington, DC." && tree.hint,
-    JSON.stringify({ sms, other, tree }));
+      online(tree) && tree.text === `The report: Downed tree. ${at}` && /Tree Inspection and Tree Removal/.test(tree.hint ?? "") &&
+      online(lane) && lane.text === `The report: Vehicle parked in a bike lane. ${at}` && /Parking Enforcement/.test(lane.hint ?? "") &&
+      online(blocked) && blocked.text === `The report: Roadway or bikeway obstructed. ${at}` && !!blocked.hint && !/Enforcement|Inspection|Removal|Repair/.test(blocked.hint),
+    JSON.stringify({ sms, other, newKinds }));
   await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
 
   // A pan by hand stops following; Re-centre (the C key) follows again.

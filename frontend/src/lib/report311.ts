@@ -19,7 +19,8 @@
  * DC 311 Online's request names (DC GIS, "SR_30days_Open" service requests of the last 30 days,
  * https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/SR_30days_Open/MapServer/0, distinct
  * SERVICECODEDESCRIPTION values, read 2026-10-11) include "Parking Enforcement", "Tree Inspection"
- * and "Tree Removal". DPW places its bike lane enforcement officers partly by 311 requests (dpw.dc.gov/node/1442566,
+ * and "Tree Removal". Neither source says which request a vehicle in a bike lane is, so the hint
+ * only names Parking Enforcement as one of DC's parking requests, not as the one to pick. DPW places its bike lane enforcement officers partly by 311 requests (dpw.dc.gov/node/1442566,
  * 2019-11-12, read 2026-10-11). No request named for an obstructed roadway or bikeway was found there,
  * and 311.dc.gov itself could not be read from here (its robots.txt refuses fetches), so that hint
  * names none.
@@ -38,7 +39,7 @@ export const DC_311_ONLINE = "https://311.dc.gov/";
 export type ReportKind = "pothole" | "tree" | "bikeLane" | "obstruction" | "streetlight" | "other";
 
 /**
- * What the rider picks (short, for a phone), DC's keyword for it (null: no keyword, 311 Online), the
+ * What the rider picks (the owner's words, 2026-10-11; "or" for the slash, which a screen reader reads aloud), DC's keyword for it (null: no keyword, 311 Online), the
  * problem as the words for 311 Online name it where there is no keyword (null: the keyword says it, or
  * the rider's note does), and a line on DC 311 Online's request for it (null: none to name).
  */
@@ -53,14 +54,14 @@ export const REPORT_KINDS: { kind: ReportKind; label: string; keyword: string | 
   },
   {
     kind: "bikeLane",
-    label: "Vehicle parked in bike lane",
+    label: "Vehicle parked in a bike lane",
     keyword: null,
     problem: "Vehicle parked in a bike lane",
-    service: "In DC 311 online, a vehicle in a bike lane is a Parking Enforcement request.",
+    service: "DC 311 online's parking requests include Parking Enforcement.",
   },
   {
     kind: "obstruction",
-    label: "Road or bikeway blocked",
+    label: "Roadway or bikeway obstructed",
     keyword: null,
     problem: "Roadway or bikeway obstructed",
     service: "Pick the DC 311 online request that fits best; the report says what it is.",

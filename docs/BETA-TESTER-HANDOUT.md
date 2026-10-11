@@ -142,7 +142,7 @@ You stay responsible for riding safely; the route can be wrong.
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
-  first), a downed tree, a vehicle parked in a bike lane, a road or bikeway blocked, a
+  first), a downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a
   streetlight out or anything else, with the nearest junction on your route as the place. On a
   phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; the
   others go to DC 311 online, with the problem named in the report. There is always a link to
