@@ -1127,6 +1127,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
   bare digest loads on the server with no name, and the agent's lookup by digest then does not find it.
 
   ```sh
+  # at home, with RM_SSH_HOST set to your alias for the server
   N=docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
   docker tag "$N" docker.io/library/node:rm-pinned-363e1587
   docker save docker.io/library/node:rm-pinned-363e1587 | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'
