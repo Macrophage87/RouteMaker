@@ -4729,21 +4729,34 @@ Cat 3 over 16,000, Cat 2 over 32,000, Cat 1 over 64,000, HC over 80,000. A climb
 ("Uncategorized is not a hill"). It is scored on net gain: a dip ends it only past
 `DIP_SHARE` (20%) of the gain so far, never under 33 ft (10 m) nor past 165 ft (50 m); a stretch
 with no new high point ends it only past `BREAK_SHARE` (25%) of its length so far, never under
-0.25 mi (400 m) nor past 1 mi (1,600 m). Ends rising at under 1% over 1,000 ft (300 m) are
+0.25 mi (400 m) nor past 1 mi (1,600 m); the climb back up out of a dip is climbing, not break,
+so it is not counted, but the whole stretch without a new high point may not pass twice that
+allowance. Ends rising at under 1% over 1,000 ft (300 m) are
 trimmed. The route cost's own reading (`routemaker.climbs.runs`, the 3 m dip and 150 m flat
 rule) is unchanged.
 
 **Writing the file**, after a rebuild has promoted (it reads the live table and
-`<DATA_ROOT>/elevation`, which the rebuild container has), from the repository on the host:
+`<DATA_ROOT>/elevation`, which the rebuild container has, and needs no network: the 3DEP tiles are
+the ones the rebuild already fetched), from the repository on the host. The `rebuild` container must
+be running an image with this release in it (`manage.py build_climbs` is new). It is a heavy job
+(measured on a synthetic 1.4 million-segment table, more rows than the live table's 1.36 million:
+about 3.2 GB peak and a minute or two; the `rebuild` service's 8 GB limit holds it), so it goes
+through the host's heavy-job lock with at least 3,000 MB free, never beside a rebuild, and in the
+running container with `exec`, not `run` (a `run` starts a second rebuild container and, without
+`--no-deps`, the `migrate` service):
 
-    docker compose run --rm rebuild ./manage.py build_climbs
+    free -m    # "available" at least 3,000 MB; else stop
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
 
 It prints `climbs: read N segments from live.segment`, then `climbs: M written to
 /data/rebuild/climbs.json (HC 0, 1 0, 2 0, 3 41, 4 244, 5 2,306)` (the owner's 2026-10-10 scan
 of the current coverage, with the old 3 m dip rule, found those counts; the looser break rule
 merges some climbs, so expect somewhat fewer Cat 5s and a few more Cat 3s and 4s). It only reads
-and is safe to re-run. Options: `--out`, `--elevation-dir`, `--schema` (default the live schema).
-Then:
+and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
+elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
+`N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the
+climbs there are left out). Options: `--out`, `--elevation-dir`, `--schema` (default the live
+schema). Then:
 
     cp <DATA_ROOT>/rebuild/climbs.json frontend/src/climb-data/climbs.json
     git add frontend/src/climb-data/climbs.json   # and update the counts in climb-data/README.md

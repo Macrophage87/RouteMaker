@@ -153,8 +153,9 @@ slices (2-6) wait for bikeshare.
    - Status: built on `claude/v0-5-0-climbs`; the data waits for the build host
      (docs/OPERATIONS.md, "The Climbs layer"). `routemaker.climb_categories` finds and categorises
      climbs (its own break rule: a dip ends a climb past 20% of the gain so far, at least 33 ft
-     (10 m) and at most 165 ft (50 m); a stretch with no new high point past 25% of the length so
-     far, at least 0.25 mi (400 m) and at most 1 mi (1,600 m); gentle ends trimmed); the route
+     (10 m) and at most 165 ft (50 m); a flat, or the way down into a dip, past 25% of the length
+     so far, at least 0.25 mi (400 m) and at most 1 mi (1,600 m), the climb back out of a dip not
+     counted but the whole stretch capped at twice that; gentle ends trimmed); the route
      cost's 3 m rule in `routemaker.climbs` is unchanged. `pipeline.climb_layer` joins the live
      table's routable ways into strokes, samples the 3DEP tiles every 98 ft (30 m), reads both
      ways, drops a climb against a one-way, and writes the file; `manage.py build_climbs` runs it.

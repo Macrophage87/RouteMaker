@@ -76,13 +76,22 @@ DIAMOND_FROM_PCT = 8.0
 DIP_MIN_M = 10.0
 DIP_SHARE = 0.20
 DIP_MAX_M = 50.0
-# And a stretch without a new high point (a flat, or a dip and the climb back to where it
-# was) ends the climb when it runs longer than this share of the climb so far, never under
-# BREAK_MIN_M nor over BREAK_MAX_M: a quarter mile (400 m) of flat is a cross street or a
-# bench; past a mile (1,600 m) the ride has moved on.
+# And the break itself (the flat, or the way down into a dip) ends the climb when it runs
+# longer than this share of the climb so far, never under BREAK_MIN_M nor over BREAK_MAX_M:
+# a quarter mile (400 m) of flat is a cross street or a bench; past a mile (1,600 m) the ride
+# has moved on. The climb back up out of a dip is climbing, not break, so it is not counted
+# (review of slice 5: counting it split a 2,000 ft climb at a 130 ft dip whose descent and
+# regain together passed a mile, against the owner's "if you climb 2000 feet net, but there's
+# a short dip in the middle, it's still a 2000 foot climb"). The break runs to the last point
+# within REGAIN_NOISE_M of the lowest since the high point (`routemaker.climbs.DIP_M`, the
+# DEM's noise, so a noisy flat still counts as flat), and the whole stretch without a new
+# high point, regain included, may not pass BREAK_TOTAL_FACTOR times the allowance, so a
+# climb that levels off part-way back up still ends.
 BREAK_MIN_M = 400.0
 BREAK_SHARE = 0.25
 BREAK_MAX_M = 1_600.0
+REGAIN_NOISE_M = 3.0
+BREAK_TOTAL_FACTOR = 2.0
 
 # The ends are trimmed while the first (or last) TRIM_WINDOW_M of the climb rises at under
 # MIN_GRADE: long enough that the DEM's metre of noise is a third of a percent, short enough
@@ -204,14 +213,19 @@ def _candidates(points: Sequence[tuple[float, float]]) -> list[tuple[int, int]]:
     i = 0
     while i < n - 1:
         start = peak = i
+        # The lowest point since the high point, and how far along the break last sat near it.
+        low_e = points[i][1]
+        low_d = points[i][0]
         j = i + 1
         while j < n:
             d, e = points[j]
             if e > points[peak][1]:
                 peak = j
+                low_e, low_d = e, d
             elif peak == start and e <= points[start][1]:
                 # Still going down (or level) before any rise: the climb starts lower.
                 start = peak = j
+                low_e, low_d = e, d
             else:
                 gain = points[peak][1] - points[start][1]
                 length = points[peak][0] - points[start][0]
@@ -220,7 +234,13 @@ def _candidates(points: Sequence[tuple[float, float]]) -> list[tuple[int, int]]:
                     break
                 if points[peak][1] - e > _allowed_dip(gain):
                     break
-                if d - points[peak][0] > _allowed_break(length):
+                low_e = min(low_e, e)
+                if e <= low_e + REGAIN_NOISE_M:
+                    low_d = d
+                allowed = _allowed_break(length)
+                if low_d - points[peak][0] > allowed:
+                    break
+                if d - points[peak][0] > BREAK_TOTAL_FACTOR * allowed:
                     break
             j += 1
         if peak > start:

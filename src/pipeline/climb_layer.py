@@ -111,6 +111,16 @@ class HgtElevation:
             self._tiles[name] = data
         return self._tiles[name]
 
+    @property
+    def tiles_read(self) -> int:
+        """How many tiles have been read with ground in them (0: the directory gave nothing)."""
+        return sum(1 for data in self._tiles.values() if data is not None)
+
+    @property
+    def tiles_missing(self) -> list[str]:
+        """The tiles asked for that were missing or the wrong size, by name."""
+        return sorted(name.stem for name, data in self._tiles.items() if data is None)
+
     def at(self, lon: float, lat: float) -> float | None:
         name = tile_for(lon, lat)
         data = self._tile(name)
@@ -142,7 +152,7 @@ class HgtElevation:
 # --- The network ------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SegmentLine:
     """One segment of the network, as drawn: its line in the way's own direction."""
 
@@ -153,7 +163,7 @@ class SegmentLine:
     trail_name: str | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class Stroke:
     """Segments joined end to end: each part a segment index and whether it is walked along
     its own direction, and the stroke's vertices with the part each edge belongs to."""
@@ -268,7 +278,7 @@ def strokes(segments: Sequence[SegmentLine]) -> list[Stroke]:
 # --- Profiles ---------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(slots=True)
 class Sample:
     along_m: float
     lon: float

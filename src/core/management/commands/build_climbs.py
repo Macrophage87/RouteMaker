@@ -1,9 +1,10 @@
 """Write the Climbs map layer's file from the live table and the elevation tiles.
 
-Run on the build host in the rebuild container after a rebuild has promoted (it reads the
+Run on the build host in the running rebuild container after a rebuild has promoted, under the
+heavy-job lock with at least 3,000 MB free (about 3.2 GB peak; it reads the
 live segment table and `<DATA_ROOT>/elevation`, both of which that container has):
 
-    docker compose run --rm rebuild ./manage.py build_climbs
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
 
 It writes `<DATA_ROOT>/rebuild/climbs.json` (`/data/rebuild/climbs.json` inside the
 container) and prints the count per category; copy the file to
@@ -17,7 +18,7 @@ import time
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from pipeline import climb_layer
 
@@ -48,7 +49,23 @@ class Command(BaseCommand):
         started = time.monotonic()
         segments = climb_layer.read_segments(schema)
         self.stdout.write(f"climbs: read {len(segments):,} segments from {schema}.segment")
-        found = climb_layer.find_all(segments, climb_layer.HgtElevation(elevation_dir))
+        if not segments:
+            raise CommandError(f"no routable segments in {schema}.segment: nothing written")
+        ground = climb_layer.HgtElevation(elevation_dir)
+        found = climb_layer.find_all(segments, ground)
+        if ground.tiles_read == 0:
+            # A wrong --elevation-dir (or a flat directory skadi would not read either) reads as
+            # no ground anywhere; an empty file written over a good one would hide every climb.
+            raise CommandError(
+                f"no elevation tiles read under {elevation_dir} (expected e.g. N38/N38W077.hgt): "
+                "nothing written"
+            )
+        if ground.tiles_missing:
+            self.stderr.write(
+                "climbs: no ground (missing or wrong size) in "
+                + ", ".join(ground.tiles_missing)
+                + "; the climbs there are left out"
+            )
         doc = climb_layer.document(found)
         climb_layer.write(out, doc)
         counts = ", ".join(f"{name} {n:,}" for name, n in doc["counts"].items())

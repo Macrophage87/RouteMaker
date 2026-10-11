@@ -114,6 +114,34 @@ class TestFinding:
         assert climb.length_m == pytest.approx(6300)
         assert climb.category == "2"
 
+    def test_the_owners_2000_ft_climb_with_a_dip_is_one_2000_ft_climb(self):
+        # "If you climb 2000 feet net, but there's a short dip in the middle, it's still a 2000
+        # foot climb": 8 mi (12.9 km) at 4.7%, with a 130 ft (40 m) dip over 0.6 mi (1 km) at
+        # halfway and the 40 m back at 5% (800 m). The dip and the climb back together run
+        # 1.8 km, past the 1,600 m break, which used to split it; the climb back is climbing.
+        half = 6_437.0
+        net = 2_000 * 0.3048
+        up = (net + 40) / 2
+        profile = join(
+            ramp(half, up / half),
+            ramp(1_000, -0.04),
+            ramp(800, 0.05),
+            ramp(half - 800, (up - 40) / (half - 800)),
+        )
+        (climb,) = find_climbs(profile)
+        assert climb.gain_m == pytest.approx(net, abs=0.5)
+        assert climb.length_m == pytest.approx(2 * half + 1_000, abs=1)
+
+    def test_a_climb_that_levels_off_part_way_back_up_from_a_dip_ends_at_its_top(self):
+        # 1 km at 6%, down 30 m, back up 20 m, then 3 km level 10 m below the top, then up again:
+        # the climb back is not counted as break, but the whole stretch is capped.
+        profile = join(
+            ramp(1_000, 0.06), ramp(600, -0.05), ramp(400, 0.05), flat(3_000), ramp(1_000, 0.06)
+        )
+        climbs = find_climbs(profile)
+        assert len(climbs) == 2
+        assert climbs[0].end_m == pytest.approx(1_000, abs=31)
+
     def test_the_old_three_metre_rule_would_have_split_it(self):
         from routemaker.climbs import runs
 
