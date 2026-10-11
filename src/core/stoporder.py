@@ -191,7 +191,13 @@ def _leg_costs(
         for indices in _requests_of(chain, request_points):
             payload = {
                 "locations": [
-                    {"lon": request_points[i][0], "lat": request_points[i][1], "type": "break"}
+                    {
+                        "lon": request_points[i][0],
+                        "lat": request_points[i][1],
+                        "type": "break",
+                        # Matched as the plan's own /route matches them.
+                        "radius": routing.STOP_RADIUS_M,
+                    }
                     for i in indices
                 ],
                 "costing": "bicycle",

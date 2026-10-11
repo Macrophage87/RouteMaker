@@ -1358,10 +1358,47 @@ class TestRetrace:
         assert refine.retrace_m(read) == 0.0
 
     def test_doubling_back_is_measured_against_the_route_replaced(self) -> None:
-        own = doubling_back("o", spur=3)
+        own = refine.retrace_m(doubling_back("o", spur=3))
         assert not refine.doubles_back(doubling_back("a", spur=3), own)
         assert refine.doubles_back(doubling_back("a", spur=4), own)
-        assert refine.RETRACE_SLACK_M < 100.0
+
+    def test_a_few_metres_past_the_route_replaced_are_not_doubling_back(self) -> None:
+        # Within the slack: a junction's rounding, not a spur. 164 ft (50 m) exactly
+        # is still within it; 60 m is past it.
+        assert refine.RETRACE_SLACK_M == 50.0
+        for edge_m, refused in ((30.0, False), (50.0, False), (60.0, True)):
+            read = analysis("a", "1" * 2)
+            read.marks = [(0.0, -77.0, 38.9, edge_m), (edge_m, -77.0, 38.9, edge_m)]
+            assert refine.retrace_m(read) == pytest.approx(edge_m)
+            assert refine.doubles_back(read, 0.0) is refused
+
+    def test_short_edges_one_after_another_are_not_one_edge_twice(self) -> None:
+        # 25 m edges of one length along a straight way: their middles are 25 m apart.
+        read = analysis("a", "1" * 4)
+        read.marks = [(12.5 + 25.0 * i, -77.0 + 25.0 * i / 86_700.0, 38.9, 25.0) for i in range(16)]
+        assert refine.retrace_m(read) == 0.0
+
+    def test_a_parallel_way_a_few_metres_off_is_another_way(self) -> None:
+        # A sidepath 5 m beside the road, its edge as long: not the road ridden twice.
+        read = analysis("a", "1" * 4)
+        read.marks = [(50.0, -77.0, 38.9, 100.0), (150.0, -77.0, 38.9 + 5.0 / 110_540.0, 100.0)]
+        assert refine.retrace_m(read) == 0.0
+
+    def test_an_edge_traced_a_little_longer_the_way_back_is_the_same_edge(self) -> None:
+        read = analysis("a", "1" * 4)
+        read.marks = [(50.0, -77.0, 38.9, 100.0), (152.5, -77.0, 38.9, 105.0)]
+        assert refine.retrace_m(read) == pytest.approx(105.0)
+
+    def test_the_legs_the_reading_kept_say_where_a_stop_is(self) -> None:
+        # The marks' metres count an edge `pieces_of_trace` dropped, so they run past
+        # `via_m`: the way out to the stop is still leg 0 and the way back leg 1.
+        read = doubling_back("a", spur=8)
+        read.via_m = [1700.0]
+        read.marks = [(along, lon, lat, metres) for along, lon, lat, metres in refine._marks(read)]
+        read.mark_legs = [0] * 18 + [1] * (len(read.marks) - 18)
+        assert refine.retrace_m(read) == 0.0
+        read.mark_legs = [0] * len(read.marks)
+        assert refine.retrace_m(read) == pytest.approx(800.0)
 
 
 class TestTrailSeek:
@@ -1531,6 +1568,22 @@ class TestTrailSeek:
         assert shape == "o"
         assert info["seek"]["tried"][0]["outcome"] == "doubles_back"
         assert info["seek"]["taken"] is False
+
+    def test_each_candidate_is_held_to_the_legs_own_route(self, monkeypatch) -> None:
+        # The first is taken with 40 m of retrace; the second, with 80 m, is past the
+        # leg's own route by more than the slack, though not past the first's.
+        self.segments = trail_segments(0.01, 0.04) + trail_segments(0.06, 0.09, north_m=-100.0)
+        first = analysis("a", "1" * 40, cost_s=3500.0, shift=100)
+        second = analysis("b", "1" * 40, cost_s=3000.0, shift=200)
+        retraced = {id(first): 40.0, id(second): 80.0}
+        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
+        _w, shape, info = self.run(
+            monkeypatch,
+            {"o": ALL_BUSY, "a": first, "b": second},
+            [trip_of("a", 4.0), trip_of("b", 4.0), trip_of("b", 4.0)],
+        )
+        assert shape == "a"
+        assert [t["outcome"] for t in info["seek"]["tried"]][:2] == ["taken", "doubles_back"]
 
     def test_a_route_whose_junctions_could_not_be_read_is_not_taken(self, monkeypatch) -> None:
         unread = analysis("t", "1" * 40, cost_s=100.0, shift=100, events=None)

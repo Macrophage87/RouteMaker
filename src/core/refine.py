@@ -355,6 +355,10 @@ class Analysis:
     via_m: list = field(default_factory=list)
     # The middle of each traced edge: (metres along, lon, lat, edge metres).
     marks: list = field(default_factory=list)
+    # The leg (stretch between the plan's own locations) each of `marks` is on, where
+    # the reading kept it: a mark's metres along count every traced edge, `via_m` only
+    # those `routing.pieces_of_trace` keeps, so the two can drift apart (`retrace_m`).
+    mark_legs: list = field(default_factory=list)
     # Metres of LTS 4 and Avoid, and of LTS 3, as the classes say them.
     lts4_m: float = 0.0
     lts3_m: float = 0.0
@@ -716,6 +720,7 @@ def analyse(
     pieces: list = []
     raws: list = []
     marks: list = []
+    mark_legs: list = []
     offset = 0.0
     via_m: list[float] = []
     line: list = []
@@ -727,7 +732,9 @@ def analyse(
         pieces.extend(made)
         shape = routing.decode_polyline6(leg.get("shape", ""))
         raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
-        marks.extend(trace_junctions.edge_midpoints(trace, shape, offset))
+        leg_marks = trace_junctions.edge_midpoints(trace, shape, offset)
+        marks.extend(leg_marks)
+        mark_legs.extend([number] * len(leg_marks))
         line.extend(shape[1:] if line else shape)
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
@@ -748,6 +755,7 @@ def analyse(
         events=events_of_raws(raws, ctx, deadline) if with_events else None,
         via_m=via_m,
         marks=marks,
+        mark_legs=mark_legs,
         **stress_totals(stress, halves),
         lts2_weight=ctx.exposure.lts2,
         effort_m=effort.effort_equivalent_m(
@@ -1237,14 +1245,19 @@ def retrace_m(analysis: Analysis) -> float:
     matched by their middles (`_marks`), so the way out and the way back of one edge
     are the one edge. A leg is the stretch between the plan's own locations: a stop
     the rider placed down a dead end is theirs to ride out to and back from."""
+    marks = _marks(analysis)
+    legs = analysis.mark_legs if len(analysis.mark_legs) == len(marks) else None
     bounds = leg_bounds(analysis)
     cell = RETRACE_MATCH_M
     seen: dict[tuple[int, int, int], list[tuple[float, float, float]]] = {}
     total = 0.0
     leg = 0
-    for along, lon, lat, metres in _marks(analysis):
-        while leg < len(bounds) - 1 and along >= bounds[leg][1]:
-            leg += 1
+    for number, (along, lon, lat, metres) in enumerate(marks):
+        if legs is not None:
+            leg = legs[number]
+        else:
+            while leg < len(bounds) - 1 and along >= bounds[leg][1]:
+                leg += 1
         x = lon * 111_320.0 * math.cos(math.radians(lat))
         y = lat * 110_540.0
         cx, cy = math.floor(x / cell), math.floor(y / cell)
@@ -1262,10 +1275,10 @@ def retrace_m(analysis: Analysis) -> float:
     return total
 
 
-def doubles_back(read: Analysis, reference: Analysis) -> bool:
-    """Whether a candidate rides back over its own way more than `reference` does,
-    past RETRACE_SLACK_M."""
-    return retrace_m(read) > retrace_m(reference) + RETRACE_SLACK_M
+def doubles_back(read: Analysis, reference_m: float) -> bool:
+    """Whether a candidate rides back over its own way more than RETRACE_SLACK_M past
+    `reference_m`, the `retrace_m` of the route it would replace."""
+    return retrace_m(read) > reference_m + RETRACE_SLACK_M
 
 
 def _leg_trip(trip: dict, number: int) -> dict:
@@ -1576,6 +1589,9 @@ def _seek_leg(
         return None
     seek["corridors"] += len(corridors)
     current = incumbent
+    # Held to the leg's own route, not to the best candidate so far, so that each one
+    # taken cannot raise the bar by another RETRACE_SLACK_M.
+    incumbent_retrace_m = retrace_m(incumbent)
     # The exclusions the search kept for its best route, those in this leg's
     # band only (review r1: up to 150 were sent with every candidate, most of
     # them nowhere near the corridor).
@@ -1643,7 +1659,7 @@ def _seek_leg(
                 tried["outcome"] = "busier"
             elif more_lts4(read, list(reference_lts4), ctx):
                 tried["outcome"] = "more_lts4"
-            elif doubles_back(read, incumbent):
+            elif doubles_back(read, incumbent_retrace_m):
                 tried["outcome"] = "doubles_back"
             elif room_m is not None and read.length_m - incumbent.length_m > room_m:
                 tried["outcome"] = "too_long"
@@ -1700,6 +1716,9 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
         return best, best_trip
     vias = wide_points(ctx.points)
     asked = taken = 0
+    # The route the wide search starts from, held fixed as the guards above hold
+    # `first_exposure`: each point taken cannot raise the bar.
+    start_retrace_m = retrace_m(best)
     locations = ctx.request.get("locations") or []
     for lon, lat in vias:
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
@@ -1732,7 +1751,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             continue
         busier = _busier(read, first_exposure, ctx)
         busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)
-        busier = busier or doubles_back(read, best)
+        busier = busier or doubles_back(read, start_retrace_m)
         if better(read, best, ctx) and not busier:
             best, best_trip = read, candidate
             taken += 1

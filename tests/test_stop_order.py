@@ -292,6 +292,8 @@ class TestEndpoint:
                 "cargo", 85, -40, assist=True, avoid_gravel=False
             )
             assert {loc["type"] for loc in payload["locations"]} == {"break"}
+            # Each stop matched as the plan's own /route matches it.
+            assert {loc["radius"] for loc in payload["locations"]} == {routing.STOP_RADIUS_M}
             assert payload["date_time"]["type"] == 3
             assert payload["directions_type"] == "none"
 
