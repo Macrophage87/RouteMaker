@@ -395,7 +395,7 @@ function ridersChart({
             <path d="M0 5H14" className="pc-need-casing" />
             <path d="M0 5H14" className="pc-need-line" />
           </svg>
-          Dashed line: about {line.perMin} a minute, what {line.riders.toLocaleString("en-US")} riders need to pass a junction within {RIDE_HOLD_MINUTES} minutes
+          Dashed line (proposed): about {line.perMin} a minute, what {line.riders.toLocaleString("en-US")} riders need to pass a junction within {RIDE_HOLD_MINUTES} minutes
         </li>
       )}
       {narrowest && (

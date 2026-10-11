@@ -6187,12 +6187,12 @@ road needs the ride size over the longest hold accepted, `RIDE_HOLD_MINUTES` (5,
 lane, 99), 20 at 100 riders, 400 at 2,000. It is drawn across the riders chart as a long
 dash in the text colour over a casing in the panel's colour (one of the two is 3:1 against
 every band), with "100 needed for 500 riders" at its left, told from the dotted band guides
-by its dash and its words; the axis rises to fit it (`ridersTop`). The key says "Dashed line:
-about 100 a minute, what 500 riders need to pass a junction within 5 minutes"; the summary
-says how much of the route with a figure is below it and from where (`needSentence`,
+by its dash and its words; the axis rises to fit it (`ridersTop`). The key says "Dashed line
+(proposed): about 100 a minute, what 500 riders need to pass a junction within 5 minutes"; the summary
+says the hold is a proposal, not yet confirmed, and how much of the route with a figure is below it and from where (`needSentence`,
 `belowNeed`: a stretch counts by the mean of its two samples; Avoid, untraced and outside-DC
-stretches have no figure and are not counted); the scrub adds "below the 100 needed for 500
-riders" to the band words where the figure is under it. It moves with the ride size slider
+stretches have no figure and are not counted); the scrub adds "below the proposed 100 needed for
+500 riders" to the band words where the figure is under it. It moves with the ride size slider
 and is never sent to the API; routing does not use it yet (PLAN "The main control": the
 flagging on the map and the routing penalty by ride size are not built). Forced colours: the
 line follows the system's text colour and its casing the system's background.
@@ -6213,7 +6213,7 @@ three sliders share one position (and one key hint, which also says so): Tab fro
 the next carries on at the same mile, and moving any of them moves the map's marker and the
 other two charts' markers. Tab between them keeps the position (the blur looks at
 `relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
-about 90 riders per minute (tight, slowed by the climb, below the 100 needed for 500 riders).
+about 90 riders per minute (tight, slowed by the climb, below the proposed 100 needed for 500 riders).
 Next: 15th Street Northwest at mile 1.3, 2 corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
 riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
 not checked for intersections." where it was not, and "intersections not checked, so the

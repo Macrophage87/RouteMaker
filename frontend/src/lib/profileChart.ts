@@ -339,7 +339,7 @@ export function needLabelPlace(text: string, y: number, taken: readonly LabelBox
 export function needSentence(profile: RouteProfile, need: RideNeed): string | null {
   const below = belowNeed(profile, need);
   if (below.known <= 0) return null;
-  const line = `At ${need.riders.toLocaleString("en-US")} riders, a road needs about ${need.perMin} riders per minute for the group to pass a junction within ${RIDE_HOLD_MINUTES} minutes (the dashed line).`;
+  const line = `At ${need.riders.toLocaleString("en-US")} riders, a road needs about ${need.perMin} riders per minute for the group to pass a junction within ${RIDE_HOLD_MINUTES} minutes (the dashed line; the ${RIDE_HOLD_MINUTES}-minute hold is a proposal, not yet confirmed).`;
   if (below.metres <= 0) return `${line} No part of the route with a figure is below it.`;
   const share = Math.round((below.metres / below.known) * 100);
   const all = below.metres >= below.known;
@@ -731,7 +731,7 @@ export function ridersWords(profile: RouteProfile, riders: number | null, metres
   if (climb && gradePct !== null && gradePct > 1 && (climb.capacity_drop_pct ?? 0) > 0) reasons.push("slowed by the climb");
   else if (gradePct !== null && gradePct < -4) reasons.push("spaced out for the descent");
   // The ride size's requirement (128): said only where the figure falls below it.
-  if (need && riders < need.perMin) reasons.push(`below the ${need.perMin} needed for ${need.riders.toLocaleString("en-US")} riders`);
+  if (need && riders < need.perMin) reasons.push(`below the proposed ${need.perMin} needed for ${need.riders.toLocaleString("en-US")} riders`);
   return `about ${riders} riders per minute (${reasons.join(", ")})`;
 }
 

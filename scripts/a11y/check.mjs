@@ -1337,7 +1337,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: no stress strip; the riders area is filled in the band colours, each with its own pattern", !shape.strip && JSON.stringify(shape.patterns) === JSON.stringify(["crosshatch", "diagonal", "dots", "horizontal"]) && shape.fills.every((f) => ["#d7191c", "#f28e2b", "#1a9850", "#6a3d9a"].includes(f)) && shape.fills.length >= 3, JSON.stringify(shape));
   const need = await p.eval(`(() => { const c = document.querySelector('.pc-chart-riders'); const line = c?.querySelector('.pc-need-line'); return { line: !!line && !!c.querySelector('.pc-need-casing'), dash: line ? getComputedStyle(line).strokeDasharray : '', text: c?.querySelector('.pc-need-text')?.textContent, key: [...(c?.querySelectorAll('.pc-legend li') ?? [])].map((x) => x.textContent).find((t) => /^Dashed line/.test(t)), summary: c?.querySelector('.pc-summary')?.textContent ?? '' }; })()`);
   check("mass chart: the ride size's requirement is a cased dashed line with its words, in the key and the summary (128, 147)",
-    need.line && /7/.test(need.dash) && need.text === "100 needed for 500 riders" && need.key === "Dashed line: about 100 a minute, what 500 riders need to pass a junction within 5 minutes" && /At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line\)\. .* is below it, from mile 0\.0\./.test(need.summary), JSON.stringify(need));
+    need.line && /7/.test(need.dash) && need.text === "100 needed for 500 riders" && need.key === "Dashed line (proposed): about 100 a minute, what 500 riders need to pass a junction within 5 minutes" && /At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line; the 5-minute hold is a proposal, not yet confirmed\)\. .* is below it, from mile 0\.0\./.test(need.summary), JSON.stringify(need));
   check("mass chart: the dotted guides are labelled 60, 120 and 200", JSON.stringify(shape.guides) === JSON.stringify(["60", "120", "200"]), JSON.stringify(shape.guides));
   const guides = await p.eval(`(() => { const probe = document.createElement('span'); probe.style.color = 'var(--text)'; probe.style.backgroundColor = 'var(--bg)'; document.querySelector('.elevation-chart').append(probe); const cs = getComputedStyle(probe); const bg = cs.backgroundColor; const t = cs.color; probe.remove(); return { bg, text: t, labels: [...document.querySelectorAll('.pc-guide-text')].map((x) => getComputedStyle(x).fill), lines: [...document.querySelectorAll('.pc-guide')].map((x) => getComputedStyle(x).stroke), swatches: [...document.querySelectorAll('.pc-guide-swatch')].map((x) => x.getAttribute('fill')) }; })()`);
   const rgb = (s) => (s.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map(Number);
@@ -1353,7 +1353,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const ax = await axNode(p, ".pc-plot");
-  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb, below the 100 needed for 500 riders). Next: 15th Street Northwest at mile 1.3, 2 corkers needed.", JSON.stringify(ax));
+  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb, below the proposed 100 needed for 500 riders). Next: 15th Street Northwest at mile 1.3, 2 corkers needed.", JSON.stringify(ax));
   await p.shot(`${SHOTS}/chart_mass_focused.png`);
   // The three sliders share one position: Tab on to the corker load, then the elevation, at the same mile.
   await p.tab();
@@ -1947,8 +1947,13 @@ async function saidInDialog(p, text) {
   // On the Mass Ride map the panel gives the usable width and riders a minute.
   const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
   await p.waitFor("!!document.querySelector('.summary .capacity-stats')", 10000);
+  // The panel's capacity section shows only once the map has drawn a tile with the capacity (App's
+  // `massMap`, watchForCapacity), which the Mass Ride legend also waits on: opening the panel before
+  // that raced the tiles and failed now and then with an empty section.
+  await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
   await mapTool(p, "Road info at map center");
   await p.waitFor(infoOpen, 8000);
+  await p.waitFor("!!document.querySelector('dialog.road-info .road-info-mass .road-info-row') && !!document.querySelector('dialog.road-info .road-info-line-mass')", 5000);
   const mass = await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-mass .road-info-row')].map((r) => r.textContent).join(' | ')");
   const room = await p.eval("document.querySelector('dialog.road-info .road-info-line-mass')?.textContent ?? ''");
   check("road panel: on the Mass Ride map the summary gives the room, and the details the usable width and riders a minute, US units first",

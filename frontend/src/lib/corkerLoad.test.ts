@@ -303,7 +303,7 @@ test("the requirement's sentence: how much of the route is below it, and from wh
   assert.ok(Math.abs(below.metres - 600) <= 30, String(below.metres));
   assert.ok(below.known < 3 * MILE - 300 + 1);
   const words = needSentence(dip, need);
-  assert.match(words ?? "", /^At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line\)\. 0\.4 mi \(0\.6 km\) of the route, 13% of what has a figure, is below it, from mile 0\.9\.$/);
+  assert.match(words ?? "", /^At 500 riders, a road needs about 100 riders per minute for the group to pass a junction within 5 minutes \(the dashed line; the 5-minute hold is a proposal, not yet confirmed\)\. 0\.4 mi \(0\.6 km\) of the route, 13% of what has a figure, is below it, from mile 0\.9\.$/);
   assert.match(needSentence(profile, need) ?? "", /No part of the route with a figure is below it\.$/);
   assert.match(needSentence(profile, rideNeed(2000)!) ?? "", /about 400 riders per minute .* All of the route with a figure is below it\.$/);
   assert.equal(needSentence({ ...profile, riders_per_min: profile.m.map(() => null) }, need), null);
@@ -312,7 +312,7 @@ test("the requirement's sentence: how much of the route is below it, and from wh
   assert.match(massSummaries(r, dip, null, 500).riders, /At 500 riders, a road needs about 100 riders per minute/);
   assert.doesNotMatch(massSummaries(r, dip, null).riders, /a road needs/);
   assert.doesNotMatch(summaryText(r, dip, "mass"), /a road needs/);
-  assert.match(massReadings(r, dip, null, 1800, 500).riders, /about 90 riders per minute \(tight, below the 100 needed for 500 riders\)/);
+  assert.match(massReadings(r, dip, null, 1800, 500).riders, /about 90 riders per minute \(tight, below the proposed 100 needed for 500 riders\)/);
   assert.doesNotMatch(massReadings(r, dip, null, 600, 500).riders, /below the/);
   assert.equal(massReadings(r, dip, null, 1800).riders, readingAt(r, dip, 1800, "mass").text);
   // No figures: no requirement said.
