@@ -13,6 +13,7 @@ import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
+import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
@@ -68,6 +69,8 @@ export interface LayersSheetProps {
   rail: RailVisibility;
   setRail: (next: RailVisibility) => void;
   showMtbTrails: boolean;
+  showTopoLines: boolean;
+  topoReady: boolean;
   legendHeadingRef: RefObject<HTMLHeadingElement | null>;
   zoom: number | null;
   facilitiesShown: ReadonlySet<string>;
@@ -75,7 +78,7 @@ export interface LayersSheetProps {
 
 /** The bottom bar's Map layers sheet (Legend opens it at its legend). */
 export function LayersSheet(props: LayersSheetProps) {
-  const { view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, legendHeadingRef, zoom, facilitiesShown, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
+  const { view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, legendHeadingRef, zoom, facilitiesShown, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
   return (
     <SheetFrame
       id="sheet-layers"
@@ -141,6 +144,7 @@ export function LayersSheet(props: LayersSheetProps) {
           join the mountain-bike trails and climbs here once their data is built (docs/MTB-TOPO-PLAN.md). */}
       <section aria-labelledby="terrain-heading">
         <h3 id="terrain-heading">Trails and terrain</h3>
+        <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
         <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} />
       </section>

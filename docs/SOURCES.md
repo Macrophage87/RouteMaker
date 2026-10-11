@@ -247,6 +247,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   climb, the effort model and the Hills slider. Retrieved by each rebuild's ELEVATION
   stage, which records the tiles and their dates in its run's log; never fetched on the
   development host (docs/OPERATIONS.md says why).
+- Dataset: 3DEP 1/3 arc-second DEM (about 33 ft (10 m) a pixel), the four one-degree cells over the
+  coverage (n40w078, n40w077, n39w078, n39w077) at
+  <https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/> (listed 2026-10-11:
+  370 to 500 MB each, last modified 2026-04-09 to 2026-05-12); the Topo lines map layer's contours,
+  made by `scripts/build_contours.py` on the build host (docs/OPERATIONS.md, "Topo lines").
 - Publisher: U.S. Geological Survey.
 - Licence: U.S. public domain.
 - Records: docs/OPERATIONS.md (the ELEVATION stage).

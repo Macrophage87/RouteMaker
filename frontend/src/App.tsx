@@ -19,6 +19,7 @@ import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { neutralPaletteSearch } from "./stressStyle.js";
+import { topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -216,6 +217,16 @@ export function App() {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
   const showMtbTrails = useMtbTrails();
+  // Topo lines (lib/topoLines.ts; 454): the switch's state is shared with the map; whether the server
+  // has the archive is asked once, the first time the layer is on.
+  const showTopoLines = useTopoLines();
+  const [topoReady, setTopoReady] = useState(true);
+  const topoAsked = useRef(false);
+  useEffect(() => {
+    if (!showTopoLines || topoAsked.current) return;
+    topoAsked.current = true;
+    void topoAvailable().then(setTopoReady);
+  }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -1826,7 +1837,7 @@ export function App() {
                 view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible,
                 showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs,
                 changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails,
-                climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
+                showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
                 legendHeadingRef, zoom, facilitiesShown,
               }}
             />
