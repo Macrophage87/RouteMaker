@@ -38,6 +38,7 @@ import { FEDERAL_BADGE, FEDERAL_HELP, federalPointText } from "./federalLegend.t
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { infoSaid, refreshedSaid, type InfoRequest, type InfoState } from "./roadInfo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const square = (x: number, y: number, size: number) => [
@@ -367,7 +368,7 @@ test("the late area is said with its own spot's road only, never the previous sp
 });
 
 test("the road panel names the federal area at the spot, on a Mass Ride (the keyboard's way, I at the map's center)", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /federal=\{roadInfo && federalShown\(preset, true\) \? federalAreaAt\(roadInfo\.point, federalData\) : null\}/);
   const dialog = source("../RoadInfoDialog.tsx");
   assert.match(dialog, /const federalSaid = federal \? stopWarningShort\(federal\) : "";/);
@@ -381,7 +382,7 @@ test("the description component lists the lines under their heading, and copies 
   assert.match(component, /<p className="federal-route-heading" id=\{`\$\{listId\}-federal`\}>/);
   assert.match(component, /<ul aria-labelledby=\{`\$\{listId\}-federal`\}>/);
   assert.equal((component.match(/\{federalBlock\(/g) ?? []).length, 2, "in the fold and the old section");
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /federalRouteLines\(shown, routedPoints, federalData\)/);
   // One line alone ("could not be checked") is a paragraph, not a heading over an empty list.
   assert.match(component, /federal\[0\] === FEDERAL_UNCHECKED \? \(\s*\/\/[^\n]*\n\s*<p className="federal-route federal-unchecked" hidden=\{hidden\}>/);

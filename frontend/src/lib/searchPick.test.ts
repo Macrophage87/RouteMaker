@@ -7,6 +7,7 @@ import { EditHistory } from "./editHistory.ts";
 import { planEdits, type Snapshot } from "./planEdits.ts";
 import { pickIntoPlan, pointRows, type Place } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const LINCOLN: Place = { name: "Lincoln Memorial", label: "Lincoln Memorial, Washington", lon: -77.0502, lat: 38.8893, kind: "other" };
 const UNION: Place = { name: "Union Station", label: "Union Station, NoMa", lon: -77.0074, lat: 38.8978, kind: "house" };
@@ -98,7 +99,7 @@ test("App asks names for the plan's own points and renders the rows from pointRo
   // The wiring itself, which no helper can hold: the hook is given the
   // points the plan has (the re-check's F06 gave it none), the list is
   // pointRows, and the pick goes through pickIntoPlan with App's commit.
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /usePlaceNames\(points\)/);
   assert.match(app, /pointRows\(points, namer, loopVias\)/);
   assert.match(app, /pickIntoPlan\(found, choice, \{\s*current: \(\) => pointsRef\.current,\s*commit,/);
