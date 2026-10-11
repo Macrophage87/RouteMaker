@@ -134,6 +134,8 @@ EXCLUDED_TABLE_DATA=(
 # RIDER_REASON_BLANKED; any other column becomes '' (a NOT NULL text column). The script refuses a
 # table that has a foreign key to app_user, or a column ending in user_id, not listed here, so a
 # person column added later is not shipped by accident.
+# The commas are part of each entry, not separators (read with IFS=, below).
+# shellcheck disable=SC2054
 BLANKED_TABLE_DATA=(
 	override:created_by_id,created_by_user_id,approved_by_id,approved_by_user_id,reason=rider
 	junction_override:created_by_id,created_by_user_id,evidence
