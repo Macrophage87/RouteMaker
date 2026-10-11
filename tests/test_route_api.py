@@ -760,6 +760,15 @@ class TestWhatIsSentToTheRouter:
         locations = fake.calls[0][1]["locations"]
         assert [(loc["lon"], loc["lat"]) for loc in locations] == [VERTICES[0], VERTICES[-1]]
 
+    def test_each_stop_is_matched_to_every_way_near_it(self, client, segments, router) -> None:
+        # Not the nearest way alone: a stop on a trail beside a ramp let the router reach
+        # it only by the ramp (Stephen, 2026-10-11, the Fairfax County Parkway Trail).
+        fake = router(standard_router())
+        post(client, good_body())
+        locations = fake.calls[0][1]["locations"]
+        assert [loc["radius"] for loc in locations] == [routing.STOP_RADIUS_M] * 2
+        assert 5 < routing.STOP_RADIUS_M <= 20
+
     def test_the_route_asks_for_elevation_and_an_invariant_planning_time(
         self, client, segments, router
     ) -> None:

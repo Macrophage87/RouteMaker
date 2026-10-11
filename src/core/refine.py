@@ -105,6 +105,16 @@ REFINE_TRACE_RESERVE_S = 6
 # the seek's budget rather than out of the leg's share (`_seek`; combined
 # correctness review, SF1).
 SEEK_LEG_READ_S = 2.0
+# A route asked for through a corridor's entry and exit (or a wide point) can ride out
+# along a way to one of them and back again the same way, where the router cannot pass
+# the point in the order asked (Stephen, 2026-10-11: 0.5 mi down the trail by Island
+# Creek and straight back). Such a candidate doubles back (`retrace_m`: the metres of a
+# leg on an edge the same leg has already ridden, either way); one that does so by more
+# than RETRACE_SLACK_M over the route it would replace is refused, and never offered.
+RETRACE_SLACK_M = 50.0
+# Two edges' middles within this many metres, of lengths within RETRACE_MATCH_M (or a
+# tenth, the longer), are the one edge ridden twice.
+RETRACE_MATCH_M = 2.0
 # Rounds in a row that may not beat the best score before the search gives up.
 REFINE_PATIENCE = 2
 # The longest span (metres of straight line) the search runs on, as the avoid
@@ -1221,6 +1231,43 @@ def leg_bounds(analysis: Analysis) -> list[tuple[float, float]]:
     return list(zip(edges, edges[1:], strict=False))
 
 
+def retrace_m(analysis: Analysis) -> float:
+    """The metres of the route on an edge the same leg has already ridden, in either
+    direction: an out-and-back along a way to a through point and back. Edges are
+    matched by their middles (`_marks`), so the way out and the way back of one edge
+    are the one edge. A leg is the stretch between the plan's own locations: a stop
+    the rider placed down a dead end is theirs to ride out to and back from."""
+    bounds = leg_bounds(analysis)
+    cell = RETRACE_MATCH_M
+    seen: dict[tuple[int, int, int], list[tuple[float, float, float]]] = {}
+    total = 0.0
+    leg = 0
+    for along, lon, lat, metres in _marks(analysis):
+        while leg < len(bounds) - 1 and along >= bounds[leg][1]:
+            leg += 1
+        x = lon * 111_320.0 * math.cos(math.radians(lat))
+        y = lat * 110_540.0
+        cx, cy = math.floor(x / cell), math.floor(y / cell)
+        again = any(
+            math.hypot(x - ox, y - oy) <= RETRACE_MATCH_M
+            and abs(metres - om) <= max(RETRACE_MATCH_M, 0.1 * max(metres, om))
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for ox, oy, om in seen.get((leg, cx + dx, cy + dy), ())
+        )
+        if again:
+            total += metres
+        else:
+            seen.setdefault((leg, cx, cy), []).append((x, y, metres))
+    return total
+
+
+def doubles_back(read: Analysis, reference: Analysis) -> bool:
+    """Whether a candidate rides back over its own way more than `reference` does,
+    past RETRACE_SLACK_M."""
+    return retrace_m(read) > retrace_m(reference) + RETRACE_SLACK_M
+
+
 def _leg_trip(trip: dict, number: int) -> dict:
     """One leg of a trip as a trip of its own."""
     leg = (trip.get("legs") or [])[number]
@@ -1596,6 +1643,8 @@ def _seek_leg(
                 tried["outcome"] = "busier"
             elif more_lts4(read, list(reference_lts4), ctx):
                 tried["outcome"] = "more_lts4"
+            elif doubles_back(read, incumbent):
+                tried["outcome"] = "doubles_back"
             elif room_m is not None and read.length_m - incumbent.length_m > room_m:
                 tried["outcome"] = "too_long"
             elif better(read, current, ctx, rest_m):
@@ -1683,6 +1732,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             continue
         busier = _busier(read, first_exposure, ctx)
         busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)
+        busier = busier or doubles_back(read, best)
         if better(read, best, ctx) and not busier:
             best, best_trip = read, candidate
             taken += 1

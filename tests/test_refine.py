@@ -772,6 +772,13 @@ class TestWideSearch:
         shape, info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S - 1)
         assert shape == "w" and info["wide"]["taken"]
 
+    def test_a_wide_route_that_rides_out_and_back_is_not_taken(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 40, cost_s=4000.0)
+        spur = doubling_back("w", spur=8, cost_s=1000.0)
+        World(monkeypatch, {"o": orig, "w": spur}, [trip_of("w", 4.8)] * 4)
+        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
+        assert kept["legs"][0]["shape"] == "o" and not info["wide"]["taken"]
+
     def test_a_wide_route_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
         shape, info = self.wide_world(monkeypatch, 1000.0, events=None)
         assert shape == "o" and not info["wide"]["taken"]
@@ -1312,6 +1319,51 @@ BUSY = "1" * 5 + "4" * 4 + "1" * 5 + "3" * 8 + "1" * 18
 NO_ROUTE = routing.RouterRefused(400, 442, "no path")
 
 
+def doubling_back(name: str, spur: int = 8, cost_s: float = 3000.0, at: int = 10):
+    """A calm candidate that rides `spur` pieces (100 m each) out along a way from
+    piece `at` and back the same way before going on."""
+    read = analysis(name, "1" * 40, cost_s=cost_s, shift=100)
+    out = read.pieces[at : at + spur]
+    read.pieces = read.pieces[: at + spur] + out[::-1] + read.pieces[at + spur :]
+    read.classes = read.classes + read.classes[:spur]
+    read.length_m += 100.0 * spur
+    return read
+
+
+class TestRetrace:
+    """`refine.retrace_m`: the metres of a leg on an edge the same leg already rode."""
+
+    def test_a_route_that_never_rides_a_way_twice_has_none(self) -> None:
+        assert refine.retrace_m(analysis("a", "1" * 40)) == 0.0
+
+    def test_the_way_back_of_an_out_and_back_is_counted(self) -> None:
+        assert refine.retrace_m(doubling_back("a", spur=8)) == pytest.approx(800.0)
+
+    def test_edges_are_matched_by_their_middles_either_way(self) -> None:
+        read = analysis("a", "1" * 4)
+        read.marks = [
+            (50.0, -77.0, 38.9, 100.0),
+            (150.0, -77.001, 38.9, 100.0),
+            # The same edge back, its middle a metre off as the trace rounds it.
+            (250.0, -77.001, 38.90001, 100.0),
+            # Not the same edge: a short one beside it.
+            (325.0, -77.001, 38.90001, 50.0),
+        ]
+        assert refine.retrace_m(read) == pytest.approx(100.0)
+
+    def test_a_stop_down_a_dead_end_is_the_riders_own(self) -> None:
+        # Out to a stop the rider placed and back is two legs, never counted.
+        read = doubling_back("a", spur=8)
+        read.via_m = [1800.0]
+        assert refine.retrace_m(read) == 0.0
+
+    def test_doubling_back_is_measured_against_the_route_replaced(self) -> None:
+        own = doubling_back("o", spur=3)
+        assert not refine.doubles_back(doubling_back("a", spur=3), own)
+        assert refine.doubles_back(doubling_back("a", spur=4), own)
+        assert refine.RETRACE_SLACK_M < 100.0
+
+
 class TestTrailSeek:
     """OWNER-DECISIONS 194, FOLLOWUP-TRAIL-SEEK: after the exclusion rounds, the
     router's route through the entry and exit of the best corridors of trail near
@@ -1468,6 +1520,17 @@ class TestTrailSeek:
             _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
             assert info["seek"]["tried"][0]["outcome"] == outcome
             assert shape == ("t" if outcome == "taken" else "o")
+
+    def test_a_route_that_rides_out_and_back_to_a_through_point_is_not_taken(
+        self, monkeypatch
+    ) -> None:
+        # Stephen, 2026-10-11 (Island Creek): calmer and quicker on paper, but it rides
+        # 800 m down a way to the corridor's entry and straight back.
+        spur = doubling_back("t", spur=8, cost_s=100.0)
+        _w, shape, info = self.run(monkeypatch, {"t": spur}, [trip_of("t", 4.8)])
+        assert shape == "o"
+        assert info["seek"]["tried"][0]["outcome"] == "doubles_back"
+        assert info["seek"]["taken"] is False
 
     def test_a_route_whose_junctions_could_not_be_read_is_not_taken(self, monkeypatch) -> None:
         unread = analysis("t", "1" * 40, cost_s=100.0, shift=100, events=None)

@@ -680,8 +680,9 @@ class SeekOut(Schema):
     replaced and the detour they added as the seek estimated them, the route's
     length and exposure, and `outcome`: `taken`, `not_better`, `busier`,
     `more_lts4` (more LTS 4 and Avoid metres than the router's first route, on
-    Trailmaxxing and Cargo with passengers: OWNER-DECISIONS 250), `unread` or
-    `no_route`."""
+    Trailmaxxing and Cargo with passengers: OWNER-DECISIONS 250), `doubles_back`
+    (it rides out along a way and back again more than the route it would replace),
+    `too_long`, `unread` or `no_route`."""
 
     corridors: int
     asked: int
